@@ -4,7 +4,11 @@
       {
         "matcher": "startup|resume|clear",
         "hooks": [
-          {"type": "command", "command": "evo-agents kg hook session-start", "timeout": 10}
+          {
+            "type": "command",
+            "command": "command -v evo-agents >/dev/null 2>&1 && evo-agents kg hook session-start || true",
+            "timeout": 10
+          }
         ]
       }
     ]

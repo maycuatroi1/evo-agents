@@ -353,8 +353,10 @@ class Store:
         )
         hits.extend(r[0] for r in exact)
         terms = [t for t in "".join(c if c.isalnum() else " " for c in query).split() if t]
-        if terms:
-            fts_query = " ".join(f'"{t}"*' for t in terms)
+        # Whole tokens first, so "KB-01" does not drown in KB-010..KB-019; prefixes only fill the rest.
+        for fts_query in (" ".join(f'"{t}"' for t in terms), " ".join(f'"{t}"*' for t in terms)):
+            if not terms or len(hits) >= limit * 3:
+                break
             try:
                 rows = self.db.execute(
                     "SELECT node_id FROM node_fts WHERE node_fts MATCH ?"
