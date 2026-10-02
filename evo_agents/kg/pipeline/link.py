@@ -17,7 +17,7 @@ from evo_agents.kg.pipeline.stages import edge, frag_unit, item_unit, node, norm
 from evo_agents.kg.protocol import canonical_json, sha256
 from evo_agents.kg.schema import node_kind_for_item
 
-LINK_VERSION = "4"
+LINK_VERSION = "5"
 
 URL = re.compile(r"https?://[^\s<>()\[\]{}`'\"|]+")
 BACKTICK = re.compile(r"`([^`\n]{2,200})`")
@@ -107,7 +107,16 @@ class Linker:
         self.base_dir = posixpath.dirname(path) if path else ""
         self.edges: dict[tuple, dict] = {}
         self.nodes: dict[str, dict] = {}
-        self.stats = {"mentions": 0, "resolved": 0, "ambiguous": 0, "dangling": 0}
+        self.stats = {
+            "mentions": 0,
+            "resolved": 0,
+            "ambiguous": 0,
+            "dangling": 0,
+            "refs": 0,
+            "refs_resolved": 0,
+            "refs_ambiguous": 0,
+            "refs_dangling": 0,
+        }
         self.samples: dict[str, list[str]] = {"ambiguous": [], "dangling": []}
         self.url_prefixes = {_url_prefix(u) for u in index["url"]}
         self.patterns = [(i["kind"], re.compile(i["pattern"])) for i in index["identifiers"]]
@@ -134,6 +143,13 @@ class Linker:
             needs=[target],
             where=[[unit, f"char {start}"]],
         )
+
+    def _ref(self, outcome: str, text: str | None = None) -> None:
+        """Structured references (YAML fields, imports) are counted apart from mentions in prose."""
+        self.stats["refs"] += 1
+        self.stats[f"refs_{outcome}"] += 1
+        if text and outcome in self.samples and len(self.samples[outcome]) < 5:
+            self.samples[outcome].append(text[:120])
 
     def _count(self, outcome: str, text: str | None = None) -> None:
         self.stats["mentions"] += 1
@@ -172,8 +188,15 @@ class Linker:
         elif ttype == "path":
             found, status = self.path_target(target["value"], target.get("repo"))
             if found is None:
-                self._count("dangling" if status != "ambiguous" else "ambiguous", target["value"])
+                self._ref("dangling" if status != "ambiguous" else "ambiguous", target["value"])
                 return
+        elif ttype == "paths":
+            for candidate in target["values"]:
+                found, status = self.path_target(candidate, target.get("repo"))
+                if found:
+                    break
+            if found is None:
+                return  # a package import or a file outside the sources: not a dangling link
         elif ttype == "module":
             entries = self.index["module"].get(target["value"], [])
             same = [e for e in entries if e["source"] == target.get("source")]
@@ -181,9 +204,9 @@ class Linker:
             if found is None:
                 return  # third-party or optional import: outside the project, not a dangling link
         if found is None:
-            self._count("dangling", f"{ttype}:{target['value']}")
+            self._ref("dangling", f"{ttype}:{target['value']}")
             return
-        self._count("resolved")
+        self._ref("resolved")
         key = (f["src"], f["rel"], found)
         if key not in self.edges:
             self.edges[key] = edge(

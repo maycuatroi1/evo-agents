@@ -24,9 +24,10 @@ def cmd_build(args) -> int:
                 f" {v.get('rebuilt', '')[:23]} vs {v.get('expected', '')[:23]}"
             )
         for src in report.coverage.get("sources", []):
+            refs = f"  refs {src.get('refs_resolved', 0)}/{src.get('refs', 0)}" if src.get("refs") else ""
             print(
-                f"  {src['id']:<22} {src['items']:>6} items  {src['mentions']:>6} mentions"
-                f"  {src['resolved_ratio']:.0%} resolved  {src['ambiguous']} ambiguous  {src['dangling']} dangling"
+                f"  {src['id']:<22} {src['items']:>6} items  mentions {src['resolved']}/{src['mentions']}"
+                f" ({src['resolved_ratio']:.0%}), {src['ambiguous']} ambiguous, {src['dangling']} dangling{refs}"
             )
         for err in report.errors[:20]:
             print(f"  error: {err}", file=sys.stderr)
