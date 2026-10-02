@@ -91,7 +91,7 @@
           "type": "string"
         },
         "order": {
-          "type": "integer"
+          "type": "number"
         },
         "depends_on": {
           "type": "array"
@@ -183,7 +183,7 @@
           "type": "string"
         },
         "order": {
-          "type": "integer"
+          "type": "number"
         },
         "acceptance": {},
         "why": {

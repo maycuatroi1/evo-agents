@@ -107,6 +107,35 @@ def test_missing_label_is_fail_closed_warning(harness: Path):
     assert any("highest level" in i.message for i in knowledge.issues)
 
 
+def test_seam_without_verify_needs_a_waiver(harness: Path):
+    (harness / "contracts.yaml").write_text(
+        """
+seams:
+  - name: checked
+    owner: app
+    verify: make check
+  - name: waived
+    owner: app
+    verify: null
+    verify_waiver: {reason: the consumer repo does not exist yet, revisit: when it does}
+  - name: forgotten
+    owner: app
+    verify: null
+""",
+        encoding="utf-8",
+    )
+    contracts = next(r for r in validate_harness(harness) if r.kind == "contracts")
+    assert contracts.ok, [str(i) for i in contracts.issues]
+    assert [(i.path, i.severity) for i in contracts.issues] == [("seams[2]", "warning")]
+
+
+def test_inserted_steps_may_use_fractional_order(harness: Path):
+    plan = harness / "plans/active/demo-plan.yaml"
+    plan.write_text(plan.read_text() + "  - id: 3\n    what: squeezed in\n    order: 1.5\n", encoding="utf-8")
+    report = next(r for r in validate_harness(harness) if r.kind == "plan")
+    assert report.ok, [str(i) for i in report.issues]
+
+
 def test_find_manifest_walks_up(harness: Path):
     nested = harness / "plans" / "active"
     assert find_manifest(nested) == harness.resolve()
