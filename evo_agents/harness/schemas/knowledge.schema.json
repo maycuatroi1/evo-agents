@@ -4,17 +4,43 @@
   "title": "knowledge.yaml",
   "description": "Sources of one project's knowledge graph, their sensitivity labels, and the sinks allowed to read them.",
   "type": "object",
-  "required": ["version", "project", "sources"],
+  "required": [
+    "version",
+    "project",
+    "sources"
+  ],
   "additionalProperties": false,
   "x-unknown": "warn",
   "properties": {
-    "version": {"const": 1},
-    "project": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$"},
-    "policy": {"$ref": "#/$defs/policy"},
-    "sources": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/source"}},
-    "identifiers": {"type": "array", "items": {"$ref": "#/$defs/identifier"}},
-    "ontology": {"type": "string"},
-    "bindings": {"type": "string"}
+    "version": {
+      "const": 1
+    },
+    "project": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*$"
+    },
+    "policy": {
+      "$ref": "#/$defs/policy"
+    },
+    "sources": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/source"
+      }
+    },
+    "identifiers": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/identifier"
+      }
+    },
+    "ontology": {
+      "type": "string"
+    },
+    "bindings": {
+      "type": "string"
+    }
   },
   "$defs": {
     "policy": {
@@ -22,94 +48,234 @@
       "additionalProperties": false,
       "x-unknown": "warn",
       "properties": {
-        "levels": {"type": "array", "minItems": 1, "items": {"type": "string"}},
-        "locations": {"type": "array", "minItems": 1, "items": {"type": "string"}},
-        "sinks": {"type": "array", "items": {"$ref": "#/$defs/sink"}},
-        "memo": {"enum": ["per-project", "shared"]}
+        "levels": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "locations": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "sinks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/sink"
+          }
+        },
+        "memo": {
+          "enum": [
+            "per-project",
+            "shared"
+          ]
+        }
       }
     },
     "label": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "level": {"type": "string"},
-        "location": {"type": "string"},
-        "integrity": {"enum": ["T", "U"]}
+        "level": {
+          "type": "string"
+        },
+        "location": {
+          "type": "string"
+        },
+        "integrity": {
+          "enum": [
+            "T",
+            "U"
+          ]
+        }
       }
     },
     "clearance": {
       "type": "object",
-      "required": ["level"],
+      "required": [
+        "level"
+      ],
       "additionalProperties": false,
       "properties": {
-        "level": {"type": "string"},
-        "location": {"type": "string"}
+        "level": {
+          "type": "string"
+        },
+        "location": {
+          "type": "string"
+        }
       }
     },
     "sink": {
       "type": "object",
-      "required": ["id", "kind", "clearance"],
+      "required": [
+        "id",
+        "kind",
+        "clearance"
+      ],
       "additionalProperties": false,
       "x-unknown": "warn",
       "properties": {
-        "id": {"type": "string", "minLength": 1},
-        "kind": {"enum": ["agent-session", "llm-backend", "writeback-target", "cli"]},
-        "clearance": {"$ref": "#/$defs/clearance"}
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "enum": [
+            "agent-session",
+            "llm-backend",
+            "writeback-target",
+            "cli"
+          ]
+        },
+        "clearance": {
+          "$ref": "#/$defs/clearance"
+        }
       }
     },
     "credential": {
       "anyOf": [
-        {"type": "string", "minLength": 1},
+        {
+          "type": "string",
+          "minLength": 1
+        },
         {
           "type": "object",
-          "required": ["key", "env"],
+          "required": [
+            "key",
+            "env"
+          ],
           "additionalProperties": false,
           "properties": {
-            "key": {"type": "string", "minLength": 1},
-            "env": {"type": "string", "pattern": "^[A-Z_][A-Z0-9_]*$"}
+            "key": {
+              "type": "string",
+              "minLength": 1
+            },
+            "env": {
+              "type": "string",
+              "pattern": "^[A-Z_][A-Z0-9_]*$"
+            }
           }
         }
       ]
     },
     "source": {
       "type": "object",
-      "required": ["id", "connector"],
+      "required": [
+        "id",
+        "connector"
+      ],
       "additionalProperties": false,
       "x-unknown": "warn",
       "properties": {
-        "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_.-]*$"},
-        "connector": {"type": "string", "minLength": 1},
-        "label": {"$ref": "#/$defs/label"},
-        "repo": {"type": "string"},
-        "path": {"type": "string"},
-        "ref": {"type": "string"},
-        "include": {"type": "array", "items": {"type": "string"}},
-        "exclude": {"type": "array", "items": {"type": "string"}},
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9_.-]*$"
+        },
+        "connector": {
+          "type": "string",
+          "minLength": 1
+        },
+        "label": {
+          "$ref": "#/$defs/label"
+        },
+        "repo": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "ref": {
+          "type": "string"
+        },
+        "include": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "exclude": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
         "code": {
           "type": "object",
           "additionalProperties": false,
-          "properties": {"backend": {"enum": ["python-ast", "graphify-ast", "none"]}}
+          "properties": {
+            "backend": {
+              "enum": [
+                "python-ast",
+                "graphify-ast",
+                "none"
+              ]
+            }
+          }
         },
-        "command": {"type": "array", "minItems": 1, "items": {"type": "string"}},
-        "config": {"type": "object"},
-        "credentials": {"type": "array", "items": {"$ref": "#/$defs/credential"}},
-        "refresh": {"type": "string", "pattern": "^[0-9]+[smhd]$"},
-        "timeout": {"type": "number", "minimum": 1},
+        "command": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "config": {
+          "type": "object"
+        },
+        "credentials": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/credential"
+          }
+        },
+        "refresh": {
+          "type": "string",
+          "pattern": "^[0-9]+[smhd]$"
+        },
+        "timeout": {
+          "type": "number",
+          "minimum": 1
+        },
         "deletion": {
           "type": "object",
           "additionalProperties": false,
-          "properties": {"max_removal_ratio": {"type": "number", "minimum": 0, "maximum": 1}}
+          "properties": {
+            "max_removal_ratio": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "min_scope": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
         }
       }
     },
     "identifier": {
       "type": "object",
-      "required": ["kind", "pattern"],
+      "required": [
+        "kind",
+        "pattern"
+      ],
       "additionalProperties": false,
       "properties": {
-        "kind": {"type": "string", "pattern": "^[A-Z][A-Za-z0-9]*$"},
-        "pattern": {"type": "string", "minLength": 1},
-        "description": {"type": "string"}
+        "kind": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Za-z0-9]*$"
+        },
+        "pattern": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string"
+        }
       }
     }
   }

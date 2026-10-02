@@ -197,7 +197,7 @@ def knowledge_semantics(data: dict, manifest: dict | None = None) -> list[Issue]
             issues.append(Issue(f"{where}.id", f"duplicate source id {sid!r}"))
         seen.add(sid)
         connector = src.get("connector")
-        if connector and connector not in known:
+        if connector and connector not in known and not connector.startswith("python:"):
             issues.append(Issue(f"{where}.connector", f"unknown connector {connector!r}"))
         if connector == "exec" and not src.get("command"):
             issues.append(Issue(f"{where}.command", "an exec connector needs a command"))
