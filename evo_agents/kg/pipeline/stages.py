@@ -342,7 +342,84 @@ def _python(record: dict, source_id: str, text: str) -> list[dict]:
     return facts
 
 
-def structure_item(record: dict, source_id: str, text: str | None, code_backend: str = "python-ast") -> list[dict]:
+def code_extractor(record: dict, backend: str) -> str:
+    """Which extractor a code item gets, with its version: part of the structure task's memo key."""
+    from evo_agents.kg.extract import graphify as gfy
+
+    path = (record.get("props") or {}).get("path") or ""
+    if record.get("kind") != "code" or backend == "none":
+        return "none"
+    is_python = PurePosixPath(path).suffix == ".py"
+    if backend == "python-ast" or (backend == "auto" and is_python):
+        return "python-ast" if is_python else "none"
+    if gfy.available() and gfy.supports(path):
+        return f"graphify-ast@{gfy.version()}"
+    return "none"
+
+
+def _graphify(record: dict, source_id: str, text: str) -> list[dict]:
+    from evo_agents.kg.extract import graphify as gfy
+
+    item_id = record["id"]
+    props = record.get("props") or {}
+    path = props.get("path") or ""
+    result = gfy.extract(text, path)
+    unit = item_unit(item_id)
+    if result is None:
+        return [{"t": "issue", "message": f"{path}: graphify could not extract it", "unit": unit}]
+    facts, by_qual = [], {}
+    for sym in result["symbols"]:
+        sid = f"symbol:{source_id}:{path}::{sym['qualname']}"
+        by_qual[sym["qualname"]] = sid
+        facts.append(
+            node(
+                sid,
+                "Symbol",
+                sym["qualname"],
+                [unit],
+                props={"kind": sym["kind"], "path": path, "line": sym["line"], "file": item_id},
+                where=[[unit, f"line {sym['line']}"]],
+            )
+        )
+        parent = by_qual.get(sym["parent"]) if sym["parent"] else None
+        if parent:
+            facts.append(edge(sid, "member_of", parent, [unit]))
+        else:
+            facts.append(edge(item_id, "defines", sid, [unit]))
+        facts.append(
+            {
+                "t": "ident",
+                "type": "symbol",
+                "key": f"{path}::{sym['qualname']}",
+                "name": sym["name"],
+                "qualname": sym["qualname"],
+                "source": source_id,
+                "repo": props.get("repo"),
+                "node": sid,
+            }
+        )
+    for call in result["calls"]:
+        caller, callee = by_qual.get(call["caller"]), by_qual.get(call["callee"])
+        if caller and callee and caller != callee:
+            facts.append(
+                edge(
+                    caller,
+                    "calls",
+                    callee,
+                    [unit],
+                    status=call["status"],
+                    conf=1.0 if call["status"] == "parsed" else 0.8,
+                    where=[[unit, f"line {call['line']}"]],
+                )
+            )
+    for candidates in result["imports"]:
+        facts.append(
+            ref(item_id, "imports", {"type": "paths", "values": candidates, "repo": props.get("repo")}, [unit])
+        )
+    return facts
+
+
+def structure_item(record: dict, source_id: str, text: str | None, code_backend: str = "auto") -> list[dict]:
     kind = record["kind"]
     item_id = record["id"]
     unit = item_unit(item_id)
@@ -353,8 +430,10 @@ def structure_item(record: dict, source_id: str, text: str | None, code_backend:
         if kind == "manifest":
             return _manifest(item_id, data, unit, record)
         return {"contracts": _contracts, "plan": _plan}[kind](item_id, data, unit)
-    if kind == "code" and text is not None and code_backend == "python-ast":
-        path = (record.get("props") or {}).get("path") or ""
-        if PurePosixPath(path).suffix == ".py":
+    if kind == "code" and text is not None:
+        extractor = code_extractor(record, code_backend)
+        if extractor == "python-ast":
             return _python(record, source_id, text)
+        if extractor.startswith("graphify-ast"):
+            return _graphify(record, source_id, text)
     return []

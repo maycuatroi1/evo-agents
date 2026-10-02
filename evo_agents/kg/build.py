@@ -18,13 +18,31 @@ from evo_agents.kg.corpus import Corpus
 from evo_agents.kg.memo import Memo
 from evo_agents.kg.pipeline.binding import BINDING_VERSION, binding_item
 from evo_agents.kg.pipeline.link import LINK_VERSION, build_index, index_digest, link_item
-from evo_agents.kg.pipeline.stages import MAP_VERSION, STRUCTURE_VERSION, frag_unit, item_unit, map_item, structure_item
+from evo_agents.kg.pipeline.stages import (
+    MAP_VERSION,
+    STRUCTURE_VERSION,
+    code_extractor,
+    frag_unit,
+    item_unit,
+    map_item,
+    structure_item,
+)
 from evo_agents.kg.policy import Label, Policy, join_all, meet_all
 from evo_agents.kg.project import Project
 from evo_agents.kg.store import Graph, Store, edge_id
 
 STATUS_RANK = {"declared": 5, "parsed": 4, "introspected": 3, "resolved": 2, "proposed": 1}
 STRUCTURED_KINDS = {"manifest", "contracts", "plan", "code"}
+STAT_KEYS = (
+    "mentions",
+    "resolved",
+    "ambiguous",
+    "dangling",
+    "refs",
+    "refs_resolved",
+    "refs_ambiguous",
+    "refs_dangling",
+)
 
 
 @dataclass
@@ -115,7 +133,7 @@ def run_pipeline(project: Project, corpus: Corpus, memo: Memo) -> tuple[Graph, d
     for rec in records:
         r = rec.record
         src = sources[rec.source]
-        backend = (src.get("code") or {}).get("backend", "python-ast")
+        backend = (src.get("code") or {}).get("backend", "auto")
         mapped, _ = memo.run(
             "map",
             MAP_VERSION,
@@ -126,7 +144,7 @@ def run_pipeline(project: Project, corpus: Corpus, memo: Memo) -> tuple[Graph, d
             structured, shash = memo.run(
                 "structure",
                 STRUCTURE_VERSION,
-                {"item": rec.item_id, "hash": r["hash"], "backend": backend},
+                {"item": rec.item_id, "hash": r["hash"], "extractor": code_extractor(r, backend)},
                 lambda rec=rec, r=r, b=backend: structure_item(r, rec.source, body(rec), b),
             )
         else:
@@ -166,9 +184,7 @@ def run_pipeline(project: Project, corpus: Corpus, memo: Memo) -> tuple[Graph, d
     same: list[tuple[str, str]] = []
     errors: list[str] = []
     issues: list[str] = []
-    stats: dict[str, dict] = defaultdict(
-        lambda: {"items": 0, "mentions": 0, "resolved": 0, "ambiguous": 0, "dangling": 0, "issues": 0}
-    )
+    stats: dict[str, dict] = defaultdict(lambda: {"items": 0, "issues": 0, **dict.fromkeys(STAT_KEYS, 0)})
     samples: dict[str, dict[str, list]] = defaultdict(lambda: {"ambiguous": [], "dangling": []})
     for rec in records:
         stats[rec.source]["items"] += 1
@@ -197,8 +213,8 @@ def run_pipeline(project: Project, corpus: Corpus, memo: Memo) -> tuple[Graph, d
                 issues.append(f["message"])
                 stats[rec.source]["issues"] += 1
             elif t == "stats":
-                for k in ("mentions", "resolved", "ambiguous", "dangling"):
-                    stats[rec.source][k] += f[k]
+                for k in STAT_KEYS:
+                    stats[rec.source][k] += f.get(k, 0)
                 for k, values in (f.get("samples") or {}).items():
                     bucket = samples[rec.source][k]
                     bucket.extend(v for v in values if len(bucket) < 30 and v not in bucket)

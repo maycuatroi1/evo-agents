@@ -15,6 +15,7 @@ dependencies = ["PyYAML>=6.0"]
 
 [project.optional-dependencies]
 test = ["pytest>=8", "ruff>=0.6"]
+graphify = ["graphifyy==0.9.73"]
 
 [project.urls]
 Repository = "https://github.com/maycuatroi1/evo-agents"

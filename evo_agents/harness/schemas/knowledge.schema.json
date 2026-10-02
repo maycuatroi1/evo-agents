@@ -209,6 +209,7 @@
           "properties": {
             "backend": {
               "enum": [
+                "auto",
                 "python-ast",
                 "graphify-ast",
                 "none"

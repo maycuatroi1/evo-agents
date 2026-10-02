@@ -137,9 +137,10 @@ def render_status(status: dict, *, brief: bool = False) -> str:
                 f"{graph['nodes']} nodes, {graph['edges']} edges, {graph['units']} units"
             )
             for src in graph.get("coverage", {}).get("sources", []):
+                refs = f", refs {src.get('refs_resolved', 0)}/{src.get('refs', 0)}" if src.get("refs") else ""
                 lines.append(
-                    f"        {src['id']:<20} {src['items']:>6} items, {src['mentions']} mentions, "
-                    f"{src['resolved']} resolved ({src['resolved_ratio']:.0%}), {src['dangling']} dangling"
+                    f"        {src['id']:<20} {src['items']:>6} items, mentions {src['resolved']}/{src['mentions']}"
+                    f" ({src['resolved_ratio']:.0%}), {src['dangling']} dangling{refs}"
                 )
         else:
             lines.append("graph   no ready build")
