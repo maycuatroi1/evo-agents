@@ -1,0 +1,202 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/maycuatroi1/evo-agents/schemas/plan.schema.json",
+  "title": "exec-plan",
+  "description": "A change that spans repos, with an explicit merge order and steps an agent can verify.",
+  "type": "object",
+  "required": [
+    "id"
+  ],
+  "additionalProperties": false,
+  "x-unknown": "warn",
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*$"
+    },
+    "title": {
+      "type": "string"
+    },
+    "goal": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string"
+    },
+    "created_at": {
+      "type": "string"
+    },
+    "context": {
+      "type": "string"
+    },
+    "acceptance": {
+      "type": "array"
+    },
+    "non_goals": {
+      "type": "array"
+    },
+    "references": {
+      "type": "array"
+    },
+    "repos": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/repo"
+      }
+    },
+    "steps": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/step"
+      }
+    },
+    "seams_touched": {
+      "type": "array"
+    },
+    "risks": {
+      "type": "array"
+    },
+    "rollback": {
+      "type": "string"
+    },
+    "assumptions": {
+      "type": "array"
+    },
+    "decisions": {
+      "type": "array"
+    },
+    "debt": {
+      "type": "array"
+    },
+    "tech_debt": {
+      "type": "array"
+    },
+    "open_questions": {
+      "type": "array"
+    }
+  },
+  "$defs": {
+    "repo": {
+      "type": "object",
+      "required": [
+        "repo"
+      ],
+      "additionalProperties": false,
+      "x-unknown": "warn",
+      "properties": {
+        "repo": {
+          "type": "string"
+        },
+        "branch": {
+          "type": "string"
+        },
+        "order": {
+          "type": "integer"
+        },
+        "depends_on": {
+          "type": "array"
+        },
+        "status": {
+          "enum": [
+            "merged",
+            "done",
+            "in_progress",
+            "pending",
+            "not-needed"
+          ],
+          "x-severity": "warning"
+        },
+        "scope": {
+          "type": "string"
+        },
+        "base": {
+          "type": "string"
+        },
+        "done_at": {
+          "type": "string"
+        },
+        "merged_at": {
+          "type": "string"
+        },
+        "merged_into": {
+          "type": "string"
+        },
+        "note": {
+          "type": "string"
+        },
+        "pr": {
+          "type": [
+            "string",
+            "integer"
+          ]
+        }
+      }
+    },
+    "step": {
+      "type": "object",
+      "required": [
+        "what"
+      ],
+      "additionalProperties": false,
+      "x-unknown": "warn",
+      "properties": {
+        "id": {
+          "type": [
+            "integer",
+            "string"
+          ]
+        },
+        "title": {
+          "type": "string"
+        },
+        "repo": {
+          "type": "string"
+        },
+        "what": {
+          "type": "string"
+        },
+        "depends_on": {
+          "type": "array"
+        },
+        "verify": {
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "done",
+            "in_progress",
+            "pending",
+            "blocked"
+          ],
+          "x-severity": "warning"
+        },
+        "done_at": {
+          "type": "string"
+        },
+        "evidence": {
+          "type": "string"
+        },
+        "blocking": {
+          "type": "boolean"
+        },
+        "note": {
+          "type": "string"
+        },
+        "order": {
+          "type": "integer"
+        },
+        "acceptance": {},
+        "why": {
+          "type": "string"
+        },
+        "scope": {
+          "type": "string"
+        },
+        "blocks": {
+          "type": "array"
+        },
+        "depends_on_step": {}
+      }
+    }
+  }
+}

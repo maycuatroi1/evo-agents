@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/maycuatroi1/evo-agents/schemas/harness.schema.json",
+  "title": "harness.yaml",
+  "description": "Cluster manifest: which repos form one system, and where the harness keeps its registries.",
+  "type": "object",
+  "required": ["name", "repos"],
+  "additionalProperties": false,
+  "x-unknown": "warn",
+  "properties": {
+    "version": {"type": "integer", "enum": [1, 2]},
+    "name": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$"},
+    "workspace": {"type": "string"},
+    "created_at": {"type": "string"},
+    "knowledge_file": {"type": "string"},
+    "external_resources_file": {"type": "string"},
+    "deployments_file": {"type": "string"},
+    "repos": {"type": "array", "items": {"$ref": "#/$defs/repo"}},
+    "garden": {"type": "object"},
+    "cli": {"type": "object"}
+  },
+  "$defs": {
+    "repo": {
+      "type": "object",
+      "required": ["name"],
+      "additionalProperties": false,
+      "x-unknown": "warn",
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "path": {"type": "string"},
+        "role": {"type": "string"},
+        "present": {"type": "boolean"},
+        "origin": {"type": "string"},
+        "default_branch": {"type": "string"},
+        "external": {"type": "boolean"}
+      }
+    }
+  }
+}

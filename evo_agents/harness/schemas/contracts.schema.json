@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/maycuatroi1/evo-agents/schemas/contracts.schema.json",
+  "title": "contracts.yaml",
+  "description": "Seam registry: what crosses a repo boundary, who owns it, and what verifies it.",
+  "type": "object",
+  "additionalProperties": false,
+  "x-unknown": "warn",
+  "properties": {
+    "version": {"type": "integer"},
+    "seams": {"type": ["array", "null"], "items": {"$ref": "#/$defs/seam"}}
+  },
+  "$defs": {
+    "location": {
+      "anyOf": [
+        {"type": "string"},
+        {
+          "type": "object",
+          "required": ["repo", "path"],
+          "additionalProperties": false,
+          "properties": {"repo": {"type": "string"}, "path": {"type": "string"}}
+        }
+      ]
+    },
+    "seam": {
+      "type": "object",
+      "required": ["name", "owner"],
+      "additionalProperties": false,
+      "x-unknown": "warn",
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "kind": {"type": "string"},
+        "owner": {"type": "string"},
+        "consumers": {"type": "array", "items": {"type": "string"}},
+        "source": {
+          "anyOf": [
+            {"$ref": "#/$defs/location"},
+            {"type": "array", "items": {"$ref": "#/$defs/location"}}
+          ]
+        },
+        "verify": {"type": "string"},
+        "notes": {"type": "string"},
+        "status": {"type": "string"}
+      }
+    }
+  }
+}
