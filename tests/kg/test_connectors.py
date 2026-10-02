@@ -122,3 +122,38 @@ def test_harness_connector_classifies_files(harness_dir):
     }
     report = run_conformance(source, harness=Harness(harness_dir, {"name": "h"}))
     assert report.ok, report.to_json()
+
+
+def test_knowledge_yaml_moves_the_bindings_directory(harness_dir):
+    # A harness whose bindings/ holds another tool's format points evo-agents somewhere else.
+    (harness_dir / "knowledge.yaml").write_text("version: 1\nproject: p\nbindings: kg/bindings\nsources: []\n")
+    (harness_dir / "kg/bindings").mkdir(parents=True)
+    (harness_dir / "kg/bindings/links.yaml").write_text("version: 1\nbindings: []\n")
+    source = {"id": "harness", "connector": "harness"}
+    msgs = list(ConnectorRun(ConnectorContext("p", source, Harness(harness_dir, {"name": "h"}))))
+    kinds = {m["props"]["path"]: m["kind"] for m in msgs if m["type"] == "item"}
+    assert kinds["kg/bindings/links.yaml"] == "binding"
+    assert kinds["bindings/core.yaml"] == "yaml"
+
+
+def test_harness_repo_is_named_from_the_manifest_in_a_worktree(harness_dir):
+    sh(harness_dir, "init", "-q")
+    sh(harness_dir, "remote", "add", "origin", "git@github.com:acme/h-harness.git")
+    sh(harness_dir, "add", "-A")
+    sh(harness_dir, "commit", "-qm", "init")
+    manifest = {
+        "name": "h",
+        "repos": [
+            {
+                "name": "h-harness",
+                "path": "/elsewhere/h-harness",
+                "origin": "https://github.com/acme/h-harness.git",
+                "default_branch": "master",
+            },
+        ],
+    }
+    source = {"id": "harness", "connector": "harness"}
+    msgs = list(ConnectorRun(ConnectorContext("p", source, Harness(harness_dir, manifest))))
+    item = next(m for m in msgs if m["type"] == "item" and m["props"]["path"] == "CLUSTER.md")
+    assert item["props"]["repo"] == "h-harness"
+    assert item["uri"] == "https://github.com/acme/h-harness/blob/master/CLUSTER.md"

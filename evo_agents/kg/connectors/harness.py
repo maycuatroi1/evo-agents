@@ -5,7 +5,8 @@ committed, so this connector reads the files on disk. Revisions are git blob SHA
 unchanged file keeps its revision whether or not it is committed.
 
 Kinds: manifest (harness.yaml), contracts, knowledge, plan, binding, ontology, registry (other root
-YAML files such as deployments.yaml), markdown, yaml.
+YAML files such as deployments.yaml), markdown, yaml. Bindings live where knowledge.yaml's ``bindings``
+points (default ``bindings/``), so a harness whose ``bindings/`` holds another tool's format keeps it.
 """
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ import os
 from pathlib import Path
 
 from evo_agents import __version__
+from evo_agents.harness import Harness, load_yaml
 from evo_agents.kg.connectors import _git
 from evo_agents.kg.connectors._files import (
     DEFAULT_EXCLUDE,
@@ -42,7 +44,7 @@ SKIP_DIRS = {
 }
 
 
-def harness_kind(path: str) -> str | None:
+def harness_kind(path: str, bindings: str = "bindings") -> str | None:
     parts = path.split("/")
     name = parts[-1]
     if not name.endswith((".yaml", ".yml", ".md", ".mdx")):
@@ -58,9 +60,33 @@ def harness_kind(path: str) -> str | None:
         }.get(name, "registry")
     if parts[0] == "plans":
         return "plan"
-    if parts[0] == "bindings":
+    if path.startswith(bindings.strip("/") + "/"):
         return "binding"
     return "yaml"
+
+
+def bindings_dir(harness: Harness | None) -> str:
+    kpath = harness.knowledge_path() if harness else None
+    if kpath is None or not kpath.is_file():
+        return "bindings"
+    data = load_yaml(kpath)
+    return (data.get("bindings") if isinstance(data, dict) else None) or "bindings"
+
+
+def own_entry(harness: Harness | None, root: Path, origin: str) -> dict:
+    """The harness.yaml entry for the harness repo itself, matched by path, then by remote, so a run
+    from a worktree still names the repo the way plans and docs do."""
+    if harness is None:
+        return {}
+    for repo in harness.repos():
+        path = harness.repo_path(repo)
+        if path is not None and path.resolve() == root.resolve():
+            return repo
+    key = _git.remote_key(origin) if origin else None
+    for repo in harness.repos():
+        if key and _git.remote_key(repo.get("origin") or "") == key:
+            return repo
+    return {}
 
 
 def walk(root: Path):
@@ -92,13 +118,16 @@ def run(ctx):
             origin = _git.git(root, "remote", "get-url", "origin").strip()
         except _git.GitError:
             pass
-    branch = ctx.source.get("branch") or "main"
+    entry = own_entry(ctx.harness, root, origin)
+    repo_name = entry.get("name") or root.name
+    branch = ctx.source.get("branch") or entry.get("default_branch") or "main"
+    bindings = bindings_dir(ctx.harness)
     include, exclude = ctx.source.get("include"), ctx.source.get("exclude")
 
     assets = ctx.source.get("assets", True)
     count = 0
     for full, rel in walk(root):
-        kind = harness_kind(rel)
+        kind = harness_kind(rel, bindings)
         wanted = kind is not None and selected(rel, include or ["*.md", "*.mdx", "*.yaml", "*.yml"], exclude)
         if not wanted and not (assets and not matches(rel, DEFAULT_EXCLUDE + list(exclude or []))):
             continue
@@ -115,7 +144,7 @@ def run(ctx):
             item = file_item(
                 f"{sid}:file:{rel}", rel, text, rev=git_blob_sha(data), rev_time=rev_time, uri=uri, kind=kind
             )
-        item["props"]["repo"] = root.name
+        item["props"]["repo"] = repo_name
         yield finalize_item(item)
         count += 1
     yield {"type": "listing", "scope": f"{sid}:file:", "complete": True, "count": count}
