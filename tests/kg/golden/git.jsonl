@@ -1,0 +1,4 @@
+{"anchors": ["_module", "serve", "Handler"], "hash": "sha256:557abf426f639675f1c4a1e3b615ab54e2cf87a236db50a04fdec5b7b04f1185", "item": "app:file:app/server.py", "kind": "code", "rev": "4ba41a4c3f2ee2159618109f5832c774a0391c97"}
+{"anchors": ["guide", "setup"], "hash": "sha256:5e769c2c112fb8a81efdd83aef721d4cbaa1dad518c63d6c3894cb3c8af1bcde", "item": "app:file:docs/guide.md", "kind": "markdown", "rev": "a5377470d9c6944f680e05965e585399c50a535c"}
+{"anchors": [], "hash": "sha256:b722a74fdb80990299e5a98fc067db1f3508310ced011c44c9658bae0affcec8", "item": "app:file:config.yaml", "kind": "yaml", "rev": "7c7e49c932fb895a2669611578c8f115247d53b1"}
+{"complete": true, "count": 3, "listing": "app:file:"}
