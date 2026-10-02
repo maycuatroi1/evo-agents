@@ -124,7 +124,8 @@ def run_conformance(
         if len(items) >= 2 and any(m.get("type") == "listing" and m.get("complete") for m in first):
             project = Project(
                 "conformance",
-                harness or Harness(Path(tmp), {"name": "conformance"}),
+                # Without a harness, exec connectors run where the test was started, as in the first run.
+                harness or Harness(Path.cwd(), {"name": "conformance"}),
                 {"project": "conformance", "sources": [source]},
                 Path(tmp) / "knowledge.yaml",
                 Path(tmp) / "home",

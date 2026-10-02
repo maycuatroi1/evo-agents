@@ -1,0 +1,12 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear",
+        "hooks": [
+          {"type": "command", "command": "evo-agents kg hook session-start", "timeout": 10}
+        ]
+      }
+    ]
+  }
+}

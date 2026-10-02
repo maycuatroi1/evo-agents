@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "evo-kg": {
+      "command": "evo-agents",
+      "args": ["kg", "serve", "--sink", "claude-code@anthropic"]
+    }
+  }
+}
