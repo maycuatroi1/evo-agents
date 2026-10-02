@@ -19,6 +19,10 @@ KIND_BY_SUFFIX = {
     ".yml": "yaml",
     ".txt": "text",
     ".rst": "text",
+    ".toml": "config",
+    ".json": "config",
+    ".ini": "config",
+    ".cfg": "config",
     ".py": "code",
     ".ts": "code",
     ".tsx": "code",
@@ -94,12 +98,32 @@ def matches(path: str, patterns: list[str]) -> bool:
     return any(fnmatch.fnmatch(path, pat) for pat in patterns)
 
 
+CONFIG_NAMES = {"Dockerfile", "Makefile", "Procfile", "Justfile", ".env.example"}
+
+
 def selected(path: str, include: list[str] | None, exclude: list[str] | None) -> bool:
     if matches(path, DEFAULT_EXCLUDE + list(exclude or [])):
         return False
     if include:
         return matches(path, include)
-    return PurePosixPath(path).suffix.lower() in KIND_BY_SUFFIX
+    pure = PurePosixPath(path)
+    return pure.suffix.lower() in KIND_BY_SUFFIX or pure.name in CONFIG_NAMES
+
+
+def asset_item(item_id: str, path: str, *, rev: str, rev_time: str, uri: str | None, size: int) -> dict:
+    """A file known by path only (images, diagrams, archives): linkable, never read."""
+    item = {
+        "id": item_id,
+        "kind": "asset",
+        "rev": rev,
+        "rev_time": rev_time,
+        "rev_exact": True,
+        "title": path,
+        "props": {"path": path, "bytes": size},
+    }
+    if uri:
+        item["uri"] = uri
+    return item
 
 
 def git_blob_sha(data: bytes) -> str:
@@ -157,7 +181,7 @@ def file_item(
     item_id: str, path: str, text: str, *, rev: str, rev_time: str, uri: str | None, kind: str | None = None
 ) -> dict:
     suffix = PurePosixPath(path).suffix.lower()
-    kind = kind or KIND_BY_SUFFIX.get(suffix, "text")
+    kind = kind or KIND_BY_SUFFIX.get(suffix, "config" if PurePosixPath(path).name in CONFIG_NAMES else "text")
     body_format = {"markdown": "markdown", "yaml": "yaml", "code": "code"}.get(kind, "text")
     if kind in ("manifest", "contracts", "knowledge", "plan", "binding", "ontology", "registry"):
         body_format = "yaml"

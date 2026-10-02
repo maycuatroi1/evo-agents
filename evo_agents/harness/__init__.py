@@ -75,7 +75,10 @@ class Harness:
     @property
     def workspace(self) -> Path:
         ws = self.manifest.get("workspace")
-        return Path(ws).expanduser() if ws else self.root.parent
+        if not ws:
+            return self.root.parent
+        path = Path(ws).expanduser()
+        return path if path.is_absolute() else (self.root / path).resolve()
 
     def repos(self) -> list[dict]:
         return list(self.manifest.get("repos") or [])

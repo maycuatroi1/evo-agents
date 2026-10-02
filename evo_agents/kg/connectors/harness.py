@@ -15,7 +15,15 @@ from pathlib import Path
 
 from evo_agents import __version__
 from evo_agents.kg.connectors import _git
-from evo_agents.kg.connectors._files import decode, file_item, git_blob_sha, selected
+from evo_agents.kg.connectors._files import (
+    DEFAULT_EXCLUDE,
+    asset_item,
+    decode,
+    file_item,
+    git_blob_sha,
+    matches,
+    selected,
+)
 from evo_agents.kg.ids import epoch_to_iso
 from evo_agents.kg.protocol import finalize_item, hello
 
@@ -87,19 +95,27 @@ def run(ctx):
     branch = ctx.source.get("branch") or "main"
     include, exclude = ctx.source.get("include"), ctx.source.get("exclude")
 
+    assets = ctx.source.get("assets", True)
     count = 0
     for full, rel in walk(root):
         kind = harness_kind(rel)
-        if kind is None or not selected(rel, include or ["*.md", "*.mdx", "*.yaml", "*.yml"], exclude):
+        wanted = kind is not None and selected(rel, include or ["*.md", "*.mdx", "*.yaml", "*.yml"], exclude)
+        if not wanted and not (assets and not matches(rel, DEFAULT_EXCLUDE + list(exclude or []))):
             continue
         data = full.read_bytes()
-        text = decode(data)
-        if text is None:
-            continue
         rev_time = times.get(rel) if rel in clean else None
         rev_time = rev_time or epoch_to_iso(full.stat().st_mtime)
         uri = _git.web_url(origin, branch, rel) if origin else None
-        item = file_item(f"{sid}:file:{rel}", rel, text, rev=git_blob_sha(data), rev_time=rev_time, uri=uri, kind=kind)
+        text = decode(data) if wanted else None
+        if text is None:
+            item = asset_item(
+                f"{sid}:file:{rel}", rel, rev=git_blob_sha(data), rev_time=rev_time, uri=uri, size=len(data)
+            )
+        else:
+            item = file_item(
+                f"{sid}:file:{rel}", rel, text, rev=git_blob_sha(data), rev_time=rev_time, uri=uri, kind=kind
+            )
+        item["props"]["repo"] = root.name
         yield finalize_item(item)
         count += 1
     yield {"type": "listing", "scope": f"{sid}:file:", "complete": True, "count": count}

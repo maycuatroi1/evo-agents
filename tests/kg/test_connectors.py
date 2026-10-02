@@ -59,14 +59,15 @@ def test_git_connector_reads_committed_files(tmp_path):
     (repo / "docs/guide.md").write_text("uncommitted edit\n")  # the working tree must not leak in
     msgs = run_git(repo)
     items = items_by_path(msgs)
-    assert sorted(items) == ["app/server.py", "config.yaml", "docs/guide.md"]
+    assert sorted(items) == ["app/server.py", "config.yaml", "docs/guide.md", "logo.png"]
+    assert items["logo.png"]["kind"] == "asset" and "body" not in items["logo.png"]
     guide = items["docs/guide.md"]
     assert [f["anchor"] for f in guide["fragments"]] == ["guide", "setup"]
     assert "uncommitted" not in guide["body"]["text"]
     py = items["app/server.py"]
     assert [f["anchor"] for f in py["fragments"]] == ["_module", "serve", "Handler"]
     assert py["body"]["language"] == "python"
-    assert msgs[-2] == {"type": "listing", "scope": "app:file:", "complete": True, "count": 3}
+    assert msgs[-2] == {"type": "listing", "scope": "app:file:", "complete": True, "count": 4}
 
 
 def test_git_revision_changes_only_with_content(tmp_path):
