@@ -1,0 +1,47 @@
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "evo-agents"
+dynamic = ["version"]
+description = "Shared tooling for agent harnesses: harness schema, multi-source knowledge graph, Claude Code plugins"
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+requires-python = ">=3.10"
+authors = [{ name = "maycuatroi" }]
+dependencies = ["PyYAML>=6.0"]
+
+[project.optional-dependencies]
+test = ["pytest>=8", "ruff>=0.6"]
+
+[project.urls]
+Repository = "https://github.com/maycuatroi1/evo-agents"
+
+[project.scripts]
+evo-agents = "evo_agents.cli:main"
+
+[project.entry-points."evo_agents.kg.connectors"]
+harness = "evo_agents.kg.connectors.harness:run"
+git = "evo_agents.kg.connectors.git:run"
+exec = "evo_agents.kg.connectors.exec:run"
+
+[tool.setuptools.dynamic]
+version = { attr = "evo_agents.__version__" }
+
+[tool.setuptools.packages.find]
+include = ["evo_agents*"]
+
+[tool.setuptools.package-data]
+evo_agents = ["harness/schemas/*.json"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
