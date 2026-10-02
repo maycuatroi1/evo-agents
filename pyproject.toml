@@ -25,7 +25,6 @@ evo-agents = "evo_agents.cli:main"
 [project.entry-points."evo_agents.kg.connectors"]
 harness = "evo_agents.kg.connectors.harness:run"
 git = "evo_agents.kg.connectors.git:run"
-exec = "evo_agents.kg.connectors.exec:run"
 
 [tool.setuptools.dynamic]
 version = { attr = "evo_agents.__version__" }
@@ -45,3 +44,4 @@ select = ["E", "F", "W", "I", "B", "UP"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
