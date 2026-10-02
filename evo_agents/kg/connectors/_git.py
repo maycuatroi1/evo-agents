@@ -93,9 +93,18 @@ def tracked_clean(repo: Path) -> set[str]:
     return tracked - changed
 
 
+_REMOTE = re.compile(r"^(?:https?://(?:[^@/]+@)?|git@|ssh://git@)([^/:]+)[:/](.+?)(?:\.git)?/?$")
+
+
+def remote_key(origin: str) -> tuple[str, str] | None:
+    """(host, project) of a remote, the same for its https and ssh spellings."""
+    m = _REMOTE.match(origin.strip())
+    return (m.group(1).lower(), m.group(2).lower()) if m else None
+
+
 def web_url(origin: str, branch: str, path: str) -> str | None:
     """Browser URL of a file on its forge, keyed by branch so it does not change with every commit."""
-    m = re.match(r"^(?:https?://(?:[^@/]+@)?|git@|ssh://git@)([^/:]+)[:/](.+?)(?:\.git)?/?$", origin.strip())
+    m = _REMOTE.match(origin.strip())
     if not m:
         return None
     host, project = m.group(1), m.group(2)
