@@ -68,6 +68,21 @@ def cmd_status(args) -> int:
     return 0 if status["ok"] else 1
 
 
+def cmd_hook_session_start(args) -> int:
+    """SessionStart hook for Claude Code: a short note on the bound project. Only names and counts the
+    pipeline derived; never source text, which would reach the model with system-reminder authority."""
+    from evo_agents.kg.status import project_status, render_status
+
+    try:
+        project = resolve_project(None)
+    except ProjectError:
+        return 0  # not inside a project with a graph: say nothing
+    note = render_status(project_status(project), brief=True)
+    note += "\nUse the evo-kg tools (kg_search, kg_context, kg_node) before grepping for named things."
+    print(json.dumps({"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": note}}))
+    return 0
+
+
 def cmd_connector_test(args) -> int:
     from evo_agents.kg.protocol.conformance import run_conformance
     from evo_agents.kg.protocol.runner import ConnectorError, credential_env
@@ -146,6 +161,10 @@ def register(sub) -> None:
     test.add_argument("--update-golden", action="store_true", help="rewrite the golden file")
     test.add_argument("command", nargs=argparse.REMAINDER, help="-- COMMAND [ARGS...]")
     test.set_defaults(func=cmd_connector_test)
+
+    hook = ksub.add_parser("hook", help="Claude Code hook entry points")
+    hsub = hook.add_subparsers(dest="hook_name", required=True)
+    hsub.add_parser("session-start", help="print the SessionStart note").set_defaults(func=cmd_hook_session_start)
 
     from evo_agents.kg import cli_graph
 

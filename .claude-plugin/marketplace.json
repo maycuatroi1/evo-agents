@@ -1,0 +1,15 @@
+{
+  "name": "evo-agents",
+  "owner": {"name": "maycuatroi", "url": "https://github.com/maycuatroi1"},
+  "description": "Plugins for agent harnesses: a per-project knowledge graph with provenance and sensitivity labels.",
+  "plugins": [
+    {
+      "name": "evo-kg",
+      "source": "./plugins/evo-kg",
+      "description": "Project knowledge graph over MCP: repos, files, symbols, documents, plans and seams, with evidence and labels.",
+      "version": "0.0.1",
+      "category": "development",
+      "tags": ["knowledge-graph", "harness", "mcp"]
+    }
+  ]
+}
