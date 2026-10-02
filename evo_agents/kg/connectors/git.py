@@ -19,7 +19,7 @@ from pathlib import Path
 
 from evo_agents import __version__
 from evo_agents.kg.connectors import _git
-from evo_agents.kg.connectors._files import decode, file_item, selected
+from evo_agents.kg.connectors._files import DEFAULT_EXCLUDE, asset_item, decode, file_item, matches, selected
 from evo_agents.kg.protocol import finalize_item, hello
 
 
@@ -55,7 +55,12 @@ def run(ctx):
         return
 
     include, exclude = ctx.source.get("include"), ctx.source.get("exclude")
-    files = [(sha, path) for sha, path in _git.ls_tree(repo, commit) if selected(path, include, exclude)]
+    assets = ctx.source.get("assets", True)
+    tree = [
+        (sha, path) for sha, path in _git.ls_tree(repo, commit) if not matches(path, DEFAULT_EXCLUDE + (exclude or []))
+    ]
+    files = [(sha, path) for sha, path in tree if selected(path, include, exclude)]
+    others = [(sha, path) for sha, path in tree if assets and not selected(path, include, exclude)]
     times = _git.last_change_times(repo, commit)
     fallback_time = _git.commit_time(repo, commit)
     branch = ctx.source.get("branch")
@@ -72,17 +77,26 @@ def run(ctx):
         chunk = files[start : start + batch]
         blobs = _git.cat_blobs(repo, [sha for sha, _ in chunk])
         for sha, path in chunk:
-            text = decode(blobs.get(sha, b""))
-            if text is None:
-                continue  # binary, too large or not UTF-8: outside the listing, like a deleted file
+            data = blobs.get(sha, b"")
+            text = decode(data)
             uri = _git.web_url(origin, branch, path) if origin else None
-            item = file_item(
-                f"{sid}:file:{path}", path, text, rev=sha, rev_time=times.get(path, fallback_time), uri=uri
-            )
+            rev_time = times.get(path, fallback_time)
+            if text is None:
+                if not assets:
+                    continue  # binary, too large or not UTF-8: outside the listing, like a deleted file
+                item = asset_item(f"{sid}:file:{path}", path, rev=sha, rev_time=rev_time, uri=uri, size=len(data))
+            else:
+                item = file_item(f"{sid}:file:{path}", path, text, rev=sha, rev_time=rev_time, uri=uri)
             # No commit in props: it would change every item's hash on every commit.
             item["props"]["repo"] = ctx.source.get("repo") or repo.name
             yield finalize_item(item)
             count += 1
+    for sha, path in others:  # known by path only: never read, so no blob fetch
+        uri = _git.web_url(origin, branch, path) if origin else None
+        item = asset_item(f"{sid}:file:{path}", path, rev=sha, rev_time=times.get(path, fallback_time), uri=uri, size=0)
+        item["props"]["repo"] = ctx.source.get("repo") or repo.name
+        yield finalize_item(item)
+        count += 1
     yield {"type": "state", "cursor": {"commit": commit}}
     yield {"type": "listing", "scope": f"{sid}:file:", "complete": True, "count": count}
     yield {"type": "closed", "status": "ok"}

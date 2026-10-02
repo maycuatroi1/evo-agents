@@ -47,12 +47,11 @@ def normalize_time(value: str | None) -> str:
 
 
 def rev_key(rev: str | None) -> str:
-    """Revisions that are plain integers compare numerically; anything else compares as text."""
-    if not rev:
-        return ""
-    if rev.isdigit():
+    """Revisions that are plain integers are ordered and compare numerically. Anything else (a git blob
+    SHA, an etag) carries no order: it compares equal here, so the run that observed it decides."""
+    if rev and rev.isdigit():
         return "n" + rev.zfill(30)
-    return "s" + rev
+    return ""
 
 
 def epoch_to_iso(seconds: float) -> str:
