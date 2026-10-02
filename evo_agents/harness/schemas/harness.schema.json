@@ -32,7 +32,8 @@
         "present": {"type": "boolean"},
         "origin": {"type": "string"},
         "default_branch": {"type": "string"},
-        "external": {"type": "boolean"}
+        "external": {"type": "boolean"},
+        "note": {"type": "string"}
       }
     }
   }

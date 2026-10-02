@@ -191,6 +191,12 @@
         "ref": {
           "type": "string"
         },
+        "branch": {
+          "type": "string"
+        },
+        "assets": {
+          "type": "boolean"
+        },
         "include": {
           "type": "array",
           "items": {

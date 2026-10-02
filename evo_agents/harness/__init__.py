@@ -178,7 +178,18 @@ def _validate_file(path: Path, kind: str, manifest: dict | None = None) -> FileR
         issues += knowledge_semantics(data, manifest)
     if kind == "plan" and isinstance(data, dict):
         issues += plan_semantics(data, path)
+    if kind == "contracts" and isinstance(data, dict):
+        issues += contracts_semantics(data)
     return FileReport(path, kind, issues)
+
+
+def contracts_semantics(data: dict) -> list[Issue]:
+    """A seam nothing checks must say why; otherwise its drift goes unnoticed."""
+    issues: list[Issue] = []
+    for i, seam in enumerate(data.get("seams") or []):
+        if isinstance(seam, dict) and not seam.get("verify") and not seam.get("verify_waiver"):
+            issues.append(Issue(f"seams[{i}]", "no verify and no verify_waiver: nothing checks this seam", "warning"))
+    return issues
 
 
 def knowledge_semantics(data: dict, manifest: dict | None = None) -> list[Issue]:

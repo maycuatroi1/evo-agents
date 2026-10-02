@@ -38,7 +38,17 @@
             {"type": "array", "items": {"$ref": "#/$defs/location"}}
           ]
         },
-        "verify": {"type": "string"},
+        "verify": {"type": ["string", "null"]},
+        "verify_waiver": {
+          "anyOf": [
+            {"type": "string", "minLength": 1},
+            {
+              "type": "object",
+              "required": ["reason"],
+              "properties": {"reason": {"type": "string", "minLength": 1}, "revisit": {"type": "string"}}
+            }
+          ]
+        },
         "notes": {"type": "string"},
         "status": {"type": "string"}
       }
