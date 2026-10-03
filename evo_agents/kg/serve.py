@@ -3,7 +3,8 @@
 Every tool reads the latest ready build and only the visible set V_o: elements whose label flows to the
 session's sink. Results carry ids, labels, status and evidence; free text from sources (integrity U) is
 never returned by these tools. Each result stays under about 9,000 tokens; the rest waits behind a
-handle for ``kg_more``.
+handle for ``kg_more``. The structured result of a call that reveals elements names the project and the
+join of their labels, which the PostToolUse hook adds to the session label (sessions.py).
 """
 
 from __future__ import annotations
@@ -15,7 +16,10 @@ import uuid
 from collections import deque
 
 from evo_agents import __version__
+from evo_agents.kg.policy import Label
 from evo_agents.kg.project import Project, ProjectError, resolve_project
+from evo_agents.kg.sessions import current_session_id, read_session
+from evo_agents.kg.sessions import describe as describe_session
 from evo_agents.kg.store import StaleSchema, Store
 
 SUPPORTED_VERSIONS = ["2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25", "2026-07-28"]
@@ -89,6 +93,7 @@ class Session:
         self.handles: dict[str, tuple[float, deque]] = {}
         self.policy = project.policy if project else None
         self.clearance = None
+        self.read: Label | None = None  # join of the labels the current call reveals
         if project is not None and error is None:
             if sink == "cli" and "cli" not in self.policy.sinks:
                 # The local operator already holds the corpus; the cli sink sees everything unless declared.
@@ -111,6 +116,10 @@ class Session:
         loc = self.policy.location_name(label[1])
         return f"{lvl}{'' if loc == 'any' else '/' + loc},{label[2]}"
 
+    def _saw(self, label: tuple) -> None:
+        seen = Label(label[0], label[1], label[2], frozenset({self.project.name}))
+        self.read = seen if self.read is None else self.read.join(seen)
+
     def _store(self) -> tuple[Store, int]:
         try:
             store = Store.open_existing(self.project)
@@ -126,6 +135,7 @@ class Session:
     def call(self, name: str, args: dict) -> dict:
         if self.error:
             return _error(self.error)
+        self.read = None
         try:
             handler = getattr(self, f"tool_{name}", None)
             if handler is None:
@@ -138,6 +148,9 @@ class Session:
         return self._envelope(text, data)
 
     def _envelope(self, text: str, data: dict) -> dict:
+        if self.read is not None:
+            label = {**self.policy.describe(self.read), "projects": sorted(self.read.projects)}
+            data = {**data, "project": self.project.name, "label": label}
         if len(text) <= CAP_CHARS:
             return {"content": [{"type": "text", "text": text}], "structuredContent": data}
         head, rest = text[:CAP_CHARS], text[CAP_CHARS:]
@@ -150,7 +163,12 @@ class Session:
         note = f"\n[truncated: {len(rest)} more characters; call kg_more with handle {handle}]"
         return {
             "content": [{"type": "text", "text": head + note}],
-            "structuredContent": {"truncated": True, "handle": handle, "summary": data.get("summary")},
+            "structuredContent": {
+                "truncated": True,
+                "handle": handle,
+                "summary": data.get("summary"),
+                **{k: data[k] for k in ("project", "label") if k in data},
+            },
         }
 
     # -- tools ----------------------------------------------------------------------------------
@@ -166,6 +184,7 @@ class Session:
         )
 
     def _node_json(self, n: dict) -> dict:
+        self._saw(n["label"])  # every node in a structured result is revealed
         label = {
             "level": self.policy.level_name(n["label"][0]),
             "location": self.policy.location_name(n["label"][1]),
@@ -214,6 +233,7 @@ class Session:
             item = store.node(unit["item"], b)
             if item is None or not self.visible(item["label"]):
                 continue
+            self._saw(item["label"])
             out.append(
                 {
                     "item": unit["item"],
@@ -231,6 +251,7 @@ class Session:
                     if unit:
                         item = store.node(unit["item"], b)
                         if item and self.visible(item["label"]):
+                            self._saw(item["label"])
                             out.append(
                                 {
                                     "item": unit["item"],
@@ -273,6 +294,8 @@ class Session:
             other = others.get(other_id)
             if other is None or not self.visible(other["label"]):
                 continue
+            self._saw(e["label"])
+            self._saw(other["label"])
             entry = {
                 "rel": e["rel"],
                 "node": other_id,
@@ -358,6 +381,7 @@ class Session:
         lines.append("edges:")
         for e in edges_out.values():
             if e["src"] in included and e["dst"] in included:
+                self._saw(e["label"])
                 lines.append(f"  [{e['src']}] -{e['rel']}-> [{e['dst']}] ({e['status']})")
         data = {
             "build": b,
@@ -379,6 +403,10 @@ class Session:
         clr = (self.policy.level_name(self.clearance[0]), self.policy.location_name(self.clearance[1]))
         text = f"sink {self.sink}: clearance {clr[0]}/{clr[1]}\n" + render_status(status)
         status["sink"] = {"id": self.sink, "clearance": {"level": clr[0], "location": clr[1]}}
+        session = read_session(current_session_id())
+        if session is not None:
+            text += "\n" + describe_session(session)
+            status["session"] = {k: v for k, v in session.items() if k != "v"}
         status["summary"] = status["project"]
         return text, status
 
