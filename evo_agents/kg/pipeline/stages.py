@@ -19,6 +19,7 @@ Directory nodes are ``dir:<repo>:<path>``: one per directory of a repo, whicheve
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from pathlib import PurePosixPath
 
 import yaml
@@ -27,9 +28,11 @@ from evo_agents.kg.extract import python as py_extract
 from evo_agents.kg.schema import node_kind_for_item
 
 MAP_VERSION = "2"
-STRUCTURE_VERSION = "3"
+STRUCTURE_VERSION = "4"
 # Connectors whose items are the files of a repo tree: their directories become Directory nodes.
 DIRECTORY_CONNECTORS = {"git", "harness"}
+
+FRONTMATTER = re.compile(r"\A\ufeff?---[ \t]*\r?\n(.*?)^(?:---|\.\.\.)[ \t]*\r?$", re.S | re.M)
 
 
 def item_unit(item_id: str) -> str:
@@ -304,6 +307,49 @@ def _plan(item_id: str, data: dict, unit: str) -> list[dict]:
     return facts
 
 
+def frontmatter(text: str) -> tuple[str, int] | None:
+    """The YAML block a markdown file opens with, between ``---`` lines, and the line number closing it."""
+    m = FRONTMATTER.match(text)
+    return (m.group(1), text.count("\n", 0, m.end()) + 1) if m else None
+
+
+def _frontmatter_unit(record: dict, last_line: int) -> str:
+    """The ``_preamble`` fragment owns the frontmatter unless a ``# comment`` line in it split the preamble."""
+    for frag in record.get("fragments", []):
+        if frag["anchor"] == "_preamble":
+            end = (frag.get("span") or "").rpartition("-")[2]
+            if end.isdigit() and int(end) >= last_line:
+                return frag_unit(record["id"], "_preamble")
+    return item_unit(record["id"])
+
+
+def _markdown(record: dict, text: str, identifiers: Sequence[dict]) -> list[dict]:
+    """A frontmatter ``id`` that fully matches an identifier pattern makes the document the place its code
+    is defined. A copy names its original in ``derived_from`` and defines nothing (design 4.6)."""
+    found = frontmatter(text) if identifiers else None
+    if found is None:
+        return []
+    item_id = record["id"]
+    block, last = found
+    unit = _frontmatter_unit(record, last)
+    try:
+        data = yaml.safe_load(block)
+    except yaml.YAMLError:
+        return [{"t": "issue", "message": f"{item_id}: frontmatter is not valid YAML; its id is ignored", "unit": unit}]
+    if not isinstance(data, dict) or not isinstance(data.get("id"), str) or data.get("derived_from"):
+        return []
+    code = data["id"].strip()
+    for ident in identifiers:
+        if re.fullmatch(ident["pattern"], code):
+            nid = f"{ident['kind'].lower()}:{code}"  # the id Linker.scan gives the same code
+            where = [[unit, f"lines 1-{last}"]]
+            return [
+                node(nid, ident["kind"], code, [unit], props={"code": code}, where=where),
+                edge(item_id, "defines", nid, [unit], where=where),
+            ]
+    return []
+
+
 def symbol_key(record: dict, source_id: str, path: str, qualname: str) -> list[str]:
     """The PG-Keys key of a Symbol: one function of one file of one repo, whichever source read it. The
     repo is the item's ``props.repo``: the harness.yaml name for a ``repo:`` source or for the harness
@@ -466,10 +512,14 @@ def _graphify(record: dict, source_id: str, text: str) -> list[dict]:
     return facts
 
 
-def structure_item(record: dict, source_id: str, text: str | None, code_backend: str = "auto") -> list[dict]:
+def structure_item(
+    record: dict, source_id: str, text: str | None, code_backend: str = "auto", identifiers: Sequence[dict] = ()
+) -> list[dict]:
     kind = record["kind"]
     item_id = record["id"]
     unit = item_unit(item_id)
+    if kind == "markdown" and text is not None:
+        return _markdown(record, text, identifiers)
     if kind in ("manifest", "contracts", "plan") and text is not None:
         data = _yaml(text)
         if not isinstance(data, dict):
