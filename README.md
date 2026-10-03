@@ -72,7 +72,9 @@ claude plugin install evo-kg@evo-agents
 
 The plugin registers the MCP server `evo-kg` (`kg_search`, `kg_context`, `kg_node`, `kg_status`,
 `kg_more`), a `using-project-graph` skill, and a SessionStart note. The server binds to the project
-of the session directory; pass `--project` in `.mcp.json` to pin one.
+of the session directory; pass `--project` in `.mcp.json` to pin one, or run
+`evo-agents kg bind --project NAME DIR` once to tie a directory and everything below it to a project
+(`kg bind --list` and `kg bind --remove DIR` manage those bindings).
 
 ## Writing a connector
 

@@ -69,12 +69,27 @@ def _index_path(home: Path) -> Path:
     return home / "projects.json"
 
 
-def read_index(home: Path | None = None) -> dict:
-    path = _index_path(home or kg_home())
+def _bindings_path(home: Path) -> Path:
+    return home / "bound.json"
+
+
+def _read_json(path: Path) -> dict:
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _write_json(path: Path, data: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
+    os.replace(tmp, path)
+
+
+def read_index(home: Path | None = None) -> dict:
+    return _read_json(_index_path(home or kg_home()))
 
 
 def remember(project: Project) -> None:
@@ -85,11 +100,55 @@ def remember(project: Project) -> None:
         "harness_root": str(project.harness.root),
         "dirs": [str(p) for p in project.repo_dirs()],
     }
-    path = _index_path(project.home)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps(index, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
-    os.replace(tmp, path)
+    _write_json(_index_path(project.home), index)
+
+
+def read_bindings(home: Path | None = None) -> dict:
+    """Explicit directory bindings written by ``evo-agents kg bind``, keyed by resolved directory."""
+    return _read_json(_bindings_path(home or kg_home()))
+
+
+def bind(directory: str | Path, project: str | None = None, home: Path | None = None) -> Project:
+    """Bind a directory and everything below it to one project. Without a name, pin the project the
+    directory resolves to now. The project must load before anything is written."""
+    home = home or kg_home()
+    path = Path(directory).expanduser().resolve()
+    bound = _named(project, home) if project else resolve_project(None, path, home)
+    bindings = read_bindings(home)
+    bindings[str(path)] = {"project": bound.name, "harness_root": str(bound.harness.root)}
+    _write_json(_bindings_path(home), bindings)
+    return bound
+
+
+def unbind(directory: str | Path, home: Path | None = None) -> str | None:
+    """Drop the binding of exactly this directory; return the key removed, or None if it had none."""
+    home = home or kg_home()
+    bindings = read_bindings(home)
+    raw = Path(directory).expanduser()
+    for key in (str(raw.resolve()), str(raw.absolute())):
+        if key in bindings:
+            del bindings[key]
+            _write_json(_bindings_path(home), bindings)
+            return key
+    return None
+
+
+def _load_binding(directory: str, entry: dict, home: Path) -> Project:
+    name = entry.get("project") if isinstance(entry, dict) else None
+    root = entry.get("harness_root") if isinstance(entry, dict) else None
+    try:
+        if not name:
+            raise ProjectError("the binding names no project")
+        if root and (Path(root) / "harness.yaml").is_file():
+            project = load_project_at(Path(root), home)
+            if project.name == name:
+                return project
+        return _by_name(name, home)
+    except ProjectError as exc:
+        raise ProjectError(
+            f"{directory} is bound to project {name!r}, which does not load ({exc}). Rebind it with"
+            f" evo-agents kg bind --project NAME {directory}, or drop it with evo-agents kg bind --remove {directory}"
+        ) from exc
 
 
 def _by_name(name: str, home: Path) -> Project:
@@ -109,20 +168,31 @@ def _by_name(name: str, home: Path) -> Project:
     raise ProjectError(f"unknown project {name!r}: run evo-agents kg sync from its harness first")
 
 
+def _named(name: str, home: Path) -> Project:
+    path = Path(name).expanduser()
+    if path.is_dir() and (path / "harness.yaml").is_file():
+        return load_project_at(path, home)
+    return _by_name(name, home)
+
+
 def resolve_project(
     project: str | None = None, directory: str | Path | None = None, home: Path | None = None
 ) -> Project:
-    """Bind to exactly one project: --project, then EVO_KG_PROJECT, then the directory
-    (CLAUDE_PROJECT_DIR or the cwd). Zero or several matches is an error, never a guess."""
+    """Bind to exactly one project: --project, then EVO_KG_PROJECT, then for the directory
+    (CLAUDE_PROJECT_DIR or the cwd) its explicit binding or that of its nearest bound ancestor, then
+    the harness.yaml above it, then the projects.json index. Zero or several matches is an error,
+    never a guess."""
     home = home or kg_home()
     name = project or os.environ.get("EVO_KG_PROJECT")
     if name:
-        path = Path(name).expanduser()
-        if path.is_dir() and (path / "harness.yaml").is_file():
-            return load_project_at(path, home)
-        return _by_name(name, home)
+        return _named(name, home)
 
     start = Path(directory or os.environ.get("CLAUDE_PROJECT_DIR") or Path.cwd()).expanduser().resolve()
+    bindings = read_bindings(home)
+    for candidate in (start, *start.parents):
+        entry = bindings.get(str(candidate))
+        if entry is not None:
+            return _load_binding(str(candidate), entry, home)
     root = find_manifest(start)
     if root is not None:
         try:
@@ -140,7 +210,10 @@ def resolve_project(
         return _by_name(matches[0], home)
     if not matches:
         raise ProjectError(
-            f"no project contains {start}. Pass --project, set EVO_KG_PROJECT, or run from a harness"
-            " that has knowledge.yaml"
+            f"no project contains {start}. Bind it with evo-agents kg bind --project NAME {start}, pass"
+            " --project, set EVO_KG_PROJECT, or run from a harness that has knowledge.yaml"
         )
-    raise ProjectError(f"{start} belongs to several projects ({', '.join(sorted(matches))}); pass --project")
+    raise ProjectError(
+        f"{start} belongs to several projects ({', '.join(sorted(matches))}). Pick one with"
+        f" evo-agents kg bind --project NAME {start}, or pass --project"
+    )
