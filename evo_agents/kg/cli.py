@@ -202,6 +202,17 @@ def cmd_hook_session_start(args) -> int:
     return 0
 
 
+def cmd_hook_pre_search(args) -> int:
+    """PreToolUse hook for Grep, Glob and rg or grep in Bash: ids of graph nodes named like the search. Sets
+    no permissionDecision, since "allow" would skip the user's permission prompt; prints nothing when unsure."""
+    from evo_agents.kg.search_hint import pre_search
+
+    note = pre_search(sys.stdin.read(), only=args.only, sink=args.sink)
+    if note:
+        print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse", "additionalContext": note}}))
+    return 0
+
+
 def cmd_connector_test(args) -> int:
     from evo_agents.kg.protocol.conformance import run_conformance
     from evo_agents.kg.protocol.runner import ConnectorError, credential_env
@@ -308,6 +319,12 @@ def register(sub) -> None:
     hook = ksub.add_parser("hook", help="Claude Code hook entry points")
     hsub = hook.add_subparsers(dest="hook_name", required=True)
     hsub.add_parser("session-start", help="print the SessionStart note").set_defaults(func=cmd_hook_session_start)
+    pre_search = hsub.add_parser("pre-search", help="PreToolUse: graph ids named like a Grep, Glob, rg or grep")
+    pre_search.add_argument(
+        "--only", choices=["rg", "grep"], help="for Bash, answer only when this command leads (one handler per if)"
+    )
+    pre_search.add_argument("--sink", default="claude-code@anthropic", help="sink profile whose clearance applies")
+    pre_search.set_defaults(func=cmd_hook_pre_search)
 
     from evo_agents.kg import cli_graph
 

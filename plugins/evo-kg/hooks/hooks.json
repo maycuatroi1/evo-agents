@@ -11,6 +11,35 @@
           }
         ]
       }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Grep|Glob",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v evo-agents >/dev/null 2>&1 && evo-agents kg hook pre-search || true",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "if": "Bash(rg *)",
+            "command": "command -v evo-agents >/dev/null 2>&1 && evo-agents kg hook pre-search --only rg || true",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "if": "Bash(grep *)",
+            "command": "command -v evo-agents >/dev/null 2>&1 && evo-agents kg hook pre-search --only grep || true",
+            "timeout": 5
+          }
+        ]
+      }
     ]
   }
 }
