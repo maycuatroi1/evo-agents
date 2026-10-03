@@ -1,0 +1,55 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Tag matches evo_agents.__version__
+        run: |
+          version=$(python -c 'import evo_agents; print(evo_agents.__version__)')
+          if [ "${GITHUB_REF_NAME#v}" != "$version" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match evo_agents.__version__ $version"
+            exit 1
+          fi
+      - run: python -m pip install -e '.[test,graphify]' build twine
+      - run: ruff check .
+      - run: ruff format --check .
+      - run: pytest -q
+      - run: python -m build
+      - run: twine check --strict dist/*
+      - name: Wheel works outside the checkout
+        working-directory: ${{ runner.temp }}
+        run: |
+          python -m venv smoke
+          smoke/bin/pip install "$GITHUB_WORKSPACE"/dist/*.whl
+          smoke/bin/evo-agents --version
+          smoke/bin/evo-agents kg --help >/dev/null
+          smoke/bin/python -c 'from evo_agents.harness import load_schema; [load_schema(n) for n in ("harness", "contracts", "knowledge", "plan")]'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/evo-agents/
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1

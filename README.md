@@ -108,7 +108,10 @@ Hooks:
   nodes named like the search. It never allows or blocks the call. Set `EVO_KG_GREP_HINTS=0` to turn it
   off.
 
-The hooks run `evo-agents` from `PATH` and stay silent when it is missing.
+The plugin needs [uv](https://docs.astral.sh/uv/) on `PATH` and pins the release it runs: the server
+starts with `uvx evo-agents==0.1.0`, which downloads and caches that version on first start. The hooks
+run `uvx --offline evo-agents==0.1.0`, so they never wait on the network; they stay silent when `uvx`
+is missing or until the server has cached the package.
 
 ## Writing a connector
 

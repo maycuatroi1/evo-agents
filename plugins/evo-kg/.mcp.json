@@ -1,8 +1,8 @@
 {
   "mcpServers": {
     "evo-kg": {
-      "command": "evo-agents",
-      "args": ["kg", "serve", "--sink", "claude-code@anthropic"]
+      "command": "uvx",
+      "args": ["evo-agents==0.1.0", "kg", "serve", "--sink", "claude-code@anthropic"]
     }
   }
 }
