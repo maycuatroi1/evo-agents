@@ -1,0 +1,160 @@
+{
+  "tools": [
+    {
+      "name": "kg_search",
+      "description": "Find nodes by name, id, path, code or words. Returns ids to pass to kg_node or kg_context.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "name, id, path, code or words"
+          },
+          "kinds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "e.g. Plan, Symbol, Section"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 25,
+            "default": 10
+          }
+        },
+        "required": [
+          "query"
+        ]
+      }
+    },
+    {
+      "name": "kg_context",
+      "description": "A connected subgraph around a question or a set of ids, within a token budget.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string"
+          },
+          "ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "budget_tokens": {
+            "type": "integer",
+            "minimum": 500,
+            "maximum": 8000,
+            "default": 3000
+          },
+          "hops": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 3,
+            "default": 2
+          }
+        }
+      }
+    },
+    {
+      "name": "kg_node",
+      "description": "One node: properties, status, label, evidence (source, revision, span, uri) and its edges.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      }
+    },
+    {
+      "name": "kg_impact",
+      "description": "What a change reaches: give node ids, repo:path paths or a unified diff. Walks back over callers, importers, members, definers, dependants, implementations and tests (never proposed edges); documents that mention a reached node come back as a separate group to re-check.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "paths": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "repo:path, or a bare path"
+          },
+          "diff": {
+            "type": "string",
+            "description": "a unified diff, e.g. the output of git diff"
+          },
+          "depth": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 3,
+            "default": 2
+          }
+        }
+      }
+    },
+    {
+      "name": "kg_path",
+      "description": "How two nodes connect: the shortest path from one to the other, preferring stronger status. Without 'to', the chains from one node along implements, schedules, verifies, has_step and touches.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          },
+          "max_hops": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 6,
+            "default": 6
+          }
+        },
+        "required": [
+          "from"
+        ]
+      }
+    },
+    {
+      "name": "kg_status",
+      "description": "Bound project, sink profile, snapshot age, and coverage per source.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "kg_more",
+      "description": "Continue a truncated result.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "handle": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "handle"
+        ]
+      }
+    }
+  ]
+}
