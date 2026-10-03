@@ -9,6 +9,7 @@ import sys
 def cmd_build(args) -> int:
     from evo_agents.kg.build import build_project
     from evo_agents.kg.cli import _print_json, _project
+    from evo_agents.kg.status import code_line
 
     project = _project(args)
     report = build_project(project, verify=args.verify, cold=args.cold)
@@ -29,6 +30,10 @@ def cmd_build(args) -> int:
                 f"  {src['id']:<22} {src['items']:>6} items  mentions {src['resolved']}/{src['mentions']}"
                 f" ({src['resolved_ratio']:.0%}), {src['ambiguous']} ambiguous, {src['dangling']} dangling{refs}"
             )
+            if src.get("code"):
+                print(f"    {code_line(src['code'])}")
+        for warning in report.warnings:
+            print(f"  warning: {warning}", file=sys.stderr)
         for err in report.errors[:20]:
             print(f"  error: {err}", file=sys.stderr)
     return 0 if report.ok else 1

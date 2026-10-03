@@ -2,12 +2,13 @@
 
 Source config (knowledge.yaml)::
 
-    - id: kb-service
+    - id: billing
       connector: git
-      repo: m1-knowledge-base-service    # a repo name from harness.yaml, or `path:`
+      repo: billing-service               # a repo name from harness.yaml, or `path:`
       ref: HEAD                           # default HEAD of the checkout
       include: ["docs/*", "*.py"]         # optional globs; default: markdown, yaml, text, code
       exclude: ["tests/fixtures/*"]
+      code: {backend: auto}               # python-ast, graphify-ast (needs the graphify extra) or none
 
 Item IDs are ``<source>:file:<path>``; the revision is the blob SHA, so it changes exactly when the
 content does. A git ref can be force-pushed; then the order of revisions is the order syncs observed.

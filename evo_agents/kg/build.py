@@ -25,10 +25,12 @@ from evo_agents.kg.pipeline.stages import (
     DIRECTORY_CONNECTORS,
     MAP_VERSION,
     STRUCTURE_VERSION,
+    code_coverage,
     code_extractor,
     frag_unit,
     item_unit,
     map_item,
+    missing_graphify,
     structure_item,
 )
 from evo_agents.kg.policy import Label, Policy, join_all, meet_all
@@ -64,6 +66,7 @@ class BuildReport:
     dangling_edges: int = 0
     errors: list[str] = field(default_factory=list)
     issues: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)  # coverage gaps a build survives, e.g. a missing extra
     coverage: dict = field(default_factory=dict)
     memo: dict = field(default_factory=dict)
     seconds: float = 0.0
@@ -115,6 +118,13 @@ def run_pipeline(project: Project, corpus: Corpus, memo: Memo) -> tuple[Graph, d
     # Without an ontology key every kind passes, as before ontologies were checked.
     kinds = known_kinds(ontology) if ontology is not None else None
     sources = {s["id"]: s for s in project.sources()}
+    backends = {sid: (s.get("code") or {}).get("backend", "auto") for sid, s in sources.items()}
+    explicit = [sid for sid, backend in sorted(backends.items()) if backend == "graphify-ast"]
+    if explicit:
+        from evo_agents.kg.extract import graphify as gfy
+
+        if not gfy.available():
+            return Graph(), {}, [missing_graphify(sid) for sid in explicit], []
     identifiers = [{"kind": i["kind"], "pattern": i["pattern"]} for i in project.knowledge.get("identifiers") or []]
     identifiers_digest = sha256(canonical_json(identifiers))
     records = [r for r in corpus.items() if r.source in sources]
@@ -150,10 +160,11 @@ def run_pipeline(project: Project, corpus: Corpus, memo: Memo) -> tuple[Graph, d
     # Map and structure, per item.
     first: dict[str, list[dict]] = {}
     structure_out: dict[str, tuple[list[dict], str]] = {}
+    code_items: dict[str, list[tuple[dict, str]]] = defaultdict(list)
     for rec in records:
         r = rec.record
         src = sources[rec.source]
-        backend = (src.get("code") or {}).get("backend", "auto")
+        backend = backends[rec.source]
         dirs = src.get("connector") in DIRECTORY_CONNECTORS
         mapped, _ = memo.run(
             "map",
@@ -162,7 +173,10 @@ def run_pipeline(project: Project, corpus: Corpus, memo: Memo) -> tuple[Graph, d
             lambda r=r, s=rec.source, d=dirs: map_item(r, s, d),
         )
         if r["kind"] in STRUCTURED_KINDS:
-            inputs = {"item": rec.item_id, "hash": r["hash"], "extractor": code_extractor(r, backend)}
+            extractor = code_extractor(r, backend)
+            if r["kind"] == "code":
+                code_items[rec.source].append((r, extractor))
+            inputs = {"item": rec.item_id, "hash": r["hash"], "extractor": extractor}
             if r["kind"] == "markdown":  # a frontmatter id is a code only if an identifier pattern says so
                 inputs["identifiers"] = identifiers_digest
             structured, shash = memo.run(
@@ -346,18 +360,22 @@ def run_pipeline(project: Project, corpus: Corpus, memo: Memo) -> tuple[Graph, d
         "dangling_edges": dangling,
         "issues": issues[:50],
         "errors": errors[:50],
+        "warnings": [],
         "multiple_definitions": multiple_definitions(graph, {i["kind"] for i in identifiers}),
     }
     for sid in sorted(sources):
         s = stats[sid]
-        coverage["sources"].append(
-            {
-                "id": sid,
-                **s,
-                "samples": samples[sid],
-                "resolved_ratio": (s["resolved"] / s["mentions"]) if s["mentions"] else 0.0,
-            }
-        )
+        entry = {
+            "id": sid,
+            **s,
+            "samples": samples[sid],
+            "resolved_ratio": (s["resolved"] / s["mentions"]) if s["mentions"] else 0.0,
+        }
+        if code_items[sid]:
+            entry["code"] = code_coverage(backends[sid], code_items[sid])
+            if entry["code"]["warning"]:
+                coverage["warnings"].append(f"source {sid}: {entry['code']['warning']}")
+        coverage["sources"].append(entry)
     return graph, coverage, errors, issues
 
 
@@ -437,6 +455,7 @@ def _build(project: Project, report: BuildReport, store: Store | None, memo: Mem
         memo.commit()
         report.memo = memo.stats()
         report.issues = issues[:50]
+        report.warnings = coverage.get("warnings", [])
         report.coverage = coverage
         if errors:
             report.errors = errors

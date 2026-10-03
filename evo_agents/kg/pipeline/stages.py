@@ -31,6 +31,8 @@ MAP_VERSION = "2"
 STRUCTURE_VERSION = "4"
 # Connectors whose items are the files of a repo tree: their directories become Directory nodes.
 DIRECTORY_CONNECTORS = {"git", "harness"}
+# The optional extra behind the graphify-ast code backend (symbols for about 40 languages).
+GRAPHIFY_INSTALL = "pip install 'evo-ak[graphify]' or uv tool install 'evo-ak[graphify]'"
 
 FRONTMATTER = re.compile(r"\A\ufeff?---[ \t]*\r?\n(.*?)^(?:---|\.\.\.)[ \t]*\r?$", re.S | re.M)
 
@@ -442,6 +444,50 @@ def code_extractor(record: dict, backend: str) -> str:
     if gfy.available() and gfy.supports(path):
         return f"graphify-ast@{gfy.version()}"
     return "none"
+
+
+def missing_graphify(source_id: str) -> str:
+    """The build error for a source that asks for ``graphify-ast`` where graphify cannot be imported."""
+    return (
+        f"source {source_id} declares code backend graphify-ast, but graphify is not installed;"
+        f" install the extra: {GRAPHIFY_INSTALL}"
+    )
+
+
+def code_coverage(backend: str, items: Sequence[tuple[dict, str]]) -> dict:
+    """What the code backend of one source did with its code items, given as (record, extractor) pairs:
+    items per extractor (``none``: no symbols), and, when ``auto`` ran without graphify, the non-Python
+    items it left without symbols, by language, with a warning that names the extra to install. Coverage
+    data only: the graph and the memo keys stay what ``code_extractor`` makes them."""
+    from evo_agents.kg.extract import graphify as gfy
+
+    extractors: dict[str, int] = {}
+    for _, extractor in items:
+        name = extractor.partition("@")[0]  # the backend, without the version the memo key carries
+        extractors[name] = extractors.get(name, 0) + 1
+    fallback: dict[str, int] = {}
+    if backend == "auto" and not gfy.available():
+        for record, extractor in items:
+            path = (record.get("props") or {}).get("path") or ""
+            if extractor == "none" and PurePosixPath(path).suffix != ".py":
+                language = (record.get("body") or {}).get("language") or PurePosixPath(path).suffix or "unknown"
+                fallback[language] = fallback.get(language, 0) + 1
+    skipped = sum(fallback.values())
+    warning = None
+    if skipped:
+        languages = ", ".join(f"{lang} {n}" for lang, n in sorted(fallback.items(), key=lambda kv: (-kv[1], kv[0])))
+        warning = (
+            f"graphify is not installed, so code backend auto fell back to python-ast:"
+            f" {skipped} non-Python code item(s) got no symbols ({languages}); install the extra: {GRAPHIFY_INSTALL}"
+        )
+    return {
+        "backend": backend,
+        "items": len(items),
+        "extractors": dict(sorted(extractors.items(), key=lambda kv: (kv[0] == "none", kv[0]))),
+        "fallback": skipped,
+        "fallback_languages": dict(sorted(fallback.items())),
+        "warning": warning,
+    }
 
 
 def _graphify(record: dict, source_id: str, text: str) -> list[dict]:

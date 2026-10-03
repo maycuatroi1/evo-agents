@@ -15,6 +15,12 @@ DERIVED_FROM_HINT = (
 )
 
 
+def code_line(code: dict) -> str:
+    """What the code backend of one source did: code items per extractor, ``none`` shown as no symbols."""
+    used = ", ".join(f"{'no symbols' if name == 'none' else name} {n}" for name, n in code["extractors"].items())
+    return f"code backend {code['backend']}: {code['items']} item(s); {used}"
+
+
 def _age_seconds(stamp: str | None) -> float | None:
     if not stamp:
         return None
@@ -79,6 +85,7 @@ def project_status(project: Project) -> dict:
         "sources": sources,
         "graph": None,
         "multiple_definitions": None,
+        "warnings": [],
     }
     try:
         from evo_agents.kg.store import StaleSchema, Store
@@ -91,6 +98,8 @@ def project_status(project: Project) -> dict:
             status["graph"] = store.summary()
             if not status["graph"].get("ready"):
                 status["ok"] = False
+            # Coverage gaps the build survived, such as non-Python code without symbols: ``ok`` stays as it is.
+            status["warnings"] = status["graph"].get("coverage", {}).get("warnings", [])
             multiple = status["graph"].get("coverage", {}).get("multiple_definitions")
             if multiple is not None:  # a convention warning, not a failure: ``ok`` stays as it is
                 status["multiple_definitions"] = {**multiple, "hint": DERIVED_FROM_HINT if multiple["codes"] else None}
@@ -120,6 +129,7 @@ def render_status(status: dict, *, brief: bool = False) -> str:
             lines.append(f"sources failing or never synced: {', '.join(stale)}")
         if held:
             lines.append(f"deletions held for review: {', '.join(held)}")
+        lines += [f"warning: {w}" for w in status.get("warnings", [])]
         return "\n".join(lines)
 
     lines.append(f"project {status['project']}  harness {status['harness']}")
@@ -156,8 +166,13 @@ def render_status(status: dict, *, brief: bool = False) -> str:
                     f"        {src['id']:<20} {src['items']:>6} items, mentions {src['resolved']}/{src['mentions']}"
                     f" ({src['resolved_ratio']:.0%}), {src['dangling']} dangling{refs}"
                 )
+                if src.get("code"):
+                    lines.append(f"          {code_line(src['code'])}")
         else:
             lines.append(f"graph   {graph.get('error') or 'no ready build'}")
+        if status.get("warnings"):
+            lines.append("")
+            lines += [f"warning: {w}" for w in status["warnings"]]
         multiple = status.get("multiple_definitions")
         if multiple and multiple["codes"]:
             lines.append("")

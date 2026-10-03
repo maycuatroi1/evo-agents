@@ -60,6 +60,7 @@ def add_run(corpus, sid: str, status: str, ago: dt.timedelta) -> None:
 
 class FakeBuild:
     ok = True
+    warnings = ()
 
     def __init__(self, project):
         self.project = project.name
