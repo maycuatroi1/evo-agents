@@ -22,29 +22,86 @@ def _project(args):
         raise SystemExit(2) from exc
 
 
+def _print_runs(results) -> None:
+    for r in results:
+        mark = "OK  " if r.ok else "FAIL"
+        print(
+            f"{mark} {r.source:<20} {r.items} item(s), {r.tombstones} tombstone(s), {r.removals} removed, "
+            f"{r.errors} error(s), {r.rejected} rejected, {r.seconds}s"
+        )
+        for h in r.held:
+            print(f"     held: {h['count']} removal(s) in {h['scope']}: {h['reason']}")
+            print("           review, then run: evo-agents kg sync --accept-removals --source " + r.source)
+        for issue in r.issues[:8]:
+            print(f"     {issue}")
+        if r.exception:
+            print(f"     connector raised {r.exception}")
+        for line in r.stderr_tail[-5:]:
+            print(f"     stderr: {line}")
+
+
+def _print_due(outcome) -> None:
+    # Everything goes to stdout: under launchd both streams share schedule.log, and stdout is buffered.
+    if outcome.error:
+        print(f"FAIL project {outcome.project}: {outcome.error}")
+        return
+    if not outcome.due:
+        print(f"project {outcome.project}: nothing due")
+        return
+    print(f"project {outcome.project}: {len(outcome.due)} source(s) due")
+    _print_runs(outcome.runs)
+    if outcome.build is not None:
+        print(outcome.build.summary_line())
+
+
+def _cmd_sync_due(args) -> int:
+    from evo_agents.kg.ids import utc_now
+    from evo_agents.kg.sync import sync_all_due, sync_due
+
+    if args.source:
+        print("error: --due picks the sources itself; drop --source", file=sys.stderr)
+        return 2
+    if args.all:
+        if args.project or args.accept_removals:
+            print("error: --all goes with --due, --build and --json only", file=sys.stderr)
+            return 2
+        outcomes = sync_all_due(build=args.build)
+        ok = all(o.ok for o in outcomes)
+        if args.json:
+            _print_json({"ok": ok, "projects": [o.to_json() for o in outcomes]})
+        else:
+            print(f"kg sync --due --all at {utc_now()}: {len(outcomes)} project(s)")
+            for outcome in outcomes:
+                _print_due(outcome)
+        return 0 if ok else 1
+
+    project = _project(args)
+    try:
+        outcome = sync_due(project, build=args.build, accept=args.accept_removals)
+    except ProjectError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    if args.json:
+        _print_json(outcome.to_json())
+    else:
+        _print_due(outcome)
+    return 0 if outcome.ok else 1
+
+
 def cmd_sync(args) -> int:
     from evo_agents.kg.sync import sync_project
 
+    if args.all and not args.due:
+        print("error: --all needs --due; a full sync of every project is not offered", file=sys.stderr)
+        return 2
+    if args.due:
+        return _cmd_sync_due(args)
     project = _project(args)
     results = sync_project(project, args.source or None, accept=args.accept_removals)
     if args.json:
         _print_json({"project": project.name, "runs": [r.to_json() for r in results]})
     else:
-        for r in results:
-            mark = "OK  " if r.ok else "FAIL"
-            print(
-                f"{mark} {r.source:<20} {r.items} item(s), {r.tombstones} tombstone(s), {r.removals} removed, "
-                f"{r.errors} error(s), {r.rejected} rejected, {r.seconds}s"
-            )
-            for h in r.held:
-                print(f"     held: {h['count']} removal(s) in {h['scope']}: {h['reason']}")
-                print("           review, then run: evo-agents kg sync --accept-removals --source " + r.source)
-            for issue in r.issues[:8]:
-                print(f"     {issue}")
-            if r.exception:
-                print(f"     connector raised {r.exception}")
-            for line in r.stderr_tail[-5:]:
-                print(f"     stderr: {line}")
+        _print_runs(results)
     if args.build:
         from evo_agents.kg.build import build_project
 
@@ -105,6 +162,28 @@ def cmd_bind(args) -> int:
         _print_json({"directory": str(directory), "project": project.name, "harness_root": str(project.harness.root)})
     else:
         print(f"bound {directory}  ->  {project.name}  ({project.harness.root})")
+    return 0
+
+
+def cmd_schedule(args) -> int:
+    from evo_agents.kg import schedule
+
+    if args.action == "print":
+        sys.stdout.write(schedule.render(schedule.build_plist()))
+        return 0
+    try:
+        if args.action == "install":
+            path = schedule.install()
+            plist = schedule.build_plist()
+            print(f"installed {schedule.LABEL} from {path}")
+            print(f"runs every {schedule.INTERVAL // 60} min: {' '.join(plist['ProgramArguments'])}")
+            print(f"log: {plist['StandardOutPath']}")
+        else:
+            existed = schedule.uninstall()
+            print(f"uninstalled {schedule.LABEL}" if existed else f"{schedule.LABEL} was not installed")
+    except schedule.ScheduleError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
     return 0
 
 
@@ -182,8 +261,22 @@ def register(sub) -> None:
     sync = with_project(ksub.add_parser("sync", help="run connectors into the corpus"))
     sync.add_argument("--source", action="append", help="only this source (repeatable)")
     sync.add_argument("--accept-removals", action="store_true", help="apply deletions a guard held back")
-    sync.add_argument("--build", action="store_true", help="build the graph after syncing")
+    sync.add_argument(
+        "--build", action="store_true", help="build the graph after syncing (with --due: only if a source ran)"
+    )
+    sync.add_argument(
+        "--due", action="store_true", help="only sources whose refresh interval has passed since their last ok run"
+    )
+    sync.add_argument(
+        "--all", action="store_true", help="with --due: every project in projects.json whose harness still exists"
+    )
     sync.set_defaults(func=cmd_sync)
+
+    schedule = ksub.add_parser("schedule", help="hourly LaunchAgent running kg sync --due --all --build (macOS)")
+    schedule.add_argument(
+        "action", choices=["print", "install", "uninstall"], help="print the plist, or load or unload it"
+    )
+    schedule.set_defaults(func=cmd_schedule)
 
     status = with_project(ksub.add_parser("status", help="coverage, freshness and held deletions per source"))
     status.add_argument("--brief", action="store_true", help="a few lines, for session hooks")

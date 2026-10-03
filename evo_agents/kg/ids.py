@@ -35,15 +35,20 @@ def utc_now() -> str:
     return dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
 
 
-def normalize_time(value: str | None) -> str:
-    """ISO 8601 to a fixed-width UTC string that sorts correctly as text. Empty stays empty."""
-    if not value:
-        return ""
+def parse_utc(value: str) -> dt.datetime:
+    """ISO 8601, with or without a trailing Z, as an aware UTC datetime. A naive value is taken as UTC."""
     text = value.replace("Z", "+00:00") if value.endswith("Z") else value
     parsed = dt.datetime.fromisoformat(text)
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=dt.timezone.utc)
-    return parsed.astimezone(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+    return parsed.astimezone(dt.timezone.utc)
+
+
+def normalize_time(value: str | None) -> str:
+    """ISO 8601 to a fixed-width UTC string that sorts correctly as text. Empty stays empty."""
+    if not value:
+        return ""
+    return parse_utc(value).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
 
 
 def rev_key(rev: str | None) -> str:
