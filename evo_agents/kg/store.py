@@ -410,6 +410,32 @@ class Store:
         )
         return [_edge_row(r) for r in rows]
 
+    def path_nodes(self, b: int) -> list[dict]:
+        """Live File and Document nodes that carry a path: what a changed path can name."""
+        rows = self.db.execute(
+            f"SELECT node_id, kind, name, props, status, conf, label_lvl, label_loc, label_int, aliases FROM nodes"
+            f" WHERE kind IN ('File', 'Document') AND {LIVE} ORDER BY node_id",
+            {"b": b},
+        )
+        return [n for n in map(_node_row, rows) if n["props"].get("path")]
+
+    def file_symbols(self, file_ids, b: int) -> dict[str, list[dict]]:
+        """Live Symbol nodes grouped by the file item that defines them (``props.file``)."""
+        out: dict[str, list[dict]] = defaultdict(list)
+        ids = list(file_ids)
+        for start in range(0, len(ids), 500):
+            chunk = ids[start : start + 500]
+            marks = ", ".join("?" for _ in chunk)
+            for row in self.db.execute(
+                f"SELECT node_id, kind, name, props, status, conf, label_lvl, label_loc, label_int, aliases"
+                f" FROM nodes WHERE kind = 'Symbol' AND json_extract(props, '$.file') IN ({marks})"
+                f" AND tx_from <= ? AND (tx_to IS NULL OR tx_to > ?) ORDER BY node_id",
+                (*chunk, b, b),
+            ):
+                n = _node_row(row)
+                out[n["props"]["file"]].append(n)
+        return dict(out)
+
     def degree(self, node_id: str, b: int) -> int:
         return self.db.execute(
             f"SELECT count(*) FROM edges WHERE (src = :id OR dst = :id) AND {LIVE}", {"id": node_id, "b": b}
