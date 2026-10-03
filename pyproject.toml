@@ -11,6 +11,12 @@ license = "Apache-2.0"
 license-files = ["LICENSE"]
 requires-python = ">=3.10"
 authors = [{ name = "maycuatroi" }]
+keywords = ["agents", "harness", "knowledge-graph", "mcp", "claude-code"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Software Development",
+]
 dependencies = ["PyYAML>=6.0"]
 
 [project.optional-dependencies]
