@@ -10,6 +10,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from evo_agents.kg import audit
 from evo_agents.kg.corpus import Corpus, LogWriter, kg_home
 from evo_agents.kg.ids import parse_utc, utc_now, uuid7
 from evo_agents.kg.project import Project, ProjectError, load_project_at, read_index, remember
@@ -65,8 +66,10 @@ def _guard(source: dict, alive: int, removed: int, listed: int) -> str | None:
     return None
 
 
-def _record_run(corpus: Corpus, result: SyncResult, connector: str, version: str | None, started: str) -> None:
+def _record_run(corpus: Corpus, result: SyncResult, connector: str, version: str | None, started: str) -> str:
+    """Insert the run's row; return its finished_at, which the audit line repeats."""
     detail = {k: v for k, v in result.to_json().items() if k not in ("source", "run_id", "status")}
+    finished = utc_now()
     corpus.db.execute(
         "INSERT OR REPLACE INTO runs VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         (
@@ -76,10 +79,11 @@ def _record_run(corpus: Corpus, result: SyncResult, connector: str, version: str
             version,
             result.status,
             started,
-            utc_now(),
+            finished,
             json.dumps(detail, ensure_ascii=False),
         ),
     )
+    return finished
 
 
 def sync_source(
@@ -91,6 +95,8 @@ def sync_source(
     corpus: Corpus | None = None,
     env: dict | None = None,
 ) -> SyncResult:
+    """Run one source's connector into the corpus. The run gets a row in the runs table and a line in the
+    project's audit log, once its state is committed."""
     source = project.source(source_id)
     corpus = corpus or project.corpus()
     started_clock = time.monotonic()
@@ -104,7 +110,16 @@ def sync_source(
         except ConnectorError as exc:
             result.issues.append(str(exc))
             with corpus.db:
-                _record_run(corpus, result, source["connector"], None, started)
+                finished = _record_run(corpus, result, source["connector"], None, started)
+            audit.record_sync(
+                corpus.root,
+                project.name,
+                result,
+                connector=source["connector"],
+                connector_version=None,
+                started=started,
+                finished=finished,
+            )
             return result
 
         ctx = ConnectorContext(project.name, source, project.harness, corpus.cursor(source_id), env)
@@ -191,6 +206,7 @@ def sync_source(
         )
         result.log = str(writer.close())
         hello = checker.hello or {}
+        connector, version = hello.get("connector", source["connector"]), hello.get("version")
         with corpus.db:
             corpus.merge(writer.records, run_id)
             if got_cursor:
@@ -201,7 +217,16 @@ def sync_source(
             for row in held_rows:
                 corpus.db.execute("INSERT OR REPLACE INTO held VALUES (?, ?, ?, ?, ?)", (*row[:4], json.dumps(row[4])))
             result.seconds = round(time.monotonic() - started_clock, 3)
-            _record_run(corpus, result, hello.get("connector", source["connector"]), hello.get("version"), started)
+            finished = _record_run(corpus, result, connector, version, started)
+        audit.record_sync(
+            corpus.root,
+            project.name,
+            result,
+            connector=connector,
+            connector_version=version,
+            started=started,
+            finished=finished,
+        )
     return result
 
 

@@ -6,6 +6,7 @@ Layout under ``$EVO_KG_HOME/<project>/`` (default ``~/.evo/kg``), mode 0700::
     blobs/sha256/ab/cd...   item bodies and fragments
     corpus.sqlite           the merged state sigma_p, rebuildable from the log
     locks/<source>.lock     one sync per source at a time
+    audit.jsonl             one line per sync and per build, counts and ids only (audit.py), mode 0600
 
 The merge keeps, for every item ID, the record with the largest order key
 ``(rev_time, rev, run_id, tie)``. Taking a maximum under a total order is commutative, associative and
