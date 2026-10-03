@@ -11,6 +11,18 @@
           }
         ]
       }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "mcp__plugin_evo-kg_evo-kg__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v evo-agents >/dev/null 2>&1 && evo-agents kg hook post-tool || true",
+            "timeout": 10
+          }
+        ]
+      }
     ]
   }
 }
