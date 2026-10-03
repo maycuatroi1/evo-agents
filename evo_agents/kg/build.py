@@ -33,11 +33,13 @@ from evo_agents.kg.pipeline.stages import (
 )
 from evo_agents.kg.policy import Label, Policy, join_all, meet_all
 from evo_agents.kg.project import Project, ProjectError
+from evo_agents.kg.protocol import canonical_json, sha256
 from evo_agents.kg.schema import known_kinds
 from evo_agents.kg.store import SCHEMA_VERSION, Graph, Store, edge_id, key_conflicts
 
 STATUS_RANK = {"declared": 5, "parsed": 4, "introspected": 3, "resolved": 2, "proposed": 1}
-STRUCTURED_KINDS = {"manifest", "contracts", "plan", "code"}
+STRUCTURED_KINDS = {"manifest", "contracts", "plan", "code", "markdown"}
+DEFINITION_SAMPLES = 15
 STAT_KEYS = (
     "mentions",
     "resolved",
@@ -113,7 +115,8 @@ def run_pipeline(project: Project, corpus: Corpus, memo: Memo) -> tuple[Graph, d
     # Without an ontology key every kind passes, as before ontologies were checked.
     kinds = known_kinds(ontology) if ontology is not None else None
     sources = {s["id"]: s for s in project.sources()}
-    identifiers = list(project.knowledge.get("identifiers") or [])
+    identifiers = [{"kind": i["kind"], "pattern": i["pattern"]} for i in project.knowledge.get("identifiers") or []]
+    identifiers_digest = sha256(canonical_json(identifiers))
     records = [r for r in corpus.items() if r.source in sources]
 
     # Units and their labels.
@@ -159,11 +162,14 @@ def run_pipeline(project: Project, corpus: Corpus, memo: Memo) -> tuple[Graph, d
             lambda r=r, s=rec.source, d=dirs: map_item(r, s, d),
         )
         if r["kind"] in STRUCTURED_KINDS:
+            inputs = {"item": rec.item_id, "hash": r["hash"], "extractor": code_extractor(r, backend)}
+            if r["kind"] == "markdown":  # a frontmatter id is a code only if an identifier pattern says so
+                inputs["identifiers"] = identifiers_digest
             structured, shash = memo.run(
                 "structure",
                 STRUCTURE_VERSION,
-                {"item": rec.item_id, "hash": r["hash"], "extractor": code_extractor(r, backend)},
-                lambda rec=rec, r=r, b=backend: structure_item(r, rec.source, body(rec), b),
+                inputs,
+                lambda rec=rec, r=r, b=backend: structure_item(r, rec.source, body(rec), b, identifiers),
             )
         else:
             structured, shash = [], "none"
@@ -335,7 +341,13 @@ def run_pipeline(project: Project, corpus: Corpus, memo: Memo) -> tuple[Graph, d
         if extra:
             graph.texts[nid] = (graph.texts.get(nid, "") + " " + extra)[:4000]
 
-    coverage = {"sources": [], "dangling_edges": dangling, "issues": issues[:50], "errors": errors[:50]}
+    coverage = {
+        "sources": [],
+        "dangling_edges": dangling,
+        "issues": issues[:50],
+        "errors": errors[:50],
+        "multiple_definitions": multiple_definitions(graph, {i["kind"] for i in identifiers}),
+    }
     for sid in sorted(sources):
         s = stats[sid]
         coverage["sources"].append(
@@ -347,6 +359,21 @@ def run_pipeline(project: Project, corpus: Corpus, memo: Memo) -> tuple[Graph, d
             }
         )
     return graph, coverage, errors, issues
+
+
+def multiple_definitions(graph: Graph, code_kinds: set[str]) -> dict:
+    """Codes with ``defines`` from more than one item. Design 4.6 wants one definition per code, copies
+    marked ``derived_from``. A section defines on behalf of its document, so one item counts once."""
+    places: dict[str, set[str]] = defaultdict(set)
+    for e in graph.edges.values():
+        if e["rel"] == "defines" and graph.nodes[e["dst"]]["kind"] in code_kinds:
+            src = graph.nodes[e["src"]]
+            places[e["dst"]].add(src["props"].get("item", e["src"]) if src["kind"] == "Section" else e["src"])
+    codes = sorted(code for code, items in places.items() if len(items) > 1)
+    return {
+        "codes": len(codes),
+        "samples": [{"code": code, "places": sorted(places[code])} for code in codes[:DEFINITION_SAMPLES]],
+    }
 
 
 def _strongest(current: dict, new: dict) -> None:
