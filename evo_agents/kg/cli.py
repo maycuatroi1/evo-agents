@@ -52,6 +52,8 @@ def _print_due(outcome) -> None:
     _print_runs(outcome.runs)
     if outcome.build is not None:
         print(outcome.build.summary_line())
+        for warning in outcome.build.warnings:
+            print(f"warning: {warning}")
 
 
 def _cmd_sync_due(args) -> int:
@@ -108,6 +110,8 @@ def cmd_sync(args) -> int:
         report = build_project(project)
         if not args.json:
             print(report.summary_line())
+            for warning in report.warnings:
+                print(f"warning: {warning}")
         if not report.ok:
             return 1
     return 0 if all(r.ok and not r.held for r in results) else 1

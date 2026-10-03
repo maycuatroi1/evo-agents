@@ -2,7 +2,7 @@
 
     version: 1
     bindings:
-      - from: kb-service:src/kb/search.py::search     # any reference the index can resolve
+      - from: billing:src/billing/invoice.py::total   # any reference the index can resolve
         rel: implements
         to: usecase:KB-01
         note: optional

@@ -1,6 +1,6 @@
 """``graphify-ast`` code backend: graphify's tree-sitter extractors (Apache-2.0), called per file.
 
-Optional: ``pip install 'evo-agents[graphify]'``. graphify extracts one file at a time; this module
+Optional: ``pip install 'evo-ak[graphify]'``. graphify extracts one file at a time; this module
 maps its nodes to symbols (qualified names built from its contains and method edges) and keeps its
 same-file calls. Relative JS and TS imports are resolved here from the import specifiers, because a
 single-file run of graphify cannot see the target file.
