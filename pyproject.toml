@@ -3,7 +3,7 @@ requires = ["setuptools>=77", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "evo-agents"
+name = "evo-ak"
 dynamic = ["version"]
 description = "Shared tooling for agent harnesses: harness schema, multi-source knowledge graph, Claude Code plugins"
 readme = "README.md"
