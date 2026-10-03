@@ -11,6 +11,8 @@ Outputs are lists of facts (JSON-serializable dicts, memoized):
 
 ``units`` are ownership units: ``<item_id>#<anchor>`` for a fragment, ``<item_id>#`` for the whole item.
 An element is alive while one of its derivations has every unit and every needed element alive.
+
+Symbol nodes carry ``props.key = [repo, path, qualname]`` (see ``symbol_key``), unique in the store.
 """
 
 from __future__ import annotations
@@ -24,7 +26,7 @@ from evo_agents.kg.extract import python as py_extract
 from evo_agents.kg.schema import node_kind_for_item
 
 MAP_VERSION = "1"
-STRUCTURE_VERSION = "2"
+STRUCTURE_VERSION = "3"
 
 
 def item_unit(item_id: str) -> str:
@@ -277,6 +279,14 @@ def _plan(item_id: str, data: dict, unit: str) -> list[dict]:
     return facts
 
 
+def symbol_key(record: dict, source_id: str, path: str, qualname: str) -> list[str]:
+    """The PG-Keys key of a Symbol: one function of one file of one repo, whichever source read it. The
+    repo is the item's ``props.repo``: the harness.yaml name for a ``repo:`` source or for the harness
+    itself, the checkout's directory name for a git source given only a ``path:``. An item without one
+    (another connector) falls back to its source id."""
+    return [(record.get("props") or {}).get("repo") or source_id, path, qualname]
+
+
 def _python(record: dict, source_id: str, text: str) -> list[dict]:
     item_id = record["id"]
     path = (record.get("props") or {}).get("path") or ""
@@ -300,7 +310,13 @@ def _python(record: dict, source_id: str, text: str) -> list[dict]:
                 "Symbol",
                 sym["qualname"],
                 [unit],
-                props={"kind": sym["kind"], "path": path, "line": sym["line"], "file": item_id},
+                props={
+                    "kind": sym["kind"],
+                    "path": path,
+                    "line": sym["line"],
+                    "file": item_id,
+                    "key": symbol_key(record, source_id, path, sym["qualname"]),
+                },
                 where=[[unit, f"line {sym['line']}"]],
             )
         )
@@ -377,7 +393,13 @@ def _graphify(record: dict, source_id: str, text: str) -> list[dict]:
                 "Symbol",
                 sym["qualname"],
                 [unit],
-                props={"kind": sym["kind"], "path": path, "line": sym["line"], "file": item_id},
+                props={
+                    "kind": sym["kind"],
+                    "path": path,
+                    "line": sym["line"],
+                    "file": item_id,
+                    "key": symbol_key(record, source_id, path, sym["qualname"]),
+                },
                 where=[[unit, f"line {sym['line']}"]],
             )
         )

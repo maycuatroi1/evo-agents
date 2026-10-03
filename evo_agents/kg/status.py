@@ -75,9 +75,12 @@ def project_status(project: Project) -> dict:
         "graph": None,
     }
     try:
-        from evo_agents.kg.store import Store
+        from evo_agents.kg.store import StaleSchema, Store
 
-        store = Store.open_existing(project)
+        try:
+            store = Store.open_existing(project)
+        except StaleSchema as exc:
+            store, status["graph"], status["ok"] = None, {"ready": False, "error": str(exc)}, False
         if store is not None:
             status["graph"] = store.summary()
             if not status["graph"].get("ready"):
@@ -102,6 +105,8 @@ def render_status(status: dict, *, brief: bool = False) -> str:
         else:
             head += ", no graph built yet"
         lines.append(head)
+        if graph and graph.get("error"):
+            lines.append(graph["error"])
         if stale:
             lines.append(f"sources failing or never synced: {', '.join(stale)}")
         if held:
@@ -143,7 +148,7 @@ def render_status(status: dict, *, brief: bool = False) -> str:
                     f" ({src['resolved_ratio']:.0%}), {src['dangling']} dangling{refs}"
                 )
         else:
-            lines.append("graph   no ready build")
+            lines.append(f"graph   {graph.get('error') or 'no ready build'}")
     else:
         lines.append("")
         lines.append("graph   not built: run evo-agents kg build")

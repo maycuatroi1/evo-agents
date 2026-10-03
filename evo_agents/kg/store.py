@@ -7,19 +7,26 @@ is never visible, and retracting a fact keeps its history queryable.
 
 Provenance is stored as a circuit: each element has derivations, and a derivation is the AND of its
 ownership units and of the elements it needs. An element is alive while one derivation holds (OR).
+
+Keys (PG-Keys): a node of a keyed kind carries ``props.key``, and no two live, non-proposed nodes of that
+kind share one. A Symbol's key is ``[repo, path, qualname]``, so two sources reading the same file of the
+same repo cannot both put the same function in the graph.
 """
 
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
+from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from evo_agents.kg.ids import utc_now
 from evo_agents.kg.protocol import canonical_json, sha256
 
-SCHEMA_VERSION = "1"
+SCHEMA_VERSION = "2"
+KEYED_KINDS = ("Symbol",)  # kinds whose props.key is unique; keep in step with the nodes_key index
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL) STRICT;
@@ -57,6 +64,8 @@ CREATE TABLE IF NOT EXISTS where_prov (
     tx_from INTEGER NOT NULL, tx_to INTEGER
 ) STRICT;
 CREATE INDEX IF NOT EXISTS nodes_live ON nodes(node_id) WHERE tx_to IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS nodes_key ON nodes(kind, json_extract(props, '$.key'))
+    WHERE kind = 'Symbol' AND tx_to IS NULL AND status <> 'proposed';
 CREATE INDEX IF NOT EXISTS nodes_tx ON nodes(node_id, tx_from);
 CREATE INDEX IF NOT EXISTS edges_src ON edges(src, tx_from);
 CREATE INDEX IF NOT EXISTS edges_dst ON edges(dst, tx_from);
@@ -93,17 +102,47 @@ def _content(row: dict) -> str:
     return sha256(canonical_json(row))
 
 
+def key_conflicts(graph: Graph) -> dict[tuple[str, str], list[str]]:
+    """Keys that more than one node of the graph would hold, under the same predicate as the nodes_key
+    index. Checked before writing, so a violation names its nodes instead of surfacing as an IntegrityError."""
+    holders: dict[tuple[str, str], list[str]] = defaultdict(list)
+    for nid, n in graph.nodes.items():
+        key = (n.get("props") or {}).get("key")
+        if n["kind"] in KEYED_KINDS and n["status"] not in (None, "proposed") and key is not None:
+            holders[(n["kind"], json.dumps(key, ensure_ascii=False))].append(nid)
+    return {k: sorted(ids) for k, ids in sorted(holders.items()) if len(ids) > 1}
+
+
+class StaleSchema(RuntimeError):
+    """A store file written by an older schema. ``kg build`` rebuilds it from the log; readers refuse it."""
+
+    def __init__(self, path: Path, found: str):
+        self.path, self.found = path, found
+        super().__init__(
+            f"{path} has store schema {found}, this code reads {SCHEMA_VERSION}:"
+            " run `evo-agents kg build` to rebuild it from the corpus log"
+        )
+
+
+def _schema_version(db: sqlite3.Connection) -> str | None:
+    if db.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'meta'").fetchone() is None:
+        return None
+    row = db.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()
+    return row[0] if row else None
+
+
 class Store:
     def __init__(self, path: Path):
         self.path = path
         path.parent.mkdir(parents=True, exist_ok=True)
         self.db = sqlite3.connect(path)
+        found = _schema_version(self.db)
+        if found is not None and found != SCHEMA_VERSION:
+            self.db.close()
+            raise StaleSchema(path, found)  # before SCHEMA runs: an old file is never half-migrated
         self.db.execute("PRAGMA journal_mode=WAL")
         self.db.execute("PRAGMA foreign_keys=OFF")
         self.db.executescript(SCHEMA)
-        found = self.db.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()
-        if found and found[0] != SCHEMA_VERSION:
-            raise RuntimeError(f"{path} has schema {found[0]}, this code writes {SCHEMA_VERSION}: rebuild it")
         self.db.execute("INSERT OR IGNORE INTO meta VALUES ('schema_version', ?)", (SCHEMA_VERSION,))
         self.db.commit()
 
@@ -113,8 +152,40 @@ class Store:
 
     @classmethod
     def open_existing(cls, project) -> Store | None:
+        """The project's store for reading; raises StaleSchema on a file from an older schema."""
         path = project.root / "graph.sqlite"
         return cls(path) if path.exists() else None
+
+    @staticmethod
+    def stored_schema(path: Path) -> str | None:
+        """The schema version a store file was written with, without migrating it; None if there is none."""
+        if not path.exists():
+            return None
+        db = sqlite3.connect(path)
+        try:
+            return _schema_version(db)
+        finally:
+            db.close()
+
+    @classmethod
+    def staging(cls, path: Path) -> Store:
+        """An empty store next to ``path``, to be filled and then moved over it with ``install``."""
+        stage = path.with_name(path.name + ".rebuild")
+        for leftover in (stage, Path(f"{stage}-wal"), Path(f"{stage}-shm")):
+            leftover.unlink(missing_ok=True)
+        return cls(stage)
+
+    def install(self, target: Path) -> Store:
+        """Replace ``target`` with this store's file in one rename and return a store opened there. The
+        file leaves WAL mode first, and the old file's WAL and shared memory go, so the new file never
+        meets a log written for the old one."""
+        self.db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        self.db.execute("PRAGMA journal_mode=DELETE")
+        self.db.close()
+        for stale in (Path(f"{target}-wal"), Path(f"{target}-shm")):
+            stale.unlink(missing_ok=True)
+        os.replace(self.path, target)
+        return Store(target)
 
     def close(self) -> None:
         self.db.close()
