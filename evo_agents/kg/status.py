@@ -9,6 +9,11 @@ import datetime as dt
 
 from evo_agents.kg.project import Project
 
+DERIVED_FROM_HINT = (
+    "keep one definition per code; give each copy a derived_from field in its frontmatter, naming the original"
+    " (design 4.6)"
+)
+
 
 def _age_seconds(stamp: str | None) -> float | None:
     if not stamp:
@@ -73,6 +78,7 @@ def project_status(project: Project) -> dict:
         "ok": ok,
         "sources": sources,
         "graph": None,
+        "multiple_definitions": None,
     }
     try:
         from evo_agents.kg.store import StaleSchema, Store
@@ -85,6 +91,9 @@ def project_status(project: Project) -> dict:
             status["graph"] = store.summary()
             if not status["graph"].get("ready"):
                 status["ok"] = False
+            multiple = status["graph"].get("coverage", {}).get("multiple_definitions")
+            if multiple is not None:  # a convention warning, not a failure: ``ok`` stays as it is
+                status["multiple_definitions"] = {**multiple, "hint": DERIVED_FROM_HINT if multiple["codes"] else None}
     except ImportError:
         pass
     return status
@@ -149,6 +158,14 @@ def render_status(status: dict, *, brief: bool = False) -> str:
                 )
         else:
             lines.append(f"graph   {graph.get('error') or 'no ready build'}")
+        multiple = status.get("multiple_definitions")
+        if multiple and multiple["codes"]:
+            lines.append("")
+            lines.append(f"codes defined in two or more places: {multiple['codes']}; {multiple['hint']}")
+            for sample in multiple["samples"]:
+                lines.append(f"        {sample['code']}: {', '.join(sample['places'])}")
+            if multiple["codes"] > len(multiple["samples"]):
+                lines.append(f"        and {multiple['codes'] - len(multiple['samples'])} more")
     else:
         lines.append("")
         lines.append("graph   not built: run evo-agents kg build")

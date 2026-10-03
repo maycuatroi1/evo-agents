@@ -17,7 +17,7 @@ from evo_agents.kg.pipeline.stages import edge, frag_unit, item_unit, node, norm
 from evo_agents.kg.protocol import canonical_json, sha256
 from evo_agents.kg.schema import node_kind_for_item
 
-LINK_VERSION = "5"
+LINK_VERSION = "6"
 
 URL = re.compile(r"https?://[^\s<>()\[\]{}`'\"|]+")
 BACKTICK = re.compile(r"`([^`\n]{2,200})`")
@@ -100,8 +100,11 @@ def _unique(entries: list) -> str | None:
 
 
 class Linker:
-    def __init__(self, index: dict, item_id: str, repo: str | None, path: str | None = None):
+    def __init__(
+        self, index: dict, item_id: str, repo: str | None, path: str | None = None, defined: frozenset = frozenset()
+    ):
         self.index = index
+        self.defined = defined  # (src, code) pairs the structure stage already links with ``defines``
         self.item_id = item_id
         self.repo = repo
         self.base_dir = posixpath.dirname(path) if path else ""
@@ -128,6 +131,8 @@ class Linker:
     ) -> None:
         if target == src or target == self.item_id or target.startswith(self.item_id + "#"):
             return
+        if rel == "mentions" and (src, target) in self.defined:
+            return  # a frontmatter id: the document defines the code, it does not also mention it
         key = (src, rel, target)
         if key in self.edges:
             self.edges[key]["props"]["count"] += 1
@@ -385,7 +390,8 @@ def link_item(record: dict, fragments: list[dict], body: str | None, structure: 
     """Mentions in one item's text, plus resolution of the references its structure stage left open."""
     item_id = record["id"]
     props = record.get("props") or {}
-    linker = Linker(index, item_id, props.get("repo"), props.get("path"))
+    defined = frozenset((f["src"], f["dst"]) for f in structure if f["t"] == "edge" and f["rel"] == "defines")
+    linker = Linker(index, item_id, props.get("repo"), props.get("path"), defined)
     for f in structure:
         if f["t"] == "ref":
             linker.resolve_ref(f)
