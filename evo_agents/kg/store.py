@@ -156,6 +156,22 @@ class Store:
         path = project.root / "graph.sqlite"
         return cls(path) if path.exists() else None
 
+    @classmethod
+    def open_readonly(cls, project) -> Store | None:
+        """The project's store for a reader that must stay fast, such as a hook: it never writes, so it never
+        waits on a build holding the write lock. None when there is no store; StaleSchema on an older file."""
+        path = project.root / "graph.sqlite"
+        if not path.exists():
+            return None
+        store = cls.__new__(cls)
+        store.path = path
+        store.db = sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True)
+        found = _schema_version(store.db)
+        if found != SCHEMA_VERSION:
+            store.db.close()
+            raise StaleSchema(path, found or "none")
+        return store
+
     @staticmethod
     def stored_schema(path: Path) -> str | None:
         """The schema version a store file was written with, without migrating it; None if there is none."""
