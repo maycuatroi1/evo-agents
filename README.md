@@ -14,7 +14,7 @@ Status: early prototype. Interfaces will change.
 ## Install
 
 ```sh
-uv tool install evo-agents           # or: pip install evo-agents (from PyPI, 0.1.0 and later)
+uv tool install evo-ak               # or: pip install evo-ak (PyPI name; the command is evo-agents)
 uv tool install git+https://github.com/maycuatroi1/evo-agents   # unreleased main
 # or, from a checkout: python -m pip install -e '.[test]'
 ```
@@ -109,8 +109,8 @@ Hooks:
   off.
 
 The plugin needs [uv](https://docs.astral.sh/uv/) on `PATH` and pins the release it runs: the server
-starts with `uvx evo-agents==0.1.0`, which downloads and caches that version on first start. The hooks
-run `uvx --offline evo-agents==0.1.0`, so they never wait on the network; they stay silent when `uvx`
+starts with `uvx --from evo-ak==0.1.0 evo-agents`, which downloads and caches that version on first start. The hooks
+run `uvx --offline --from evo-ak==0.1.0 evo-agents`, so they never wait on the network; they stay silent when `uvx`
 is missing or until the server has cached the package.
 
 ## Writing a connector

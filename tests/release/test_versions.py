@@ -12,7 +12,7 @@ from evo_agents.cli import main
 
 ROOT = Path(__file__).parents[2]
 PLUGIN = ROOT / "plugins" / "evo-kg"
-PIN = re.compile(r"evo-agents==([\w.+!-]+)")
+PIN = re.compile(r"evo-ak==([\w.+!-]+)")
 
 
 def load(path: Path) -> dict:
@@ -33,14 +33,14 @@ def test_mcp_server_runs_the_package_version_through_uvx():
     # No --offline here: the server's first start is what downloads and caches the package.
     assert server == {
         "command": "uvx",
-        "args": [f"evo-agents=={__version__}", "kg", "serve", "--sink", "claude-code@anthropic"],
+        "args": ["--from", f"evo-ak=={__version__}", "evo-agents", "kg", "serve", "--sink", "claude-code@anthropic"],
     }
 
 
 def test_every_hook_runs_the_package_version_and_never_fails_the_session():
     commands = hook_commands()
     assert len(commands) == 5
-    prefix = f"command -v uvx >/dev/null 2>&1 && uvx --offline evo-agents=={__version__} kg hook "
+    prefix = f"command -v uvx >/dev/null 2>&1 && uvx --offline --from evo-ak=={__version__} evo-agents kg hook "
     for command in commands:
         assert command.startswith(prefix), command
         assert command.endswith(" || true"), command
