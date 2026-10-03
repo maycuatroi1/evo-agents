@@ -2,7 +2,8 @@
 
 Stages run as memoized tasks: map and structure per item, then one identifier index, then link and
 binding per item. Assembly merges facts, applies entity resolution (only declared ``same_as``),
-evaluates the provenance circuit, computes labels, and writes the store as one build.
+evaluates the provenance circuit, computes labels, checks node keys, and writes the store as one build.
+A store written by an older schema is rebuilt from the corpus log into a new file that replaces it.
 """
 
 from __future__ import annotations
@@ -29,7 +30,7 @@ from evo_agents.kg.pipeline.stages import (
 )
 from evo_agents.kg.policy import Label, Policy, join_all, meet_all
 from evo_agents.kg.project import Project
-from evo_agents.kg.store import Graph, Store, edge_id
+from evo_agents.kg.store import SCHEMA_VERSION, Graph, Store, edge_id, key_conflicts
 
 STATUS_RANK = {"declared": 5, "parsed": 4, "introspected": 3, "resolved": 2, "proposed": 1}
 STRUCTURED_KINDS = {"manifest", "contracts", "plan", "code"}
@@ -61,14 +62,20 @@ class BuildReport:
     memo: dict = field(default_factory=dict)
     seconds: float = 0.0
     verify: dict | None = None
+    rebuilt_from: str | None = None  # the older store schema this build replaced, if any
 
     def summary_line(self) -> str:
         if not self.ok:
             return f"build FAILED for {self.project}: " + "; ".join(self.errors[:5])
+        rebuilt = (
+            f", store rebuilt from the log (schema {self.rebuilt_from} -> {SCHEMA_VERSION})"
+            if self.rebuilt_from
+            else ""
+        )
         return (
             f"build {self.build_id} for {self.project}: {self.nodes} nodes, {self.edges} edges, {self.units} units"
             f" in {self.seconds}s (memo {sum(s['hits'] for s in self.memo.values())} hits,"
-            f" {sum(s['misses'] for s in self.memo.values())} misses)"
+            f" {sum(s['misses'] for s in self.memo.values())} misses){rebuilt}"
         )
 
     def to_json(self) -> dict:
@@ -283,6 +290,16 @@ def run_pipeline(project: Project, corpus: Corpus, memo: Memo) -> tuple[Graph, d
         graph.derivations[eid] = ds
         graph.where[eid] = sorted(edge_where[(src, rel, dst)])
 
+    # Keys: a key two nodes would share fails the build, naming the nodes and the sources behind them.
+    for (kind, key), ids in key_conflicts(graph).items():
+        holders = []
+        for nid in ids:
+            srcs = sorted(
+                {graph.units[u]["source"] for d in graph.derivations[nid] for u in d["units"] if u in graph.units}
+            )
+            holders.append(f"{nid} (source {', '.join(srcs)})")
+        errors.append(f"duplicate {kind} key {key}: " + ", ".join(holders))
+
     # Searchable text: section and document bodies, short.
     for rec in records:
         r = rec.record
@@ -360,7 +377,12 @@ def build_project(
         if errors:
             report.errors = errors
             return report
-        store = store or Store.for_project(project)
+        target = project.root / "graph.sqlite"
+        if store is None:
+            found = Store.stored_schema(target)
+            if found not in (None, SCHEMA_VERSION):
+                report.rebuilt_from = found
+            store = Store.staging(target) if report.rebuilt_from else Store(target)
         b = store.write(
             graph,
             state_digest=corpus.state_digest(),
@@ -368,6 +390,8 @@ def build_project(
             stats={"memo": report.memo},
             policy=project.policy,
         )
+        if report.rebuilt_from:
+            store = store.install(target)
         counts = store.counts(b)
         report.ok = True
         report.build_id = b

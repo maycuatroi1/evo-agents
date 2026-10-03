@@ -16,7 +16,7 @@ from collections import deque
 
 from evo_agents import __version__
 from evo_agents.kg.project import Project, ProjectError, resolve_project
-from evo_agents.kg.store import Store
+from evo_agents.kg.store import StaleSchema, Store
 
 SUPPORTED_VERSIONS = ["2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25", "2026-07-28"]
 CAP_CHARS = 25_000  # about 9,000 tokens even for Vietnamese text, under Claude Code's 10,000 warning
@@ -112,7 +112,10 @@ class Session:
         return f"{lvl}{'' if loc == 'any' else '/' + loc},{label[2]}"
 
     def _store(self) -> tuple[Store, int]:
-        store = Store.open_existing(self.project)
+        try:
+            store = Store.open_existing(self.project)
+        except StaleSchema as exc:
+            raise ToolError(str(exc)) from None
         b = store.latest_ready() if store else None
         if b is None:
             raise ToolError(f"project {self.project.name!r} has no graph yet: run `evo-agents kg sync --build`")
