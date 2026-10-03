@@ -14,7 +14,8 @@ Status: early prototype. Interfaces will change.
 ## Install
 
 ```sh
-uv tool install git+https://github.com/maycuatroi1/evo-agents
+uv tool install evo-agents           # or: pip install evo-agents (from PyPI, 0.1.0 and later)
+uv tool install git+https://github.com/maycuatroi1/evo-agents   # unreleased main
 # or, from a checkout: python -m pip install -e '.[test]'
 ```
 
@@ -40,6 +41,7 @@ sources:
   - id: app                # a repo declared in harness.yaml
     connector: git
     repo: app
+    refresh: 1h            # due for kg sync --due once an hour
     label: {level: internal, integrity: U}
   - id: wiki               # any command that speaks kg/1
     connector: exec
@@ -62,9 +64,18 @@ evo-agents kg sync --build           # run connectors, build the graph
 evo-agents kg status                 # freshness, coverage and held deletions per source
 evo-agents kg build --verify         # rebuild from scratch and compare hashes
 evo-agents kg query kg_search "KB-01"
+evo-agents kg query kg_impact --arg 'paths=["app:src/search.py"]'
 ```
 
-Corpus and graph live in `~/.evo/kg/<project>/` (override with `EVO_KG_HOME`), never in a repo.
+Corpus and graph live in `~/.evo/kg/<project>/` (override with `EVO_KG_HOME`), never in a repo. Every
+source sync and every build appends one line to `audit.jsonl` there: ids, times, counts and versions,
+never item content.
+
+To keep graphs fresh, give sources a `refresh` interval (`30m`, `6h`, `1d`). `kg sync --due` runs only
+the sources whose interval has passed since their last ok run; `--all` does that for every project that
+has synced on this machine. On macOS, `kg schedule install` loads a LaunchAgent that runs
+`kg sync --due --all --build` every hour (`kg schedule print` shows the plist, `kg schedule uninstall`
+removes it; output goes to `~/.evo/kg/schedule.log`).
 
 ## Using it from Claude Code
 
@@ -73,11 +84,31 @@ claude plugin marketplace add https://github.com/maycuatroi1/evo-agents
 claude plugin install evo-kg@evo-agents
 ```
 
-The plugin registers the MCP server `evo-kg` (`kg_search`, `kg_context`, `kg_node`, `kg_status`,
-`kg_more`), a `using-project-graph` skill, and a SessionStart note. The server binds to the project
-of the session directory; pass `--project` in `.mcp.json` to pin one, or run
-`evo-agents kg bind --project NAME DIR` once to tie a directory and everything below it to a project
+The plugin registers the MCP server `evo-kg`, a `using-project-graph` skill, and three hooks. The
+server binds to the project of the session directory; pass `--project` in `.mcp.json` to pin one, or
+run `evo-agents kg bind --project NAME DIR` once to tie a directory and everything below it to a project
 (`kg bind --list` and `kg bind --remove DIR` manage those bindings).
+
+| Tool | Use |
+|---|---|
+| `kg_search` | find ids by name, code, path or words |
+| `kg_context` | connected subgraph around a question or ids, within a token budget |
+| `kg_node` | one node: properties, evidence, edges |
+| `kg_path` | shortest path between two ids, or the trace chains from one (requirement, step, code, test) |
+| `kg_impact` | what depends on ids, `repo:path` files or a unified diff, before you change them |
+| `kg_status` | bound project, clearance, snapshot age, coverage per source, session label |
+| `kg_more` | continue a truncated result |
+
+Hooks:
+
+- SessionStart prints a short note: the bound project and the snapshot age.
+- PostToolUse, after every evo-kg call, joins the labels of what the result revealed into a session
+  label under `~/.evo/kg/sessions/`. It only rises; `kg_status` shows it.
+- PreToolUse, before Grep, Glob, or `rg` or `grep` in Bash, may add a note with the ids of graph
+  nodes named like the search. It never allows or blocks the call. Set `EVO_KG_GREP_HINTS=0` to turn it
+  off.
+
+The hooks run `evo-agents` from `PATH` and stay silent when it is missing.
 
 ## Writing a connector
 

@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 from evo_agents.kg import serve
 from evo_agents.kg.build import build_project
@@ -174,6 +175,12 @@ def test_mcp_protocol_and_truncation(tmp_path, kg_env, monkeypatch):
     assert not rest.get("isError")
     gone = session.call("kg_more", {"handle": "nope"})
     assert gone["isError"]
+
+
+def test_eval_mocks_carry_the_real_tool_list():
+    # The plugin evals answer from mocks; _tools.json gives the mocked tools their real descriptions and schemas.
+    saved = Path(__file__).parents[2] / "plugins" / "evo-kg" / "evals" / "mocks" / "evo-kg" / "_tools.json"
+    assert json.loads(saved.read_text(encoding="utf-8")) == {"tools": serve.TOOLS}
 
 
 def test_unbound_server_explains_how_to_bind(tmp_path, kg_env, monkeypatch):

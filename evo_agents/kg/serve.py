@@ -40,9 +40,10 @@ INSTRUCTIONS = (
     "Knowledge graph of the bound project: repos, files, symbols, documents and sections, plans and steps, "
     "seams, and the explicit links between them, each with provenance and a sensitivity label. Use kg_search "
     "or kg_context before grepping for a named requirement, plan, document, seam or feature; use grep for exact "
-    "strings and code you just edited. Before changing code, kg_impact lists what depends on it (ids, repo:path "
-    "or a diff); kg_path shows how two nodes connect. Status 'resolved' and 'proposed' are weaker than 'parsed' and "
-    "'declared'. The graph can lag the sources: read the live source (uri) before quoting or editing it."
+    "strings and code you just edited. Before editing, renaming or changing the signature of a symbol or file, call "
+    "kg_impact (ids, repo:path or a diff) and check every dependent it lists. kg_path traces a requirement to its "
+    "steps, code and tests, or shows how two nodes connect. Status 'resolved' and 'proposed' are weaker than "
+    "'parsed' and 'declared'. The graph can lag the sources: read the live source (uri) before quoting or editing it."
 )
 
 TOOLS = [
