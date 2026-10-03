@@ -51,6 +51,9 @@ identifiers:
     pattern: '\bKB-\d{2}\b'
 ```
 
+A markdown file whose frontmatter `id:` matches an identifier pattern is where that code is defined;
+a copy says `derived_from:` in its frontmatter, and `kg status` lists codes defined in more than one place.
+
 Then, from the harness:
 
 ```sh
