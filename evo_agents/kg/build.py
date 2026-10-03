@@ -15,7 +15,9 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from evo_agents.kg import audit
 from evo_agents.kg.corpus import Corpus
+from evo_agents.kg.ids import utc_now
 from evo_agents.kg.memo import Memo
 from evo_agents.kg.pipeline.binding import BINDING_VERSION, binding_item
 from evo_agents.kg.pipeline.link import LINK_VERSION, build_index, index_digest, link_item
@@ -374,6 +376,26 @@ def memo_path(project: Project) -> Path:
 def build_project(
     project: Project, *, store: Store | None = None, memo: Memo | None = None, verify: bool = False, cold: bool = False
 ) -> BuildReport:
+    """Build the project's graph and append one line to its audit log, whether the build succeeds, fails or
+    raises. ``verify`` rebuilds into a temporary store, which adds no line of its own: the outcome is this
+    build's ``verified``."""
+    started_at = utc_now()
+    report = BuildReport(project.name, ok=False)
+    crashed = None
+    try:
+        _build(project, report, store, memo)
+        if verify and report.ok:
+            report.verify = verify_build(project, report.content_hash, cold=cold)
+            report.ok = report.verify["match"]
+    except BaseException as exc:
+        crashed = type(exc).__name__
+        raise
+    finally:
+        audit.record_build(project.root, report, started=started_at, finished=utc_now(), exception=crashed)
+    return report
+
+
+def _build(project: Project, report: BuildReport, store: Store | None, memo: Memo | None) -> None:
     started = time.monotonic()
     corpus = project.corpus()
     own_memo = memo is None
@@ -381,7 +403,6 @@ def build_project(
         path = memo_path(project)
         path.parent.mkdir(parents=True, exist_ok=True)
         memo = Memo(path)
-    report = BuildReport(project.name, ok=False)
     try:
         graph, coverage, errors, issues = run_pipeline(project, corpus, memo)
         memo.commit()
@@ -390,7 +411,7 @@ def build_project(
         report.coverage = coverage
         if errors:
             report.errors = errors
-            return report
+            return
         target = project.root / "graph.sqlite"
         if store is None:
             found = Store.stored_schema(target)
@@ -416,10 +437,6 @@ def build_project(
         if own_memo:
             memo.close()
     report.seconds = round(time.monotonic() - started, 3)
-    if verify and report.ok:
-        report.verify = verify_build(project, report.content_hash, cold=cold)
-        report.ok = report.verify["match"]
-    return report
 
 
 def verify_build(project: Project, expected: str, *, cold: bool = False) -> dict:
