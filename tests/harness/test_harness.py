@@ -136,6 +136,79 @@ def test_inserted_steps_may_use_fractional_order(harness: Path):
     assert report.ok, [str(i) for i in report.issues]
 
 
+def _knowledge_report(harness: Path):
+    return next(r for r in validate_harness(harness) if r.kind == "knowledge")
+
+
+IDENTIFIERS = """identifiers:
+  - kind: UseCase
+    pattern: '\\bKB-\\d{2}\\b'
+  - kind: Screen
+    pattern: '\\bSCR-\\d+\\b'
+"""
+
+
+def test_ontology_extends_the_identifier_kinds(harness: Path):
+    text = (harness / "knowledge.yaml").read_text()
+    write(harness / "knowledge.yaml", text + "ontology: ontology.yaml\n" + IDENTIFIERS)
+    write(harness / "ontology.yaml", "node_kinds:\n  - {name: Screen, description: a UI screen}\nrelations: [shows]\n")
+    report = _knowledge_report(harness)
+    assert report.ok, [str(i) for i in report.issues]
+
+
+def test_ontology_must_be_a_conservative_extension(harness: Path):
+    text = (harness / "knowledge.yaml").read_text()
+    write(harness / "knowledge.yaml", text + "ontology: ontology.yaml\n" + IDENTIFIERS)
+    write(harness / "ontology.yaml", "node_kinds: [Document]\nrelations: [{name: mentions}]\nsame_as: []\n")
+    messages = {(i.path, i.message) for i in errors(_knowledge_report(harness).issues)}
+    hub_kind = "ontology.yaml: node_kinds[0]: 'Document' is a hub kind; extend it with properties instead"
+    assert ("ontology", hub_kind) in messages
+    assert ("ontology", "ontology.yaml: relations[0]: 'mentions' is a hub relation") in messages
+    assert ("ontology", "ontology.yaml: same_as: an extension may not declare two existing things equal") in messages
+    assert ("identifiers[1].kind", "'Screen' is neither a hub kind nor declared in ontology.yaml") in messages
+    assert not any(path == "identifiers[0].kind" for path, _ in messages)
+
+
+def test_missing_ontology_file_is_an_error(harness: Path):
+    text = (harness / "knowledge.yaml").read_text()
+    write(harness / "knowledge.yaml", text + "ontology: ontology.yaml\n")
+    report = _knowledge_report(harness)
+    assert [str(i) for i in report.issues] == ["error: ontology: ontology.yaml: file not found"]
+
+
+def test_ontology_in_another_format_is_rejected_when_referenced(harness: Path):
+    text = (harness / "knowledge.yaml").read_text()
+    write(harness / "knowledge.yaml", text + "ontology: ontology.yaml\n")
+    write(harness / "ontology.yaml", "node_kinds:\n  parsed_from_srs: [Entity, UseCase]\n")
+    messages = [i.message for i in errors(_knowledge_report(harness).issues)]
+    assert messages == ["ontology.yaml: node_kinds: must be a list of names or of mappings with a name"]
+
+
+def test_ontology_path_is_relative_to_knowledge_yaml(harness: Path):
+    text = (harness / "knowledge.yaml").read_text()
+    (harness / "knowledge.yaml").unlink()
+    manifest = (harness / "harness.yaml").read_text()
+    write(
+        harness / "harness.yaml",
+        manifest.replace("knowledge_file: knowledge.yaml", "knowledge_file: kg/knowledge.yaml"),
+    )
+    write(harness / "kg/knowledge.yaml", text + "ontology: ontology.yaml\n" + IDENTIFIERS)
+    write(harness / "kg/ontology.yaml", "node_kinds: [Screen]\n")
+    write(harness / "ontology.yaml", "node_kinds: [Document]\n")  # not the one knowledge.yaml means
+    report = _knowledge_report(harness)
+    assert report.ok, [str(i) for i in report.issues]
+
+
+def test_unreferenced_ontology_is_not_checked(harness: Path):
+    """Without the ontology key nothing changes: another tool's ontology.yaml stays out of validation
+    and identifier kinds are free."""
+    text = (harness / "knowledge.yaml").read_text()
+    write(harness / "knowledge.yaml", text + IDENTIFIERS)
+    write(harness / "ontology.yaml", "version: 1\nnode_kinds:\n  parsed_from_srs: [Entity, UseCase]\n")
+    report = _knowledge_report(harness)
+    assert report.issues == []
+
+
 def test_find_manifest_walks_up(harness: Path):
     nested = harness / "plans" / "active"
     assert find_manifest(nested) == harness.resolve()
