@@ -65,6 +65,12 @@ def node_kind_for_item(item_kind: str) -> str:
     return ITEM_KIND_TO_NODE.get(item_kind, "File")
 
 
+def _entry_name(entry) -> str | None:
+    """An ontology entry is a bare name or a mapping with ``name``."""
+    name = entry.get("name") if isinstance(entry, dict) else entry
+    return name if isinstance(name, str) and name else None
+
+
 def validate_ontology(data: dict) -> list[Issue]:
     issues: list[Issue] = []
     if not isinstance(data, dict):
@@ -72,19 +78,26 @@ def validate_ontology(data: dict) -> list[Issue]:
     for key in data:
         if key in FORBIDDEN_ONTOLOGY_KEYS:
             issues.append(Issue(key, "an extension may not declare two existing things equal"))
-    for i, kind in enumerate(data.get("node_kinds") or []):
-        name = kind.get("name") if isinstance(kind, dict) else kind
-        if name in HUB_KINDS:
-            issues.append(Issue(f"node_kinds[{i}]", f"{name!r} is a hub kind; extend it with properties instead"))
-    for i, rel in enumerate(data.get("relations") or []):
-        name = rel.get("name") if isinstance(rel, dict) else rel
-        if name in HUB_RELATIONS:
-            issues.append(Issue(f"relations[{i}]", f"{name!r} is a hub relation"))
+    for key, hub, clash in (
+        ("node_kinds", HUB_KINDS, "is a hub kind; extend it with properties instead"),
+        ("relations", HUB_RELATIONS, "is a hub relation"),
+    ):
+        entries = data.get(key) or []
+        if not isinstance(entries, list):
+            issues.append(Issue(key, "must be a list of names or of mappings with a name"))
+            continue
+        for i, entry in enumerate(entries):
+            name = _entry_name(entry)
+            if name is None:
+                issues.append(Issue(f"{key}[{i}]", "needs a name"))
+            elif name in hub:
+                issues.append(Issue(f"{key}[{i}]", f"{name!r} {clash}"))
     return issues
 
 
 def known_kinds(ontology: dict | None) -> set[str]:
     kinds = set(HUB_KINDS)
-    for kind in (ontology or {}).get("node_kinds") or []:
-        kinds.add(kind.get("name") if isinstance(kind, dict) else kind)
+    entries = (ontology or {}).get("node_kinds") or []
+    if isinstance(entries, list):
+        kinds.update(name for name in map(_entry_name, entries) if name)
     return kinds

@@ -17,6 +17,7 @@ from pathlib import Path
 
 import yaml
 
+from evo_agents.kg.schema import known_kinds, validate_ontology
 from evo_agents.schema import Issue, errors, validate
 
 MANIFEST = "harness.yaml"
@@ -112,6 +113,28 @@ def load_manifest(path: Path | str) -> Harness:
     return Harness(root=root.resolve(), manifest=data, issues=issues)
 
 
+def ontology_path(knowledge: dict, knowledge_path: Path) -> Path | None:
+    """The file knowledge.yaml's ``ontology`` key points at, relative to knowledge.yaml; None without it."""
+    name = knowledge.get("ontology")
+    if not isinstance(name, str) or not name:
+        return None
+    path = Path(name).expanduser()
+    return path if path.is_absolute() else knowledge_path.parent / path
+
+
+def load_ontology(path: Path) -> tuple[dict, list[Issue]]:
+    """Read an ontology extension and check that it only adds to the hub schema."""
+    if not path.is_file():
+        return {}, [Issue("", "file not found")]
+    try:
+        data = load_yaml(path)
+    except yaml.YAMLError as exc:
+        return {}, [Issue("", f"invalid YAML: {exc}")]
+    if data is None:
+        data = {}
+    return (data if isinstance(data, dict) else {}), validate_ontology(data)
+
+
 def repo_paths(harness: Harness) -> list[tuple[dict, Path | None]]:
     return [(repo, harness.repo_path(repo)) for repo in harness.repos()]
 
@@ -175,7 +198,7 @@ def _validate_file(path: Path, kind: str, manifest: dict | None = None) -> FileR
         data = {}
     issues = validate(data, load_schema(kind))
     if kind == "knowledge" and isinstance(data, dict):
-        issues += knowledge_semantics(data, manifest)
+        issues += knowledge_semantics(data, manifest, path)
     if kind == "plan" and isinstance(data, dict):
         issues += plan_semantics(data, path)
     if kind == "contracts" and isinstance(data, dict):
@@ -192,8 +215,9 @@ def contracts_semantics(data: dict) -> list[Issue]:
     return issues
 
 
-def knowledge_semantics(data: dict, manifest: dict | None = None) -> list[Issue]:
-    """Checks a schema cannot express: references between sources, labels and the policy."""
+def knowledge_semantics(data: dict, manifest: dict | None = None, path: Path | None = None) -> list[Issue]:
+    """Checks a schema cannot express: references between sources, labels and the policy, and, given
+    the path of knowledge.yaml, the ontology it points at."""
     issues: list[Issue] = []
     policy = data.get("policy") or {}
     levels = policy.get("levels") or []
@@ -242,6 +266,25 @@ def knowledge_semantics(data: dict, manifest: dict | None = None) -> list[Issue]
             re.compile((ident or {}).get("pattern", ""))
         except re.error as exc:
             issues.append(Issue(f"identifiers[{i}].pattern", f"invalid regex: {exc}"))
+    if path is not None:
+        issues += _ontology_semantics(data, path)
+    return issues
+
+
+def _ontology_semantics(data: dict, path: Path) -> list[Issue]:
+    """Without an ``ontology`` key nothing is checked, so an ontology.yaml no knowledge.yaml points at
+    (another tool's vocabulary file, say) stays out of validation."""
+    opath = ontology_path(data, path)
+    if opath is None:
+        return []
+    ontology, found = load_ontology(opath)
+    name = data["ontology"]
+    issues = [Issue("ontology", ": ".join(filter(None, (name, i.path, i.message))), i.severity) for i in found]
+    kinds = known_kinds(ontology)
+    for i, ident in enumerate(data.get("identifiers") or []):
+        kind = ident.get("kind") if isinstance(ident, dict) else None
+        if isinstance(kind, str) and kind not in kinds:
+            issues.append(Issue(f"identifiers[{i}].kind", f"{kind!r} is neither a hub kind nor declared in {name}"))
     return issues
 
 

@@ -7,9 +7,18 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from evo_agents.harness import Harness, find_manifest, load_manifest, load_yaml, registered_harnesses
+from evo_agents.harness import (
+    Harness,
+    find_manifest,
+    load_manifest,
+    load_ontology,
+    load_yaml,
+    ontology_path,
+    registered_harnesses,
+)
 from evo_agents.kg.corpus import Corpus, kg_home
 from evo_agents.kg.policy import Policy
+from evo_agents.schema import errors
 
 
 class ProjectError(RuntimeError):
@@ -27,6 +36,18 @@ class Project:
     @property
     def policy(self) -> Policy:
         return Policy(self.name, self.knowledge)
+
+    @property
+    def ontology(self) -> dict | None:
+        """The ontology extension knowledge.yaml points at, or None when it declares none."""
+        path = ontology_path(self.knowledge, self.knowledge_path)
+        if path is None:
+            return None
+        data, issues = load_ontology(path)
+        problems = [": ".join(filter(None, (i.path, i.message))) for i in errors(issues)]
+        if problems:
+            raise ProjectError(f"ontology {path}: " + "; ".join(problems))
+        return data
 
     @property
     def root(self) -> Path:
