@@ -14,6 +14,7 @@ HUB_KINDS = {
     "Document": "a document item: markdown file, wiki page, docx",
     "Section": "a heading-delimited part of a document",
     "File": "a file item that is not prose: code, YAML, config",
+    "Directory": "a directory of a repo that holds at least one item",
     "Repo": "a repository declared in harness.yaml",
     "Symbol": "a class, function or method",
     "Commit": "a commit, referenced as repo@sha",

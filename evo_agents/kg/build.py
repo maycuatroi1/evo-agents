@@ -22,6 +22,7 @@ from evo_agents.kg.memo import Memo
 from evo_agents.kg.pipeline.binding import BINDING_VERSION, binding_item
 from evo_agents.kg.pipeline.link import LINK_VERSION, build_index, index_digest, link_item
 from evo_agents.kg.pipeline.stages import (
+    DIRECTORY_CONNECTORS,
     MAP_VERSION,
     STRUCTURE_VERSION,
     code_extractor,
@@ -150,11 +151,12 @@ def run_pipeline(project: Project, corpus: Corpus, memo: Memo) -> tuple[Graph, d
         r = rec.record
         src = sources[rec.source]
         backend = (src.get("code") or {}).get("backend", "auto")
+        dirs = src.get("connector") in DIRECTORY_CONNECTORS
         mapped, _ = memo.run(
             "map",
             MAP_VERSION,
-            {"item": rec.item_id, "hash": r["hash"], "rev": r.get("rev", ""), "source": rec.source},
-            lambda r=r, s=rec.source: map_item(r, s),
+            {"item": rec.item_id, "hash": r["hash"], "rev": r.get("rev", ""), "source": rec.source, "dirs": dirs},
+            lambda r=r, s=rec.source, d=dirs: map_item(r, s, d),
         )
         if r["kind"] in STRUCTURED_KINDS:
             structured, shash = memo.run(
