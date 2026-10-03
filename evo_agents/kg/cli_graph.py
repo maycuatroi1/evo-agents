@@ -48,10 +48,8 @@ def cmd_query(args) -> int:
         except json.JSONDecodeError:
             params[key] = value
     if args.text is not None:
-        params.setdefault(
-            {"kg_search": "query", "kg_context": "query", "kg_node": "id", "kg_more": "handle"}.get(args.tool, "query"),
-            args.text,
-        )
+        first = {"kg_node": "id", "kg_impact": "id", "kg_path": "from", "kg_more": "handle"}
+        params.setdefault(first.get(args.tool, "query"), args.text)
     result = session.call(args.tool, params)
     if args.json:
         print(json.dumps(result.get("structuredContent", result), ensure_ascii=False, indent=2))
@@ -74,8 +72,10 @@ def register(ksub, with_project) -> None:
     build.set_defaults(func=cmd_build)
 
     query = with_project(ksub.add_parser("query", help="call a kg tool from the shell"))
-    query.add_argument("tool", choices=["kg_search", "kg_context", "kg_node", "kg_status", "kg_more"])
-    query.add_argument("text", nargs="?", help="query, node id or handle")
+    query.add_argument(
+        "tool", choices=["kg_search", "kg_context", "kg_node", "kg_impact", "kg_path", "kg_status", "kg_more"]
+    )
+    query.add_argument("text", nargs="?", help="query, node id (kg_path: from) or handle")
     query.add_argument("--arg", action="append", help="extra tool argument key=value (JSON values allowed)")
     query.add_argument("--sink", default="cli", help="sink whose clearance applies (default: cli)")
     query.set_defaults(func=cmd_query)
