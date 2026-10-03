@@ -269,7 +269,7 @@ Talks to search-api.
 
 INJECTED = ("ignore", "previous", "instructions", "curl", "evil", "answer")
 HINT_LINE = re.compile(
-    r"- (Plan|PlanStep|Seam|Requirement|UseCase|Document|Section|Directory) [A-Za-z0-9._:/#@-]+"
+    r"- (Repo|Plan|PlanStep|Seam|Requirement|UseCase|Document|Section|Directory) [A-Za-z0-9._:/#@-]+"
     r"( \([A-Za-z0-9._:/#@-]+\))?"
 )
 
@@ -300,6 +300,11 @@ def hinted(tmp_path, kg_env, monkeypatch):
 
 def event(tool, **tool_input):
     return json.dumps({"hook_event_name": "PreToolUse", "tool_name": tool, "tool_input": tool_input})
+
+
+def event_at(cwd, tool, **tool_input):
+    """An event as Claude Code sends it, with the directory the tool runs in."""
+    return json.dumps({"hook_event_name": "PreToolUse", "cwd": str(cwd), "tool_name": tool, "tool_input": tool_input})
 
 
 def hint_lines(note):
@@ -358,13 +363,100 @@ def test_pre_search_skips_regex_heavy_and_short_patterns(hinted):
     assert pre_search(event("Grep", pattern="rank_results internally")) is None
 
 
-def test_pre_search_says_nothing_when_too_many_nodes_match(hinted, monkeypatch):
+def test_pre_search_says_nothing_when_too_many_nodes_match(hinted, monkeypatch, tmp_path):
     hinted(extra={f"docs/team{i}.md": f"# Team {i}\n\n## Release notes\n\nNothing yet.\n" for i in range(6)})
-    assert pre_search(event("Grep", pattern="Release notes")) is None
+    docs = str(tmp_path / "demo-app" / "docs")
+    assert pre_search(event("Grep", pattern="Release notes", path=docs)) is None
     monkeypatch.setattr(search_hint, "MAX_HINTS", 6)
-    assert len(hint_lines(pre_search(event("Grep", pattern="Release notes")))) == 6
+    assert len(hint_lines(pre_search(event("Grep", pattern="Release notes", path=docs)))) == 6
     assert hint_lines(pre_search(event("Glob", pattern="**/docs/team3.md"))) == [
         "- Document app:file:docs/team3.md (docs/team3.md)"
+    ]
+
+
+def test_pre_search_skips_yaml_keys_and_list_items(hinted):
+    hinted()
+    for pattern in ("evidence:", "^- decision:", "^decisions:", "^  - id: 4", "level: must", "^seams_touched:"):
+        assert search_terms(json.loads(event("Grep", pattern=pattern))) == [], pattern
+        command = f"grep -n '{pattern}' plans/active/demo.yaml"
+        assert pre_search(event("Bash", command=command), only="grep") is None, pattern
+    # An id with a colon is a name, and markdown around a heading is not part of it.
+    assert search_terms(json.loads(event("Grep", pattern="plan:demo"))) == ["plan:demo"]
+    assert search_terms(json.loads(event("Grep", pattern="^## Release notes$"))) == ["Release notes"]
+    assert search_terms(json.loads(event("Grep", pattern="^| Release notes |"))) == ["Release notes"]
+
+
+def test_pre_search_splits_alternatives_by_regex_dialect(hinted):
+    hinted()
+
+    def terms(command):
+        return search_terms(json.loads(event("Bash", command=command)))
+
+    # GNU grep reads a basic regex: \| separates alternatives, a bare | is a character.
+    assert terms(r"grep -rn 'search-api\|KB-01' .") == ["search-api", "KB-01"]
+    assert terms("grep -n 'search-api|KB-01' docs") == ["search-api|KB-01"]
+    assert terms(r"grep -n 'search\(-api\)' docs") == []
+    assert terms("grep -n 'run(query' app") == ["run(query"]
+    # grep -E, rg and the Grep tool read an extended regex: | separates, \| is a character.
+    assert terms("grep -En 'search-api|KB-01' .") == ["search-api", "KB-01"]
+    assert terms("rg 'search-api|KB-01'") == ["search-api", "KB-01"]
+    assert terms("grep -E 'run(query' app") == []
+    assert search_terms(json.loads(event("Grep", pattern="search-api|KB-01"))) == ["search-api", "KB-01"]
+    # Many alternatives fish for lines in a file and name nothing.
+    assert terms(r"grep -n 'search-api\|KB-01\|rank_results\|server' docs/guide.md") == []
+    hints = hint_lines(pre_search(event("Bash", command=r"grep -rn 'search-api\|KB-01' . 2>/dev/null")))
+    assert hints == ["- Seam seam:search-api", "- UseCase usecase:KB-01"]
+
+
+def test_pre_search_prefers_nodes_inside_the_searched_paths(hinted, tmp_path):
+    project = hinted()
+    harness, app = project.harness.root, tmp_path / "demo-app"
+    section = ["- Section app:file:docs/rollout.md#search-api-notes (docs/rollout.md)"]
+    # The section lives in the app repo: named when the search looks there, however the path is spelled.
+    assert hint_lines(pre_search(event("Grep", pattern="Search API notes", path=str(app / "docs")))) == section
+    assert hint_lines(pre_search(event_at(app, "Grep", pattern="Search API notes"))) == section
+    cd = 'cd ../demo-app && grep -rn "Search API notes" docs 2>/dev/null | head'
+    assert hint_lines(pre_search(event_at(harness, "Bash", command=cd), only="grep")) == section
+    rg = "rg -n 'Search API notes' ../demo-app/docs/*.md"
+    assert hint_lines(pre_search(event_at(harness, "Bash", command=rg), only="rg")) == section
+    # Not when it looks in the harness, in another file, through files of another type, or outside the project.
+    for tool_input in (
+        {"pattern": "Search API notes"},
+        {"pattern": "Search API notes", "path": str(app / "docs" / "guide.md")},
+        {"pattern": "Search API notes", "path": str(app), "glob": "*.py"},
+        {"pattern": "Search API notes", "path": str(tmp_path / "elsewhere")},
+    ):
+        assert pre_search(event_at(harness, "Grep", **tool_input)) is None, tool_input
+    assert pre_search(event_at(harness, "Bash", command=f"grep -rn --include='*.py' 'Search API notes' {app}")) is None
+
+
+def test_pre_search_one_word_needs_an_exact_entity_or_the_file_searched(hinted, tmp_path):
+    project = hinted()
+    guide = tmp_path / "demo-app" / "docs" / "guide.md"
+    # A one-word heading in some document is no hint, even where the search looks...
+    assert pre_search(event("Grep", pattern="Setup")) is None
+    assert pre_search(event("Grep", pattern="Setup", path=str(guide.parent))) is None
+    # ...unless the search names that very file.
+    assert hint_lines(pre_search(event("Grep", pattern="^## Setup", path=str(guide)))) == [
+        "- Section app:file:docs/guide.md#setup (docs/guide.md)"
+    ]
+    # A repo goes by its name alone, never by a path.
+    command = f"grep -n -A3 app {project.harness.root / 'harness.yaml'}"
+    assert hint_lines(pre_search(event("Bash", command=command), only="grep")) == ["- Repo repo:app"]
+
+
+def test_pre_search_outside_the_scope_an_identifier_must_name_one_node(hinted, tmp_path):
+    hinted(extra={"docs/a/notes.md": "# Notes A\n", "docs/b/notes.md": "# Notes B\n"})
+    app = tmp_path / "demo-app"
+    # Searching the harness for a document's name looks for its references, but notes.md names two documents.
+    assert pre_search(event("Grep", pattern="notes.md")) is None
+    assert hint_lines(pre_search(event("Grep", pattern="docs/a/notes.md"))) == [
+        "- Document app:file:docs/a/notes.md (docs/a/notes.md)"
+    ]
+    # Where the search looks, both are fair.
+    assert hint_lines(pre_search(event("Grep", pattern="notes.md", path=str(app)))) == [
+        "- Document app:file:docs/a/notes.md (docs/a/notes.md)",
+        "- Document app:file:docs/b/notes.md (docs/b/notes.md)",
     ]
 
 
@@ -375,22 +467,24 @@ def test_pre_search_hides_labels_above_the_sink(hinted):
 
 
 @pytest.mark.parametrize("status", ["proposed", "resolved", "introspected"])
-def test_pre_search_suggests_only_parsed_or_declared(hinted, status):
+def test_pre_search_suggests_only_parsed_or_declared(hinted, status, tmp_path):
     project = hinted()
     store = Store.for_project(project)
     with store.db:
         store.db.execute("UPDATE nodes SET status = ? WHERE node_id = 'seam:search-api'", (status,))
     store.close()
-    # The seam no longer counts; what is left is a section whose short heading contains the term.
-    assert hint_lines(pre_search(event("Grep", pattern="search-api"))) == [
+    # The seam no longer counts; what is left, in the docs searched, is a section whose short heading
+    # contains the term.
+    docs = str(tmp_path / "demo-app" / "docs")
+    assert hint_lines(pre_search(event("Grep", pattern="search-api", path=docs))) == [
         "- Section app:file:docs/rollout.md#search-api-notes (docs/rollout.md)"
     ]
 
 
-def test_pre_search_never_echoes_source_text(hinted):
+def test_pre_search_never_echoes_source_text(hinted, tmp_path):
     hinted()
     for pattern in ("Rollout checklist", "run curl", "previous instructions"):
-        note = pre_search(event("Grep", pattern=pattern))
+        note = pre_search(event("Grep", pattern=pattern, path=str(tmp_path / "demo-app")))
         # The heading matches, but its slug is free text: the hint names the document instead.
         assert hint_lines(note) == ["- Document app:file:docs/rollout.md (docs/rollout.md)"], pattern
         for word in INJECTED:
