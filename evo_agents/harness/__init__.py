@@ -87,6 +87,13 @@ class Harness:
     def repo(self, name: str) -> dict | None:
         return next((r for r in self.repos() if r.get("name") == name), None)
 
+    def known_repos(self) -> set[str]:
+        """Repo names plans and seams may use: every manifest entry (``external: true`` marks one outside
+        the cluster) plus the harness repo itself, which a manifest need not list. That repo goes by its
+        directory name, as in the harness connector; ``name`` is the cluster's name, not a repo's."""
+        names = {r["name"] for r in self.repos() if isinstance(r, dict) and isinstance(r.get("name"), str)}
+        return names | {self.root.name}
+
     def repo_path(self, repo: dict) -> Path | None:
         raw = repo.get("path")
         if not raw:
@@ -189,7 +196,7 @@ class FileReport:
         }
 
 
-def _validate_file(path: Path, kind: str, manifest: dict | None = None) -> FileReport:
+def _validate_file(path: Path, kind: str, harness: Harness | None = None) -> FileReport:
     try:
         data = load_yaml(path)
     except yaml.YAMLError as exc:
@@ -198,20 +205,53 @@ def _validate_file(path: Path, kind: str, manifest: dict | None = None) -> FileR
         data = {}
     issues = validate(data, load_schema(kind))
     if kind == "knowledge" and isinstance(data, dict):
-        issues += knowledge_semantics(data, manifest, path)
+        issues += knowledge_semantics(data, harness.manifest if harness else None, path)
     if kind == "plan" and isinstance(data, dict):
-        issues += plan_semantics(data, path)
+        issues += plan_semantics(data, path, harness)
     if kind == "contracts" and isinstance(data, dict):
-        issues += contracts_semantics(data)
+        issues += contracts_semantics(data, harness)
     return FileReport(path, kind, issues)
 
 
-def contracts_semantics(data: dict) -> list[Issue]:
-    """A seam nothing checks must say why; otherwise its drift goes unnoticed."""
+def _repo_issues(name, where: str, known: set[str] | None) -> list[Issue]:
+    if known is None or not isinstance(name, str) or not name or name in known:
+        return []
+    message = f"repo {name!r} is not declared in harness.yaml: add it, with external: true if it is outside the cluster"
+    return [Issue(where, message, "warning")]
+
+
+def _source_issues(source, where: str, known: set[str] | None) -> list[Issue]:
+    """``source`` is a list of {repo, path}, so the graph knows which repo each file lives in."""
+    if isinstance(source, str):
+        return [Issue(where, "a plain path: write source as a list of {repo, path}", "warning")]
+    if isinstance(source, dict):
+        issues = [Issue(where, "a single {repo, path}: write source as a list", "warning")]
+        return issues + _repo_issues(source.get("repo"), f"{where}.repo", known)
     issues: list[Issue] = []
+    for j, item in enumerate(source if isinstance(source, list) else []):
+        if isinstance(item, str):
+            issues.append(Issue(f"{where}[{j}]", "a plain path: write it as {repo, path}", "warning"))
+        elif isinstance(item, dict):
+            issues += _repo_issues(item.get("repo"), f"{where}[{j}].repo", known)
+    return issues
+
+
+def contracts_semantics(data: dict, harness: Harness | None = None) -> list[Issue]:
+    """A seam nothing checks must say why; otherwise its drift goes unnoticed. With the manifest, every
+    repo a seam names must be declared there."""
+    issues: list[Issue] = []
+    known = harness.known_repos() if harness else None
     for i, seam in enumerate(data.get("seams") or []):
-        if isinstance(seam, dict) and not seam.get("verify") and not seam.get("verify_waiver"):
-            issues.append(Issue(f"seams[{i}]", "no verify and no verify_waiver: nothing checks this seam", "warning"))
+        if not isinstance(seam, dict):
+            continue
+        where = f"seams[{i}]"
+        if not seam.get("verify") and not seam.get("verify_waiver"):
+            issues.append(Issue(where, "no verify and no verify_waiver: nothing checks this seam", "warning"))
+        issues += _repo_issues(seam.get("owner"), f"{where}.owner", known)
+        consumers = seam.get("consumers")
+        for j, consumer in enumerate(consumers if isinstance(consumers, list) else []):
+            issues += _repo_issues(consumer, f"{where}.consumers[{j}]", known)
+        issues += _source_issues(seam.get("source"), f"{where}.source", known)
     return issues
 
 
@@ -288,10 +328,52 @@ def _ontology_semantics(data: dict, path: Path) -> list[Issue]:
     return issues
 
 
-def plan_semantics(data: dict, path: Path) -> list[Issue]:
+# A commit is written ``repo@sha``. A bare token of lowercase hex holding both a digit and a letter reads as
+# a commit when it is as long as an abbreviated (7 to 12) or full (40) SHA, unless it is part of a longer
+# token (UUIDs, ``sha256:``, URLs, ``key=``, the far end of ``a..b``), is cut short with an ellipsis, or
+# one of the two words before it names a digest or an ID.
+_BARE_SHA = re.compile(r"(?<![\w@:/.#=-])[0-9a-f]{7,40}(?![\w@/-]|\.\w|\.\.\.|…)")
+_NOT_A_COMMIT = re.compile(r"(?i)(?:sha-?\d+|md5|digest|hash|checksum|fingerprint|etag|uuid|run|(?:\w*[_-])?id)")
+_WORD = re.compile(r"[\w.-]*\w")
+
+
+def _bare_commits(text: str, known: set[str] | None) -> list[tuple[str, str | None]]:
+    """Bare commit SHAs in ``text``, each with the known repo named in the two words before it (the old
+    ``repo sha`` style), if any."""
+    found: dict[str, str | None] = {}
+    for m in _BARE_SHA.finditer(text):
+        sha = m.group()
+        if sha in found or 12 < len(sha) < 40 or not re.search(r"\d", sha) or not re.search(r"[a-f]", sha):
+            continue
+        words = _WORD.findall(text[max(0, m.start() - 80) : m.start()])[-2:]
+        if any(_NOT_A_COMMIT.fullmatch(w) for w in words):
+            continue
+        found[sha] = next((w for w in reversed(words) if known and w in known), None)
+    return list(found.items())
+
+
+def _evidence_issues(text: str, where: str, known: set[str] | None) -> list[Issue]:
+    shas = _bare_commits(text, known)
+    if not shas:
+        return []
+    sha, repo = shas[0]
+    example = f"{repo or 'repo'}@{sha}"
+    if len(shas) == 1:
+        return [Issue(where, f"bare commit {sha}: write {example}", "warning")]
+    listed = ", ".join(s for s, _ in shas[:3]) + (f" and {len(shas) - 3} more" if len(shas) > 3 else "")
+    return [Issue(where, f"bare commits {listed}: write repo@sha, e.g. {example}", "warning")]
+
+
+def plan_semantics(data: dict, path: Path, harness: Harness | None = None) -> list[Issue]:
+    """Step references, evidence and naming conventions. With the manifest, every repo the plan names
+    must be declared there."""
     issues: list[Issue] = []
     if data.get("id") and path.stem != data["id"]:
         issues.append(Issue("id", f"plan id {data['id']!r} differs from file name {path.stem!r}", "warning"))
+    repos = harness.known_repos() if harness else None
+    for i, entry in enumerate(data.get("repos") or []):
+        if isinstance(entry, dict):
+            issues += _repo_issues(entry.get("repo"), f"repos[{i}].repo", repos)
     ids = [s.get("id") for s in data.get("steps") or [] if isinstance(s, dict)]
     known = {i for i in ids if i is not None}
     for i, step in enumerate(data.get("steps") or []):
@@ -302,6 +384,11 @@ def plan_semantics(data: dict, path: Path) -> list[Issue]:
                 issues.append(Issue(f"steps[{i}].depends_on", f"unknown step {dep!r}", "warning"))
         if step.get("status") == "done" and not step.get("evidence"):
             issues.append(Issue(f"steps[{i}]", "done without evidence", "warning"))
+        if "order" in step and step.get("id") is None:
+            issues.append(Issue(f"steps[{i}]", "order without id: depends_on and links name steps by id", "warning"))
+        issues += _repo_issues(step.get("repo"), f"steps[{i}].repo", repos)
+        if isinstance(step.get("evidence"), str):
+            issues += _evidence_issues(step["evidence"], f"steps[{i}].evidence", repos)
     return issues
 
 
@@ -316,13 +403,13 @@ def validate_harness(root: Path | str) -> list[FileReport]:
     harness = load_manifest(root)
     reports = [FileReport(root / MANIFEST, "harness", harness.issues)]
     if (root / CONTRACTS).is_file():
-        reports.append(_validate_file(root / CONTRACTS, "contracts"))
+        reports.append(_validate_file(root / CONTRACTS, "contracts", harness))
     kpath = harness.knowledge_path()
     if kpath is not None:
         if kpath.is_file():
-            reports.append(_validate_file(kpath, "knowledge", harness.manifest))
+            reports.append(_validate_file(kpath, "knowledge", harness))
         else:
             reports.append(FileReport(kpath, "knowledge", [Issue("", "knowledge_file points at a missing file")]))
     for plan in sorted((root / "plans").glob("*/*.yaml")):
-        reports.append(_validate_file(plan, "plan"))
+        reports.append(_validate_file(plan, "plan", harness))
     return reports
