@@ -7,7 +7,7 @@ import json
 import sys
 from pathlib import Path
 
-from evo_agents.kg.project import ProjectError, resolve_project
+from evo_agents.kg.project import ProjectError, bind, read_bindings, resolve_project, unbind
 
 
 def _print_json(data) -> None:
@@ -66,6 +66,46 @@ def cmd_status(args) -> int:
     else:
         print(render_status(status, brief=args.brief))
     return 0 if status["ok"] else 1
+
+
+def cmd_bind(args) -> int:
+    """Bind a directory to one project explicitly, list the bindings, or remove one. Bindings live in
+    bound.json beside the projects.json index and win over the harness and the index."""
+    if args.list or args.remove:
+        if args.project or args.directory or (args.list and args.remove):
+            print("error: --list and --remove DIR take no other arguments", file=sys.stderr)
+            return 2
+    if args.list:
+        bindings = read_bindings()
+        if args.json:
+            _print_json(bindings)
+        elif not bindings:
+            print("no bindings")
+        else:
+            for directory, entry in sorted(bindings.items()):
+                print(f"{directory}  ->  {entry.get('project')}  ({entry.get('harness_root')})")
+        return 0
+    if args.remove:
+        removed = unbind(args.remove)
+        if removed is None:
+            print(f"error: {args.remove} has no binding (see evo-agents kg bind --list)", file=sys.stderr)
+            return 1
+        if args.json:
+            _print_json({"removed": removed})
+        else:
+            print(f"unbound {removed}")
+        return 0
+    directory = Path(args.directory or Path.cwd()).expanduser().resolve()
+    try:
+        project = bind(directory, args.project)
+    except ProjectError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    if args.json:
+        _print_json({"directory": str(directory), "project": project.name, "harness_root": str(project.harness.root)})
+    else:
+        print(f"bound {directory}  ->  {project.name}  ({project.harness.root})")
+    return 0
 
 
 def cmd_hook_session_start(args) -> int:
@@ -148,6 +188,16 @@ def register(sub) -> None:
     status = with_project(ksub.add_parser("status", help="coverage, freshness and held deletions per source"))
     status.add_argument("--brief", action="store_true", help="a few lines, for session hooks")
     status.set_defaults(func=cmd_status)
+
+    binding = ksub.add_parser("bind", help="bind a directory and everything below it to one project")
+    binding.add_argument("directory", nargs="?", help="directory to bind (default: the cwd)")
+    binding.add_argument(
+        "--project", help="project name or harness path (default: the project the directory resolves to now)"
+    )
+    binding.add_argument("--list", action="store_true", help="print every binding")
+    binding.add_argument("--remove", metavar="DIR", help="delete the binding of DIR")
+    binding.add_argument("--json", action="store_true", help="machine-readable output")
+    binding.set_defaults(func=cmd_bind)
 
     connector = ksub.add_parser("connector", help="connector tooling")
     csub = connector.add_subparsers(dest="connector_command", required=True)
