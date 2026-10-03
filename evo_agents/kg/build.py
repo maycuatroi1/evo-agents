@@ -28,7 +28,8 @@ from evo_agents.kg.pipeline.stages import (
     structure_item,
 )
 from evo_agents.kg.policy import Label, Policy, join_all, meet_all
-from evo_agents.kg.project import Project
+from evo_agents.kg.project import Project, ProjectError
+from evo_agents.kg.schema import known_kinds
 from evo_agents.kg.store import Graph, Store, edge_id
 
 STATUS_RANK = {"declared": 5, "parsed": 4, "introspected": 3, "resolved": 2, "proposed": 1}
@@ -95,6 +96,12 @@ class _UnionFind:
 
 def run_pipeline(project: Project, corpus: Corpus, memo: Memo) -> tuple[Graph, dict, list[str], list[str]]:
     policy: Policy = project.policy
+    try:
+        ontology = project.ontology
+    except ProjectError as exc:
+        return Graph(), {}, [str(exc)], []
+    # Without an ontology key every kind passes, as before ontologies were checked.
+    kinds = known_kinds(ontology) if ontology is not None else None
     sources = {s["id"]: s for s in project.sources()}
     identifiers = list(project.knowledge.get("identifiers") or [])
     records = [r for r in corpus.items() if r.source in sources]
@@ -186,11 +193,18 @@ def run_pipeline(project: Project, corpus: Corpus, memo: Memo) -> tuple[Graph, d
     issues: list[str] = []
     stats: dict[str, dict] = defaultdict(lambda: {"items": 0, "issues": 0, **dict.fromkeys(STAT_KEYS, 0)})
     samples: dict[str, dict[str, list]] = defaultdict(lambda: {"ambiguous": [], "dangling": []})
+    rejected: set[tuple[str, str]] = set()
     for rec in records:
         stats[rec.source]["items"] += 1
         for f in first[rec.item_id] + second[rec.item_id]:
             t = f["t"]
-            if t == "node":
+            if t == "node" and kinds is not None and f["kind"] not in kinds:
+                if (rec.item_id, f["kind"]) not in rejected:
+                    rejected.add((rec.item_id, f["kind"]))
+                    errors.append(
+                        f"{rec.item_id}: node {f['id']} has kind {f['kind']!r}, neither a hub kind nor in the ontology"
+                    )
+            elif t == "node":
                 if f["id"] not in nodes:
                     nodes[f["id"]] = {k: f[k] for k in ("kind", "name", "props", "status", "conf")}
                 else:
