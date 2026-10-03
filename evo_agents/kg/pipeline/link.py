@@ -3,7 +3,9 @@
 A mention is ``parsed`` when it is fully qualified (a URL of a known item, ``repo:path``,
 ``path::Symbol``, ``plan#step``, a registered repo, seam or plan name) and ``resolved`` when it is bare
 but matches exactly one target (a path or symbol name unique across the project). Ambiguous mentions
-link nothing; they are counted, so coverage shows how much prose is still unlinked.
+link nothing; they are counted, so coverage shows how much prose is still unlinked. A path that names a
+directory of a repo links to its Directory node, always ``parsed``: the directory exists exactly because
+items of that repo sit under it.
 """
 
 from __future__ import annotations
@@ -17,7 +19,7 @@ from evo_agents.kg.pipeline.stages import edge, frag_unit, item_unit, node, norm
 from evo_agents.kg.protocol import canonical_json, sha256
 from evo_agents.kg.schema import node_kind_for_item
 
-LINK_VERSION = "5"
+LINK_VERSION = "6"
 
 URL = re.compile(r"https?://[^\s<>()\[\]{}`'\"|]+")
 BACKTICK = re.compile(r"`([^`\n]{2,200})`")
@@ -42,6 +44,7 @@ def build_index(facts_by_item: dict[str, list[dict]], identifiers: list[dict]) -
         "step": {},
         "url": {},
         "path": defaultdict(list),
+        "dir": defaultdict(list),
         "module": defaultdict(list),
         "symbol": defaultdict(list),
         "symname": defaultdict(list),
@@ -56,6 +59,10 @@ def build_index(facts_by_item: dict[str, list[dict]], identifiers: list[dict]) -
                     index[kind].setdefault(f["key"], f["node"])
                 elif kind == "path":
                     index["path"][f["key"]].append({"node": f["node"], "repo": f.get("repo"), "source": f["source"]})
+                elif kind == "dir":  # every item under a directory names it: keep one entry per node
+                    entry = {"node": f["node"], "repo": f.get("repo")}
+                    if entry not in index["dir"][f["key"]]:
+                        index["dir"][f["key"]].append(entry)
                 elif kind == "module":
                     index["module"][f["key"]].append({"node": f["node"], "source": f["source"]})
                 elif kind == "symbol":
@@ -159,25 +166,36 @@ class Linker:
 
     # -- resolution -----------------------------------------------------------------------------
 
+    def _at(self, key: str, as_dir: bool, keep=None) -> tuple[list[dict], bool]:
+        """Index entries at one path that ``keep`` accepts, and whether they are directories: files when
+        any is accepted, else directories. A path written with a trailing slash only names directories."""
+        for table in ("dir",) if as_dir else ("path", "dir"):
+            entries = [e for e in self.index[table].get(key, []) if keep is None or keep(e)]
+            if entries:
+                return entries, table == "dir"
+        return [], False
+
     def path_target(self, path: str, repo: str | None) -> tuple[str | None, str]:
+        as_dir = path.endswith("/")
         if not repo and self.base_dir and not path.startswith("/"):
             relative = posixpath.normpath(posixpath.join(self.base_dir, path))
-            near = [e for e in self.index["path"].get(relative, []) if e.get("repo") == self.repo]
+            near, _ = self._at(relative, as_dir, lambda e: e.get("repo") == self.repo)
             if len(near) == 1:
                 return near[0]["node"], "parsed"
-        entries = self.index["path"].get(posixpath.normpath(path).lstrip("/"), [])
+        key = posixpath.normpath(path).lstrip("/")
         if repo:
-            scoped = [e for e in entries if e.get("repo") == repo]
+            scoped, _ = self._at(key, as_dir, lambda e: e.get("repo") == repo)
             if scoped:
                 return _unique(scoped), "parsed"
             return None, "dangling"
+        same, is_dir = self._at(key, as_dir, lambda e: self.repo and e.get("repo") == self.repo)
+        if len(same) == 1:
+            return same[0]["node"], "parsed" if is_dir else "resolved"
+        entries, is_dir = self._at(key, as_dir)
         if not entries:
             return None, "dangling"
-        same = [e for e in entries if self.repo and e.get("repo") == self.repo]
-        if len(same) == 1:
-            return same[0]["node"], "resolved"
         target = _unique(entries)
-        return (target, "resolved") if target else (None, "ambiguous")
+        return (target, "parsed" if is_dir else "resolved") if target else (None, "ambiguous")
 
     def resolve_ref(self, f: dict) -> None:
         target, ttype = f["target"], f["target"]["type"]
