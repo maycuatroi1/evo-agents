@@ -13,6 +13,7 @@ Outputs are lists of facts (JSON-serializable dicts, memoized):
 An element is alive while one of its derivations has every unit and every needed element alive.
 
 Symbol nodes carry ``props.key = [repo, path, qualname]`` (see ``symbol_key``), unique in the store.
+Directory nodes are ``dir:<repo>:<path>``: one per directory of a repo, whichever source read it.
 """
 
 from __future__ import annotations
@@ -25,8 +26,10 @@ import yaml
 from evo_agents.kg.extract import python as py_extract
 from evo_agents.kg.schema import node_kind_for_item
 
-MAP_VERSION = "1"
+MAP_VERSION = "2"
 STRUCTURE_VERSION = "3"
+# Connectors whose items are the files of a repo tree: their directories become Directory nodes.
+DIRECTORY_CONNECTORS = {"git", "harness"}
 
 
 def item_unit(item_id: str) -> str:
@@ -93,7 +96,27 @@ def normalize_url(url: str) -> str:
 # map
 
 
-def map_item(record: dict, source_id: str) -> list[dict]:
+def directory_id(repo: str, path: str) -> str:
+    return f"dir:{repo}:{path}"
+
+
+def _directories(item_id: str, repo: str, path: str, unit: str) -> list[dict]:
+    """A Directory for every ancestor of one file below the repo root (the root is its Source), each
+    ``child_of`` the next. Every item under a directory derives it from its own unit, so assembly ORs
+    those derivations: the directory lives while any item under it does, and each item's map stays its
+    own memo entry."""
+    facts = []
+    child = item_id
+    for parent in map(str, list(PurePosixPath(path).parents)[:-1]):
+        did = directory_id(repo, parent)
+        facts.append(node(did, "Directory", f"{parent}/", [unit], props={"path": parent, "repo": repo}))
+        facts.append(edge(child, "child_of", did, [unit]))
+        facts.append({"t": "ident", "type": "dir", "key": parent, "repo": repo, "node": did})
+        child = did
+    return facts
+
+
+def map_item(record: dict, source_id: str, directories: bool = False) -> list[dict]:
     item_id = record["id"]
     unit = item_unit(item_id)
     kind = node_kind_for_item(record["kind"])
@@ -129,6 +152,8 @@ def map_item(record: dict, source_id: str) -> list[dict]:
         module = py_extract.module_name(extra["path"])
         if module:
             facts.append({"t": "ident", "type": "module", "key": module, "source": source_id, "node": item_id})
+        if directories:
+            facts += _directories(item_id, extra.get("repo") or source_id, extra["path"], unit)
     facts.append({"t": "ident", "type": "id", "key": item_id, "node": item_id})
     if kind == "Document":
         for frag in record.get("fragments", []):
