@@ -2,19 +2,30 @@
 
 from __future__ import annotations
 
+import datetime as dt
 import json
+import re
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from evo_agents.kg.corpus import Corpus, LogWriter
-from evo_agents.kg.ids import utc_now, uuid7
-from evo_agents.kg.project import Project, remember
+from evo_agents.kg.corpus import Corpus, LogWriter, kg_home
+from evo_agents.kg.ids import parse_utc, utc_now, uuid7
+from evo_agents.kg.project import Project, ProjectError, load_project_at, read_index, remember
 from evo_agents.kg.protocol import StreamChecker
 from evo_agents.kg.protocol.runner import ConnectorContext, ConnectorError, ConnectorRun, credential_env
 
+if TYPE_CHECKING:
+    from evo_agents.kg.build import BuildReport
+
 DEFAULT_MAX_REMOVAL_RATIO = 0.3
 DEFAULT_MIN_SCOPE = 10  # the ratio guard only applies once a scope holds this many items
+REFRESH_RE = re.compile(r"([0-9]+)([smhd])")
+REFRESH_UNITS = {"s": 1, "m": 60, "h": 3600, "d": 86400}
+# A scheduled run starts about one interval after the last one did, but that run finished later than it
+# started. Without this slack an hourly schedule would sync a 1h source only every other hour.
+DUE_SLACK_SECONDS = 300
 
 
 @dataclass
@@ -245,3 +256,111 @@ def sync_project(
 
 def log_dir(project: Project) -> Path:
     return project.root / "log"
+
+
+# -- refresh intervals: kg sync --due [--all] ---------------------------------------------------------
+
+
+def parse_refresh(value) -> int:
+    """A source's ``refresh`` in seconds: a positive number and a unit s, m, h or d (``30m``, ``1h``, ``1d``)."""
+    match = REFRESH_RE.fullmatch(value) if isinstance(value, str) else None
+    if not match or int(match.group(1)) == 0:
+        raise ValueError(f"refresh {value!r} is not a positive number followed by s, m, h or d, like 30m or 6h")
+    return int(match.group(1)) * REFRESH_UNITS[match.group(2)]
+
+
+def due_sources(project: Project, corpus: Corpus | None = None, now: dt.datetime | None = None) -> list[str]:
+    """Sources that declare ``refresh`` and either never had an ok run or whose last ok run finished at least
+    ``refresh`` ago, less a slack of DUE_SLACK_SECONDS (at most a tenth of the interval). A source without
+    ``refresh`` is never due; a failed run does not reset the clock."""
+    corpus = corpus or project.corpus()
+    now = now or dt.datetime.now(dt.timezone.utc)
+    due = []
+    for src in project.sources():
+        if src.get("refresh") is None:
+            continue
+        try:
+            interval = parse_refresh(src["refresh"])
+        except ValueError as exc:
+            raise ProjectError(f"project {project.name!r}, source {src['id']!r}: {exc}") from exc
+        last = corpus.runs(src["id"], limit=1, status="ok")
+        if not last or not last[0]["finished_at"]:
+            due.append(src["id"])
+            continue
+        age = (now - parse_utc(last[0]["finished_at"])).total_seconds()
+        if age >= interval - min(DUE_SLACK_SECONDS, interval // 10):
+            due.append(src["id"])
+    return due
+
+
+@dataclass
+class ProjectSync:
+    """What ``kg sync --due`` did for one project."""
+
+    project: str
+    harness: str
+    due: list[str] = field(default_factory=list)
+    runs: list[SyncResult] = field(default_factory=list)
+    build: BuildReport | None = None
+    error: str | None = None
+
+    @property
+    def ok(self) -> bool:
+        if self.error or any(not r.ok or r.held for r in self.runs):
+            return False
+        return self.build is None or self.build.ok
+
+    def to_json(self) -> dict:
+        return {
+            "project": self.project,
+            "harness": self.harness,
+            "ok": self.ok,
+            "due": self.due,
+            "runs": [r.to_json() for r in self.runs],
+            "build": self.build.to_json() if self.build is not None else None,
+            "error": self.error,
+        }
+
+
+def sync_due(project: Project, *, build: bool = False, now: dt.datetime | None = None, **kwargs) -> ProjectSync:
+    """Sync the sources of one project that are due. With ``build``, build its graph only if one of them ran."""
+    corpus = project.corpus()
+    try:
+        due = due_sources(project, corpus, now)
+    finally:
+        corpus.close()
+    outcome = ProjectSync(project.name, str(project.harness.root), due)
+    if due:
+        outcome.runs = sync_project(project, due, **kwargs)
+        if build:
+            from evo_agents.kg.build import build_project
+
+            outcome.build = build_project(project)
+    return outcome
+
+
+def indexed_projects(home: Path | None = None) -> list[tuple[str, Path]]:
+    """Projects in projects.json whose harness root still exists, by name."""
+    found = []
+    for name, entry in sorted(read_index(home).items()):
+        root = entry.get("harness_root") if isinstance(entry, dict) else None
+        if root and Path(root).expanduser().is_dir():
+            found.append((name, Path(root).expanduser()))
+    return found
+
+
+def sync_all_due(
+    home: Path | None = None, *, build: bool = False, now: dt.datetime | None = None, **kwargs
+) -> list[ProjectSync]:
+    """``kg sync --due --all``: each indexed project in turn. A project that fails, from loading its harness
+    to building its graph, gets the error on its outcome and does not stop the others."""
+    home = home or kg_home()
+    outcomes = []
+    for name, root in indexed_projects(home):
+        try:
+            outcome = sync_due(load_project_at(root, home), build=build, now=now, **kwargs)
+        except Exception as exc:  # isolate projects from each other; the caller reports and exits non-zero
+            detail = str(exc) if isinstance(exc, ProjectError) else f"{type(exc).__name__}: {exc}"
+            outcome = ProjectSync(name, str(root), error=detail)
+        outcomes.append(outcome)
+    return outcomes
