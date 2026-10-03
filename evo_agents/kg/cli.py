@@ -187,9 +187,22 @@ def cmd_schedule(args) -> int:
     return 0
 
 
+def _hook_payload() -> dict:
+    """The JSON object Claude Code writes to a hook's stdin, or {} when there is none."""
+    try:
+        if sys.stdin is None or sys.stdin.isatty():
+            return {}
+        payload = json.loads(sys.stdin.read() or "{}")
+    except (OSError, ValueError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
 def cmd_hook_session_start(args) -> int:
-    """SessionStart hook for Claude Code: a short note on the bound project. Only names and counts the
-    pipeline derived; never source text, which would reach the model with system-reminder authority."""
+    """SessionStart hook for Claude Code: a short note on the bound project, and the session label when the
+    session already read from the graph (a resumed session). Only names and counts the pipeline derived;
+    never source text, which would reach the model with system-reminder authority."""
+    from evo_agents.kg.sessions import current_session_id, describe, read_session
     from evo_agents.kg.status import project_status, render_status
 
     try:
@@ -197,8 +210,23 @@ def cmd_hook_session_start(args) -> int:
     except ProjectError:
         return 0  # not inside a project with a graph: say nothing
     note = render_status(project_status(project), brief=True)
+    session = read_session(current_session_id(_hook_payload()))
+    if session is not None:
+        note += "\n" + describe(session)
     note += "\nUse the evo-kg tools (kg_search, kg_context, kg_node) before grepping for named things."
     print(json.dumps({"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": note}}))
+    return 0
+
+
+def cmd_hook_post_tool(args) -> int:
+    """PostToolUse hook for the evo-kg tools: join the labels of the result into the session label. Prints
+    nothing to stdout and never blocks: any error becomes a note on stderr and exit code 0."""
+    from evo_agents.kg.sessions import post_tool
+
+    try:
+        post_tool(json.loads(sys.stdin.read()))
+    except Exception as exc:  # a hook must never break the session
+        print(f"evo-kg post-tool hook skipped: {type(exc).__name__}: {str(exc)[:200]}", file=sys.stderr)
     return 0
 
 
@@ -308,6 +336,7 @@ def register(sub) -> None:
     hook = ksub.add_parser("hook", help="Claude Code hook entry points")
     hsub = hook.add_subparsers(dest="hook_name", required=True)
     hsub.add_parser("session-start", help="print the SessionStart note").set_defaults(func=cmd_hook_session_start)
+    hsub.add_parser("post-tool", help="add an evo-kg result to the session label").set_defaults(func=cmd_hook_post_tool)
 
     from evo_agents.kg import cli_graph
 
