@@ -276,12 +276,19 @@ class Corpus:
         row = self.db.execute("SELECT cursor FROM cursors WHERE source = ?", (source,)).fetchone()
         return json.loads(row[0]) if row and row[0] is not None else None
 
-    def runs(self, source: str | None = None, limit: int = 20) -> list[dict]:
+    def runs(self, source: str | None = None, limit: int = 20, status: str | None = None) -> list[dict]:
+        """Recorded runs, newest first, optionally of one source and with one status (ok or failed)."""
         query = "SELECT run_id, source, connector, version, status, started_at, finished_at, detail FROM runs"
+        clauses: list[str] = []
         params: list = []
         if source:
-            query += " WHERE source = ?"
+            clauses.append("source = ?")
             params.append(source)
+        if status:
+            clauses.append("status = ?")
+            params.append(status)
+        if clauses:
+            query += " WHERE " + " AND ".join(clauses)
         query += " ORDER BY run_id DESC LIMIT ?"
         params.append(limit)
         keys = ("run_id", "source", "connector", "version", "status", "started_at", "finished_at")
