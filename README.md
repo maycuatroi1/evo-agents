@@ -119,6 +119,31 @@ starts with `uvx --from evo-ak==0.1.1 evo-agents`, which downloads and caches th
 run `uvx --offline --from evo-ak==0.1.1 evo-agents`, so they never wait on the network; they stay silent when `uvx`
 is missing or until the server has cached the package.
 
+### The team hub
+
+```sh
+evo-agents hub login --url https://hub.example.org   # once per machine; the token stays in ~/.evo/hub
+claude plugin install evo-hub@evo-agents
+```
+
+The `evo-hub` plugin registers the MCP server `evo-hub` (`evo-agents hub mcp`, which carries the session to the
+hub's `/mcp`), a `using-agent-hub` skill, and two hooks. Its tools are the seven `kg_*` tools and `memory_search`,
+`memory_get`, `memory_write`, `plan_list`, `plan_show`, `plan_step`, `skill_list` and `hub_projects`. In a harness
+whose `harness.yaml` names `hub.project`, plans live on the hub and the files under `plans/` are read-only copies:
+mark a step with `plan_step`, `evo-agents hub plan step` or `evo harness step`, never by editing the YAML.
+
+Hooks (`evo-agents hub hook session-start|stop`, same pins and `|| true` as evo-kg):
+
+- SessionStart pulls the hub's memories of the session directory into Claude Code's memory directory, writes the
+  plan copies of its harness (no commit; a copy edited by hand is left as it is and named), counts the skills
+  `evo-agents hub skills sync` would change, and prints one line: hub, project, memories pulled, skills to sync.
+- Stop pushes the memory files that changed since the last sync, so the next session on another machine has them.
+  A turn that wrote no memory sends nothing; when the hub does not answer, the files wait and a later Stop pushes
+  them (state in `~/.evo/hub/memory-state.json`).
+
+Both exit 0 whatever happens, give up after a few seconds, print at most one line without tokens or memory text, and
+send nothing when the machine is not signed in.
+
 ## Writing a connector
 
 A connector is a generator in process or any executable. It writes JSON objects, one per line:
@@ -139,7 +164,8 @@ checks protocol, determinism, replay and permutation, truncated listings, golden
 evo_agents/
   harness/    schema and loader for harness.yaml, knowledge.yaml, contracts.yaml, plans
   kg/         protocol, connectors, corpus, pipeline, store, policy, MCP server
-plugins/      Claude Code marketplace (plugin evo-kg)
+  hub/        team hub: server, client commands, MCP proxy, plugin hooks
+plugins/      Claude Code marketplace (plugins evo-kg and evo-hub)
 ```
 
 ## License

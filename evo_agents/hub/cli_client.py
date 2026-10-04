@@ -4,7 +4,7 @@ side of the hub.
 Standard library only, like ``client``; ``project register`` reads the harness with the harness loader (PyYAML, a
 core dependency). Results go to stdout; a failure is one ``error:`` line on stderr and exit status 1, and a 401
 says to run ``evo-agents hub login``. ``--json`` prints what the hub answered. No command ever prints a token.
-``hub memory`` is in ``cli_memory``, ``hub kg`` in ``kg_cli``.
+``hub memory`` is in ``cli_memory``, ``hub kg`` in ``kg_cli``, ``hub hook`` (the evo-hub plugin's hooks) in ``hooks``.
 """
 
 from __future__ import annotations
@@ -397,3 +397,7 @@ def register_client(hsub) -> None:
     from evo_agents.hub.mcp_proxy import register_mcp
 
     register_mcp(hsub)
+
+    from evo_agents.hub.hooks import register_hooks
+
+    register_hooks(hsub)
