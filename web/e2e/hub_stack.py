@@ -10,11 +10,14 @@ already signed in to github.com would be. Each Playwright context sets its own c
 parallel. Seeding goes through the real API too: POST /github/token hands out a GitHub token the fake issued to the
 hub's app, which POST /v1/auth/github trades for a machine token.
 
-The blob store is moto's S3 server in this process (``tests.hub.s3``, the one the Python tests use), on a free port
-with a bucket and key pair of its own: skills are published through the real upload, commit and publish routes, and
-a browser sent to a presigned GET downloads the bundle from it. POST /skills/bundle {name, description, files} packs
-a skill directory with ``evo_agents.hub.skills.pack`` and answers the bundle as base64 with its SHA-256, since the
-tests have no tar.gz writer of their own.
+The blob store is moto's S3 server in this process (``tests.hub.s3``, the one the Python tests use), never a real
+one: ``pg.clean_env`` drops every EVO_HUB_S3_* variable of the shell first, and the stack starts one moto server on a
+free port with a bucket and key pair of its own, which every spec shares. Skills are published through the real
+upload, commit and publish routes, and a browser sent to a presigned GET downloads the bundle from it. POST
+/skills/bundle {name, description, files} packs a skill directory with ``evo_agents.hub.skills.pack`` and answers
+the bundle as base64 with its SHA-256, since the tests have no tar.gz writer of their own. The knowledge graph tests
+push their fixture through the same store, and POST /kg/seed and /kg/build run the worker's build in this process
+(``kg_seed.py``).
 
 Environment: EVO_HUB_TEST_DSN (required, a superuser DSN), E2E_API_PORT (18324), E2E_STACK_PORT (18325),
 E2E_WEB_ORIGIN (http://localhost:3324, the hub's public URL), E2E_ADMIN_LOGIN (e2e-admin).
@@ -33,12 +36,15 @@ import tempfile
 import threading
 import time
 import urllib.request
+from contextlib import ExitStack
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import quote, unquote
 
 ROOT = Path(__file__).resolve().parents[2]  # the evo-agents checkout this web/ belongs to
 sys.path.insert(0, str(ROOT))
+
+from kg_seed import KgSeeder  # noqa: E402
 
 from tests.hub import pg  # noqa: E402
 from tests.hub.fake_github import Account, FakeGitHub, Recorded  # noqa: E402
@@ -142,7 +148,7 @@ def skill_bundle(body: dict) -> dict:
     return {"data": base64.b64encode(bundle.data).decode(), "sha256": bundle.sha256, "size": bundle.size}
 
 
-def control_server(port: int, github: BrowserGitHub, info: dict) -> ThreadingHTTPServer:
+def control_server(port: int, github: BrowserGitHub, info: dict, seeder: KgSeeder) -> ThreadingHTTPServer:
     class Handler(BaseHTTPRequestHandler):
         def _reply(self, status: int, payload: dict) -> None:
             data = json.dumps(payload).encode()
@@ -166,6 +172,11 @@ def control_server(port: int, github: BrowserGitHub, info: dict) -> ThreadingHTT
                 self._reply(200, {"token": token})
             elif self.path == "/skills/bundle":
                 self._reply(200, skill_bundle(body))
+            elif self.path in ("/kg/seed", "/kg/build"):
+                try:
+                    self._reply(200, seeder.handle(self.path, body))
+                except Exception as exc:  # the test shows what failed
+                    self._reply(500, {"error": f"{type(exc).__name__}: {exc}"})
             else:
                 self._reply(404, {"error": "not found"})
 
@@ -199,13 +210,12 @@ def main() -> int:
     log_path = STATE_DIR / "hub-serve.log"
     db = create_database(admin_dsn)
     github = BrowserGitHub()
-    store = fake_s3()
-    s3 = None
+    resources = ExitStack()  # the fake S3, closed after the API stops
     proc = None
     control = None
     try:
         github.__enter__()
-        s3 = store.__enter__()
+        s3 = resources.enter_context(fake_s3())
         env = pg.clean_env(
             PYTHONPATH=os.pathsep.join(filter(None, [str(ROOT), os.environ.get("PYTHONPATH")])),
             EVO_HUB_DSN=db.dsn,
@@ -225,7 +235,8 @@ def main() -> int:
         api_url = f"http://127.0.0.1:{api_port}"
         wait_for(f"{api_url}/v1/health/live", proc, log_path)
         info = {"api": api_url, "github": github.url, "s3": s3.endpoint, "admin": admin_login, "database": db.name}
-        control = control_server(stack_port, github, info)
+        seeder = KgSeeder(api_url, github, db.dsn, s3.config(), STATE_DIR / "kg")
+        control = control_server(stack_port, github, info, seeder)
         threading.Thread(target=control.serve_forever, daemon=True).start()
         print(
             f"hub_stack ready: api {api_url}, fake github {github.url}, fake s3 {s3.endpoint}, db {db.name}, "
@@ -249,8 +260,7 @@ def main() -> int:
                 proc.kill()
                 proc.wait()
         github.stop()
-        if s3 is not None:
-            store.__exit__(None, None, None)
+        resources.close()
         drop_database(admin_dsn, db)
         print(f"hub_stack stopped, dropped {db.name}", flush=True)
 

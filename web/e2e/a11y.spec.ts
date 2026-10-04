@@ -3,6 +3,7 @@ import type { Page } from "@playwright/test";
 import { expectNoSeriousViolations } from "./support/a11y";
 import { expect, isDeployed, type Member, test } from "./support/fixtures";
 import { ADMIN_ACCOUNT, newAccount, uniqueName } from "./support/hub";
+import { graphReady, grantOn, HUB_NODE, kgPath, nodePath, sharedKg } from "./support/kg";
 import { apiOf, memoryFile, putMemory } from "./support/memories";
 import { ACTIVE_PLAN, EVIDENCE_STEP, open, seedPlans } from "./support/plans";
 import { packSkill, publishSkill } from "./support/skills";
@@ -142,6 +143,45 @@ const PAGES: Entry[] = [
     name: "plan not found",
     open: async ({ page, me }) => {
       await open(page, `/p/${me.projects[0]}/plans/no-such-plan`);
+      await expect(page.getByTestId("state-not-found")).toBeVisible();
+    },
+  },
+  {
+    name: "knowledge graph status and search",
+    open: async ({ page, me }) => {
+      const kg = await sharedKg();
+      await grantOn(kg.project, me.login, "reader", "customer");
+      await open(page, `${kgPath(kg.project)}?q=runbook`);
+      await expect(page.getByTestId("kg-results")).toBeVisible();
+      await expect(page.getByTestId("kg-latest-build")).toBeVisible();
+    },
+  },
+  {
+    name: "knowledge graph node with its neighbourhood",
+    open: async ({ page, me }) => {
+      const kg = await sharedKg();
+      await grantOn(kg.project, me.login, "reader", "customer");
+      await open(page, nodePath(kg.project, HUB_NODE));
+      await graphReady(page);
+      await expect(page.getByTestId("kg-truncated")).toBeVisible();
+    },
+  },
+  {
+    name: "knowledge graph node on a small screen",
+    open: async ({ page, me }) => {
+      const kg = await sharedKg();
+      await grantOn(kg.project, me.login, "reader", "customer");
+      await page.setViewportSize({ width: 375, height: 812 });
+      await open(page, nodePath(kg.project, "requirement:KB-01", 1));
+      await expect(page.getByTestId("kg-neighbours")).toBeVisible();
+    },
+  },
+  {
+    name: "knowledge graph node not found",
+    open: async ({ page, me }) => {
+      const kg = await sharedKg();
+      await grantOn(kg.project, me.login, "reader", "internal");
+      await open(page, nodePath(kg.project, "deals:doc:acme-contract"));
       await expect(page.getByTestId("state-not-found")).toBeVisible();
     },
   },

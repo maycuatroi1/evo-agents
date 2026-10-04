@@ -46,7 +46,8 @@ commit the result.
 Playwright starts two servers: `e2e/hub_stack.py` (a database of its own on the test Postgres, a fake GitHub,
 moto's S3 as the blob store, `evo-agents hub serve` from this checkout) and the web's production build. Tests
 sign in through the real web flow against the fake GitHub and seed projects, grants, memories and skills through
-the API; a skill bundle is downloaded from the moto bucket the way a browser follows a presigned URL.
+the API; a skill bundle is downloaded from the moto bucket the way a browser follows a presigned URL, and the
+knowledge graph specs push a small synthetic graph and have the stack build it (`e2e/kg_seed.py`).
 
 ```sh
 pnpm exec playwright install chromium
@@ -58,8 +59,9 @@ drops it when Playwright stops. Ports default to 3324 (web), 18324 (API) and 183
 `E2E_WEB_PORT`, `E2E_API_PORT` and `E2E_STACK_PORT` to run two checkouts at once, and set
 `E2E_REUSE_SERVERS=1` to reuse servers that are already up. The API log is `e2e/.stack/hub-serve.log`.
 
-`E2E_SCREENSHOT_DIR=<dir>` turns on `e2e/screenshots.spec.ts` and `e2e/memories-skills-screenshots.spec.ts`,
-which write review screenshots of the shell, the memories and the skills pages in light and dark (and at 375 px).
+`E2E_SCREENSHOT_DIR=<dir>` turns on `e2e/screenshots.spec.ts`, `e2e/memories-skills-screenshots.spec.ts` and
+`e2e/kg-screenshots.spec.ts`, which write review screenshots of the shell, the memories, skills and knowledge graph
+pages in light and dark (the memories and skills ones also at 375 px).
 
 Specs tagged `@deployed` also run against a deployed hub. Save a signed-in session once with
 `pnpm exec playwright codegen --save-storage=e2e/.auth/hub.json https://hub.example.org` (sign in by

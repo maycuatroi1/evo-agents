@@ -874,6 +874,86 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/kg/{project}/graph": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Graph Summary
+         * @description The build the knowledge graph pages read, and how many nodes of each kind the member can see in it.
+         */
+        get: operations["graph_summary_v1_kg__project__graph_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/kg/{project}/nodes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search Nodes
+         * @description Visible nodes matching ``q``, best first, as kg_search finds them.
+         */
+        get: operations["search_nodes_v1_kg__project__nodes_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/kg/{project}/node": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Node
+         * @description One visible node, as kg_node shows it: label, properties, evidence and neighbours by edge type.
+         */
+        get: operations["show_node_v1_kg__project__node_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/kg/{project}/neighbourhood": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Neighbourhood
+         * @description The visible nodes and edges within ``hops`` steps of a node, at most ``limit`` nodes, for the graph view.
+         */
+        get: operations["show_neighbourhood_v1_kg__project__neighbourhood_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1048,6 +1128,21 @@ export interface components {
                 [key: string]: unknown;
             }[] | null;
         };
+        /** Evidence */
+        Evidence: {
+            /** Item */
+            item: string;
+            /** Anchor */
+            anchor: string | null;
+            /** Rev */
+            rev: string | null;
+            /** Span */
+            span: string | null;
+            /** Uri */
+            uri: string | null;
+            /** Source */
+            source: string | null;
+        };
         /** Found */
         Found: {
             /** Id */
@@ -1146,6 +1241,83 @@ export interface components {
              */
             max_level: string;
         };
+        /** GraphEdge */
+        GraphEdge: {
+            /** Id */
+            id: string;
+            /** Src */
+            src: string;
+            /** Rel */
+            rel: string;
+            /** Dst */
+            dst: string;
+            /** Status */
+            status: string;
+        };
+        /** GraphNode */
+        GraphNode: {
+            /** Id */
+            id: string;
+            /** Kind */
+            kind: string;
+            /** Name */
+            name: string | null;
+            /** Status */
+            status: string;
+            /** Conf */
+            conf: number | null;
+            label: components["schemas"]["NodeLabel"];
+            /**
+             * Props
+             * @description the node's properties: path, uri, source, code, line, ...
+             */
+            props: {
+                [key: string]: unknown;
+            };
+            /** Aliases */
+            aliases: string[];
+            /**
+             * Hop
+             * @description steps from the node shown, 0 for the node itself
+             */
+            hop: number;
+            /**
+             * Hub
+             * @description left unexpanded: it has more than 150 visible edges
+             */
+            hub: boolean;
+        };
+        /** GraphRef */
+        GraphRef: {
+            /** Build Id */
+            build_id: number;
+            /** Content Hash */
+            content_hash: string;
+            /** Nodes */
+            nodes: number;
+            /** Edges */
+            edges: number;
+            /**
+             * Finished At
+             * Format: date-time
+             */
+            finished_at: string;
+            /**
+             * Latest
+             * @description false when the blob store did not answer and an older cached build answered
+             */
+            latest: boolean;
+        };
+        /** GraphSummary */
+        GraphSummary: {
+            /** @description null until a build of the project succeeded */
+            graph: components["schemas"]["GraphRef"] | null;
+            /**
+             * Kinds
+             * @description visible nodes by kind, most first
+             */
+            kinds: components["schemas"]["KindCount"][];
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -1231,6 +1403,36 @@ export interface components {
             ontology?: {
                 [key: string]: unknown;
             } | null;
+        };
+        /** KgNode */
+        KgNode: {
+            /** Id */
+            id: string;
+            /** Kind */
+            kind: string;
+            /** Name */
+            name: string | null;
+            /** Status */
+            status: string;
+            /** Conf */
+            conf: number | null;
+            label: components["schemas"]["NodeLabel"];
+            /**
+             * Props
+             * @description the node's properties: path, uri, source, code, line, ...
+             */
+            props: {
+                [key: string]: unknown;
+            };
+            /** Aliases */
+            aliases: string[];
+        };
+        /** KindCount */
+        KindCount: {
+            /** Kind */
+            kind: string;
+            /** Count */
+            count: number;
         };
         /** LabelIn */
         LabelIn: {
@@ -1386,6 +1588,74 @@ export interface components {
              * @description the hashes of the request the project does not hold
              */
             missing: string[];
+        };
+        /** Neighbourhood */
+        Neighbourhood: {
+            graph: components["schemas"]["GraphRef"];
+            /**
+             * Focus
+             * @description the id of the node shown, when it was asked for by an alias
+             */
+            focus: string;
+            /** Hops */
+            hops: number;
+            /** Limit */
+            limit: number;
+            /** Nodes */
+            nodes: components["schemas"]["GraphNode"][];
+            /** Edges */
+            edges: components["schemas"]["GraphEdge"][];
+            /**
+             * Neighbours
+             * @description visible direct neighbours of the node
+             */
+            neighbours: number;
+            /**
+             * Left Out
+             * @description visible nodes within reach that the node limit left out
+             */
+            left_out: number;
+            /** Truncated */
+            truncated: boolean;
+        };
+        /** NodeDetail */
+        NodeDetail: {
+            graph: components["schemas"]["GraphRef"];
+            node: components["schemas"]["KgNode"];
+            /** Evidence */
+            evidence: components["schemas"]["Evidence"][];
+            /**
+             * Outgoing
+             * @description edges from the node, by edge type
+             */
+            outgoing: components["schemas"]["Relation"][];
+            /**
+             * Incoming
+             * @description edges to the node, by edge type
+             */
+            incoming: components["schemas"]["Relation"][];
+        };
+        /** NodeLabel */
+        NodeLabel: {
+            /** Level */
+            level: string;
+            /** Location */
+            location: string;
+            /** Integrity */
+            integrity: string;
+        };
+        /** NodeSearch */
+        NodeSearch: {
+            graph: components["schemas"]["GraphRef"] | null;
+            /** Query */
+            query: string;
+            /**
+             * Kinds
+             * @description the kinds the search was limited to; empty for all
+             */
+            kinds: string[];
+            /** Results */
+            results: components["schemas"]["KgNode"][];
         };
         /** Page */
         Page: {
@@ -1734,6 +2004,21 @@ export interface components {
             /** Repos */
             repos?: components["schemas"]["Repo"][];
             harness: components["schemas"]["Harness"];
+        };
+        /** Relation */
+        Relation: {
+            /** Rel */
+            rel: string;
+            /** Node */
+            node: string;
+            /** Kind */
+            kind: string;
+            /** Name */
+            name: string | null;
+            /** Status */
+            status: string;
+            /** Conf */
+            conf: number | null;
         };
         /** Repo */
         Repo: {
@@ -5290,6 +5575,324 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    graph_summary_v1_kg__project__graph_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GraphSummary"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    search_nodes_v1_kg__project__nodes_get: {
+        parameters: {
+            query: {
+                /** @description name, id, path, code or words */
+                q: string;
+                /** @description only nodes of these kinds */
+                kind?: string[] | null;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NodeSearch"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    show_node_v1_kg__project__node_get: {
+        parameters: {
+            query: {
+                /** @description a node id or alias */
+                id: string;
+            };
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NodeDetail"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    show_neighbourhood_v1_kg__project__neighbourhood_get: {
+        parameters: {
+            query: {
+                /** @description a node id or alias */
+                id: string;
+                hops?: number;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Neighbourhood"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
             /** @description Bad Gateway */

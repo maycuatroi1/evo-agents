@@ -5,6 +5,7 @@ import {
   LayoutDashboard,
   ListChecks,
   type LucideIcon,
+  Network,
   NotebookPen,
   Puzzle,
   ShieldCheck,
@@ -22,6 +23,7 @@ export type NavLabel =
   | "plans"
   | "memories"
   | "skills"
+  | "kg"
   | "myMemories"
   | "globalSkills";
 
@@ -44,6 +46,7 @@ export const PROJECT_NAV: readonly ProjectNavItem[] = [
   { label: "plans", icon: ListChecks, segment: "plans" },
   { label: "memories", icon: Brain, segment: "memories" },
   { label: "skills", icon: Puzzle, segment: "skills" },
+  { label: "kg", icon: Network, segment: "kg" },
 ];
 
 export const HUB_NAV: readonly HubNavItem[] = [
