@@ -14,7 +14,9 @@ block style would change a value, so a copy always holds exactly the plan it cla
 ``export`` writes the copy of every plan of a project the caller sees, each file through a temporary file renamed
 over it, removes the copy left in the other area when a plan moved (completed), and leaves every other file alone.
 With ``commit`` it commits exactly the copies that differ from HEAD, so other changes in the checkout, staged or
-not, stay out of the commit. Standard library and PyYAML only.
+not, stay out of the commit. With ``keep_edited``, as the SessionStart hook of the evo-hub plugin runs it, a file
+that is not a copy the hub wrote as it stands (edited by hand, or never a copy) is left as it is and reported, so an
+export nobody asked for never overwrites someone's work. Standard library and PyYAML only.
 """
 
 from __future__ import annotations
@@ -247,7 +249,7 @@ class ExportResult:
 
     @property
     def changed(self) -> list[str]:
-        return [p["path"] for p in self.plans if p["status"] != "unchanged"] + self.removed
+        return [p["path"] for p in self.plans if p["status"] == "written"] + self.removed
 
 
 def _check_summary(summary: dict, hub) -> None:
@@ -274,6 +276,36 @@ def write_copy(path: Path, text: str) -> None:
         raise HubError(f"cannot write {path} ({exc}); the file is as it was") from None
 
 
+def _intact_copy(path: Path, project: str) -> bool:
+    """Whether ``path`` holds a copy of a plan of ``project`` exactly as the hub wrote it: its digest is the digest
+    of what it holds now."""
+    try:
+        found = read_plan(path)
+    except HubError:
+        return False
+    hub = found.hub or {}
+    return hub.get("project") == project and hub.get("digest") == found.digest
+
+
+def _edited_note(relative: str, path: Path, project: str) -> str:
+    """Why ``path`` was left as it is, with the two ways out, as ``harness validate`` words them."""
+    try:
+        hub = read_plan(path).hub
+    except HubError:
+        hub = None
+    if hub is None or hub.get("project") != project:
+        return (
+            f"{relative} is not a copy of a plan of hub project {project}, so the export left it as it is. Push it "
+            f"with `evo-agents hub plan put {relative}` or restore the hub's copy with `evo-agents hub plan export .`"
+        )
+    revision = hub.get("revision") if isinstance(hub.get("revision"), int) else "N"
+    return (
+        f"{relative} was edited outside the hub (digest mismatch), so the export left it as it is. Push it with "
+        f"`evo-agents hub plan put {relative} --if-revision {revision}` or restore it with "
+        "`evo-agents hub plan export .`"
+    )
+
+
 def _current_copy(path: Path, summary: dict, project: str) -> str | None:
     """The text a copy at ``path`` would get, when the file already holds the plan ``summary`` describes, so the
     plan need not be fetched; None when it must be."""
@@ -292,8 +324,12 @@ def _current_copy(path: Path, summary: dict, project: str) -> str | None:
     return render(found.body, project, summary["revision"], summary["digest"])
 
 
-def export(hub, root: Path, project: str | None = None, *, commit: bool = False) -> ExportResult:
-    """Write the copy of every plan of the project that the caller sees into the harness at ``root``."""
+def export(
+    hub, root: Path, project: str | None = None, *, commit: bool = False, keep_edited: bool = False
+) -> ExportResult:
+    """Write the copy of every plan of the project that the caller sees into the harness at ``root``. With
+    ``keep_edited``, a file at a copy's path that is not that copy as the hub wrote it stays as it is (status
+    ``kept``, and a note)."""
     root = harness_root(root)
     project = harness_project(root, project)
     result = ExportResult(root, project)
@@ -307,6 +343,12 @@ def export(hub, root: Path, project: str | None = None, *, commit: bool = False)
         _check_summary(summary, hub)
         on_hub.add(plan_id)
         relative = path.relative_to(root).as_posix()
+        if keep_edited and os.path.lexists(path) and not _intact_copy(path, project):
+            result.notes.append(_edited_note(relative, path, project))
+            result.plans.append(
+                {"plan_id": plan_id, "area": area, "revision": summary["revision"], "path": relative, "status": "kept"}
+            )
+            continue
         text = _current_copy(path, summary, project)
         if text is None:
             plan = hub.call("GET", plans_path(project, plan_id))
@@ -321,7 +363,7 @@ def export(hub, root: Path, project: str | None = None, *, commit: bool = False)
             write_copy(path, text)
         other = mirror_path(root, "completed" if area == "active" else "active", plan_id)
         if other.exists():
-            if _is_copy(other, project):
+            if _intact_copy(other, project) if keep_edited else _is_copy(other, project):
                 try:
                     other.unlink()
                 except OSError as exc:
@@ -388,15 +430,16 @@ def commit_copies(root: Path, result: ExportResult) -> str | None:
     if inside.returncode != 0 or inside.stdout.strip() != "true":
         raise HubError(f"--commit needs a git checkout, and {root} is not one; the copies are written")
     prefix = _git(root, "rev-parse", "--show-prefix").stdout.strip()
-    candidates = {p["path"] for p in result.plans} | set(result.removed)
-    for entry in result.plans:  # a copy removed by an earlier export without --commit is still a change
+    copies = [p for p in result.plans if p["status"] != "kept"]  # a file someone edited is theirs to commit
+    candidates = {p["path"] for p in copies} | set(result.removed)
+    for entry in copies:  # a copy removed by an earlier export without --commit is still a change
         other = f"plans/{'completed' if entry['area'] == 'active' else 'active'}/{entry['plan_id']}.yaml"
         if not (root / other).exists():  # one still there is a file the hub did not write: never committed
             candidates.add(other)
     changed = [path[len(prefix) :] for path in _differs_from_head(root, sorted(candidates))]
     if not changed:
         return None
-    revisions = {f"plans/{p['area']}/{p['plan_id']}.yaml": p for p in result.plans}
+    revisions = {f"plans/{p['area']}/{p['plan_id']}.yaml": p for p in copies}
     named = [f"{revisions[path]['plan_id']} r{revisions[path]['revision']}" for path in changed if path in revisions]
     removed = [path for path in changed if path not in revisions]
     lines = [f"Hub plans of {result.project}: copies of {', '.join(named) or 'no plan'}"]

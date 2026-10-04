@@ -1,5 +1,6 @@
-"""The plugin pins the package it runs: .mcp.json, hooks.json, plugin.json and marketplace.json must all carry
-``evo_agents.__version__``, so a release tag ships a plugin that starts the version it was built with."""
+"""Each plugin pins the package it runs: .mcp.json, hooks.json, plugin.json and marketplace.json of evo-kg and evo-hub
+must all carry ``evo_agents.__version__``, so a release tag ships plugins that start the version they were built
+with."""
 
 import json
 import re
@@ -11,16 +12,24 @@ from evo_agents import __version__
 from evo_agents.cli import main
 
 ROOT = Path(__file__).parents[2]
-PLUGIN = ROOT / "plugins" / "evo-kg"
+PLUGINS = ROOT / "plugins"
+MARKETPLACE = ROOT / ".claude-plugin" / "marketplace.json"
 PIN = re.compile(r"evo-ak==([\w.+!-]+)")
+SINK = "claude-code@anthropic"
+# Per plugin: the MCP server's command after `evo-agents`, the hook command after `evo-agents`, and how many hooks.
+EXPECTED = {
+    "evo-kg": (["kg", "serve", "--sink", SINK], "kg hook ", 5),
+    "evo-hub": (["hub", "mcp", "--sink", SINK], "hub hook ", 2),
+}
+NAMES = sorted(EXPECTED)
 
 
 def load(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def hook_commands() -> list[str]:
-    hooks = load(PLUGIN / "hooks" / "hooks.json")["hooks"]
+def hook_commands(name: str) -> list[str]:
+    hooks = load(PLUGINS / name / "hooks" / "hooks.json")["hooks"]
     return [hook["command"] for groups in hooks.values() for group in groups for hook in group["hooks"]]
 
 
@@ -28,34 +37,56 @@ def test_version_is_a_plain_release():
     assert re.fullmatch(r"\d+\.\d+\.\d+", __version__)
 
 
-def test_mcp_server_runs_the_package_version_through_uvx():
-    server = load(PLUGIN / ".mcp.json")["mcpServers"]["evo-kg"]
+def test_the_marketplace_lists_every_plugin_and_nothing_else():
+    entries = load(MARKETPLACE)["plugins"]
+    directories = sorted(path.name for path in PLUGINS.iterdir() if path.is_dir())
+    assert sorted(entry["name"] for entry in entries) == directories == NAMES
+    for entry in entries:
+        assert entry["source"] == f"./plugins/{entry['name']}"
+        assert load(PLUGINS / entry["name"] / ".claude-plugin" / "plugin.json")["name"] == entry["name"]
+
+
+@pytest.mark.parametrize("name", NAMES)
+def test_mcp_server_runs_the_package_version_through_uvx(name):
+    servers = load(PLUGINS / name / ".mcp.json")["mcpServers"]
     # No --offline here: the server's first start is what downloads and caches the package.
-    assert server == {
-        "command": "uvx",
-        "args": ["--from", f"evo-ak=={__version__}", "evo-agents", "kg", "serve", "--sink", "claude-code@anthropic"],
+    assert servers == {
+        name: {"command": "uvx", "args": ["--from", f"evo-ak=={__version__}", "evo-agents", *EXPECTED[name][0]]}
     }
 
 
-def test_every_hook_runs_the_package_version_and_never_fails_the_session():
-    commands = hook_commands()
-    assert len(commands) == 5
-    prefix = f"command -v uvx >/dev/null 2>&1 && uvx --offline --from evo-ak=={__version__} evo-agents kg hook "
-    for command in commands:
-        assert command.startswith(prefix), command
-        assert command.endswith(" || true"), command
+@pytest.mark.parametrize("name", NAMES)
+def test_every_hook_runs_the_package_version_and_never_fails_the_session(name):
+    _, command, count = EXPECTED[name]
+    commands = hook_commands(name)
+    assert len(commands) == count
+    prefix = f"command -v uvx >/dev/null 2>&1 && uvx --offline --from evo-ak=={__version__} evo-agents {command}"
+    for line in commands:
+        assert line.startswith(prefix), line
+        assert line.endswith(" || true"), line
 
 
-def test_no_other_version_is_pinned_in_the_plugin_or_readme():
-    for path in (PLUGIN / ".mcp.json", PLUGIN / "hooks" / "hooks.json", ROOT / "README.md"):
+@pytest.mark.parametrize("name", NAMES)
+def test_no_other_version_is_pinned_in_the_plugin(name):
+    for path in (PLUGINS / name / ".mcp.json", PLUGINS / name / "hooks" / "hooks.json"):
         pins = PIN.findall(path.read_text(encoding="utf-8"))
         assert pins and set(pins) == {__version__}, path
+    for path in (PLUGINS / name).rglob("*"):
+        if path.is_file() and "results" not in path.relative_to(PLUGINS / name).parts:
+            pins = PIN.findall(path.read_text(encoding="utf-8", errors="replace"))
+            assert set(pins) <= {__version__}, path
 
 
-def test_plugin_and_marketplace_carry_the_package_version():
-    assert load(PLUGIN / ".claude-plugin" / "plugin.json")["version"] == __version__
-    entries = load(ROOT / ".claude-plugin" / "marketplace.json")["plugins"]
-    assert [e["version"] for e in entries if e["name"] == "evo-kg"] == [__version__]
+def test_no_other_version_is_pinned_in_the_readme():
+    pins = PIN.findall((ROOT / "README.md").read_text(encoding="utf-8"))
+    assert pins and set(pins) == {__version__}
+
+
+@pytest.mark.parametrize("name", NAMES)
+def test_plugin_and_marketplace_carry_the_package_version(name):
+    assert load(PLUGINS / name / ".claude-plugin" / "plugin.json")["version"] == __version__
+    entries = load(MARKETPLACE)["plugins"]
+    assert [e["version"] for e in entries if e["name"] == name] == [__version__]
 
 
 def test_cli_reports_the_version(capsys):

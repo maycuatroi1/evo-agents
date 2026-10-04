@@ -1,0 +1,27 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v uvx >/dev/null 2>&1 && uvx --offline --from evo-ak==0.1.1 evo-agents hub hook session-start || true",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v uvx >/dev/null 2>&1 && uvx --offline --from evo-ak==0.1.1 evo-agents hub hook stop || true",
+            "timeout": 25
+          }
+        ]
+      }
+    ]
+  }
+}
