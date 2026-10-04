@@ -6,8 +6,8 @@ the pip command when it is missing. Both commands log JSON lines to stderr from 
 configuration error is a log line naming the variable, and an unexpected exception is a log line with its
 traceback, secrets removed, rather than a bare traceback from the interpreter.
 
-The client commands (``login``, ``logout``, ``whoami``, ``token``, ``admin``) live in ``cli_client`` and use the
-standard library only, so they work on a core install.
+The client commands (``login``, ``logout``, ``whoami``, ``token``, ``admin``, ``project``, ``registry``) live in
+``cli_client`` and need nothing beyond the core package, so they work on a core install.
 """
 
 from __future__ import annotations

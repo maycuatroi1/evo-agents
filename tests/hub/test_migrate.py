@@ -1,6 +1,6 @@
 """Migrations: a fresh database gets the fourteen tables, a second run changes nothing, processes that start
-together apply each revision once, and a database the code cannot read is refused. Then the constraints
-schema 0001 promises."""
+together apply each revision once, a database at 0001 with rows in it moves to 0002, and a database the code
+cannot read is refused. Then the constraints schemas 0001 and 0002 promise."""
 
 import re
 import subprocess
@@ -39,6 +39,7 @@ TABLES = {
     "kg_ingests",
     "audit",
 }
+ALL = ("0001", "0002")  # every revision, in order
 SNAPSHOT = """
 SELECT 'column', table_name || '.' || column_name || ' ' || data_type || ' ' || is_nullable || ' '
        || coalesce(column_default, '')
@@ -70,9 +71,9 @@ def tables(db) -> set[str]:
 def test_a_fresh_database_gets_the_fourteen_tables(hub_db):
     result = migrate(hub_db.dsn)
     assert result.before == ()
-    assert result.applied == ("0001",) and result.after == (head_revision(),) == ("0001",)
+    assert result.applied == ALL and result.after == (head_revision(),) == ("0002",)
     assert tables(hub_db) == TABLES | {"alembic_version"}
-    assert query(hub_db, "SELECT version_num FROM alembic_version") == [("0001",)]
+    assert query(hub_db, "SELECT version_num FROM alembic_version") == [("0002",)]
     # skills and skill_versions keep metadata and the blob key, never the bundle's bytes
     sql = "SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = 'public' AND {}"
     assert query(hub_db, sql.format("data_type = 'bytea'")) == []
@@ -87,7 +88,7 @@ def test_a_second_migrate_changes_nothing(hub_db):
     migrate(hub_db.dsn)
     before = query(hub_db, SNAPSHOT)
     result = migrate(hub_db.dsn)
-    assert (result.before, result.applied, result.after) == (("0001",), (), ("0001",))
+    assert (result.before, result.applied, result.after) == (("0002",), (), ("0002",))
     assert query(hub_db, SNAPSHOT) == before
 
     run = pg.cli(["hub", "migrate"], env=pg.clean_env(EVO_HUB_DSN=hub_db.dsn))
@@ -141,11 +142,11 @@ def test_two_processes_migrating_at_once_both_exit_zero_and_apply_once(hub_db):
 
     logs = [pg.log_lines(err) for _, err in outputs]
     upgrades = [line for lines in logs for line in lines if line["msg"].startswith("Running upgrade")]
-    assert len(upgrades) == 1
+    assert len(upgrades) == len(ALL)  # one line per revision, all from the process that took the lock first
     outcomes = [outcome(lines) for lines in logs]
-    assert sorted(line.get("applied", []) for line in outcomes) == [[], ["0001"]]
+    assert sorted(line.get("applied", []) for line in outcomes) == [[], list(ALL)]
     assert all(any(line["msg"].startswith("waiting for the migration lock") for line in lines) for lines in logs)
-    assert query(hub_db, "SELECT version_num FROM alembic_version") == [("0001",)]
+    assert query(hub_db, "SELECT version_num FROM alembic_version") == [("0002",)]
     assert tables(hub_db) == TABLES | {"alembic_version"}
 
 
@@ -154,7 +155,7 @@ def test_a_database_at_an_unknown_revision_is_refused(hub_db):
     query(hub_db, "UPDATE alembic_version SET version_num = '9999' RETURNING version_num")
     before = query(hub_db, SNAPSHOT)
     with pytest.raises(
-        MigrationError, match=r"revision 9999, which evo-agents .* does not know \(its newest is 0001\)"
+        MigrationError, match=r"revision 9999, which evo-agents .* does not know \(its newest is 0002\)"
     ):
         migrate(hub_db.dsn)
     run = pg.cli(["hub", "migrate", "--dsn", hub_db.dsn], env=pg.clean_env())
@@ -196,19 +197,48 @@ def test_revisions_form_one_chain_of_numbered_files():
         previous = rev.revision
 
 
-def test_downgrade_to_base_removes_everything_and_upgrade_restores_it(hub_db):
-    migrate(hub_db.dsn)
-    engine = hub_migrate._engine(hub_db.dsn)
+def move_to(db, revision: str, *, down: bool = False) -> None:
+    """Upgrade or downgrade the database to ``revision`` with Alembic, as ``migrate`` drives it."""
+    engine = hub_migrate._engine(db.dsn)
     try:
         with engine.begin() as conn:
             config = alembic_config()
             config.attributes["connection"] = conn
-            command.downgrade(config, "base")
+            (command.downgrade if down else command.upgrade)(config, revision)
     finally:
         engine.dispose()
+
+
+def columns(db, table: str) -> set[str]:
+    sql = "SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = %s"
+    return {row[0] for row in query(db, sql, (table,))}
+
+
+def test_0002_adds_the_harness_paths_to_a_database_holding_projects(hub_db):
+    move_to(hub_db, "0001")
+    with pg.admin(hub_db.admin_dsn) as conn:
+        ids = seed(conn)
+        conn.execute("INSERT INTO project_repos (project_id, name) VALUES (%s, 'app')", (ids["project"],))
+    result = migrate(hub_db.dsn)
+    assert (result.before, result.applied) == (("0001",), ("0002",))
+    assert {"cluster", "workspace", "harness_path"} <= columns(hub_db, "projects")
+    assert "path" in columns(hub_db, "project_repos")
+    # Projects registered before 0002 keep their rows, without paths, which `hub registry pull` skips.
+    assert query(hub_db, "SELECT name, cluster, workspace, harness_path FROM projects") == [("demo", None, None, None)]
+    assert query(hub_db, "SELECT name, path FROM project_repos") == [("app", None)]
+
+    move_to(hub_db, "0001", down=True)
+    assert not {"cluster", "workspace", "harness_path"} & columns(hub_db, "projects")
+    assert query(hub_db, "SELECT name FROM projects") == [("demo",)]
+    assert query(hub_db, "SELECT name FROM project_repos") == [("app",)]
+
+
+def test_downgrade_to_base_removes_everything_and_upgrade_restores_it(hub_db):
+    migrate(hub_db.dsn)
+    move_to(hub_db, "base", down=True)
     assert tables(hub_db) == {"alembic_version"}
     assert query(hub_db, "SELECT count(*) FROM pg_proc WHERE proname = 'hub_reject_update'") == [(0,)]
-    assert migrate(hub_db.dsn).applied == ("0001",)
+    assert migrate(hub_db.dsn).applied == ALL
     assert tables(hub_db) == TABLES | {"alembic_version"}
 
 
@@ -330,6 +360,24 @@ def seed(conn) -> dict:
         ("UPDATE audit SET target = 'edited'", errors.RestrictViolation),
         ("DELETE FROM users WHERE id = {user}", errors.ForeignKeyViolation),
         ("DELETE FROM projects WHERE id = {project}", errors.ForeignKeyViolation),
+        # a project has one hub sink, and its harness paths all or none (0002)
+        (
+            "INSERT INTO project_sinks (project_id, sink_id, kind, clearance) VALUES "
+            "({project}, 'hub', 'hub', '{{\"level\": \"internal\"}}'), "
+            "({project}, 'hub-2', 'hub', '{{\"level\": \"public\"}}')",
+            errors.UniqueViolation,
+        ),
+        ("UPDATE projects SET cluster = 'demo' WHERE id = {project}", errors.CheckViolation),
+        (
+            "UPDATE projects SET cluster = 'Demo Cluster', workspace = '~/github', harness_path = 'demo-harness' "
+            "WHERE id = {project}",
+            errors.CheckViolation,
+        ),
+        (
+            "UPDATE projects SET cluster = 'demo', workspace = '', harness_path = 'demo-harness' WHERE id = {project}",
+            errors.CheckViolation,
+        ),
+        ("INSERT INTO project_repos (project_id, name, path) VALUES ({project}, 'a', E'a\\nb')", errors.CheckViolation),
     ],
 )
 def test_constraints_refuse_bad_rows(schema, sql, error):
@@ -360,6 +408,12 @@ def test_constraints_accept_good_rows(schema):
         "VALUES ({project}, 'agent-hub', 1, 'active', '{{}}', '{{}}', 'sha256:{hash}', {user})",
         "INSERT INTO grants (user_id, project_id, role, max_level, granted_by) "
         "VALUES ({user}, {project}, 'reader', 'internal', {user})",
+        "UPDATE projects SET cluster = 'demo', workspace = '~/github', harness_path = 'demo-harness' "
+        "WHERE id = {project}",
+        "INSERT INTO project_repos (project_id, name, origin, default_branch, path) "
+        "VALUES ({project}, 'app', 'https://example.org/app.git', 'main', 'app')",
+        "INSERT INTO project_sinks (project_id, sink_id, kind, clearance) "
+        "VALUES ({project}, 'hub', 'hub', '{{\"level\": \"internal\"}}')",
     ):
         schema.execute(sql.format(**fmt))
     assert one(schema, "SELECT count(*) FROM memories WHERE search @@ to_tsquery('simple', 'body')") == 1

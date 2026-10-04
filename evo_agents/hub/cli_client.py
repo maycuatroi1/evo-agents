@@ -1,8 +1,9 @@
-"""``evo-agents hub login``, ``logout``, ``whoami``, ``token`` and ``admin``: the client side of the hub.
+"""``evo-agents hub login``, ``logout``, ``whoami``, ``token``, ``admin``, ``project`` and ``registry``: the client
+side of the hub.
 
-Standard library only, like ``client``. Results go to stdout; a failure is one ``error:`` line on stderr and exit
-status 1, and a 401 says to run ``evo-agents hub login``. ``--json`` prints what the hub answered. No command ever
-prints a token.
+Standard library only, like ``client``; ``project register`` reads the harness with the harness loader (PyYAML, a
+core dependency). Results go to stdout; a failure is one ``error:`` line on stderr and exit status 1, and a 401
+says to run ``evo-agents hub login``. ``--json`` prints what the hub answered. No command ever prints a token.
 """
 
 from __future__ import annotations
@@ -13,6 +14,7 @@ import sys
 from datetime import datetime, timezone
 from urllib.parse import quote
 
+from evo_agents.hub.access import ROLES
 from evo_agents.hub.client import (
     Hub,
     HubError,
@@ -25,7 +27,6 @@ from evo_agents.hub.client import (
 )
 
 EXIT_FAILED = 1
-ROLES = ("reader", "writer", "admin")
 
 
 def _client_command(func):
@@ -219,6 +220,89 @@ def cmd_admin_stats(args) -> int:
     return 0
 
 
+def _project_path(project: str) -> str:
+    return f"/v1/projects/{quote(project, safe='')}"
+
+
+def _hub_sink(project: dict) -> str:
+    sink = next((s for s in project["sinks"] if s["kind"] == "hub"), None)
+    if sink is None:
+        return "none"
+    clearance = sink["clearance"]
+    return clearance["level"] + (f"/{clearance['location']}" if clearance.get("location") else "")
+
+
+@_client_command
+def cmd_project_register(args) -> int:
+    from evo_agents.hub.registration import registration
+
+    found = registration(args.root)
+    hub, _ = _signed_in()
+    project = hub.call("PUT", _project_path(found.project), found.body)
+    if args.json:
+        _print_json(project)
+        return 0
+    counts = f"{len(project['repos'])} repo(s), {len(project['sinks'])} sink(s), levels {' < '.join(project['levels'])}"
+    if project["created"]:
+        print(f"Registered project {project['name']} from {found.root}: {counts}.")
+    elif project["changed"]:
+        print(f"Updated project {project['name']} from {found.root}: {counts}.")
+    else:
+        print(f"Project {project['name']} is registered as {found.root} declares it; nothing changed.")
+    warning = found.push_warning()
+    if warning:
+        print(f"note: {warning}")
+    return 0
+
+
+@_client_command
+def cmd_project_list(args) -> int:
+    hub, _ = _signed_in()
+    projects = hub.call("GET", "/v1/projects")
+    if args.json:
+        _print_json(projects)
+        return 0
+    rows = [
+        (p["name"], p["role"] or "-", p["max_level"] or "-", _hub_sink(p), len(p["repos"]), _when(p["updated_at"]))
+        for p in projects
+    ]
+    _table(("PROJECT", "ROLE", "MAX LEVEL", "HUB SINK", "REPOS", "UPDATED (UTC)"), rows)
+    return 0
+
+
+@_client_command
+def cmd_registry_pull(args) -> int:
+    from pathlib import Path
+
+    from evo_agents.hub.registry import pull
+
+    hub, _ = _signed_in()
+    workspace = Path(args.workspace).expanduser().resolve() if args.workspace else None
+    registry = Path(args.registry).expanduser() if args.registry else None
+    result = pull(hub, registry, workspace)
+    if args.json:
+        backup = str(result.backup) if result.backup else None
+        _print_json(
+            {"registry": str(result.registry), "backup": backup, "clusters": result.clusters, "skipped": result.skipped}
+        )
+        return 0
+    if not result.changed:
+        print(f"{result.registry} already holds every hub project you see; nothing written.")
+    elif result.backup:
+        print(f"Wrote {result.registry}; the previous version is saved as {result.backup}.")
+    else:
+        print(f"Wrote {result.registry}, which did not exist before.")
+    rows = [
+        (c["status"], c["name"], c["project"], c["root"] + ("" if c["present"] else "  (not on this machine)"))
+        for c in result.clusters
+    ]
+    if rows:
+        _table(("STATUS", "CLUSTER", "PROJECT", "ROOT"), rows)
+    for skipped in result.skipped:
+        print(f"skipped {skipped}")
+    return 0
+
+
 def register_client(hsub) -> None:
     login_parser = hsub.add_parser("login", help="sign in to a hub with GitHub (device flow) and keep a machine token")
     login_parser.add_argument("--url", help="the hub, such as https://agents.omelet.tech (default: the last one used)")
@@ -262,3 +346,33 @@ def register_client(hsub) -> None:
     stats = asub.add_parser("stats", help="rows in every hub table")
     stats.add_argument("--json", action="store_true", help="machine-readable output")
     stats.set_defaults(func=cmd_admin_stats)
+
+    project = hsub.add_parser("project", help="projects on the hub, registered from their harness")
+    psub = project.add_subparsers(dest="project_command", required=True)
+    register = psub.add_parser(
+        "register",
+        help="register the project of a harness (its knowledge.yaml), or bring the hub up to date with it; "
+        "the first registration needs a hub admin",
+    )
+    register.add_argument(
+        "root", metavar="HARNESS_ROOT", nargs="?", help="the harness, or a directory inside it (default: the cwd)"
+    )
+    register.add_argument("--json", action="store_true", help="machine-readable output")
+    register.set_defaults(func=cmd_project_register)
+    project_list = psub.add_parser("list", help="the projects you see, with your role and the hub sink of each")
+    project_list.add_argument("--json", action="store_true", help="machine-readable output")
+    project_list.set_defaults(func=cmd_project_list)
+
+    registry = hsub.add_parser("registry", help="the harness registry of this machine")
+    rsub = registry.add_subparsers(dest="registry_command", required=True)
+    pull = rsub.add_parser(
+        "pull",
+        help="write the cluster of every hub project you see into the registry; other clusters stay as they are, "
+        "and the previous file is kept as registry.json.bak.<timestamp>",
+    )
+    pull.add_argument(
+        "--workspace", help="where the harnesses and repos live here (default: each project's, such as ~/github)"
+    )
+    pull.add_argument("--registry", help="the registry file (default: ~/.claude/harness/registry.json)")
+    pull.add_argument("--json", action="store_true", help="machine-readable output")
+    pull.set_defaults(func=cmd_registry_pull)

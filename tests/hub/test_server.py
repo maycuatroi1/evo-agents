@@ -21,7 +21,10 @@ from fastapi.testclient import TestClient
 
 from evo_agents import __version__
 from evo_agents.hub.config import HubConfig
+from evo_agents.hub.migrate import head_revision
 from evo_agents.hub.server.app import create_app
+
+HEAD = head_revision()
 
 
 def make_config(db, tmp_path, **changes) -> HubConfig:
@@ -47,7 +50,7 @@ def is_json(response) -> bool:
 def test_health_reports_version_schema_and_db(client, tmp_path):
     response = client.get("/v1/health")
     assert response.status_code == 200
-    assert response.json() == {"status": "ok", "version": __version__, "schema": "0001", "db": "ok", "failed": []}
+    assert response.json() == {"status": "ok", "version": __version__, "schema": HEAD, "db": "ok", "failed": []}
     assert response.headers["cache-control"] == "no-store"
     assert (tmp_path / "cache").is_dir()
 
@@ -74,7 +77,7 @@ def test_health_is_503_with_a_json_body_while_postgres_is_down(client, hub_db):
     while (response := client.get("/v1/health")).status_code != 200:
         assert time.monotonic() < deadline, "the pool did not recover after Postgres came back"
         time.sleep(0.5)
-    assert response.json()["schema"] == "0001"
+    assert response.json()["schema"] == HEAD
 
 
 def test_openapi_is_served_under_v1(client):
@@ -159,7 +162,7 @@ def test_serve_logs_json_without_the_dsn_password(hub_db, tmp_path):
                 assert time.monotonic() < deadline, "hub serve did not answer within 60s"
                 time.sleep(0.2)
         assert (status, body) == (200, {"status": "ok"})
-        assert get(f"http://127.0.0.1:{port}/v1/health")[1]["schema"] == "0001"
+        assert get(f"http://127.0.0.1:{port}/v1/health")[1]["schema"] == HEAD
         proc.send_signal(signal.SIGTERM)
         _, stderr = proc.communicate(timeout=30)
     finally:
