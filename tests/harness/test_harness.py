@@ -1,9 +1,20 @@
+import copy
 from pathlib import Path
 
 import pytest
+import yaml
 
 from evo_agents.cli import main
-from evo_agents.harness import find_manifest, load_manifest, plan_semantics, repo_paths, validate_harness
+from evo_agents.harness import (
+    find_manifest,
+    load_manifest,
+    load_schema,
+    load_yaml,
+    plan_digest,
+    plan_semantics,
+    repo_paths,
+    validate_harness,
+)
 from evo_agents.schema import errors, validate
 
 
@@ -348,6 +359,151 @@ def test_cli_exit_code_reflects_errors(harness: Path, capsys):
     (harness / "plans/active/demo-plan.yaml").write_text("id: demo-plan\nsteps: nope\n")
     assert main(["harness", "validate", str(harness)]) == 1
     assert "FAIL" in capsys.readouterr().out
+
+
+HUB_SINK = "    - id: hub\n      kind: hub\n      clearance: {level: internal}\n"
+DIGEST = "sha256:" + "0" * 64
+
+
+def add_hub_sink(harness: Path, sink: str = HUB_SINK) -> None:
+    path = harness / "knowledge.yaml"
+    path.write_text(path.read_text().replace("sources:\n", sink + "sources:\n"), encoding="utf-8")
+
+
+def report(harness: Path, kind: str):
+    return next(r for r in validate_harness(harness) if r.kind == kind)
+
+
+def test_the_hub_keys_validate(harness: Path):
+    add_hub_sink(harness)
+    manifest = harness / "harness.yaml"
+    manifest.write_text(manifest.read_text() + "hub: {project: demo}\n", encoding="utf-8")
+    plan = harness / "plans/active/demo-plan.yaml"
+    digest = plan_digest(load_yaml(plan))  # with hub.project set, the digest must be the plan's own
+    plan.write_text(plan.read_text() + f"hub: {{project: demo, revision: 3, digest: '{digest}'}}\n", encoding="utf-8")
+    reports = validate_harness(harness)
+    assert all(r.ok for r in reports) and not [str(i) for r in reports for i in r.issues]
+
+
+@pytest.mark.parametrize(
+    "kind, text, path",
+    [
+        ("harness", "hub: {}\n", "hub.project"),
+        ("harness", "hub: {project: Demo}\n", "hub.project"),
+        ("plan", f"hub: {{project: demo, revision: 0, digest: '{DIGEST}'}}\n", "hub.revision"),
+        ("plan", "hub: {project: demo, revision: 1, digest: 'abc'}\n", "hub.digest"),
+        ("plan", f"hub: {{project: demo, digest: '{DIGEST}'}}\n", "hub.revision"),
+    ],
+)
+def test_malformed_hub_keys_are_errors(harness: Path, kind: str, text: str, path: str):
+    target = harness / ("harness.yaml" if kind == "harness" else "plans/active/demo-plan.yaml")
+    target.write_text(target.read_text() + text, encoding="utf-8")
+    assert path in [i.path for i in errors(report(harness, kind).issues)]
+
+
+def test_older_schemas_only_warn_on_the_hub_keys(harness: Path):
+    """Releases before the hub keys read them as unknown keys: a warning, so a harness carrying them still
+    validates there. Only ``kind: hub`` in a sink needs this release (the seam knowledge-manifest-v1)."""
+    manifest = load_yaml(harness / "harness.yaml") | {"hub": {"project": "demo"}}
+    plan = load_yaml(harness / "plans/active/demo-plan.yaml") | {
+        "hub": {"project": "demo", "revision": 1, "digest": DIGEST}
+    }
+    for data, name in ((manifest, "harness"), (plan, "plan")):
+        older = copy.deepcopy(load_schema(name))
+        del older["properties"]["hub"]
+        issues = validate(data, older)
+        assert [(i.path, i.severity) for i in issues] == [("hub", "warning")]
+        assert validate(data, load_schema(name)) == []
+
+
+def test_a_project_declares_one_hub_sink(harness: Path):
+    add_hub_sink(harness, HUB_SINK + HUB_SINK.replace("id: hub", "id: hub-2"))
+    knowledge = report(harness, "knowledge")
+    assert any("are all of kind hub" in i.message for i in errors(knowledge.issues))
+
+
+def test_harness_and_knowledge_must_agree_on_the_hub_project(harness: Path):
+    manifest = harness / "harness.yaml"
+    manifest.write_text(manifest.read_text() + "hub: {project: other}\n", encoding="utf-8")
+    knowledge = report(harness, "knowledge")
+    assert any("hub.project 'other'" in i.message for i in errors(knowledge.issues))
+
+
+def test_a_hub_sink_below_the_harness_label_is_a_warning(harness: Path):
+    add_hub_sink(harness, HUB_SINK.replace("level: internal", "level: public"))
+    knowledge = report(harness, "knowledge")
+    assert knowledge.ok
+    (warning,) = [i for i in knowledge.issues if i.severity == "warning"]
+    assert warning.path == "sources[0].label" and "hub sink 'hub' does not clear" in warning.message
+
+
+def hub_managed(harness: Path, revision: int = 4) -> Path:
+    """The demo harness with its plans on the hub: hub.project in harness.yaml and the plan as the hub's copy."""
+    from evo_agents.hub.mirror import read_plan, render
+
+    add_hub_sink(harness)
+    manifest = harness / "harness.yaml"
+    manifest.write_text(manifest.read_text() + "hub: {project: demo}\n", encoding="utf-8")
+    plan = harness / "plans/active/demo-plan.yaml"
+    body = read_plan(plan).body
+    plan.write_text(render(body, "demo", revision, plan_digest(body)), encoding="utf-8")
+    return plan
+
+
+def mirror_errors(harness: Path) -> list[tuple[str, str]]:
+    return [(i.path, i.message) for i in errors(report(harness, "plan").issues)]
+
+
+def test_a_copy_the_hub_wrote_validates(harness: Path):
+    plan = hub_managed(harness)
+    assert plan.read_text().startswith(
+        "# Mirror of evo-agents hub plan demo-plan, revision 4. Do not edit; use evo harness step or evo-agents "
+        "hub plan.\n"
+    )
+    assert all(r.ok for r in validate_harness(harness))
+
+
+def test_a_hand_edited_copy_fails_validate_with_the_way_back(harness: Path, capsys):
+    plan = hub_managed(harness)
+    plan.write_text(plan.read_text().replace("what: second", "what: second, edited by hand"), encoding="utf-8")
+    message = (
+        "plans/active/demo-plan.yaml was edited outside the hub (digest mismatch). Push it with "
+        "`evo-agents hub plan put plans/active/demo-plan.yaml --if-revision 4` or restore it with "
+        "`evo-agents hub plan export .`"
+    )
+    assert mirror_errors(harness) == [("hub.digest", message)]
+    assert main(["harness", "validate", str(harness)]) == 1
+    assert message in capsys.readouterr().out
+
+
+def test_the_digest_ignores_key_order_comments_and_yaml_style(harness: Path):
+    plan = hub_managed(harness)
+    data = load_yaml(plan)
+    reordered = {key: data[key] for key in reversed(list(data))}
+    text = "# a comment of my own\n" + yaml.safe_dump(reordered, default_flow_style=True, width=1000)
+    plan.write_text(text, encoding="utf-8")
+    assert mirror_errors(harness) == []
+    assert plan_digest(load_yaml(plan)) == data["hub"]["digest"]
+
+
+def test_a_plan_without_a_hub_key_or_of_another_project_is_an_error(harness: Path):
+    plan = hub_managed(harness)
+    original = plan.read_text()
+    plan.write_text(original.replace("project: demo", "project: other"), encoding="utf-8")
+    ((path, message),) = mirror_errors(harness)
+    assert path == "hub.project" and "hub project 'other'" in message and "hub plan export ." in message
+
+    data = load_yaml(plan)
+    del data["hub"]
+    plan.write_text(yaml.safe_dump(data), encoding="utf-8")
+    ((path, message),) = mirror_errors(harness)
+    assert path == "hub" and "`evo-agents hub plan put plans/active/demo-plan.yaml`" in message
+
+
+def test_without_hub_project_plans_are_not_checked_as_copies(harness: Path):
+    plan = harness / "plans/active/demo-plan.yaml"
+    plan.write_text(plan.read_text() + f"hub: {{project: demo, revision: 2, digest: '{DIGEST}'}}\n", encoding="utf-8")
+    assert all(r.ok for r in validate_harness(harness))  # a digest that matches nothing, and no hub.project
 
 
 def test_validator_subset():

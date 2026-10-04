@@ -1,4 +1,4 @@
-"""Graph subcommands: build, query, serve."""
+"""Graph subcommands: build, query, serve. ``query`` and ``serve`` read the local store or the hub (``--backend``)."""
 
 from __future__ import annotations
 
@@ -43,8 +43,12 @@ def cmd_query(args) -> int:
     from evo_agents.kg.cli import _project
     from evo_agents.kg.serve import Session
 
-    project = _project(args)
-    session = Session(project, sink=args.sink)
+    if args.backend == "local":
+        session = Session(_project(args), sink=args.sink)
+    else:
+        from evo_agents.hub.kg_cli import open_session
+
+        session = open_session(args.backend, args.project, args.sink)
     params = {}
     for pair in args.arg or []:
         key, _, value = pair.partition("=")
@@ -65,9 +69,10 @@ def cmd_query(args) -> int:
 
 
 def cmd_serve(args) -> int:
+    from evo_agents.hub.kg_cli import open_session
     from evo_agents.kg.serve import serve_stdio
 
-    return serve_stdio(project=args.project, sink=args.sink)
+    return serve_stdio(session=open_session(args.backend, args.project, args.sink))
 
 
 def register(ksub, with_project) -> None:
@@ -83,9 +88,21 @@ def register(ksub, with_project) -> None:
     query.add_argument("text", nargs="?", help="query, node id (kg_path: from) or handle")
     query.add_argument("--arg", action="append", help="extra tool argument key=value (JSON values allowed)")
     query.add_argument("--sink", default="cli", help="sink whose clearance applies (default: cli)")
+    query.add_argument(
+        "--backend",
+        choices=["auto", "local", "hub"],
+        default="local",
+        help="where the graph is read: this machine's store (default), the hub, or the hub when it has the project",
+    )
     query.set_defaults(func=cmd_query)
 
     serve = ksub.add_parser("serve", help="MCP server over stdio, bound to one project")
     serve.add_argument("--project", help="project name or harness path (default: from the session directory)")
     serve.add_argument("--sink", default="claude-code@anthropic", help="sink profile whose clearance applies")
+    serve.add_argument(
+        "--backend",
+        choices=["auto", "local", "hub"],
+        default="auto",
+        help="auto (default): the hub when signed in and it has a graph of the project, else this machine's store",
+    )
     serve.set_defaults(func=cmd_serve)

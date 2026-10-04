@@ -1,0 +1,122 @@
+# The evo-agents hub in production: api, worker and web from the images GitHub Actions publishes on GHCR for each
+# release (.github/workflows/images.yml). Nothing is built here. Postgres is not in this file: the hub expects a
+# database it can reach at EVO_HUB_DSN, such as one the platform manages, on the network EVO_HUB_PLATFORM_NETWORK.
+# A reverse proxy in front sends /v1 and /mcp to api:8080 and everything else to web:3000, on one domain.
+# docs/hub.md describes every variable; deploy/hub/.env.example lists them.
+#
+# The volumes are caches only: the state lives in Postgres and the blob store (R2), and a lost volume is rebuilt.
+#
+# No variable is required when the file is read, so `docker compose ps` and `down` work without the environment.
+# Unset EVO_HUB_VERSION pulls a tag named unset-EVO_HUB_VERSION, which fails and names the variable; unset
+# EVO_HUB_DSN stops api and worker with a log line naming it.
+
+name: evo-agents-hub
+
+x-hub-environment: &hub-environment
+  EVO_HUB_DSN: ${EVO_HUB_DSN:-}
+  EVO_HUB_ADMINS: ${EVO_HUB_ADMINS:-}
+  EVO_HUB_GITHUB_CLIENT_ID: ${EVO_HUB_GITHUB_CLIENT_ID:-}
+  EVO_HUB_GITHUB_CLIENT_SECRET: ${EVO_HUB_GITHUB_CLIENT_SECRET:-}
+  EVO_HUB_SESSION_SECRET: ${EVO_HUB_SESSION_SECRET:-}
+  EVO_HUB_PUBLIC_URL: ${EVO_HUB_PUBLIC_URL:-}
+  EVO_HUB_S3_ENDPOINT: ${EVO_HUB_S3_ENDPOINT:-}
+  EVO_HUB_S3_BUCKET: ${EVO_HUB_S3_BUCKET:-}
+  EVO_HUB_S3_ACCESS_KEY_ID: ${EVO_HUB_S3_ACCESS_KEY_ID:-}
+  EVO_HUB_S3_SECRET_ACCESS_KEY: ${EVO_HUB_S3_SECRET_ACCESS_KEY:-}
+  EVO_HUB_SENTRY_DSN: ${EVO_HUB_SENTRY_DSN:-}
+  EVO_HUB_LOG_LEVEL: ${EVO_HUB_LOG_LEVEL:-INFO}
+
+x-hardening: &hardening
+  init: true
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  logging:
+    driver: json-file
+    options:
+      max-size: 10m
+      max-file: "5"
+
+services:
+  api:
+    <<: *hardening
+    image: ghcr.io/maycuatroi1/evo-agents-hub:${EVO_HUB_VERSION:-unset-EVO_HUB_VERSION}
+    restart: unless-stopped
+    environment: *hub-environment
+    volumes:
+      - api-cache:/cache
+    expose: ["8080"]
+    networks:
+      default:
+        aliases: [evo-agents-hub-api]
+      platform: {}
+    # The image's HEALTHCHECK, stated here so the platform shows it: liveness only (/v1/health/live), never /v1/health,
+    # which would mark the api dead during an R2 outage while it still answers kg_* from its cache.
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/v1/health/live', timeout=4)"
+      interval: 30s
+      timeout: 5s
+      start_period: 60s
+      retries: 3
+    stop_grace_period: 15s
+
+  worker:
+    <<: *hardening
+    image: ghcr.io/maycuatroi1/evo-agents-hub:${EVO_HUB_VERSION:-unset-EVO_HUB_VERSION}
+    command: ["evo-agents", "hub", "worker", "--data-dir", "/cache"]
+    restart: unless-stopped
+    environment: *hub-environment
+    volumes:
+      - worker-cache:/cache
+    networks:
+      default: {}
+      platform: {}
+    # Knowledge graph builds are heavy; these limits keep them from starving the other services on the machine.
+    cpus: ${EVO_HUB_WORKER_CPUS:-2}
+    mem_limit: ${EVO_HUB_WORKER_MEMORY:-4g}
+    # The worker serves no HTTP, so the image's healthcheck does not apply; it exits non-zero when it loses Postgres
+    # and the restart policy brings it back.
+    healthcheck:
+      disable: true
+    # The worker gives running jobs 25 s after SIGTERM before aborting them.
+    stop_grace_period: 40s
+    depends_on:
+      api:
+        condition: service_healthy
+
+  web:
+    <<: *hardening
+    image: ghcr.io/maycuatroi1/evo-agents-hub-web:${EVO_HUB_VERSION:-unset-EVO_HUB_VERSION}
+    restart: unless-stopped
+    environment:
+      EVO_HUB_API_INTERNAL_URL: ${EVO_HUB_API_INTERNAL_URL:-http://evo-agents-hub-api:8080}
+      EVO_HUB_WEB_TIME_ZONE: ${EVO_HUB_WEB_TIME_ZONE:-Asia/Ho_Chi_Minh}
+    expose: ["3000"]
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/icon.svg').then(r => process.exit(r.ok ? 0 : 1), () => process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+    stop_grace_period: 15s
+    depends_on:
+      api:
+        condition: service_started
+
+volumes:
+  api-cache:
+  worker-cache:
+
+networks:
+  # Where the database is: on Dokploy, the shared network its databases join. Services without a domain (the
+  # worker) are not attached to it by the platform, so this file attaches api and worker itself.
+  platform:
+    name: ${EVO_HUB_PLATFORM_NETWORK:-dokploy-network}
+    external: true

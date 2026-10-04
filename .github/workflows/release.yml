@@ -32,6 +32,7 @@ jobs:
           smoke/bin/pip install "$GITHUB_WORKSPACE"/dist/*.whl
           smoke/bin/evo-agents --version
           smoke/bin/evo-agents kg --help >/dev/null
+          smoke/bin/evo-agents hub --help >/dev/null
           smoke/bin/python -c 'from evo_agents.harness import load_schema; [load_schema(n) for n in ("harness", "contracts", "knowledge", "plan")]'
       - uses: actions/upload-artifact@v4
         with:

@@ -17,6 +17,8 @@ from pathlib import Path
 
 import yaml
 
+from evo_agents.kg.policy import Policy
+from evo_agents.kg.protocol import canonical_json, sha256
 from evo_agents.kg.schema import known_kinds, validate_ontology
 from evo_agents.schema import Issue, errors, validate
 
@@ -27,10 +29,9 @@ SCHEMA_DIR = Path(__file__).parent / "schemas"
 BUILTIN_CONNECTORS = ("harness", "git", "exec")
 CONNECTOR_GROUP = "evo_agents.kg.connectors"
 
-REGISTRY_PATHS = (
-    Path("~/.evo/harness/registry.json"),
-    Path("~/.claude/harness/registry.json"),  # written by the harness-engineering skill
-)
+HUB_KEY = "hub"  # what the evo-agents hub adds to the read-only copy of a plan it keeps
+SKILL_REGISTRY = Path("~/.claude/harness/registry.json")  # the harness-engineering skill and `hub registry pull`
+REGISTRY_PATHS = (Path("~/.evo/harness/registry.json"), SKILL_REGISTRY)
 
 
 @cache
@@ -52,6 +53,11 @@ def _normalize(value):
 def load_yaml(path: Path):
     with open(path, encoding="utf-8") as fh:
         return _normalize(yaml.safe_load(fh))
+
+
+def parse_yaml(text: str):
+    """``load_yaml`` for text already in hand."""
+    return _normalize(yaml.safe_load(text))
 
 
 def find_manifest(start: Path | str | None = None) -> Path | None:
@@ -208,6 +214,7 @@ def _validate_file(path: Path, kind: str, harness: Harness | None = None) -> Fil
         issues += knowledge_semantics(data, harness.manifest if harness else None, path)
     if kind == "plan" and isinstance(data, dict):
         issues += plan_semantics(data, path, harness)
+        issues += mirror_issues(data, path, harness)
     if kind == "contracts" and isinstance(data, dict):
         issues += contracts_semantics(data, harness)
     return FileReport(path, kind, issues)
@@ -300,6 +307,7 @@ def knowledge_semantics(data: dict, manifest: dict | None = None, path: Path | N
             issues.append(
                 Issue(f"policy.sinks[{i}].clearance.location", f"{clr['location']!r} is not in policy.locations")
             )
+    issues += _hub_semantics(data, manifest)
 
     for i, ident in enumerate(data.get("identifiers") or []):
         try:
@@ -308,6 +316,44 @@ def knowledge_semantics(data: dict, manifest: dict | None = None, path: Path | N
             issues.append(Issue(f"identifiers[{i}].pattern", f"invalid regex: {exc}"))
     if path is not None:
         issues += _ontology_semantics(data, path)
+    return issues
+
+
+def _hub_semantics(data: dict, manifest: dict | None) -> list[Issue]:
+    """The hub keys: one sink of kind hub at most (its clearance bounds what may be pushed), the project
+    harness.yaml names under hub is the one knowledge.yaml declares, and memories and plans, which default
+    to the harness source's label, can be pushed at all."""
+    issues: list[Issue] = []
+    policy = data.get("policy") if isinstance(data.get("policy"), dict) else {}
+    hub_sinks = [s for s in policy.get("sinks") or [] if isinstance(s, dict) and s.get("kind") == "hub"]
+    if len(hub_sinks) > 1:
+        names = ", ".join(repr(s.get("id")) for s in hub_sinks)
+        issues.append(Issue("policy.sinks", f"sinks {names} are all of kind hub: declare one, it bounds every push"))
+    project = data.get("project")
+    hub = (manifest or {}).get("hub")
+    named = hub.get("project") if isinstance(hub, dict) else None
+    if isinstance(named, str) and project and named != project:
+        issues.append(Issue("project", f"harness.yaml says hub.project {named!r}, but this file names {project!r}"))
+
+    sources = [s for s in data.get("sources") or [] if isinstance(s, dict)]
+    harness = next((s for s in sources if s.get("connector") == "harness" and isinstance(s.get("id"), str)), None)
+    sink = hub_sinks[0] if len(hub_sinks) == 1 else None
+    if harness is None or sink is None or not isinstance(sink.get("id"), str) or not isinstance(project, str):
+        return issues
+    clearance = sink.get("clearance") if isinstance(sink.get("clearance"), dict) else {}
+    knowledge = {
+        "policy": {**policy, "sinks": [{"id": sink["id"], "kind": "hub", "clearance": clearance}]},
+        "sources": [harness],
+    }
+    rules = Policy(project, knowledge)
+    label = rules.source_label(harness["id"])
+    if not rules.allows(label, sink["id"]):
+        where = f"sources[{(data.get('sources') or []).index(harness)}].label"
+        message = (
+            f"memories and plans default to this label ({rules.describe(label)['level']}), which hub sink "
+            f"{sink['id']!r} does not clear: pushing them without a label of their own would be refused"
+        )
+        issues.append(Issue(where, message, "warning"))
     return issues
 
 
@@ -390,6 +436,59 @@ def plan_semantics(data: dict, path: Path, harness: Harness | None = None) -> li
         if isinstance(step.get("evidence"), str):
             issues += _evidence_issues(step["evidence"], f"steps[{i}].evidence", repos)
     return issues
+
+
+def plan_body(data: dict) -> dict:
+    """The plan without the hub key: what the hub stores and what its digest covers."""
+    return {key: value for key, value in data.items() if key != HUB_KEY}
+
+
+def plan_digest(data: dict) -> str:
+    """``sha256:<hex>`` of the canonical JSON of kg/1 (keys sorted, no whitespace, UTF-8) of the plan as loaded
+    by ``load_yaml``, without the hub key. Key order, comments and YAML styles do not change it."""
+    return sha256(canonical_json(plan_body(data)))
+
+
+def hub_project(harness: Harness | None) -> str | None:
+    """The project harness.yaml names under ``hub``; set, the hub owns the plans and git keeps copies."""
+    hub = (harness.manifest if harness else {}).get(HUB_KEY)
+    project = hub.get("project") if isinstance(hub, dict) else None
+    return project if isinstance(project, str) and project else None
+
+
+def mirror_issues(data: dict, path: Path, harness: Harness | None = None) -> list[Issue]:
+    """In a harness whose plans the hub owns, a plan file is a copy the hub wrote: its hub key names the project
+    of harness.yaml, and its digest is the digest of what the file holds now. A file edited by hand fails here,
+    with the two ways out."""
+    project = hub_project(harness)
+    if project is None:
+        return []
+    try:
+        where = path.resolve().relative_to(harness.root).as_posix()
+    except ValueError:
+        where = path.as_posix()
+    hub = data.get(HUB_KEY)
+    if not isinstance(hub, dict):
+        message = (
+            f"{where} has no hub key, so it is not a copy of a hub plan. Push it with "
+            f"`evo-agents hub plan put {where}` or restore the hub's copy with `evo-agents hub plan export .`"
+        )
+        return [Issue(HUB_KEY, message)]
+    if hub.get("project") != project:
+        message = (
+            f"{where} is a copy of a plan of hub project {hub.get('project')!r}, but harness.yaml says hub.project "
+            f"{project!r}: restore it with `evo-agents hub plan export .`"
+        )
+        return [Issue(f"{HUB_KEY}.project", message)]
+    if hub.get("digest") != plan_digest(data):
+        revision = hub.get("revision") if isinstance(hub.get("revision"), int) else "N"
+        message = (
+            f"{where} was edited outside the hub (digest mismatch). Push it with "
+            f"`evo-agents hub plan put {where} --if-revision {revision}` or restore it with "
+            "`evo-agents hub plan export .`"
+        )
+        return [Issue(f"{HUB_KEY}.digest", message)]
+    return []
 
 
 def validate_harness(root: Path | str) -> list[FileReport]:
