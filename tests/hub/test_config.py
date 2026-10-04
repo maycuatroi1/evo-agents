@@ -15,6 +15,7 @@ from tests.hub import pg
 if not pg.DSN:
     pytest.skip(pg.SKIP_REASON, allow_module_level=True)
 
+from evo_agents.hub import log as hub_log
 from evo_agents.hub.config import ConfigError, HubConfig, load_config, load_dsn, load_log_level
 from evo_agents.hub.log import JsonFormatter, dsn_password, redact_dsn, register_secret, scrub
 
@@ -164,6 +165,65 @@ def test_json_lines_carry_no_secret(caplog):
     for secret in ("Uri-Secret-2", "Kv-Secret-3", "Registered-Secret-9", "abcdefghijkl0123", "evh_abcdefgh"):
         assert secret not in text
     assert scrub("plain words stay") == "plain words stay"
+
+
+CALLBACK_URL = "https://hub.test/v1/auth/web/callback?code=c93b0aa1d2e4f5&state=St4te-Value_9"
+
+
+def test_query_secrets_are_masked_whichever_logger_writes_the_url():
+    stream = io.StringIO()
+    handler = logging.StreamHandler(stream)
+    handler.setFormatter(JsonFormatter())
+    logger = logging.getLogger("tests.hub.some_http_client")
+    logger.addHandler(handler)
+    try:  # the line httpx and httpx2 write for every request
+        logger.warning('HTTP Request: %s %s "%s %d %s"', "GET", CALLBACK_URL, "HTTP/1.1", 303, "See Other")
+    finally:
+        logger.removeHandler(handler)
+    (line,) = pg.log_lines(stream.getvalue())
+    callback = "https://hub.test/v1/auth/web/callback?code=***&state=***"
+    assert line["msg"] == f'HTTP Request: GET {callback} "HTTP/1.1 303 See Other"'
+    assert "c93b0aa1d2e4f5" not in stream.getvalue() and "St4te-Value_9" not in stream.getvalue()
+
+    masked = {
+        "/token?client_id=Iv1.abc&client_secret=Cs-1&code=Cd-2&code_verifier=Cv-3#frag": (
+            "/token?client_id=Iv1.abc&client_secret=***&code=***&code_verifier=***#frag"
+        ),
+        "a?access_token=At-4&token_type=bearer&refresh_token=Rt-5&scope=repo": (
+            "a?access_token=***&token_type=bearer&refresh_token=***&scope=repo"
+        ),
+        "<a href='/x?TOKEN=Tk-6&amp;State=St-7'>": "<a href='/x?TOKEN=***&amp;State=***'>",
+        "s3?X-Amz-Credential=AKIA%2F20261004%2Fauto&X-Amz-Security-Token=Sec-8&x-amz-signature=Sig-9": (
+            "s3?X-Amz-Credential=***&X-Amz-Security-Token=***&x-amz-signature=***"
+        ),
+    }
+    for text, expected in masked.items():
+        assert scrub(text) == expected
+    for kept in ("exit code=3", "/x?barcode=12&next=/home&mystate=on", "token_type=bearer state of the run"):
+        assert scrub(kept) == kept
+
+
+def test_url_logging_clients_stay_quiet():
+    stream, root = io.StringIO(), logging.getLogger()
+    saved = root.level, {name: logging.getLogger(name).level for name in hub_log.QUIET_LOGGERS}
+    hub_log.configure_logging("DEBUG", stream)
+    try:
+        for name in ("httpx", "httpx2", "httpcore.http11", "httpcore2.http11", "urllib3.connectionpool"):
+            logger = logging.getLogger(name)
+            assert logger.getEffectiveLevel() == logging.WARNING, name
+            logger.info('HTTP Request: GET %s "HTTP/1.1 303 See Other"', CALLBACK_URL)
+            logger.debug("send_request_headers.started request=<Request [b'GET']> %s", CALLBACK_URL)
+        logging.getLogger("tests.hub.still_heard").debug("debug lines of the hub itself still reach the log")
+    finally:
+        for handler in list(root.handlers):
+            if isinstance(handler, hub_log._HubHandler):
+                root.removeHandler(handler)
+        root.setLevel(saved[0])
+        for name, level in saved[1].items():
+            logging.getLogger(name).setLevel(level)
+        logging.captureWarnings(False)
+    (line,) = pg.log_lines(stream.getvalue())
+    assert line["logger"] == "tests.hub.still_heard"
 
 
 def test_a_missing_extra_names_the_pip_command(tmp_path):
