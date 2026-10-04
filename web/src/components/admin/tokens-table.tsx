@@ -13,7 +13,6 @@ import { CurrentSessionBadge, TokenKindBadge, TokenStateBadge } from "./badges";
 import { ConfirmAction } from "./confirm-action";
 import { type AdminToken, memberHref, revokeToken } from "./data";
 import { type Notice, useWriteFailure } from "./notice";
-import { TableFrame } from "./table-frame";
 import { useAdminWrite } from "./use-admin-write";
 import { When } from "./when";
 
@@ -165,16 +164,14 @@ export function TokensTable({ tokens, caption, showLogin = true, onNotice, testI
   const error = write.isError && open ? failure(write.error, { 404: tRevoke("notFound"), 409: tRevoke("conflict") }) : null;
   return (
     <>
-      <TableFrame>
-        <DataTable
-          data={tokens}
-          columns={columns}
-          caption={caption}
-          getRowId={(row) => String(row.id)}
-          columnClassNames={NARROW_HIDDEN}
-          testId={testId}
-        />
-      </TableFrame>
+      <DataTable
+        data={tokens}
+        columns={columns}
+        caption={caption}
+        getRowId={(row) => String(row.id)}
+        columnClassNames={NARROW_HIDDEN}
+        testId={testId}
+      />
       <ConfirmAction
         open={open}
         onOpenChange={setOpen}

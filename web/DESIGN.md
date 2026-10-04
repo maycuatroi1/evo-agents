@@ -55,7 +55,9 @@ never told by colour alone: badges carry an icon and a word (`Quản trị`, `Gh
   becomes a sheet below 768 px. The header is 56 px and sticks to the top.
 - z-index: header 10, sidebar rail 20, menus, sheets and tooltips 50.
 - Checked widths: 375, 768, 1024 and 1440 px. At 375 px secondary table columns hide, wide tables scroll
-  inside their own focusable region, and the page itself never scrolls sideways (`e2e/shell.spec.ts`).
+  inside their own focusable region, and the page itself never scrolls sideways (`e2e/shell.spec.ts`;
+  `e2e/no-sideways-scroll.spec.ts` checks a page of each area at 375, 768 and 1024 px). The shell's inset is
+  `min-w-0`: as a flex item beside the sidebar it would otherwise grow to the natural width of the widest table.
 
 ## Components
 
