@@ -25,6 +25,7 @@ x-hub-environment: &hub-environment
   EVO_HUB_S3_SECRET_ACCESS_KEY: ${EVO_HUB_S3_SECRET_ACCESS_KEY:-}
   EVO_HUB_SENTRY_DSN: ${EVO_HUB_SENTRY_DSN:-}
   EVO_HUB_LOG_LEVEL: ${EVO_HUB_LOG_LEVEL:-INFO}
+  EVO_HUB_BLOB_CONCURRENCY: ${EVO_HUB_BLOB_CONCURRENCY:-32}
 
 x-hardening: &hardening
   init: true
