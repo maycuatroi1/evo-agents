@@ -22,7 +22,23 @@ import pytest
 DSN = os.environ.get("EVO_HUB_TEST_DSN", "").strip()
 SKIP_REASON = "EVO_HUB_TEST_DSN is not set: hub tests need Postgres"
 READY_TIMEOUT = 30.0
-SERVER_STACK = ("fastapi", "uvicorn", "psycopg", "psycopg_pool", "alembic", "sqlalchemy", "httpx")
+SERVER_STACK = (
+    "fastapi",
+    "uvicorn",
+    "psycopg",
+    "psycopg_pool",
+    "alembic",
+    "sqlalchemy",
+    "httpx",
+    "boto3",
+    "procrastinate",
+    "moto",
+)
+# Tables of migration 0004: the blob store's and procrastinate's job queue
+BLOB_TABLES = frozenset({"blobs", "blob_uploads"})
+QUEUE_TABLES = frozenset(
+    {"procrastinate_jobs", "procrastinate_events", "procrastinate_periodic_defers", "procrastinate_workers"}
+)
 HUB_ENV = ("EVO_HUB_",)  # variables a test environment must not inherit from the shell running pytest
 
 

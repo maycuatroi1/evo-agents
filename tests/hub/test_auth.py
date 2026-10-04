@@ -41,6 +41,7 @@ HUB_TABLES = {
     "kg_ingests",
     "audit",
 }
+HUB_TABLES |= pg.BLOB_TABLES | pg.QUEUE_TABLES  # migration 0004
 
 
 @pytest.fixture

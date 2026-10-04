@@ -13,6 +13,7 @@ GRANT_PUT = "grant.put"
 GRANT_DELETE = "grant.delete"
 PROJECT_REGISTER = "project.register"
 PROJECT_UPDATE = "project.update"
+BLOB_COMMIT = "blob.commit"  # the target is the project, never the hashes
 
 
 async def record(conn, *, actor_id: int, token_id: int | None, action: str, target: str) -> None:
