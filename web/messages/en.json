@@ -22,7 +22,11 @@
     "overview": "Overview",
     "admin": "Administration",
     "toggleSidebar": "Show or hide the sidebar",
-    "breadcrumb": "Current location"
+    "breadcrumb": "Current location",
+    "memories": "Memories",
+    "skills": "Skills",
+    "myMemories": "My memories",
+    "globalSkills": "Shared skills"
   },
   "projectSwitcher": {
     "label": "Projects",
@@ -168,5 +172,215 @@
     "sortAscending": "Sorted ascending",
     "sortDescending": "Sorted descending",
     "sortBy": "Sort by {column}"
+  },
+  "memories": {
+    "projectEyebrow": "Project {project}",
+    "personalEyebrow": "Yours only",
+    "projectTitle": "Memories",
+    "personalTitle": "My memories",
+    "projectDescription": "Claude Code memory files that members pushed to the hub from the project's harness and repos.",
+    "personalDescription": "Memories in directories outside every hub project, kept in step across your machines.",
+    "count": "{count, plural, one {# memory} other {# memories}}",
+    "projectVisibility": "You see memories labelled up to <code>{level}</code>, as your grant allows. User and Feedback memories are visible to their author only.",
+    "personalVisibility": "Only you see these memories.",
+    "adminWithoutGrant": "You are a hub admin without a grant on this project, so its memories are not readable to you. Ask a project admin for a grant if you need them.",
+    "search": {
+      "label": "Search memories",
+      "placeholder": "Search names and text",
+      "clear": "Clear search"
+    },
+    "facets": {
+      "all": "All",
+      "location": "Location",
+      "type": "Type",
+      "harness": "Harness",
+      "clear": "Clear filters"
+    },
+    "types": {
+      "project": "Project",
+      "reference": "Reference",
+      "user": "User",
+      "feedback": "Feedback",
+      "ownerOnly": "Visible to its author only"
+    },
+    "label": {
+      "label": "Label",
+      "level": "Label level",
+      "location": "Data location",
+      "anyLocation": "Unrestricted",
+      "integrity": "Integrity",
+      "trusted": "Trusted (T)",
+      "untrusted": "Unverified (U)"
+    },
+    "columns": {
+      "name": "Name",
+      "type": "Type",
+      "location": "Location",
+      "label": "Label",
+      "updated": "Updated"
+    },
+    "caption": "Memories",
+    "captionSearch": "Memory search results, best match first",
+    "by": "by {login}",
+    "summary": {
+      "all": "{count, plural, =0 {No memories} one {# memory} other {# memories}}",
+      "filtered": "Showing {shown} of {count} memories",
+      "search": "{count, plural, =0 {No results} one {# result} other {# results}} for “{q}”"
+    },
+    "truncated": "There are more memories than this page loads: showing the first {count}. Use search to find the others.",
+    "empty": {
+      "projectTitle": "This project has no memories yet",
+      "projectDescription": "Memories appear here once members run <code>evo-agents hub memory push</code> in the project's harness or one of its repos.",
+      "personalTitle": "You have no personal memories yet",
+      "personalDescription": "Memories in directories outside the hub's projects are pushed with <code>evo-agents hub memory push --all</code>."
+    },
+    "noResults": {
+      "searchTitle": "No memories found for “{q}”",
+      "searchDescription": "Try other words, fewer filters, or put a phrase in double quotes. Memories labelled above your grant never show here.",
+      "filterTitle": "No memories match these filters",
+      "filterDescription": "Remove the location or type filter to see more."
+    },
+    "deleted": "Deleted",
+    "markdown": {
+      "inertLink": "The link {target} does not open on the web",
+      "newTab": "(opens in a new tab)",
+      "image": "Image: {alt}",
+      "imageNoAlt": "Image without a description",
+      "taskDone": "Done:",
+      "taskOpen": "Not done:",
+      "codeBlock": "Code block",
+      "table": "Table"
+    },
+    "detail": {
+      "title": "Memory",
+      "notFoundTitle": "Memory not found",
+      "notFoundDescription": "This memory does not exist, belongs elsewhere, or is not yours to see.",
+      "backProject": "Project memories",
+      "backPersonal": "My memories",
+      "deletedTitle": "This memory was deleted at revision {revision}",
+      "deletedDescription": "What it held before is still in the revision history.",
+      "revisionNotFoundTitle": "Revision {revision} not found",
+      "revisionNotFoundDescription": "This revision does not exist, or its label is above your grant.",
+      "oldTitle": "Viewing revision {revision}; the latest is revision {current}",
+      "oldDescription": "Written by {actor} on <when></when>.",
+      "toLatest": "View the latest (revision {revision})",
+      "thenWas": "At the time:",
+      "tombstone": "This revision marks the memory as deleted, so it has no content.",
+      "content": "Content",
+      "view": "How to show the content",
+      "rendered": "Rendered",
+      "raw": "Source text",
+      "frontmatter": "Frontmatter",
+      "emptyBody": "The file has nothing besides its frontmatter.",
+      "details": "Details",
+      "file": "File",
+      "scope": "Scope",
+      "scopeProject": "Project {project}",
+      "scopePersonal": "Personal",
+      "location": "Location",
+      "owner": "Author",
+      "ownerOnly": "Only its author sees this memory",
+      "revision": "Revision",
+      "updated": "Updated",
+      "by": "by {login}",
+      "created": "Created"
+    },
+    "history": {
+      "title": "Revision history",
+      "description": "Every push or deletion makes a revision. Revisions labelled above your grant are not listed.",
+      "revision": "Revision {revision}",
+      "latest": "Latest",
+      "viewing": "(viewing)",
+      "deleted": "Deleted",
+      "by": "{actor}, <when></when>",
+      "size": "{size, number} bytes",
+      "empty": "No revision you may see.",
+      "more": "Show older revisions",
+      "loadingMore": "Loading…",
+      "moreFailed": "Older revisions did not load (status {status}). Try again."
+    }
+  },
+  "skills": {
+    "projectEyebrow": "Project {project}",
+    "globalEyebrow": "Shared across the hub",
+    "projectTitle": "Project skills",
+    "globalTitle": "Shared skills",
+    "projectDescription": "Skills the project's members published; evo-agents hub skills sync installs them into every runtime on a machine.",
+    "globalDescription": "Skills the hub admins published for every member.",
+    "count": "{count, plural, one {# skill} other {# skills}}",
+    "bytes": "{count, number} bytes",
+    "copyHash": "Copy SHA-256",
+    "copied": "SHA-256 copied",
+    "noSource": "No source recorded",
+    "onGitHub": "(opens the commit on GitHub in a new tab)",
+    "scopeGlobal": "Shared",
+    "scopeProject": "Project {project}",
+    "by": "by {login}",
+    "columns": {
+      "name": "Name",
+      "version": "Version",
+      "size": "Size",
+      "source": "Source",
+      "published": "Published",
+      "download": "Download bundle"
+    },
+    "empty": {
+      "projectTitle": "This project has no skills yet",
+      "projectDescription": "Members with the writer role publish one with <code>evo-agents hub skills publish DIR --scope project:{project}</code>.",
+      "toGlobal": "See shared skills",
+      "globalTitle": "The hub has no shared skills yet",
+      "globalDescription": "Hub admins publish one with <code>evo-agents hub skills publish DIR</code>."
+    },
+    "filter": {
+      "label": "Filter skills",
+      "placeholder": "Filter by name or description",
+      "clear": "Clear filter"
+    },
+    "summary": {
+      "all": "{count, plural, =0 {No skills} one {# skill} other {# skills}}",
+      "filtered": "Showing {shown} of {count} skills"
+    },
+    "noResults": {
+      "title": "No skills match “{q}”",
+      "description": "Try other words, or clear the filter to see them all."
+    },
+    "blobStore": {
+      "unconfiguredTitle": "The hub has no blob store",
+      "unconfiguredDescription": "Bundles cannot be downloaded because the hub runs without a blob store (R2). Ask a hub admin to set the EVO_HUB_S3_* variables. Versions and their SHA-256 are still listed.",
+      "unavailableTitle": "The blob store is not answering",
+      "unavailableDescription": "Downloading a bundle may fail right now. Try again in a few minutes."
+    },
+    "download": {
+      "button": "Download bundle v{version}",
+      "short": "Download",
+      "aria": "Download bundle {name} version {version}",
+      "pending": "Getting the link…",
+      "started": "Your browser is downloading {file}.",
+      "forbidden": "You may not download this bundle. Ask a project admin for a grant.",
+      "notFound": "This version is no longer on the hub. Reload the page for the current list.",
+      "unavailable": "The hub's blob store is not ready, so the download did not start. Try again later, or tell a hub admin.",
+      "network": "The hub API could not be reached. Check your connection and try again.",
+      "failed": "The download failed (status {status}, request {requestId}).",
+      "unconfigured": "The hub has no blob store"
+    },
+    "detail": {
+      "notFoundTitle": "Skill {name} not found",
+      "notFoundDescription": "This skill has not been published here, or its name is spelled differently.",
+      "backProject": "Project skills",
+      "backGlobal": "Shared skills",
+      "noVersions": "This skill has no versions yet.",
+      "latestTitle": "Latest version: v{version}",
+      "latestDescription": "A bundle is the tar.gz of the skill directory, exactly as it was published.",
+      "file": "File",
+      "size": "Size",
+      "source": "Source",
+      "published": "Published",
+      "by": "by {login}",
+      "created": "Skill created",
+      "verify": "Check the download: <code>shasum -a 256 {file}</code> must print the SHA-256 above.",
+      "latest": "Latest",
+      "versionsTitle": "Versions",
+      "versionsDescription": "{count, plural, one {# version} other {# versions}}, latest first."
+    }
   }
 }

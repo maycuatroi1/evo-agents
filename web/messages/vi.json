@@ -22,7 +22,11 @@
     "overview": "Tổng quan",
     "admin": "Quản trị",
     "toggleSidebar": "Ẩn hoặc hiện thanh bên",
-    "breadcrumb": "Vị trí hiện tại"
+    "breadcrumb": "Vị trí hiện tại",
+    "memories": "Memory",
+    "skills": "Skill",
+    "myMemories": "Memory cá nhân",
+    "globalSkills": "Skill dùng chung"
   },
   "projectSwitcher": {
     "label": "Dự án",
@@ -168,5 +172,215 @@
     "sortAscending": "Đang xếp tăng dần",
     "sortDescending": "Đang xếp giảm dần",
     "sortBy": "Xếp theo {column}"
+  },
+  "memories": {
+    "projectEyebrow": "Dự án {project}",
+    "personalEyebrow": "Của riêng bạn",
+    "projectTitle": "Memory",
+    "personalTitle": "Memory cá nhân",
+    "projectDescription": "Các tệp memory của Claude Code mà thành viên đẩy lên hub từ harness và các repo của dự án.",
+    "personalDescription": "Memory ở các thư mục không thuộc dự án hub nào, đồng bộ giữa các máy của bạn.",
+    "count": "{count, plural, other {# memory}}",
+    "projectVisibility": "Bạn thấy memory có nhãn tới mức <code>{level}</code> theo grant của bạn. Memory loại Người dùng và Góp ý chỉ người tạo ra nó thấy.",
+    "personalVisibility": "Chỉ bạn thấy các memory này.",
+    "adminWithoutGrant": "Bạn là quản trị viên hub nhưng chưa có grant trên dự án này, nên không đọc được memory của nó. Nhờ quản trị viên dự án cấp grant nếu cần.",
+    "search": {
+      "label": "Tìm trong memory",
+      "placeholder": "Tìm theo tên hoặc nội dung",
+      "clear": "Xoá tìm kiếm"
+    },
+    "facets": {
+      "all": "Tất cả",
+      "location": "Vị trí",
+      "type": "Loại",
+      "harness": "Harness",
+      "clear": "Xoá bộ lọc"
+    },
+    "types": {
+      "project": "Dự án",
+      "reference": "Tham chiếu",
+      "user": "Người dùng",
+      "feedback": "Góp ý",
+      "ownerOnly": "Chỉ người tạo thấy"
+    },
+    "label": {
+      "label": "Nhãn",
+      "level": "Mức nhãn",
+      "location": "Vùng dữ liệu",
+      "anyLocation": "Không giới hạn",
+      "integrity": "Độ tin cậy",
+      "trusted": "Tin cậy (T)",
+      "untrusted": "Chưa kiểm chứng (U)"
+    },
+    "columns": {
+      "name": "Tên",
+      "type": "Loại",
+      "location": "Vị trí",
+      "label": "Nhãn",
+      "updated": "Cập nhật"
+    },
+    "caption": "Danh sách memory",
+    "captionSearch": "Kết quả tìm memory, khớp nhất trước",
+    "by": "bởi {login}",
+    "summary": {
+      "all": "{count, plural, =0 {Không có memory nào} other {# memory}}",
+      "filtered": "Hiện {shown} trên {count} memory",
+      "search": "{count, plural, =0 {Không có kết quả} other {# kết quả}} cho “{q}”"
+    },
+    "truncated": "Có nhiều memory hơn mức trang này tải: đang hiện {count} memory đầu tiên. Dùng ô tìm kiếm để tìm memory khác.",
+    "empty": {
+      "projectTitle": "Dự án chưa có memory nào",
+      "projectDescription": "Memory xuất hiện ở đây khi thành viên chạy <code>evo-agents hub memory push</code> trong harness hoặc một repo của dự án.",
+      "personalTitle": "Bạn chưa có memory cá nhân nào",
+      "personalDescription": "Memory ở thư mục ngoài các dự án hub được đẩy lên bằng <code>evo-agents hub memory push --all</code>."
+    },
+    "noResults": {
+      "searchTitle": "Không tìm thấy memory nào cho “{q}”",
+      "searchDescription": "Thử từ khác, bỏ bớt bộ lọc, hoặc đặt cụm từ trong dấu ngoặc kép. Memory có nhãn cao hơn grant của bạn không bao giờ hiện ở đây.",
+      "filterTitle": "Không có memory nào khớp bộ lọc",
+      "filterDescription": "Bỏ bớt bộ lọc vị trí hoặc loại để thấy thêm."
+    },
+    "deleted": "Đã xoá",
+    "markdown": {
+      "inertLink": "Liên kết {target} không mở được trên web",
+      "newTab": "(mở trong thẻ mới)",
+      "image": "Hình: {alt}",
+      "imageNoAlt": "Hình không có mô tả",
+      "taskDone": "Đã xong:",
+      "taskOpen": "Chưa xong:",
+      "codeBlock": "Khối mã",
+      "table": "Bảng"
+    },
+    "detail": {
+      "title": "Memory",
+      "notFoundTitle": "Không tìm thấy memory",
+      "notFoundDescription": "Memory này không tồn tại, thuộc chỗ khác, hoặc bạn không được xem nó.",
+      "backProject": "Memory của dự án",
+      "backPersonal": "Memory cá nhân",
+      "deletedTitle": "Memory này đã bị xoá ở revision {revision}",
+      "deletedDescription": "Nội dung trước đó vẫn còn trong lịch sử revision.",
+      "revisionNotFoundTitle": "Không tìm thấy revision {revision}",
+      "revisionNotFoundDescription": "Revision này không tồn tại, hoặc nhãn của nó cao hơn mức grant của bạn.",
+      "oldTitle": "Đang xem revision {revision}, bản mới nhất là revision {current}",
+      "oldDescription": "Do {actor} ghi lúc <when></when>.",
+      "toLatest": "Xem bản mới nhất (revision {revision})",
+      "thenWas": "Khi đó:",
+      "tombstone": "Revision này đánh dấu memory bị xoá nên không có nội dung.",
+      "content": "Nội dung",
+      "view": "Cách xem nội dung",
+      "rendered": "Hiển thị",
+      "raw": "Văn bản gốc",
+      "frontmatter": "Frontmatter",
+      "emptyBody": "Tệp không có nội dung ngoài frontmatter.",
+      "details": "Thông tin",
+      "file": "Tệp",
+      "scope": "Phạm vi",
+      "scopeProject": "Dự án {project}",
+      "scopePersonal": "Cá nhân",
+      "location": "Vị trí",
+      "owner": "Người tạo",
+      "ownerOnly": "Chỉ người tạo thấy memory này",
+      "revision": "Revision",
+      "updated": "Cập nhật",
+      "by": "bởi {login}",
+      "created": "Tạo lúc"
+    },
+    "history": {
+      "title": "Lịch sử revision",
+      "description": "Mỗi lần đẩy lên hoặc xoá tạo một revision. Revision có nhãn cao hơn grant của bạn không hiện ở đây.",
+      "revision": "Revision {revision}",
+      "latest": "Mới nhất",
+      "viewing": "(đang xem)",
+      "deleted": "Đã xoá",
+      "by": "{actor}, <when></when>",
+      "size": "{size, number} byte",
+      "empty": "Không có revision nào bạn được xem.",
+      "more": "Xem revision cũ hơn",
+      "loadingMore": "Đang tải…",
+      "moreFailed": "Không tải được revision cũ hơn (mã {status}). Thử lại."
+    }
+  },
+  "skills": {
+    "projectEyebrow": "Dự án {project}",
+    "globalEyebrow": "Dùng chung toàn hub",
+    "projectTitle": "Skill của dự án",
+    "globalTitle": "Skill dùng chung",
+    "projectDescription": "Skill do thành viên dự án xuất bản; lệnh evo-agents hub skills sync cài chúng vào các runtime trên máy.",
+    "globalDescription": "Skill quản trị viên hub xuất bản cho mọi thành viên.",
+    "count": "{count, plural, other {# skill}}",
+    "bytes": "{count, number} byte",
+    "copyHash": "Chép SHA-256",
+    "copied": "Đã chép SHA-256",
+    "noSource": "Không ghi nguồn",
+    "onGitHub": "(mở commit trên GitHub trong thẻ mới)",
+    "scopeGlobal": "Dùng chung",
+    "scopeProject": "Dự án {project}",
+    "by": "bởi {login}",
+    "columns": {
+      "name": "Tên",
+      "version": "Phiên bản",
+      "size": "Kích thước",
+      "source": "Nguồn",
+      "published": "Xuất bản",
+      "download": "Tải bundle"
+    },
+    "empty": {
+      "projectTitle": "Dự án chưa có skill nào",
+      "projectDescription": "Người có vai trò Ghi xuất bản skill bằng <code>evo-agents hub skills publish DIR --scope project:{project}</code>.",
+      "toGlobal": "Xem skill dùng chung",
+      "globalTitle": "Hub chưa có skill dùng chung nào",
+      "globalDescription": "Quản trị viên hub xuất bản bằng <code>evo-agents hub skills publish DIR</code>."
+    },
+    "filter": {
+      "label": "Lọc skill",
+      "placeholder": "Lọc theo tên hoặc mô tả",
+      "clear": "Xoá bộ lọc"
+    },
+    "summary": {
+      "all": "{count, plural, =0 {Không có skill nào} other {# skill}}",
+      "filtered": "Hiện {shown} trên {count} skill"
+    },
+    "noResults": {
+      "title": "Không có skill nào khớp “{q}”",
+      "description": "Thử từ khác, hoặc xoá bộ lọc để xem toàn bộ."
+    },
+    "blobStore": {
+      "unconfiguredTitle": "Hub chưa cấu hình kho blob",
+      "unconfiguredDescription": "Chưa tải được bundle vì hub chạy không có kho blob (R2). Nhờ quản trị viên hub đặt các biến EVO_HUB_S3_*. Danh sách phiên bản và SHA-256 vẫn xem được.",
+      "unavailableTitle": "Kho blob đang không trả lời",
+      "unavailableDescription": "Tải bundle có thể thất bại lúc này. Thử lại sau ít phút."
+    },
+    "download": {
+      "button": "Tải bundle v{version}",
+      "short": "Tải",
+      "aria": "Tải bundle {name} phiên bản {version}",
+      "pending": "Đang lấy liên kết…",
+      "started": "Trình duyệt đang tải {file}.",
+      "forbidden": "Bạn không có quyền tải bundle này. Nhờ quản trị viên dự án cấp grant.",
+      "notFound": "Phiên bản này không còn trên hub. Tải lại trang để xem danh sách mới.",
+      "unavailable": "Kho blob của hub chưa sẵn sàng nên chưa tải được. Thử lại sau, hoặc báo quản trị viên hub.",
+      "network": "Không kết nối được tới API của hub. Kiểm tra mạng rồi thử lại.",
+      "failed": "Không tải được (mã {status}, request {requestId}).",
+      "unconfigured": "Hub chưa cấu hình kho blob"
+    },
+    "detail": {
+      "notFoundTitle": "Không tìm thấy skill {name}",
+      "notFoundDescription": "Skill này chưa được xuất bản ở đây, hoặc tên được viết khác.",
+      "backProject": "Skill của dự án",
+      "backGlobal": "Skill dùng chung",
+      "noVersions": "Skill chưa có phiên bản nào.",
+      "latestTitle": "Phiên bản mới nhất: v{version}",
+      "latestDescription": "Bundle là tệp tar.gz của thư mục skill, đúng như lúc xuất bản.",
+      "file": "Tệp",
+      "size": "Kích thước",
+      "source": "Nguồn",
+      "published": "Xuất bản",
+      "by": "bởi {login}",
+      "created": "Tạo skill lúc",
+      "verify": "Kiểm tra tệp tải về: <code>shasum -a 256 {file}</code> phải ra đúng SHA-256 ở trên.",
+      "latest": "Mới nhất",
+      "versionsTitle": "Các phiên bản",
+      "versionsDescription": "{count, plural, other {# phiên bản}}, mới nhất trước."
+    }
   }
 }

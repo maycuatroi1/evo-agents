@@ -8,8 +8,10 @@ the repo's name) of a hub project, else ``personal``, where the location is what
 
 Who sees a memory: in a project, project and reference memories go to the members the read rule lets through the
 sink the caller names, and user and feedback memories to their owner alone, under the same rule; personal memories go
-to their owner alone. A memory one cannot see answers exactly as one that does not exist. The sink defaults to the
-Claude Code session's (claude-code@anthropic): a pull writes files that sessions read.
+to their owner alone. A memory one cannot see answers exactly as one that does not exist. The sink a read goes through
+is the one the caller names; left out, a machine token reads through the Claude Code session's (claude-code@anthropic),
+since a pull writes files that sessions read, and a web session through none: the web shows members their own view,
+so the label must pass ``ProjectRules.visible_by_grant`` (the grant's max level alone).
 
 PUT /v1/memories writes a memory by its key: scope, project, location and name, plus the owner for the types only the
 owner sees. ``if_revision`` is the revision the writer last saw: none to create (a tombstone counts as nothing), the
@@ -22,7 +24,9 @@ none); personal memories need a signed-in caller. Every change appends one row t
 
 GET /v1/memories lists what the caller sees in (updated_at, id) order with an opaque cursor, tombstones included on
 request, which is what a sync needs. GET /v1/memories/search ranks the full-text matches of name and body
-(configuration simple, websearch syntax). GET /v1/memories/{id} is one memory.
+(configuration simple, websearch syntax). GET /v1/memories/{id} is one memory. GET /v1/memories/{id}/revisions lists
+its revisions newest first, and GET .../revisions/{revision} is one with its body; a revision whose type and label the
+caller could not read is left out, as the memory itself would be.
 
 Sizes are bounded: a body is at most MAX_BODY bytes of UTF-8, a request at most MAX_REQUEST bytes (read before
 parsing), a page at most MAX_LIMIT memories and about PAGE_BYTES of bodies, and one request examines at most
@@ -63,7 +67,7 @@ from evo_agents.hub.server.admin import PROJECT_NAME
 from evo_agents.hub.server.audit import record
 from evo_agents.hub.server.errors import CODES, ErrorBody
 from evo_agents.hub.server.projects import PRINTABLE, LabelIn, ProjectAccess, project_access
-from evo_agents.hub.server.security import CurrentUser, Principal
+from evo_agents.hub.server.security import WEB, CurrentUser, Principal
 
 log = logging.getLogger(__name__)
 
@@ -84,6 +88,18 @@ TOO_LARGE = f"a request is at most {MAX_REQUEST // 1024} KiB, a memory at most {
 Sink = Annotated[
     str,
     Query(min_length=1, max_length=100, pattern=PRINTABLE, description="the sink reading the memories (read rule)"),
+]
+ReadSink = Annotated[
+    str | None,
+    Query(
+        min_length=1,
+        max_length=100,
+        pattern=PRINTABLE,
+        description=(
+            "the sink reading the memories (read rule); left out, claude-code@anthropic for a machine token and none "
+            "for a web session, which reads by its grant alone"
+        ),
+    ),
 ]
 REFUSALS = {
     403: {"model": ErrorBody},
@@ -276,16 +292,29 @@ def _row(values) -> Row:
     return Row(memory, values[len(FIELDS)], values[len(FIELDS) + 1])
 
 
-def _visible(row: Row, user: Principal, accesses: dict[str, ProjectAccess], sink: str) -> bool:
+def _through(user: Principal, sink: str | None) -> str | None:
+    """The sink a read goes through: the one named; else none for a web session (the member reads by their grant,
+    as on the hub itself) and Claude Code's for a machine token (a pull writes files that sessions read)."""
+    if sink is not None:
+        return sink
+    return None if user.kind == WEB else AGENT_SINK
+
+
+def _visible(row: Row, user: Principal, accesses: dict[str, ProjectAccess], sink: str | None) -> bool:
     """The read rule of memories: personal ones and user and feedback ones are their owner's; in a project the
-    label must pass the rule of ``evo_agents.hub.access`` for the caller's grant and ``sink``."""
+    label must pass the rule of ``evo_agents.hub.access`` for the caller's grant and ``sink``, or for the grant
+    alone when ``sink`` is None."""
     memory = row.memory
     if memory.scope == "personal":
         return row.owner_id == user.user_id
     if memory.type not in SHARED_TYPES and row.owner_id != user.user_id:
         return False
     access = accesses.get(memory.project)
-    return access is not None and access.visible(memory.label, sink)
+    if access is None:
+        return False
+    if sink is None:
+        return access.rules.visible_by_grant(memory.label, access.max_level)
+    return access.visible(memory.label, sink)
 
 
 async def _access(conn, user: Principal, project: str) -> ProjectAccess | None:
@@ -355,12 +384,13 @@ async def list_memories(
     deleted: Annotated[bool, Query(description="include tombstones, as a sync needs")] = False,
     cursor: Annotated[str | None, Query(max_length=200)] = None,
     limit: Annotated[int, Query(ge=1, le=MAX_LIMIT)] = DEFAULT_LIMIT,
-    sink: Sink = AGENT_SINK,
+    sink: ReadSink = None,
 ) -> Page:
     """The memories the caller sees, oldest change first."""
     if project is not None and scope == "personal":
         raise HTTPException(422, "a personal memory has no project: leave out project or scope")
     after_at, after_id = _after(cursor)
+    sink = _through(user, sink)
     async with request.app.state.pool.connection() as conn:
         accesses = await _accesses(conn, user, project)
         if project is not None and not accesses:
@@ -392,18 +422,20 @@ async def search_memories(
     q: Annotated[str, Query(min_length=1, max_length=500, description='words, "a phrase", or -excluded')],
     scope: Literal["project", "personal"] | None = None,
     project: Annotated[str | None, Query(pattern=PROJECT_NAME)] = None,
+    location: Annotated[str | None, Query(min_length=1, max_length=255)] = None,
     limit: Annotated[int, Query(ge=1, le=SEARCH_LIMIT)] = 10,
-    sink: Sink = AGENT_SINK,
+    sink: ReadSink = None,
 ) -> Results:
     """The memories the caller sees whose name or text matches ``q`` (full text, configuration simple), best
     first."""
     if "\x00" in q:
         raise HTTPException(422, "q holds a NUL character")
+    sink = _through(user, sink)
     async with request.app.state.pool.connection() as conn:
         accesses = await _accesses(conn, user, project)
         if project is not None and not accesses:
             return Results(items=[])  # a hub admin without a grant
-        params = {**_params(user, accesses, scope, project, None), "q": q, "batch": BATCH}
+        params = {**_params(user, accesses, scope, project, location), "q": q, "batch": BATCH}
         found: list[Found] = []
         budget = PAGE_BYTES
         for offset in range(0, SCAN_ROWS, BATCH):
@@ -429,7 +461,7 @@ async def _load(conn, memory_id: int, *, lock: bool = False) -> Row | None:
     return _row(found) if found else None
 
 
-async def _readable(conn, user: Principal, memory_id: int, sink: str, *, lock: bool = False):
+async def _readable(conn, user: Principal, memory_id: int, sink: str | None, *, lock: bool = False):
     """The memory and the caller's access to its project; 404 when it does not exist or the caller cannot see it."""
     row = await _load(conn, memory_id, lock=lock)
     access = None
@@ -445,9 +477,9 @@ MemoryId = Annotated[int, Path(ge=1, le=MAX_ID)]
 
 
 @router.get("/{memory_id}", response_model=Memory, responses={404: {"model": ErrorBody}})
-async def show(request: Request, memory_id: MemoryId, user: CurrentUser, sink: Sink = AGENT_SINK) -> Memory:
+async def show(request: Request, memory_id: MemoryId, user: CurrentUser, sink: ReadSink = None) -> Memory:
     async with request.app.state.pool.connection() as conn:
-        row, _ = await _readable(conn, user, memory_id, sink)
+        row, _ = await _readable(conn, user, memory_id, _through(user, sink))
     return row.memory
 
 
@@ -585,3 +617,117 @@ async def delete(
         memory = await _written(conn, user, memory_id, DELETE)
     _logged(memory, user, "deleted")
     return Written(**memory.model_dump(), created=False, changed=True)
+
+
+# History: the revisions of one memory, each shown only when the caller could read the memory as it was then.
+
+DEFAULT_REVISIONS = 50
+MAX_REVISIONS = 200
+REVISIONS = """
+SELECT r.revision, r.type, r.label, r.deleted, octet_length(r.body), u.login, r.created_at
+  FROM memory_revisions r JOIN users u ON u.id = r.actor_id
+ WHERE r.memory_id = %(memory_id)s AND (%(before)s::integer IS NULL OR r.revision < %(before)s)
+ ORDER BY r.revision DESC
+ LIMIT %(batch)s
+"""
+ONE_REVISION = """
+SELECT r.revision, r.type, r.label, r.deleted, octet_length(r.body), u.login, r.created_at, r.body
+  FROM memory_revisions r JOIN users u ON u.id = r.actor_id
+ WHERE r.memory_id = %s AND r.revision = %s
+"""
+
+
+class RevisionSummary(BaseModel):
+    revision: int
+    type: str
+    label: dict
+    deleted: bool = Field(description="a tombstone: the memory was deleted at this revision")
+    size: int = Field(description="bytes of the body in UTF-8")
+    actor: str = Field(description="the login of who wrote this revision")
+    created_at: datetime
+
+
+class Revisions(BaseModel):
+    memory_id: int
+    items: list[RevisionSummary] = Field(description="the latest first")
+    next_before: int | None = Field(description="pass as before for older revisions; null after the oldest")
+
+
+class MemoryRevision(RevisionSummary):
+    memory_id: int
+    body: str = Field(description="the whole file as it was; empty for a tombstone")
+
+
+REVISION_FIELDS = tuple(RevisionSummary.model_fields)
+
+
+def _as_of(row: Row, kind: str, label: dict) -> Row:
+    """``row`` as it was at a revision of type ``kind`` labelled ``label``: what the read rule judges a revision by."""
+    return Row(row.memory.model_copy(update={"type": kind, "label": label}), row.owner_id, row.project_id)
+
+
+def _revision_visible(
+    row: Row, values, user: Principal, access: ProjectAccess | None, sink: str | None
+) -> RevisionSummary | None:
+    summary = RevisionSummary(**dict(zip(REVISION_FIELDS, values[: len(REVISION_FIELDS)], strict=True)))
+    accesses = {row.memory.project: access} if access is not None else {}
+    return summary if _visible(_as_of(row, summary.type, summary.label), user, accesses, sink) else None
+
+
+RevisionNumber = Annotated[int, Path(ge=1, le=MAX_REVISION)]
+
+
+@router.get("/{memory_id}/revisions", response_model=Revisions, responses={404: {"model": ErrorBody}})
+async def revisions(
+    request: Request,
+    memory_id: MemoryId,
+    user: CurrentUser,
+    before: Annotated[int | None, Query(ge=2, le=MAX_REVISION, description="only revisions older than this")] = None,
+    limit: Annotated[int, Query(ge=1, le=MAX_REVISIONS)] = DEFAULT_REVISIONS,
+    sink: ReadSink = None,
+) -> Revisions:
+    """The revisions of a memory the caller sees, the latest first. A revision whose label (or type) the caller
+    could not read is left out, so a label raised in the past never shows through its history."""
+    sink = _through(user, sink)
+    items: list[RevisionSummary] = []
+    following = None
+    async with request.app.state.pool.connection() as conn:
+        row, access = await _readable(conn, user, memory_id, sink)
+        params = {"memory_id": memory_id, "before": before, "batch": BATCH}
+        oldest_seen = False
+        for _ in range(0, SCAN_ROWS, BATCH):
+            found = await (await conn.execute(REVISIONS, params)).fetchall()
+            for values in found:
+                params["before"] = values[0]
+                summary = _revision_visible(row, values, user, access, sink)
+                if summary is not None:
+                    items.append(summary)
+                if len(items) >= limit:
+                    break
+            if len(items) >= limit:
+                break
+            if len(found) < BATCH:
+                oldest_seen = True
+                break
+        if not oldest_seen and params["before"] is not None and params["before"] > 1:
+            following = params["before"]  # the limit or the scan bound ended this page
+    return Revisions(memory_id=memory_id, items=items, next_before=following)
+
+
+@router.get("/{memory_id}/revisions/{revision}", response_model=MemoryRevision, responses={404: {"model": ErrorBody}})
+async def show_revision(
+    request: Request,
+    memory_id: MemoryId,
+    revision: RevisionNumber,
+    user: CurrentUser,
+    sink: ReadSink = None,
+) -> MemoryRevision:
+    """One revision of a memory with its body; 404 when it does not exist or the caller could not read it."""
+    sink = _through(user, sink)
+    async with request.app.state.pool.connection() as conn:
+        row, access = await _readable(conn, user, memory_id, sink)
+        values = await (await conn.execute(ONE_REVISION, (memory_id, revision))).fetchone()
+    summary = None if values is None else _revision_visible(row, values, user, access, sink)
+    if summary is None:
+        raise HTTPException(404, f"no revision {revision} of memory {memory_id} that you can see on this hub")
+    return MemoryRevision(**summary.model_dump(), memory_id=memory_id, body=values[len(REVISION_FIELDS)])

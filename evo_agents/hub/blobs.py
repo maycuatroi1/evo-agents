@@ -52,6 +52,7 @@ SEALED_SUFFIX = ".sealed"
 UPLOAD_TTL = timedelta(minutes=15)  # how long a presigned PUT works
 GET_TTL = timedelta(minutes=5)  # how long a presigned GET works unless the caller asks for less
 MAX_GET_TTL = timedelta(minutes=15)
+ATTACHMENT_NAME = re.compile(r"[A-Za-z0-9._-]{1,200}")  # what a presigned GET may name its download
 STALE_AFTER = timedelta(hours=24)  # an upload not committed by then is removed, object and row
 MiB = 1024 * 1024
 KIND_LIMITS = {
@@ -227,12 +228,17 @@ class BlobStore:
         params = {"Bucket": self.bucket, "Key": upload_key(upload_id), "ContentLength": size}
         return self._s3.generate_presigned_url("put_object", Params=params, ExpiresIn=int(UPLOAD_TTL.total_seconds()))
 
-    def presign_get(self, sha256: str, expires: timedelta = GET_TTL) -> str:
+    def presign_get(self, sha256: str, expires: timedelta = GET_TTL, *, filename: str | None = None) -> str:
         """A GET of blob ``sha256``, working for ``expires`` (at most MAX_GET_TTL). The caller must have checked that
-        the requester may see what refers to the blob: the URL itself checks nothing."""
+        the requester may see what refers to the blob: the URL itself checks nothing. With ``filename`` (letters,
+        digits and ``._-`` only), the store answers as an attachment of that name, so a browser saves the file."""
         if not timedelta(seconds=1) <= expires <= MAX_GET_TTL:
             raise ValueError(f"a presigned GET works between 1 second and {MAX_GET_TTL}, not {expires}")
         params = {"Bucket": self.bucket, "Key": blob_key(sha256)}
+        if filename is not None:
+            if not ATTACHMENT_NAME.fullmatch(filename):
+                raise ValueError(f"an attachment name is 1 to 200 of [A-Za-z0-9._-], not {filename!r}")
+            params["ResponseContentDisposition"] = f'attachment; filename="{filename}"'
         return self._s3.generate_presigned_url("get_object", Params=params, ExpiresIn=int(expires.total_seconds()))
 
     # Objects
