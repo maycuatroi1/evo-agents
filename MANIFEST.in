@@ -1,0 +1,2 @@
+# web/ is the Next.js app (its own image); it never ships in the Python sdist or wheel.
+prune web

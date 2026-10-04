@@ -874,8 +874,10 @@ def handle(session: Session, message: dict) -> dict | None:
     return {"jsonrpc": "2.0", "id": mid, "result": result}
 
 
-def serve_stdio(project: str | None = None, sink: str = "claude-code@anthropic") -> int:
-    session = make_session(project, sink)
+def serve_stdio(project: str | None = None, sink: str = "claude-code@anthropic", session=None) -> int:
+    """Answer MCP over stdin and stdout. ``session`` is anything with ``Session.call``, such as the hub backend of
+    ``evo_agents.hub.kg_cli``; without one, the local store of ``project`` answers."""
+    session = session or make_session(project, sink)
     for line in sys.stdin:
         line = line.strip()
         if not line:

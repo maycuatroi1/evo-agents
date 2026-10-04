@@ -8,6 +8,8 @@ import threading
 import time
 import uuid
 
+from evo_agents.isotime import parse_iso
+
 _lock = threading.Lock()
 _last = 0
 
@@ -37,8 +39,7 @@ def utc_now() -> str:
 
 def parse_utc(value: str) -> dt.datetime:
     """ISO 8601, with or without a trailing Z, as an aware UTC datetime. A naive value is taken as UTC."""
-    text = value.replace("Z", "+00:00") if value.endswith("Z") else value
-    parsed = dt.datetime.fromisoformat(text)
+    parsed = parse_iso(value)
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=dt.timezone.utc)
     return parsed.astimezone(dt.timezone.utc)

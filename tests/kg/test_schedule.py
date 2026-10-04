@@ -1,5 +1,6 @@
 """The LaunchAgent plist. launchctl is never called: every command goes to a recording fake."""
 
+import json
 import os
 import plistlib
 import subprocess
@@ -39,6 +40,22 @@ def test_schedule_plist_content(home, kg_env):
     assert env["EVO_KG_HOME"] == str(kg_env)
     assert plist["StandardOutPath"] == plist["StandardErrorPath"] == str(kg_env / "schedule.log")
     assert plistlib.loads(schedule.render(plist).encode()) == plist
+
+
+def test_schedule_pushes_to_the_hub_when_the_machine_is_signed_in(home, kg_env, capsys, monkeypatch):
+    monkeypatch.setattr(sys, "platform", "darwin")  # install needs launchd; launchctl is the fake below
+    hub = home / ".evo" / "hub"
+    hub.mkdir(parents=True)
+    (hub / "token").write_text("evh_" + "x" * 43 + "\n")
+    (hub / "config.json").write_text(json.dumps({"url": "https://hub.test", "login": "octo"}))
+    plist = schedule.build_plist("/opt/tools/bin/evo-agents")
+    assert plist["ProgramArguments"] == ["/opt/tools/bin/evo-agents", *SYNC, "--push"]
+    assert schedule.build_plist("/opt/tools/bin/evo-agents", push=False)["ProgramArguments"][-1] == "--build"
+    assert main(["kg", "schedule", "print"]) == 0
+    assert plistlib.loads(capsys.readouterr().out.encode())["ProgramArguments"][-6:] == [*SYNC, "--push"]
+    fake = FakeLaunchctl()
+    path = schedule.install("/opt/tools/bin/evo-agents", run=fake)
+    assert plistlib.loads(path.read_bytes())["ProgramArguments"][-1] == "--push"
 
 
 def test_schedule_names_the_running_executable(tmp_path, monkeypatch):

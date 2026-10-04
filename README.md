@@ -84,7 +84,8 @@ To keep graphs fresh, give sources a `refresh` interval (`30m`, `6h`, `1d`). `kg
 the sources whose interval has passed since their last ok run; `--all` does that for every project that
 has synced on this machine. On macOS, `kg schedule install` loads a LaunchAgent that runs
 `kg sync --due --all --build` every hour (`kg schedule print` shows the plist, `kg schedule uninstall`
-removes it; output goes to `~/.evo/kg/schedule.log`).
+removes it; output goes to `~/.evo/kg/schedule.log`). On a machine signed in to a hub, the command also
+gets `--push`, which sends the runs the hub lacks (`evo-agents hub kg push` does the same by hand).
 
 ## Using it from Claude Code
 
@@ -96,7 +97,9 @@ claude plugin install evo-kg@evo-agents
 The plugin registers the MCP server `evo-kg`, a `using-project-graph` skill, and three hooks. The
 server binds to the project of the session directory; pass `--project` in `.mcp.json` to pin one, or
 run `evo-agents kg bind --project NAME DIR` once to tie a directory and everything below it to a project
-(`kg bind --list` and `kg bind --remove DIR` manage those bindings).
+(`kg bind --list` and `kg bind --remove DIR` manage those bindings). When the machine is signed in to a
+hub that has a graph of the project, the server answers from the hub with the same tools
+(`kg serve --backend auto`, the default; `local` and `hub` force one or the other).
 
 | Tool | Use |
 |---|---|
@@ -118,9 +121,42 @@ Hooks:
   off.
 
 The plugin needs [uv](https://docs.astral.sh/uv/) on `PATH` and pins the release it runs: the server
-starts with `uvx --from evo-ak==0.1.2 evo-agents`, which downloads and caches that version on first start. The hooks
-run `uvx --offline --from evo-ak==0.1.2 evo-agents`, so they never wait on the network; they stay silent when `uvx`
+starts with `uvx --from evo-ak==0.2.0 evo-agents`, which downloads and caches that version on first start. The hooks
+run `uvx --offline --from evo-ak==0.2.0 evo-agents`, so they never wait on the network; they stay silent when `uvx`
 is missing or until the server has cached the package.
+
+### The team hub
+
+```sh
+evo-agents hub login --url https://hub.example.org   # once per machine; the token stays in ~/.evo/hub
+claude plugin install evo-hub@evo-agents
+```
+
+The `evo-hub` plugin registers the MCP server `evo-hub` (`evo-agents hub mcp`, which carries the session to the
+hub's `/mcp`), a `using-agent-hub` skill, and two hooks. Its tools are the seven `kg_*` tools and `memory_search`,
+`memory_get`, `memory_write`, `plan_list`, `plan_show`, `plan_step`, `skill_list` and `hub_projects`. In a harness
+whose `harness.yaml` names `hub.project`, plans live on the hub and the files under `plans/` are read-only copies:
+mark a step with `plan_step`, `evo-agents hub plan step` or `evo harness step`, never by editing the YAML.
+
+Hooks (`evo-agents hub hook session-start|stop`, same pins and `|| true` as evo-kg):
+
+- SessionStart pulls the hub's memories of the session directory into Claude Code's memory directory, writes the
+  plan copies of its harness (no commit; a copy edited by hand is left as it is and named), counts the skills
+  `evo-agents hub skills sync` would change, and prints one line: hub, project, memories pulled, skills to sync.
+- Stop pushes the memory files that changed since the last sync, so the next session on another machine has them.
+  A turn that wrote no memory sends nothing; when the hub does not answer, the files wait and a later Stop pushes
+  them (state in `~/.evo/hub/memory-state.json`).
+
+Both exit 0 whatever happens, give up after a few seconds, print at most one line without tokens or memory text, and
+send nothing when the machine is not signed in.
+
+### Running a hub
+
+The hub is an API server, a worker and a web interface, published as two images on GHCR for each release and run
+with `deploy/hub/docker-compose.yml` next to a Postgres database and a Cloudflare R2 bucket. `evo-agents hub serve`
+and `evo-agents hub worker` need the server extra: `pip install 'evo-ak[hub-server]'`. [docs/hub.md](docs/hub.md)
+covers the API and its OpenAPI document, sign-in from the CLI and the web, who sees what, the plan copies in git,
+blobs on R2, the worker and its queue, and operations: migrations, backup, restore and health checks.
 
 ## Writing a connector
 
@@ -142,7 +178,11 @@ checks protocol, determinism, replay and permutation, truncated listings, golden
 evo_agents/
   harness/    schema and loader for harness.yaml, knowledge.yaml, contracts.yaml, plans
   kg/         protocol, connectors, corpus, pipeline, store, policy, MCP server
-plugins/      Claude Code marketplace (plugin evo-kg)
+  hub/        team hub: server, client commands, MCP proxy, plugin hooks
+plugins/      Claude Code marketplace (plugins evo-kg and evo-hub)
+web/          the hub's web interface (Next.js, its own image)
+deploy/hub/   the hub's Dockerfile and compose files
+docs/         hub.md: running and using the hub
 ```
 
 ## License

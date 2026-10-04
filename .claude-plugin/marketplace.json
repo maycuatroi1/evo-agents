@@ -1,15 +1,23 @@
 {
   "name": "evo-agents",
   "owner": {"name": "maycuatroi", "url": "https://github.com/maycuatroi1"},
-  "description": "Plugins for agent harnesses: a per-project knowledge graph with provenance and sensitivity labels.",
+  "description": "Plugins for agent harnesses: a per-project knowledge graph with provenance and sensitivity labels, and a team hub for memories, plans and skills.",
   "plugins": [
     {
       "name": "evo-kg",
       "source": "./plugins/evo-kg",
       "description": "Project knowledge graph over MCP: repos, files, symbols, documents, plans and seams, with evidence and labels.",
-      "version": "0.1.2",
+      "version": "0.2.0",
       "category": "development",
       "tags": ["knowledge-graph", "harness", "mcp"]
+    },
+    {
+      "name": "evo-hub",
+      "source": "./plugins/evo-hub",
+      "description": "Team hub over MCP: project memories, plans, skills and knowledge graphs, with Claude Code's memory files and plan copies kept in step by hooks.",
+      "version": "0.2.0",
+      "category": "development",
+      "tags": ["hub", "memory", "plans", "harness", "mcp"]
     }
   ]
 }
