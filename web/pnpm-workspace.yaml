@@ -1,0 +1,7 @@
+# pnpm 11 refuses dependency build scripts unless they are listed here. Every native package below ships
+# prebuilt binaries through optional dependencies, so none of their install scripts needs to run.
+allowBuilds:
+  '@parcel/watcher': false
+  '@swc/core': false
+  sharp: false
+  unrs-resolver: false

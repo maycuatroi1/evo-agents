@@ -136,3 +136,7 @@ def register(sub) -> None:
     from evo_agents.hub.cli_client import register_client
 
     register_client(hsub)
+
+    from evo_agents.hub.openapi import register as register_openapi
+
+    register_openapi(hsub)
