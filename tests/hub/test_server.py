@@ -50,7 +50,14 @@ def is_json(response) -> bool:
 def test_health_reports_version_schema_and_db(client, tmp_path):
     response = client.get("/v1/health")
     assert response.status_code == 200
-    assert response.json() == {"status": "ok", "version": __version__, "schema": HEAD, "db": "ok", "failed": []}
+    assert response.json() == {
+        "status": "ok",
+        "version": __version__,
+        "schema": HEAD,
+        "db": "ok",
+        "r2": "unconfigured",  # without EVO_HUB_S3_*; tests/hub/test_blobs.py checks R2 itself
+        "failed": [],
+    }
     assert response.headers["cache-control"] == "no-store"
     assert (tmp_path / "cache").is_dir()
 
@@ -67,6 +74,7 @@ def test_health_is_503_with_a_json_body_while_postgres_is_down(client, hub_db):
             "version": __version__,
             "schema": None,
             "db": "unavailable",
+            "r2": "unconfigured",
             "failed": ["db"],
         }
         live = client.get("/v1/health/live")  # the container stays up while the database is away

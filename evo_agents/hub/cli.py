@@ -1,8 +1,8 @@
 """``evo-agents hub`` subcommands.
 
-``hub serve`` and ``hub migrate`` need the hub-server extra. This module imports none of it when loaded,
-so ``evo-agents`` keeps starting on a core install; each command imports the extra when it runs and names
-the pip command when it is missing. Both commands log JSON lines to stderr from their first line on: a
+``hub serve``, ``hub worker`` and ``hub migrate`` need the hub-server extra. This module imports none of it when
+loaded, so ``evo-agents`` keeps starting on a core install; each command imports the extra when it runs and names
+the pip command when it is missing. These commands log JSON lines to stderr from their first line on: a
 configuration error is a log line naming the variable, and an unexpected exception is a log line with its
 traceback, secrets removed, rather than a bare traceback from the interpreter.
 
@@ -12,6 +12,7 @@ The client commands (``login``, ``logout``, ``whoami``, ``token``, ``admin``, ``
 
 from __future__ import annotations
 
+import argparse
 import functools
 import logging
 
@@ -87,6 +88,37 @@ def cmd_serve(args) -> int:
 
 
 @_server_command
+def cmd_worker(args) -> int:
+    from evo_agents.hub.config import ConfigError, load_config
+
+    try:
+        config = load_config(dsn=args.dsn, data_dir=args.data_dir)
+    except ConfigError as exc:
+        return _config_error(exc)
+    missing = config.blob_store_missing()
+    if missing:
+        message = f"{missing[0]} is not set: hub worker needs the blob store ({', '.join(missing)})"
+        return _config_error(ConfigError(missing[0], message))
+    try:
+        from evo_agents.hub import worker
+        from evo_agents.hub.server.app import init_sentry
+    except ImportError as exc:
+        return _missing_extra(exc, args)
+    init_sentry(config)
+    return worker.main(config, args.concurrency)
+
+
+def _positive(value: str) -> int:
+    try:
+        number = int(value)
+    except ValueError:
+        number = 0
+    if number < 1:
+        raise argparse.ArgumentTypeError(f"must be a whole number of at least 1, not {value!r}")
+    return number
+
+
+@_server_command
 def cmd_migrate(args) -> int:
     from evo_agents.hub.config import ConfigError, load_dsn
     from evo_agents.hub.log import redact_dsn
@@ -128,6 +160,18 @@ def register(sub) -> None:
     serve.add_argument("--host", help="interface to listen on (default: $EVO_HUB_HOST or 127.0.0.1)")
     serve.add_argument("--port", type=int, help="port to listen on (default: $EVO_HUB_PORT or 8080)")
     serve.set_defaults(func=cmd_serve)
+
+    worker = hsub.add_parser(
+        "worker", help="run background jobs from the queue in Postgres (needs the hub-server extra, Postgres and R2)"
+    )
+    worker.add_argument("--dsn", help=dsn_help)
+    worker.add_argument(
+        "--data-dir",
+        help="cache directory, rebuilt from Postgres and the blob store when lost "
+        "(default: $EVO_HUB_DATA_DIR or ~/.evo/hub-server/cache)",
+    )
+    worker.add_argument("--concurrency", type=_positive, default=1, help="jobs run at the same time (default: 1)")
+    worker.set_defaults(func=cmd_worker)
 
     migrate = hsub.add_parser("migrate", help="bring the hub database to this release's schema, then exit")
     migrate.add_argument("--dsn", help=dsn_help)
