@@ -1,8 +1,10 @@
 """Health endpoints, both without sign-in.
 
-``/v1/health`` reports the package version and the schema revision read from Postgres, and answers 503
-naming the component that failed when Postgres does not answer within HEALTH_TIMEOUT. ``/v1/health/live``
-only says the process serves requests: it is the container healthcheck, and a database outage must not
+``/v1/health`` reports the package version and the schema revision read from Postgres, and the blob store (R2)
+after a HeadBucket on its bucket. It answers 503 naming the component that failed when Postgres does not answer
+within HEALTH_TIMEOUT or the bucket does not answer; both are checked at the same time. A hub without the
+EVO_HUB_S3_* variables reports ``r2: unconfigured`` and stays healthy, as it was configured. ``/v1/health/live``
+only says the process serves requests: it is the container healthcheck, and a database or R2 outage must not
 get the container restarted.
 """
 
@@ -33,6 +35,7 @@ class Health(BaseModel):
     version: str = Field(description="evo-agents package version")
     schema_revision: str | None = Field(alias="schema", description="Alembic revision applied to the database")
     db: Literal["ok", "unavailable"]
+    r2: Literal["ok", "unavailable", "unconfigured"] = Field(description="the blob store, by a HeadBucket")
     failed: list[str] = Field(default_factory=list, description="components that did not answer")
 
 
@@ -46,14 +49,29 @@ class Live(BaseModel):
     responses={503: {"model": Health, "description": "a component did not answer"}},
 )
 async def health(request: Request, response: Response):
+    store = request.app.state.blobs
+    r2 = asyncio.ensure_future(store.status()) if store is not None else None
     try:
-        schema = await schema_revision(request.app.state.pool, HEALTH_TIMEOUT)
+        schema, db = await schema_revision(request.app.state.pool, HEALTH_TIMEOUT), "ok"
     except (psycopg.Error, OSError, TimeoutError, asyncio.TimeoutError) as exc:  # PoolTimeout is a psycopg.Error
         log.warning("health check failed: database unavailable", extra={"error": type(exc).__name__})
-        body = Health(status="unavailable", version=__version__, schema=None, db="unavailable", failed=["db"])
+        schema, db = None, "unavailable"
+    r2_status = "unconfigured" if r2 is None else await r2
+    if r2_status == "unavailable":
+        log.warning("health check failed: blob store unavailable", extra={"bucket": store.bucket})
+    failed = [name for name, status in (("db", db), ("r2", r2_status)) if status == "unavailable"]
+    body = Health(
+        status="unavailable" if failed else "ok",
+        version=__version__,
+        schema=schema,
+        db=db,
+        r2=r2_status,
+        failed=failed,
+    )
+    if failed:
         return JSONResponse(body.model_dump(by_alias=True), status_code=503, headers=NO_STORE)
     response.headers.update(NO_STORE)
-    return Health(status="ok", version=__version__, schema=schema, db="ok")
+    return body
 
 
 @router.get("/health/live", response_model=Live)

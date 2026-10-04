@@ -7,6 +7,10 @@ carry them. Standard library only.
 Sign-in is optional configuration: without EVO_HUB_GITHUB_CLIENT_ID nobody can sign in, and without the client
 secret, the session secret or the public URL the web sign-in answers 503 while the CLI's device flow still works.
 The GitHub URLs are configurable so tests and Playwright can point the hub at a fake GitHub.
+
+The blob store (Cloudflare R2, or any S3 API) is configured by the four EVO_HUB_S3_* variables together: none of
+them leaves it unconfigured, so the blob routes answer 503 and ``hub worker`` refuses to start; some but not all of
+them is a ConfigError naming the first one missing. The key pair is registered as secrets like the DSN password.
 """
 
 from __future__ import annotations
@@ -29,6 +33,8 @@ DEFAULT_GITHUB_API_URL = "https://api.github.com"
 DEFAULT_GITHUB_TIMEOUT = 10.0  # seconds for one call to GitHub, connecting included
 MIN_SESSION_SECRET = 32  # characters; the secret keys HMAC-SHA256
 LOGIN = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,99}")  # a GitHub login, as the users table accepts it
+S3_VARIABLES = ("EVO_HUB_S3_ENDPOINT", "EVO_HUB_S3_BUCKET", "EVO_HUB_S3_ACCESS_KEY_ID", "EVO_HUB_S3_SECRET_ACCESS_KEY")
+BUCKET = re.compile(r"[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]")  # an S3 bucket name, as R2 accepts it
 
 
 class ConfigError(ValueError):
@@ -55,6 +61,10 @@ class HubConfig:
     github_url: str = DEFAULT_GITHUB_URL
     github_api_url: str = DEFAULT_GITHUB_API_URL
     github_timeout: float = DEFAULT_GITHUB_TIMEOUT
+    s3_endpoint: str | None = None  # the account's S3 API, https://<account id>.r2.cloudflarestorage.com for R2
+    s3_bucket: str | None = None
+    s3_access_key_id: str | None = None  # never logged
+    s3_secret_access_key: str | None = None  # never logged or returned
 
     def __repr__(self) -> str:  # the DSNs and secrets are credentials; keep them out of tracebacks and debug output
         return f"HubConfig(data_dir={str(self.data_dir)!r}, host={self.host!r}, port={self.port})"
@@ -71,6 +81,11 @@ class HubConfig:
             "EVO_HUB_PUBLIC_URL": self.public_url,
         }
         return [name for name, value in needed.items() if not value]
+
+    def blob_store_missing(self) -> list[str]:
+        """The EVO_HUB_S3_* variables the blob store still needs; empty when it is configured."""
+        values = (self.s3_endpoint, self.s3_bucket, self.s3_access_key_id, self.s3_secret_access_key)
+        return [name for name, value in zip(S3_VARIABLES, values, strict=True) if not value]
 
 
 def _text(env: Mapping[str, str], name: str) -> str | None:
@@ -117,6 +132,27 @@ def _secret(env: Mapping[str, str], name: str, minimum: int = 1) -> str | None:
     if value is not None and len(value) < minimum:
         raise ConfigError(name, f"{name} must be at least {minimum} characters long")
     return value
+
+
+def _blob_store(env: Mapping[str, str]) -> dict:
+    """The S3 settings, all four or none; the key pair is registered as secrets before anything can fail."""
+    endpoint_name, bucket_name, key_name, secret_name = S3_VARIABLES
+    key_id, secret = _secret(env, key_name), _secret(env, secret_name)
+    values = {
+        "s3_endpoint": _url(env, endpoint_name, None),
+        "s3_bucket": _text(env, bucket_name),
+        "s3_access_key_id": key_id,
+        "s3_secret_access_key": secret,
+    }
+    missing = [name for name, value in zip(S3_VARIABLES, values.values(), strict=True) if not value]
+    if missing and len(missing) < len(S3_VARIABLES):
+        raise ConfigError(
+            missing[0],
+            f"{missing[0]} is not set: the blob store needs {', '.join(S3_VARIABLES)} together, or none of them",
+        )
+    if values["s3_bucket"] and not BUCKET.fullmatch(values["s3_bucket"]):
+        raise ConfigError(bucket_name, f"{bucket_name} must be an S3 bucket name, got {values['s3_bucket']!r}")
+    return values
 
 
 def load_log_level(env: Mapping[str, str] | None = None) -> str:
@@ -185,4 +221,5 @@ def load_config(
         github_url=_url(env, "EVO_HUB_GITHUB_URL", DEFAULT_GITHUB_URL),
         github_api_url=_url(env, "EVO_HUB_GITHUB_API_URL", DEFAULT_GITHUB_API_URL),
         github_timeout=_number(env, "EVO_HUB_GITHUB_TIMEOUT", DEFAULT_GITHUB_TIMEOUT, kind=float, minimum=0.1),
+        **_blob_store(env),
     )

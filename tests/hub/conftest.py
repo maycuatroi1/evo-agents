@@ -46,3 +46,12 @@ def github():
 
     with FakeGitHub() as fake:
         yield fake
+
+
+@pytest.fixture
+def s3():
+    """A fake S3 on a local port with an empty bucket of its own (``tests.hub.s3``), stopped after the test."""
+    from tests.hub.s3 import fake_s3
+
+    with fake_s3() as fake:
+        yield fake

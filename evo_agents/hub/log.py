@@ -2,8 +2,10 @@
 
 Secrets are removed when a record is formatted, so a library that logs a DSN or a token is covered too:
 every value registered with ``register_secret`` (the DSN password, the Sentry DSN, the GitHub client secret, the
-session secret) becomes ``***``, and so do the password of any URI or ``password=`` pair, hub tokens (``evh_...``)
-and web sessions (``evs_...``), GitHub tokens (``gho_...``, ``github_pat_...``) and bearer credentials.
+session secret, the S3 key pair) becomes ``***``, and so do the password of any URI or ``password=`` pair, hub tokens
+(``evh_...``) and web sessions (``evs_...``), GitHub tokens (``gho_...``, ``github_pat_...``), bearer credentials,
+and the signature, access key id and session token of an S3 request or presigned URL, which is a bearer credential
+until it expires.
 Standard library only: the CLI configures logging before it knows whether the hub-server extra is there.
 """
 
@@ -31,6 +33,11 @@ _PATTERNS = (
     (re.compile(r"\b(?P<head>ev[hs]_)[A-Za-z0-9_-]{8,}"), r"\g<head>" + MASK),
     (re.compile(r"\b(?P<head>gh[opsur]_|github_pat_)[A-Za-z0-9_]{16,}"), r"\g<head>" + MASK),
     (re.compile(r"(?P<head>\bBearer\s+)[A-Za-z0-9._~+/=-]{8,}", re.IGNORECASE), r"\g<head>" + MASK),
+    # SigV4: X-Amz-Signature= and X-Amz-Credential= of a presigned URL, Signature= and Credential= of a header,
+    # and the "Signature:" line botocore logs at debug level
+    (re.compile(r"(?P<head>\bSignature(?:=|:\s*))[0-9A-Fa-f]{16,}"), r"\g<head>" + MASK),
+    (re.compile(r"(?P<head>\bCredential=)[A-Za-z0-9]+"), r"\g<head>" + MASK),
+    (re.compile(r"(?P<head>\bX-Amz-Security-Token=)[^&\s\"']+", re.IGNORECASE), r"\g<head>" + MASK),
 )
 
 QUIET_LOGGERS = {
@@ -38,6 +45,11 @@ QUIET_LOGGERS = {
     # A line per outbound request; the GitHub client logs its own line per call, with the path only.
     "httpx": logging.WARNING,
     "httpcore": logging.WARNING,
+    # boto3 at debug level logs every request with its headers and body; the blob store logs its own lines.
+    "boto3": logging.WARNING,
+    "botocore": logging.WARNING,
+    "s3transfer": logging.WARNING,
+    "urllib3": logging.WARNING,
 }
 
 # Attributes every LogRecord has; anything else on a record came from ``extra=`` and goes into the JSON.
