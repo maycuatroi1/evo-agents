@@ -1,0 +1,443 @@
+{
+  "tools": [
+    {
+      "name": "kg_search",
+      "description": "Find nodes by name, id, path, code or words. Returns ids to pass to kg_node or kg_context.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "name, id, path, code or words"
+          },
+          "kinds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "e.g. Plan, Symbol, Section"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 25,
+            "default": 10
+          }
+        },
+        "required": [
+          "query"
+        ]
+      }
+    },
+    {
+      "name": "kg_context",
+      "description": "A connected subgraph around a question or a set of ids, within a token budget.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string"
+          },
+          "ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "budget_tokens": {
+            "type": "integer",
+            "minimum": 500,
+            "maximum": 8000,
+            "default": 3000
+          },
+          "hops": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 3,
+            "default": 2
+          }
+        }
+      }
+    },
+    {
+      "name": "kg_node",
+      "description": "One node: properties, status, label, evidence (source, revision, span, uri) and its edges.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      }
+    },
+    {
+      "name": "kg_impact",
+      "description": "What a change reaches: give node ids, repo:path paths or a unified diff. Walks back over callers, importers, members, definers, dependants, implementations and tests (never proposed edges); documents that mention a reached node come back as a separate group to re-check.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "paths": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "repo:path, or a bare path"
+          },
+          "diff": {
+            "type": "string",
+            "description": "a unified diff, e.g. the output of git diff"
+          },
+          "depth": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 3,
+            "default": 2
+          }
+        }
+      }
+    },
+    {
+      "name": "kg_path",
+      "description": "How two nodes connect: the shortest path from one to the other, preferring stronger status. Without 'to', the chains from one node along implements, schedules, verifies, has_step and touches.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          },
+          "max_hops": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 6,
+            "default": 6
+          }
+        },
+        "required": [
+          "from"
+        ]
+      }
+    },
+    {
+      "name": "kg_status",
+      "description": "Bound project, sink profile, snapshot age, and coverage per source.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "kg_more",
+      "description": "Continue a truncated result.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "handle": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "handle"
+        ]
+      }
+    },
+    {
+      "name": "memory_search",
+      "description": "Search the memories you can see on the hub by words of their name or text, best first. In a session bound to a project, that project's memories; scope personal searches your personal ones instead. Returns ids for memory_get.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500,
+            "description": "words, \"a phrase\", or -excluded"
+          },
+          "project": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+            "description": "a project on the hub (see hub_projects); default: the session's project"
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "project",
+              "personal"
+            ]
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 50,
+            "default": 10
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "memory_get",
+      "description": "One memory by its id: the whole file, frontmatter included, with its type, label and revision.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9223372036854775807
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "memory_write",
+      "description": "Create or change one memory on the hub, as a file of Claude Code's auto-memory: name is the file name (ending in .md), body the whole file with its frontmatter (name, description, metadata.type). To change a memory, pass the revision memory_get showed as if_revision. Writes to the hub only, never to this machine: the memory directory gets it at the next `evo-agents hub memory pull`.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 4,
+            "maxLength": 255,
+            "description": "such as topic-notes.md"
+          },
+          "body": {
+            "type": "string",
+            "description": "the whole file, frontmatter included"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "user",
+              "feedback",
+              "project",
+              "reference"
+            ],
+            "description": "default: metadata.type of the frontmatter, else user (only you see it)"
+          },
+          "project": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+            "description": "a project on the hub (see hub_projects); default: the session's project"
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "project",
+              "personal"
+            ],
+            "description": "default: project when there is one"
+          },
+          "location": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255,
+            "description": "harness (default) or a repo of the project; for scope personal, required"
+          },
+          "if_revision": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2147483647
+          },
+          "label": {
+            "type": "object",
+            "properties": {
+              "level": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "location": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "integrity": {
+                "type": "string",
+                "enum": [
+                  "T",
+                  "U"
+                ]
+              }
+            },
+            "required": [
+              "level"
+            ],
+            "additionalProperties": false,
+            "description": "default: the memory's current label, else the project's"
+          }
+        },
+        "required": [
+          "name",
+          "body"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "plan_list",
+      "description": "The plans of a project on the hub with their revision and how many steps are done.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "project": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+            "description": "a project on the hub (see hub_projects); default: the session's project"
+          },
+          "area": {
+            "type": "string",
+            "enum": [
+              "active",
+              "completed"
+            ]
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "plan_show",
+      "description": "A plan as the hub holds it, as the YAML of its copy in git, with its revision; with step, that step only.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "plan_id": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{0,99}$"
+          },
+          "step": {
+            "type": [
+              "string",
+              "integer"
+            ],
+            "description": "the step's id, as in the plan"
+          },
+          "project": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+            "description": "a project on the hub (see hub_projects); default: the session's project"
+          }
+        },
+        "required": [
+          "plan_id"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "plan_step",
+      "description": "Set the status of a plan step on the hub, as `evo harness step` does, with evidence or a note. done also sets done_at (default: today). Writes to the hub only: the YAML copy in git changes at the next `evo-agents hub plan export`, never by editing it.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "plan_id": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{0,99}$"
+          },
+          "step": {
+            "type": [
+              "string",
+              "integer"
+            ],
+            "description": "the step's id, as in the plan"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "done",
+              "in_progress",
+              "pending",
+              "blocked"
+            ]
+          },
+          "evidence": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 65536
+          },
+          "note": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 65536
+          },
+          "done_at": {
+            "type": "string",
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+            "description": "YYYY-MM-DD, with status done"
+          },
+          "if_revision": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2147483647,
+            "description": "the revision you read; default: the latest, retried when another write lands"
+          },
+          "project": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+            "description": "a project on the hub (see hub_projects); default: the session's project"
+          }
+        },
+        "required": [
+          "plan_id",
+          "step",
+          "status"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "skill_list",
+      "description": "The skills on the hub you can see, global and of your projects, each with its latest version.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "scope": {
+            "type": "string",
+            "enum": [
+              "global",
+              "project"
+            ]
+          },
+          "project": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+            "description": "a project on the hub (see hub_projects); default: the session's project"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "hub_projects",
+      "description": "The projects on the hub you hold a grant on, with your role, max level, sinks and repos.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    }
+  ]
+}
