@@ -6,13 +6,47 @@ on:
   pull_request:
 
 jobs:
+  # Linux runs everything, the hub tests included, against a Postgres service container.
   test:
+    name: test (ubuntu-latest, ${{ matrix.python }})
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
         python: ["3.10", "3.12"]
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 30
+    env:
+      EVO_HUB_TEST_DSN: postgresql://postgres:test@localhost:5432/postgres
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: python -m pip install -e '.[test,graphify,hub-server]'
+      - run: ruff check .
+      - run: ruff format --check .
+      - run: pytest -q
+
+  # Service containers run on Linux only. macOS installs the core package without the hub-server extra,
+  # and with EVO_HUB_TEST_DSN unset the hub tests skip.
+  test-macos:
+    name: test (macos-latest, ${{ matrix.python }})
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.12"]
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
