@@ -63,6 +63,15 @@ class NotSignedIn(HubError):
     pass
 
 
+class Unreachable(HubError):
+    """The hub did not answer: it could not be reached, or no answer came in time. ``refused`` when the connection
+    was refused, so the request was never sent and sending it again cannot do anything twice."""
+
+    def __init__(self, message: str, refused: bool = False):
+        super().__init__(message)
+        self.refused = refused
+
+
 @dataclass(frozen=True)
 class Credentials:
     url: str
@@ -183,10 +192,11 @@ def _send(method: str, url: str, headers: dict, data: bytes | None, timeout: flo
         with exc:
             return exc.code, exc.read()
     except urllib.error.URLError as exc:
-        raise HubError(f"cannot reach {_origin(url)}: {exc.reason}") from None
+        refused = isinstance(exc.reason, ConnectionRefusedError)
+        raise Unreachable(f"cannot reach {_origin(url)}: {exc.reason}", refused) from None
     except (TimeoutError, OSError, http.client.HTTPException) as exc:
         reason = f"no answer within {timeout:g}s" if isinstance(exc, TimeoutError) else str(exc) or type(exc).__name__
-        raise HubError(f"cannot reach {_origin(url)}: {reason}") from None
+        raise Unreachable(f"cannot reach {_origin(url)}: {reason}") from None
 
 
 def _json(raw: bytes):

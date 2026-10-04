@@ -26,6 +26,7 @@ CODES = {
     405: "method_not_allowed",
     409: "conflict",
     413: "too_large",
+    421: "misdirected",  # /mcp for a host the hub does not answer MCP for
     422: "invalid_request",
     429: "too_many_requests",
     500: "internal_error",

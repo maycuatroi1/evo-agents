@@ -30,7 +30,8 @@ a member, from the latest successful build (``evo_agents.hub.kg_graph``), with t
 member's grant and the sink's clearance. The sink defaults to Claude Code's; ``cli``, when the project declares no
 such sink, reads through the hub sink, as the local ``cli`` sink reads everything on the machine. The answer is the
 MCP tool result, an error included; a graph that cannot be fetched is 503, and one whose bytes are not those the
-build recorded is 502 and is never opened.
+build recorded is 502 and is never opened. The kg_* tools of /mcp (``evo_agents.hub.server.mcp``) answer through the
+same ``tool_result``, so the REST route and MCP read and filter alike.
 """
 
 from __future__ import annotations
@@ -75,7 +76,7 @@ from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.blobs import Mismatch, blob_store, commit_uploads
 from evo_agents.hub.server.errors import ErrorBody, error_response
 from evo_agents.hub.server.projects import ProjectAccess, project_access
-from evo_agents.hub.server.security import CurrentUser
+from evo_agents.hub.server.security import CurrentUser, Principal
 from evo_agents.kg.policy import Label, Policy
 
 log = logging.getLogger(__name__)
@@ -607,16 +608,12 @@ def _read_sink(access: ProjectAccess, sink: str) -> str:
     return sink
 
 
-@router.post("/{project}/tools/{tool}", response_model=ToolResult, responses=REFUSALS | {502: {"model": ErrorBody}})
-async def call_tool(
-    request: Request,
-    project: ProjectName,
-    tool: Annotated[Literal[TOOL_NAMES], PathParam()],
-    body: ToolCall,
-    user: CurrentUser,
-):
-    """One kg_* tool of ``evo-agents kg serve``, answered from the project's latest successful build."""
-    async with request.app.state.pool.connection() as conn:
+async def tool_result(state, user: Principal, project: str, tool: str, arguments: dict, sink: str) -> dict:
+    """One kg_* tool of ``evo-agents kg serve`` for ``user``, answered from the project's latest successful build
+    through ``sink``: the MCP tool result, an error included. ``state`` is the app's. Raises HTTPException: 404 for a
+    project the caller cannot see, 403 without a grant on it, 503 when no graph can be fetched, 502 for an artifact
+    whose bytes are not the build's."""
+    async with state.pool.connection() as conn:
         access = await project_access(conn, user, project)
         _member(access)
         cursor = await conn.execute(
@@ -630,13 +627,11 @@ async def call_tool(
             f"error: project {project} has no graph on the hub yet: push its runs with `evo-agents hub kg push` "
             "(a build follows)"
         )
-        return JSONResponse({"content": [{"type": "text", "text": message}], "isError": True})
+        return {"content": [{"type": "text", "text": message}], "isError": True}
     rules = access.rules
-    sink = _read_sink(access, body.sink)
-    ceiling = rules.ceiling(access.max_level, sink)
-    state = request.app.state
+    ceiling = rules.ceiling(access.max_level, _read_sink(access, sink))
     try:
-        result = await asyncio.to_thread(
+        return await asyncio.to_thread(
             answer,
             state.kg_graphs,
             state.blobs,
@@ -645,14 +640,25 @@ async def call_tool(
             project,
             rules.policy,
             ceiling,
-            body.sink,
+            sink,
             graphs,
             tool,
-            body.arguments,
+            arguments,
         )
     except GraphUnavailable as exc:
         raise HTTPException(503, str(exc)) from None
     except ArtifactMismatch as exc:
         log.error("kg graph artifact refused", extra={"project": project, "build_id": graphs[0].build_id})
         raise HTTPException(502, str(exc)) from None
-    return JSONResponse(result)
+
+
+@router.post("/{project}/tools/{tool}", response_model=ToolResult, responses=REFUSALS | {502: {"model": ErrorBody}})
+async def call_tool(
+    request: Request,
+    project: ProjectName,
+    tool: Annotated[Literal[TOOL_NAMES], PathParam()],
+    body: ToolCall,
+    user: CurrentUser,
+):
+    """One kg_* tool of ``evo-agents kg serve``, answered from the project's latest successful build."""
+    return JSONResponse(await tool_result(request.app.state, user, project, tool, body.arguments, body.sink))

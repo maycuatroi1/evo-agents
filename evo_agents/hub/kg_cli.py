@@ -6,7 +6,7 @@ project's builds and the jobs still queued; ``build`` (the writer role) queues o
 has finished, exiting 1 when it failed.
 
 ``open_session`` picks where kg_* are answered. ``local`` reads the store on this machine, as before the hub.
-``hub`` sends every call to POST /v1/kg/{project}/tools/{tool} (``RemoteSession``) with the same tool names and
+``hub`` sends every call to the hub's /mcp as a tools/call (``RemoteSession``), the seven tools with the same names and
 results, so an MCP client sees no difference. ``auto`` takes the hub when this machine is signed in and the hub has
 a successful build of the project it can show the caller, and the local store otherwise, including when the hub does
 not answer within PROBE_TIMEOUT. Standard library only.
@@ -187,8 +187,9 @@ def register_kg(hsub) -> None:
 
 
 class RemoteSession:
-    """``Session.call`` answered by the hub: POST /v1/kg/{project}/tools/{tool}. A hub that cannot be reached or
-    refuses the call gives a tool error naming the hub."""
+    """``Session.call`` answered by the hub: a tools/call to its /mcp for ``project`` through ``sink``
+    (``evo_agents.hub.mcp_proxy.McpClient``). A hub that cannot be reached or refuses the call gives a tool error naming
+    the hub."""
 
     def __init__(self, hub: Hub, project: str, sink: str):
         self.hub = hub
@@ -196,19 +197,15 @@ class RemoteSession:
         self.sink = sink
 
     def call(self, name: str, args: dict) -> dict:
+        from evo_agents.hub.mcp_proxy import McpClient
         from evo_agents.kg.serve import TOOLS, _error
 
         if name not in {tool["name"] for tool in TOOLS}:
             return _error(f"unknown tool {name!r}")
         try:
-            result = self.hub.call(
-                "POST", f"{_base(self.project)}/tools/{name}", {"arguments": args or {}, "sink": self.sink}
-            )
+            return McpClient(self.hub.url, self.hub.token, self.project, self.sink).call_tool(name, args or {})
         except HubError as exc:
             return _error(f"{exc} (hub {self.hub.url})")
-        if not isinstance(result, dict) or not isinstance(result.get("content"), list):
-            return _error(f"the hub at {self.hub.url} did not answer with a tool result")
-        return result
 
 
 def hub_has_graph(hub: Hub, project: str) -> bool:
