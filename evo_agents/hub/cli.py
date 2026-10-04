@@ -5,6 +5,9 @@ so ``evo-agents`` keeps starting on a core install; each command imports the ext
 the pip command when it is missing. Both commands log JSON lines to stderr from their first line on: a
 configuration error is a log line naming the variable, and an unexpected exception is a log line with its
 traceback, secrets removed, rather than a bare traceback from the interpreter.
+
+The client commands (``login``, ``logout``, ``whoami``, ``token``, ``admin``) live in ``cli_client`` and use the
+standard library only, so they work on a core install.
 """
 
 from __future__ import annotations
@@ -129,3 +132,7 @@ def register(sub) -> None:
     migrate = hsub.add_parser("migrate", help="bring the hub database to this release's schema, then exit")
     migrate.add_argument("--dsn", help=dsn_help)
     migrate.set_defaults(func=cmd_migrate)
+
+    from evo_agents.hub.cli_client import register_client
+
+    register_client(hsub)

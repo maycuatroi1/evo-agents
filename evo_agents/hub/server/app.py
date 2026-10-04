@@ -1,9 +1,10 @@
 """The hub's FastAPI application.
 
-The lifespan migrates the database (under the advisory lock, see ``migrate``), opens the connection pool
-and closes it on shutdown; a database that cannot be reached or migrated stops the start instead of serving
-errors. Every request gets an id and one access log line without its query string, which can carry OAuth
-codes. The OpenAPI document is served at /v1/openapi.json for the web client's generated types.
+The lifespan migrates the database (under the advisory lock, see ``migrate``), opens the connection pool and
+the GitHub client, and closes both on shutdown; a database that cannot be reached or migrated stops the start
+instead of serving errors. Every request gets an id and one access log line without its query string, which can
+carry OAuth codes. Every path under /v1 needs a credential except the few ``security.PUBLIC_PATHS`` lists. The
+OpenAPI document is served at /v1/openapi.json for the web client's generated types.
 """
 
 from __future__ import annotations
@@ -23,7 +24,9 @@ from evo_agents.hub.config import HubConfig
 from evo_agents.hub.db import open_pool
 from evo_agents.hub.log import redact_dsn, scrub_data
 from evo_agents.hub.migrate import migrate
-from evo_agents.hub.server import errors, health
+from evo_agents.hub.server import admin, auth, errors, health, tokens, web_auth
+from evo_agents.hub.server.github import GitHub
+from evo_agents.hub.server.security import Authenticate
 
 log = logging.getLogger(__name__)
 
@@ -95,10 +98,21 @@ def create_app(config: HubConfig) -> FastAPI:
             log.error("hub cannot start", extra={"db": target, "error": f"{type(exc).__name__}: {exc}"})
             raise
         app.state.pool = pool
-        log.info("hub ready", extra={"schema": ",".join(result.after), "applied": list(result.applied)})
+        app.state.github = GitHub(config)
+        log.info(
+            "hub ready",
+            extra={
+                "schema": ",".join(result.after),
+                "applied": list(result.applied),
+                "admins": len(config.admins),
+                "device_login": bool(config.github_client_id),
+                "web_login_missing": config.web_login_missing(),
+            },
+        )
         try:
             yield
         finally:
+            await app.state.github.aclose()
             await pool.close()
             log.info("hub stopped, connection pool closed")
 
@@ -111,9 +125,14 @@ def create_app(config: HubConfig) -> FastAPI:
         lifespan=lifespan,
     )
     app.state.config = config
-    app.add_middleware(RequestContext)
+    app.add_middleware(Authenticate)
+    app.add_middleware(RequestContext)  # added last, so it runs first: refusals get a request id and an access line
     errors.install(app)
     app.include_router(health.router)
+    app.include_router(auth.router)
+    app.include_router(web_auth.router)
+    app.include_router(tokens.router)
+    app.include_router(admin.router)
     return app
 
 

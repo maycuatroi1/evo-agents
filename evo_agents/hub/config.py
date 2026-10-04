@@ -3,14 +3,20 @@
 A missing required variable or a malformed value raises ``ConfigError`` naming the variable, and the command
 stops before anything starts. Loading a configuration registers its secrets with ``log`` so no log line can
 carry them. Standard library only.
+
+Sign-in is optional configuration: without EVO_HUB_GITHUB_CLIENT_ID nobody can sign in, and without the client
+secret, the session secret or the public URL the web sign-in answers 503 while the CLI's device flow still works.
+The GitHub URLs are configurable so tests and Playwright can point the hub at a fake GitHub.
 """
 
 from __future__ import annotations
 
 import os
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from evo_agents.hub.log import dsn_password, register_secret
 
@@ -18,6 +24,11 @@ DEFAULT_DATA_DIR = "~/.evo/hub-server/cache"
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8080
 LOG_LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR")
+DEFAULT_GITHUB_URL = "https://github.com"
+DEFAULT_GITHUB_API_URL = "https://api.github.com"
+DEFAULT_GITHUB_TIMEOUT = 10.0  # seconds for one call to GitHub, connecting included
+MIN_SESSION_SECRET = 32  # characters; the secret keys HMAC-SHA256
+LOGIN = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,99}")  # a GitHub login, as the users table accepts it
 
 
 class ConfigError(ValueError):
@@ -36,9 +47,30 @@ class HubConfig:
     pool_min_size: int = 1
     pool_max_size: int = 10
     pool_timeout: float = 10.0  # seconds to wait for a pooled connection before failing the request
+    admins: frozenset[str] = frozenset()  # lowercased GitHub logins from EVO_HUB_ADMINS
+    github_client_id: str | None = None  # public: the CLI asks for it to start the device flow
+    github_client_secret: str | None = None  # the web flow's code exchange; never logged or returned
+    session_secret: str | None = None  # signs the web login cookie and keys the CSRF tokens
+    public_url: str | None = None  # where browsers reach the hub, without a trailing slash
+    github_url: str = DEFAULT_GITHUB_URL
+    github_api_url: str = DEFAULT_GITHUB_API_URL
+    github_timeout: float = DEFAULT_GITHUB_TIMEOUT
 
-    def __repr__(self) -> str:  # the DSNs hold credentials; keep them out of tracebacks and debug output
+    def __repr__(self) -> str:  # the DSNs and secrets are credentials; keep them out of tracebacks and debug output
         return f"HubConfig(data_dir={str(self.data_dir)!r}, host={self.host!r}, port={self.port})"
+
+    def is_admin(self, login: str) -> bool:
+        return login.lower() in self.admins
+
+    def web_login_missing(self) -> list[str]:
+        """The variables the web sign-in still needs; empty when it can run."""
+        needed = {
+            "EVO_HUB_GITHUB_CLIENT_ID": self.github_client_id,
+            "EVO_HUB_GITHUB_CLIENT_SECRET": self.github_client_secret,
+            "EVO_HUB_SESSION_SECRET": self.session_secret,
+            "EVO_HUB_PUBLIC_URL": self.public_url,
+        }
+        return [name for name, value in needed.items() if not value]
 
 
 def _text(env: Mapping[str, str], name: str) -> str | None:
@@ -57,6 +89,33 @@ def _number(env: Mapping[str, str], name: str, default, kind=int, minimum=None):
         raise ConfigError(name, f"{name} must be {what}, got {raw!r}") from None
     if minimum is not None and value < minimum:
         raise ConfigError(name, f"{name} must be at least {minimum}, got {raw!r}")
+    return value
+
+
+def _url(env: Mapping[str, str], name: str, default: str | None) -> str | None:
+    """An http(s) base URL without a trailing slash, query or fragment."""
+    raw = _text(env, name)
+    if raw is None:
+        return default
+    parts = urlsplit(raw)
+    if parts.scheme not in ("http", "https") or not parts.hostname or parts.query or parts.fragment:
+        raise ConfigError(name, f"{name} must be an http(s) URL such as https://example.org, got {raw!r}")
+    return raw.rstrip("/")
+
+
+def _admins(env: Mapping[str, str]) -> frozenset[str]:
+    logins = [part.strip() for part in (_text(env, "EVO_HUB_ADMINS") or "").split(",") if part.strip()]
+    for login in logins:
+        if not LOGIN.fullmatch(login):
+            raise ConfigError("EVO_HUB_ADMINS", f"EVO_HUB_ADMINS must list GitHub logins, got {login!r}")
+    return frozenset(login.lower() for login in logins)
+
+
+def _secret(env: Mapping[str, str], name: str, minimum: int = 1) -> str | None:
+    value = _text(env, name)
+    register_secret(value)
+    if value is not None and len(value) < minimum:
+        raise ConfigError(name, f"{name} must be at least {minimum} characters long")
     return value
 
 
@@ -118,4 +177,12 @@ def load_config(
         pool_min_size=pool_min,
         pool_max_size=pool_max,
         pool_timeout=_number(env, "EVO_HUB_POOL_TIMEOUT", 10.0, kind=float, minimum=0.1),
+        admins=_admins(env),
+        github_client_id=_text(env, "EVO_HUB_GITHUB_CLIENT_ID"),
+        github_client_secret=_secret(env, "EVO_HUB_GITHUB_CLIENT_SECRET"),
+        session_secret=_secret(env, "EVO_HUB_SESSION_SECRET", MIN_SESSION_SECRET),
+        public_url=_url(env, "EVO_HUB_PUBLIC_URL", None),
+        github_url=_url(env, "EVO_HUB_GITHUB_URL", DEFAULT_GITHUB_URL),
+        github_api_url=_url(env, "EVO_HUB_GITHUB_API_URL", DEFAULT_GITHUB_API_URL),
+        github_timeout=_number(env, "EVO_HUB_GITHUB_TIMEOUT", DEFAULT_GITHUB_TIMEOUT, kind=float, minimum=0.1),
     )

@@ -37,3 +37,12 @@ def hub_db(pg_server):
         pg.drop_database(db)
     if leaked:
         pytest.fail(f"{leaked} connection(s) to {db.name} still open after the test: a pool or connection leaked")
+
+
+@pytest.fixture
+def github():
+    """A fake GitHub on a local port (``tests.hub.fake_github``), stopped after the test."""
+    from tests.hub.fake_github import FakeGitHub
+
+    with FakeGitHub() as fake:
+        yield fake

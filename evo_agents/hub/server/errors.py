@@ -29,6 +29,7 @@ CODES = {
     422: "invalid_request",
     429: "too_many_requests",
     500: "internal_error",
+    502: "bad_gateway",  # GitHub did not answer, or answered with an error of its own
     503: "unavailable",
 }
 

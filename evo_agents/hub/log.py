@@ -1,8 +1,9 @@
 """Logging for the hub server: one JSON object per line on stderr, with secrets removed.
 
 Secrets are removed when a record is formatted, so a library that logs a DSN or a token is covered too:
-every value registered with ``register_secret`` (the DSN password, the Sentry DSN) becomes ``***``, and so do
-the password of any URI or ``password=`` pair, hub tokens (``evh_...``) and bearer credentials.
+every value registered with ``register_secret`` (the DSN password, the Sentry DSN, the GitHub client secret, the
+session secret) becomes ``***``, and so do the password of any URI or ``password=`` pair, hub tokens (``evh_...``)
+and web sessions (``evs_...``), GitHub tokens (``gho_...``, ``github_pat_...``) and bearer credentials.
 Standard library only: the CLI configures logging before it knows whether the hub-server extra is there.
 """
 
@@ -27,11 +28,17 @@ _PATTERNS = (
     (re.compile(r"(?P<head>\b[A-Za-z][A-Za-z0-9+.-]*://[^:/@\s]*:)[^@\s/]+@"), r"\g<head>" + MASK + "@"),
     # password=... in a libpq key=value DSN or a query string, quoted or bare
     (re.compile(r"(?P<head>\bpassword\s*=\s*)(?:'(?:[^'\\]|\\.)*'|[^\s&]+)", re.IGNORECASE), r"\g<head>" + MASK),
-    (re.compile(r"\bevh_[A-Za-z0-9_-]{8,}"), "evh_" + MASK),
+    (re.compile(r"\b(?P<head>ev[hs]_)[A-Za-z0-9_-]{8,}"), r"\g<head>" + MASK),
+    (re.compile(r"\b(?P<head>gh[opsur]_|github_pat_)[A-Za-z0-9_]{16,}"), r"\g<head>" + MASK),
     (re.compile(r"(?P<head>\bBearer\s+)[A-Za-z0-9._~+/=-]{8,}", re.IGNORECASE), r"\g<head>" + MASK),
 )
 
-QUIET_LOGGERS = {"alembic.runtime.plugins": logging.WARNING}  # a line per Alembic plugin on every import
+QUIET_LOGGERS = {
+    "alembic.runtime.plugins": logging.WARNING,  # a line per Alembic plugin on every import
+    # A line per outbound request; the GitHub client logs its own line per call, with the path only.
+    "httpx": logging.WARNING,
+    "httpcore": logging.WARNING,
+}
 
 # Attributes every LogRecord has; anything else on a record came from ``extra=`` and goes into the JSON.
 _RECORD_ATTRS = set(vars(logging.LogRecord("", 0, "", 0, "", None, None))) | {"message", "asctime", "color_message"}

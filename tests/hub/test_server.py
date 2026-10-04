@@ -12,7 +12,7 @@ from dataclasses import replace
 
 import pytest
 
-from tests.hub import pg
+from tests.hub import live, pg
 
 if not pg.DSN:
     pytest.skip(pg.SKIP_REASON, allow_module_level=True)
@@ -88,13 +88,18 @@ def test_openapi_is_served_under_v1(client):
         assert client.get(path).status_code == 404
 
 
-def test_errors_are_json_and_never_a_traceback(app):
+def test_errors_are_json_and_never_a_traceback(app, hub_db):
     def explode():
         raise RuntimeError("internal detail that must stay on the server")
 
     app.add_api_route("/v1/test-explode", explode)
     with TestClient(app, raise_server_exceptions=False) as client:
-        missing = client.get("/v1/nothing-here", headers={"X-Request-ID": "req-123"})
+        signed_in = {"Authorization": f"Bearer {live.insert_token(hub_db, 'octo')}"}
+        anonymous = client.get("/v1/nothing-here", headers={"X-Request-ID": "req-122"})
+        assert anonymous.status_code == 401 and is_json(anonymous)  # /v1 fails closed, routed or not
+        assert anonymous.json()["request_id"] == "req-122" and anonymous.headers["x-request-id"] == "req-122"
+
+        missing = client.get("/v1/nothing-here", headers={"X-Request-ID": "req-123", **signed_in})
         assert missing.status_code == 404 and is_json(missing)
         assert missing.json() == {"error": "not_found", "message": "Not Found", "request_id": "req-123"}
         assert missing.headers["x-request-id"] == "req-123"
@@ -103,7 +108,7 @@ def test_errors_are_json_and_never_a_traceback(app):
         assert wrong_method.status_code == 405 and is_json(wrong_method)
         assert wrong_method.json()["error"] == "method_not_allowed"
 
-        failed = client.get("/v1/test-explode", headers={"X-Request-ID": "bad id with spaces"})
+        failed = client.get("/v1/test-explode", headers={"X-Request-ID": "bad id with spaces", **signed_in})
         assert failed.status_code == 500 and is_json(failed)
         body = failed.json()
         assert body["error"] == "internal_error" and len(body["request_id"]) == 32
