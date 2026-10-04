@@ -14,6 +14,9 @@ GRANT_DELETE = "grant.delete"
 PROJECT_REGISTER = "project.register"
 PROJECT_UPDATE = "project.update"
 BLOB_COMMIT = "blob.commit"  # the target is the project, never the hashes
+KG_CONFIG = "kg.config"  # the knowledge config a project's graph is built with changed; the target is the project
+KG_INGEST = "kg.ingest"  # a pushed run became part of the project's corpus; the target is the project, never the run
+KG_BUILD = "kg.build"  # a member queued a build; the target is the project
 
 
 async def record(conn, *, actor_id: int, token_id: int | None, action: str, target: str) -> None:

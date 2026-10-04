@@ -27,7 +27,7 @@ the SHA-256 the client checks the bytes against. Routes exist twice: under /v1/s
 from __future__ import annotations
 
 import asyncio
-import hashlib
+import io
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -37,7 +37,7 @@ from fastapi import APIRouter, HTTPException, Path, Query, Request
 from pydantic import BaseModel, Field, model_validator
 
 from evo_agents.hub.access import has_role
-from evo_agents.hub.blobs import BLOB_PREFIX, GET_TTL, BlobStoreUnavailable
+from evo_agents.hub.blobs import BLOB_PREFIX, GET_TTL, BlobStoreUnavailable, blob_key
 from evo_agents.hub.server.admin import PROJECT_NAME, ProjectName
 from evo_agents.hub.server.audit import record
 from evo_agents.hub.server.blobs import GLOBAL, blob_store
@@ -335,19 +335,18 @@ async def _publish(request: Request, user: Principal, project: str | None, name:
                     created=False,
                     latest=await _latest(conn, found[0]),
                 )
+    bundle = io.BytesIO()
     try:
-        data = await asyncio.to_thread(store.fetch, body.sha256, MAX_BUNDLE)
+        fetched = await asyncio.to_thread(store.fetch, blob_key(body.sha256), bundle, MAX_BUNDLE)
     except BlobStoreUnavailable:
         raise HTTPException(503, UNAVAILABLE) from None
-    except ValueError:
-        data = None
-    if data is None or hashlib.sha256(data).hexdigest() != body.sha256:
+    if fetched != (body.sha256, body.size):  # None when missing; a size over MAX_BUNDLE when larger
         log.error("a committed bundle is missing or altered in the blob store", extra={"sha256": body.sha256})
         raise HTTPException(
             503, "the blob store does not hold this bundle as committed; no version was created, tell a hub admin"
         )
     try:
-        contents = read_bundle(data, name)
+        contents = read_bundle(bundle.getvalue(), name)
     except BundleError as exc:
         raise HTTPException(422, f"bundle {body.sha256} is not a bundle of skill {name}: {exc}") from None
     async with pool.connection() as conn:

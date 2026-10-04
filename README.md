@@ -78,7 +78,8 @@ To keep graphs fresh, give sources a `refresh` interval (`30m`, `6h`, `1d`). `kg
 the sources whose interval has passed since their last ok run; `--all` does that for every project that
 has synced on this machine. On macOS, `kg schedule install` loads a LaunchAgent that runs
 `kg sync --due --all --build` every hour (`kg schedule print` shows the plist, `kg schedule uninstall`
-removes it; output goes to `~/.evo/kg/schedule.log`).
+removes it; output goes to `~/.evo/kg/schedule.log`). On a machine signed in to a hub, the command also
+gets `--push`, which sends the runs the hub lacks (`evo-agents hub kg push` does the same by hand).
 
 ## Using it from Claude Code
 
@@ -90,7 +91,9 @@ claude plugin install evo-kg@evo-agents
 The plugin registers the MCP server `evo-kg`, a `using-project-graph` skill, and three hooks. The
 server binds to the project of the session directory; pass `--project` in `.mcp.json` to pin one, or
 run `evo-agents kg bind --project NAME DIR` once to tie a directory and everything below it to a project
-(`kg bind --list` and `kg bind --remove DIR` manage those bindings).
+(`kg bind --list` and `kg bind --remove DIR` manage those bindings). When the machine is signed in to a
+hub that has a graph of the project, the server answers from the hub with the same tools
+(`kg serve --backend auto`, the default; `local` and `hub` force one or the other).
 
 | Tool | Use |
 |---|---|

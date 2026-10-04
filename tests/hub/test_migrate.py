@@ -40,6 +40,7 @@ TABLES = {
     "audit",
 }
 TABLES |= pg.BLOB_TABLES | pg.QUEUE_TABLES  # migration 0004
+TABLES |= pg.KG_TABLES  # migration 0006
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 SNAPSHOT = """

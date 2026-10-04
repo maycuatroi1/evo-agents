@@ -34,6 +34,8 @@ from collections.abc import Callable, Iterable, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from pathlib import Path
+from typing import BinaryIO
 
 import boto3
 from botocore.config import Config
@@ -269,25 +271,31 @@ class BlobStore:
                 body.close()
         raise AssertionError("unreachable")
 
-    def fetch(self, sha256: str, limit: int) -> bytes | None:
-        """The bytes of blob ``sha256``, None when there is no such blob; ValueError when it holds over ``limit``
-        bytes. For a route that has checked the caller may see what refers to the blob. A body cut off on the way is
-        read again from the start."""
-        key = blob_key(sha256)
+    def fetch(self, key: str, sink: BinaryIO, limit: int) -> tuple[str, int] | None:
+        """Write the object at ``key`` into ``sink`` (a binary file open for writing, from its start), reading at most
+        ``limit`` + 1 bytes and writing at most ``limit``; its SHA-256 and size, None when there is none. A body cut off
+        on the way is written again from the start, ``sink`` emptied first. The caller compares both with what it
+        expects before trusting what ``sink`` holds: a size over ``limit`` means the object is larger. For a caller
+        that has checked the requester may see what refers to the object."""
         for attempt in range(READ_ATTEMPTS):
             response = self._call("GetObject", "get_object", Key=key)
             if response is None:
                 return None
             body = response["Body"]
-            chunks, read = [], 0
+            digest = hashlib.sha256()
+            read = 0
             try:
+                sink.seek(0)
+                sink.truncate()
                 for chunk in body.iter_chunks(CHUNK):
                     read += len(chunk)
-                    if read > limit:
-                        raise ValueError(f"blob {sha256} holds over {limit} bytes")
-                    chunks.append(chunk)
-                return b"".join(chunks)
-            except (BotoCoreError, OSError) as exc:
+                    if read > limit:  # the size is wrong already; the rest does not change that
+                        break
+                    digest.update(chunk)
+                    sink.write(chunk)
+                return digest.hexdigest(), read
+            # Not every OSError: one from writing to ``sink`` (a full disk) is the caller's, not the blob store's.
+            except (BotoCoreError, ConnectionError, TimeoutError) as exc:
                 if attempt == READ_ATTEMPTS - 1:
                     raise _unavailable("GetObject", exc) from None
                 log.info("reading a blob was cut off; reading it again", extra={"error": _error_code(exc)})
@@ -295,6 +303,19 @@ class BlobStore:
             finally:
                 body.close()
         raise AssertionError("unreachable")
+
+    def put_file(self, sha256: str, path: Path) -> bool:
+        """Store the file at ``path`` as blob ``sha256``, which the caller computed from these very bytes, unless the
+        blob is there already. True when this call wrote it."""
+        key = blob_key(sha256)
+        if self.size(key) is not None:
+            return False
+        size = path.stat().st_size
+        with open(path, "rb") as handle:
+            self._call("PutObject", "put_object", Key=key, Body=handle, ContentLength=size)
+        if self.size(key) != size:
+            raise BlobStoreUnavailable(f"blob {sha256} does not have its {size} bytes after it was written")
+        return True
 
     def copy(self, source: str, target: str) -> bool:
         """Copy ``source`` to ``target`` inside the bucket; False when ``source`` does not exist."""
