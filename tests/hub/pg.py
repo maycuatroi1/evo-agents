@@ -39,6 +39,8 @@ BLOB_TABLES = frozenset({"blobs", "blob_uploads"})
 QUEUE_TABLES = frozenset(
     {"procrastinate_jobs", "procrastinate_events", "procrastinate_periodic_defers", "procrastinate_workers"}
 )
+# Tables of migration 0006: knowledge graphs on the hub
+KG_TABLES = frozenset({"kg_configs", "kg_pending_runs", "kg_builds"})
 HUB_ENV = ("EVO_HUB_",)  # variables a test environment must not inherit from the shell running pytest
 
 

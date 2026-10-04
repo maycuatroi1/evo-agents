@@ -163,9 +163,16 @@ class Store:
         path = project.root / "graph.sqlite"
         if not path.exists():
             return None
+        return cls.open_file(path)
+
+    @classmethod
+    def open_file(cls, path: Path, *, immutable: bool = False) -> Store:
+        """The store in the file at ``path``, read-only; StaleSchema on an older file. ``immutable`` is for a file
+        nothing ever writes again, such as a graph the hub built: SQLite then takes no lock and makes no -shm file."""
         store = cls.__new__(cls)
         store.path = path
-        store.db = sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True)
+        mode = "mode=ro&immutable=1" if immutable else "mode=ro"
+        store.db = sqlite3.connect(f"{path.resolve().as_uri()}?{mode}", uri=True)
         found = _schema_version(store.db)
         if found != SCHEMA_VERSION:
             store.db.close()

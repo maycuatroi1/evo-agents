@@ -8,7 +8,8 @@ is the worker's.
 A kg job of project P is deferred with ``defer_kg``: lock and queueing lock both ``kg:P``. The lock makes the jobs
 holding it run one after the other; the queueing lock keeps at most one of them waiting, and deferring another while
 one waits is a no-op. procrastinate's queueing lock alone still lets several run at once, and its lock alone lets
-any number wait.
+any number wait. A job deferred on the caller's connection runs inside a savepoint, so a defer refused because one
+waits already leaves the caller's transaction usable.
 """
 
 from __future__ import annotations
@@ -21,6 +22,8 @@ from psycopg_pool import AsyncConnectionPool
 PING = "hub.ping"  # does nothing for a moment: proves a worker takes jobs
 CLEANUP_UPLOADS = "hub.cleanup_uploads"  # hourly: uploads never committed, after 24 hours
 PRUNE_JOBS = "hub.prune_jobs"  # daily: finished jobs, after 14 days
+KG_BUILD = "hub.kg_build"  # one build of a project's knowledge graph, under the project's kg lock
+RECOVER_KG_BUILDS = "hub.recover_kg_builds"  # every 5 minutes: kg builds whose worker died, failed and queued again
 
 
 def kg_lock(project: str) -> str:
@@ -49,13 +52,23 @@ class JobQueue:
         deferrer = configure_task(
             name=task, job_manager=self._manager, lock=lock, queueing_lock=queueing_lock, connection=connection
         )
+        if connection is None or connection.autocommit:
+            try:
+                return await deferrer.defer_async(**kwargs)
+            except exceptions.AlreadyEnqueued:
+                return None
+        # The refusal is an error in Postgres, which would abort the caller's whole transaction without the savepoint.
+        await connection.execute("SAVEPOINT hub_defer")
         try:
-            return await deferrer.defer_async(**kwargs)
+            job_id = await deferrer.defer_async(**kwargs)
         except exceptions.AlreadyEnqueued:
+            await connection.execute("ROLLBACK TO SAVEPOINT hub_defer")
             return None
+        await connection.execute("RELEASE SAVEPOINT hub_defer")
+        return job_id
 
-    async def defer_kg(self, task: str, project: str, *, connection=None, **kwargs) -> int | None:
+    async def defer_kg(self, task: str, project: str, /, *, connection=None, **kwargs) -> int | None:
         """``defer`` with lock and queueing lock ``kg:<project>``: one kg job of the project runs at a time, and at
-        most one waits."""
+        most one waits. ``project`` is positional only, so the job's own arguments may hold a ``project`` too."""
         key = kg_lock(project)
         return await self.defer(task, lock=key, queueing_lock=key, connection=connection, **kwargs)

@@ -36,9 +36,10 @@ def run(ctx):
         yield hello("fake", "1", list_complete=True, tombstones=True, rev_exact=True)
     emitted = 0
     for raw in spec.get("items", []):
-        item = finalize_item(
-            make_item(sid, raw["key"], raw["text"], raw["rev"], raw.get("rev_time", "2026-10-01T00:00:00Z"))
-        )
+        item = make_item(sid, raw["key"], raw["text"], raw["rev"], raw.get("rev_time", "2026-10-01T00:00:00Z"))
+        if raw.get("label"):  # the item's own label, which raises the source's
+            item["label"] = raw["label"]
+        item = finalize_item(item)
         if raw.get("corrupt"):
             item["hash"] = "sha256:" + "0" * 64
         yield item

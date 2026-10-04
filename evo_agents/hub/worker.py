@@ -12,6 +12,10 @@ Jobs (names in ``evo_agents.hub.jobs``):
 - ``hub.ping``: waits a few seconds and returns; deferring it shows that a worker takes jobs.
 - ``hub.cleanup_uploads``, hourly: objects under ``uploads/`` and ``blob_uploads`` rows older than STALE_AFTER.
 - ``hub.prune_jobs``, daily: finished jobs older than JOB_RETENTION, failed ones included.
+- ``hub.kg_build``: one build of a project's knowledge graph (``evo_agents.hub.kg_build``), deferred by the api
+  under the project's kg lock.
+- ``hub.recover_kg_builds``, every 5 minutes: kg builds whose worker stopped sending heartbeats are failed, which
+  frees their project's lock, and their projects get a new build.
 
 procrastinate allows one App per process; ``queue`` is that App here. ``run`` gives it a connector of its own for
 the time it runs, and the jobs reach the hub's tables and the blob store through ``HubContext``. The worker handles
@@ -91,6 +95,21 @@ async def remove_stale_uploads(store: BlobStore, pool: AsyncConnectionPool, now:
 async def cleanup_uploads(context: JobContext, timestamp: int | None = None) -> dict:
     found = hub(context)
     return await remove_stale_uploads(found.blobs, found.pool)
+
+
+@queue.task(name=jobs.KG_BUILD, pass_context=True)
+async def kg_build(context: JobContext, project: str, build_id: int | None = None) -> dict:
+    from evo_agents.hub.kg_build import run_build
+
+    return await run_build(hub(context), project, build_id, context.job.id, context.app.job_manager)
+
+
+@queue.periodic(cron="*/5 * * * *")
+@queue.task(name=jobs.RECOVER_KG_BUILDS, pass_context=True, queueing_lock=jobs.RECOVER_KG_BUILDS)
+async def recover_kg_builds(context: JobContext, timestamp: int | None = None) -> dict:
+    from evo_agents.hub.kg_build import recover_stalled
+
+    return await recover_stalled(hub(context), context.app.job_manager)
 
 
 @queue.periodic(cron="43 3 * * *")
