@@ -1,0 +1,289 @@
+# Copy of plans/completed/kg-prototype.yaml of the evo-agents-harness repo, taken 2026-10-04, with internal
+# names, a personal path and the location of a secret replaced by [redacted]. Test data for tests/hub.
+id: kg-prototype
+goal: >
+  Có một lát cắt dọc chạy được của khung knowledge graph đa nguồn, chỉ gồm phần tất định: một harness
+  khai nguồn trong knowledge.yaml, connector nói giao thức kg/1 đổ vào nhật ký, pipeline dựng kho
+  SQLite có provenance và nhãn, và agent đọc kho qua MCP. Chạy thật trên meridai-harness với wiki Lark.
+
+created_at: '2026-10-02T11:30:00+07:00'
+
+context: >
+  Giai đoạn 1 (reports/Bài toán knowledge graph đa nguồn.md) phát biểu bài toán và các tính chất P1 đến
+  P10. Giai đoạn 2 (reports/Thiết kế khung knowledge graph.md) chọn kiến trúc; mục 8 của tài liệu đó là
+  phạm vi prototype này. Prototype kiểm phần lõi có định lý đỡ (tầng khẳng định, nhật ký, gộp lattice,
+  provenance, nhãn) trước khi đưa LLM vào. Thiết kế ban đầu đặt lõi trong evo-cli; ngày 2026-10-02 lõi
+  chuyển sang repo public evo-agents (xem decisions).
+
+acceptance:
+  - criterion: >
+      evo-agents kg build --verify khớp hash qua ba lượt sync liên tiếp có sửa, thêm và xoá tài liệu.
+    verify: pytest tests/kg/test_end_to_end.py -k three_syncs; evo-agents kg build --verify --project meridai
+  - criterion: Phép thử xáo trộn và lặp nhật ký cho cùng trạng thái corpus.
+    verify: pytest tests/kg/test_corpus.py -k replay
+  - criterion: >
+      Xoá một section trong fixture rút đúng các cạnh mà đánh giá provenance chỉ ra, không hơn không kém.
+    verify: pytest tests/kg/test_end_to_end.py -k section_removal
+  - criterion: >
+      Phép thử noninterference giữa meridai và một harness thứ hai (evo-agents-harness) cho kết quả MCP
+      giống từng byte.
+    verify: pytest tests/kg/test_serve.py -k noninterference; chạy lại trên kho thật của meridai
+  - criterion: >
+      evo-agents kg status in độ phủ theo nguồn và trả exit code khác 0 khi connector Lark bị giết giữa
+      chừng, và không có lệnh xoá nào được áp dụng.
+    verify: pytest tests/kg/test_corpus.py -k truncated; thử tay bằng kill trên lượt sync thật
+  - criterion: >
+      claude plugin eval qua ba ca: truy vết yêu cầu tới code, câu hỏi chuỗi chính xác, kết quả chứa
+      lệnh chèn.
+    verify: claude plugin eval plugins/evo-kg
+  - criterion: >
+      Đo trên meridai: tỉ lệ liên kết tầng A so với mốc 55% của phép đo regex, thời gian sync và build,
+      kích thước kho và bảng provenance. Ghi kết quả vào reports/.
+    verify: evo-agents kg status --project meridai --json; báo cáo đo trong reports/
+
+non_goals:
+  - Chặng đề xuất bằng LLM, ghi ngược, lịch làm mới tối ưu (O1), adapter PostgreSQL.
+  - Connector Notion, Jira, Google Drive.
+  - Hook chặn kênh ra ngoài.
+  - Sửa evo-cli hay agent-skills. Hai repo này chỉ được đổi sau khi prototype đạt tiêu chí.
+
+references:
+  - what: Phạm vi và tiêu chí xong
+    where: reports/Thiết kế khung knowledge graph.md, mục 8
+  - what: Giao thức kg/1, corpus, pipeline, kho, MCP
+    where: reports/Thiết kế khung knowledge graph.md, mục 4.2 đến 4.9
+  - what: Định nghĩa D1 đến D11 và tính chất P1 đến P10
+    where: reports/Bài toán knowledge graph đa nguồn.md
+  - what: Client Lark có sẵn của meridai
+    where: meridai-harness src/meridai_cli/lark.py (LarkClient, list_blocks, outline)
+
+repos:
+  - repo: evo-agents
+    branch: main
+    order: 1
+    depends_on: []
+    status: done
+    scope: package evo_agents (harness, kg), CLI evo-agents, plugin evo-kg, test, CI
+  - repo: meridai-harness
+    branch: kg-connector-lark-wiki
+    order: 2
+    depends_on: [evo-agents]
+    status: merged
+    merged_into: main
+    merged_at: '2026-10-03T00:55:16+07:00'
+    scope: lệnh meridai kg-connector lark-wiki (chỉ đọc), knowledge.yaml, bindings/
+
+steps:
+  - id: 1
+    title: 'Tạo repo, harness và chuyển tài liệu'
+    repo: evo-agents-harness
+    what: >
+      Tạo repo public evo-agents và harness riêng tư evo-agents-harness; chuyển báo cáo giai đoạn 1, 2,
+      sơ đồ kiến trúc và research_notes từ evo-lms-harness sang đây; viết CLUSTER.md, AGENTS.md và plan.
+    depends_on: []
+    verify: evo harness show kg-prototype
+    status: done
+    done_at: '2026-10-02T11:40:00+07:00'
+    evidence: >
+      evo-agents-harness d9da0d5 (private, github.com/maycuatroi1/evo-agents-harness); evo-agents ef59614
+      (public, github.com/maycuatroi1/evo-agents). Bản sao báo cáo và research_notes trùng khớp với bản
+      gốc (diff -r) trước khi xoá khỏi evo-lms-harness.
+  - id: 2
+    title: 'Khung package, CLI và CI'
+    repo: evo-agents
+    what: >
+      Khung package: pyproject (lõi chỉ phụ thuộc PyYAML), CLI argparse evo-agents, bộ kiểm JSON Schema
+      tối giản trong evo_agents/schema.py, ruff, pytest, CI GitHub Actions trên Linux và macOS.
+    depends_on: [1]
+    verify: ruff check . && pytest -q
+    status: done
+    done_at: '2026-10-02T11:15:00+07:00'
+    evidence: >
+      evo-agents cf8b9d6; CI run 36963625969 xanh trên ubuntu và macos, Python 3.10 và 3.12.
+  - id: 3
+    title: 'Thư viện schema harness'
+    repo: evo-agents
+    what: >
+      evo_agents.harness: JSON Schema cho harness.yaml v2, knowledge.yaml, contracts.yaml, plan;
+      load_manifest, find_manifest, repo_paths; đọc lỏng (khoá lạ thành cảnh báo), ghi chặt; lệnh
+      evo-agents harness validate.
+    depends_on: [2]
+    verify: pytest tests/harness -q; evo-agents harness validate ~/github/evo-agents-harness
+    status: done
+    done_at: '2026-10-02T11:15:00+07:00'
+    evidence: >
+      evo-agents 9203974; 9 test xanh; validate evo-agents-harness 0 lỗi. Chạy trên evo-lms-harness: 114 file, 7 plan có lỗi kiểu (non_goals, assumptions là chuỗi thay vì danh sách), giữ nguyên vì đó là lỗi thật của dữ liệu.
+  - id: 4
+    title: 'Giao thức kg/1 và bộ kiểm tuân thủ'
+    repo: evo-agents
+    what: >
+      Giao thức kg/1 (evo_agents/kg/protocol): schema thông điệp, hash nội dung item, runner cho
+      connector trong tiến trình và connector exec, bộ kiểm tuân thủ evo-agents kg connector test
+      (giao thức, tất định, replay và hoán vị, listing bị cắt, golden, nhãn).
+    depends_on: [2]
+    verify: pytest tests/kg/test_protocol.py tests/kg/test_conformance.py -q
+    status: done
+    done_at: '2026-10-02T12:10:00+07:00'
+    evidence: >
+      evo-agents a5342bf (giao thức, runner) và 58be096 (bộ kiểm tuân thủ). Không có file test_conformance.py riêng; phép kiểm tuân thủ chạy trong tests/kg/test_connectors.py. Chạy tay trên repo evo-agents và evo-agents-harness: đủ sáu phép kiểm PASS.
+  - id: 5
+    title: 'Corpus: nhật ký, gộp, luật xoá'
+    repo: evo-agents
+    what: >
+      Corpus (evo_agents/kg/corpus): nhật ký jsonl.gz theo run, blob sha256, bước gộp lattice, luật xoá
+      chỉ từ tombstone hoặc listing complete, chốt chặn max_removal_ratio và listing rỗng, cursor ghi
+      sau khi item đã bền; lệnh evo-agents kg sync.
+    depends_on: [4]
+    verify: pytest tests/kg/test_corpus.py -q
+    status: done
+    done_at: '2026-10-02T12:10:00+07:00'
+    evidence: >
+      evo-agents d74a7ec; 12 test corpus xanh, gồm replay xáo trộn và lặp, run bị cắt, connector bị giết, chốt chặn tỉ lệ, listing rỗng, khôi phục sau tombstone. Lệch thiết kế: thêm deletion.min_scope (mặc định 10) để chốt chặn tỉ lệ không chặn phạm vi quá nhỏ.
+  - id: 6
+    title: 'Connector trong tiến trình'
+    repo: evo-agents
+    what: >
+      Connector trong tiến trình: harness, git (file, markdown theo heading), python-ast (thư viện chuẩn);
+      graphify-ast là extra tuỳ chọn; connector exec cho lệnh ngoài.
+    depends_on: [4]
+    verify: pytest tests/kg/test_connectors.py -q; evo-agents kg connector test --builtin git
+    status: done
+    done_at: '2026-10-02T13:30:00+07:00'
+    evidence: >
+      evo-agents 58be096 (harness, git, exec), 640c572 (python-ast), 21d0965 (graphify-ast, extra [graphify], ghim graphifyy 0.9.73). Golden tests/kg/golden/git.jsonl; test_graphify.py. Chạy thật: 6 nguồn của meridai sync xanh.
+  - id: 7
+    title: 'Pipeline, memo và kho SQLite'
+    repo: evo-agents
+    what: >
+      Pipeline và kho: task có memo key mã hoá độ dài và tên khoá, early cutoff; chặng map, cấu trúc,
+      liên kết, binding, ER tất định; kho SQLite có builds, snapshot, units, support theo ownership set,
+      nhãn theo lattice; lệnh kg build [--verify], kg status, kg query.
+    depends_on: [5, 6]
+    verify: pytest tests/kg -q; evo-agents kg build --verify trên fixture
+    status: done
+    done_at: '2026-10-02T13:30:00+07:00'
+    evidence: >
+      evo-agents 640c572 (pipeline, kho, mạch provenance), addd885 (build, query). 44 test xanh. Trên meridai: 19.686 node, 32.476 cạnh; build --verify khớp sha256:83499b80 với memo ấm và memo lạnh.
+  - id: 8
+    title: 'MCP server và plugin evo-kg'
+    repo: evo-agents
+    what: >
+      MCP server evo-agents kg serve (stdio JSON-RPC) với kg_search, kg_context, kg_node, kg_status,
+      kg_more; trần khoảng 9.000 token; plugin evo-kg (marketplace, skill using-project-graph, hook
+      SessionStart, .mcp.json); lệnh kg bind.
+    depends_on: [7]
+    verify: pytest tests/kg/test_serve.py -q; mở một phiên Claude Code trong meridai-harness và gọi kg_search
+    status: done
+    done_at: '2026-10-02T13:30:00+07:00'
+    evidence: >
+      evo-agents addd885 (MCP server), 99963b9 (plugin, marketplace, hook SessionStart); claude plugin validate qua cho plugin và marketplace. Phiên claude -p --plugin-dir với server thật trên kho meridai gọi kg_search, kg_node và trả lời truy vết KB-01 (0,23 USD). Lệch phát hiện 2026-10-03: lệnh kg bind trong what chưa được hiện thực (CLI chỉ có sync, status, connector, hook, build, query, serve); chuyển sang plan kg-assertion-layer.
+  - id: 9
+    title: 'Connector Lark của meridai'
+    repo: meridai-harness
+    what: >
+      Lệnh meridai kg-connector lark-wiki chỉ đọc, phát kg/1 từ space wiki đã khai; knowledge.yaml cho
+      meridai (nhãn customer cho repo và wiki khách hàng); thư mục bindings/.
+    depends_on: [4, 8]
+    verify: evo-agents kg connector test -- meridai kg-connector lark-wiki --fixture tests/fixtures/lark
+    status: done
+    done_at: '2026-10-02T13:30:00+07:00'
+    evidence: >
+      meridai-harness b58c2db trên nhánh kg-connector-lark-wiki, merge fast-forward vào main và push lúc 2026-10-03 00:55 (reflog main và origin/main). Bộ kiểm tuân thủ 6/6 PASS trên fixture tự tạo; sync thật 47 item wiki; 131 test của meridai xanh.
+  - id: 10
+    title: 'knowledge.yaml cho harness thứ hai'
+    repo: evo-agents-harness
+    what: knowledge.yaml cho chính harness này, làm harness thứ hai cho phép thử noninterference.
+    depends_on: [7]
+    verify: evo-agents harness validate . && evo-agents kg sync --project evo-agents
+    status: done
+    done_at: '2026-10-02T13:30:00+07:00'
+    evidence: >
+      evo-agents-harness 2106451 (knowledge.yaml: nguồn harness và repo evo-agents). Đã sync và build vào ~/.evo/kg/evo-agents.
+  - id: 11
+    title: 'Chạy và đo trên meridai'
+    repo: evo-agents-harness
+    what: >
+      Chạy prototype trên meridai và đo theo tiêu chí xong 1 đến 5 và 7; ghi báo cáo đo vào reports/.
+    depends_on: [8, 9, 10]
+    verify: các lệnh trong acceptance
+    status: done
+    done_at: '2026-10-02T13:30:00+07:00'
+    evidence: >
+      evo-agents-harness 2106451: reports/Prototype khung knowledge graph trên meridai.md. Tiêu chí 1 đến 7 đạt; tỉ lệ liên kết mention 83% (6.861/8.255), không so thẳng được với mốc 55% vì khác mẫu số, báo cáo giải thích theo từng loại.
+  - id: 12
+    title: 'Eval cho plugin'
+    repo: evo-agents
+    what: Bộ eval cho plugin evo-kg với ba ca của tiêu chí 6, chạy bằng claude plugin eval.
+    depends_on: [8]
+    verify: claude plugin eval plugins/evo-kg
+    status: done
+    done_at: '2026-10-02T13:30:00+07:00'
+    evidence: >
+      evo-agents fc28bfb: 3 ca (trace-requirement, exact-string, injected-instruction) với mock MCP; claude plugin eval --runs 3 --model claude-sonnet-5-5: 9/9 lượt qua, 0,35 USD.
+  - id: 13
+    title: 'Đăng ký seam'
+    repo: evo-agents-harness
+    what: >
+      Đăng ký seam kg-protocol-v1 và knowledge-manifest-v1 trong contracts.yaml, mỗi seam có lệnh verify
+      chạy được.
+    depends_on: [9]
+    verify: evo harness seams
+    status: done
+    done_at: '2026-10-02T13:30:00+07:00'
+    evidence: >
+      evo-agents-harness 2106451: seam kg-protocol-v1 và knowledge-manifest-v1, mỗi seam có verify. Từ 2026-10-03 verify của kg-protocol-v1 chạy từ checkout chính ~/github/meridai-harness (main b58c2db): 6/6 PASS.
+seams_touched:
+  - name: kg-protocol-v1
+    owner: evo-agents
+    consumers: [meridai-harness]
+    verify: evo-agents kg connector test -- meridai kg-connector lark-wiki --fixture tests/fixtures/lark
+  - name: knowledge-manifest-v1
+    owner: evo-agents
+    consumers: [meridai-harness, evo-agents-harness]
+    verify: evo-agents harness validate ~/github/meridai-harness
+
+risks:
+  - risk: Dữ liệu khách hàng hoặc định danh nội bộ [redacted] lọt vào repo public evo-agents qua fixture hay ví dụ.
+    mitigation: >
+      Fixture của evo-agents chỉ dùng dữ liệu tự tạo. Cấu hình meridai nằm trong meridai-harness. Trước
+      mỗi lần push evo-agents, grep các chuỗi đặc trưng ([redacted]).
+  - risk: Corpus của meridai bị ghi vào một repo.
+    mitigation: Corpus luôn ở ~/.evo/kg/<project>/ với quyền 0700; test kiểm đường dẫn.
+  - risk: Connector Lark đứt giữa chừng và bị hiểu là tài liệu đã xoá.
+    mitigation: Chỉ listing kết thúc bằng complete mới sinh lệnh xoá; thêm chốt chặn tỉ lệ 0,3.
+  - risk: Sửa meridai-harness đè lên thay đổi chưa commit của phiên khác.
+    mitigation: Làm trong git worktree trên nhánh kg-connector-lark-wiki.
+
+rollback: >
+  evo-agents là repo mới, không ai phụ thuộc: bỏ nhánh hoặc revert. Ở meridai-harness, xoá nhánh
+  kg-connector-lark-wiki và thư mục ~/.evo/kg/meridai/. Không có thay đổi nào trên evo-cli hay
+  agent-skills.
+
+assumptions:
+  - Bot Lark của meridai đã là member của space wiki tài liệu dự án và có scope wiki đọc (docs/lark.md, kiểm 2026-10-01).
+  - SQLite trên máy có FTS5 (kiểm 2026-10-02, SQLite 3.45.3).
+
+decisions:
+  - date: '2026-10-02'
+    by: user
+    decision: >
+      Lõi nằm trong repo public evo-agents: package evo_agents, CLI evo-agents, marketplace Claude Code
+      với plugin evo-kg; phát hành theo tag riêng. evo-cli giữ nguyên trong prototype.
+    why: >
+      evo-cli phát một bản PyPI mỗi lần push main và chưa có cơ chế plugin. Đây cũng là câu trả lời cho
+      câu 4 và 5 ở mục 7 của thiết kế.
+  - date: '2026-10-02'
+    by: user
+    decision: Sink claude-code@anthropic có clearance tới mức customer cho meridai.
+    why: Agent đã đọc tài liệu Lark của [redacted] qua meridai CLI; trả lời câu 2 ở mục 7.
+  - date: '2026-10-02'
+    by: user
+    decision: evo-agents dùng giấy phép Apache-2.0.
+    why: Có điều khoản bằng sáng chế; cùng giấy phép với graphify.
+  - date: '2026-10-02'
+    by: agent
+    decision: >
+      Câu 1, 3, 6, 7 ở mục 7 không chặn prototype và để mở: GitNexus không dùng trong evo-agents-harness;
+      kho evo-lms giữ PostgreSQL; hook chặn kênh ra ngoài nằm ngoài phạm vi; CI chạy Linux và macOS,
+      Windows chưa kiểm.
+    why: Phạm vi prototype ở mục 8 không đụng tới các phần này.
