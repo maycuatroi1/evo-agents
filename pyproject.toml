@@ -37,6 +37,8 @@ hub-server = [
     "procrastinate==3.10.0",
     # The worker builds knowledge graphs with the graphify code backend, as the machines that push to it do.
     "evo-ak[graphify]",
+    # Pinned: /mcp subclasses MCPServer and mounts its Streamable HTTP app, whose surface still moves within 2.x.
+    "mcp==2.3.0",
 ]
 
 [project.urls]

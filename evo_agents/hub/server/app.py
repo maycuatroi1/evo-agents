@@ -6,7 +6,8 @@ that cannot be reached or migrated stops the start instead of serving errors. An
 reports it and the blob routes answer 503. Every request gets an id and one access log line without its query
 string, which can carry OAuth codes. Every path under /v1 needs a credential except the few
 ``security.PUBLIC_PATHS`` lists. The OpenAPI document is served at /v1/openapi.json for the web client's generated
-types.
+types. /mcp is the MCP endpoint (``evo_agents.hub.server.mcp``): its SDK app is mounted, so the lifespan runs its
+session manager.
 """
 
 from __future__ import annotations
@@ -125,7 +126,8 @@ def create_app(config: HubConfig) -> FastAPI:
             },
         )
         try:
-            yield
+            async with app.state.mcp.session_manager.run():  # a mounted app's own lifespan does not run
+                yield
         finally:
             await app.state.github.aclose()
             if app.state.blobs is not None:
@@ -143,6 +145,9 @@ def create_app(config: HubConfig) -> FastAPI:
     )
     app.state.config = config
     app.add_middleware(Authenticate)
+    from evo_agents.hub.server import mcp
+
+    app.state.mcp = mcp.mount(app, config)  # McpGate runs before Authenticate, which leaves /mcp alone
     app.add_middleware(RequestContext)  # added last, so it runs first: refusals get a request id and an access line
     errors.install(app)
     app.include_router(health.router)
