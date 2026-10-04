@@ -3,6 +3,7 @@ import type { Page } from "@playwright/test";
 import { expectNoSeriousViolations } from "./support/a11y";
 import { expect, isDeployed, type Member, test } from "./support/fixtures";
 import { ADMIN_ACCOUNT, uniqueName } from "./support/hub";
+import { graphReady, grantOn, HUB_NODE, kgPath, nodePath, open, sharedKg } from "./support/kg";
 
 /**
  * axe (WCAG 2.2 A and AA rules) on every page of the web, in light and dark: no serious or critical violation.
@@ -56,6 +57,45 @@ const PAGES: Entry[] = [
     name: "project not found",
     open: async ({ page, hidden }) => {
       await page.goto(`/p/${hidden}`);
+      await expect(page.getByTestId("state-not-found")).toBeVisible();
+    },
+  },
+  {
+    name: "knowledge graph status and search",
+    open: async ({ page, me }) => {
+      const kg = await sharedKg();
+      await grantOn(kg.project, me.login, "reader", "customer");
+      await open(page, `${kgPath(kg.project)}?q=runbook`);
+      await expect(page.getByTestId("kg-results")).toBeVisible();
+      await expect(page.getByTestId("kg-latest-build")).toBeVisible();
+    },
+  },
+  {
+    name: "knowledge graph node with its neighbourhood",
+    open: async ({ page, me }) => {
+      const kg = await sharedKg();
+      await grantOn(kg.project, me.login, "reader", "customer");
+      await open(page, nodePath(kg.project, HUB_NODE));
+      await graphReady(page);
+      await expect(page.getByTestId("kg-truncated")).toBeVisible();
+    },
+  },
+  {
+    name: "knowledge graph node on a small screen",
+    open: async ({ page, me }) => {
+      const kg = await sharedKg();
+      await grantOn(kg.project, me.login, "reader", "customer");
+      await page.setViewportSize({ width: 375, height: 812 });
+      await open(page, nodePath(kg.project, "requirement:KB-01", 1));
+      await expect(page.getByTestId("kg-neighbours")).toBeVisible();
+    },
+  },
+  {
+    name: "knowledge graph node not found",
+    open: async ({ page, me }) => {
+      const kg = await sharedKg();
+      await grantOn(kg.project, me.login, "reader", "internal");
+      await open(page, nodePath(kg.project, "deals:doc:acme-contract"));
       await expect(page.getByTestId("state-not-found")).toBeVisible();
     },
   },
