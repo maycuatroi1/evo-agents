@@ -24,7 +24,7 @@ from evo_agents.hub.config import HubConfig
 from evo_agents.hub.db import open_pool
 from evo_agents.hub.log import redact_dsn, scrub_data
 from evo_agents.hub.migrate import migrate
-from evo_agents.hub.server import admin, auth, errors, health, tokens, web_auth
+from evo_agents.hub.server import admin, auth, errors, health, projects, tokens, web_auth
 from evo_agents.hub.server.github import GitHub
 from evo_agents.hub.server.security import Authenticate
 
@@ -133,6 +133,7 @@ def create_app(config: HubConfig) -> FastAPI:
     app.include_router(web_auth.router)
     app.include_router(tokens.router)
     app.include_router(admin.router)
+    app.include_router(projects.router)
     return app
 
 

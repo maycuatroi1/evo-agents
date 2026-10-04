@@ -17,6 +17,7 @@ from pathlib import Path
 
 import yaml
 
+from evo_agents.kg.policy import Policy
 from evo_agents.kg.schema import known_kinds, validate_ontology
 from evo_agents.schema import Issue, errors, validate
 
@@ -27,10 +28,8 @@ SCHEMA_DIR = Path(__file__).parent / "schemas"
 BUILTIN_CONNECTORS = ("harness", "git", "exec")
 CONNECTOR_GROUP = "evo_agents.kg.connectors"
 
-REGISTRY_PATHS = (
-    Path("~/.evo/harness/registry.json"),
-    Path("~/.claude/harness/registry.json"),  # written by the harness-engineering skill
-)
+SKILL_REGISTRY = Path("~/.claude/harness/registry.json")  # the harness-engineering skill and `hub registry pull`
+REGISTRY_PATHS = (Path("~/.evo/harness/registry.json"), SKILL_REGISTRY)
 
 
 @cache
@@ -300,6 +299,7 @@ def knowledge_semantics(data: dict, manifest: dict | None = None, path: Path | N
             issues.append(
                 Issue(f"policy.sinks[{i}].clearance.location", f"{clr['location']!r} is not in policy.locations")
             )
+    issues += _hub_semantics(data, manifest)
 
     for i, ident in enumerate(data.get("identifiers") or []):
         try:
@@ -308,6 +308,44 @@ def knowledge_semantics(data: dict, manifest: dict | None = None, path: Path | N
             issues.append(Issue(f"identifiers[{i}].pattern", f"invalid regex: {exc}"))
     if path is not None:
         issues += _ontology_semantics(data, path)
+    return issues
+
+
+def _hub_semantics(data: dict, manifest: dict | None) -> list[Issue]:
+    """The hub keys: one sink of kind hub at most (its clearance bounds what may be pushed), the project
+    harness.yaml names under hub is the one knowledge.yaml declares, and memories and plans, which default
+    to the harness source's label, can be pushed at all."""
+    issues: list[Issue] = []
+    policy = data.get("policy") if isinstance(data.get("policy"), dict) else {}
+    hub_sinks = [s for s in policy.get("sinks") or [] if isinstance(s, dict) and s.get("kind") == "hub"]
+    if len(hub_sinks) > 1:
+        names = ", ".join(repr(s.get("id")) for s in hub_sinks)
+        issues.append(Issue("policy.sinks", f"sinks {names} are all of kind hub: declare one, it bounds every push"))
+    project = data.get("project")
+    hub = (manifest or {}).get("hub")
+    named = hub.get("project") if isinstance(hub, dict) else None
+    if isinstance(named, str) and project and named != project:
+        issues.append(Issue("project", f"harness.yaml says hub.project {named!r}, but this file names {project!r}"))
+
+    sources = [s for s in data.get("sources") or [] if isinstance(s, dict)]
+    harness = next((s for s in sources if s.get("connector") == "harness" and isinstance(s.get("id"), str)), None)
+    sink = hub_sinks[0] if len(hub_sinks) == 1 else None
+    if harness is None or sink is None or not isinstance(sink.get("id"), str) or not isinstance(project, str):
+        return issues
+    clearance = sink.get("clearance") if isinstance(sink.get("clearance"), dict) else {}
+    knowledge = {
+        "policy": {**policy, "sinks": [{"id": sink["id"], "kind": "hub", "clearance": clearance}]},
+        "sources": [harness],
+    }
+    rules = Policy(project, knowledge)
+    label = rules.source_label(harness["id"])
+    if not rules.allows(label, sink["id"]):
+        where = f"sources[{(data.get('sources') or []).index(harness)}].label"
+        message = (
+            f"memories and plans default to this label ({rules.describe(label)['level']}), which hub sink "
+            f"{sink['id']!r} does not clear: pushing them without a label of their own would be refused"
+        )
+        issues.append(Issue(where, message, "warning"))
     return issues
 
 

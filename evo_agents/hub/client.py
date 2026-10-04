@@ -108,9 +108,15 @@ def _fsync_dir(directory: Path) -> None:
 
 def write_private(path: Path, data: bytes) -> None:
     """Replace ``path`` with ``data`` atomically, mode 0600 from the first byte on."""
+    write_atomic(path, data, FILE_MODE)
+
+
+def write_atomic(path: Path, data: bytes, mode: int) -> None:
+    """Replace ``path`` with ``data`` atomically: a temporary file in the same directory, flushed to disk and
+    renamed over it, so a crash leaves the old file or the new one. ``mode`` exactly, whatever the umask."""
     fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")  # created 0600
     try:
-        os.chmod(tmp, FILE_MODE)  # exactly 0600 whatever the umask
+        os.chmod(tmp, mode)
         with os.fdopen(fd, "wb") as handle:
             handle.write(data)
             handle.flush()

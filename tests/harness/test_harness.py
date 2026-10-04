@@ -1,9 +1,18 @@
+import copy
 from pathlib import Path
 
 import pytest
 
 from evo_agents.cli import main
-from evo_agents.harness import find_manifest, load_manifest, plan_semantics, repo_paths, validate_harness
+from evo_agents.harness import (
+    find_manifest,
+    load_manifest,
+    load_schema,
+    load_yaml,
+    plan_semantics,
+    repo_paths,
+    validate_harness,
+)
 from evo_agents.schema import errors, validate
 
 
@@ -340,6 +349,81 @@ def test_cli_exit_code_reflects_errors(harness: Path, capsys):
     (harness / "plans/active/demo-plan.yaml").write_text("id: demo-plan\nsteps: nope\n")
     assert main(["harness", "validate", str(harness)]) == 1
     assert "FAIL" in capsys.readouterr().out
+
+
+HUB_SINK = "    - id: hub\n      kind: hub\n      clearance: {level: internal}\n"
+DIGEST = "sha256:" + "0" * 64
+
+
+def add_hub_sink(harness: Path, sink: str = HUB_SINK) -> None:
+    path = harness / "knowledge.yaml"
+    path.write_text(path.read_text().replace("sources:\n", sink + "sources:\n"), encoding="utf-8")
+
+
+def report(harness: Path, kind: str):
+    return next(r for r in validate_harness(harness) if r.kind == kind)
+
+
+def test_the_hub_keys_validate(harness: Path):
+    add_hub_sink(harness)
+    manifest = harness / "harness.yaml"
+    manifest.write_text(manifest.read_text() + "hub: {project: demo}\n", encoding="utf-8")
+    plan = harness / "plans/active/demo-plan.yaml"
+    plan.write_text(plan.read_text() + f"hub: {{project: demo, revision: 3, digest: '{DIGEST}'}}\n", encoding="utf-8")
+    reports = validate_harness(harness)
+    assert all(r.ok for r in reports) and not [str(i) for r in reports for i in r.issues]
+
+
+@pytest.mark.parametrize(
+    "kind, text, path",
+    [
+        ("harness", "hub: {}\n", "hub.project"),
+        ("harness", "hub: {project: Demo}\n", "hub.project"),
+        ("plan", f"hub: {{project: demo, revision: 0, digest: '{DIGEST}'}}\n", "hub.revision"),
+        ("plan", "hub: {project: demo, revision: 1, digest: 'abc'}\n", "hub.digest"),
+        ("plan", f"hub: {{project: demo, digest: '{DIGEST}'}}\n", "hub.revision"),
+    ],
+)
+def test_malformed_hub_keys_are_errors(harness: Path, kind: str, text: str, path: str):
+    target = harness / ("harness.yaml" if kind == "harness" else "plans/active/demo-plan.yaml")
+    target.write_text(target.read_text() + text, encoding="utf-8")
+    assert path in [i.path for i in errors(report(harness, kind).issues)]
+
+
+def test_older_schemas_only_warn_on_the_hub_keys(harness: Path):
+    """Releases before the hub keys read them as unknown keys: a warning, so a harness carrying them still
+    validates there. Only ``kind: hub`` in a sink needs this release (the seam knowledge-manifest-v1)."""
+    manifest = load_yaml(harness / "harness.yaml") | {"hub": {"project": "demo"}}
+    plan = load_yaml(harness / "plans/active/demo-plan.yaml") | {
+        "hub": {"project": "demo", "revision": 1, "digest": DIGEST}
+    }
+    for data, name in ((manifest, "harness"), (plan, "plan")):
+        older = copy.deepcopy(load_schema(name))
+        del older["properties"]["hub"]
+        issues = validate(data, older)
+        assert [(i.path, i.severity) for i in issues] == [("hub", "warning")]
+        assert validate(data, load_schema(name)) == []
+
+
+def test_a_project_declares_one_hub_sink(harness: Path):
+    add_hub_sink(harness, HUB_SINK + HUB_SINK.replace("id: hub", "id: hub-2"))
+    knowledge = report(harness, "knowledge")
+    assert any("are all of kind hub" in i.message for i in errors(knowledge.issues))
+
+
+def test_harness_and_knowledge_must_agree_on_the_hub_project(harness: Path):
+    manifest = harness / "harness.yaml"
+    manifest.write_text(manifest.read_text() + "hub: {project: other}\n", encoding="utf-8")
+    knowledge = report(harness, "knowledge")
+    assert any("hub.project 'other'" in i.message for i in errors(knowledge.issues))
+
+
+def test_a_hub_sink_below_the_harness_label_is_a_warning(harness: Path):
+    add_hub_sink(harness, HUB_SINK.replace("level: internal", "level: public"))
+    knowledge = report(harness, "knowledge")
+    assert knowledge.ok
+    (warning,) = [i for i in knowledge.issues if i.severity == "warning"]
+    assert warning.path == "sources[0].label" and "hub sink 'hub' does not clear" in warning.message
 
 
 def test_validator_subset():

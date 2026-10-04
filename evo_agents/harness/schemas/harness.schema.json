@@ -17,9 +17,20 @@
     "deployments_file": {"type": "string"},
     "repos": {"type": "array", "items": {"$ref": "#/$defs/repo"}},
     "garden": {"type": "object"},
-    "cli": {"type": "object"}
+    "cli": {"type": "object"},
+    "hub": {"$ref": "#/$defs/hub"}
   },
   "$defs": {
+    "hub": {
+      "description": "The project on the evo-agents hub that holds this harness's plans and memories.",
+      "type": "object",
+      "required": ["project"],
+      "additionalProperties": false,
+      "x-unknown": "warn",
+      "properties": {
+        "project": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$"}
+      }
+    },
     "repo": {
       "type": "object",
       "required": ["name"],

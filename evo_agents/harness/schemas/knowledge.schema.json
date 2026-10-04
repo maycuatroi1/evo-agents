@@ -128,7 +128,8 @@
             "agent-session",
             "llm-backend",
             "writeback-target",
-            "cli"
+            "cli",
+            "hub"
           ]
         },
         "clearance": {

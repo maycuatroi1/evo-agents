@@ -21,6 +21,7 @@ MIGRATION_FILES = (
     "evo_agents/hub/migrations/env.py",
     "evo_agents/hub/migrations/script.py.mako",
     "evo_agents/hub/migrations/versions/0001_initial.py",
+    "evo_agents/hub/migrations/versions/0002_project_paths.py",
 )
 
 
@@ -74,7 +75,7 @@ def test_the_wheel_ships_the_migrations_and_migrates_from_its_own_venv(hub_db, t
 
     migrated = run([str(bin_dir / "evo-agents"), "hub", "migrate"], env=env, cwd=tmp_path)
     applied = [line["applied"] for line in pg.log_lines(migrated.stderr) if line["msg"] == "migrations applied"]
-    assert applied == [["0001"]]
+    assert applied == [["0001", "0002"]]
     with pg.admin(hub_db.admin_dsn) as conn:
-        assert conn.execute("SELECT version_num FROM alembic_version").fetchall() == [("0001",)]
+        assert conn.execute("SELECT version_num FROM alembic_version").fetchall() == [("0002",)]
         assert conn.execute("SELECT count(*) FROM pg_tables WHERE schemaname = 'public'").fetchone()[0] == 15

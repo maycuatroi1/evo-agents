@@ -73,9 +73,37 @@
     },
     "open_questions": {
       "type": "array"
+    },
+    "hub": {
+      "$ref": "#/$defs/hub"
     }
   },
   "$defs": {
+    "hub": {
+      "description": "Set on the read-only copy the evo-agents hub writes: the plan's project, its revision on the hub, and the SHA-256 of its canonical JSON without this key.",
+      "type": "object",
+      "required": [
+        "project",
+        "revision",
+        "digest"
+      ],
+      "additionalProperties": false,
+      "x-unknown": "warn",
+      "properties": {
+        "project": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]*$"
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        }
+      }
+    },
     "repo": {
       "type": "object",
       "required": [

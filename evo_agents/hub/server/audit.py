@@ -11,6 +11,8 @@ LOGOUT = "auth.logout"
 TOKEN_REVOKE = "token.revoke"
 GRANT_PUT = "grant.put"
 GRANT_DELETE = "grant.delete"
+PROJECT_REGISTER = "project.register"
+PROJECT_UPDATE = "project.update"
 
 
 async def record(conn, *, actor_id: int, token_id: int | None, action: str, target: str) -> None:
