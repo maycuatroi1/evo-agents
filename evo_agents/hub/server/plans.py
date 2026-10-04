@@ -14,25 +14,29 @@ the plan and the revision, never its content, all in one transaction.
 - POST .../complete moves the plan to the completed area, only when every step is done.
 
 Reads go through a sink of the project (X-Evo-Sink, by default its hub sink) and follow ``ProjectAccess.visible``;
-a plan the caller cannot see answers the same 404 as one that does not exist. Writes need the writer role, and
+a plan the caller cannot see answers the same 404 as one that does not exist. Reading needs a grant on the project:
+a hub admin without one is answered 403, as by the knowledge graph. GET .../diff compares two revisions line by line
+as their git copies read (``evo_agents.hub.plan_diff``). Writes need the writer role, and
 the plan's label must stay below the clearance of the project's hub sink (``ProjectAccess.push_label``).
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import PurePosixPath
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Header, HTTPException, Path, Request
+from fastapi import APIRouter, Header, HTTPException, Path, Query, Request
 from fastapi.responses import JSONResponse
 from psycopg.types.json import Jsonb
 from pydantic import BaseModel, Field
 
 from evo_agents.harness import load_schema, plan_body, plan_digest, plan_semantics
 from evo_agents.hub.access import has_role
+from evo_agents.hub.plan_diff import DEFAULT_CONTEXT, MAX_CONTEXT, plan_diff
 from evo_agents.hub.plans import (
     AREAS,
     SECTIONS,
@@ -75,6 +79,7 @@ class Conflict(ErrorBody):
     current: dict | None = Field(None, description="the plan as the hub holds it, when the caller may see it")
 
 
+READ_REFUSALS = {403: {"model": ErrorBody}, 404: {"model": ErrorBody}}
 REFUSALS = {
     403: {"model": ErrorBody},
     404: {"model": ErrorBody},
@@ -129,6 +134,31 @@ class Revision(BaseModel):
 class RevisionBody(Revision):
     label: dict
     body: dict
+
+
+class PlanDiffLine(BaseModel):
+    kind: Literal["context", "added", "removed"]
+    old: int | None = Field(description="the line's number in the from revision's text; null for an added line")
+    new: int | None = Field(description="the line's number in the to revision's text; null for a removed line")
+    text: str
+
+
+class PlanDiffHunk(BaseModel):
+    old_start: int
+    old_lines: int
+    new_start: int
+    new_lines: int
+    lines: list[PlanDiffLine]
+
+
+class PlanDiff(BaseModel):
+    plan_id: str
+    from_revision: Revision
+    to_revision: Revision
+    context: int
+    added: int = Field(description="lines added in all hunks")
+    removed: int = Field(description="lines removed in all hunks")
+    hunks: list[PlanDiffHunk] = Field(description="empty when the two revisions read the same")
 
 
 class PlanPut(BaseModel):
@@ -222,6 +252,13 @@ def _sink(access: ProjectAccess, sink: str | None) -> str | None:
     return access.rules.hub_sink.sink if access.rules.hub_sink else None
 
 
+def _reader(access: ProjectAccess) -> None:
+    """Reading plans needs a grant on the project; only a hub admin without one gets this far (``project_access``
+    answers 404 to anyone else without one), and it manages the project without reading what it holds."""
+    if access.role is None:
+        raise HTTPException(403, f"reading the plans of project {access.name} needs a grant on it")
+
+
 async def _visible(conn, access: ProjectAccess, plan_id: str, sink: str | None, *, lock: bool = False) -> Held:
     held = await _held(conn, access, plan_id, lock=lock)
     if held is None or not access.visible(held.label, _sink(access, sink)):
@@ -242,7 +279,7 @@ SELECT p.plan_id, p.area, p.label, p.revision, p.digest, p.body ->> 'title', p.u
 """
 
 
-@router.get("", response_model=list[PlanSummary], responses={404: {"model": ErrorBody}})
+@router.get("", response_model=list[PlanSummary], responses=READ_REFUSALS)
 async def list_plans(
     request: Request,
     project: ProjectName,
@@ -252,6 +289,7 @@ async def list_plans(
 ) -> list[PlanSummary]:
     async with request.app.state.pool.connection() as conn:
         access = await project_access(conn, user, project)
+        _reader(access)
         rows = await (await conn.execute(LIST_PLANS, {"project": access.project_id, "area": area})).fetchall()
     through = _sink(access, sink)
     return [
@@ -271,7 +309,7 @@ async def list_plans(
     ]
 
 
-@router.get("/{plan_id}", response_model=Plan, responses={404: {"model": ErrorBody}})
+@router.get("/{plan_id}", response_model=Plan, responses=READ_REFUSALS)
 async def show(
     request: Request,
     project: ProjectName,
@@ -281,6 +319,7 @@ async def show(
 ) -> dict:
     async with request.app.state.pool.connection() as conn:
         access = await project_access(conn, user, project)
+        _reader(access)
         held = await _visible(conn, access, plan_id, sink)
     return held.view(project)
 
@@ -294,13 +333,14 @@ SELECT r.revision, r.area, r.label, r.digest, r.summary, u.login, r.created_at, 
 
 
 async def _revisions(conn, access: ProjectAccess, plan_id: str, sink: str | None, revision: int | None = None):
+    _reader(access)
     await _visible(conn, access, plan_id, sink)
     cursor = await conn.execute(REVISIONS, (access.project_id, plan_id, revision, revision))
     through = _sink(access, sink)
     return [row for row in await cursor.fetchall() if access.visible(row[2], through)]
 
 
-@router.get("/{plan_id}/revisions", response_model=list[Revision], responses={404: {"model": ErrorBody}})
+@router.get("/{plan_id}/revisions", response_model=list[Revision], responses=READ_REFUSALS)
 async def history(
     request: Request,
     project: ProjectName,
@@ -317,7 +357,7 @@ async def history(
     ]
 
 
-@router.get("/{plan_id}/revisions/{revision}", response_model=RevisionBody, responses={404: {"model": ErrorBody}})
+@router.get("/{plan_id}/revisions/{revision}", response_model=RevisionBody, responses=READ_REFUSALS)
 async def show_revision(
     request: Request,
     project: ProjectName,
@@ -333,6 +373,54 @@ async def show_revision(
         raise HTTPException(404, f"plan {plan_id} of project {project} has no revision {revision} that you can see")
     r, a, label, d, s, actor, at, body = rows[0]
     return RevisionBody(revision=r, area=a, digest=d, summary=s, actor=actor, created_at=at, label=label, body=body)
+
+
+async def _one_revision(conn, access: ProjectAccess, plan_id: str, sink: str | None, revision: int):
+    rows = await _revisions(conn, access, plan_id, sink, revision)
+    if not rows:
+        raise HTTPException(404, f"plan {plan_id} of project {access.name} has no revision {revision} that you can see")
+    r, a, _label, d, s, actor, at, body = rows[0]
+    return Revision(revision=r, area=a, digest=d, summary=s, actor=actor, created_at=at), body
+
+
+@router.get("/{plan_id}/diff", response_model=PlanDiff, responses=READ_REFUSALS)
+async def diff(
+    request: Request,
+    project: ProjectName,
+    plan_id: PlanId,
+    user: CurrentUser,
+    from_revision: Annotated[int, Query(alias="from", ge=1, description="the older revision")],
+    to_revision: Annotated[int, Query(alias="to", ge=1, description="the newer revision")],
+    context: Annotated[int, Query(ge=0, le=MAX_CONTEXT, description="unchanged lines around a change")] = (
+        DEFAULT_CONTEXT
+    ),
+    sink: Annotated[str | None, Header(alias=SINK_HEADER)] = None,
+) -> PlanDiff:
+    """The lines that changed from one revision of the plan to another, as their git copies read; 404 when
+    either revision is not one the caller can see."""
+    async with request.app.state.pool.connection() as conn:
+        access = await project_access(conn, user, project)
+        older, old_body = await _one_revision(conn, access, plan_id, sink, from_revision)
+        newer, new_body = await _one_revision(conn, access, plan_id, sink, to_revision)
+    found = await asyncio.to_thread(plan_diff, old_body, new_body, context)
+    return PlanDiff(
+        plan_id=plan_id,
+        from_revision=older,
+        to_revision=newer,
+        context=context,
+        added=found.added,
+        removed=found.removed,
+        hunks=[
+            PlanDiffHunk(
+                old_start=h.old_start,
+                old_lines=h.old_lines,
+                new_start=h.new_start,
+                new_lines=h.new_lines,
+                lines=[PlanDiffLine(kind=x.kind, old=x.old, new=x.new, text=x.text) for x in h.lines],
+            )
+            for h in found.hunks
+        ],
+    )
 
 
 # Writing
