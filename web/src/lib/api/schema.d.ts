@@ -812,10 +812,176 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/audit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Audit Trail
+         * @description The audit trail, newest first, filtered and paged by cursor.
+         */
+        get: operations["audit_trail_v1_admin_audit_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/audit/actions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Audit Actions
+         * @description Every action the trail holds at least one row of, in alphabetical order, for the action filter.
+         */
+        get: operations["audit_actions_v1_admin_audit_actions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/tokens": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * All Tokens
+         * @description The tokens and web sessions of every user, newest first, paged by cursor.
+         */
+        get: operations["all_tokens_v1_admin_tokens_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/tokens/{token_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revoke Any Token
+         * @description Revoke a token or web session of any user.
+         */
+        delete: operations["revoke_any_token_v1_admin_tokens__token_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AdminToken */
+        AdminToken: {
+            /** Id */
+            id: number;
+            /**
+             * Login
+             * @description whose token it is
+             */
+            login: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "machine" | "web";
+            /**
+             * Host
+             * @description the machine a machine token was issued to; null for a web session
+             */
+            host: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Last Used At */
+            last_used_at: string | null;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /** Revoked At */
+            revoked_at: string | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "active" | "revoked" | "expired";
+            /**
+             * Current
+             * @description the token this request came with
+             */
+            current: boolean;
+        };
+        /** AuditPage */
+        AuditPage: {
+            /** Items */
+            items: components["schemas"]["AuditRow"][];
+            /**
+             * Next Cursor
+             * @description pass as cursor for the rows after these; null on the last page
+             */
+            next_cursor: string | null;
+        };
+        /** AuditRow */
+        AuditRow: {
+            /** Id */
+            id: number;
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /**
+             * Actor
+             * @description the login that acted; null for an action of the hub itself
+             */
+            actor: string | null;
+            /**
+             * Token Id
+             * @description the token or web session the actor used
+             */
+            token_id: number | null;
+            /** Action */
+            action: string;
+            /**
+             * Target
+             * @description what the action named: a project, a login, a token id; never content
+             */
+            target: string;
+            /**
+             * Project
+             * @description the project the action happened in; null for one outside any project
+             */
+            project: string | null;
+        };
         /** AuthConfig */
         AuthConfig: {
             /**
@@ -1828,6 +1994,16 @@ export interface components {
              */
             expires_at: string;
         };
+        /** TokenPage */
+        TokenPage: {
+            /** Items */
+            items: components["schemas"]["AdminToken"][];
+            /**
+             * Next Cursor
+             * @description pass as cursor for the tokens after these; null on the last page
+             */
+            next_cursor: string | null;
+        };
         /** TokenRow */
         TokenRow: {
             /** Id */
@@ -1942,6 +2118,25 @@ export interface components {
              */
             expires_at: string;
         };
+        /** UserGrant */
+        UserGrant: {
+            /** Project */
+            project: string;
+            /** Role */
+            role: string;
+            /** Max Level */
+            max_level: string;
+            /**
+             * Granted By
+             * @description the login of the admin who gave or last changed the grant
+             */
+            granted_by: string | null;
+            /**
+             * Granted At
+             * Format: date-time
+             */
+            granted_at: string;
+        };
         /** UserRow */
         UserRow: {
             /** Login */
@@ -1963,7 +2158,7 @@ export interface components {
             /** Active Tokens */
             active_tokens: number;
             /** Grants */
-            grants: components["schemas"]["GrantInfo"][];
+            grants: components["schemas"]["UserGrant"][];
         };
         /** ValidationError */
         ValidationError: {
@@ -4892,6 +5087,227 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    audit_trail_v1_admin_audit_get: {
+        parameters: {
+            query?: {
+                /** @description a login, any case */
+                actor?: string | null;
+                /** @description an action, such as grant.put */
+                action?: string | null;
+                project?: string | null;
+                /** @description rows at or after this time */
+                since?: string | null;
+                /** @description rows before this time */
+                until?: string | null;
+                /** @description next_cursor of the previous page, with the same filters */
+                cursor?: string | null;
+                /** @description rows per page */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditPage"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    audit_actions_v1_admin_audit_actions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": string[];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    all_tokens_v1_admin_tokens_get: {
+        parameters: {
+            query?: {
+                /** @description one user's tokens, any case */
+                login?: string | null;
+                kind?: ("machine" | "web") | null;
+                /** @description live tokens unless set */
+                state?: ("active" | "revoked" | "expired") | "any";
+                /** @description next_cursor of the previous page, with the same filters */
+                cursor?: string | null;
+                /** @description rows per page */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TokenPage"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    revoke_any_token_v1_admin_tokens__token_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
