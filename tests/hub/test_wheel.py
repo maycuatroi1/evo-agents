@@ -2,6 +2,7 @@
 ``evo-agents hub migrate`` brings a database to head with nothing from this checkout on the path."""
 
 import importlib.util
+import os
 import shutil
 import subprocess
 import sys
@@ -67,7 +68,10 @@ def test_the_wheel_ships_the_migrations_and_migrates_from_its_own_venv(hub_db, t
     run([sys.executable, "-m", "venv", "--without-pip", str(venv)])
     bin_dir = venv / ("Scripts" if sys.platform == "win32" else "bin")
     python = bin_dir / ("python.exe" if sys.platform == "win32" else "python")
-    run([*pip, "--python", str(python), "install", "--no-deps", "--no-index", str(wheel)])
+    # Away from the checkout and its PYTHONPATH: an evo_ak.egg-info left there by `python -m build` would make pip
+    # think the package is installed already.
+    outside = {key: value for key, value in os.environ.items() if key != "PYTHONPATH"}
+    run([*pip, "--python", str(python), "install", "--no-deps", "--no-index", str(wheel)], env=outside, cwd=tmp_path)
     # The dependencies come from this interpreter's site-packages, listed after the venv's own: a plain path
     # in a .pth file, so the .pth files there (the editable install of this checkout) are not processed.
     site = Path(run([str(python), "-c", "import sysconfig; print(sysconfig.get_paths()['purelib'])"]).stdout.strip())
