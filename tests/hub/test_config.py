@@ -49,6 +49,9 @@ def test_missing_dsn_stops_the_command_and_names_the_variable(command):
         ("EVO_HUB_GITHUB_TIMEOUT", "0"),
         ("EVO_HUB_SESSION_SECRET", "too-short"),
         ("EVO_HUB_ADMINS", "octo, not a login"),
+        ("EVO_HUB_BLOB_CONCURRENCY", "0"),
+        ("EVO_HUB_BLOB_CONCURRENCY", "257"),
+        ("EVO_HUB_BLOB_CONCURRENCY", "many"),
     ],
 )
 def test_a_malformed_value_names_its_variable(variable, value):

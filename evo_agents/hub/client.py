@@ -232,8 +232,9 @@ class Hub:
     def __repr__(self) -> str:
         return f"Hub({self.url!r})"
 
-    def call(self, method: str, path: str, body: dict | None = None):
-        """The decoded JSON answer, None for an empty one; HubError with the hub's message otherwise."""
+    def call(self, method: str, path: str, body: dict | None = None, *, timeout: float | None = None):
+        """The decoded JSON answer, None for an empty one; HubError with the hub's message otherwise. ``timeout``
+        replaces the hub's own for this request, for one whose work grows with its size, such as a blob commit."""
         headers = {"Accept": "application/json", "User-Agent": f"evo-agents/{__version__}"}
         if self.token:
             headers["Authorization"] = f"Bearer {self.token}"
@@ -241,7 +242,7 @@ class Hub:
         if body is not None:
             data = json.dumps(body).encode()
             headers["Content-Type"] = "application/json"
-        status, raw = _send(method, self.url + path, headers, data, self.timeout)
+        status, raw = _send(method, self.url + path, headers, data, self.timeout if timeout is None else timeout)
         payload = _json(raw)
         if 300 <= status < 400:
             raise HubError(f"the hub at {self.url} answered {status} with a redirect, which is not followed", status)

@@ -1,9 +1,10 @@
 """``evo-agents hub kg push|builds|build``, and the hub backend of ``kg serve`` and ``kg query``.
 
 ``push`` sends the runs a project's corpus holds and the hub lacks (``evo_agents.hub.kg_push``): ``--project P`` one
-project of this machine, ``--all`` every project of projects.json the hub takes a push for. ``builds`` lists a
-project's builds and the jobs still queued; ``build`` (the writer role) queues one and with ``--wait`` waits until it
-has finished, exiting 1 when it failed.
+project of this machine, ``--all`` every project of projects.json the hub takes a push for. It reports its progress on
+stderr, a line per run and per batch of blobs, and its outcome on stdout. ``builds`` lists a project's builds and the
+jobs still queued; ``build`` (the writer role) queues one and with ``--wait`` waits until it has finished, exiting 1
+when it failed.
 
 ``open_session`` picks where kg_* are answered. ``local`` reads the store on this machine, as before the hub.
 ``hub`` sends every call to the hub's /mcp as a tools/call (``RemoteSession``), the seven tools with the same names and
@@ -54,12 +55,17 @@ def local_projects(project: str | None, everything: bool) -> list[tuple[str, obj
     return [(loaded.name, loaded)]
 
 
-def push(hub: Hub, project: str | None, everything: bool) -> list:
-    """The push reports of ``--project`` or ``--all``. Raises ProjectError when the one project does not load."""
+def push(hub: Hub, project: str | None, everything: bool, progress=None) -> list:
+    """The push reports of ``--project`` or ``--all``; ``progress`` receives a line per run and per batch of blobs.
+    Raises ProjectError when the one project does not load."""
     projects = local_projects(project, everything)
     if everything:
-        return push_all(hub, projects)
-    return [push_project(hub, loaded) for _, loaded in projects]
+        return push_all(hub, projects, progress)
+    return [push_project(hub, loaded, progress) for _, loaded in projects]
+
+
+def _progress(line: str) -> None:
+    print(line, file=sys.stderr, flush=True)  # stderr: stdout keeps the summary, or the JSON of --json
 
 
 def push_json(reports: list) -> dict:
@@ -83,7 +89,7 @@ def cmd_push(args) -> int:
         raise HubError("pass --project P or --all")
     hub, _ = _signed_in()
     try:
-        reports = push(hub, args.project, args.all)
+        reports = push(hub, args.project, args.all, _progress)
     except ProjectError as exc:
         raise HubError(str(exc)) from None
     if args.json:
