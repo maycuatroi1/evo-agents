@@ -14,6 +14,10 @@ be asked for again. Either way the uploaded objects are deleted. An upload can b
 for it, in its project, within 24 hours; any other id is unknown (422) and left alone. When the blob store does not
 answer, the answer is 503 and the uploads stay, so the same commit can be sent again.
 
+A request without ``project`` is about blobs the hub holds itself, outside any project: the bundles of global skills,
+which belong to no project. Only a hub admin uploads or commits those, and only of kind skill-bundle (GLOBAL_KINDS);
+logs and the audit trail name that holder GLOBAL.
+
 ``commit_uploads`` is the commit on its own, for routes that take uploads as part of something larger. No route
 reads a blob: a route that has checked that the caller may see what refers to a blob hands out
 ``BlobStore.presign_get``.
@@ -23,6 +27,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Annotated, Literal
 
@@ -52,6 +57,8 @@ MAX_ITEMS = 1000
 UPLOAD_REFUSALS = {code: {"model": ErrorBody} for code in (403, 404, 413, 422, 503)}
 COMMIT_REFUSALS = {code: {"model": ErrorBody} for code in (403, 404, 422, 503)}
 UNAVAILABLE = "the blob store did not answer; nothing was committed and the uploads are kept, try again shortly"
+GLOBAL = "(global)"  # the hub as the holder of blobs in logs and audit rows; no project name has parentheses
+GLOBAL_KINDS = frozenset({"skill-bundle"})  # what the hub holds outside any project: the bundles of global skills
 
 Sha256 = Annotated[str, Field(pattern=r"^[0-9a-f]{64}$", description="hex SHA-256 of the bytes")]
 ProjectField = Annotated[str, Field(pattern=PROJECT_NAME)]
@@ -66,7 +73,9 @@ class UploadItem(BaseModel):
 
 
 class UploadRequest(BaseModel):
-    project: ProjectField
+    project: ProjectField | None = Field(
+        None, description="left out for blobs the hub holds itself (bundles of global skills; a hub admin only)"
+    )
     items: list[UploadItem] = Field(min_length=1, max_length=MAX_ITEMS)
 
 
@@ -83,7 +92,7 @@ class Uploads(BaseModel):
 
 
 class CommitRequest(BaseModel):
-    project: ProjectField
+    project: ProjectField | None = Field(None, description="left out for blobs the hub holds itself")
     upload_ids: list[UUID4] = Field(min_length=1, max_length=MAX_ITEMS)
 
 
@@ -110,6 +119,28 @@ def blob_store(request: Request) -> BlobStore:
 def _writer(access: ProjectAccess, doing: str) -> None:
     if not has_role(access.role, "writer"):
         raise HTTPException(403, f"{doing} blobs of project {access.name} needs the writer role on it")
+
+
+@dataclass(frozen=True)
+class Holder:
+    """What holds a blob: a project, or the hub itself (``project_id`` None) for the bundles of global skills."""
+
+    project_id: int | None
+    name: str  # the project's, or GLOBAL
+
+
+async def holder(conn, user: Principal, project: str | None, doing: str) -> Holder:
+    """The holder ``user`` is ``doing`` something to blobs of: ``project``, where ``user`` must be a writer, or the hub
+    itself when ``project`` is None, for a hub admin. 403 (or the 404 of ``project_access``) otherwise."""
+    if project is None:
+        if not user.admin:
+            raise HTTPException(
+                403, f"{doing} blobs outside a project (the bundles of global skills) needs a hub admin"
+            )
+        return Holder(None, GLOBAL)
+    access = await project_access(conn, user, project)
+    _writer(access, doing)
+    return Holder(access.project_id, access.name)
 
 
 def _distinct(items: list[UploadItem]) -> list[UploadItem]:
@@ -146,13 +177,16 @@ async def request_uploads(request: Request, body: UploadRequest, user: CurrentUs
     store = blob_store(request)
     items = _distinct(body.items)
     async with request.app.state.pool.connection() as conn:
-        access = await project_access(conn, user, body.project)
-        _writer(access, "uploading")
+        access = await holder(conn, user, body.project, "uploading")
+        if access.project_id is None and any(item.kind not in GLOBAL_KINDS for item in items):
+            raise HTTPException(
+                422, f"outside a project the hub holds only blobs of kind {', '.join(sorted(GLOBAL_KINDS))}"
+            )
         refusal = _over_limit(request, items)
         if refusal is not None:
             return refusal
         cursor = await conn.execute(
-            "SELECT sha256 FROM blobs WHERE project_id = %s AND sha256 = ANY(%s)",
+            "SELECT sha256 FROM blobs WHERE project_id IS NOT DISTINCT FROM %s AND sha256 = ANY(%s)",
             (access.project_id, [item.sha256 for item in items]),
         )
         present = {row[0] for row in await cursor.fetchall()}
@@ -183,11 +217,12 @@ async def request_uploads(request: Request, body: UploadRequest, user: CurrentUs
 
 PENDING = """
 SELECT upload_id::text, sha256, size, kind FROM blob_uploads
- WHERE upload_id = ANY(%s::uuid[]) AND project_id = %s AND created_by = %s AND created_at > now() - %s
+ WHERE upload_id = ANY(%s::uuid[]) AND project_id IS NOT DISTINCT FROM %s AND created_by = %s
+   AND created_at > now() - %s
 """
 INSERT_BLOBS = """
 INSERT INTO blobs (project_id, sha256, size, kind, created_by)
-SELECT %s, sha256, size, kind, %s FROM unnest(%s::text[], %s::bigint[], %s::text[]) AS b (sha256, size, kind)
+SELECT %s::bigint, sha256, size, kind, %s FROM unnest(%s::text[], %s::bigint[], %s::text[]) AS b (sha256, size, kind)
     ON CONFLICT (project_id, sha256) DO NOTHING
 RETURNING sha256
 """
@@ -209,15 +244,15 @@ class Mismatch(Exception):
         self.problems = problems
 
 
-async def commit_uploads(request: Request, user: Principal, project: str, upload_ids: list[str]) -> Committed:
-    """Verify and commit ``upload_ids`` of ``project`` as ``user``. Raises HTTPException (403, 404, 422 for unknown
-    ids, 503), or Mismatch after discarding every upload of the request when one does not match."""
+async def commit_uploads(request: Request, user: Principal, project: str | None, upload_ids: list[str]) -> Committed:
+    """Verify and commit ``upload_ids`` of ``project`` (None: of the hub itself) as ``user``. Raises HTTPException
+    (403, 404, 422 for unknown ids, 503), or Mismatch after discarding every upload of the request when one does not
+    match."""
     store = blob_store(request)
     pool = request.app.state.pool
     ids = sorted(set(upload_ids))
     async with pool.connection() as conn:
-        access = await project_access(conn, user, project)
-        _writer(access, "committing")
+        access = await holder(conn, user, project, "committing")
         cursor = await conn.execute(PENDING, (ids, access.project_id, user.user_id, STALE_AFTER))
         uploads = [Upload(*row) for row in await cursor.fetchall()]
     unknown = sorted(set(ids) - {upload.upload_id for upload in uploads})
@@ -242,7 +277,7 @@ async def commit_uploads(request: Request, user: Principal, project: str, upload
         await _discard(store, ids)
         log.warning(
             "blob commit refused: uploads do not match",
-            extra={"project": project, "login": user.login, "uploads": len(ids), "mismatched": problems},
+            extra={"project": access.name, "login": user.login, "uploads": len(ids), "mismatched": problems},
         )
         raise Mismatch(problems)
     try:
@@ -250,8 +285,7 @@ async def commit_uploads(request: Request, user: Principal, project: str, upload
     except BlobStoreUnavailable:
         raise HTTPException(503, UNAVAILABLE) from None
     async with pool.connection() as conn:
-        access = await project_access(conn, user, project)  # the grant may have changed while the bytes were read
-        _writer(access, "committing")
+        access = await holder(conn, user, project, "committing")  # the grant may have changed while the bytes were read
         blobs = list({upload.sha256: upload for upload in reversed(uploads)}.values())  # the first upload of a hash
         cursor = await conn.execute(
             INSERT_BLOBS,
@@ -267,12 +301,18 @@ async def commit_uploads(request: Request, user: Principal, project: str, upload
         await conn.execute("DELETE FROM blob_uploads WHERE upload_id = ANY(%s::uuid[])", (ids,))
         if added:
             await audit.record(
-                conn, actor_id=user.user_id, token_id=user.token_id, action=audit.BLOB_COMMIT, target=project
+                conn, actor_id=user.user_id, token_id=user.token_id, action=audit.BLOB_COMMIT, target=access.name
             )
     await _discard(store, ids)
     log.info(
         "blobs committed",
-        extra={"project": project, "login": user.login, "uploads": len(ids), "added": added, "stored": sum(written)},
+        extra={
+            "project": access.name,
+            "login": user.login,
+            "uploads": len(ids),
+            "added": added,
+            "stored": sum(written),
+        },
     )
     blobs.sort(key=lambda upload: upload.sha256)
     return Committed(blobs=[Blob(sha256=b.sha256, size=b.size, kind=b.kind) for b in blobs], added=added)
