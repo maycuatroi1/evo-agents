@@ -79,6 +79,13 @@ Shared pieces built on them:
   hide on narrow screens.
 - `components/shell`: sidebar, project picker, user menu (login, hub role, role in the current project,
   theme, language, sign out), header with breadcrumbs, page header.
+- `components/data/search-field.tsx` and `facet-group.tsx`: a search box in a search landmark (committed after a
+  300 ms pause or on Enter) and a facet as a labelled group of `aria-pressed` toggles with counts. Filters live in
+  the URL and change it through `window.history.replaceState`, which Next.js syncs with `useSearchParams` without
+  rendering the page on the server again.
+- `components/memories/markdown.tsx`: Markdown written by people (memory bodies) through react-markdown without
+  raw HTML: tags show as text, only listed elements render, links keep http(s), mailto and anchors, images are
+  never loaded, headings move under the page's h1 and the card's h2.
 
 Themes come from `next-themes` with the `class` strategy and follow the system until the person picks light
 or dark in the user menu. The language (Vietnamese by default, English) is a cookie set from the same menu.
@@ -98,7 +105,8 @@ in through `tw-animate-css`. `prefers-reduced-motion: reduce` turns every animat
 
 ## Adding a page (steps 25 to 28)
 
-1. Add the query to `src/lib/queries.ts` (it takes `() => ApiClient`, so the server and the browser share it).
+1. Add the query to `src/lib/queries.ts`, or to `queries.ts` in the section's own components folder (memories,
+   skills); it takes `() => ApiClient`, so the server and the browser share it.
 2. Make the route a server component that calls `prefetch` and wraps a client component in
    `HydrationBoundary`; the client component reads with `useHubQuery` and renders through `QueryView`.
 3. Add the sidebar entry to `PROJECT_NAV` or `HUB_NAV` in `components/shell/nav.ts`, and its label under

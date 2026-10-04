@@ -10,8 +10,11 @@ already signed in to github.com would be. Each Playwright context sets its own c
 parallel. Seeding goes through the real API too: POST /github/token hands out a GitHub token the fake issued to the
 hub's app, which POST /v1/auth/github trades for a machine token.
 
-The blob store stays unconfigured (``pg.clean_env`` drops every EVO_HUB_S3_* variable): the shell calls no blob
-route, the API starts without it, and its health reports r2 unconfigured.
+The blob store is moto's S3 server in this process (``tests.hub.s3``, the one the Python tests use), on a free port
+with a bucket and key pair of its own: skills are published through the real upload, commit and publish routes, and
+a browser sent to a presigned GET downloads the bundle from it. POST /skills/bundle {name, description, files} packs
+a skill directory with ``evo_agents.hub.skills.pack`` and answers the bundle as base64 with its SHA-256, since the
+tests have no tar.gz writer of their own.
 
 Environment: EVO_HUB_TEST_DSN (required, a superuser DSN), E2E_API_PORT (18324), E2E_STACK_PORT (18325),
 E2E_WEB_ORIGIN (http://localhost:3324, the hub's public URL), E2E_ADMIN_LOGIN (e2e-admin).
@@ -19,12 +22,14 @@ E2E_WEB_ORIGIN (http://localhost:3324, the hub's public URL), E2E_ADMIN_LOGIN (e
 
 from __future__ import annotations
 
+import base64
 import json
 import os
 import secrets
 import signal
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import urllib.request
@@ -37,6 +42,7 @@ sys.path.insert(0, str(ROOT))
 
 from tests.hub import pg  # noqa: E402
 from tests.hub.fake_github import Account, FakeGitHub, Recorded  # noqa: E402
+from tests.hub.s3 import fake_s3  # noqa: E402
 
 LOGIN_COOKIE = "fake_github_login"
 STATE_DIR = Path(__file__).resolve().parent / ".stack"
@@ -117,6 +123,25 @@ def wait_for(url: str, proc: subprocess.Popen, log_path: Path) -> None:
         time.sleep(0.2)
 
 
+def skill_bundle(body: dict) -> dict:
+    """A skill directory named ``name`` with a SKILL.md (``description``, ``text``) and ``files`` (path to text),
+    packed as `hub skills publish` packs it."""
+    from evo_agents.hub.skills import pack
+
+    name = str(body["name"])
+    description = str(body.get("description") or f"Use when testing {name}")
+    with tempfile.TemporaryDirectory(prefix="e2e-skill-") as root:
+        directory = Path(root) / name
+        directory.mkdir()
+        text = f"---\nname: {name}\ndescription: {description}\n---\n{body.get('text') or name}\n"
+        (directory / "SKILL.md").write_text(text, encoding="utf-8")
+        for path, content in dict(body.get("files") or {}).items():
+            (directory / path).parent.mkdir(parents=True, exist_ok=True)
+            (directory / path).write_text(str(content), encoding="utf-8")
+        bundle = pack(directory)
+    return {"data": base64.b64encode(bundle.data).decode(), "sha256": bundle.sha256, "size": bundle.size}
+
+
 def control_server(port: int, github: BrowserGitHub, info: dict) -> ThreadingHTTPServer:
     class Handler(BaseHTTPRequestHandler):
         def _reply(self, status: int, payload: dict) -> None:
@@ -139,6 +164,8 @@ def control_server(port: int, github: BrowserGitHub, info: dict) -> ThreadingHTT
             if self.path == "/github/token":
                 token = github.issue_token(Account(str(body["login"]), int(body["id"])))
                 self._reply(200, {"token": token})
+            elif self.path == "/skills/bundle":
+                self._reply(200, skill_bundle(body))
             else:
                 self._reply(404, {"error": "not found"})
 
@@ -172,10 +199,13 @@ def main() -> int:
     log_path = STATE_DIR / "hub-serve.log"
     db = create_database(admin_dsn)
     github = BrowserGitHub()
+    store = fake_s3()
+    s3 = None
     proc = None
     control = None
     try:
         github.__enter__()
+        s3 = store.__enter__()
         env = pg.clean_env(
             PYTHONPATH=os.pathsep.join(filter(None, [str(ROOT), os.environ.get("PYTHONPATH")])),
             EVO_HUB_DSN=db.dsn,
@@ -187,16 +217,21 @@ def main() -> int:
             EVO_HUB_GITHUB_API_URL=github.url,
             EVO_HUB_SESSION_SECRET="e2e-session-" + secrets.token_hex(24),
             EVO_HUB_PUBLIC_URL=web_origin,
+            **s3.env(),
         )
         command = [sys.executable, "-m", "evo_agents", "hub", "serve", "--host", "127.0.0.1", "--port", str(api_port)]
         with open(log_path, "w", encoding="utf-8") as log_file:
             proc = subprocess.Popen(command, cwd=ROOT, env=env, stdout=log_file, stderr=subprocess.STDOUT)
         api_url = f"http://127.0.0.1:{api_port}"
         wait_for(f"{api_url}/v1/health/live", proc, log_path)
-        info = {"api": api_url, "github": github.url, "admin": admin_login, "database": db.name}
+        info = {"api": api_url, "github": github.url, "s3": s3.endpoint, "admin": admin_login, "database": db.name}
         control = control_server(stack_port, github, info)
         threading.Thread(target=control.serve_forever, daemon=True).start()
-        print(f"hub_stack ready: api {api_url}, fake github {github.url}, db {db.name}, log {log_path}", flush=True)
+        print(
+            f"hub_stack ready: api {api_url}, fake github {github.url}, fake s3 {s3.endpoint}, db {db.name}, "
+            f"log {log_path}",
+            flush=True,
+        )
         while not stopping.wait(0.5):
             if proc.poll() is not None:
                 print(f"hub_stack: hub serve exited with {proc.returncode}, see {log_path}", file=sys.stderr)
@@ -214,6 +249,8 @@ def main() -> int:
                 proc.kill()
                 proc.wait()
         github.stop()
+        if s3 is not None:
+            store.__exit__(None, None, None)
         drop_database(admin_dsn, db)
         print(f"hub_stack stopped, dropped {db.name}", flush=True)
 
