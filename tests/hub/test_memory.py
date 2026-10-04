@@ -15,13 +15,16 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 from evo_agents.hub import client as hub_client
 from evo_agents.hub import memory as hub_memory
 from evo_agents.hub.client import Hub, HubError
+from evo_agents.hub.hooks import _memory_place
 from evo_agents.hub.memory import (
+    HARNESS,
     INDEX,
     MAX_BODY,
     SLUG,
@@ -56,11 +59,13 @@ REAL_CLAUDE_CONFIG = os.environ.get("CLAUDE_CONFIG_DIR")  # read before any test
 
 @pytest.fixture(autouse=True)
 def own_home(tmp_path, monkeypatch) -> Path:
-    """A home directory of this test's own, and no CLAUDE_CONFIG_DIR: nothing can reach the real ~/.claude."""
+    """A home directory of this test's own, and no CLAUDE_CONFIG_DIR or EVO_KG_HOME: nothing can reach the real
+    ~/.claude or ~/.evo."""
     home = tmp_path / "home"
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
+    monkeypatch.delenv("EVO_KG_HOME", raising=False)  # bound.json of `kg bind` is read under this home too
     return home
 
 
@@ -245,6 +250,115 @@ def test_the_registry_places_projects_and_a_directory_two_projects_claim_syncs_w
     with pytest.raises(HubError, match="projects alpha, beta at once"):
         places.candidates(f"-Users-someone-{WORKSPACE}-w82-w132")
     assert places.directory(Place("project", "beta", "w82-w132")) is None
+
+
+def lister(*repos: str, name: str = "omega", level: str = "internal", harness: str | None = None) -> dict:
+    """A project as GET /v1/projects lists it whose repos include directories of other projects, the way a harness
+    lists the harnesses of the projects consuming its seams."""
+    return {
+        "name": name,
+        "harness": {"name": name, "workspace": f"~/{WORKSPACE}", "path": harness or f"{name}-harness"},
+        "default_label": {"level": level},
+        "repos": [{"name": repo, "path": repo} for repo in repos],
+    }
+
+
+def placed(projects: list, bindings: dict | None = None) -> Places:
+    return Places.from_hub(projects, {"clusters": []}, "https://hub.test", SOMEONE, bindings)
+
+
+def test_a_harness_root_belongs_to_its_project_whatever_lists_it_as_a_repo(monkeypatch):
+    monkeypatch.setenv("HOME", str(SOMEONE))
+    ws = f"-Users-someone-{WORKSPACE}"
+    # omega lists the harnesses of alpha and beta, gamma's harness (a repo of gamma's own too) and a repo of gamma.
+    places = placed([*hub_projects(), lister("w82-w87-w29", "w41-w29", "w82-w33-w29", "w82-w38-w75")])
+    assert places.candidates(f"{ws}-w82-w87-w29") == [Place("project", "alpha", HARNESS)]
+    assert places.candidates(f"{ws}-w41-w29") == [Place("project", "beta", HARNESS)]
+    assert places.candidates(f"{ws}-w82-w33-w29") == [
+        Place("project", "gamma", HARNESS),
+        Place("project", "gamma", "w82-w33-w29"),
+    ]
+    assert places.candidates(f"{ws}-omega-harness") == [Place("project", "omega", HARNESS)]
+    # A pull brings omega's memories of those repos to no directory here, and each harness its own.
+    for repo in ("w82-w87-w29", "w41-w29", "w82-w33-w29"):
+        assert places.directory(Place("project", "omega", repo)) is None
+    assert places.directory(Place("project", "alpha", HARNESS)) == f"{ws}-w82-w87-w29"
+    assert places.directory(Place("project", "gamma", "w82-w33-w29")) == f"{ws}-w82-w33-w29"
+    # A plain repo two projects list is still refused, and the message names the binding that settles it.
+    with pytest.raises(HubError, match="a repo of projects gamma, omega at once") as refused:
+        places.candidates(f"{ws}-w82-w38-w75")
+    assert f"`evo-agents kg bind --project <name> {SOMEONE / WORKSPACE / 'w82-w38-w75'}`" in str(refused.value)
+    assert places.directory(Place("project", "gamma", "w82-w38-w75")) is None
+    # The hooks place a session's directory through the same rule.
+    hook = SimpleNamespace(places=places, target=slug)
+    assert _memory_place(hook, SOMEONE / WORKSPACE / "w41-w29") == "beta"
+    assert _memory_place(hook, SOMEONE / WORKSPACE / "w82-w38-w75") is None
+
+
+def test_two_projects_with_one_harness_root_are_refused_whatever_else_claims_it(monkeypatch):
+    monkeypatch.setenv("HOME", str(SOMEONE))
+    root = SOMEONE / WORKSPACE / "w82-w87-w29"
+    twin = lister("w82-w87-w29", name="delta", harness="w82-w87-w29")  # registered with alpha's harness root
+    for bindings in (None, {str(root): {"project": "alpha"}}):  # not even a binding settles it
+        places = placed([*hub_projects(), twin], bindings)
+        with pytest.raises(HubError, match="the harness root of projects alpha, delta at once"):
+            places.candidates(slug(root))
+        assert places.directory(Place("project", "alpha", HARNESS)) is None
+        assert places.directory(Place("project", "delta", HARNESS)) is None
+        assert places.directory(Place("project", "delta", "w82-w87-w29")) is None
+        assert places.directory(Place("personal", None, f"{WORKSPACE}-w82-w87-w29")) is None
+
+
+def test_a_binding_chooses_among_the_projects_listing_a_repo_and_never_beyond_them(monkeypatch):
+    monkeypatch.setenv("HOME", str(SOMEONE))
+    repo = SOMEONE / WORKSPACE / "w82-w132"
+    name = slug(repo)
+    clash = hub_projects()
+    clash[1]["repos"].append({"name": "w82-w132", "path": "w82-w132"})  # beta lists alpha's repo too
+    with pytest.raises(HubError, match="a repo of projects alpha, beta at once"):
+        placed(clash).candidates(name)
+
+    places = placed(clash, {str(repo): {"project": "beta", "harness_root": "/elsewhere/beta-harness"}})
+    assert places.candidates(name) == [Place("project", "beta", "w82-w132")]
+    assert places.directory(Place("project", "beta", "w82-w132")) == name
+    assert places.directory(Place("project", "alpha", "w82-w132")) is None
+    # Bindings read as the knowledge graph reads them: the nearest bound ancestor, the directory's own over it.
+    above = {str(SOMEONE / WORKSPACE): {"project": "alpha"}}
+    assert placed(clash, above).candidates(name) == [Place("project", "alpha", "w82-w132")]
+    assert placed(clash, {**above, str(repo): {"project": "beta"}}).candidates(name)[0].project == "beta"
+
+    # A binding to a project that does not list the directory refuses it, even where one project alone lists it:
+    # that project has no place for it, and the one listing it is not the one the person chose.
+    for projects, bindings in (
+        (clash, {str(repo): {"project": "gamma"}}),
+        (clash, {str(repo): {"harness_root": "/somewhere"}}),
+        (hub_projects(), {str(repo): {"project": "gamma"}}),
+    ):
+        with pytest.raises(HubError, match="bound to (gamma|no project) .* Choose one of those with `evo-agents kg"):
+            placed(projects, bindings).candidates(name)
+        assert placed(projects, bindings).directory(Place("project", "alpha", "w82-w132")) is None
+    # A binding gives no project a directory no project lists: it stays personal.
+    loose = SOMEONE / WORKSPACE / "w41-w29-w55"
+    assert placed(clash, {str(loose): {"project": "beta"}}).candidates(slug(loose)) == [
+        Place("personal", None, f"{WORKSPACE}-w41-w29-w55")
+    ]
+
+
+def test_a_customer_project_never_takes_the_harness_root_of_another_project_by_a_weaker_claim(monkeypatch):
+    """alpha's harness root, listed as a repo by a customer-level project and even bound to it, stays alpha's; the
+    other way round, the customer project's harness root never goes to the project of lower clearance listing it."""
+    monkeypatch.setenv("HOME", str(SOMEONE))
+    root = SOMEONE / WORKSPACE / "w82-w87-w29"
+    vault = lister("w82-w87-w29", "w82-w132", name="vault", level="customer")
+    consumer = lister("vault-harness", name="omega", level="internal")
+    for bindings in (None, {str(root): {"project": "vault"}}):
+        places = placed([*hub_projects(), vault, consumer], bindings)
+        assert places.candidates(slug(root)) == [Place("project", "alpha", HARNESS)]
+        assert places.directory(Place("project", "vault", "w82-w87-w29")) is None
+        own = slug(SOMEONE / WORKSPACE / "vault-harness")
+        assert places.candidates(own) == [Place("project", "vault", HARNESS)]
+        assert places.directory(Place("project", "omega", "vault-harness")) is None
+        assert places.directory(Place("project", "vault", HARNESS)) == own
 
 
 def test_the_spelling_finder_of_the_opt_in_check_is_looser_than_the_rule(tmp_path):
@@ -765,6 +879,85 @@ def test_a_project_memory_never_falls_back_to_personal_and_a_personal_one_never_
     assert client.put("/v1/memories", json=personal, headers=who["alice"]).status_code == 200
     pulled = laptop.run("pull")
     assert pulled.counts["no_directory"] == 1 and not (laptop.dir("ws/app") / "p.md").exists()
+
+
+def grant(client, who, project: str, body: dict, level: str = "internal") -> None:
+    """Register ``project`` as ``body`` and make alice a writer of it up to ``level``."""
+    admin = who[live.ADMIN]
+    assert client.put(f"/v1/projects/{project}", json=body, headers=admin).status_code == 200
+    access = {"role": "writer", "max_level": level}
+    assert client.put(f"/v1/admin/projects/{project}/grants/alice", json=access, headers=admin).status_code == 200
+
+
+PLACED = "SELECT p.name, m.location, m.body FROM memories m JOIN projects p ON p.id = m.project_id ORDER BY m.id"
+
+
+@needs_pg
+def test_a_harness_root_another_project_lists_as_a_repo_syncs_with_its_own_project(
+    client, who, hub_db, tmp_path, monkeypatch
+):
+    seams = {
+        **PROJECT,
+        "repos": [{"name": "demo-harness", "path": "demo-harness"}],
+        "harness": {"name": "seams", "workspace": "~/ws", "path": "seams-harness"},
+    }
+    grant(client, who, "seams", seams)
+    laptop = Machine(tmp_path / "laptop", InProcessHub(client, who["alice"]), "alice", monkeypatch)
+    laptop.write("ws/demo-harness", "h.md", typed("project", "harness notes"))
+    pushed = laptop.run("push")
+    assert pushed.counts["created"] == 1 and not pushed.errors
+    assert live.sql(hub_db, PLACED) == [("demo", "harness", typed("project", "harness notes"))]
+
+    # A memory of seams at its repo demo-harness has no directory here: the directory is demo's.
+    assert put(client, who["alice"], project="seams", location="demo-harness", name="s.md").status_code == 200
+    pulled = laptop.run("pull")
+    assert pulled.counts["no_directory"] == 1 and not (laptop.dir("ws/demo-harness") / "s.md").exists()
+    sync = MemorySync(laptop.hub, "alice", host="test-host")
+    alone = sync.pull(laptop.home / "ws" / "demo-harness")
+    assert alone.counts["unchanged"] == 1 and not alone.errors and not (laptop.dir("ws/demo-harness") / "s.md").exists()
+    assert _memory_place(sync, laptop.home / "ws" / "demo-harness") == "demo"
+
+
+@needs_pg
+def test_a_repo_of_two_projects_syncs_once_a_binding_chooses_and_a_memory_never_moves_between_them(
+    client, who, hub_db, tmp_path, monkeypatch
+):
+    grant(client, who, "demo", {**PROJECT, "repos": [*PROJECT["repos"], {"name": "shared", "path": "shared"}]})
+    vault = {
+        **PROJECT,
+        "default_label": {"level": "customer"},
+        "sinks": [
+            {"id": AGENT, "kind": "agent-session", "clearance": {"level": "customer"}},
+            {"id": "hub", "kind": "hub", "clearance": {"level": "customer"}},
+        ],
+        "repos": [{"name": "shared", "path": "shared"}],
+        "harness": {"name": "vault", "workspace": "~/ws", "path": "vault-harness"},
+    }
+    grant(client, who, "vault", vault, level="customer")
+    laptop = Machine(tmp_path / "laptop", InProcessHub(client, who["alice"]), "alice", monkeypatch)
+    path = laptop.write("ws/shared", "s.md", typed("project", "customer notes"))
+    refused = laptop.run("push")
+    assert [e for e in refused.errors if "a repo of projects demo, vault at once" in e and "kg bind --project" in e]
+    assert counts(hub_db)["memories"] == 0
+
+    bound = laptop.home / ".evo" / "kg" / "bound.json"  # as `evo-agents kg bind` writes it
+    bound.parent.mkdir(parents=True)
+    shared = str((laptop.home / "ws" / "shared").resolve())
+    bound.write_text(json.dumps({shared: {"project": "vault", "harness_root": "/elsewhere"}}), encoding="utf-8")
+    assert laptop.run("push").counts["created"] == 1
+    assert live.sql(hub_db, PLACED) == [("vault", "shared", typed("project", "customer notes"))]
+
+    # Bound to demo now: the memory synced with vault does not follow the directory into demo.
+    bound.write_text(json.dumps({shared: {"project": "demo"}}), encoding="utf-8")
+    path.write_text(typed("project", "changed"), encoding="utf-8")
+    held = laptop.run("push")
+    assert [e for e in held.errors if "never moves between projects by itself" in e]
+    assert held.counts["created"] == held.counts["updated"] == held.counts["moved"] == 0
+    assert live.sql(hub_db, PLACED) == [("vault", "shared", typed("project", "customer notes"))]
+    # A new file goes to the project the binding chose.
+    laptop.write("ws/shared", "t.md", typed("project", "internal notes"))
+    assert laptop.run("push").counts["created"] == 1
+    assert live.sql(hub_db, PLACED)[-1] == ("demo", "shared", typed("project", "internal notes"))
 
 
 @needs_pg

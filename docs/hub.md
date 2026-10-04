@@ -205,11 +205,14 @@ it, so it never overwrites someone's work.
 ## Memories, skills and knowledge graphs
 
 **Memories.** `evo-agents hub memory push` and `evo-agents hub memory pull` sync Claude Code's memory files for a
-directory (the current one by default, `--all` for every one on this machine). A directory that is the harness root
-or a repo of a hub project belongs to that project; any other directory is personal. When both sides changed a file,
-the hub's version keeps the name and this machine's lands next to it as `<name>.conflict-<host>.md`. Deletions cross
-only with `--prune`. `evo-agents hub memory search "a phrase"` searches what you see. The plugin pulls at
-SessionStart and pushes at Stop.
+directory (the current one by default, `--all` for every one on this machine). A directory that is the harness root or a
+repo of a hub project belongs to that project; any other directory is personal. A directory several projects claim goes
+to the strongest claim: the project whose harness root it is, whatever lists it as a repo; else the project `evo-agents
+kg bind --project <name> <dir>` bound it to, among those listing it; else the one project listing it. Anything else, two
+projects with one harness root among it, is refused rather than guessed, and a memory synced with one project never
+moves to another by itself. When both sides changed a file, the hub's version keeps the name and this machine's lands
+next to it as `<name>.conflict-<host>.md`. Deletions cross only with `--prune`. `evo-agents hub memory search "a
+phrase"` searches what you see. The plugin pulls at SessionStart and pushes at Stop.
 
 **Skills.** `evo-agents hub skills publish skills/house-style --scope global` packs a skill directory (10 MiB at
 most) and publishes a new version; `--scope project:demo` publishes it to a project. `evo-agents hub skills sync`

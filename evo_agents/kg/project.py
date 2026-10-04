@@ -129,6 +129,23 @@ def read_bindings(home: Path | None = None) -> dict:
     return _read_json(_bindings_path(home or kg_home()))
 
 
+def binding_of(directory: str | Path, bindings: dict) -> tuple[str, object] | None:
+    """The binding that governs ``directory``: its own, else that of its nearest bound ancestor, as (the bound
+    directory, its entry in ``bindings``); None when neither it nor an ancestor is bound."""
+    start = Path(directory).expanduser().resolve()
+    for candidate in (start, *start.parents):
+        entry = bindings.get(str(candidate))
+        if entry is not None:
+            return str(candidate), entry
+    return None
+
+
+def bound_project(entry) -> str | None:
+    """The project a binding entry names; None when it names none."""
+    name = entry.get("project") if isinstance(entry, dict) else None
+    return name if isinstance(name, str) and name else None
+
+
 def bind(directory: str | Path, project: str | None = None, home: Path | None = None) -> Project:
     """Bind a directory and everything below it to one project. Without a name, pin the project the
     directory resolves to now. The project must load before anything is written."""
@@ -155,7 +172,7 @@ def unbind(directory: str | Path, home: Path | None = None) -> str | None:
 
 
 def _load_binding(directory: str, entry: dict, home: Path) -> Project:
-    name = entry.get("project") if isinstance(entry, dict) else None
+    name = bound_project(entry)
     root = entry.get("harness_root") if isinstance(entry, dict) else None
     try:
         if not name:
@@ -209,11 +226,9 @@ def resolve_project(
         return _named(name, home)
 
     start = Path(directory or os.environ.get("CLAUDE_PROJECT_DIR") or Path.cwd()).expanduser().resolve()
-    bindings = read_bindings(home)
-    for candidate in (start, *start.parents):
-        entry = bindings.get(str(candidate))
-        if entry is not None:
-            return _load_binding(str(candidate), entry, home)
+    found = binding_of(start, read_bindings(home))
+    if found is not None:
+        return _load_binding(*found, home)
     root = find_manifest(start)
     if root is not None:
         try:
