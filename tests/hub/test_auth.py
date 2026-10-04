@@ -596,9 +596,9 @@ def test_the_cli_signs_in_with_the_device_flow_and_manages_tokens_and_grants(hub
         assert "grants: demo reader up to internal" in member_me.stdout
 
         users = json.loads(cli(["admin", "users", "--json"], admin_home, github).stdout)
-        assert {u["login"]: u["grants"] for u in users}["member"] == [
-            {"project": "demo", "role": "reader", "max_level": "internal"}
-        ]
+        (grant,) = {u["login"]: u["grants"] for u in users}["member"]
+        expected = {"project": "demo", "role": "reader", "max_level": "internal", "granted_by": ADMIN}
+        assert grant.items() >= expected.items()  # plus granted_at
         stats = json.loads(cli(["admin", "stats", "--json"], admin_home, github).stdout)
         assert set(stats) == HUB_TABLES and stats["grants"] == 1 and stats["projects"] == 1
         assert cli(["admin", "revoke", "member", "demo"], admin_home, github).returncode == 0

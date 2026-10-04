@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { Fragment } from "react";
 
+import { adminCrumbs } from "@/components/admin/crumbs";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -33,6 +34,7 @@ function itemLabel(part: string): string {
 
 function useCrumbs(): Crumb[] {
   const t = useTranslations("nav");
+  const tAdmin = useTranslations("admin.nav");
   const pathname = usePathname();
   const parts = pathname.split("/").filter(Boolean);
   if (parts[0] === "p" && parts[1]) {
@@ -54,6 +56,7 @@ function useCrumbs(): Crumb[] {
     }
     return crumbs;
   }
+  if (parts[0] === "admin") return adminCrumbs(parts.slice(1), t("admin"), tAdmin);
   const hub = HUB_NAV.find((item) => item.href !== "/" && parts[0] === item.href.slice(1));
   if (hub && parts.length > 1) return [{ label: t(hub.label), href: hub.href }, { label: itemLabel(parts[1]) }];
   if (hub) return [{ label: t(hub.label) }];

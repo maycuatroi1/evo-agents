@@ -399,9 +399,10 @@ def test_pushing_the_same_run_twice_ingests_it_once(hub, tmp_path):
 
     assert query(hub.db, "SELECT run_id::text FROM kg_ingests") == [(run_id,)]
     assert jobs(hub.db) == before  # no second build was queued
-    assert query(hub.db, "SELECT action, target FROM audit WHERE action LIKE 'kg.%%' ORDER BY id") == [
-        ("kg.config", PROJECT),
-        ("kg.ingest", PROJECT),
+    filed = "SELECT a.action, a.target, p.name FROM audit a LEFT JOIN projects p ON p.id = a.project_id"
+    assert query(hub.db, f"{filed} WHERE a.action LIKE 'kg.%%' ORDER BY a.id") == [
+        ("kg.config", PROJECT, PROJECT),
+        ("kg.ingest", PROJECT, PROJECT),
     ]
 
 

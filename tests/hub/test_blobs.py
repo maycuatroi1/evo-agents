@@ -161,7 +161,8 @@ def test_an_upload_through_a_presigned_put_then_commit_writes_exactly_one_blob_r
     assert hub.s3.get(blob_key(sha(data))) == data
     assert hub.s3.keys("uploads/") == []  # the upload and its sealed copy are gone
     assert pending(hub.db) == 0
-    assert live.sql(hub.db, "SELECT action, target FROM audit") == [("blob.commit", "alpha")]
+    filed = "SELECT a.action, a.target, p.name FROM audit a LEFT JOIN projects p ON p.id = a.project_id"
+    assert live.sql(hub.db, filed) == [("blob.commit", "alpha", "alpha")]
 
     again = commit(hub, writer, "alpha", found["upload_id"])  # an upload commits once
     assert again.status_code == 422 and "unknown uploads" in again.json()["message"]

@@ -2,7 +2,7 @@ import type { Page } from "@playwright/test";
 
 import { expectNoSeriousViolations } from "./support/a11y";
 import { expect, isDeployed, type Member, test } from "./support/fixtures";
-import { ADMIN_ACCOUNT, newAccount, uniqueName } from "./support/hub";
+import { ADMIN_ACCOUNT, machineToken, newAccount, uniqueName } from "./support/hub";
 import { graphReady, grantOn, HUB_NODE, kgPath, nodePath, sharedKg } from "./support/kg";
 import { apiOf, memoryFile, putMemory } from "./support/memories";
 import { ACTIVE_PLAN, EVIDENCE_STEP, open, seedPlans } from "./support/plans";
@@ -251,6 +251,81 @@ const PAGES: Entry[] = [
   },
 ];
 
+/** The admin area, opened by the stack's hub admin; each entry waits for its content (step 25). */
+const ADMIN_PAGES: { name: string; open: (page: Page) => Promise<void> }[] = [
+  {
+    name: "admin members",
+    open: async (page) => {
+      await page.goto("/admin/members");
+      await expect(page.getByTestId("members-table")).toBeVisible();
+    },
+  },
+  {
+    name: "admin grant dialog, form and confirmation",
+    open: async (page) => {
+      await page.goto("/admin/members");
+      await page.getByTestId("grant-open").click();
+      const dialog = page.getByRole("dialog", { name: "Cấp quyền theo dự án" });
+      await dialog.getByRole("button", { name: "Tiếp tục" }).click(); // shows the field errors
+      await expect(dialog.getByText("Nhập tên đăng nhập GitHub.")).toBeVisible();
+      await expectNoSeriousViolations(page, "grant form with errors");
+      await dialog.getByLabel("Tên đăng nhập GitHub").fill("e2e-someone");
+      await dialog.getByLabel("Dự án").selectOption({ index: 1 });
+      await dialog.getByRole("button", { name: "Tiếp tục" }).click();
+      await expect(page.getByTestId("grant-summary")).toBeVisible();
+    },
+  },
+  {
+    name: "admin member page",
+    open: async (page) => {
+      await page.goto(`/admin/members/${ADMIN_ACCOUNT.login}`);
+      await expect(page.getByTestId("member-tokens")).toBeVisible();
+      await expect(page.getByTestId("member-activity")).toBeVisible();
+    },
+  },
+  {
+    name: "admin tokens with the revoke confirmation open",
+    open: async (page) => {
+      await page.goto("/admin/tokens");
+      await expect(page.getByTestId("tokens-table")).toBeVisible();
+      await expectNoSeriousViolations(page, "tokens");
+      await page.getByTestId("tokens-table").getByRole("button", { name: /^Thu hồi token/ }).first().click();
+      await expect(page.getByTestId("revoke-token-dialog")).toBeVisible();
+    },
+  },
+  {
+    name: "admin audit, filtered and on its second page",
+    open: async (page) => {
+      const busy = newAccount("busy");
+      for (let i = 0; i < 26; i += 1) await machineToken(busy); // more rows than one page holds
+      await page.goto(`/admin/audit?actor=${busy.login}&limit=25`);
+      await expect(page.getByTestId("audit-table")).toBeVisible();
+      await expectNoSeriousViolations(page, "audit");
+      await page.getByTestId("pager-next").click();
+      await expect(page.getByTestId("pager-page")).toHaveText("Trang 2");
+    },
+  },
+  {
+    name: "admin audit with no matching row",
+    open: async (page) => {
+      await page.goto(`/admin/audit?actor=${uniqueName("nobody")}`);
+      await expect(page.getByTestId("state-empty")).toBeVisible();
+    },
+  },
+  {
+    name: "admin members and audit on a small screen",
+    open: async (page) => {
+      // Scoped to <main>: a viewport change while a page streams in can leave the server's copy hidden outside it.
+      await page.setViewportSize({ width: 375, height: 812 });
+      await page.goto("/admin/audit");
+      await expect(page.locator("#main").getByTestId("audit-table")).toBeVisible();
+      await expectNoSeriousViolations(page, "audit at 375 px");
+      await page.goto("/admin/members");
+      await expect(page.locator("#main").getByTestId("members-table")).toBeVisible();
+    },
+  },
+];
+
 for (const scheme of ["light", "dark"] as const) {
   test.describe(`${scheme} theme`, () => {
     test.use({ colorScheme: scheme, reducedMotion: "reduce" });
@@ -306,5 +381,15 @@ for (const scheme of ["light", "dark"] as const) {
       await expect(page.getByTestId("admin-stats")).toBeVisible();
       await expectNoSeriousViolations(page, `/admin as hub admin (${scheme})`);
     });
+
+    for (const entry of ADMIN_PAGES) {
+      test(`${entry.name} has no serious axe violation (${scheme})`, async ({ page, signInAs }) => {
+        test.skip(isDeployed, "signs in as the stack's hub admin");
+        await signInAs(ADMIN_ACCOUNT);
+        await entry.open(page);
+        await expect(page.locator("html")).toHaveClass(new RegExp(scheme));
+        await expectNoSeriousViolations(page, `${entry.name} (${scheme})`);
+      });
+    }
   });
 }

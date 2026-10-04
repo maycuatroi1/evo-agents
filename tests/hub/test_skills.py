@@ -590,6 +590,21 @@ def test_who_publishes_and_who_may_download_a_project_skill(hub, tmp_path):
     assert reserved.status_code == 422 and "never a skill" in reserved.json()["message"]
     assert rows(hub.db, "skill_versions") == 2
 
+    # Each row of the trail is filed under the project it happened in (schema 0007); global skills have none.
+    filed = live.sql(
+        hub.db,
+        "SELECT a.action, a.target, p.name FROM audit a LEFT JOIN projects p ON p.id = a.project_id "
+        "WHERE a.action IN ('blob.commit', 'skill.publish') ORDER BY a.id",
+    )
+    assert filed == [
+        ("blob.commit", "plain", "plain"),
+        ("blob.commit", "demo", "demo"),
+        ("skill.publish", "skill:project/demo/team-notes", "demo"),
+        ("blob.commit", "(global)", None),
+        ("skill.publish", "skill:global/house-style", None),
+        ("blob.commit", "demo", "demo"),  # Team-Notes: the bundle went up, the version was refused
+    ]
+
 
 # Sync
 
