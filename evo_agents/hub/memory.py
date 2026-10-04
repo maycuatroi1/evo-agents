@@ -519,6 +519,7 @@ class MemorySync:
         home: Path | None = None,
         registry: Path | None = None,
         host: str | None = None,
+        lock_timeout: float = LOCK_TIMEOUT,
     ):
         self.hub = hub
         self.login = login
@@ -529,6 +530,7 @@ class MemorySync:
         self.home = home or Path.home()
         self.registry = registry or default_registry()
         self.host = host_tag(host)
+        self.lock_timeout = lock_timeout  # seconds to wait for another sync of this machine
         self.report = Report("", hub.url, dry_run)
         self.state: State
         self.places: Places
@@ -547,7 +549,7 @@ class MemorySync:
     def _run(self, command: str, target: Path | None, everything: bool) -> Report:
         self.report = Report(command, self.hub.url, self.dry_run)
         state_dir = hub_dir()
-        lock = contextlib.nullcontext() if self.dry_run else sync_lock(state_dir)
+        lock = contextlib.nullcontext() if self.dry_run else sync_lock(state_dir, self.lock_timeout)
         with lock:
             self.state = State(state_dir / STATE_FILE, self.hub.url)
             self.places = self._load_places()
@@ -560,6 +562,24 @@ class MemorySync:
                 if not self.dry_run:  # what was done is kept, even when a later request failed
                     self.state.save()
         return self.report
+
+    def pending(self, target: Path | None = None) -> bool:
+        """Whether ``push(target)`` has a file to send, judged on this machine alone: a memory file of the directory
+        whose bytes differ from what the last sync with this hub left, or that no sync left. Sends no request and
+        takes no lock. A deletion does not count, since only ``--prune`` sends one; a file the push would refuse to
+        read (a symlink, one too large) does not either."""
+        name = self.target(target)
+        directory = self._memory_dir(name)
+        if not directory.is_dir():
+            return False
+        state = State(hub_dir() / STATE_FILE, self.hub.url)
+        self.report = Report("push", self.hub.url, dry_run=True)
+        files, _ = self._files(directory)
+        for file_name, data in files.items():
+            entry = state.get(f"{name}/{file_name}")
+            if entry is None or entry.get("sha256") != _sha(data):
+                return True
+        return False
 
     def _load_places(self) -> Places:
         projects = self.hub.call("GET", "/v1/projects")
