@@ -1,6 +1,7 @@
 """Each plugin pins the package it runs: .mcp.json, hooks.json, plugin.json and marketplace.json of evo-kg and evo-hub
 must all carry ``evo_agents.__version__``, so a release tag ships plugins that start the version they were built
-with."""
+with. The web's package.json carries it too, since the hub-web image of a release is tagged with it, and the
+example image tag named next to EVO_HUB_VERSION in deploy/hub/.env.example and docs/hub.md is the current release."""
 
 import json
 import re
@@ -87,6 +88,26 @@ def test_plugin_and_marketplace_carry_the_package_version(name):
     assert load(PLUGINS / name / ".claude-plugin" / "plugin.json")["version"] == __version__
     entries = load(MARKETPLACE)["plugins"]
     assert [e["version"] for e in entries if e["name"] == name] == [__version__]
+
+
+def test_web_package_carries_the_package_version():
+    assert load(ROOT / "web" / "package.json")["version"] == __version__
+
+
+def test_hub_image_tag_examples_name_the_package_version():
+    lines = (ROOT / "deploy" / "hub" / ".env.example").read_text(encoding="utf-8").splitlines()
+    setting = next(i for i, line in enumerate(lines) if line.startswith("EVO_HUB_VERSION="))
+    # The dev stack builds its own images and tags them "local"; a release number here would shadow the real image.
+    assert lines[setting] == "EVO_HUB_VERSION=local"
+    comment = []
+    for line in reversed(lines[:setting]):
+        if not line.startswith("#"):
+            break
+        comment.append(line)
+    assert re.findall(r"\b\d+\.\d+\.\d+\b", " ".join(comment)) == [__version__]
+    docs = (ROOT / "docs" / "hub.md").read_text(encoding="utf-8").splitlines()
+    row = next(line for line in docs if line.startswith("| `EVO_HUB_VERSION` |"))
+    assert re.findall(r"\b\d+\.\d+\.\d+\b", row) == [__version__]
 
 
 def test_cli_reports_the_version(capsys):
