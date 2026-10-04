@@ -35,6 +35,8 @@ hub-server = [
     "boto3==1.42.91",
     # Pinned: migration 0004 creates the schema of exactly this release (evo_agents/hub/migrations/sql).
     "procrastinate==3.10.0",
+    # The worker builds knowledge graphs with the graphify code backend, as the machines that push to it do.
+    "evo-ak[graphify]",
 ]
 
 [project.urls]

@@ -26,6 +26,7 @@ from evo_agents.hub.blobs import BlobStore
 from evo_agents.hub.config import HubConfig
 from evo_agents.hub.db import open_pool
 from evo_agents.hub.jobs import JobQueue
+from evo_agents.hub.kg_graph import GraphCache, Handles
 from evo_agents.hub.log import redact_dsn, scrub_data
 from evo_agents.hub.migrate import migrate
 from evo_agents.hub.server import admin, auth, blobs, errors, health, projects, tokens, web_auth
@@ -105,6 +106,8 @@ def create_app(config: HubConfig) -> FastAPI:
         app.state.github = GitHub(config)
         app.state.blobs = BlobStore.from_config(config)
         app.state.jobs = await JobQueue.open(pool)
+        app.state.kg_graphs = GraphCache(config.data_dir / "kg" / "graphs")  # built graphs, fetched by sha256
+        app.state.kg_handles = Handles()  # kg_more continuations, per user and project
         if app.state.blobs is None:
             log.warning(
                 "blob store not configured: the blob routes answer 503",
@@ -161,6 +164,10 @@ def create_app(config: HubConfig) -> FastAPI:
     from evo_agents.hub.server import skills
 
     app.include_router(skills.router)
+
+    from evo_agents.hub.server import kg
+
+    app.include_router(kg.router)
     return app
 
 

@@ -196,6 +196,21 @@ def _json(raw: bytes):
         return None
 
 
+def put_presigned(url: str, path: Path, timeout: float = TIMEOUT) -> None:
+    """PUT the file at ``path``, its exact bytes, to a presigned URL the hub handed out. The URL is a credential until
+    it expires: an error names its host only."""
+    size = path.stat().st_size
+    headers = {
+        "Content-Type": "application/octet-stream",
+        "Content-Length": str(size),
+        "User-Agent": f"evo-agents/{__version__}",
+    }
+    with open(path, "rb") as handle:
+        status, _ = _send("PUT", url, headers, handle, timeout)
+    if not 200 <= status < 300:
+        raise HubError(f"the blob store at {_origin(url)} answered HTTP {status} to an upload", status)
+
+
 class Hub:
     """Calls to one hub, as the holder of ``token`` when one is given."""
 

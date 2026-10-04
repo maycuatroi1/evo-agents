@@ -480,6 +480,14 @@ def test_a_body_cut_off_while_reading_is_read_again(s3, monkeypatch):
     assert store.hash("some/key", len(data)) == (sha(data), len(data))
     assert len(reads) == 2
 
+    reads.clear()  # fetch writes the bytes it hashes: the cut-off first read is not left in the sink
+    sink = io.BytesIO()
+    assert store.fetch("some/key", sink, len(data)) == (sha(data), len(data))
+    assert sink.getvalue() == data and len(reads) == 2
+    larger = store.fetch("some/key", sink, 100)  # over the limit: the size says so, the sink keeps no more
+    assert larger is not None and larger[1] > 100 and len(sink.getvalue()) <= 100
+    assert store.fetch("no/such/key", io.BytesIO(), 100) is None
+
 
 # Cleanup
 
