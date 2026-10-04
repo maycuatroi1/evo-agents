@@ -9,9 +9,10 @@ import { STATIC_SECURITY_HEADERS } from "./src/lib/security";
 const webDir = path.dirname(fileURLToPath(import.meta.url));
 
 /**
- * In production Traefik sends /v1 and /mcp to the API and everything else here. Locally and in Playwright the web
- * serves /v1 itself by forwarding it to EVO_HUB_API_INTERNAL_URL, so the browser sees one origin either way. The
- * rewrite is fixed when the app is built: a build without the variable (the production image) has none.
+ * In production the reverse proxy sends /v1 and /mcp to the API and everything else here. Without one (locally, in
+ * Playwright, in deploy/hub/docker-compose.dev.yml) the web serves /v1 itself by forwarding it to
+ * EVO_HUB_API_INTERNAL_URL, so the browser sees one origin either way. The rewrite is fixed when the app is built:
+ * a build without the variable has none. The image (web/Dockerfile) builds with http://api:8080 by default.
  */
 const apiUrl = process.env.EVO_HUB_API_INTERNAL_URL?.trim().replace(/\/+$/, "");
 

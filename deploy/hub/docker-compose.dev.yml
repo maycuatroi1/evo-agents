@@ -1,0 +1,100 @@
+# A local hub from this checkout, on top of docker-compose.yml: the two images built from source, Postgres 16, moto
+# as the S3 blob store and a one-off service that creates its bucket. For trying the images and the compose file
+# before a release, not for production:
+#
+#   docker compose -f deploy/hub/docker-compose.yml -f deploy/hub/docker-compose.dev.yml \
+#     --env-file deploy/hub/.env.example up -d --build
+#   curl -fsS localhost:8080/v1/health        # {"db": "ok", "r2": "ok", ...}
+#   open http://localhost:3000                # the web, with /v1 forwarded to the api
+#   docker compose -f deploy/hub/docker-compose.yml -f deploy/hub/docker-compose.dev.yml down -v
+#
+# Only the api (8080) and the web (3000) get ports, on 127.0.0.1. Postgres and moto stay inside the stack, so the
+# presigned URLs the api hands out (http://moto:5000/...) work from the containers only: push skills and graphs
+# from this machine against the Playwright stack instead (web/README.md).
+
+services:
+  api:
+    build:
+      context: ../..
+      dockerfile: deploy/hub/Dockerfile
+    ports:
+      - "127.0.0.1:${EVO_HUB_DEV_API_PORT:-8080}:8080"
+    # Checked every 2 s while it starts, so the worker, which waits for a healthy api, starts within seconds.
+    healthcheck:
+      start_interval: 2s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      bucket:
+        condition: service_completed_successfully
+
+  worker:
+    build:
+      context: ../..
+      dockerfile: deploy/hub/Dockerfile
+
+  web:
+    build:
+      context: ../../web
+      args:
+        # Built with the /v1 rewrite to the api, so the browser gets the api on the web's origin without a reverse
+        # proxy; the same address server components use at run time.
+        EVO_HUB_API_INTERNAL_URL: ${EVO_HUB_API_INTERNAL_URL:-http://evo-agents-hub-api:8080}
+    ports:
+      - "127.0.0.1:${EVO_HUB_DEV_WEB_PORT:-3000}:3000"
+
+  postgres:
+    image: postgres:16.15-trixie
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${EVO_HUB_DEV_POSTGRES_USER:-hub}
+      POSTGRES_PASSWORD: ${EVO_HUB_DEV_POSTGRES_PASSWORD:-dev-only-password}
+      POSTGRES_DB: ${EVO_HUB_DEV_POSTGRES_DB:-evo_hub}
+    networks: [platform]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  moto:
+    image: motoserver/moto:5.2.3
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/moto-api/')"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  bucket:
+    image: motoserver/moto:5.2.3
+    restart: "no"
+    entrypoint: ["python", "-c"]
+    command:
+      - |
+        import os, boto3
+        s3 = boto3.client(
+            "s3",
+            endpoint_url=os.environ["EVO_HUB_S3_ENDPOINT"],
+            aws_access_key_id=os.environ["EVO_HUB_S3_ACCESS_KEY_ID"],
+            aws_secret_access_key=os.environ["EVO_HUB_S3_SECRET_ACCESS_KEY"],
+            region_name="us-east-1",
+        )
+        bucket = os.environ["EVO_HUB_S3_BUCKET"]
+        if bucket not in [b["Name"] for b in s3.list_buckets()["Buckets"]]:
+            s3.create_bucket(Bucket=bucket)
+        print("bucket", bucket, "ready")
+    environment:
+      EVO_HUB_S3_ENDPOINT: ${EVO_HUB_S3_ENDPOINT:-}
+      EVO_HUB_S3_BUCKET: ${EVO_HUB_S3_BUCKET:-}
+      EVO_HUB_S3_ACCESS_KEY_ID: ${EVO_HUB_S3_ACCESS_KEY_ID:-}
+      EVO_HUB_S3_SECRET_ACCESS_KEY: ${EVO_HUB_S3_SECRET_ACCESS_KEY:-}
+    depends_on:
+      moto:
+        condition: service_healthy
+
+networks:
+  # The production file expects the platform's network to exist; here the stack creates its own.
+  platform:
+    name: evo-agents-hub-dev-platform
+    external: false

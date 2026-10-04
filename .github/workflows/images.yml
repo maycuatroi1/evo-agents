@@ -1,0 +1,136 @@
+name: images
+
+# The hub's two images: ghcr.io/maycuatroi1/evo-agents-hub (api and worker, deploy/hub/Dockerfile) and
+# ghcr.io/maycuatroi1/evo-agents-hub-web (web/Dockerfile). A push to a branch builds both, smoke-tests them and pushes
+# nothing. A v* tag builds both and pushes them to GHCR tagged with the version (v0.2.0 -> 0.2.0), which
+# deploy/hub/docker-compose.yml pulls as EVO_HUB_VERSION; the deployment never builds. Both runs share layers through
+# the GitHub Actions cache.
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: images-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref_type == 'branch' }}
+
+jobs:
+  build:
+    name: build ${{ matrix.image }}
+    if: github.ref_type == 'branch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: evo-agents-hub
+            context: .
+            file: deploy/hub/Dockerfile
+            description: "evo-agents hub: API server and background worker"
+          - image: evo-agents-hub-web
+            context: web
+            file: web/Dockerfile
+            description: "evo-agents hub: web interface (Next.js standalone)"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Labels
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}
+          tags: type=sha,format=short
+          labels: |
+            org.opencontainers.image.title=${{ matrix.image }}
+            org.opencontainers.image.description=${{ matrix.description }}
+      - name: Build
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          platforms: linux/amd64
+          push: false
+          load: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,scope=${{ matrix.image }},mode=max
+      - name: Smoke test
+        env:
+          IMAGE: ${{ fromJSON(steps.meta.outputs.json).tags[0] }}
+          KIND: ${{ matrix.image }}
+        run: |
+          test "$(docker run --rm "$IMAGE" id -u)" != 0
+          if [ "$KIND" = evo-agents-hub ]; then
+            docker run --rm "$IMAGE" evo-agents --version
+            docker run --rm "$IMAGE" python -c 'import evo_agents.hub.server.app, evo_agents.hub.worker, graphify'
+          else
+            docker run -d --name web -e EVO_HUB_API_INTERNAL_URL=http://127.0.0.1:9 -p 3000:3000 "$IMAGE"
+            for _ in $(seq 1 30); do curl -fsS -o /dev/null http://127.0.0.1:3000/login && break; sleep 1; done
+            curl -fsS -o /dev/null http://127.0.0.1:3000/login
+            docker rm -f web
+          fi
+
+  publish:
+    name: publish ${{ matrix.image }}
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: evo-agents-hub
+            context: .
+            file: deploy/hub/Dockerfile
+            description: "evo-agents hub: API server and background worker"
+          - image: evo-agents-hub-web
+            context: web
+            file: web/Dockerfile
+            description: "evo-agents hub: web interface (Next.js standalone)"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag matches evo_agents.__version__
+        run: |
+          version=$(sed -n 's/^__version__ = "\(.*\)"$/\1/p' evo_agents/__init__.py)
+          if [ "${GITHUB_REF_NAME#v}" != "$version" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match evo_agents.__version__ $version"
+            exit 1
+          fi
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Tags and labels
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}
+          tags: type=semver,pattern={{version}}
+          # The action also sets org.opencontainers.image.source to this repository, which links the package to it
+          # on GHCR; the Dockerfiles carry the same label for local builds.
+          labels: |
+            org.opencontainers.image.title=${{ matrix.image }}
+            org.opencontainers.image.description=${{ matrix.description }}
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          provenance: false
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,scope=${{ matrix.image }},mode=max

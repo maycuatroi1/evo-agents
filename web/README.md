@@ -5,8 +5,9 @@ and Table, next-intl (Vietnamese by default). It reads the hub API only through 
 API's OpenAPI document, and writes nothing except the admin actions and sign-out. `DESIGN.md` describes the
 design system.
 
-In production it is its own image (`output: "standalone"`) behind the same domain as the API: Traefik sends
-`/v1` and `/mcp` to the API and everything else here. It never ships in the Python package.
+In production it is its own image (`output: "standalone"`, built by `web/Dockerfile`) behind the same domain as
+the API: the reverse proxy sends `/v1` and `/mcp` to the API and everything else here. It never ships in the Python
+package. `docs/hub.md` covers the deployment.
 
 ## Running it
 
@@ -19,7 +20,7 @@ EVO_HUB_API_INTERNAL_URL=http://127.0.0.1:8080 pnpm dev
 
 | Variable | Read | Meaning |
 | --- | --- | --- |
-| `EVO_HUB_API_INTERNAL_URL` | runtime, and at build time for the rewrite | where server components reach the API; when set at build time, `/v1/*` is also forwarded there so the browser stays on one origin (local runs and Playwright) |
+| `EVO_HUB_API_INTERNAL_URL` | runtime, and at build time for the rewrite | where server components reach the API; when set at build time, `/v1/*` is also forwarded there so the browser stays on one origin (local runs, Playwright, the image: `web/Dockerfile` builds with `http://api:8080` unless given `--build-arg EVO_HUB_API_INTERNAL_URL=...`) |
 | `EVO_HUB_WEB_TIME_ZONE` | runtime | time zone of dates rendered on the server, `Asia/Ho_Chi_Minh` by default |
 | `PORT`, `HOSTNAME` | runtime | where `pnpm start` (the standalone server) listens |
 
