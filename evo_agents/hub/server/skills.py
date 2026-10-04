@@ -20,7 +20,10 @@ same bundle as the latest version changes nothing. Every new version adds one au
 
 GET /v1/skills lists the skills the caller sees with their latest version; GET .../{name} is one skill with every
 version; GET .../{name}/bundle hands out a presigned GET of one version's bundle, after the read check, together with
-the SHA-256 the client checks the bytes against. Routes exist twice: under /v1/skills/global/ and under
+the SHA-256 the client checks the bytes against. The URL makes the blob store answer as a download named
+``<name>-v<version>.tar.gz``, so a browser sent to it saves the file (the web navigates there and never fetches it,
+so the bucket needs no CORS). The read check comes before the blob store is asked for: without a grant the answer is
+403 whether the store is configured or not. Routes exist twice: under /v1/skills/global/ and under
 /v1/skills/projects/{project}/.
 """
 
@@ -408,7 +411,6 @@ SELECT v.version, v.sha256, v.size FROM skill_versions v
 
 
 async def _bundle(request: Request, user: Principal, project: str | None, name: str, version: int | None):
-    store = blob_store(request)
     async with request.app.state.pool.connection() as conn:
         place = await _readable(conn, user, project)
         found = await _find(conn, place, name)
@@ -417,9 +419,11 @@ async def _bundle(request: Request, user: Principal, project: str | None, name: 
         if found is not None and version is not None:
             raise HTTPException(404, f"{found[1]} has no version {version}")
         raise _not_found(place, name)
+    store = blob_store(request)  # after the read check: who may not read the skill learns nothing of the store
     number, sha256, size = row
     expires_at = datetime.now(timezone.utc) + GET_TTL  # taken before signing, so never later than the URL
-    url = await asyncio.to_thread(store.presign_get, sha256)
+    filename = f"{found[1]}-v{number}.tar.gz"  # a skill name is [A-Za-z0-9._-], safe in a header as it is
+    url = await asyncio.to_thread(store.presign_get, sha256, filename=filename)
     log.info(
         "skill bundle handed out",
         extra={"scope": place.scope, "project": place.project, "skill": found[1], "version": number},
