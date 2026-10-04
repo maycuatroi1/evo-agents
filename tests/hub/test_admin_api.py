@@ -27,6 +27,7 @@ from evo_agents.hub.server import audit
 from evo_agents.hub.server.admin_console import decode_cursor, encode_cursor
 from evo_agents.hub.server.app import create_app
 from evo_agents.hub.server.security import SESSION_COOKIE
+from evo_agents.isotime import parse_iso
 from tests.hub.fake_github import Account
 from tests.hub.live import ADMIN, add_project, bearer, sql
 from tests.hub.test_web_auth import cookie, csrf_for, set_cookie, web_sign_in
@@ -126,7 +127,7 @@ def test_a_grant_shows_the_project_to_the_member_and_revoking_hides_it(client, g
         "internal",
         ADMIN,
     )
-    assert datetime.fromisoformat(grant["granted_at"]) > datetime.now(timezone.utc) - timedelta(minutes=1)
+    assert parse_iso(grant["granted_at"]) > datetime.now(timezone.utc) - timedelta(minutes=1)
 
     assert client.delete(grant_path("demo", "member"), headers=admin).status_code == 204
     assert client.get("/v1/projects", headers=member).json() == []

@@ -46,6 +46,7 @@ from evo_agents.hub.log import JsonFormatter, scrub
 from evo_agents.hub.migrate import head_revision, migrate
 from evo_agents.hub.server.app import create_app
 from evo_agents.hub.worker import remove_stale_uploads
+from evo_agents.isotime import parse_iso
 
 HEAD = head_revision()
 
@@ -145,7 +146,7 @@ def test_an_upload_through_a_presigned_put_then_commit_writes_exactly_one_blob_r
     body = asked.json()
     (found,) = body["uploads"]
     assert body["present"] == [] and found["sha256"] == sha(data)
-    left = datetime.fromisoformat(body["expires_at"].replace("Z", "+00:00")) - datetime.now(timezone.utc)  # 3.10
+    left = parse_iso(body["expires_at"]) - datetime.now(timezone.utc)
     assert timedelta(minutes=14) < left <= timedelta(minutes=15)
     url = urlsplit(found["url"])
     assert url.path == f"/{hub.s3.bucket}/uploads/{found['upload_id']}"

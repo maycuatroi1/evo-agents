@@ -68,6 +68,7 @@ from evo_agents.hub.server.audit import record
 from evo_agents.hub.server.errors import CODES, ErrorBody
 from evo_agents.hub.server.projects import PRINTABLE, LabelIn, ProjectAccess, project_access
 from evo_agents.hub.server.security import WEB, CurrentUser, Principal
+from evo_agents.isotime import parse_iso
 
 log = logging.getLogger(__name__)
 
@@ -364,7 +365,7 @@ def _after(cursor: str | None) -> tuple[str, int]:
         moment, memory_id = json.loads(base64.urlsafe_b64decode(cursor + "=" * (-len(cursor) % 4)))
         if not isinstance(moment, str) or type(memory_id) is not int or not 0 <= memory_id <= MAX_ID:
             raise ValueError
-        datetime.fromisoformat(moment)
+        parse_iso(moment)
     except (ValueError, TypeError, binascii.Error, UnicodeDecodeError):
         raise HTTPException(422, "cursor is not one this hub handed out: start the listing again without it") from None
     return moment, memory_id

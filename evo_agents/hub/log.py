@@ -4,8 +4,9 @@ Secrets are removed when a record is formatted, so a library that logs a DSN or 
 every value registered with ``register_secret`` (the DSN password, the Sentry DSN, the GitHub client secret, the
 session secret, the S3 key pair) becomes ``***``, and so do the password of any URI or ``password=`` pair, hub tokens
 (``evh_...``) and web sessions (``evs_...``), GitHub tokens (``gho_...``, ``github_pat_...``), bearer credentials,
-and the signature, access key id and session token of an S3 request or presigned URL, which is a bearer credential
-until it expires.
+the signature, access key id and session token of an S3 request or presigned URL, which is a bearer credential
+until it expires, and the value of every query parameter in ``QUERY_SECRETS`` (the OAuth code and state of a web
+sign-in callback among them), whichever logger wrote the URL.
 Standard library only: the CLI configures logging before it knows whether the hub-server extra is there.
 """
 
@@ -25,6 +26,20 @@ MIN_SECRET_LENGTH = 3  # shorter values would mask ordinary words; DSN passwords
 _secrets: set[str] = set()
 _secrets_lock = threading.Lock()
 
+# Query parameters whose value is a credential, matched by name after ``?``, ``&`` or ``&amp;``, any case.
+QUERY_SECRETS = (
+    "code",
+    "state",
+    "code_verifier",
+    "access_token",
+    "refresh_token",
+    "token",
+    "client_secret",
+    "X-Amz-Signature",
+    "X-Amz-Credential",
+    "X-Amz-Security-Token",
+)
+
 _PATTERNS = (
     # scheme://user:password@host, any scheme
     (re.compile(r"(?P<head>\b[A-Za-z][A-Za-z0-9+.-]*://[^:/@\s]*:)[^@\s/]+@"), r"\g<head>" + MASK + "@"),
@@ -38,13 +53,20 @@ _PATTERNS = (
     (re.compile(r"(?P<head>\bSignature(?:=|:\s*))[0-9A-Fa-f]{16,}"), r"\g<head>" + MASK),
     (re.compile(r"(?P<head>\bCredential=)[A-Za-z0-9]+"), r"\g<head>" + MASK),
     (re.compile(r"(?P<head>\bX-Amz-Security-Token=)[^&\s\"']+", re.IGNORECASE), r"\g<head>" + MASK),
+    (
+        re.compile(r"(?P<head>(?:[?&]|&amp;)(?:" + "|".join(map(re.escape, QUERY_SECRETS)) + r")=)[^&#\s\"'<>]+", re.I),
+        r"\g<head>" + MASK,
+    ),
 )
 
 QUIET_LOGGERS = {
     "alembic.runtime.plugins": logging.WARNING,  # a line per Alembic plugin on every import
-    # A line per outbound request; the GitHub client logs its own line per call, with the path only.
+    # A line per outbound request with its full URL, query string included; the GitHub client logs its own line per
+    # call, with the path only. mcp installs httpx2 and httpcore2, the successors, which Starlette's TestClient prefers.
     "httpx": logging.WARNING,
     "httpcore": logging.WARNING,
+    "httpx2": logging.WARNING,
+    "httpcore2": logging.WARNING,
     # boto3 at debug level logs every request with its headers and body; the blob store logs its own lines.
     "boto3": logging.WARNING,
     "botocore": logging.WARNING,

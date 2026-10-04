@@ -42,7 +42,8 @@ def test_schedule_plist_content(home, kg_env):
     assert plistlib.loads(schedule.render(plist).encode()) == plist
 
 
-def test_schedule_pushes_to_the_hub_when_the_machine_is_signed_in(home, kg_env, capsys):
+def test_schedule_pushes_to_the_hub_when_the_machine_is_signed_in(home, kg_env, capsys, monkeypatch):
+    monkeypatch.setattr(sys, "platform", "darwin")  # install needs launchd; launchctl is the fake below
     hub = home / ".evo" / "hub"
     hub.mkdir(parents=True)
     (hub / "token").write_text("evh_" + "x" * 43 + "\n")
