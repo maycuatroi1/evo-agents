@@ -56,6 +56,12 @@ identifiers:
     pattern: '\bKB-\d{2}\b'
 ```
 
+A git source reads the text of markdown, YAML, text, config and code files (or of what its `include:`
+globs match) and records other files by path only. It skips the paths its `exclude:` globs match, plus a
+default list: build output, lock files, virtualenvs and agent folders such as `.claude/` and `.agents/`.
+`allow:` takes globs that bring paths from that default list back, for example
+`allow: [".claude/CLAUDE.md"]`; `exclude:` still wins over `allow:`. Only the git connector reads `allow:`.
+
 A markdown file whose frontmatter `id:` matches an identifier pattern is where that code is defined;
 a copy says `derived_from:` in its frontmatter, and `kg status` lists codes defined in more than one place.
 
@@ -115,8 +121,8 @@ Hooks:
   off.
 
 The plugin needs [uv](https://docs.astral.sh/uv/) on `PATH` and pins the release it runs: the server
-starts with `uvx --from evo-ak==0.1.1 evo-agents`, which downloads and caches that version on first start. The hooks
-run `uvx --offline --from evo-ak==0.1.1 evo-agents`, so they never wait on the network; they stay silent when `uvx`
+starts with `uvx --from evo-ak==0.1.2 evo-agents`, which downloads and caches that version on first start. The hooks
+run `uvx --offline --from evo-ak==0.1.2 evo-agents`, so they never wait on the network; they stay silent when `uvx`
 is missing or until the server has cached the package.
 
 ### The team hub

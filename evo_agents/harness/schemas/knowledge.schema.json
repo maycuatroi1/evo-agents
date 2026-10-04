@@ -210,6 +210,12 @@
             "type": "string"
           }
         },
+        "allow": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
         "code": {
           "type": "object",
           "additionalProperties": false,

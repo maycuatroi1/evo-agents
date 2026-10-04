@@ -97,6 +97,14 @@ def test_unknown_keys_warn_but_do_not_fail(harness: Path):
     assert any(i.severity == "warning" and i.path == "invented_key" for i in report.issues)
 
 
+def test_git_source_allow_is_a_known_key(harness: Path):
+    text = (harness / "knowledge.yaml").read_text()
+    (harness / "knowledge.yaml").write_text(text + '    allow: [".claude/CLAUDE.md"]\n')
+    assert not _knowledge_report(harness).issues
+    (harness / "knowledge.yaml").write_text(text + "    allow: .claude/CLAUDE.md\n")
+    assert [i.path for i in errors(_knowledge_report(harness).issues)] == ["sources[1].allow"]
+
+
 def test_knowledge_semantics_catch_bad_references(harness: Path):
     text = (harness / "knowledge.yaml").read_text()
     text = text.replace("repo: app", "repo: ghost")
