@@ -101,8 +101,15 @@ def matches(path: str, patterns: list[str]) -> bool:
 CONFIG_NAMES = {"Dockerfile", "Makefile", "Procfile", "Justfile", ".env.example"}
 
 
-def selected(path: str, include: list[str] | None, exclude: list[str] | None) -> bool:
-    if matches(path, DEFAULT_EXCLUDE + list(exclude or [])):
+def excluded(path: str, exclude: list[str] | None, allow: list[str] | None = None) -> bool:
+    """The source's ``exclude`` always wins; a ``DEFAULT_EXCLUDE`` match is lifted by an ``allow`` glob."""
+    if matches(path, list(exclude or [])):
+        return True
+    return matches(path, DEFAULT_EXCLUDE) and not matches(path, list(allow or []))
+
+
+def selected(path: str, include: list[str] | None, exclude: list[str] | None, allow: list[str] | None = None) -> bool:
+    if excluded(path, exclude, allow):
         return False
     if include:
         return matches(path, include)
