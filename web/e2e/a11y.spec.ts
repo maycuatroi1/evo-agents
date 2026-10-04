@@ -2,7 +2,8 @@ import type { Page } from "@playwright/test";
 
 import { expectNoSeriousViolations } from "./support/a11y";
 import { expect, isDeployed, type Member, test } from "./support/fixtures";
-import { ADMIN_ACCOUNT, uniqueName } from "./support/hub";
+import { ADMIN_ACCOUNT, newAccount, uniqueName } from "./support/hub";
+import { ACTIVE_PLAN, EVIDENCE_STEP, open, seedPlans } from "./support/plans";
 
 /**
  * axe (WCAG 2.2 A and AA rules) on every page of the web, in light and dark: no serious or critical violation.
@@ -60,6 +61,65 @@ const PAGES: Entry[] = [
     },
   },
   {
+    name: "plans list",
+    open: async ({ page, me }) => {
+      await seedPlans(me, me.projects[0]);
+      await open(page, `/p/${me.projects[0]}/plans`);
+      await expect(page.getByTestId("plans-table-active")).toBeVisible();
+    },
+  },
+  {
+    name: "plan board with its sections open",
+    open: async ({ page, me }) => {
+      await seedPlans(me, me.projects[0]);
+      await open(page, `/p/${me.projects[0]}/plans/${ACTIVE_PLAN}`);
+      await expect(page.getByTestId("step-board")).toBeVisible();
+      await page.getByTestId("board-column-done").getByRole("button").click();
+      for (const summary of await page.locator("details > summary").all()) await summary.click();
+    },
+  },
+  {
+    name: "plan steps as a list",
+    open: async ({ page, me }) => {
+      await seedPlans(me, me.projects[0]);
+      await open(page, `/p/${me.projects[0]}/plans/${ACTIVE_PLAN}`);
+      await page.getByTestId("steps-view-list").click();
+      await expect(page.getByTestId("steps-table")).toBeVisible();
+    },
+  },
+  {
+    name: "plan step with evidence",
+    open: async ({ page, me }) => {
+      await seedPlans(me, me.projects[0]);
+      await open(page, `/p/${me.projects[0]}/plans/${ACTIVE_PLAN}/steps/${EVIDENCE_STEP}`);
+      await expect(page.getByTestId("step-evidence")).toBeVisible();
+    },
+  },
+  {
+    name: "plan revisions and diff",
+    open: async ({ page, me }) => {
+      await seedPlans(me, me.projects[0]);
+      await open(page, `/p/${me.projects[0]}/plans/${ACTIVE_PLAN}/revisions?from=1&to=2`);
+      await expect(page.getByTestId("diff-line").first()).toBeVisible();
+    },
+  },
+  {
+    name: "plan diff side by side",
+    open: async ({ page, me }) => {
+      await seedPlans(me, me.projects[0]);
+      await open(page, `/p/${me.projects[0]}/plans/${ACTIVE_PLAN}/revisions?from=1&to=3`);
+      await page.getByTestId("diff-mode-split").click();
+      await expect(page.getByTestId("diff-mode-split")).toHaveAttribute("aria-pressed", "true");
+    },
+  },
+  {
+    name: "plan not found",
+    open: async ({ page, me }) => {
+      await open(page, `/p/${me.projects[0]}/plans/no-such-plan`);
+      await expect(page.getByTestId("state-not-found")).toBeVisible();
+    },
+  },
+  {
     name: "small screen with the sidebar open",
     open: async ({ page }) => {
       await page.setViewportSize({ width: 375, height: 812 });
@@ -104,6 +164,19 @@ for (const scheme of ["light", "dark"] as const) {
         await expectNoSeriousViolations(page, `${entry.name} (${scheme})`);
       });
     }
+
+    test(`plans without a grant (403) have no serious axe violation (${scheme})`, async ({ page, admin, signInAs }) => {
+      test.skip(isDeployed, "signs in as the stack's hub admin");
+      const project = uniqueName("plans");
+      const writer = newAccount("writer");
+      await admin.registerProject(project);
+      await admin.grant(project, writer.login, "writer", "internal");
+      await seedPlans(writer, project);
+      await signInAs(ADMIN_ACCOUNT);
+      await open(page, `/p/${project}/plans/${ACTIVE_PLAN}`);
+      await expect(page.getByTestId("state-forbidden")).toBeVisible();
+      await expectNoSeriousViolations(page, `plans without a grant (${scheme})`);
+    });
 
     test(`hub admin page has no serious axe violation (${scheme})`, async ({ page, signInAs }) => {
       test.skip(isDeployed, "signs in as the stack's hub admin");

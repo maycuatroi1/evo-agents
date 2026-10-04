@@ -166,6 +166,17 @@ def render(body: dict, project: str, revision: int, digest: str) -> str:
     raise HubError(f"plan {body['id']} cannot be written as YAML that reads back the same; nothing was written")
 
 
+def plan_text(body: dict) -> str:
+    """The plan as its copy writes it, without the header line and the hub key: the text two revisions of a plan are
+    compared on (``evo_agents.hub.plan_diff``), so a diff shows the lines a person sees change in git."""
+    plan = ordered_plan(body)
+    for dumper in (_BlockDumper, _QuotedDumper):
+        text = _dump(plan, dumper)
+        if _reads_back(text, plan):
+            return text
+    raise HubError(f"plan {body.get('id')} cannot be written as YAML that reads back the same")
+
+
 # Reading plan files
 
 
