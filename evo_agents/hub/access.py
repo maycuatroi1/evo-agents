@@ -9,8 +9,11 @@ it carries a label by names, ``{level, location, integrity, projects}``. Two rul
   project that declares no such sink takes no push at all: data leaves a machine only for a project whose
   knowledge.yaml says which levels may go to the hub.
 
-Both fail closed. When reading, a level or location the ladder lacks counts as the highest, a label that cannot be
-read hides its object, and a max level or sink the project lacks lets nothing through. When pushing, a name the
+Reading on the hub itself, where no runtime sink takes part (the web shows members their own view), drops the sink
+from the first rule: L must be below the label of M, with L.projects a subset of {P} (``visible_by_grant``).
+
+All of them fail closed. When reading, a level or location the ladder lacks counts as the highest, a label that cannot
+be read hides its object, and a max level or sink the project lacks lets nothing through. When pushing, a name the
 ladder lacks is refused. The lattice itself (meet, below) is ``Label``'s; this module maps names onto it.
 
 Standard library only, besides ``evo_agents.kg.policy``: the server enforces the rules, and the client can say
@@ -130,14 +133,21 @@ class ProjectRules:
     def _as_label(self, clearance: Clearance) -> Label:
         return Label(clearance.level, clearance.location, UNTRUSTED, frozenset({self.name}))
 
+    def grant_label(self, max_level: str | None) -> Label | None:
+        """The label of a grant reaching ``max_level``: that level, every location, either integrity, this project.
+        None without a grant or for a level the ladder lacks."""
+        level = _rank(self.levels, max_level)
+        if level is None:
+            return None
+        return Label(level, len(self.locations) - 1, UNTRUSTED, frozenset({self.name}))
+
     def ceiling(self, max_level: str | None, sink: str) -> Label | None:
         """meet(label of ``max_level``, clearance of ``sink``): the highest label a member whose grant reaches
         ``max_level`` may read through ``sink``. None when nothing passes: no grant, or a max level or sink the
         project does not declare."""
-        level = _rank(self.levels, max_level)
-        if level is None or sink not in self.policy.sinks or sink in self._closed:
+        grant = self.grant_label(max_level)
+        if grant is None or sink not in self.policy.sinks or sink in self._closed:
             return None
-        grant = Label(level, len(self.locations) - 1, UNTRUSTED, frozenset({self.name}))
         return grant.meet(self._as_label(self.policy.clearance(sink)))
 
     def visible(self, label, max_level: str | None, sink: str) -> bool:
@@ -146,6 +156,17 @@ class ProjectRules:
         ceiling = self.ceiling(max_level, sink)
         found = self.stored(label)
         return ceiling is not None and found is not None and found.below(ceiling)
+
+    def visible_by_grant(self, label, max_level: str | None) -> bool:
+        """The read rule when no sink takes part: may a member whose grant reaches ``max_level`` see an object
+        carrying ``label`` (by names, as stored) on the hub itself, as the web shows it to them? The label must be
+        below the grant's label: its level at most ``max_level`` and its projects this one alone. No sink narrows
+        it, so it lets through at least what ``visible`` lets through any sink, never more than the grant. Fails
+        closed as ``visible`` does: no grant, a level the ladder lacks, or a label that cannot be read shows
+        nothing."""
+        grant = self.grant_label(max_level)
+        found = self.stored(label)
+        return grant is not None and found is not None and found.below(grant)
 
     def no_hub_sink(self) -> str:
         """Why a project without a sink of kind hub takes no push, and the sink to declare: one that clears the

@@ -528,6 +528,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/memories/{memory_id}/revisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Revisions
+         * @description The revisions of a memory the caller sees, the latest first. A revision whose label (or type) the caller
+         *     could not read is left out, so a label raised in the past never shows through its history.
+         */
+        get: operations["revisions_v1_memories__memory_id__revisions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/memories/{memory_id}/revisions/{revision}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Revision
+         * @description One revision of a memory with its body; 404 when it does not exist or the caller could not read it.
+         */
+        get: operations["show_revision_v1_memories__memory_id__revisions__revision__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/skills": {
         parameters: {
             query?: never;
@@ -1279,6 +1320,44 @@ export interface components {
              */
             if_revision?: number | null;
         };
+        /** MemoryRevision */
+        MemoryRevision: {
+            /** Revision */
+            revision: number;
+            /** Type */
+            type: string;
+            /** Label */
+            label: {
+                [key: string]: unknown;
+            };
+            /**
+             * Deleted
+             * @description a tombstone: the memory was deleted at this revision
+             */
+            deleted: boolean;
+            /**
+             * Size
+             * @description bytes of the body in UTF-8
+             */
+            size: number;
+            /**
+             * Actor
+             * @description the login of who wrote this revision
+             */
+            actor: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Memory Id */
+            memory_id: number;
+            /**
+             * Body
+             * @description the whole file as it was; empty for a tombstone
+             */
+            body: string;
+        };
         /** MissingBlobs */
         MissingBlobs: {
             /**
@@ -1646,6 +1725,52 @@ export interface components {
             body: {
                 [key: string]: unknown;
             };
+        };
+        /** RevisionSummary */
+        RevisionSummary: {
+            /** Revision */
+            revision: number;
+            /** Type */
+            type: string;
+            /** Label */
+            label: {
+                [key: string]: unknown;
+            };
+            /**
+             * Deleted
+             * @description a tombstone: the memory was deleted at this revision
+             */
+            deleted: boolean;
+            /**
+             * Size
+             * @description bytes of the body in UTF-8
+             */
+            size: number;
+            /**
+             * Actor
+             * @description the login of who wrote this revision
+             */
+            actor: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** Revisions */
+        Revisions: {
+            /** Memory Id */
+            memory_id: number;
+            /**
+             * Items
+             * @description the latest first
+             */
+            items: components["schemas"]["RevisionSummary"][];
+            /**
+             * Next Before
+             * @description pass as before for older revisions; null after the oldest
+             */
+            next_before: number | null;
         };
         /** RunCommitted */
         RunCommitted: {
@@ -3522,8 +3647,8 @@ export interface operations {
                 deleted?: boolean;
                 cursor?: string | null;
                 limit?: number;
-                /** @description the sink reading the memories (read rule) */
-                sink?: string;
+                /** @description the sink reading the memories (read rule); left out, claude-code@anthropic for a machine token and none for a web session, which reads by its grant alone */
+                sink?: string | null;
             };
             header?: never;
             path?: never;
@@ -3648,9 +3773,10 @@ export interface operations {
                 q: string;
                 scope?: ("project" | "personal") | null;
                 project?: string | null;
+                location?: string | null;
                 limit?: number;
-                /** @description the sink reading the memories (read rule) */
-                sink?: string;
+                /** @description the sink reading the memories (read rule); left out, claude-code@anthropic for a machine token and none for a web session, which reads by its grant alone */
+                sink?: string | null;
             };
             header?: never;
             path?: never;
@@ -3690,8 +3816,8 @@ export interface operations {
     show_v1_memories__memory_id__get: {
         parameters: {
             query?: {
-                /** @description the sink reading the memories (read rule) */
-                sink?: string;
+                /** @description the sink reading the memories (read rule); left out, claude-code@anthropic for a machine token and none for a web session, which reads by its grant alone */
+                sink?: string | null;
             };
             header?: never;
             path: {
@@ -3816,6 +3942,114 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    revisions_v1_memories__memory_id__revisions_get: {
+        parameters: {
+            query?: {
+                /** @description only revisions older than this */
+                before?: number | null;
+                limit?: number;
+                /** @description the sink reading the memories (read rule); left out, claude-code@anthropic for a machine token and none for a web session, which reads by its grant alone */
+                sink?: string | null;
+            };
+            header?: never;
+            path: {
+                memory_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Revisions"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    show_revision_v1_memories__memory_id__revisions__revision__get: {
+        parameters: {
+            query?: {
+                /** @description the sink reading the memories (read rule); left out, claude-code@anthropic for a machine token and none for a web session, which reads by its grant alone */
+                sink?: string | null;
+            };
+            header?: never;
+            path: {
+                memory_id: number;
+                revision: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemoryRevision"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

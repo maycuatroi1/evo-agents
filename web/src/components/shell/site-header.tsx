@@ -16,9 +16,20 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 
-import { type NavLabel, PROJECT_NAV, projectHref } from "./nav";
+import { HUB_NAV, type NavLabel, PROJECT_NAV, projectHref } from "./nav";
 
 type Crumb = { label: string; href?: string };
+
+/** The last part of a page's path as a crumb: a name as it is, a number as #id. */
+function itemLabel(part: string): string {
+  let text = part;
+  try {
+    text = decodeURIComponent(part);
+  } catch {
+    // a malformed escape: show the part as it is
+  }
+  return /^[0-9]+$/.test(text) ? `#${text}` : text;
+}
 
 function useCrumbs(): Crumb[] {
   const t = useTranslations("nav");
@@ -30,11 +41,16 @@ function useCrumbs(): Crumb[] {
     const crumbs: Crumb[] = [{ label: t("projects"), href: "/" }, { label: project }];
     if (section) {
       crumbs[1].href = projectHref(project);
-      crumbs.push({ label: t(section.label satisfies NavLabel) });
+      // Below a section (one memory, one skill), the section links back to its list.
+      const below = parts.length > 3 ? projectHref(project, section.segment) : undefined;
+      crumbs.push({ label: t(section.label satisfies NavLabel), href: below });
+      if (below) crumbs.push({ label: itemLabel(parts[3]) });
     }
     return crumbs;
   }
-  if (parts[0] === "admin") return [{ label: t("admin") }];
+  const hub = HUB_NAV.find((item) => item.href !== "/" && parts[0] === item.href.slice(1));
+  if (hub && parts.length > 1) return [{ label: t(hub.label), href: hub.href }, { label: itemLabel(parts[1]) }];
+  if (hub) return [{ label: t(hub.label) }];
   return [{ label: t("projects") }];
 }
 
