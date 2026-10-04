@@ -4,9 +4,12 @@ answers kg_* from the latest build.
 Checked here: pushing a run twice ingests it once; two machines pushing in either order give one content hash,
 which ``kg build --verify`` on the worker's store and a local build of both corpora find too; a run labelled above the
 hub sink is 422 with no kg_ingests row, no job and no staged object left; committing a run while blobs are missing is
-422; three builds queued in a row never run two at once and queue at most one; deleting the worker's cache and
-building again gives the same content hash; an artifact whose SHA-256 does not match is never opened; with the blob
-store down, kg_* answer from the cached graph. Also the failure paths around them.
+422; a run of hundreds of blobs goes in commits small enough to be answered within their timeouts on a store as
+slow as R2, a commit whose answer is lost is found on the hub and not sent again, and a run that fails on the way is
+pushed again sending only what the hub lacks; three builds queued in a row never run two at once and queue at most
+one; deleting the worker's cache and building again gives the same content hash; an artifact whose SHA-256 does not
+match is never opened; with the blob store down, kg_* answer from the cached graph. Also the failure paths around
+them.
 
 The api runs in this process (TestClient), the worker too (procrastinate's worker on this process's loop, the
 ``hub.kg_build`` task of ``evo_agents.hub.worker``), and the blob store is moto's server in this process
@@ -40,8 +43,9 @@ if not pg.DSN:
 from fastapi.testclient import TestClient
 
 from evo_agents.hub import kg_build as hub_kg_build
+from evo_agents.hub import kg_push
 from evo_agents.hub.blobs import BlobStore, blob_key
-from evo_agents.hub.client import Hub, HubError
+from evo_agents.hub.client import Hub, HubError, Unreachable
 from evo_agents.hub.config import HubConfig
 from evo_agents.hub.kg_build import worker_project
 from evo_agents.hub.kg_push import Pusher
@@ -137,7 +141,7 @@ class InProcessHub:
         self.client = client
         self.headers = headers
 
-    def call(self, method, path, body=None):
+    def call(self, method, path, body=None, *, timeout=None):
         response = self.client.request(method, path, json=body, headers=self.headers)
         payload = response.json() if response.content else None
         if response.status_code >= 400:
@@ -405,6 +409,108 @@ def test_pushing_the_same_run_twice_ingests_it_once(hub, tmp_path):
         ("kg.config", PROJECT, PROJECT),
         ("kg.ingest", PROJECT, PROJECT),
     ]
+
+
+# Pushing many blobs
+
+R2_SECONDS_PER_UPLOAD = 0.088  # a 0.2.0 hub on R2 per upload of a commit, from its logs of 2026-10-04
+
+
+class StoreBoundHub(InProcessHub):
+    """``InProcessHub`` whose blob commits take as long as on a hub whose store answers like R2: ``seconds_per_upload``
+    for each upload. A commit that would outlast the timeout of its request is carried out, as the hub goes on with
+    it, but its answer never comes: Unreachable, as the push saw it in production. The answers of the first ``lose``
+    commits are lost whatever they take; ``refuse`` commits (counted from 1) answer 503 and do nothing."""
+
+    def __init__(self, client, headers, seconds_per_upload=R2_SECONDS_PER_UPLOAD, lose=0, refuse=()):
+        super().__init__(client, headers)
+        self.seconds_per_upload = seconds_per_upload
+        self.lose = lose
+        self.refuse = set(refuse)
+        self.commits = []  # (uploads, the seconds the hub takes, the seconds the client waits)
+        self.asked = []  # the hash of every blob (kind kg-blob) an upload was asked for
+
+    def call(self, method, path, body=None, *, timeout=None):
+        if path == "/v1/blobs/uploads":
+            self.asked += [item["sha256"] for item in body["items"] if item["kind"] == "kg-blob"]
+        if path != "/v1/blobs/commit":
+            return super().call(method, path, body, timeout=timeout)
+        waited = 30.0 if timeout is None else timeout  # Hub's own timeout
+        took = len(body["upload_ids"]) * self.seconds_per_upload
+        self.commits.append((len(body["upload_ids"]), took, waited))
+        if len(self.commits) in self.refuse:
+            raise HubError("the blob store did not answer; nothing was committed", 503, "unavailable")
+        answer = super().call(method, path, body)
+        if took > waited or len(self.commits) <= self.lose:
+            raise Unreachable(f"cannot reach {self.url}: no answer within {waited:g}s")
+        return answer
+
+
+def corpus_blobs(machine: Machine) -> set[str]:
+    """The hashes of the blobs in the machine's corpus (``blobs/sha256/ab/cdef...``)."""
+    root = machine.home / PROJECT / "blobs" / "sha256"
+    return {path.parent.name + path.name for path in root.rglob("*") if path.is_file()}
+
+
+def held_blobs(hub) -> set[str]:
+    rows = query(hub.db, "SELECT b.sha256 FROM blobs b JOIN projects p ON p.id = b.project_id WHERE b.kind = 'kg-blob'")
+    return {row[0] for row in rows}
+
+
+def test_a_run_of_hundreds_of_blobs_goes_in_commits_answered_within_their_timeouts(hub, tmp_path):
+    """Production, 2026-10-04: runs of 300 to 459 blobs went in one commit each, the hub took up to 40 s over it
+    while the push waited 30, and the push failed five times before all 60 runs were in."""
+    laptop = Machine(tmp_path, "laptop")
+    (run_id,) = laptop.sync("docs", *(doc(f"page-{i:03d}", f"Page {i} of the manual.") for i in range(153)))
+    blobs = corpus_blobs(laptop)
+    assert len(blobs) >= 450
+    store_bound = StoreBoundHub(hub.client, hub.alice)
+
+    report = Pusher(store_bound, laptop.project()).push()
+    assert report.ok, report.errors
+    assert report.pushed == [run_id] and report.blobs == len(blobs)
+    assert held_blobs(hub) == blobs and count(hub.db, "kg_ingests") == 1
+    assert len(store_bound.commits) > 1 and sum(c[0] for c in store_bound.commits) == len(blobs)
+    for uploads, took, waited in store_bound.commits:
+        assert uploads <= kg_push.COMMIT_BATCH and took * 3 < waited  # answered, with room for a slower store
+    assert sorted(store_bound.asked) == sorted(blobs)  # each blob asked for once
+    assert hub.s3.keys("uploads/") == []
+
+
+def test_a_commit_whose_answer_is_lost_is_found_on_the_hub_and_not_sent_again(hub, tmp_path):
+    laptop = Machine(tmp_path, "laptop")
+    (run_id,) = laptop.sync("docs", doc("guide", "How the app works."), doc("setup", "Install it."))
+    store_bound = StoreBoundHub(hub.client, hub.alice, lose=1)
+
+    report = Pusher(store_bound, laptop.project()).push()
+    assert report.ok, report.errors
+    assert report.pushed == [run_id] and len(store_bound.commits) == 1
+    assert sorted(store_bound.asked) == sorted(corpus_blobs(laptop)) == sorted(held_blobs(hub))
+
+
+def test_a_run_that_fails_on_the_way_is_pushed_again_sending_only_what_the_hub_lacks(hub, tmp_path, monkeypatch):
+    monkeypatch.setattr(kg_push, "COMMIT_BATCH", 4)
+    laptop = Machine(tmp_path, "laptop")
+    (run_id,) = laptop.sync("docs", *(doc(f"page-{i}", f"Page {i}.") for i in range(4)))
+    blobs = corpus_blobs(laptop)
+    assert len(blobs) == 12
+    store_bound = StoreBoundHub(hub.client, hub.alice, refuse={2})  # the second batch's commit: 503
+    waits, lines = [], []
+
+    report = Pusher(store_bound, laptop.project(), progress=lines.append, sleep=waits.append).push()
+    assert report.ok, report.errors
+    assert report.pushed == [run_id] and report.blobs == 12 and report.present == 0
+    assert waits == [kg_push.RETRY_DELAYS[0]] and held_blobs(hub) == blobs
+    assert len(store_bound.asked) == 12 + 4  # the refused batch went again, the committed one did not
+    assert [c[0] for c in store_bound.commits] == [4, 4, 4, 4]
+    assert lines[0] == "project alpha: 1 run(s) to push, 0 of 1 on the hub already"
+    label = f"[1/1] run {run_id}"
+    assert lines[1:4] == [f"{label}: 12 blob(s) to send", f"{label}: 4/12 blob(s) on the hub", lines[3]]
+    assert (
+        lines[3].startswith(f"{label}: the blob store did not answer")
+        and "trying again in 10s (attempt 2 of 3)" in (lines[3])
+    )
+    assert lines[-1] == f"{label}: ingested" and f"{label}: 8/8 blob(s) on the hub" in lines
 
 
 def test_two_machines_pushing_in_either_order_give_the_same_content_hash(hub, tmp_path, s3, monkeypatch):
@@ -960,6 +1066,7 @@ def test_the_cli_pushes_builds_and_reads_through_hub_serve(hub_db, tmp_path, s3)
             "project alpha: pushed 0 run(s) and 0 blob(s); 1 of 2 run(s) were on the hub already; 1 run(s) of vault "
             "stay here, above what the hub sink clears\n"
         )
+        assert again.stderr == "project alpha: 0 run(s) to push, 1 of 2 on the hub already\n"  # progress
         listed = json.loads(ok(pg.cli(["hub", "kg", "builds", "--project", PROJECT, "--json"], env=env)).stdout)
         assert_json_keys("hub kg builds", listed)
         assert [b["status"] for b in listed["builds"]] == ["queued"] and listed["jobs"][0]["status"] == "todo"
