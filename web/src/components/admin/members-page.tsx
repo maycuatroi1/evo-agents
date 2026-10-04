@@ -25,7 +25,6 @@ import { HubAdminBadge, NotSignedInBadge } from "./badges";
 import { type AdminUser, adminUsersQuery, filterMembers, memberHref, parseMemberFilters, tokensHref } from "./data";
 import { GrantDialog, type GrantPreset } from "./grant-dialog";
 import { NoticeArea, useNotice } from "./notice";
-import { TableFrame } from "./table-frame";
 import { useUrlView } from "./url-state";
 import { When } from "./when";
 
@@ -136,17 +135,15 @@ function MembersTable({ users, onGrant }: { users: AdminUser[]; onGrant: (login:
     ]);
   }, [t, onGrant]);
   return (
-    <TableFrame>
-      <DataTable
-        data={users}
-        columns={columns}
-        caption={t("title")}
-        getRowId={(row) => row.login}
-        initialSorting={[{ id: "login", desc: false }]}
-        columnClassNames={NARROW_HIDDEN}
-        testId="members-table"
-      />
-    </TableFrame>
+    <DataTable
+      data={users}
+      columns={columns}
+      caption={t("title")}
+      getRowId={(row) => row.login}
+      initialSorting={[{ id: "login", desc: false }]}
+      columnClassNames={NARROW_HIDDEN}
+      testId="members-table"
+    />
   );
 }
 

@@ -8,7 +8,6 @@ import { DataTable, dataTableColumns } from "@/components/data/data-table";
 import { projectHref } from "@/components/shell/nav";
 
 import { actionKey, type AuditRow, memberHref } from "./data";
-import { TableFrame } from "./table-frame";
 
 const NARROW_HIDDEN = { id: "hidden md:table-cell", project: "hidden sm:table-cell", token: "hidden lg:table-cell" };
 
@@ -110,15 +109,13 @@ export function AuditTable({ rows, caption, testId = "audit-table" }: { rows: Au
     ]);
   }, [t, format]);
   return (
-    <TableFrame>
-      <DataTable
-        data={rows}
-        columns={columns}
-        caption={caption}
-        getRowId={(row) => String(row.id)}
-        columnClassNames={NARROW_HIDDEN}
-        testId={testId}
-      />
-    </TableFrame>
+    <DataTable
+      data={rows}
+      columns={columns}
+      caption={caption}
+      getRowId={(row) => String(row.id)}
+      columnClassNames={NARROW_HIDDEN}
+      testId={testId}
+    />
   );
 }

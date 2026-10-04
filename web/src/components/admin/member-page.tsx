@@ -39,7 +39,6 @@ import {
 } from "./data";
 import { GrantDialog, type GrantPreset } from "./grant-dialog";
 import { type Notice, NoticeArea, useNotice, useWriteFailure } from "./notice";
-import { TableFrame } from "./table-frame";
 import { TokensTable } from "./tokens-table";
 import { useAdminWrite } from "./use-admin-write";
 import { When } from "./when";
@@ -177,17 +176,15 @@ function GrantsTable({
     ]);
   }, [t, user.login, onChange, onRevoke]);
   return (
-    <TableFrame>
-      <DataTable
-        data={user.grants}
-        columns={columns}
-        caption={t("grantsTitle")}
-        getRowId={(row) => row.project}
-        initialSorting={[{ id: "project", desc: false }]}
-        columnClassNames={GRANT_HIDDEN}
-        testId="member-grants"
-      />
-    </TableFrame>
+    <DataTable
+      data={user.grants}
+      columns={columns}
+      caption={t("grantsTitle")}
+      getRowId={(row) => row.project}
+      initialSorting={[{ id: "project", desc: false }]}
+      columnClassNames={GRANT_HIDDEN}
+      testId="member-grants"
+    />
   );
 }
 

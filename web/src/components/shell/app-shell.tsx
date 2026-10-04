@@ -19,7 +19,9 @@ export function AppShell({ sidebarOpen, children }: { sidebarOpen: boolean; chil
         {t("skipToContent")}
       </a>
       <AppSidebar />
-      <SidebarInset>
+      {/* min-w-0: the inset is a flex item beside the sidebar, and without it a wide table's natural width would
+          widen it, and <main> with it, past the screen. Tables scroll in their own region instead. */}
+      <SidebarInset className="min-w-0">
         <SiteHeader />
         <main id="main" tabIndex={-1} className="flex-1 px-4 py-6 outline-none md:px-6 lg:px-8">
           <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">{children}</div>
