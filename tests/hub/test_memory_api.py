@@ -4,7 +4,9 @@ never receives a customer memory, by listing, searching its exact name, asking f
 member's user and feedback memories answer 404 exactly as a memory that does not exist; a revision whose label the
 reader could not read is left out of the history.
 
-The read rule runs without Postgres; everything that needs the hub skips without EVO_HUB_TEST_DSN."""
+The read rule without a sink is the hub's one grant-only rule (``ProjectRules.visible_by_grant`` and its
+``grant_label``, which the knowledge graph pages read with too), so its tests live here. It runs without Postgres;
+everything that needs the hub skips without EVO_HUB_TEST_DSN."""
 
 import itertools
 import re
@@ -79,6 +81,26 @@ def test_visible_by_grant_fails_closed_on_labels_it_cannot_read():
     assert project.visible_by_grant({"level": "public"}, "public")
     assert project.visible_by_grant({"level": "public", "integrity": "U"}, "public")
     assert project.grant_label(None) is None and project.grant_label("nope") is None
+
+
+@pytest.mark.parametrize("max_level", LEVELS)
+def test_the_grant_label_reaches_its_level_everywhere_in_its_project_and_the_sink_rule_meets_it(max_level):
+    """The label the knowledge graph pages read with: the grant's level, every location, this project alone; for any
+    sink, the sink rule's ceiling is that label met with the sink's clearance."""
+    project = rules()
+    grant = project.grant_label(max_level)
+    assert (grant.level, grant.location, grant.projects) == (LEVELS.index(max_level), 1, frozenset({"demo"}))
+    for sink in (s["id"] for s in SINKS):
+        clearance = project.policy.clearance(sink)
+        sink_label = type(grant)(clearance.level, clearance.location, "U", frozenset({"demo"}))
+        assert project.ceiling(max_level, sink) == grant.meet(sink_label), sink
+
+
+@pytest.mark.parametrize("max_level", [None, "", "top-secret", 2])
+def test_no_grant_or_a_level_the_ladder_lacks_lets_nothing_through(max_level):
+    project = rules()
+    assert project.grant_label(max_level) is None
+    assert not project.visible_by_grant({"level": "public"}, max_level)
 
 
 def test_a_web_session_reads_through_no_sink_and_a_machine_token_through_claude_codes():

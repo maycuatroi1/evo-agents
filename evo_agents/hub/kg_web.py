@@ -6,7 +6,8 @@ verified artifact cache, the fallback to a cached build when the blob store does
 code of those tools: ``tool_kg_search`` and ``tool_kg_node`` of ``evo_agents.kg.serve.Session`` as they are, and a
 neighbourhood that walks like ``tool_kg_context``. Every node and edge goes through ``Session.visible``, the one
 filter the tools use too; only the ceiling differs. The tools read with the meet of the member's grant and a sink's
-clearance, the web with the grant alone (``evo_agents.hub.web_access.grant_ceiling``).
+clearance, the web with the grant alone (``ProjectRules.grant_label`` of ``evo_agents.hub.access``, the label
+``visible_by_grant`` holds a memory's label below).
 
 The neighbourhood is bounded: at most MAX_HOPS steps from the node shown and at most MAX_NODES nodes, the node
 itself included. Like kg_context it reads visible edges strongest status first, keeps ``in_source`` and ``part_of``
