@@ -1,5 +1,6 @@
 """``evo-agents hub openapi`` prints the API contract the web client is generated from: the same document the app
-serves at /v1/openapi.json, without Postgres, GitHub or any EVO_HUB_* variable, byte for byte the same on every run."""
+serves at /v1/openapi.json, without Postgres, S3, GitHub or any EVO_HUB_* variable, byte for byte the same on every
+run."""
 
 import json
 
@@ -34,10 +35,15 @@ def test_output_is_stable_and_ignores_the_environment(tmp_path):
         EVO_HUB_DSN="postgresql://someone:hunter2@db.invalid/hub",
         EVO_HUB_PUBLIC_URL="https://hub.example.org",
         EVO_HUB_ADMINS="octo",
+        EVO_HUB_S3_ENDPOINT="https://s3.invalid",
+        EVO_HUB_S3_BUCKET="evo-hub-openapi",
+        EVO_HUB_S3_ACCESS_KEY_ID="key-id",
+        EVO_HUB_S3_SECRET_ACCESS_KEY="s3cret-value",
     )
     assert first.returncode == second.returncode == 0
     assert first.stdout == second.stdout
     assert "hunter2" not in second.stdout + second.stderr
+    assert "s3cret-value" not in second.stdout + second.stderr
 
 
 def test_output_flag_writes_the_file_and_keeps_stdout_empty(tmp_path):

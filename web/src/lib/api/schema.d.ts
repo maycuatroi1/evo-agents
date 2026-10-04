@@ -325,6 +325,493 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/blobs/uploads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Request Uploads
+         * @description Presigned PUT URLs for the blobs of ``items`` that the project does not hold yet.
+         */
+        post: operations["request_uploads_v1_blobs_uploads_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/blobs/commit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Commit
+         * @description Check the uploads against what was declared and record the blobs in the project.
+         */
+        post: operations["commit_v1_blobs_commit_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/plans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Plans */
+        get: operations["list_plans_v1_projects__project__plans_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/plans/{plan_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Show */
+        get: operations["show_v1_projects__project__plans__plan_id__get"];
+        /**
+         * Put
+         * @description Create the plan, or replace the revision ``if_revision`` names with ``body``.
+         */
+        put: operations["put_v1_projects__project__plans__plan_id__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Patch
+         * @description Set keys of one item, as ``evo harness step``, ``repo``, ``debt`` and ``question`` do in a file.
+         */
+        patch: operations["patch_v1_projects__project__plans__plan_id__patch"];
+        trace?: never;
+    };
+    "/v1/projects/{project}/plans/{plan_id}/revisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** History */
+        get: operations["history_v1_projects__project__plans__plan_id__revisions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/plans/{plan_id}/revisions/{revision}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Show Revision */
+        get: operations["show_revision_v1_projects__project__plans__plan_id__revisions__revision__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/plans/{plan_id}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Complete
+         * @description Move the plan to the completed area; refused while a step is not done, as evo-cli's complete_plan.
+         */
+        post: operations["complete_v1_projects__project__plans__plan_id__complete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/memories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Memories
+         * @description The memories the caller sees, oldest change first.
+         */
+        get: operations["list_memories_v1_memories_get"];
+        /**
+         * Put
+         * @description Create or change the memory at the key ``body`` names.
+         */
+        put: operations["put_v1_memories_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/memories/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search Memories
+         * @description The memories the caller sees whose name or text matches ``q`` (full text, configuration simple), best
+         *     first.
+         */
+        get: operations["search_memories_v1_memories_search_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/memories/{memory_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Show */
+        get: operations["show_v1_memories__memory_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete
+         * @description Leave a tombstone of memory ``memory_id``: deleted, no body, the next revision. Deleting a tombstone changes
+         *     nothing.
+         */
+        delete: operations["delete_v1_memories__memory_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/skills": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Skills
+         * @description The skills the caller sees, each with its latest version: the global ones and those of every project the
+         *     caller has a grant on.
+         */
+        get: operations["list_skills_v1_skills_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/skills/global/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Global Skill
+         * @description A global skill and every version of it.
+         */
+        get: operations["global_skill_v1_skills_global__name__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/skills/projects/{project}/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Project Skill
+         * @description A skill of a project and every version of it.
+         */
+        get: operations["project_skill_v1_skills_projects__project___name__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/skills/global/{name}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Publish Global
+         * @description A new version of a global skill from a committed bundle (a hub admin only).
+         */
+        post: operations["publish_global_v1_skills_global__name__versions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/skills/projects/{project}/{name}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Publish Project
+         * @description A new version of a skill of a project from a bundle the project committed.
+         */
+        post: operations["publish_project_v1_skills_projects__project___name__versions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/skills/global/{name}/bundle": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Global Bundle
+         * @description A short-lived presigned GET of a global skill's bundle, with the SHA-256 to check it against.
+         */
+        get: operations["global_bundle_v1_skills_global__name__bundle_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/skills/projects/{project}/{name}/bundle": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Project Bundle
+         * @description A short-lived presigned GET of a project skill's bundle, for its members only (403 for anyone else).
+         */
+        get: operations["project_bundle_v1_skills_projects__project___name__bundle_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/kg/{project}/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Put Config
+         * @description Save the knowledge config the project's graph is built with.
+         */
+        put: operations["put_config_v1_kg__project__config_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/kg/{project}/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Runs */
+        get: operations["list_runs_v1_kg__project__runs_get"];
+        put?: never;
+        /**
+         * Push Run
+         * @description Check the log of a run and keep it; the blobs it refers to that the project still lacks.
+         */
+        post: operations["push_run_v1_kg__project__runs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/kg/{project}/blobs/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check Blobs
+         * @description The hashes of ``sha256`` the project does not hold.
+         */
+        post: operations["check_blobs_v1_kg__project__blobs_check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/kg/{project}/runs/{run_id}/commit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Commit Run
+         * @description Make a pushed run part of the project's corpus, once every blob it refers to is there, and queue a build.
+         */
+        post: operations["commit_run_v1_kg__project__runs__run_id__commit_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/kg/{project}/builds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Builds
+         * @description The project's builds, newest first (only those with ``status`` when given), and its build jobs still in the
+         *     queue.
+         */
+        get: operations["list_builds_v1_kg__project__builds_get"];
+        put?: never;
+        /**
+         * Request Build
+         * @description Queue a build of the project's graph from the runs the hub holds.
+         */
+        post: operations["request_build_v1_kg__project__builds_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/kg/{project}/builds/{build_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Show Build */
+        get: operations["show_build_v1_kg__project__builds__build_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/kg/{project}/tools/{tool}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Call Tool
+         * @description One kg_* tool of ``evo-agents kg serve``, answered from the project's latest successful build.
+         */
+        post: operations["call_tool_v1_kg__project__tools__tool__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -342,12 +829,139 @@ export interface components {
              */
             web_login: boolean;
         };
+        /** Blob */
+        Blob: {
+            /** Sha256 */
+            sha256: string;
+            /** Size */
+            size: number;
+            /** Kind */
+            kind: string;
+        };
+        /** BlobCheck */
+        BlobCheck: {
+            /** Sha256 */
+            sha256: string[];
+        };
+        /** Build */
+        Build: {
+            /** Id */
+            id: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "running" | "succeeded" | "failed";
+            /** Job Id */
+            job_id: number | null;
+            /**
+             * Requested By
+             * @description the member who queued it; null when a pushed run did
+             */
+            requested_by: string | null;
+            /** Config Digest */
+            config_digest: string | null;
+            /** Runs */
+            runs: number | null;
+            /** Artifact Sha256 */
+            artifact_sha256: string | null;
+            /** Artifact Size */
+            artifact_size: number | null;
+            /** Content Hash */
+            content_hash: string | null;
+            /** Nodes */
+            nodes: number | null;
+            /** Edges */
+            edges: number | null;
+            /** Error */
+            error: string | null;
+            /**
+             * Queued At
+             * Format: date-time
+             */
+            queued_at: string;
+            /** Started At */
+            started_at: string | null;
+            /** Finished At */
+            finished_at: string | null;
+        };
+        /** Builds */
+        Builds: {
+            /** Builds */
+            builds: components["schemas"]["Build"][];
+            /**
+             * Jobs
+             * @description the project's build jobs still in the queue, waiting (todo) or running
+             */
+            jobs: components["schemas"]["Job"][];
+        };
+        /** BundleTicket */
+        BundleTicket: {
+            /**
+             * Scope
+             * @enum {string}
+             */
+            scope: "global" | "project";
+            /** Project */
+            project: string | null;
+            /** Name */
+            name: string;
+            /** Version */
+            version: number;
+            /**
+             * Sha256
+             * @description what the downloaded bytes must hash to
+             */
+            sha256: string;
+            /** Size */
+            size: number;
+            /**
+             * Url
+             * @description presigned GET of the bundle; a bearer credential until it expires
+             */
+            url: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+        };
         /** Clearance */
         Clearance: {
             /** Level */
             level: string;
             /** Location */
             location?: string | null;
+        };
+        /** CommitRequest */
+        CommitRequest: {
+            /**
+             * Project
+             * @description left out for blobs the hub holds itself
+             */
+            project?: string | null;
+            /** Upload Ids */
+            upload_ids: string[];
+        };
+        /** Committed */
+        Committed: {
+            /** Blobs */
+            blobs: components["schemas"]["Blob"][];
+            /**
+             * Added
+             * @description blobs new to the project; it held the others already
+             */
+            added: number;
+        };
+        /** ConfigSaved */
+        ConfigSaved: {
+            /** Digest */
+            digest: string;
+            /**
+             * Changed
+             * @description false when the hub held exactly this config
+             */
+            changed: boolean;
         };
         /** Csrf */
         Csrf: {
@@ -371,6 +985,53 @@ export interface components {
             detail?: {
                 [key: string]: unknown;
             }[] | null;
+        };
+        /** Found */
+        Found: {
+            /** Id */
+            id: number;
+            /** Scope */
+            scope: string;
+            /** Project */
+            project: string | null;
+            /** Location */
+            location: string;
+            /** Name */
+            name: string;
+            /** Type */
+            type: string;
+            /**
+             * Owner
+             * @description the login of the person who created it
+             */
+            owner: string;
+            /** Label */
+            label: {
+                [key: string]: unknown;
+            };
+            /**
+             * Body
+             * @description the whole file; empty for a tombstone
+             */
+            body: string;
+            /** Revision */
+            revision: number;
+            /** Deleted */
+            deleted: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Updated By */
+            updated_by: string;
+            /** Rank */
+            rank: number;
         };
         /** GitHubLogin */
         GitHubLogin: {
@@ -469,10 +1130,45 @@ export interface components {
              */
             db: "ok" | "unavailable";
             /**
+             * R2
+             * @description the blob store, by a HeadBucket
+             * @enum {string}
+             */
+            r2: "ok" | "unavailable" | "unconfigured";
+            /**
              * Failed
              * @description components that did not answer
              */
             failed?: string[];
+        };
+        /** Job */
+        Job: {
+            /** Job Id */
+            job_id: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "todo" | "doing";
+            /** Build Id */
+            build_id: number | null;
+        };
+        /** KgConfig */
+        KgConfig: {
+            /**
+             * Knowledge
+             * @description policy, identifiers, ontology file name and sources {id, connector, label, code}
+             */
+            knowledge: {
+                [key: string]: unknown;
+            };
+            /**
+             * Ontology
+             * @description the ontology extension knowledge.yaml points at, if any
+             */
+            ontology?: {
+                [key: string]: unknown;
+            } | null;
         };
         /** LabelIn */
         LabelIn: {
@@ -497,6 +1193,244 @@ export interface components {
              * @constant
              */
             status: "ok";
+        };
+        /** Memory */
+        Memory: {
+            /** Id */
+            id: number;
+            /** Scope */
+            scope: string;
+            /** Project */
+            project: string | null;
+            /** Location */
+            location: string;
+            /** Name */
+            name: string;
+            /** Type */
+            type: string;
+            /**
+             * Owner
+             * @description the login of the person who created it
+             */
+            owner: string;
+            /** Label */
+            label: {
+                [key: string]: unknown;
+            };
+            /**
+             * Body
+             * @description the whole file; empty for a tombstone
+             */
+            body: string;
+            /** Revision */
+            revision: number;
+            /** Deleted */
+            deleted: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Updated By */
+            updated_by: string;
+        };
+        /** MemoryIn */
+        MemoryIn: {
+            /**
+             * Scope
+             * @enum {string}
+             */
+            scope: "project" | "personal";
+            /**
+             * Project
+             * @description the hub project; scope project only
+             */
+            project?: string | null;
+            /**
+             * Location
+             * @description harness or a repo of the project; for scope personal, what is left of the directory's slug
+             */
+            location: string;
+            /**
+             * Name
+             * @description the file name, ending in .md
+             */
+            name: string;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "user" | "feedback" | "project" | "reference";
+            /**
+             * Body
+             * @description the whole file, frontmatter included
+             */
+            body: string;
+            /** @description scope project only; the current label, else the project's default, when left out */
+            label?: components["schemas"]["LabelIn"] | null;
+            /**
+             * If Revision
+             * @description the revision last seen; left out to create the memory
+             */
+            if_revision?: number | null;
+        };
+        /** MissingBlobs */
+        MissingBlobs: {
+            /**
+             * Missing
+             * @description the hashes of the request the project does not hold
+             */
+            missing: string[];
+        };
+        /** Page */
+        Page: {
+            /** Items */
+            items: components["schemas"]["Memory"][];
+            /**
+             * Next Cursor
+             * @description the cursor of the next page; null after the last one
+             */
+            next_cursor: string | null;
+        };
+        /** Plan */
+        Plan: {
+            /** Project */
+            project: string;
+            /** Plan Id */
+            plan_id: string;
+            /**
+             * Area
+             * @enum {string}
+             */
+            area: "active" | "completed";
+            /** Revision */
+            revision: number;
+            /**
+             * Digest
+             * @description sha256 of the canonical JSON of the body, as evo_agents.harness.plan_digest
+             */
+            digest: string;
+            /** Label */
+            label: {
+                [key: string]: unknown;
+            };
+            /** Body */
+            body: {
+                [key: string]: unknown;
+            };
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Updated By */
+            updated_by: string;
+        };
+        /** PlanComplete */
+        PlanComplete: {
+            /** If Revision */
+            if_revision?: number | null;
+        };
+        /** PlanPatch */
+        PlanPatch: {
+            /**
+             * Section
+             * @enum {string}
+             */
+            section: "steps" | "repos" | "tech_debt" | "open_questions";
+            /**
+             * Index
+             * @description the item's position in the section
+             */
+            index?: number | null;
+            /**
+             * Step
+             * @description for steps, the step's id (or order) instead of an index
+             */
+            step?: number | string | null;
+            /**
+             * Updates
+             * @description status, done_at, fixed_at, answered_at, merged_at, note, evidence
+             */
+            updates: {
+                [key: string]: string;
+            };
+            /**
+             * If Revision
+             * @description the revision the update was made against
+             */
+            if_revision: number;
+        };
+        /** PlanPut */
+        PlanPut: {
+            /**
+             * Body
+             * @description the plan as its YAML file reads; a hub key in it is ignored
+             */
+            body: {
+                [key: string]: unknown;
+            };
+            /**
+             * Area
+             * @description where a new plan goes (default active); else its area
+             */
+            area?: ("active" | "completed") | null;
+            /**
+             * If Revision
+             * @description the revision being replaced; leave it out, or 0, to create the plan
+             */
+            if_revision?: number | null;
+            /**
+             * Label
+             * @description {level, location, integrity}; default: the project's, or the held
+             */
+            label?: {
+                [key: string]: unknown;
+            } | null;
+        };
+        /** PlanSummary */
+        PlanSummary: {
+            /** Plan Id */
+            plan_id: string;
+            /**
+             * Area
+             * @enum {string}
+             */
+            area: "active" | "completed";
+            /** Revision */
+            revision: number;
+            /** Digest */
+            digest: string;
+            /** Title */
+            title: string | null;
+            /** Steps Total */
+            steps_total: number;
+            /** Steps Done */
+            steps_done: number;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Updated By */
+            updated_by: string;
+        };
+        /** Problem */
+        Problem: {
+            /** Path */
+            path: string;
+            /** Message */
+            message: string;
         };
         /** Project */
         Project: {
@@ -533,6 +1467,53 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+        };
+        /** PublishRequest */
+        PublishRequest: {
+            /**
+             * Sha256
+             * @description the bundle, committed to the blob store already
+             */
+            sha256: string;
+            /**
+             * Size
+             * @description bytes of the bundle
+             */
+            size: number;
+            /** Source Repo */
+            source_repo?: string | null;
+            /**
+             * Source Commit
+             * @description hex, abbreviated or whole
+             */
+            source_commit?: string | null;
+        };
+        /** Published */
+        Published: {
+            /**
+             * Scope
+             * @enum {string}
+             */
+            scope: "global" | "project";
+            /** Project */
+            project: string | null;
+            /** Name */
+            name: string;
+            /**
+             * Created
+             * @description false when the latest version has this bundle already
+             */
+            created: boolean;
+            latest: components["schemas"]["Version"];
+        };
+        /** Queued */
+        Queued: {
+            build: components["schemas"]["Build"] | null;
+            /**
+             * Queued
+             * @description false when a build of the project was waiting already, which counts as queued
+             */
+            queued: boolean;
         };
         /** Registered */
         Registered: {
@@ -611,6 +1592,135 @@ export interface components {
              */
             path?: string | null;
         };
+        /** Results */
+        Results: {
+            /** Items */
+            items: components["schemas"]["Found"][];
+        };
+        /** Revision */
+        Revision: {
+            /** Revision */
+            revision: number;
+            /**
+             * Area
+             * @enum {string}
+             */
+            area: "active" | "completed";
+            /** Digest */
+            digest: string;
+            /** Summary */
+            summary: string;
+            /** Actor */
+            actor: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** RevisionBody */
+        RevisionBody: {
+            /** Revision */
+            revision: number;
+            /**
+             * Area
+             * @enum {string}
+             */
+            area: "active" | "completed";
+            /** Digest */
+            digest: string;
+            /** Summary */
+            summary: string;
+            /** Actor */
+            actor: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Label */
+            label: {
+                [key: string]: unknown;
+            };
+            /** Body */
+            body: {
+                [key: string]: unknown;
+            };
+        };
+        /** RunCommitted */
+        RunCommitted: {
+            build: components["schemas"]["Build"] | null;
+            /**
+             * Queued
+             * @description false when a build of the project was waiting already, which counts as queued
+             */
+            queued: boolean;
+            /** Run Id */
+            run_id: string;
+            /**
+             * Status
+             * @constant
+             */
+            status: "ingested";
+            /**
+             * Created
+             * @description false when the run was in the corpus already
+             */
+            created: boolean;
+        };
+        /** RunPush */
+        RunPush: {
+            /**
+             * Run Id
+             * Format: uuid
+             */
+            run_id: string;
+            /**
+             * Log Upload Id
+             * @description the upload of the log, asked for with kind kg-log
+             */
+            log_upload_id?: string | null;
+            /**
+             * Log Sha256
+             * @description instead of an upload: a log the project holds already
+             */
+            log_sha256?: string | null;
+        };
+        /** RunState */
+        RunState: {
+            /** Run Id */
+            run_id: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "ingested";
+            /** Log Sha256 */
+            log_sha256: string | null;
+            /**
+             * Blobs
+             * @description blobs the log refers to
+             */
+            blobs: number;
+            /**
+             * Missing
+             * @description of those, the ones the project does not hold yet: upload them, then commit
+             */
+            missing: string[];
+        };
+        /** Runs */
+        Runs: {
+            /**
+             * Ingested
+             * @description run ids in the project's corpus
+             */
+            ingested: string[];
+            /**
+             * Pending
+             * @description run ids whose log the hub has, waiting for their blobs and the commit
+             */
+            pending: string[];
+        };
         /** SignedIn */
         SignedIn: {
             /**
@@ -640,6 +1750,62 @@ export interface components {
              */
             kind: "agent-session" | "llm-backend" | "writeback-target" | "cli" | "hub";
             clearance: components["schemas"]["Clearance"];
+        };
+        /**
+         * Skill
+         * @description A skill with its latest version.
+         */
+        Skill: {
+            /**
+             * Scope
+             * @enum {string}
+             */
+            scope: "global" | "project";
+            /** Project */
+            project: string | null;
+            /** Name */
+            name: string;
+            /** Version */
+            version: number;
+            /** Description */
+            description: string;
+            /** Sha256 */
+            sha256: string;
+            /** Size */
+            size: number;
+            /** Source Repo */
+            source_repo: string | null;
+            /** Source Commit */
+            source_commit: string | null;
+            /** Published By */
+            published_by: string;
+            /**
+             * Published At
+             * Format: date-time
+             */
+            published_at: string;
+        };
+        /** SkillHistory */
+        SkillHistory: {
+            /**
+             * Scope
+             * @enum {string}
+             */
+            scope: "global" | "project";
+            /** Project */
+            project: string | null;
+            /** Name */
+            name: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Versions
+             * @description the latest first
+             */
+            versions: components["schemas"]["Version"][];
         };
         /** TokenInfo */
         TokenInfo: {
@@ -695,6 +1861,87 @@ export interface components {
             /** Current */
             current: boolean;
         };
+        /** ToolCall */
+        ToolCall: {
+            /** Arguments */
+            arguments?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Sink
+             * @default claude-code@anthropic
+             */
+            sink: string;
+        };
+        /** ToolResult */
+        ToolResult: {
+            /** Content */
+            content: {
+                [key: string]: unknown;
+            }[];
+            /** Structuredcontent */
+            structuredContent?: {
+                [key: string]: unknown;
+            } | null;
+            /** Iserror */
+            isError?: boolean | null;
+        };
+        /** UploadItem */
+        UploadItem: {
+            /**
+             * Sha256
+             * @description hex SHA-256 of the bytes
+             */
+            sha256: string;
+            /**
+             * Size
+             * @description bytes, at most the limit of the kind
+             */
+            size: number;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "skill-bundle" | "kg-log" | "kg-blob";
+        };
+        /** UploadRequest */
+        UploadRequest: {
+            /**
+             * Project
+             * @description left out for blobs the hub holds itself (bundles of global skills; a hub admin only)
+             */
+            project?: string | null;
+            /** Items */
+            items: components["schemas"]["UploadItem"][];
+        };
+        /** UploadTicket */
+        UploadTicket: {
+            /** Sha256 */
+            sha256: string;
+            /** Upload Id */
+            upload_id: string;
+            /**
+             * Url
+             * @description presigned PUT: send exactly `size` bytes as application/octet-stream
+             */
+            url: string;
+        };
+        /** Uploads */
+        Uploads: {
+            /** Uploads */
+            uploads: components["schemas"]["UploadTicket"][];
+            /**
+             * Present
+             * @description blobs the project holds already, with nothing to upload
+             */
+            present: string[];
+            /**
+             * Expires At
+             * Format: date-time
+             * @description when the URLs stop working
+             */
+            expires_at: string;
+        };
         /** UserRow */
         UserRow: {
             /** Login */
@@ -731,6 +1978,31 @@ export interface components {
             /** Context */
             ctx?: Record<string, never>;
         };
+        /** Version */
+        Version: {
+            /** Version */
+            version: number;
+            /**
+             * Description
+             * @description from the frontmatter of SKILL.md
+             */
+            description: string;
+            /** Sha256 */
+            sha256: string;
+            /** Size */
+            size: number;
+            /** Source Repo */
+            source_repo: string | null;
+            /** Source Commit */
+            source_commit: string | null;
+            /** Published By */
+            published_by: string;
+            /**
+             * Published At
+             * Format: date-time
+             */
+            published_at: string;
+        };
         /** WhoAmI */
         WhoAmI: {
             /** Login */
@@ -740,6 +2012,144 @@ export interface components {
             token: components["schemas"]["TokenInfo"];
             /** Grants */
             grants: components["schemas"]["GrantInfo"][];
+        };
+        /** Conflict */
+        evo_agents__hub__server__memories__Conflict: {
+            /** Error */
+            error: string;
+            /** Message */
+            message: string;
+            /** Request Id */
+            request_id?: string | null;
+            /** Detail */
+            detail?: {
+                [key: string]: unknown;
+            }[] | null;
+            /** @description the version the hub holds, when the caller may see it */
+            current: components["schemas"]["Memory"] | null;
+        };
+        /** Written */
+        evo_agents__hub__server__memories__Written: {
+            /** Id */
+            id: number;
+            /** Scope */
+            scope: string;
+            /** Project */
+            project: string | null;
+            /** Location */
+            location: string;
+            /** Name */
+            name: string;
+            /** Type */
+            type: string;
+            /**
+             * Owner
+             * @description the login of the person who created it
+             */
+            owner: string;
+            /** Label */
+            label: {
+                [key: string]: unknown;
+            };
+            /**
+             * Body
+             * @description the whole file; empty for a tombstone
+             */
+            body: string;
+            /** Revision */
+            revision: number;
+            /** Deleted */
+            deleted: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Updated By */
+            updated_by: string;
+            /** Created */
+            created: boolean;
+            /**
+             * Changed
+             * @description false when the hub already held exactly this
+             */
+            changed: boolean;
+        };
+        /** Conflict */
+        evo_agents__hub__server__plans__Conflict: {
+            /** Error */
+            error: string;
+            /** Message */
+            message: string;
+            /** Request Id */
+            request_id?: string | null;
+            /** Detail */
+            detail?: {
+                [key: string]: unknown;
+            }[] | null;
+            /**
+             * Current
+             * @description the plan as the hub holds it, when the caller may see it
+             */
+            current?: {
+                [key: string]: unknown;
+            } | null;
+        };
+        /** Written */
+        evo_agents__hub__server__plans__Written: {
+            /** Project */
+            project: string;
+            /** Plan Id */
+            plan_id: string;
+            /**
+             * Area
+             * @enum {string}
+             */
+            area: "active" | "completed";
+            /** Revision */
+            revision: number;
+            /**
+             * Digest
+             * @description sha256 of the canonical JSON of the body, as evo_agents.harness.plan_digest
+             */
+            digest: string;
+            /** Label */
+            label: {
+                [key: string]: unknown;
+            };
+            /** Body */
+            body: {
+                [key: string]: unknown;
+            };
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Updated By */
+            updated_by: string;
+            /** Created */
+            created: boolean;
+            /**
+             * Changed
+             * @description false when the hub already held exactly this; no revision was added
+             */
+            changed: boolean;
+            /**
+             * Warnings
+             * @description what plan_semantics found; the plan was stored anyway
+             */
+            warnings: components["schemas"]["Problem"][];
         };
     };
     responses: never;
@@ -1493,6 +2903,1990 @@ export interface operations {
             };
             /** @description Unprocessable Entity */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    request_uploads_v1_blobs_uploads_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UploadRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Uploads"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    commit_v1_blobs_commit_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CommitRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Committed"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_plans_v1_projects__project__plans_get: {
+        parameters: {
+            query?: {
+                area?: ("active" | "completed") | null;
+            };
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanSummary"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    show_v1_projects__project__plans__plan_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                plan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Plan"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_v1_projects__project__plans__plan_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                plan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlanPut"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["evo_agents__hub__server__plans__Written"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["evo_agents__hub__server__plans__Conflict"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    patch_v1_projects__project__plans__plan_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                plan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlanPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["evo_agents__hub__server__plans__Written"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["evo_agents__hub__server__plans__Conflict"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    history_v1_projects__project__plans__plan_id__revisions_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                plan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Revision"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    show_revision_v1_projects__project__plans__plan_id__revisions__revision__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                plan_id: string;
+                revision: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RevisionBody"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    complete_v1_projects__project__plans__plan_id__complete_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                plan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["PlanComplete"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["evo_agents__hub__server__plans__Written"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["evo_agents__hub__server__plans__Conflict"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_memories_v1_memories_get: {
+        parameters: {
+            query?: {
+                scope?: ("project" | "personal") | null;
+                project?: string | null;
+                location?: string | null;
+                /** @description include tombstones, as a sync needs */
+                deleted?: boolean;
+                cursor?: string | null;
+                limit?: number;
+                /** @description the sink reading the memories (read rule) */
+                sink?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_v1_memories_put: {
+        parameters: {
+            query?: {
+                /** @description the sink reading the memories (read rule) */
+                sink?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MemoryIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["evo_agents__hub__server__memories__Written"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["evo_agents__hub__server__memories__Conflict"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    search_memories_v1_memories_search_get: {
+        parameters: {
+            query: {
+                /** @description words, "a phrase", or -excluded */
+                q: string;
+                scope?: ("project" | "personal") | null;
+                project?: string | null;
+                limit?: number;
+                /** @description the sink reading the memories (read rule) */
+                sink?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Results"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    show_v1_memories__memory_id__get: {
+        parameters: {
+            query?: {
+                /** @description the sink reading the memories (read rule) */
+                sink?: string;
+            };
+            header?: never;
+            path: {
+                memory_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Memory"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_v1_memories__memory_id__delete: {
+        parameters: {
+            query: {
+                /** @description the revision last seen */
+                if_revision: number;
+                /** @description the sink reading the memories (read rule) */
+                sink?: string;
+            };
+            header?: never;
+            path: {
+                memory_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["evo_agents__hub__server__memories__Written"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["evo_agents__hub__server__memories__Conflict"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_skills_v1_skills_get: {
+        parameters: {
+            query?: {
+                /** @description default: both */
+                scope?: ("global" | "project") | null;
+                /** @description only this project's skills */
+                project?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Skill"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    global_skill_v1_skills_global__name__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description the skill's name, its directory in every runtime */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillHistory"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    project_skill_v1_skills_projects__project___name__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the skill's name, its directory in every runtime */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillHistory"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    publish_global_v1_skills_global__name__versions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description the skill's name, its directory in every runtime */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PublishRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Published"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    publish_project_v1_skills_projects__project___name__versions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the skill's name, its directory in every runtime */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PublishRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Published"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    global_bundle_v1_skills_global__name__bundle_get: {
+        parameters: {
+            query?: {
+                /** @description default: the latest */
+                version?: number | null;
+            };
+            header?: never;
+            path: {
+                /** @description the skill's name, its directory in every runtime */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BundleTicket"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    project_bundle_v1_skills_projects__project___name__bundle_get: {
+        parameters: {
+            query?: {
+                /** @description default: the latest */
+                version?: number | null;
+            };
+            header?: never;
+            path: {
+                project: string;
+                /** @description the skill's name, its directory in every runtime */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BundleTicket"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    put_config_v1_kg__project__config_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KgConfig"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfigSaved"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_runs_v1_kg__project__runs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Runs"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    push_run_v1_kg__project__runs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RunPush"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunState"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    check_blobs_v1_kg__project__blobs_check_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BlobCheck"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MissingBlobs"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    commit_run_v1_kg__project__runs__run_id__commit_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the connector run, as its log file is named */
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunCommitted"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_builds_v1_kg__project__builds_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                status?: ("queued" | "running" | "succeeded" | "failed") | null;
+            };
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Builds"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    request_build_v1_kg__project__builds_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Queued"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    show_build_v1_kg__project__builds__build_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                build_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Build"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    call_tool_v1_kg__project__tools__tool__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                tool: "kg_search" | "kg_context" | "kg_node" | "kg_impact" | "kg_path" | "kg_status" | "kg_more";
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ToolCall"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ToolResult"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

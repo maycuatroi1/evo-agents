@@ -10,6 +10,9 @@ already signed in to github.com would be. Each Playwright context sets its own c
 parallel. Seeding goes through the real API too: POST /github/token hands out a GitHub token the fake issued to the
 hub's app, which POST /v1/auth/github trades for a machine token.
 
+The blob store stays unconfigured (``pg.clean_env`` drops every EVO_HUB_S3_* variable): the shell calls no blob
+route, the API starts without it, and its health reports r2 unconfigured.
+
 Environment: EVO_HUB_TEST_DSN (required, a superuser DSN), E2E_API_PORT (18324), E2E_STACK_PORT (18325),
 E2E_WEB_ORIGIN (http://localhost:3324, the hub's public URL), E2E_ADMIN_LOGIN (e2e-admin).
 """
