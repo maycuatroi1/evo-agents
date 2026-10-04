@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
 from typing import Annotated, Literal
 
@@ -209,9 +210,21 @@ class Mismatch(Exception):
         self.problems = problems
 
 
-async def commit_uploads(request: Request, user: Principal, project: str, upload_ids: list[str]) -> Committed:
+async def commit_uploads(
+    request: Request,
+    user: Principal,
+    project: str,
+    upload_ids: list[str],
+    *,
+    kinds: frozenset[str] | None = None,
+    inspect: Callable[[list[Upload]], Awaitable[None]] | None = None,
+) -> Committed:
     """Verify and commit ``upload_ids`` of ``project`` as ``user``. Raises HTTPException (403, 404, 422 for unknown
-    ids, 503), or Mismatch after discarding every upload of the request when one does not match."""
+    ids, 503), or Mismatch after discarding every upload of the request when one does not match.
+
+    ``kinds`` limits the uploads to those kinds (another is unknown). ``inspect`` is awaited once every upload is
+    sealed and matches, before anything is published: it may read the sealed copies (``sealed_key``), and whatever it
+    raises discards every upload of the request, rows and objects, and goes to the caller."""
     store = blob_store(request)
     pool = request.app.state.pool
     ids = sorted(set(upload_ids))
@@ -219,7 +232,7 @@ async def commit_uploads(request: Request, user: Principal, project: str, upload
         access = await project_access(conn, user, project)
         _writer(access, "committing")
         cursor = await conn.execute(PENDING, (ids, access.project_id, user.user_id, STALE_AFTER))
-        uploads = [Upload(*row) for row in await cursor.fetchall()]
+        uploads = [Upload(*row) for row in await cursor.fetchall() if kinds is None or row[3] in kinds]
     unknown = sorted(set(ids) - {upload.upload_id for upload in uploads})
     if unknown:
         raise HTTPException(
@@ -245,6 +258,16 @@ async def commit_uploads(request: Request, user: Principal, project: str, upload
             extra={"project": project, "login": user.login, "uploads": len(ids), "mismatched": problems},
         )
         raise Mismatch(problems)
+    if inspect is not None:
+        try:
+            await inspect(uploads)
+        except BlobStoreUnavailable:
+            raise HTTPException(503, UNAVAILABLE) from None  # the uploads stay, so the same commit can be sent again
+        except Exception:
+            async with pool.connection() as conn:
+                await conn.execute("DELETE FROM blob_uploads WHERE upload_id = ANY(%s::uuid[])", (ids,))
+            await _discard(store, ids)
+            raise
     try:
         written = await asyncio.to_thread(store.publish_all, uploads)
     except BlobStoreUnavailable:

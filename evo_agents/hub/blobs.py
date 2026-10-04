@@ -34,6 +34,7 @@ from collections.abc import Callable, Iterable, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from pathlib import Path
 
 import boto3
 from botocore.config import Config
@@ -268,6 +269,48 @@ class BlobStore:
             finally:
                 body.close()
         raise AssertionError("unreachable")
+
+    def fetch(self, key: str, target: Path, limit: int) -> tuple[str, int] | None:
+        """Write the object at ``key`` to ``target`` (created or truncated), reading at most ``limit`` + 1 bytes; its
+        SHA-256 and size, None when there is none. A body cut off on the way is written again from the start. The
+        caller compares the hash with the one it expects before trusting the file."""
+        for attempt in range(READ_ATTEMPTS):
+            response = self._call("GetObject", "get_object", Key=key)
+            if response is None:
+                return None
+            body = response["Body"]
+            digest = hashlib.sha256()
+            read = 0
+            try:
+                with open(target, "wb") as handle:
+                    for chunk in body.iter_chunks(CHUNK):
+                        read += len(chunk)
+                        if read > limit:
+                            break
+                        digest.update(chunk)
+                        handle.write(chunk)
+                return digest.hexdigest(), read
+            except (BotoCoreError, ConnectionError, TimeoutError) as exc:
+                if attempt == READ_ATTEMPTS - 1:
+                    raise _unavailable("GetObject", exc) from None
+                log.info("reading a blob was cut off; reading it again", extra={"error": _error_code(exc)})
+                time.sleep(0.5 * 2**attempt)
+            finally:
+                body.close()
+        raise AssertionError("unreachable")
+
+    def put_file(self, sha256: str, path: Path) -> bool:
+        """Store the file at ``path`` as blob ``sha256``, which the caller computed from these very bytes, unless the
+        blob is there already. True when this call wrote it."""
+        key = blob_key(sha256)
+        if self.size(key) is not None:
+            return False
+        size = path.stat().st_size
+        with open(path, "rb") as handle:
+            self._call("PutObject", "put_object", Key=key, Body=handle, ContentLength=size)
+        if self.size(key) != size:
+            raise BlobStoreUnavailable(f"blob {sha256} does not have its {size} bytes after it was written")
+        return True
 
     def copy(self, source: str, target: str) -> bool:
         """Copy ``source`` to ``target`` inside the bucket; False when ``source`` does not exist."""
