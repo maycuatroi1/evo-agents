@@ -31,6 +31,7 @@ hub-server = [
     "sqlalchemy>=2.0",
     "pydantic>=2.7",
     "sentry-sdk>=2.20",
+    "httpx>=0.27",
 ]
 
 [project.urls]

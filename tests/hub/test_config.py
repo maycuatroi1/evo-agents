@@ -41,6 +41,13 @@ def test_missing_dsn_stops_the_command_and_names_the_variable(command):
         ("EVO_HUB_POOL_TIMEOUT", "soon"),
         ("EVO_HUB_DSN", "mysql://u:p@h/db"),
         ("EVO_HUB_DSN", "just-a-word"),
+        ("EVO_HUB_PUBLIC_URL", "agents.omelet.tech"),
+        ("EVO_HUB_PUBLIC_URL", "https://agents.omelet.tech/?next=/"),
+        ("EVO_HUB_GITHUB_URL", "ftp://github.com"),
+        ("EVO_HUB_GITHUB_API_URL", "https://"),
+        ("EVO_HUB_GITHUB_TIMEOUT", "0"),
+        ("EVO_HUB_SESSION_SECRET", "too-short"),
+        ("EVO_HUB_ADMINS", "octo, not a login"),
     ],
 )
 def test_a_malformed_value_names_its_variable(variable, value):
@@ -73,6 +80,34 @@ def test_flags_win_over_variables_and_defaults_fill_the_rest(tmp_path):
     assert (config.pool_min_size, config.pool_max_size, config.pool_timeout) == (1, 10, 10.0)
     assert config.sentry_dsn is None
     assert load_config({"EVO_HUB_DSN": "host=db dbname=hub"}).data_dir == Path("~/.evo/hub-server/cache").expanduser()
+
+
+def test_sign_in_settings_load_and_their_secrets_never_reach_a_log():
+    env = {
+        "EVO_HUB_DSN": "postgresql://hub@db/hub",
+        "EVO_HUB_ADMINS": " Octo-Admin, hubot ,",
+        "EVO_HUB_GITHUB_CLIENT_ID": "Ov23liFakeClientId",
+        "EVO_HUB_GITHUB_CLIENT_SECRET": "Client-Secret-10-abcdef",
+        "EVO_HUB_SESSION_SECRET": "Session-Secret-11-" + "s" * 32,
+        "EVO_HUB_PUBLIC_URL": "https://agents.example.org/",
+    }
+    config = load_config(env)
+    assert config.admins == {"octo-admin", "hubot"} and config.is_admin("OCTO-ADMIN") and not config.is_admin("x")
+    assert config.public_url == "https://agents.example.org"
+    assert (config.github_url, config.github_api_url) == ("https://github.com", "https://api.github.com")
+    assert config.web_login_missing() == []
+    assert "Client-Secret-10" not in repr(config) and "Session-Secret-11" not in repr(config)
+    line = scrub(f"exchange with {env['EVO_HUB_GITHUB_CLIENT_SECRET']} signed by {env['EVO_HUB_SESSION_SECRET']}")
+    assert "Client-Secret-10" not in line and "Session-Secret-11" not in line
+    assert scrub("cookie evs_" + "a" * 43) == "cookie evs_***" and scrub("gho_" + "b" * 36) == "gho_***"
+
+    device_only = load_config({"EVO_HUB_DSN": "postgresql://hub@db/hub", "EVO_HUB_GITHUB_CLIENT_ID": "Ov23li"})
+    assert device_only.web_login_missing() == [
+        "EVO_HUB_GITHUB_CLIENT_SECRET",
+        "EVO_HUB_SESSION_SECRET",
+        "EVO_HUB_PUBLIC_URL",
+    ]
+    assert device_only.admins == frozenset()
 
 
 def test_config_repr_keeps_the_dsns_out():
