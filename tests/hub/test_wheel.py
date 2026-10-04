@@ -16,13 +16,23 @@ from tests.hub import pg
 if not pg.DSN:
     pytest.skip(pg.SKIP_REASON, allow_module_level=True)
 
+from evo_agents.hub.migrate import revisions
+
 ROOT = Path(__file__).parents[2]
-MIGRATION_FILES = (
-    "evo_agents/hub/migrations/env.py",
-    "evo_agents/hub/migrations/script.py.mako",
-    "evo_agents/hub/migrations/versions/0001_initial.py",
-    "evo_agents/hub/migrations/versions/0002_project_paths.py",
-)
+MIGRATIONS = ROOT / "evo_agents" / "hub" / "migrations"
+REVISIONS = revisions()  # every revision of this checkout, oldest first
+
+
+def migration_files() -> set[str]:
+    """Wheel paths of env.py, the script template and every file under versions/ in this checkout."""
+    versions = [
+        path
+        for path in (MIGRATIONS / "versions").rglob("*")
+        if path.is_file() and "__pycache__" not in path.parts and not path.name.startswith(".")
+    ]
+    assert len(versions) >= len(REVISIONS)  # at least one file per revision
+    files = [MIGRATIONS / "env.py", MIGRATIONS / "script.py.mako", *versions]
+    return {path.relative_to(ROOT).as_posix() for path in files}
 
 
 def run(args, **kwargs) -> subprocess.CompletedProcess:
@@ -51,7 +61,7 @@ def test_the_wheel_ships_the_migrations_and_migrates_from_its_own_venv(hub_db, t
     run([*pip, "wheel", "--no-deps", *build_isolation(), "--wheel-dir", str(dist), str(source)])
     (wheel,) = dist.glob("evo_ak-*.whl")
     names = set(zipfile.ZipFile(wheel).namelist())
-    assert set(MIGRATION_FILES) <= names
+    assert migration_files() <= names
 
     venv = tmp_path / "venv"
     run([sys.executable, "-m", "venv", "--without-pip", str(venv)])
@@ -75,7 +85,7 @@ def test_the_wheel_ships_the_migrations_and_migrates_from_its_own_venv(hub_db, t
 
     migrated = run([str(bin_dir / "evo-agents"), "hub", "migrate"], env=env, cwd=tmp_path)
     applied = [line["applied"] for line in pg.log_lines(migrated.stderr) if line["msg"] == "migrations applied"]
-    assert applied == [["0001", "0002"]]
+    assert applied == [list(REVISIONS)]
     with pg.admin(hub_db.admin_dsn) as conn:
-        assert conn.execute("SELECT version_num FROM alembic_version").fetchall() == [("0002",)]
+        assert conn.execute("SELECT version_num FROM alembic_version").fetchall() == [(REVISIONS[-1],)]
         assert conn.execute("SELECT count(*) FROM pg_tables WHERE schemaname = 'public'").fetchone()[0] == 15

@@ -67,6 +67,12 @@ def head_revision() -> str:
     return heads[0]
 
 
+def revisions() -> tuple[str, ...]:
+    """Every revision of the hub migrations, oldest first; the last one is ``head_revision()``."""
+    script = ScriptDirectory.from_config(alembic_config())
+    return tuple(reversed([revision.revision for revision in script.walk_revisions(head=head_revision())]))
+
+
 def _engine(dsn: str):
     # The URL only picks the dialect; connections come from libpq with the DSN as given, in either form.
     def connect():

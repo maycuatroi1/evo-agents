@@ -21,7 +21,7 @@ from psycopg import errors
 from psycopg.types.json import Jsonb
 
 from evo_agents.hub import migrate as hub_migrate
-from evo_agents.hub.migrate import LOCK_KEY, MigrationError, alembic_config, head_revision, migrate
+from evo_agents.hub.migrate import LOCK_KEY, MigrationError, alembic_config, head_revision, migrate, revisions
 
 TABLES = {
     "users",
@@ -39,7 +39,8 @@ TABLES = {
     "kg_ingests",
     "audit",
 }
-ALL = ("0001", "0002")  # every revision, in order
+ALL = revisions()  # every revision the package ships, in order
+HEAD = ALL[-1]
 SNAPSHOT = """
 SELECT 'column', table_name || '.' || column_name || ' ' || data_type || ' ' || is_nullable || ' '
        || coalesce(column_default, '')
@@ -71,9 +72,9 @@ def tables(db) -> set[str]:
 def test_a_fresh_database_gets_the_fourteen_tables(hub_db):
     result = migrate(hub_db.dsn)
     assert result.before == ()
-    assert result.applied == ALL and result.after == (head_revision(),) == ("0002",)
+    assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
     assert tables(hub_db) == TABLES | {"alembic_version"}
-    assert query(hub_db, "SELECT version_num FROM alembic_version") == [("0002",)]
+    assert query(hub_db, "SELECT version_num FROM alembic_version") == [(HEAD,)]
     # skills and skill_versions keep metadata and the blob key, never the bundle's bytes
     sql = "SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = 'public' AND {}"
     assert query(hub_db, sql.format("data_type = 'bytea'")) == []
@@ -88,7 +89,7 @@ def test_a_second_migrate_changes_nothing(hub_db):
     migrate(hub_db.dsn)
     before = query(hub_db, SNAPSHOT)
     result = migrate(hub_db.dsn)
-    assert (result.before, result.applied, result.after) == (("0002",), (), ("0002",))
+    assert (result.before, result.applied, result.after) == ((HEAD,), (), (HEAD,))
     assert query(hub_db, SNAPSHOT) == before
 
     run = pg.cli(["hub", "migrate"], env=pg.clean_env(EVO_HUB_DSN=hub_db.dsn))
@@ -146,7 +147,7 @@ def test_two_processes_migrating_at_once_both_exit_zero_and_apply_once(hub_db):
     outcomes = [outcome(lines) for lines in logs]
     assert sorted(line.get("applied", []) for line in outcomes) == [[], list(ALL)]
     assert all(any(line["msg"].startswith("waiting for the migration lock") for line in lines) for lines in logs)
-    assert query(hub_db, "SELECT version_num FROM alembic_version") == [("0002",)]
+    assert query(hub_db, "SELECT version_num FROM alembic_version") == [(HEAD,)]
     assert tables(hub_db) == TABLES | {"alembic_version"}
 
 
@@ -155,7 +156,7 @@ def test_a_database_at_an_unknown_revision_is_refused(hub_db):
     query(hub_db, "UPDATE alembic_version SET version_num = '9999' RETURNING version_num")
     before = query(hub_db, SNAPSHOT)
     with pytest.raises(
-        MigrationError, match=r"revision 9999, which evo-agents .* does not know \(its newest is 0002\)"
+        MigrationError, match=rf"revision 9999, which evo-agents .* does not know \(its newest is {HEAD}\)"
     ):
         migrate(hub_db.dsn)
     run = pg.cli(["hub", "migrate", "--dsn", hub_db.dsn], env=pg.clean_env())
@@ -187,10 +188,11 @@ def test_an_unreachable_database_fails_the_command_without_its_password():
 
 def test_revisions_form_one_chain_of_numbered_files():
     script = ScriptDirectory.from_config(alembic_config())
-    revisions = list(reversed(list(script.walk_revisions())))
+    chain = list(reversed(list(script.walk_revisions())))
     assert script.get_heads() == [head_revision()]
+    assert tuple(rev.revision for rev in chain) == ALL
     previous = None
-    for number, rev in enumerate(revisions, start=1):
+    for number, rev in enumerate(chain, start=1):
         assert rev.revision == f"{number:04d}"
         assert re.fullmatch(rf"{rev.revision}_[a-z0-9_]+\.py", Path(rev.path).name)
         assert rev.down_revision == previous
@@ -219,8 +221,8 @@ def test_0002_adds_the_harness_paths_to_a_database_holding_projects(hub_db):
     with pg.admin(hub_db.admin_dsn) as conn:
         ids = seed(conn)
         conn.execute("INSERT INTO project_repos (project_id, name) VALUES (%s, 'app')", (ids["project"],))
-    result = migrate(hub_db.dsn)
-    assert (result.before, result.applied) == (("0001",), ("0002",))
+    move_to(hub_db, "0002")
+    assert query(hub_db, "SELECT version_num FROM alembic_version") == [("0002",)]
     assert {"cluster", "workspace", "harness_path"} <= columns(hub_db, "projects")
     assert "path" in columns(hub_db, "project_repos")
     # Projects registered before 0002 keep their rows, without paths, which `hub registry pull` skips.
@@ -231,6 +233,10 @@ def test_0002_adds_the_harness_paths_to_a_database_holding_projects(hub_db):
     assert not {"cluster", "workspace", "harness_path"} & columns(hub_db, "projects")
     assert query(hub_db, "SELECT name FROM projects") == [("demo",)]
     assert query(hub_db, "SELECT name FROM project_repos") == [("app",)]
+
+    # From 0001 with rows in it, migrate runs 0002 and every later revision, and says so.
+    result = migrate(hub_db.dsn)
+    assert (result.before, result.applied, result.after) == (("0001",), ALL[ALL.index("0002") :], (HEAD,))
 
 
 def test_downgrade_to_base_removes_everything_and_upgrade_restores_it(hub_db):
