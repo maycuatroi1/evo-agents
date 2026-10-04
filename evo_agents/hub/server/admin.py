@@ -34,6 +34,11 @@ router = APIRouter(
 )
 
 
+class UserGrant(GrantInfo):
+    granted_by: str | None = Field(description="the login of the admin who gave or last changed the grant")
+    granted_at: datetime
+
+
 class UserRow(BaseModel):
     login: str
     admin: bool
@@ -41,7 +46,7 @@ class UserRow(BaseModel):
     created_at: datetime
     last_seen_at: datetime | None
     active_tokens: int
-    grants: list[GrantInfo]
+    grants: list[UserGrant]
 
 
 class GrantRequest(BaseModel):
@@ -63,7 +68,9 @@ SELECT u.id, u.login, u.github_id IS NOT NULL, u.created_at, u.last_seen_at,
   FROM users u ORDER BY lower(u.login)
 """
 USER_GRANTS = """
-SELECT g.user_id, p.name, g.role, g.max_level FROM grants g JOIN projects p ON p.id = g.project_id ORDER BY p.name
+SELECT g.user_id, p.name, g.role, g.max_level, b.login, g.granted_at
+  FROM grants g JOIN projects p ON p.id = g.project_id LEFT JOIN users b ON b.id = g.granted_by
+ ORDER BY p.name
 """
 UPSERT_GRANT = """
 INSERT INTO grants (user_id, project_id, role, max_level, granted_by) VALUES (%s, %s, %s, %s, %s)
@@ -79,9 +86,10 @@ async def users(request: Request) -> list[UserRow]:
     async with request.app.state.pool.connection() as conn:
         rows = await (await conn.execute(USERS)).fetchall()
         grant_rows = await (await conn.execute(USER_GRANTS)).fetchall()
-    grants: dict[int, list[GrantInfo]] = {}
-    for user_id, project, role, max_level in grant_rows:
-        grants.setdefault(user_id, []).append(GrantInfo(project=project, role=role, max_level=max_level))
+    grants: dict[int, list[UserGrant]] = {}
+    for user_id, project, role, max_level, granted_by, granted_at in grant_rows:
+        grant = UserGrant(project=project, role=role, max_level=max_level, granted_by=granted_by, granted_at=granted_at)
+        grants.setdefault(user_id, []).append(grant)
     return [
         UserRow(
             login=login,
