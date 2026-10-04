@@ -22,6 +22,7 @@ from fastapi.testclient import TestClient
 from evo_agents.hub import client as hub_client
 from evo_agents.hub.server.app import create_app
 from evo_agents.hub.server.security import authenticate
+from tests.hub.contract_keys import assert_json_keys
 from tests.hub.fake_github import Account
 from tests.hub.live import ADMIN, add_project, bearer, sign_in, sql
 
@@ -596,10 +597,12 @@ def test_the_cli_signs_in_with_the_device_flow_and_manages_tokens_and_grants(hub
         assert "grants: demo reader up to internal" in member_me.stdout
 
         users = json.loads(cli(["admin", "users", "--json"], admin_home, github).stdout)
+        assert_json_keys("hub admin users", users)
         (grant,) = {u["login"]: u["grants"] for u in users}["member"]
         expected = {"project": "demo", "role": "reader", "max_level": "internal", "granted_by": ADMIN}
         assert grant.items() >= expected.items()  # plus granted_at
         stats = json.loads(cli(["admin", "stats", "--json"], admin_home, github).stdout)
+        assert_json_keys("hub admin stats", stats)
         assert set(stats) == HUB_TABLES and stats["grants"] == 1 and stats["projects"] == 1
         assert cli(["admin", "revoke", "member", "demo"], admin_home, github).returncode == 0
         assert sql(hub_db, "SELECT count(*) FROM grants")[0][0] == 0

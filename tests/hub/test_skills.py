@@ -46,6 +46,7 @@ from evo_agents.hub.skills import (
     write_tree,
 )
 from tests.hub import live, pg
+from tests.hub.contract_keys import assert_json_keys
 
 MiB = 1024 * 1024
 LEVELS = ["public", "internal", "customer", "secret"]
@@ -952,6 +953,7 @@ def test_the_cli_publishes_lists_and_syncs_against_hub_serve(hub_db, tmp_path, s
         assert missing.returncode == 1 and "is not a directory" in missing.stderr
 
         listed = json.loads(ok(skills_cli(["list", "--scope", "global", "--json"], member_home)).stdout)
+        assert_json_keys("hub skills list", listed)
         assert [(s["name"], s["version"], s["source_commit"]) for s in listed] == [("house-style", 1, "abc1234")]
         assert "house-style" in ok(skills_cli(["list"], member_home)).stdout
 
@@ -962,6 +964,7 @@ def test_the_cli_publishes_lists_and_syncs_against_hub_serve(hub_db, tmp_path, s
         checked = ok(skills_cli(["sync", "--check"], member_home))
         assert "0 difference(s)" in checked.stdout
         report = json.loads(ok(skills_cli(["sync", "--check", "--json"], member_home)).stdout)
+        assert_json_keys("hub skills sync", report)
         assert report["differences"] == 0 and report["counts"] == {"current": 1}
         bad = skills_cli(["sync", "--runtime", "claude,vim"], member_home)
         assert bad.returncode == 1 and "--runtime takes" in bad.stderr

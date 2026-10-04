@@ -41,6 +41,14 @@ class PullResult:
     def changed(self) -> bool:
         return any(c["status"] != "unchanged" for c in self.clusters)
 
+    def as_json(self) -> dict:
+        return {
+            "registry": str(self.registry),
+            "backup": str(self.backup) if self.backup else None,
+            "clusters": self.clusters,
+            "skipped": self.skipped,
+        }
+
 
 def default_registry() -> Path:
     return SKILL_REGISTRY.expanduser()

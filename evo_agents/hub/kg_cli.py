@@ -20,6 +20,7 @@ from urllib.parse import quote
 
 from evo_agents.hub.cli_client import _client_command, _print_json, _signed_in, _table, _when
 from evo_agents.hub.client import Hub, HubError, load_credentials
+from evo_agents.hub.contract import json_option, returns_object
 from evo_agents.hub.kg_push import push_all, push_project
 
 BACKENDS = ("auto", "local", "hub")
@@ -61,6 +62,11 @@ def push(hub: Hub, project: str | None, everything: bool) -> list:
     return [push_project(hub, loaded) for _, loaded in projects]
 
 
+def push_json(reports: list) -> dict:
+    """What ``hub kg push --json`` prints."""
+    return {"ok": all(r.ok for r in reports), "projects": [r.to_json() for r in reports]}
+
+
 def print_reports(reports: list, out=None) -> None:
     out = out or sys.stdout
     for report in reports:
@@ -81,7 +87,7 @@ def cmd_push(args) -> int:
     except ProjectError as exc:
         raise HubError(str(exc)) from None
     if args.json:
-        _print_json({"ok": all(r.ok for r in reports), "projects": [r.to_json() for r in reports]})
+        _print_json(push_json(reports))
     else:
         print_reports(reports)
     return 0 if all(r.ok for r in reports) else 1
@@ -164,13 +170,13 @@ def register_kg(hsub) -> None:
     push_parser.add_argument(
         "--all", action="store_true", help="every project in projects.json the hub takes a push for from you"
     )
-    push_parser.add_argument("--json", action="store_true", help="machine-readable output")
+    json_option(push_parser, returns_object("ok", "projects"))
     push_parser.set_defaults(func=cmd_push)
 
     builds = ksub.add_parser("builds", help="a project's builds on the hub, newest first, and the queued jobs")
     builds.add_argument("--project", required=True, help="project name on the hub")
     builds.add_argument("--limit", type=int, default=20, help="builds to show (default: 20, at most 100)")
-    builds.add_argument("--json", action="store_true", help="machine-readable output")
+    json_option(builds, returns_object("builds", "jobs", schema="Builds"))
     builds.set_defaults(func=cmd_builds)
 
     build = ksub.add_parser("build", help="queue a build of a project's graph (needs the writer role)")
@@ -179,7 +185,7 @@ def register_kg(hsub) -> None:
     build.add_argument(
         "--timeout", type=float, default=DEFAULT_WAIT, help="seconds --wait waits at most (default: 1800)"
     )
-    build.add_argument("--json", action="store_true", help="machine-readable output")
+    json_option(build, returns_object("queued", "build", schema="Queued"))
     build.set_defaults(func=cmd_build)
 
 

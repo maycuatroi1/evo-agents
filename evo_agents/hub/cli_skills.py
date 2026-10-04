@@ -12,6 +12,7 @@ from __future__ import annotations
 import sys
 
 from evo_agents.hub.cli_client import EXIT_FAILED, _client_command, _print_json, _signed_in, _table, _when
+from evo_agents.hub.contract import json_option, returns_array, returns_object
 from evo_agents.hub.skill_sync import (
     CURRENT,
     DONE,
@@ -33,6 +34,20 @@ WOULD = {
     "remove": "would remove",
 }
 NOT_DONE = {"unmanaged": "not managed", "kept": "left as is"}
+# The keys of a skill in `hub skills list --json` (the contract, `evo-agents hub contract print`).
+SKILL_KEYS = (
+    "scope",
+    "project",
+    "name",
+    "version",
+    "description",
+    "sha256",
+    "size",
+    "source_repo",
+    "source_commit",
+    "published_by",
+    "published_at",
+)
 
 
 def _size(size: int) -> str:
@@ -159,12 +174,17 @@ def register_skills(hsub) -> None:
     )
     publish_parser.add_argument("--source-repo", help="the repo the directory comes from, such as agent-skills")
     publish_parser.add_argument("--source-commit", help="the commit of --source-repo it was published from")
-    publish_parser.add_argument("--json", action="store_true", help="machine-readable output")
+    json_option(
+        publish_parser,
+        returns_object(
+            "scope", "project", "name", "created", "latest", "bundle", schema="Published", added=("bundle",)
+        ),
+    )
     publish_parser.set_defaults(func=cmd_skills_publish)
 
     listed = ssub.add_parser("list", help="the skills you see, with their latest version")
     listed.add_argument("--scope", help="global, project (every project you see) or project:NAME; default: all")
-    listed.add_argument("--json", action="store_true", help="machine-readable output")
+    json_option(listed, returns_array(*SKILL_KEYS, schema="Skill"))
     listed.set_defaults(func=cmd_skills_list)
 
     synced = ssub.add_parser(
@@ -184,5 +204,8 @@ def register_skills(hsub) -> None:
     synced.add_argument(
         "--quiet", action="store_true", help="print only errors, and with --check the number of differences"
     )
-    synced.add_argument("--json", action="store_true", help="machine-readable output")
+    json_option(
+        synced,
+        returns_object("hub", "check", "differences", "counts", "targets", "notes", "errors", "backup"),
+    )
     synced.set_defaults(func=cmd_skills_sync)

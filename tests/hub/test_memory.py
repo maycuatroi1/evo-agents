@@ -39,6 +39,7 @@ from evo_agents.hub.memory import (
     slug,
 )
 from tests.hub import live, pg
+from tests.hub.contract_keys import assert_json_keys
 
 # The directories under ~/.claude/projects of one macOS machine, one per line with the absolute path each was made
 # for when it still existed (empty when not), pseudonymized: the home directory is /Users/someone, every other word
@@ -940,6 +941,7 @@ def test_two_homes_converge_to_the_same_content(team, hub_db):
 
     dry = ok(memory_cli(["push", "--all", "--dry-run", "--json"], laptop))
     report = json.loads(dry.stdout)
+    assert_json_keys("hub memory push", report)
     assert report["places"] == {"personal": 2, "project demo": 5} and report["counts"] == {"created": 7}
     assert counts(hub_db)["memories"] == 0
     pushed = ok(memory_cli(["push", "--all"], laptop))
@@ -969,6 +971,7 @@ def test_two_homes_converge_to_the_same_content(team, hub_db):
     shared = {key: data for key, data in files_of(laptop).items() if key[1] in ("project.md", "new.md", "app.md")}
     assert files_of(bob) == shared
     searched = json.loads(ok(memory_cli(["search", "alice", "--json"], bob)).stdout)
+    assert_json_keys("hub memory search", searched)
     assert searched == []
     assert "user.md" in ok(memory_cli(["search", "only alice"], laptop)).stdout
 
@@ -1002,6 +1005,7 @@ def test_a_conflict_keeps_both_versions(team):
     ok(memory_cli(["push", "--all"], laptop))
     (memory_dir(desktop, harness) / "ref.md").write_text(typed("reference", "desktop's"), encoding="utf-8")
     pulled = ok(memory_cli(["pull", "--all", "--json"], desktop))
+    assert_json_keys("hub memory pull", json.loads(pulled.stdout))
     (conflict,) = json.loads(pulled.stdout)["conflicts"]
     assert conflict["file"] == str(memory_dir(desktop, harness) / "ref.md")
     assert (memory_dir(desktop, harness) / "ref.md").read_text(encoding="utf-8") == typed("reference", "laptop's")

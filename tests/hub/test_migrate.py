@@ -1,4 +1,4 @@
-"""Migrations: a fresh database gets the fourteen tables, a second run changes nothing, processes that start
+"""Migrations: a fresh database gets the twenty-three hub tables, a second run changes nothing, processes that start
 together apply each revision once, a database at 0001 with rows in it moves to 0002, and a database the code
 cannot read is refused. Then the constraints schemas 0001 and 0002 promise."""
 
@@ -71,7 +71,8 @@ def tables(db) -> set[str]:
     }
 
 
-def test_a_fresh_database_gets_the_fourteen_tables(hub_db):
+def test_a_fresh_database_gets_the_twenty_three_tables(hub_db):
+    assert len(TABLES) == 23  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)

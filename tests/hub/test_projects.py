@@ -21,6 +21,7 @@ from evo_agents.hub.access import ProjectRules, Refused
 from evo_agents.hub.client import HubError
 from evo_agents.hub.registration import place, portable, registration, relative
 from tests.hub import live, pg
+from tests.hub.contract_keys import assert_json_keys
 
 LEVELS = ["public", "internal", "customer", "secret"]
 LOCATIONS = ["any", "domestic-only"]
@@ -831,6 +832,7 @@ def test_the_cli_registers_a_harness_and_pulls_the_registry(hub_db, tmp_path, gi
         elsewhere = cli(["registry", "pull", "--json"], laptop, github)
         assert elsewhere.returncode == 0, elsewhere.stderr
         report = json.loads(elsewhere.stdout)
+        assert_json_keys("hub registry pull", report)
         assert report["backup"] is None and report["clusters"][0]["present"] is False
         (cluster,) = json.loads((laptop / ".claude" / "harness" / "registry.json").read_bytes())["clusters"]
         assert cluster["root"] == str(laptop / "ws" / "demo-harness") and cluster["workspace"] == str(laptop / "ws")
