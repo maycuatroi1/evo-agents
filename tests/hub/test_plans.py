@@ -764,7 +764,7 @@ def test_reads_follow_the_label_rule_and_hide_what_they_refuse(client, github, h
         "no-such-plan", "X"
     )
     assert client.get(plan_url("internal-plan", "revisions"), headers=hubs["public-reader"].headers).status_code == 404
-    assert hubs["admin"].call("GET", plan_url()) == []  # no grant: nothing to read
+    assert client.get(plan_url(), headers=hubs["admin"].headers).status_code == 403  # no grant: nothing to read
     assert client.get(plan_url(), headers=hubs["stranger"].headers).status_code == 404
     sink = {**hubs["reader"].headers, "X-Evo-Sink": "no-such-sink"}
     assert client.get(plan_url(), headers=sink).json() == []  # an undeclared sink lets nothing through

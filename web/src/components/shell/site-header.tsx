@@ -31,6 +31,14 @@ function useCrumbs(): Crumb[] {
     if (section) {
       crumbs[1].href = projectHref(project);
       crumbs.push({ label: t(section.label satisfies NavLabel) });
+      if (parts[3]) {
+        // A page inside the section (a plan, a memory): the section links back, the item is named by its id.
+        crumbs[2].href = projectHref(project, section.segment);
+        crumbs.push({
+          label: decodeURIComponent(parts[3]),
+          href: parts[4] ? projectHref(project, `${section.segment}/${parts[3]}`) : undefined,
+        });
+      }
     }
     return crumbs;
   }

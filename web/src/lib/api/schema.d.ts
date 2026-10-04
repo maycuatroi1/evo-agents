@@ -441,6 +441,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project}/plans/{plan_id}/diff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Diff
+         * @description The lines that changed from one revision of the plan to another, as their git copies read; 404 when
+         *     either revision is not one the caller can see.
+         */
+        get: operations["diff_v1_projects__project__plans__plan_id__diff_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{project}/plans/{plan_id}/complete": {
         parameters: {
             query?: never;
@@ -1340,6 +1361,63 @@ export interface components {
         PlanComplete: {
             /** If Revision */
             if_revision?: number | null;
+        };
+        /** PlanDiff */
+        PlanDiff: {
+            /** Plan Id */
+            plan_id: string;
+            from_revision: components["schemas"]["Revision"];
+            to_revision: components["schemas"]["Revision"];
+            /** Context */
+            context: number;
+            /**
+             * Added
+             * @description lines added in all hunks
+             */
+            added: number;
+            /**
+             * Removed
+             * @description lines removed in all hunks
+             */
+            removed: number;
+            /**
+             * Hunks
+             * @description empty when the two revisions read the same
+             */
+            hunks: components["schemas"]["PlanDiffHunk"][];
+        };
+        /** PlanDiffHunk */
+        PlanDiffHunk: {
+            /** Old Start */
+            old_start: number;
+            /** Old Lines */
+            old_lines: number;
+            /** New Start */
+            new_start: number;
+            /** New Lines */
+            new_lines: number;
+            /** Lines */
+            lines: components["schemas"]["PlanDiffLine"][];
+        };
+        /** PlanDiffLine */
+        PlanDiffLine: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "context" | "added" | "removed";
+            /**
+             * Old
+             * @description the line's number in the from revision's text; null for an added line
+             */
+            old: number | null;
+            /**
+             * New
+             * @description the line's number in the to revision's text; null for a removed line
+             */
+            new: number | null;
+            /** Text */
+            text: string;
         };
         /** PlanPatch */
         PlanPatch: {
@@ -3092,6 +3170,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorBody"];
                 };
             };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
             /** @description Not Found */
             404: {
                 headers: {
@@ -3137,6 +3224,15 @@ export interface operations {
             };
             /** @description Unauthorized */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3358,6 +3454,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorBody"];
                 };
             };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
             /** @description Not Found */
             404: {
                 headers: {
@@ -3404,6 +3509,83 @@ export interface operations {
             };
             /** @description Unauthorized */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    diff_v1_projects__project__plans__plan_id__diff_get: {
+        parameters: {
+            query: {
+                /** @description the older revision */
+                from: number;
+                /** @description the newer revision */
+                to: number;
+                /** @description unchanged lines around a change */
+                context?: number;
+            };
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                plan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanDiff"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

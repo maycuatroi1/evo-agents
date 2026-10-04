@@ -1,11 +1,11 @@
-import { FolderGit2, LayoutDashboard, type LucideIcon, ShieldCheck } from "lucide-react";
+import { FolderGit2, LayoutDashboard, ListChecks, type LucideIcon, ShieldCheck } from "lucide-react";
 import type { Route } from "next";
 
 /**
  * The sidebar's links. Steps that add a project area (plans, memories, skills, knowledge graph) add one entry to
  * PROJECT_NAV and one label under `nav` in messages/vi.json and messages/en.json.
  */
-export type NavLabel = "overview" | "projects" | "admin";
+export type NavLabel = "overview" | "projects" | "admin" | "plans";
 
 export type ProjectNavItem = {
   label: NavLabel;
@@ -21,7 +21,10 @@ export type HubNavItem = {
   adminOnly?: boolean;
 };
 
-export const PROJECT_NAV: readonly ProjectNavItem[] = [{ label: "overview", icon: LayoutDashboard, segment: "" }];
+export const PROJECT_NAV: readonly ProjectNavItem[] = [
+  { label: "overview", icon: LayoutDashboard, segment: "" },
+  { label: "plans", icon: ListChecks, segment: "plans" },
+];
 
 export const HUB_NAV: readonly HubNavItem[] = [
   { label: "projects", icon: FolderGit2, href: "/" },
