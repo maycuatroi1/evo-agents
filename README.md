@@ -150,6 +150,14 @@ Hooks (`evo-agents hub hook session-start|stop`, same pins and `|| true` as evo-
 Both exit 0 whatever happens, give up after a few seconds, print at most one line without tokens or memory text, and
 send nothing when the machine is not signed in.
 
+### Running a hub
+
+The hub is an API server, a worker and a web interface, published as two images on GHCR for each release and run
+with `deploy/hub/docker-compose.yml` next to a Postgres database and a Cloudflare R2 bucket. `evo-agents hub serve`
+and `evo-agents hub worker` need the server extra: `pip install 'evo-ak[hub-server]'`. [docs/hub.md](docs/hub.md)
+covers the API and its OpenAPI document, sign-in from the CLI and the web, who sees what, the plan copies in git,
+blobs on R2, the worker and its queue, and operations: migrations, backup, restore and health checks.
+
 ## Writing a connector
 
 A connector is a generator in process or any executable. It writes JSON objects, one per line:
@@ -172,6 +180,9 @@ evo_agents/
   kg/         protocol, connectors, corpus, pipeline, store, policy, MCP server
   hub/        team hub: server, client commands, MCP proxy, plugin hooks
 plugins/      Claude Code marketplace (plugins evo-kg and evo-hub)
+web/          the hub's web interface (Next.js, its own image)
+deploy/hub/   the hub's Dockerfile and compose files
+docs/         hub.md: running and using the hub
 ```
 
 ## License

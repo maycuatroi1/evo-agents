@@ -31,6 +31,7 @@ from types import SimpleNamespace
 import pytest
 
 from tests.hub import live, pg
+from tests.hub.contract_keys import assert_json_keys
 from tests.hub.s3 import put_presigned
 
 if not pg.DSN:
@@ -960,11 +961,13 @@ def test_the_cli_pushes_builds_and_reads_through_hub_serve(hub_db, tmp_path, s3)
             "stay here, above what the hub sink clears\n"
         )
         listed = json.loads(ok(pg.cli(["hub", "kg", "builds", "--project", PROJECT, "--json"], env=env)).stdout)
+        assert_json_keys("hub kg builds", listed)
         assert [b["status"] for b in listed["builds"]] == ["queued"] and listed["jobs"][0]["status"] == "todo"
 
         with BackgroundWorker(hub_db, s3, tmp_path / "worker", concurrency=1):
             built = ok(pg.cli(["hub", "kg", "build", "--project", PROJECT, "--wait", "--json"], env=env))
         answer = json.loads(built.stdout)
+        assert_json_keys("hub kg build", answer)
         assert answer["build"]["status"] == "succeeded" and answer["build"]["runs"] == 1
         table = ok(pg.cli(["hub", "kg", "builds", "--project", PROJECT], env=env)).stdout
         assert "succeeded" in table and answer["build"]["content_hash"][:19] in table

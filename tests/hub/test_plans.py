@@ -39,6 +39,7 @@ from evo_agents.hub.plans import (
 )
 from evo_agents.schema import errors
 from tests.hub import live, pg
+from tests.hub.contract_keys import assert_json_keys
 
 FIXTURES = Path(__file__).parent / "fixtures" / "plans"
 COMPLETED = sorted((FIXTURES / "completed").glob("*.yaml"))
@@ -967,6 +968,7 @@ def test_the_cli_imports_exports_commits_and_restores_a_hand_edited_copy(hub_db,
         assert not draft_path.exists() and git(root, "diff", "--cached", "--name-only").split() == ["README.md"]
 
         history = json.loads(ok(evo(["hub", "plan", "history", "rollout", "--json"], home, cwd=root)).stdout)
+        assert_json_keys("hub plan history", history)
         assert [r["summary"] for r in history] == [
             "completed: moved from active",
             "step 2: status pending -> done; set done_at, note",
@@ -976,6 +978,7 @@ def test_the_cli_imports_exports_commits_and_restores_a_hand_edited_copy(hub_db,
         shown = ok(evo(["hub", "plan", "show", "rollout"], home, cwd=root)).stdout
         assert shown == (root / "plans/completed/rollout.yaml").read_text(encoding="utf-8")
         listed = json.loads(ok(evo(["hub", "plan", "list", "--json"], home, cwd=root)).stdout)
+        assert_json_keys("hub plan list", listed)
         assert [(p["plan_id"], p["area"]) for p in listed] == [
             ("evo-lms-migration", "completed"),
             ("kg-assertion-layer", "completed"),

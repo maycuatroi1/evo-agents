@@ -76,3 +76,6 @@ select = ["E", "F", "W", "I", "B", "UP"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+# Read by pytest-asyncio when it is installed (the tests do not need it); tests/conftest.py declares the option
+# otherwise, so pytest does not warn about an unknown key.
+asyncio_default_fixture_loop_scope = "function"

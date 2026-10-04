@@ -3,8 +3,18 @@ side of the hub.
 
 Standard library only, like ``client``; ``project register`` reads the harness with the harness loader (PyYAML, a
 core dependency). Results go to stdout; a failure is one ``error:`` line on stderr and exit status 1, and a 401
-says to run ``evo-agents hub login``. ``--json`` prints what the hub answered. No command ever prints a token.
-``hub memory`` is in ``cli_memory``, ``hub kg`` in ``kg_cli``, ``hub hook`` (the evo-hub plugin's hooks) in ``hooks``.
+says to run ``evo-agents hub login``. ``--json`` prints what the hub answered, with the keys declared next to the
+flag (``contract.json_option``). No command ever prints a token.
+
+``hub admin`` covers grants, users and row counts (``server.admin``); the audit trail and every user's tokens
+(``server.admin_console``) have no command and are read in the web's admin area. ``project register`` reads the
+harness through ``registration``, and ``registry pull`` writes the registry through ``registry``.
+
+``register_client`` also registers the client commands that live in their own modules: ``hub plan`` in
+``plan_cli`` (over ``plans``; its harness copies in ``mirror``), ``hub memory`` in ``cli_memory`` (over
+``memory``), ``hub skills`` in ``cli_skills`` (over ``skill_sync`` and ``skills``), ``hub kg`` in ``kg_cli`` (over
+``kg_push``), ``hub mcp`` in ``mcp_proxy`` (its tools in ``mcp_tools``), ``hub hook`` (the evo-hub plugin's hooks)
+in ``hooks``. ``hub contract``, ``hub openapi`` and the server commands are registered by ``cli``.
 """
 
 from __future__ import annotations
@@ -26,8 +36,27 @@ from evo_agents.hub.client import (
     login,
     remove_credentials,
 )
+from evo_agents.hub.contract import json_option, returns_array, returns_map, returns_object
 
 EXIT_FAILED = 1
+
+# The keys of the hub's answers these commands print with --json (the contract, `evo-agents hub contract print`).
+WHOAMI_KEYS = ("login", "admin", "token", "grants")
+TOKEN_KEYS = ("id", "kind", "host", "created_at", "last_used_at", "expires_at", "revoked_at", "state", "current")
+USER_KEYS = ("login", "admin", "signed_in", "created_at", "last_seen_at", "active_tokens", "grants")
+PROJECT_KEYS = (
+    "name",
+    "harness",
+    "levels",
+    "locations",
+    "default_label",
+    "sinks",
+    "repos",
+    "role",
+    "max_level",
+    "created_at",
+    "updated_at",
+)
 
 
 def _client_command(func):
@@ -83,7 +112,7 @@ def cmd_login(args) -> int:
         try:
             url = load_credentials().url
         except HubError:
-            raise HubError("which hub? pass --url, for example --url https://agents.omelet.tech") from None
+            raise HubError("which hub? pass --url, for example --url https://hub.example.org") from None
     signed = login(check_url(url))
     role = " (admin)" if signed.get("admin") else ""
     print(f"Signed in to {check_url(url)} as {signed['login']}{role}; the token is in {hub_dir() / 'token'}.")
@@ -282,10 +311,7 @@ def cmd_registry_pull(args) -> int:
     registry = Path(args.registry).expanduser() if args.registry else None
     result = pull(hub, registry, workspace)
     if args.json:
-        backup = str(result.backup) if result.backup else None
-        _print_json(
-            {"registry": str(result.registry), "backup": backup, "clusters": result.clusters, "skipped": result.skipped}
-        )
+        _print_json(result.as_json())
         return 0
     if not result.changed:
         print(f"{result.registry} already holds every hub project you see; nothing written.")
@@ -306,7 +332,7 @@ def cmd_registry_pull(args) -> int:
 
 def register_client(hsub) -> None:
     login_parser = hsub.add_parser("login", help="sign in to a hub with GitHub (device flow) and keep a machine token")
-    login_parser.add_argument("--url", help="the hub, such as https://agents.omelet.tech (default: the last one used)")
+    login_parser.add_argument("--url", help="the hub, such as https://hub.example.org (default: the last one used)")
     login_parser.set_defaults(func=cmd_login)
 
     logout = hsub.add_parser("logout", help="revoke this machine's token on the hub and delete it here")
@@ -316,14 +342,14 @@ def register_client(hsub) -> None:
     logout.set_defaults(func=cmd_logout)
 
     whoami = hsub.add_parser("whoami", help="the signed-in login, whether it is an admin, and its grants")
-    whoami.add_argument("--json", action="store_true", help="machine-readable output")
+    json_option(whoami, returns_object(*WHOAMI_KEYS, "url", schema="WhoAmI", added=("url",)))
     whoami.set_defaults(func=cmd_whoami)
 
     token = hsub.add_parser("token", help="your hub tokens")
     tsub = token.add_subparsers(dest="token_command", required=True)
     token_list = tsub.add_parser("list", help="your tokens with kind, host, last use and expiry")
     token_list.add_argument("--all", action="store_true", help="include revoked and expired tokens")
-    token_list.add_argument("--json", action="store_true", help="machine-readable output")
+    json_option(token_list, returns_array(*TOKEN_KEYS, schema="TokenRow"))
     token_list.set_defaults(func=cmd_token_list)
     revoke = tsub.add_parser("revoke", help="revoke one of your tokens")
     revoke.add_argument("id", metavar="ID", type=int, help="token id, from `hub token list`")
@@ -342,10 +368,10 @@ def register_client(hsub) -> None:
     admin_revoke.add_argument("project", metavar="PROJECT")
     admin_revoke.set_defaults(func=cmd_admin_revoke)
     users = asub.add_parser("users", help="every user with admin flag, last sign-in, tokens and grants")
-    users.add_argument("--json", action="store_true", help="machine-readable output")
+    json_option(users, returns_array(*USER_KEYS, schema="UserRow"))
     users.set_defaults(func=cmd_admin_users)
     stats = asub.add_parser("stats", help="rows in every hub table")
-    stats.add_argument("--json", action="store_true", help="machine-readable output")
+    json_option(stats, returns_map())
     stats.set_defaults(func=cmd_admin_stats)
 
     project = hsub.add_parser("project", help="projects on the hub, registered from their harness")
@@ -358,10 +384,10 @@ def register_client(hsub) -> None:
     register.add_argument(
         "root", metavar="HARNESS_ROOT", nargs="?", help="the harness, or a directory inside it (default: the cwd)"
     )
-    register.add_argument("--json", action="store_true", help="machine-readable output")
+    json_option(register, returns_object(*PROJECT_KEYS, "created", "changed", schema="Registered"))
     register.set_defaults(func=cmd_project_register)
     project_list = psub.add_parser("list", help="the projects you see, with your role and the hub sink of each")
-    project_list.add_argument("--json", action="store_true", help="machine-readable output")
+    json_option(project_list, returns_array(*PROJECT_KEYS, schema="Project"))
     project_list.set_defaults(func=cmd_project_list)
 
     registry = hsub.add_parser("registry", help="the harness registry of this machine")
@@ -375,7 +401,7 @@ def register_client(hsub) -> None:
         "--workspace", help="where the harnesses and repos live here (default: each project's, such as ~/github)"
     )
     pull.add_argument("--registry", help="the registry file (default: ~/.claude/harness/registry.json)")
-    pull.add_argument("--json", action="store_true", help="machine-readable output")
+    json_option(pull, returns_object("registry", "backup", "clusters", "skipped"))
     pull.set_defaults(func=cmd_registry_pull)
 
     from evo_agents.hub.plan_cli import register_plans

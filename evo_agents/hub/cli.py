@@ -6,8 +6,10 @@ the pip command when it is missing. These commands log JSON lines to stderr from
 configuration error is a log line naming the variable, and an unexpected exception is a log line with its
 traceback, secrets removed, rather than a bare traceback from the interpreter.
 
-The client commands (``login``, ``logout``, ``whoami``, ``token``, ``admin``, ``project``, ``registry``) live in
-``cli_client`` and need nothing beyond the core package, so they work on a core install.
+The client commands (``login``, ``logout``, ``whoami``, ``token``, ``admin``, ``project``, ``registry``, ``plan``,
+``memory``, ``skills``, ``kg``, ``mcp``, ``hook``) are registered by ``cli_client`` and need nothing beyond the core
+package, so they work on a core install. ``hub openapi`` (``openapi``) and ``hub contract print`` (``contract``) need
+the extra for the API document; ``hub contract check`` does not.
 """
 
 from __future__ import annotations
@@ -184,3 +186,7 @@ def register(sub) -> None:
     from evo_agents.hub.openapi import register as register_openapi
 
     register_openapi(hsub)
+
+    from evo_agents.hub.contract import register as register_contract
+
+    register_contract(hsub)

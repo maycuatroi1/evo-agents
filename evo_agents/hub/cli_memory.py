@@ -14,7 +14,27 @@ from pathlib import Path
 
 from evo_agents.hub.cli_client import EXIT_FAILED, _client_command, _print_json, _signed_in, _table, _when
 from evo_agents.hub.client import HubError
+from evo_agents.hub.contract import json_option, returns_array, returns_object
 from evo_agents.hub.memory import AGENT_SINK, MemorySync, Report, frontmatter, search
+
+# What push, pull and search print with --json (the contract, `evo-agents hub contract print`).
+SYNC_OUTPUT = returns_object("command", "hub", "dry_run", "counts", "places", "conflicts", "errors", "notes")
+MEMORY_KEYS = (
+    "id",
+    "scope",
+    "project",
+    "location",
+    "name",
+    "type",
+    "owner",
+    "label",
+    "body",
+    "revision",
+    "deleted",
+    "created_at",
+    "updated_at",
+    "updated_by",
+)
 
 COUNTS = {
     "push": (
@@ -142,7 +162,7 @@ def register_memory(hsub) -> None:
             else "delete the files the hub deleted, when they did not change here",
         )
         parser.add_argument("--quiet", action="store_true", help="print only conflicts and errors, on stderr")
-        parser.add_argument("--json", action="store_true", help="machine-readable output")
+        json_option(parser, SYNC_OUTPUT)
         parser.add_argument("--sink", default=AGENT_SINK, help=sink_help)
         parser.set_defaults(func=func)
 
@@ -150,6 +170,6 @@ def register_memory(hsub) -> None:
     found.add_argument("query", metavar="QUERY", help='words, "a phrase", or -excluded')
     found.add_argument("--project", help="only the memories of this hub project")
     found.add_argument("--limit", type=int, default=10, choices=range(1, 51), metavar="N", help="1 to 50 (default 10)")
-    found.add_argument("--json", action="store_true", help="machine-readable output")
+    json_option(found, returns_array(*MEMORY_KEYS, schema="Memory"))
     found.add_argument("--sink", default=AGENT_SINK, help=sink_help)
     found.set_defaults(func=cmd_memory_search)

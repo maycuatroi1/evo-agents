@@ -262,6 +262,16 @@ class ExportResult:
     def changed(self) -> list[str]:
         return [p["path"] for p in self.plans if p["status"] == "written"] + self.removed
 
+    def as_json(self) -> dict:
+        return {
+            "root": str(self.root),
+            "project": self.project,
+            "plans": self.plans,
+            "removed": self.removed,
+            "notes": self.notes,
+            "commit": self.commit,
+        }
+
 
 def _check_summary(summary: dict, hub) -> None:
     revision, digest = summary.get("revision"), summary.get("digest")
