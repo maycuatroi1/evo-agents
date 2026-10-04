@@ -10,7 +10,9 @@ it carries a label by names, ``{level, location, integrity, projects}``. Two rul
   knowledge.yaml says which levels may go to the hub.
 
 Reading on the hub itself, where no runtime sink takes part (the web shows members their own view), drops the sink
-from the first rule: L must be below the label of M, with L.projects a subset of {P} (``visible_by_grant``).
+from the first rule: L must be below the label of M, with L.projects a subset of {P} (``visible_by_grant``). It is
+the hub's one grant-only rule: the memory pages apply ``visible_by_grant``, and the knowledge graph pages read the
+graph with ``grant_label`` as the ceiling, the same label ``ceiling`` meets with a sink's clearance.
 
 All of them fail closed. When reading, a level or location the ladder lacks counts as the highest, a label that cannot
 be read hides its object, and a max level or sink the project lacks lets nothing through. When pushing, a name the
