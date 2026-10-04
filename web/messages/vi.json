@@ -1,0 +1,172 @@
+{
+  "app": {
+    "name": "evo-agents hub",
+    "description": "Kho chung của nhóm cho memories, skills, plans và knowledge graph.",
+    "skipToContent": "Bỏ qua, tới nội dung chính"
+  },
+  "login": {
+    "title": "Đăng nhập",
+    "heading": "Đăng nhập vào evo-agents hub",
+    "description": "Dùng tài khoản GitHub của bạn. Hub chỉ đọc tên đăng nhập GitHub, không lưu token GitHub.",
+    "github": "Đăng nhập bằng GitHub",
+    "notConfigured": "Hub này chưa bật đăng nhập web. Quản trị viên cần đặt client secret, session secret và địa chỉ công khai cho hub.",
+    "unreachable": "Không kết nối được tới API của hub. Thử tải lại trang sau ít phút.",
+    "access": "Bạn chỉ thấy những dự án quản trị viên đã cấp quyền cho tài khoản của mình.",
+    "cli": "Trên máy tính, đăng nhập CLI bằng lệnh <code>evo-agents hub login</code>."
+  },
+  "nav": {
+    "label": "Điều hướng chính",
+    "hub": "Hub",
+    "projects": "Dự án của tôi",
+    "project": "Dự án",
+    "overview": "Tổng quan",
+    "admin": "Quản trị",
+    "toggleSidebar": "Ẩn hoặc hiện thanh bên",
+    "breadcrumb": "Vị trí hiện tại"
+  },
+  "projectSwitcher": {
+    "label": "Dự án",
+    "trigger": "Chọn dự án, đang chọn {name}",
+    "triggerEmpty": "Chọn dự án",
+    "placeholder": "Chưa chọn dự án",
+    "allProjects": "Tất cả dự án",
+    "none": "Bạn chưa được cấp dự án nào",
+    "loadError": "Không tải được danh sách dự án",
+    "hint": "Mở dự án để xem nội dung"
+  },
+  "userMenu": {
+    "trigger": "Tài khoản {login}",
+    "hubAdmin": "Quản trị viên hub",
+    "member": "Thành viên",
+    "projectRole": "{project}: {role}, mức tối đa {level}",
+    "projectRoleNone": "{project}: không có vai trò",
+    "grants": "{count, plural, =0 {Chưa có quyền ở dự án nào} other {Có quyền ở # dự án}}",
+    "theme": "Giao diện",
+    "themeLight": "Sáng",
+    "themeDark": "Tối",
+    "themeSystem": "Theo hệ thống",
+    "language": "Ngôn ngữ",
+    "logout": "Đăng xuất",
+    "loggingOut": "Đang đăng xuất…",
+    "logoutFailed": "Chưa đăng xuất được. Thử lại sau ít phút."
+  },
+  "locales": {
+    "vi": "Tiếng Việt",
+    "en": "English"
+  },
+  "roles": {
+    "admin": "Quản trị",
+    "writer": "Ghi",
+    "reader": "Đọc",
+    "none": "Không có vai trò"
+  },
+  "home": {
+    "title": "Dự án của tôi",
+    "description": "Các dự án hub trả về cho tài khoản của bạn, kèm vai trò và mức nhãn cao nhất bạn được xem.",
+    "count": "{count, plural, =0 {Không có dự án} other {# dự án}}",
+    "emptyTitle": "Bạn chưa được cấp dự án nào",
+    "emptyDescription": "Nhờ quản trị viên hub cấp vai trò cho tài khoản {login}, rồi tải lại trang này.",
+    "columns": {
+      "name": "Dự án",
+      "role": "Vai trò",
+      "maxLevel": "Mức nhãn tối đa",
+      "repos": "Kho mã",
+      "updated": "Cập nhật"
+    },
+    "open": "Mở dự án {name}"
+  },
+  "project": {
+    "title": "Tổng quan dự án",
+    "harness": "Harness",
+    "noHarness": "Dự án được đăng ký không kèm đường dẫn harness.",
+    "role": "Vai trò của bạn",
+    "maxLevel": "Mức nhãn tối đa",
+    "adminWithoutGrant": "Bạn là quản trị viên hub nhưng chưa có vai trò trong dự án này: bạn quản lý được dự án nhưng không đọc nội dung của nó.",
+    "ladder": {
+      "title": "Thang nhãn",
+      "description": "Các mức từ thấp tới cao. Bạn xem được nội dung có nhãn tới mức tối đa của mình.",
+      "visible": "Xem được",
+      "hidden": "Không xem được",
+      "default": "Nhãn mặc định",
+      "locations": "Vị trí"
+    },
+    "repos": {
+      "title": "Kho mã",
+      "description": "Các repo khai trong harness của dự án.",
+      "empty": "Dự án chưa khai repo nào.",
+      "name": "Repo",
+      "branch": "Nhánh mặc định",
+      "origin": "Origin",
+      "path": "Đường dẫn"
+    },
+    "sinks": {
+      "title": "Sink",
+      "description": "Nơi nội dung của dự án được phép đi tới, kèm mức nhãn tối đa.",
+      "empty": "Dự án chưa khai sink nào.",
+      "id": "Sink",
+      "kind": "Loại",
+      "clearance": "Mức cho phép"
+    },
+    "details": {
+      "title": "Thông tin",
+      "workspace": "Workspace",
+      "path": "Thư mục harness",
+      "created": "Đăng ký lúc",
+      "updated": "Cập nhật lúc"
+    }
+  },
+  "admin": {
+    "title": "Quản trị hub",
+    "description": "Số dòng trong từng bảng của hub. Chỉ quản trị viên hub xem được trang này.",
+    "groups": {
+      "access": "Người dùng và quyền",
+      "projects": "Dự án",
+      "content": "Nội dung",
+      "other": "Khác"
+    },
+    "tables": {
+      "users": "Người dùng",
+      "tokens": "Token và phiên",
+      "grants": "Quyền theo dự án",
+      "audit": "Dòng audit",
+      "projects": "Dự án",
+      "project_repos": "Repo của dự án",
+      "project_sinks": "Sink của dự án",
+      "memories": "Memories",
+      "memory_revisions": "Revision của memory",
+      "plans": "Plans",
+      "plan_revisions": "Revision của plan",
+      "skills": "Skills",
+      "skill_versions": "Version của skill",
+      "kg_ingests": "Lượt đẩy knowledge graph"
+    },
+    "rows": "{count, plural, other {# dòng}}"
+  },
+  "states": {
+    "loading": "Đang tải…",
+    "forbiddenTitle": "Bạn không có quyền xem trang này",
+    "forbiddenDescription": "API của hub từ chối yêu cầu với tài khoản hiện tại. Nếu bạn cần truy cập, hãy nhờ quản trị viên hub cấp vai trò phù hợp.",
+    "notFoundTitle": "Không tìm thấy trang",
+    "notFoundDescription": "Trang này không tồn tại, hoặc thuộc một dự án bạn không được xem.",
+    "projectNotFoundTitle": "Không tìm thấy dự án {name}",
+    "projectNotFoundDescription": "Dự án chưa được đăng ký trên hub, hoặc bạn chưa được cấp quyền xem nó.",
+    "serverErrorTitle": "Hub gặp lỗi khi xử lý yêu cầu",
+    "serverErrorDescription": "Thử lại sau ít phút. Nếu lỗi còn, gửi mã request bên dưới cho quản trị viên.",
+    "networkErrorTitle": "Không kết nối được tới API của hub",
+    "networkErrorDescription": "Kiểm tra kết nối mạng rồi thử lại.",
+    "clientErrorTitle": "API không chấp nhận yêu cầu",
+    "unexpectedTitle": "Trang gặp lỗi ngoài dự kiến",
+    "unexpectedDescription": "Thử tải lại trang. Nếu lỗi còn, gửi mã tham chiếu bên dưới cho quản trị viên.",
+    "requestId": "Mã request",
+    "reference": "Mã tham chiếu",
+    "status": "Mã HTTP {status}",
+    "apiMessage": "Thông báo từ API",
+    "retry": "Thử lại",
+    "backHome": "Về danh sách dự án"
+  },
+  "table": {
+    "sortAscending": "Đang xếp tăng dần",
+    "sortDescending": "Đang xếp giảm dần",
+    "sortBy": "Xếp theo {column}"
+  }
+}

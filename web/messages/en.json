@@ -1,0 +1,172 @@
+{
+  "app": {
+    "name": "evo-agents hub",
+    "description": "The team's shared store for memories, skills, plans and knowledge graphs.",
+    "skipToContent": "Skip to main content"
+  },
+  "login": {
+    "title": "Sign in",
+    "heading": "Sign in to evo-agents hub",
+    "description": "Use your GitHub account. The hub reads only your GitHub login and never stores a GitHub token.",
+    "github": "Sign in with GitHub",
+    "notConfigured": "Web sign-in is not enabled on this hub. An administrator needs to set the client secret, the session secret and the hub's public URL.",
+    "unreachable": "The hub API cannot be reached. Reload the page in a few minutes.",
+    "access": "You only see the projects an administrator has granted to your account.",
+    "cli": "On your machine, sign the CLI in with <code>evo-agents hub login</code>."
+  },
+  "nav": {
+    "label": "Main navigation",
+    "hub": "Hub",
+    "projects": "My projects",
+    "project": "Project",
+    "overview": "Overview",
+    "admin": "Administration",
+    "toggleSidebar": "Show or hide the sidebar",
+    "breadcrumb": "Current location"
+  },
+  "projectSwitcher": {
+    "label": "Projects",
+    "trigger": "Choose a project, current: {name}",
+    "triggerEmpty": "Choose a project",
+    "placeholder": "No project selected",
+    "allProjects": "All projects",
+    "none": "No project has been granted to you yet",
+    "loadError": "The project list could not be loaded",
+    "hint": "Open a project to see its content"
+  },
+  "userMenu": {
+    "trigger": "Account {login}",
+    "hubAdmin": "Hub administrator",
+    "member": "Member",
+    "projectRole": "{project}: {role}, up to {level}",
+    "projectRoleNone": "{project}: no role",
+    "grants": "{count, plural, =0 {No project grants yet} one {Granted on # project} other {Granted on # projects}}",
+    "theme": "Theme",
+    "themeLight": "Light",
+    "themeDark": "Dark",
+    "themeSystem": "System",
+    "language": "Language",
+    "logout": "Sign out",
+    "loggingOut": "Signing out…",
+    "logoutFailed": "Sign-out did not go through. Try again in a moment."
+  },
+  "locales": {
+    "vi": "Tiếng Việt",
+    "en": "English"
+  },
+  "roles": {
+    "admin": "Admin",
+    "writer": "Writer",
+    "reader": "Reader",
+    "none": "No role"
+  },
+  "home": {
+    "title": "My projects",
+    "description": "The projects the hub returns for your account, with your role and the highest label level you may see.",
+    "count": "{count, plural, =0 {No projects} one {# project} other {# projects}}",
+    "emptyTitle": "No project has been granted to you yet",
+    "emptyDescription": "Ask a hub administrator to grant a role to {login}, then reload this page.",
+    "columns": {
+      "name": "Project",
+      "role": "Role",
+      "maxLevel": "Max label level",
+      "repos": "Repos",
+      "updated": "Updated"
+    },
+    "open": "Open project {name}"
+  },
+  "project": {
+    "title": "Project overview",
+    "harness": "Harness",
+    "noHarness": "The project was registered without its harness paths.",
+    "role": "Your role",
+    "maxLevel": "Max label level",
+    "adminWithoutGrant": "You are a hub administrator without a role in this project: you can manage it but cannot read its content.",
+    "ladder": {
+      "title": "Label ladder",
+      "description": "Levels from lowest to highest. You see content labelled up to your max level.",
+      "visible": "Visible",
+      "hidden": "Not visible",
+      "default": "Default label",
+      "locations": "Locations"
+    },
+    "repos": {
+      "title": "Repos",
+      "description": "The repos declared in the project's harness.",
+      "empty": "The project declares no repos.",
+      "name": "Repo",
+      "branch": "Default branch",
+      "origin": "Origin",
+      "path": "Path"
+    },
+    "sinks": {
+      "title": "Sinks",
+      "description": "Where the project's content may go, with the highest label level allowed there.",
+      "empty": "The project declares no sinks.",
+      "id": "Sink",
+      "kind": "Kind",
+      "clearance": "Clearance"
+    },
+    "details": {
+      "title": "Details",
+      "workspace": "Workspace",
+      "path": "Harness folder",
+      "created": "Registered",
+      "updated": "Updated"
+    }
+  },
+  "admin": {
+    "title": "Hub administration",
+    "description": "The number of rows in each hub table. Only hub administrators can see this page.",
+    "groups": {
+      "access": "Users and access",
+      "projects": "Projects",
+      "content": "Content",
+      "other": "Other"
+    },
+    "tables": {
+      "users": "Users",
+      "tokens": "Tokens and sessions",
+      "grants": "Project grants",
+      "audit": "Audit rows",
+      "projects": "Projects",
+      "project_repos": "Project repos",
+      "project_sinks": "Project sinks",
+      "memories": "Memories",
+      "memory_revisions": "Memory revisions",
+      "plans": "Plans",
+      "plan_revisions": "Plan revisions",
+      "skills": "Skills",
+      "skill_versions": "Skill versions",
+      "kg_ingests": "Knowledge graph pushes"
+    },
+    "rows": "{count, plural, one {# row} other {# rows}}"
+  },
+  "states": {
+    "loading": "Loading…",
+    "forbiddenTitle": "You do not have access to this page",
+    "forbiddenDescription": "The hub API refused the request for your account. If you need access, ask a hub administrator for a suitable role.",
+    "notFoundTitle": "Page not found",
+    "notFoundDescription": "This page does not exist, or it belongs to a project you cannot see.",
+    "projectNotFoundTitle": "Project {name} not found",
+    "projectNotFoundDescription": "The project is not registered on the hub, or you have not been granted access to it.",
+    "serverErrorTitle": "The hub failed to handle the request",
+    "serverErrorDescription": "Try again in a few minutes. If it keeps failing, send the request id below to an administrator.",
+    "networkErrorTitle": "The hub API cannot be reached",
+    "networkErrorDescription": "Check your connection and try again.",
+    "clientErrorTitle": "The API did not accept the request",
+    "unexpectedTitle": "Something unexpected went wrong",
+    "unexpectedDescription": "Reload the page. If it keeps failing, send the reference below to an administrator.",
+    "requestId": "Request id",
+    "reference": "Reference",
+    "status": "HTTP status {status}",
+    "apiMessage": "Message from the API",
+    "retry": "Try again",
+    "backHome": "Back to projects"
+  },
+  "table": {
+    "sortAscending": "Sorted ascending",
+    "sortDescending": "Sorted descending",
+    "sortBy": "Sort by {column}"
+  }
+}
