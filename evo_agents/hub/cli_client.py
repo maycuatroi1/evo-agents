@@ -376,3 +376,7 @@ def register_client(hsub) -> None:
     pull.add_argument("--registry", help="the registry file (default: ~/.claude/harness/registry.json)")
     pull.add_argument("--json", action="store_true", help="machine-readable output")
     pull.set_defaults(func=cmd_registry_pull)
+
+    from evo_agents.hub.plan_cli import register_plans
+
+    register_plans(hsub)

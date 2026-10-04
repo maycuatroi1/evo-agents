@@ -1,0 +1,720 @@
+# Copy of plans/completed/kg-assertion-layer.yaml of the evo-agents-harness repo, taken 2026-10-04, with internal
+# names, a personal path and the location of a secret replaced by [redacted]. Test data for tests/hub.
+id: kg-assertion-layer
+goal: >
+  Knowledge graph được dùng hằng ngày trên máy này: evo-agents phát hành trên PyPI và plugin evo-kg ghim
+  đúng phiên bản; tầng khẳng định có đủ kg_impact, kg_path, kiểm ontology, khoá PG-Keys, định nghĩa từ
+  frontmatter, node thư mục và lint quy ước định danh; LaunchAgent tự sync theo refresh của từng nguồn và
+  ghi bản kiểm toán; hai hook mới cộng dồn nhãn phiên và gợi ý ID từ graph trước Grep, đã đo trên meridai.
+
+created_at: '2026-10-03T14:30:00+07:00'
+
+context: >
+  Plan kg-prototype (giai đoạn 3) xong 13/13 bước và đóng ngày 2026-10-03; nó chỉ phủ mục 8 của
+  reports/Thiết kế khung knowledge graph.md. Đối chiếu ngày 2026-10-03 giữa thiết kế (mục 3 đến 5) và code
+  evo-agents ở main 1447e3f (48 test xanh) cho thấy ba nhóm thiếu. (1) Chưa dùng được hằng ngày: evo-agents
+  không có trên PATH, plugins/evo-kg/.mcp.json gọi `evo-agents` không ghim phiên bản nên MCP server không
+  khởi động trong phiên thường, hook SessionStart im lặng vì `|| true`; repo chưa có tag, phiên bản 0.0.1;
+  lệnh kg bind ghi trong step 8 của kg-prototype chưa tồn tại. (2) Tầng khẳng định còn hở: MCP server chỉ có
+  5 trên 9 tool (thiếu kg_path, kg_impact); evo_agents/kg/schema.py có validate_ontology nhưng không nơi nào
+  gọi, dù knowledge.schema.json đã có khoá ontology; kho chưa có partial unique index cho Symbol; frontmatter
+  id: chưa được coi là nơi định nghĩa nên 734 node Requirement SRS.<hex> của evo-lms không có cạnh defines;
+  graph chưa có node thư mục, nguyên nhân chính của mention treo ở kb-docs của meridai; harness validate chưa
+  lint quy ước ở mục 4.6; khoá refresh có trong schema nhưng không lệnh nào đọc; chưa có bản kiểm toán
+  JSONL. (3) Plugin chỉ có hook SessionStart. Corpus đã có khoá theo nguồn (corpus.lock) và bảng runs, nên
+  sync theo lịch không chạy chồng lên sync tay. CI Harness Validate của evo-lms ghim evo-agents theo commit
+  1447e3f, và mọi thay đổi schema tới evo-lms qua một lần nâng ghim có review.
+
+acceptance:
+  - criterion: >
+      evo-agents 0.1.0 có trên PyPI dưới tên evo-ak, phát hành từ tag v0.1.0 qua GitHub Actions; plugin evo-kg
+      0.1.0 khởi động MCP server và các hook bằng `uvx --from evo-ak==0.1.0 evo-agents` trong một phiên Claude Code thường (không
+      --plugin-dir) mở trong meridai-harness, và phiên đó gọi được kg_status.
+    verify: >
+      uvx --from evo-ak==0.1.0 evo-agents --version; claude plugin install evo-kg@evo-agents; trong ~/github/meridai-harness:
+      claude -p "gọi kg_status rồi in tên dự án đã gắn" phải in meridai
+  - criterion: >
+      kg_impact trả phụ thuộc ngược từ một symbol, một danh sách đường dẫn hoặc một unified diff, chỉ qua
+      cạnh tầng A (không có status proposed), độ sâu tối đa 3; kg_path trả chuỗi truy vết tối đa 6 hop giữa
+      hai node hoặc từ một node theo quan hệ truy vết. Cả hai giữ nhãn và trần CAP_CHARS.
+    verify: >
+      pytest tests/kg/test_serve.py -k "impact or path"; evo-agents kg query kg_impact
+      "symbol:kb-service:src/kb_service/mcp_adapter/asgi.py::Router" --project meridai phải liệt kê
+      build_router (cạnh calls, status resolved) và file asgi.py
+  - criterion: >
+      build --verify khớp hash trên ba dự án meridai, evo-lms, evo-agents sau khi kho lên schema 2; kho
+      schema 1 được dựng lại từ nhật ký thay vì báo lỗi; hai Symbol trùng khoá (repo, path, qualname) làm
+      build thất bại và in cả hai nguồn.
+    verify: >
+      pytest tests/kg -k "pg_key or schema_upgrade"; evo-agents kg build --verify --project meridai;
+      evo-agents kg build --verify --project evo-lms; evo-agents kg build --verify --project evo-agents
+  - criterion: >
+      Trên evo-lms, mỗi tài liệu có frontmatter id: khớp một mẫu trong identifiers sinh đúng một cạnh defines
+      tới node mã tương ứng; số node Requirement không có defines giảm từ 734 và con số mới nằm trong báo cáo.
+      Trên meridai, link tới thư mục phân giải về node Directory và số mention treo của nguồn kb-docs giảm so
+      với lượt đo của kg-prototype.
+    verify: evo-agents kg status --project evo-lms --json; evo-agents kg status --project meridai --json; báo cáo trong reports/
+  - criterion: >
+      evo-agents harness validate kiểm ontology.yaml mà knowledge.yaml trỏ tới và in cảnh báo lint quy ước
+      định danh; ba harness evo-agents-harness, meridai-harness, evo-lms-harness vẫn 0 lỗi.
+    verify: evo-agents harness validate ~/github/evo-agents-harness ~/github/meridai-harness ~/github/evo-lms-harness
+  - criterion: >
+      LaunchAgent của evo-agents đã nạp trên máy này, chạy `kg sync --due --all --build` mỗi giờ; trong vòng
+      hai giờ sau khi cài, audit.jsonl của meridai có bản ghi từ lượt chạy theo lịch, và kg status không còn
+      nguồn nào có tuổi vượt refresh cộng một giờ.
+    verify: >
+      launchctl print gui/$(id -u)/io.github.maycuatroi1.evo-agents.kg-sync; tail -n 5 ~/.evo/kg/meridai/audit.jsonl;
+      evo-agents kg status --project meridai
+  - criterion: >
+      Hook PostToolUse ghi nhãn cao nhất đã đọc vào ~/.evo/kg/sessions/<session_id>.json trong một phiên
+      thật. Hook PreToolUse gợi ý chỉ chứa ID và đường dẫn do parser rút ra, tắt được bằng
+      EVO_KG_GREP_HINTS=0, và trên ít nhất 50 mẫu tìm kiếm lấy từ transcript meridai có độ trễ p95 không quá
+      1,5 giây đo qua đúng lệnh hook của plugin.
+    verify: >
+      pytest tests/kg/test_hooks.py; báo cáo đo trong reports/ (độ trễ p50 và p95, tỉ lệ có gợi ý, tỉ lệ gợi ý
+      đúng trên mẫu 30 gợi ý chấm tay)
+  - criterion: Bộ eval của plugin qua bốn ca, gồm ca mới gọi kg_impact trước khi sửa một symbol.
+    verify: claude plugin eval plugins/evo-kg --runs 3 --model claude-sonnet-5-5
+  - criterion: >
+      CI evo-agents xanh trên ubuntu và macos; Harness Validate của evo-lms xanh với ghim evo-ak==0.1.0.
+    verify: gh run list --repo maycuatroi1/evo-agents --limit 3; gh run list --repo maycuatroi1/evo-lms-harness --workflow harness-validate.yaml --limit 3
+
+non_goals:
+  - Tầng đề xuất bằng LLM (chặng đề xuất, kg propose, memo LLM, phép thử P2).
+  - Ghi ngược (kg writeback, lens, P9) và phép thử sandbox Lark.
+  - Adapter PostgreSQL, phương án DuckDB.
+  - Hook PreToolUse chặn kênh ra ngoài; câu 6 ở mục 7 của thiết kế vẫn để mở.
+  - Connector mới (Notion, Jira, Google Drive, Lark Drive, scip, lms kg-connector srs, django-introspect)
+    và thông điệp "item không đổi" trong kg/1; seam kg-protocol-v1 không đổi trong plan này.
+  - O1 (lịch làm mới tối ưu theo nhật ký đọc), webhook.
+  - Integrity theo loại trường, nhãn theo nội dung (mẫu secret), truy vấn as-of revision và nối mention về
+    revision cũ.
+  - kg install --runtime cho Codex, OpenCode, Cursor; chuyển skill harness-engineering sang evo-agents; mọi
+    thay đổi trong evo-cli và agent-skills; Windows.
+  - Phép thử A/B "có đáng không" trên tác vụ thật.
+
+references:
+  - what: Kiến trúc, thành phần và phạm vi đã chốt
+    where: reports/Thiết kế khung knowledge graph.md, mục 2 đến 5, 6.4, 6.5
+  - what: Kết quả và lệch của prototype, việc nên làm tiếp
+    where: reports/Prototype khung knowledge graph trên meridai.md, mục "Lệch so với thiết kế" và "Việc nên làm tiếp"
+  - what: 734 Requirement không có defines, kg bind không tồn tại, ghim CI của evo-lms
+    where: reports/Khung knowledge graph trên evo-lms.md, mục "Mã SRS chưa có nơi định nghĩa" và "Phát hiện ngoài phạm vi"
+  - what: Plan đã đóng của giai đoạn 3
+    where: plans/completed/kg-prototype.yaml
+  - what: MCP tool hiện có, trần kết quả, thứ hạng status
+    where: evo-agents evo_agents/kg/serve.py (TOOLS, CAP_CHARS, STATUS_RANK, Session.tool_kg_context)
+  - what: Gắn dự án cho phiên và chỉ mục projects.json
+    where: evo-agents evo_agents/kg/project.py (resolve_project, remember, read_index)
+  - what: Hub schema và kiểm mở rộng bảo toàn chưa được gọi
+    where: evo-agents evo_agents/kg/schema.py (HUB_KINDS, HUB_RELATIONS, validate_ontology, known_kinds)
+  - what: Kiểm ngữ nghĩa của harness validate
+    where: evo-agents evo_agents/harness/__init__.py (knowledge_semantics, plan_semantics, contracts_semantics, validate_harness)
+  - what: Schema kho, SCHEMA_VERSION 1, chỉ mục hiện có
+    where: evo-agents evo_agents/kg/store.py (SCHEMA, Store.__init__, Store.write)
+  - what: Node Symbol và cạnh defines, mã nghiệp vụ trong heading
+    where: evo-agents evo_agents/kg/pipeline/stages.py (_python, _graphify), evo_agents/kg/pipeline/link.py (Linker.scan)
+  - what: Sync, khoá theo nguồn, bảng runs
+    where: evo-agents evo_agents/kg/sync.py (sync_source, _record_run), evo_agents/kg/corpus.py (lock, runs)
+  - what: Hook PreToolUse có additionalContext và trường if theo cú pháp quyền; tên tool MCP của plugin là mcp__plugin_<plugin>_<server>__<tool>; stdin của PostToolUse cho tool MCP chưa có tài liệu
+    where: https://code.claude.com/docs/en/hooks.md, https://code.claude.com/docs/en/plugins/components.md (tra ngày 2026-10-03)
+  - what: Ghim evo-agents trong CI của evo-lms
+    where: evo-lms-harness .github/workflows/harness-validate.yaml, bước "Install evo-agents"
+
+repos:
+  - repo: evo-agents
+    branch: kg-assertion-layer
+    order: 1
+    depends_on: []
+    status: merged
+    merged_into: main
+    merged_at: '2026-10-03'
+    scope: >
+      kg bind, ontology, PG-Keys và schema kho 2, định nghĩa từ frontmatter, node Directory, kg_impact,
+      kg_path, lint quy ước, sync --due và kg schedule, audit.jsonl, hai hook mới, skill và eval, phát hành
+      0.1.0 lên PyPI.
+  - repo: meridai-harness
+    branch: kg-assertion-layer
+    order: 2
+    depends_on: [evo-agents]
+    status: merged
+    merged_into: main
+    merged_at: '2026-10-03'
+    scope: >
+      knowledge.yaml: refresh cho các nguồn chưa có. Làm trong worktree ~/github/meridai-harness-assertion vì
+      checkout chính có thay đổi chưa commit của phiên khác.
+  - repo: evo-lms-harness
+    branch: kg-assertion-layer
+    order: 3
+    depends_on: [evo-agents]
+    status: merged
+    merged_into: master
+    merged_at: '2026-10-03'
+    scope: >
+      knowledge.yaml: refresh cho 17 nguồn; harness-validate.yaml: ghim evo-ak==0.1.0. Làm trong worktree
+      ~/github/evo-lms-harness-assertion.
+  - repo: evo-agents-harness
+    branch: main
+    order: 4
+    depends_on: [evo-agents, meridai-harness, evo-lms-harness]
+    status: done
+    done_at: '2026-10-03'
+    scope: knowledge.yaml (refresh), cài đặt trên máy, báo cáo đo, CLUSTER.md, AGENTS.md, plan.
+
+steps:
+  - id: 1
+    title: 'Lệnh kg bind'
+    repo: evo-agents
+    what: >
+      Thêm `evo-agents kg bind [--project NAME] [DIR]`, `kg bind --list`, `kg bind --remove DIR` trong
+      evo_agents/kg/cli.py. Gắn tường minh ghi vào ~/.evo/kg/bound.json (tách khỏi chỉ mục projects.json do
+      remember() ghi). resolve_project trong evo_agents/kg/project.py tra theo thứ tự: --project,
+      EVO_KG_PROJECT, gắn tường minh của DIR hoặc thư mục tổ tiên gần nhất, harness.yaml tìm từ thư mục, chỉ
+      mục projects.json. Hai thông báo lỗi "no project contains" và "belongs to several projects" chỉ tới
+      `evo-agents kg bind`. Không có tool MCP nào nhận tham số dự án.
+    depends_on: []
+    verify: pytest tests/kg -k bind -q
+    status: done
+    done_at: '2026-10-03'
+    evidence: >
+      evo-agents@a20956f trên nhánh kg-assertion-layer: kg bind, --list, --remove, ~/.evo/kg/bound.json,
+      tests/kg/test_bind.py. Chạy lại: 11 test bind xanh, toàn bộ 56 test xanh, ruff sạch. kg bind không có
+      --project thì ghim dự án mà DIR đang phân giải tới; một thư mục đã gắn mà dự án không nạp được thì báo
+      lỗi chứ không lùi về harness.yaml. serve.make_session vẫn thêm gợi ý cũ "--project" sau thông báo mới.
+    blocking: true
+    note: Đóng lệch của step 8 trong kg-prototype; serve và hook đều đi qua resolve_project.
+  - id: 2
+    title: 'Ontology vào validate và build'
+    repo: evo-agents
+    what: >
+      knowledge_semantics gọi validate_ontology trên file mà khoá ontology của knowledge.yaml trỏ tới (đường
+      dẫn tương đối theo thư mục của knowledge.yaml); file thiếu là lỗi. Kiểm thêm: kind của mỗi identifiers
+      phải thuộc known_kinds của hub cộng ontology (lỗi). Pipeline nạp ontology qua Project và từ chối fact có
+      kind ngoài known_kinds bằng một lỗi build có tên item. Harness không khai khoá ontology thì hành vi giữ
+      nguyên, nên ontology.yaml định dạng lms graph của evo-lms (không được knowledge.yaml trỏ tới) không bị
+      kiểm.
+    depends_on: []
+    verify: pytest tests/harness tests/kg -k ontology -q; evo-agents harness validate ~/github/evo-lms-harness
+    status: done
+    done_at: '2026-10-03'
+    evidence: >
+      evo-agents@ba65d01, merge vào kg-assertion-layer. Chạy lại: 11 test ontology xanh; validate evo-lms 82
+      file, meridai 32 file, evo-agents-harness 6 file, đều 0 lỗi và output -v giống bản 1447e3f; sau merge
+      67 test xanh, ruff sạch. Lệch: kiểm kind của identifiers cũng chỉ chạy khi knowledge.yaml có khoá
+      ontology, để harness không khai khoá giữ nguyên hành vi; validate_ontology từ chối thêm node_kinds hoặc
+      relations không phải danh sách và mục không có tên.
+    blocking: true
+  - id: 3
+    title: 'Khoá PG-Keys cho Symbol và schema kho 2'
+    repo: evo-agents
+    what: >
+      Node Symbol mang props.key = [repo, path, qualname], repo lấy từ khoá repo của nguồn hoặc tên harness
+      trong harness.yaml. evo_agents/kg/store.py thêm partial unique index trên (kind, json_extract(props,
+      '$.key')) cho kind Symbol, tx_to IS NULL, status khác proposed; nâng SCHEMA_VERSION lên "2". Store gặp
+      schema cũ thì build dựng lại kho từ nhật ký vào file mới rồi thay nguyên tử, thay vì RuntimeError. Vi
+      phạm khoá làm build thất bại, in khoá và các nguồn đã sinh ra nó. Chạy build trên ba dự án; nếu nguồn
+      chồng nhau sinh khoá trùng thì ghi lại ở note của step 16 và 17 để harness đó sửa include/exclude.
+    depends_on: []
+    verify: >
+      pytest tests/kg -k "pg_key or schema_upgrade" -q; evo-agents kg build --verify --project meridai;
+      evo-agents kg build --verify --project evo-lms; evo-agents kg build --verify --project evo-agents
+    status: done
+    done_at: '2026-10-03'
+    evidence: >
+      evo-agents@dc2a225, merge vào kg-assertion-layer ở evo-agents@98e4ca4 (gỡ xung đột import trong build.py
+      với step 2). Chạy lại: 6 test pg_key và schema_upgrade xanh; trên bản sao kho (EVO_KG_HOME trong
+      scratchpad, kho thật không đổi) build --verify khớp hash: meridai sha256:040c9179 (19.686 node, 32.476
+      cạnh), evo-lms sha256:ade79cae (43.854 node, 73.570 cạnh), evo-agents sha256:7ff71399; cả ba tự dựng lại
+      từ schema 1 lên 2. Không có Symbol trùng khoá ở dự án nào, nên step 16 và 17 không cần sửa
+      include/exclude. Sau merge 103 test xanh. Thêm: STRUCTURE_VERSION lên 3; serve, query và kg status báo
+      kho schema 1 bằng lỗi rõ thay vì traceback; dựng lại do đổi schema làm build_id bắt đầu lại từ 1.
+    blocking: true
+    note: Đổi schema kho nên phải chứng minh đường dựng lại từ nhật ký trước các step đổi pipeline sau.
+  - id: 4
+    title: 'Frontmatter id là nơi định nghĩa'
+    repo: evo-agents
+    what: >
+      Chặng cấu trúc đọc frontmatter YAML đầu file markdown; khoá id có giá trị khớp một mẫu trong identifiers
+      sinh node mã (cùng id dạng <kind lower>:<mã> như Linker.scan) và cạnh defines từ Document, status parsed.
+      kg status liệt kê mã có từ hai nơi defines trở lên, kèm gợi ý dùng derived_from (mục 4.6). Kiểm trên
+      evo-lms: số Requirement không có defines trước và sau.
+    depends_on: [3]
+    verify: pytest tests/kg -k frontmatter -q; evo-agents kg build --project evo-lms && evo-agents kg status --project evo-lms --json
+    status: done
+    done_at: '2026-10-03'
+    evidence: >
+      evo-agents@1a15e12, merge vào kg-assertion-layer ở evo-agents@3c9152c (gỡ xung đột hằng số phiên bản với
+      step 5; LINK_VERSION lên 7 vì cả hai nhánh cùng nâng 5 lên 6). Chạy lại: 20 test frontmatter xanh. Trên bản
+      sao kho evo-lms, Requirement không có defines 734/734 xuống 1/734 (mã còn lại chỉ được một plan step nhắc,
+      không tài liệu nào mang nó ở frontmatter); 0 mã có từ hai nơi defines. Sau merge 153 test xanh; build
+      --verify khớp trên evo-lms sha256:f30c1d7c (45.562 node, 82.099 cạnh, có cả node Directory) và meridai
+      sha256:d0fb9d2a. Thêm: frontmatter có derived_from không defines; link stage bỏ cạnh mentions khi chính
+      tài liệu đó đã defines mã.
+    blocking: true
+  - id: 5
+    title: 'Node Directory'
+    repo: evo-agents
+    what: >
+      Thêm hub kind Directory vào HUB_KINDS. Chặng map sinh một node Directory cho mỗi thư mục chứa ít nhất một
+      item của nguồn git hoặc harness, cạnh child_of từ File, Document và Directory con tới thư mục cha. Chỉ mục
+      định danh nhận đường dẫn thư mục; Linker.path_target phân giải mention đường dẫn kết thúc bằng / hoặc
+      trùng một thư mục về node Directory, status parsed. Đo lại mention treo của nguồn kb-docs trên meridai.
+    depends_on: [3]
+    verify: pytest tests/kg -k directory -q; evo-agents kg build --verify --project meridai
+    status: done
+    done_at: '2026-10-03'
+    evidence: >
+      evo-agents@c041ce6, merge vào kg-assertion-layer ở evo-agents@e2505cb. Chạy lại: 7 test directory xanh;
+      trên bản sao kho meridai build --verify khớp sha256:474a48d9 (20.119 node, 35.440 cạnh, trước đó 19.686 và
+      32.476; thêm 433 node Directory). Mention treo của kb-docs 442 xuống 282 (phân giải 72% lên 81%), tổng
+      treo 1.109 xuống 946. Sau merge 133 test xanh. ID dạng dir:<repo>:<path>; gốc repo không có node riêng;
+      phần lớn 282 link treo còn lại bắt đầu bằng / (tính từ gốc site docs), step này chưa xử lý.
+    blocking: true
+  - id: 6
+    title: 'kg_impact và kg_path'
+    repo: evo-agents
+    what: >
+      Thêm hai tool vào TOOLS trong evo_agents/kg/serve.py và vào lựa chọn của kg query. kg_impact nhận id,
+      paths (repo:path) hoặc diff (unified diff; tệp và khoảng dòng ánh xạ về File và Symbol qua where_prov),
+      đi ngược các quan hệ calls, imports, member_of, defines, depends_on, implements, verifies tối đa 3 hop,
+      chỉ qua cạnh status declared, parsed, introspected, resolved; mentions trả riêng thành nhóm "tài liệu
+      cần xem lại". kg_path nhận from và to (BFS ngắn nhất, ưu tiên status cao) hoặc chỉ from (chuỗi theo
+      implements, schedules, verifies, has_step, touches), tối đa 6 hop. Cả hai lọc theo Session.visible, không
+      mở rộng hub quá HUB_DEGREE, cắt theo CAP_CHARS và trả handle cho kg_more.
+    depends_on: [3]
+    verify: pytest tests/kg/test_serve.py -k "impact or path" -q
+    status: done
+    done_at: '2026-10-03'
+    evidence: >
+      evo-agents@d33fc2d, merge vào kg-assertion-layer ở evo-agents@856c362. Chạy lại: 9 test impact và path
+      xanh; sau merge 197 test xanh. Trên bản sao kho meridai, kg_impact của Router trả 5 phụ thuộc gồm file
+      asgi.py (defines, parsed) và build_router (calls, resolved), kết quả mang project và join nhãn; kg_path
+      Router tới build_router đi qua cạnh calls. Sửa thêm lỗi có sẵn ở _envelope: mỗi mảnh dài đúng CAP_CHARS
+      nên phần kg_more bị cắt lại; giờ mảnh là CAP_CHARS trừ 100. kg_path bỏ qua in_source; kg_impact chỉ đi
+      ngược nên sửa một symbol không liệt kê UseCase mà nó implements.
+    blocking: true
+  - id: 7
+    title: 'Lint quy ước định danh'
+    repo: evo-agents
+    what: >
+      Thêm cảnh báo (không phải lỗi) vào evo_agents/harness/__init__.py theo mục 4.6: step có order mà không
+      có id; repo của plan, của step và của seam không có trong harness.yaml và không khai external: true;
+      source của seam trong contracts.yaml không phải danh sách {repo, path}; commit trong evidence viết SHA
+      trần thay vì repo@sha. Thêm khoá external vào harness.schema.json cho repo. Ghi số cảnh báo mới của ba
+      harness vào note của step.
+    depends_on: []
+    verify: pytest tests/harness -q; evo-agents harness validate ~/github/evo-agents-harness ~/github/meridai-harness ~/github/evo-lms-harness
+    status: done
+    done_at: '2026-10-03'
+    evidence: >
+      evo-agents@6a3071f, merge vào kg-assertion-layer ở evo-agents@6d2e8be (gỡ xung đột với step 2 ở
+      _validate_file và test_harness.py). Chạy lại: 25 test harness xanh; validate ba harness 120 file, 0 lỗi,
+      exit 0; sau merge 117 test xanh. Cảnh báo mới: evo-agents-harness 0 lên 20 (19 SHA trần, 1 source seam
+      không phải danh sách); meridai 54 lên 174 (39 [redacted] chưa khai, 81 SHA trần); evo-lms 707 lên 1.672
+      (253 step có order thiếu id, 53 repo chưa khai, 48 source seam, 611 SHA trần). Lệch: khoá external đã có
+      sẵn trong harness.schema.json từ 9203974 nên không đổi schema; tên repo của chính harness lấy theo tên
+      thư mục gốc vì Harness.name là tên cụm; SHA trần chỉ tính 7 đến 12 hoặc 40 ký tự hex.
+    blocking: false
+    note: Cảnh báo không làm đỏ CI của evo-lms vì cmd validate chỉ trả exit 1 khi có lỗi.
+  - id: 8
+    title: 'kg sync --due, --all và kg schedule'
+    repo: evo-agents
+    what: >
+      evo_agents/kg/sync.py đọc refresh của nguồn (dạng 30m, 1h, 6h, 1d). `kg sync --due` chỉ chạy nguồn có
+      refresh và có lượt chạy ok cuối cùng cũ hơn refresh; nguồn không khai refresh không bao giờ đến hạn.
+      `--all` chạy cho mọi dự án trong projects.json có harness_root còn tồn tại, lỗi của một dự án không chặn
+      dự án khác, exit code khác 0 nếu có dự án lỗi. `--build` chỉ build dự án có nguồn vừa sync. Thêm
+      `kg schedule print|install|uninstall`: sinh plist LaunchAgent nhãn
+      io.github.maycuatroi1.evo-agents.kg-sync, StartInterval 3600, ProgramArguments là đường dẫn tuyệt đối của
+      evo-agents đang chạy cộng `kg sync --due --all --build`, PATH khai tường minh gồm ~/.local/bin, log ở
+      ~/.evo/kg/schedule.log; install dùng launchctl bootstrap, uninstall dùng launchctl bootout rồi xoá plist.
+    depends_on: []
+    verify: pytest tests/kg -k "due or schedule" -q; evo-agents kg schedule print
+    status: done
+    done_at: '2026-10-03'
+    evidence: >
+      evo-agents@047a6db, merge vào kg-assertion-layer ở evo-agents@816e23b (gỡ xung đột cli.py với kg bind,
+      giữ cả hai lệnh). Chạy lại: 30 test due và schedule xanh; kg schedule print in plist đúng nhãn; sau merge
+      97 test xanh, ruff sạch; không có plist nào trong ~/Library/LaunchAgents. Thêm so với plan: lượt chạy kết
+      thúc sớm tối đa min(300 giây, refresh/10) vẫn tính là đến hạn, để StartInterval 3600 với refresh 1h không
+      bỏ cách một giờ; plist ghim EVO_KG_HOME và đặt EVO_KG_TRIGGER=schedule cho step 9; --all thiếu --due bị từ
+      chối với exit 2.
+    blocking: true
+    note: Test chỉ kiểm plist sinh ra; install và uninstall chạy thật ở step 18.
+  - id: 9
+    title: 'Bản ghi kiểm toán'
+    repo: evo-agents
+    what: >
+      Mỗi lượt sync của một nguồn và mỗi lượt build ghi một dòng vào ~/.evo/kg/<project>/audit.jsonl: event
+      (sync hoặc build), run_id hoặc build_id, source, status, started_at, finished_at, số item, lỗi, lệnh xoá
+      bị giữ, content_hash, phiên bản evo-agents và connector, trigger (manual hoặc schedule). Không ghi nội
+      dung item. File tạo với quyền 0600.
+    depends_on: [8]
+    verify: pytest tests/kg -k audit -q
+    status: done
+    done_at: '2026-10-03'
+    evidence: >
+      evo-agents@288b5de, merge vào kg-assertion-layer ở evo-agents@bc2ed33. Chạy lại: 11 test audit xanh; sau
+      merge 128 test xanh, ruff sạch. Mỗi dòng có v, event, run_id hoặc build_id, project, status, thời điểm,
+      trigger, phiên bản và số đếm; không có nội dung item. Lệch: build --verify không thêm dòng riêng mà ghi
+      verified trên dòng build; build hỏng trước khi ghi kho có build_id null; kg sync --accept-removals chưa
+      ghi dòng kiểm toán (đáng thêm thành event thứ ba).
+    blocking: false
+  - id: 10
+    title: 'Hook PostToolUse cộng dồn nhãn phiên'
+    repo: evo-agents
+    what: >
+      Trước tiên ghi một mẫu stdin thật của PostToolUse cho tool mcp__plugin_evo-kg_evo-kg__kg_search bằng
+      hook ghi log tạm, vì tài liệu Claude Code chưa mô tả stdin cho tool MCP; lưu mẫu đã bỏ nội dung vào
+      tests/kg/fixtures/hooks/. Sau đó thêm `evo-agents kg hook post-tool`: đọc nhãn từ structuredContent của
+      kết quả (hoặc tra lại theo ID nếu mẫu cho thấy structuredContent không có), join với nhãn đã lưu trong
+      ~/.evo/kg/sessions/<session_id>.json (thư mục 0700), không bao giờ chặn, lỗi thì exit 0. kg_status và
+      ghi chú SessionStart in nhãn phiên hiện tại. Khai hook trong plugins/evo-kg/hooks/hooks.json với matcher
+      mcp__plugin_evo-kg_evo-kg__.*.
+    depends_on: [1]
+    verify: pytest tests/kg/test_hooks.py -k post_tool -q
+    status: done
+    done_at: '2026-10-03'
+    evidence: >
+      evo-agents@ccc3fc7, merge vào kg-assertion-layer ở evo-agents@297ab67. Mẫu stdin thật (Claude Code
+      2.1.288, 2 phiên claude -p, 0,22 USD): tool_name mcp__plugin_evo-kg_evo-kg__kg_search, tool_response là
+      một chuỗi JSON của structuredContent, server MCP có CLAUDE_CODE_SESSION_ID trùng session_id của hook; mẫu
+      đã thay giá trị thật bằng giá trị bịa ở tests/kg/fixtures/hooks/post_tool_kg_search.json. Chạy thử đầu
+      cuối ghi internal,U vào file 0600 trong thư mục 0700. Chạy lại: 35 test post_tool xanh; sau merge 188 test
+      xanh. Thêm: mọi kết quả serve có project và join nhãn ở cấp đầu (cạnh và bằng chứng có thể mang nhãn cao
+      hơn node); sau /clear kg_status có thể còn hiện phiên cũ vì session id cố định lúc server khởi động.
+    blocking: true
+  - id: 11
+    title: 'Hook PreToolUse gợi ý trước Grep'
+    repo: evo-agents
+    what: >
+      Thêm `evo-agents kg hook pre-search`: đọc stdin của PreToolUse; lấy chuỗi tìm từ tool_input.pattern của
+      Grep và Glob, hoặc từ lệnh rg và grep trong tool_input.command của Bash. Tra FTS với hạn chót nội bộ 1,5
+      giây; chỉ gợi ý node status declared hoặc parsed thuộc Plan, PlanStep, Seam, Requirement, UseCase,
+      Document, Section, Directory; tối đa 5 ID kèm đường dẫn; in hookSpecificOutput với permissionDecision
+      allow và additionalContext chỉ gồm ID, kind, đường dẫn và tên công cụ gợi ý (kg_context). Không có kết
+      quả, quá hạn, không gắn được dự án hoặc EVO_KG_GREP_HINTS=0 thì không in gì và exit 0. Khai trong
+      hooks.json: matcher Grep|Glob, và matcher Bash với trường if theo cú pháp Bash(rg *) và Bash(grep *);
+      kiểm cú pháp if trên Claude Code thật trước khi chốt, nếu không được thì lọc lệnh trong script. Bật mặc
+      định theo quyết định ngày 2026-10-03.
+    depends_on: [1, 5]
+    verify: pytest tests/kg/test_hooks.py -k pre_search -q
+    status: done
+    done_at: '2026-10-03'
+    evidence: >
+      evo-agents@14c6823, merge vào kg-assertion-layer ở evo-agents@ab05261 (gộp với step 10 ở cli.py, hooks.json
+      và test_hooks.py). Chạy lại: 17 test pre_search xanh, cả file test_hooks.py 52 test xanh; sau merge 214 test
+      xanh. Trên Claude Code 2.1.288 (2 phiên claude -p trong harness này): trường if "Bash(rg *)" và
+      "Bash(grep *)" chỉ bắn cho lệnh rg, grep và không bắn cho ls; model nhận được ghi chú. Độ trễ cả lệnh p50
+      0,075 giây, tối đa 0,101 giây qua 20 lần. Lệch có chủ ý: không đặt permissionDecision allow, vì theo
+      hooks.md "allow" bỏ qua hỏi quyền của người dùng; hook chỉ in additionalContext. Section có slug dài hơn
+      bốn từ hoặc có ký tự ngoài ASCII hiện thành Document của nó; quá 5 node khớp ngang nhau thì không in gì.
+    blocking: true
+    note: Test có ca văn bản nguồn chứa lệnh chèn và kiểm additionalContext không chứa gì ngoài ID, kind, đường dẫn.
+  - id: 12
+    title: 'Skill, README và eval kg_impact'
+    repo: evo-agents
+    what: >
+      Cập nhật plugins/evo-kg/skills/using-project-graph/SKILL.md (kg_impact trước khi sửa symbol, kg_path cho
+      truy vết, hai hook mới, EVO_KG_GREP_HINTS), README.md (cài từ PyPI, kg bind, kg schedule, danh sách
+      tool), INSTRUCTIONS trong serve.py. Thêm ca eval plugins/evo-kg/evals/impact-before-edit với mock MCP và
+      grader kiểm kg_impact được gọi trước lời gọi Edit đầu tiên.
+    depends_on: [6, 10, 11]
+    verify: claude plugin eval plugins/evo-kg --runs 3 --model claude-sonnet-5-5
+    status: done
+    done_at: '2026-10-03'
+    evidence: >
+      evo-agents@4afb81b trên kg-assertion-layer. Chạy lại eval bằng claude plugin eval plugins/evo-kg --runs 3
+      --model claude-sonnet-5-5 --scaffold --trust-plugin --no-publish -j 4 --allow-tools Edit Write: 4 ca, có
+      plugin cả 12 lượt đạt 1,00 (exact-string, impact-before-edit, injected-instruction, trace-requirement),
+      không plugin lần lượt 1,00, 0,67, 0,67, 0,33; 55 giây, 0,98 USD. 215 test xanh, ruff sạch. Lệch: lệnh
+      verify trong plan thiếu --scaffold, --allow-tools Edit Write và --trust-plugin, thiếu thì ca exact-string
+      không có file và ca mới không sửa được. Thêm mocks/evo-kg/_tools.json (danh sách tool thật, có test giữ
+      khớp serve.TOOLS) và đưa luật kg_impact lên đầu skill sau một lượt đầu chỉ đạt 0,89. Tổng chi phí eval
+      của step khoảng 2,7 USD.
+    blocking: true
+  - id: 13
+    title: 'Hạ tầng phát hành 0.1.0'
+    repo: evo-agents
+    what: >
+      __version__ và phiên bản plugin evo-kg cùng marketplace lên 0.1.0. plugins/evo-kg/.mcp.json dùng
+      command uvx với args ["evo-agents==0.1.0", "kg", "serve", "--sink", "claude-code@anthropic"]; các hook
+      trong hooks.json gọi `uvx evo-agents==0.1.0 kg hook ...` và giữ `|| true` để hook không làm hỏng phiên.
+      Thêm .github/workflows/release.yml chạy khi push tag v*: kiểm tag khớp __version__, build sdist và
+      wheel, chạy pytest, đăng PyPI bằng pypa/gh-action-pypi-publish qua trusted publishing (permissions
+      id-token: write, environment pypi). Thêm vào CI bước kiểm phiên bản trong .mcp.json và hooks.json khớp
+      __version__.
+    depends_on: [2, 4, 7, 9, 12]
+    verify: ruff check . && ruff format --check . && pytest -q; python -m build && twine check dist/*
+    status: done
+    done_at: '2026-10-03'
+    evidence: >
+      evo-agents@3f9395f trên kg-assertion-layer. Chạy lại: ruff sạch, 221 test xanh; pyproject-build ra
+      evo_agents-0.1.0.tar.gz và wheel, twine check --strict PASSED. Wheel cài trong venv riêng ngoài repo in
+      evo-agents 0.1.0 và nạp đủ 4 schema. .mcp.json gọi uvx evo-agents==0.1.0; hook gọi uvx --offline
+      evo-agents==0.1.0 (đo: uvx đã cache 17 đến 82 ms, cache cũ không offline 0,7 đến 1,5 giây), nên hook im
+      lặng cho tới khi MCP server tải gói lần đầu. Kiểm phiên bản nằm ở tests/release/test_versions.py (CI chạy
+      cùng pytest), thay cho một bước shell riêng trong ci.yml. release.yml: kiểm tag khớp __version__, ruff,
+      pytest, build, twine, cài thử wheel, rồi job publish trong environment pypi với id-token: write.
+    blocking: true
+  - id: 14
+    title: 'Tạo trusted publisher trên PyPI'
+    repo: evo-agents
+    what: >
+      Người dùng tự làm trên pypi.org (agent không đăng nhập hay điền form thay): tạo pending trusted publisher
+      cho project evo-agents, owner maycuatroi1, repository evo-agents, workflow release.yml, environment pypi.
+      Tạo environment pypi trong cài đặt repo GitHub.
+    depends_on: [13]
+    verify: Người dùng xác nhận trong chat rằng pending publisher đã tạo; gh api repos/maycuatroi1/evo-agents/environments --jq '.environments[].name' có pypi
+    status: done
+    done_at: '2026-10-03'
+    evidence: >
+      Người dùng đăng nhập PyPI trong browser của app và yêu cầu agent điền form. PyPI từ chối tên evo-agents
+      ("too similar to an existing project", project evoagents của người khác); người dùng chọn evo-ak. Pending
+      publisher đã tạo: evo-ak, GitHub maycuatroi1/evo-agents, workflow release.yml, environment pypi. Environment
+      pypi tạo bằng gh api PUT repos/maycuatroi1/evo-agents/environments/pypi; danh sách environment trả pypi.
+      Đổi tên phân phối sang evo-ak ở evo-agents@2c3b5b7 (pyproject, .mcp.json, hooks.json, README, release.yml,
+      tests/release); package evo_agents và lệnh evo-agents giữ nguyên; wheel evo_ak-0.1.0 build và twine check
+      PASSED, uvx --from wheel in evo-agents 0.1.0; 221 test xanh.
+    blocking: true
+  - id: 15
+    title: 'Merge, tag v0.1.0 và phát hành'
+    repo: evo-agents
+    what: >
+      Quét chuỗi nhạy cảm trên toàn cây ([redacted]) như các lần push trước,
+      merge fast-forward kg-assertion-layer vào main, push, chờ CI xanh. Hỏi người dùng trước khi push tag vì
+      một phiên bản PyPI không dùng lại được. Push tag v0.1.0, chờ release.yml đăng PyPI.
+    depends_on: [14]
+    verify: gh run list --repo maycuatroi1/evo-agents --limit 3; uvx --from evo-ak==0.1.0 evo-agents --version
+    status: done
+    done_at: '2026-10-03'
+    evidence: >
+      Quét chuỗi nhạy cảm trên cây kg-assertion-layer: [redacted]
+      đều 0; mã KB-0x mới chỉ là dữ liệu bịa trong test. main của evo-agents fast-forward 1447e3f..2c3b5b7 và push;
+      CI 37110861813 xanh trên ubuntu và macos, Python 3.10 và 3.12. Người dùng duyệt push tag; tag v0.1.0 trên
+      evo-agents@2c3b5b7, release 37110975017: build và publish thành công; pypi.org/pypi/evo-ak/json có 0.1.0;
+      uvx --from evo-ak==0.1.0 evo-agents --version tải từ PyPI và in evo-agents 0.1.0.
+    blocking: true
+  - id: 16
+    title: 'refresh cho nguồn của meridai'
+    repo: meridai-harness
+    what: >
+      Trong worktree ~/github/meridai-harness-assertion (nhánh kg-assertion-layer từ origin/main): thêm
+      refresh: 1h cho các nguồn git và harness trong knowledge.yaml, giữ 6h của lark-wiki. Sửa include/exclude
+      nếu step 3 ghi nhận Symbol trùng khoá. Merge fast-forward vào main và push như lần merge
+      kg-connector-lark-wiki; checkout chính không bị đụng vì knowledge.yaml không nằm trong thay đổi chưa
+      commit của nó (kiểm git status trước khi merge).
+    depends_on: [8, 15]
+    verify: evo-agents harness validate ~/github/meridai-harness; evo-agents kg sync --due --project meridai
+    status: done
+    done_at: '2026-10-03'
+    evidence: >
+      meridai-harness@f793a4e (worktree ~/github/meridai-harness-assertion, nhánh kg-assertion-layer), main
+      fast-forward b58c2db..f793a4e và push; checkout chính không có thay đổi ở knowledge.yaml. refresh: 1h cho 5
+      nguồn git và harness. Validate checkout chính 32 file, 0 lỗi. uvx --from evo-ak==0.1.0 evo-agents kg sync
+      --due --project ~/github/meridai-harness: 6 nguồn đến hạn, cả 6 OK, lark-wiki 64 item trong 65 giây, tổng
+      68 giây; audit.jsonl có dòng sync cho từng nguồn; chỉ mục projects.json của meridai chuyển từ worktree
+      meridai-harness-kg về checkout chính.
+    blocking: true
+  - id: 17
+    title: 'refresh và ghim 0.1.0 cho evo-lms'
+    repo: evo-lms-harness
+    what: >
+      Trong worktree ~/github/evo-lms-harness-assertion (nhánh kg-assertion-layer từ origin/master): thêm
+      refresh: 1h cho 17 nguồn trong knowledge.yaml; đổi bước "Install evo-agents" của
+      .github/workflows/harness-validate.yaml sang `python -m pip install "evo-ak==0.1.0"`. Sửa
+      include/exclude nếu step 3 ghi nhận Symbol trùng khoá. Merge fast-forward vào master và push.
+    depends_on: [8, 15]
+    verify: gh run list --repo maycuatroi1/evo-lms-harness --workflow harness-validate.yaml --limit 3
+    status: done
+    done_at: '2026-10-03'
+    evidence: >
+      evo-lms-harness@daaa018 (worktree ~/github/evo-lms-harness-assertion, nhánh kg-assertion-layer), master
+      fast-forward a1c1a89..daaa018 và push. refresh: 1h cho 17 nguồn; Harness Validate cài evo-ak==0.1.0 thay
+      cho ghim commit 1447e3f. Run 37111174613 xanh: log có "Successfully installed evo-ak-0.1.0" và "81 file(s),
+      0 with errors". Không cần sửa include/exclude (step 3 không thấy Symbol trùng khoá).
+    blocking: true
+    note: Plan Database Sync của evo-lms đã đỏ từ trước (references của tenant-onboarding-existing-accounts); không tính là lỗi của step này.
+  - id: 18
+    title: 'Cài đặt trên máy và LaunchAgent'
+    repo: evo-agents-harness
+    what: >
+      Thêm refresh: 1h cho hai nguồn trong knowledge.yaml của harness này. Trên máy: `uv tool install
+      evo-ak==0.1.0`; chạy `uvx --from evo-ak==0.1.0 evo-agents --version` một lần để làm ấm cache trước phiên đầu;
+      cập nhật marketplace và cài lại plugin evo-kg; `evo-agents kg schedule install`. Chờ lượt chạy theo lịch
+      đầu tiên và kiểm schedule.log, audit.jsonl.
+    depends_on: [15, 16, 17]
+    verify: >
+      launchctl print gui/$(id -u)/io.github.maycuatroi1.evo-agents.kg-sync; tail -n 5 ~/.evo/kg/meridai/audit.jsonl;
+      evo-agents kg status --project meridai
+    status: done
+    done_at: '2026-10-03'
+    evidence: >
+      knowledge.yaml của harness này thêm refresh: 1h cho 2 nguồn (commit cùng lần đánh dấu step). uv tool install
+      evo-ak 0.1.0 vào ~/.local/bin/evo-agents; marketplace maycuatroi1/evo-agents đã thêm, plugin evo-kg 0.1.0
+      cài ở scope user và đã bật. kg schedule install nạp io.github.maycuatroi1.evo-agents.kg-sync (run interval
+      3600 giây); kích chạy ngay bằng launchctl kickstart: 4 dự án, evo-dubbing không có nguồn đến hạn, evo-agents
+      2 nguồn, evo-lms 17 nguồn, meridai 5 nguồn, tất cả OK; cả ba kho thật tự dựng lại từ schema 1 lên 2; audit.jsonl
+      có dòng trigger schedule (evo-agents 3, evo-lms 18, meridai 6). Lượt đầu mất khoảng 32 phút vì launchd giới
+      hạn CPU và I/O của job nền và memo phải tính lại hết. Phát hiện: cài không có extra graphify thì build lặng lẽ
+      lùi về python-ast (meridai 3.242 Symbol thay vì 8.816); cài lại evo-ak[graphify]==0.1.0 rồi build tay: build
+      --verify khớp trên meridai sha256:d0edc269 (20.493 node, 36.423 cạnh), evo-lms sha256:fcfeeae6 (45.562 node,
+      82.099 cạnh), evo-agents sha256:01fbfa2c. kg status meridai: các nguồn git và harness 2 phút tuổi.
+    blocking: true
+  - id: 19
+    title: 'Đo và báo cáo'
+    repo: evo-agents-harness
+    what: >
+      Đo trên ba dự án và ghi reports/Tầng khẳng định của khung knowledge graph.md: build --verify và hash,
+      thời gian sync và build, kích thước kho sau schema 2; Requirement không có defines trên evo-lms trước và
+      sau; mention treo theo nguồn trên meridai trước và sau node Directory; số cảnh báo lint mới theo harness.
+      Với hook gợi ý: trích ít nhất 50 mẫu Grep, Glob, rg từ transcript ~/.claude/projects/
+      -Users-[redacted]-github-meridai-harness/*.jsonl, chạy qua đúng lệnh hook của plugin, ghi độ trễ p50
+      và p95, tỉ lệ có gợi ý, và tỉ lệ đúng trên 30 gợi ý chấm tay. Báo cáo chỉ ghi số tổng hợp và loại mẫu,
+      không chép nội dung khách hàng. Kiểm nhãn phiên trong một phiên claude -p thật trên meridai.
+    depends_on: [18]
+    verify: file báo cáo tồn tại và có đủ các số đo trên; evo-agents kg status --project meridai --json
+    status: done
+    done_at: '2026-10-03'
+    evidence: >
+      reports/Tầng khẳng định của khung knowledge graph.md (commit cùng lần đánh dấu step). kg status meridai: 20.493
+      node, 36.423 cạnh, mention 7.525/8.841 (85,1%), treo 1.030 (prototype 1.109), kb-docs 442 xuống 282; evo-lms
+      Requirement thiếu defines 1/734 (kiểm lại bằng sqlite chỉ đọc). Lint: 1.869 cảnh báo, 0 lỗi trên ba harness.
+      Hook gợi ý trên 232 lệnh grep thật của meridai (transcript không có Grep, Glob hay rg): p50 0,111 giây, p95
+      0,124 giây; 23 gợi ý, 5 đúng, 8 một phần, 10 sai; EVO_KG_GREP_HINTS=0 tắt được. Phiên claude -p thật trong
+      meridai trả "meridai" (0,23 USD); phiên thứ hai ghi nhãn phiên customer, U, meridai, 10 kết quả. Báo cáo chỉ
+      có số tổng hợp, không chép nội dung khách hàng.
+    blocking: true
+  - id: 20
+    title: 'Cập nhật bản đồ cụm và đóng plan'
+    repo: evo-agents-harness
+    what: >
+      CLUSTER.md: lệnh mới (kg bind, kg schedule, sync --due), cài từ PyPI thay cho đường dẫn venv, trạng thái
+      giai đoạn 4, trỏ tới báo cáo mới. contracts.yaml: notes của knowledge-manifest-v1 ghi ontology được kiểm
+      và consumer evo-lms ghim theo phiên bản PyPI. Chạy verify của hai seam. Đánh dấu plan, chuyển sang
+      plans/completed/ khi mọi repo đã merge. Nhắc người dùng rằng bản Notion không tự cập nhật.
+    depends_on: [19]
+    verify: evo harness show kg-assertion-layer; evo-agents harness validate ~/github/evo-agents-harness
+    status: done
+    done_at: '2026-10-03'
+    evidence: >
+      Commit đóng plan trong evo-agents-harness: CLUSTER.md có lệnh mới (kg bind, kg schedule, sync --due --all,
+      kg query kg_impact), cách cài evo-ak[graphify] thay cho đường dẫn venv, trạng thái giai đoạn 4 và việc còn
+      mở; AGENTS.md trỏ về plan đã xong; contracts.yaml: source của knowledge-manifest-v1 thành danh sách, notes
+      ghi ontology được kiểm và evo-lms ghim evo-ak==0.1.0. Verify seam: kg-protocol-v1 6/6 PASS từ checkout chính
+      meridai bằng evo-agents 0.1.0; knowledge-manifest-v1 120 file, 0 lỗi. Plan chuyển sang plans/completed/.
+      Báo cáo mới chưa có bản Notion.
+    blocking: false
+
+seams_touched:
+  - name: knowledge-manifest-v1
+    owner: evo-agents
+    consumers: [meridai-harness, evo-agents-harness, evo-lms-harness]
+    verify: evo-agents harness validate ~/github/meridai-harness ~/github/evo-agents-harness ~/github/evo-lms-harness
+
+risks:
+  - risk: Phát hành nhầm một bản PyPI hỏng; số phiên bản đã đăng không dùng lại được.
+    mitigation: >
+      release.yml kiểm tag khớp __version__ và chạy pytest trước khi đăng; step 13 chạy python -m build và
+      twine check ở máy; step 15 hỏi người dùng trước khi push tag. Bản hỏng thì yank và phát hành 0.1.1.
+  - risk: Dữ liệu khách hàng hoặc định danh nội bộ lọt vào repo public evo-agents qua fixture, mẫu stdin của hook hay ca eval.
+    mitigation: >
+      Mẫu stdin ở step 10 bỏ nội dung trước khi commit; fixture và mock eval chỉ dùng dữ liệu tự tạo; quét chuỗi
+      nhạy cảm trên toàn cây trước mỗi lần push (step 15). Số đo từ transcript meridai chỉ nằm trong báo cáo
+      của harness riêng tư này.
+  - risk: Hook gợi ý bật mặc định chèn gợi ý sai vào mọi phiên, hoặc làm chậm mỗi lần Grep.
+    mitigation: >
+      Chỉ gợi ý node status declared hoặc parsed thuộc các kind có tên; hạn chót 1,5 giây; tắt bằng
+      EVO_KG_GREP_HINTS=0; step 19 đo độ trễ và tỉ lệ đúng. Nếu tỉ lệ đúng thấp, câu hỏi mở chuyển hook sang
+      opt-in được trả lời bằng số đo đó.
+  - risk: uvx khởi động lạnh lâu hơn thời gian chờ khởi động MCP, hoặc thêm độ trễ vào mỗi lần hook chạy.
+    mitigation: >
+      Step 18 làm ấm cache uvx trước phiên đầu; step 19 đo độ trễ qua đúng lệnh hook. Nếu p95 vượt 1,5 giây vì
+      uvx, hook gọi evo-agents đã cài bằng uv tool install khi phiên bản khớp và chỉ lùi về uvx khi không khớp.
+  - risk: Schema kho 2 hoặc khoá PG-Keys làm build của một dự án thật thất bại.
+    mitigation: >
+      Kho schema cũ được dựng lại từ nhật ký (step 3); step 3 chạy build --verify trên cả ba dự án trước khi
+      merge, Symbol trùng khoá được sửa ở harness tương ứng (step 16, 17).
+  - risk: LaunchAgent chạy sync Lark trong môi trường launchd thiếu PATH hoặc credential, thất bại lặng lẽ.
+    mitigation: >
+      Plist khai PATH tường minh; lỗi đi vào schedule.log, audit.jsonl và exit code của kg status; step 18 chờ
+      lượt chạy theo lịch đầu tiên và kiểm cả hai file.
+  - risk: Sửa meridai-harness hoặc evo-lms-harness đè lên thay đổi chưa commit của phiên khác.
+    mitigation: Làm trong worktree riêng; kiểm git status của checkout chính trước khi merge fast-forward.
+
+rollback: >
+  evo-agents: revert commit merge của nhánh kg-assertion-layer trên main; bản 0.1.0 trên PyPI không xoá được,
+  chỉ yank, và plugin quay về ghim bản cũ bằng một commit. Kho schema 2: xoá graph.sqlite của dự án rồi dựng
+  lại bằng phiên bản cũ từ nhật ký, vì nhật ký và blob không đổi định dạng. LaunchAgent: `evo-agents kg
+  schedule uninstall` (launchctl bootout rồi xoá plist). meridai-harness và evo-lms-harness: revert commit
+  knowledge.yaml; evo-lms đưa ghim CI về commit 1447e3f. Không có thao tác nào sửa corpus đã có.
+
+assumptions:
+  - uv và uvx có ở ~/.local/bin (kiểm 2026-10-03).
+  - Lệnh meridai đã cài trên máy có kg-connector (kiểm 2026-10-03), nên LaunchAgent gọi được connector Lark.
+  - Corpus có khoá theo nguồn (corpus.lock), nên lượt sync theo lịch và lượt sync tay không chạy chồng lên nhau.
+  - Tên evo-ak trên PyPI còn trống (pypi.org/pypi/evo-ak/json và các biến thể chuẩn hoá trả 404 ngày 2026-10-03). Tên evo-agents bị PyPI từ chối vì quá giống project evoagents đã có.
+  - Claude Code hỗ trợ additionalContext và trường if cho hook PreToolUse theo tài liệu hooks tra ngày 2026-10-03; step 11 kiểm lại trên bản cài thật.
+
+decisions:
+  - date: '2026-10-03'
+    by: user
+    decision: >
+      Phát hành evo-agents lên PyPI khi push tag, qua GitHub Actions trusted publishing; plugin evo-kg gọi
+      MCP server và hook bằng `uvx evo-agents==X.Y.Z`.
+    why: Ghim thật và cài bằng một lệnh; tên evo-agents trên PyPI còn trống.
+  - date: '2026-10-03'
+    by: user
+    decision: >
+      Tên phân phối trên PyPI là evo-ak; package Python vẫn là evo_agents và lệnh vẫn là evo-agents. Plugin gọi
+      `uvx --from evo-ak==X.Y.Z evo-agents`.
+    why: PyPI từ chối evo-agents vì quá giống project evoagents đã có.
+  - date: '2026-10-03'
+    by: user
+    decision: Hook PreToolUse gợi ý ID trước Grep bật mặc định cho mọi dự án đã gắn, tắt bằng EVO_KG_GREP_HINTS=0.
+    why: >
+      Người dùng chọn có dữ liệu nhanh thay vì opt-in theo harness (phương án agent đề nghị). Rủi ro nhiễu được
+      đo ở step 19.
+  - date: '2026-10-03'
+    by: user
+    decision: Plan cài LaunchAgent trên máy này để chạy kg sync --due mỗi giờ cho mọi dự án đã đăng ký.
+    why: Muốn graph tự tươi mà không phải nhớ chạy sync tay.
+  - date: '2026-10-03'
+    by: agent
+    decision: >
+      refresh là opt-in theo nguồn: nguồn không khai refresh không bao giờ đến hạn. Nguồn git và harness của ba
+      harness khai 1h, lark-wiki giữ 6h.
+    why: Đúng mục 4.11 của thiết kế (khoảng refresh khai theo nguồn); tránh một mặc định ngầm cho nguồn gọi mạng.
+  - date: '2026-10-03'
+    by: agent
+    decision: Gắn dự án tường minh của kg bind lưu ở ~/.evo/kg/bound.json, tách khỏi chỉ mục projects.json.
+    why: projects.json do remember() ghi lại mỗi lần sync; gắn tường minh của người dùng không được bị ghi đè.
+  - date: '2026-10-03'
+    by: agent
+    decision: Plan không đổi giao thức kg/1; seam kg-protocol-v1 không nằm trong seams_touched.
+    why: Thông điệp "item không đổi" và connector mới nằm ngoài phạm vi.
+
+tech_debt:
+  - issue: >
+      Backend code auto lặng lẽ lùi về python-ast khi môi trường không có graphify, nên một bản cài thiếu extra
+      mất khoảng hai phần ba số Symbol mà không có cảnh báo nào (phát hiện ở step 18).
+    severity: medium
+    status: fixed
+    note: >
+      Sửa ở evo-agents@60287a3, phát hành 0.1.1 (tag v0.1.1, release thành công, PyPI có 0.1.1): kg build và kg
+      status in backend code theo nguồn, cảnh báo khi auto lùi về python-ast, nguồn khai graphify-ast mà thiếu
+      graphify thì build hỏng; README hướng dẫn cài evo-ak[graphify]. Trên máy đã cài evo-ak[graphify]==0.1.1 và
+      plugin evo-kg 0.1.1; build meridai bằng 0.1.1 cùng hash sha256:d0edc269 với 0.1.0.
+
+open_questions:
+  - issue: Hook gợi ý trước Grep có nên chuyển sang opt-in theo harness nếu tỉ lệ gợi ý đúng đo ở step 19 thấp?
+    status: answered
+    blocking: false
+    note: >
+      Người dùng quyết ngày 2026-10-03 sau khi đọc báo cáo step 19 (5/23 gợi ý đúng): giữ bật mặc định, sửa
+      cách xếp hạng rồi đo lại trên tập dev meridai và tập holdout evo-lms, evo-agents-harness. Làm trên nhánh
+      hook-ranking của evo-agents.
+  - issue: Câu 6 ở mục 7 của thiết kế (hook chặn kênh ra ngoài) dùng nhãn phiên mà step 10 ghi lại.
+    status: open
+    blocking: false
+    note: Ngoài phạm vi plan này; số liệu nhãn phiên của step 19 là đầu vào cho quyết định đó.

@@ -1,0 +1,230 @@
+# Copy of plans/completed/evo-lms-migration.yaml of the evo-agents-harness repo, taken 2026-10-04, with internal
+# names, a personal path and the location of a secret replaced by [redacted]. Test data for tests/hub.
+id: evo-lms-migration
+goal: >
+  evo-lms-harness là harness thứ ba dùng evo-agents: manifest, contracts và plan qua
+  evo-agents harness validate không lỗi, và có knowledge.yaml để agent đọc knowledge graph của các
+  repo sản phẩm evo-lms qua plugin evo-kg. Bộ công cụ cũ của evo-lms (lms graph, harness.py,
+  sync_plans.py) vẫn chạy như trước.
+
+created_at: '2026-10-03T00:45:00+07:00'
+
+context: >
+  Prototype (plan kg-prototype) chạy trên meridai. evo-lms-harness lớn hơn nhiều: 21 repo, 79 plan,
+  48 seam, cùng một graph SRS cũ (lms graph, PostgreSQL, bindings/ theo định dạng riêng). Kiểm ngày
+  2026-10-03: validate báo 6 file lỗi, gồm 11 seam verify null, 4 order số thực, một plan có non_goals
+  và assumptions là chuỗi, một evidence là dict. Lần thử sync đầu: 17 nguồn, khoảng 7.400 item, 8 giây.
+  Build dừng vì bindings/core.yaml theo định dạng lms graph, không theo định dạng binding của evo-agents.
+
+acceptance:
+  - criterion: evo-agents harness validate trên evo-lms-harness không có lỗi.
+    verify: evo-agents harness validate ~/github/evo-lms-harness
+  - criterion: Build của dự án evo-lms khớp hash khi dựng lại toàn phần.
+    verify: evo-agents kg build --verify --project evo-lms
+  - criterion: >
+      Công cụ cũ của evo-lms không đổi hành vi: test của harness xanh, sync_plans.py dry-run qua,
+      lms graph vẫn đọc bindings/ cũ.
+    verify: cd ~/github/evo-lms-harness && pytest -q && python scripts/sync_plans.py --dry-run
+  - criterion: >
+      Đo trên evo-lms: tỉ lệ liên kết theo nguồn so với mốc 74% của phép đo regex, thời gian sync và
+      build, kích thước kho. Ghi vào reports/.
+    verify: evo-agents kg status --project evo-lms --json; báo cáo trong reports/
+
+non_goals:
+  - Connector SRS (lms kg-connector srs) và connector introspection Django; kho PostgreSQL của lms graph giữ nguyên.
+  - Đổi định dạng bindings/ cũ hay thay lms graph.
+  - Sửa hàng loạt cảnh báo của validate (khoá lạ, step done thiếu evidence); chỉ sửa lỗi.
+  - Bỏ hướng dẫn GitNexus khỏi CLAUDE.md và AGENTS.md của evo-lms; câu 1 ở mục 7 của thiết kế còn mở.
+  - Thay harness.py trong CLUSTER.md; evo-agents chưa có audit, doctor, garden.
+
+references:
+  - what: Kết quả prototype và độ lệch so với thiết kế
+    where: reports/Prototype khung knowledge graph trên meridai.md
+  - what: Phép đo định danh tường minh trên evo-lms (mốc 74%)
+    where: reports/Thiết kế khung knowledge graph.md, mục 1.3
+  - what: Tiền lệ graph SRS của evo-lms
+    where: evo-lms-harness plans/completed/srs-knowledge-graph.yaml
+
+repos:
+  - repo: evo-agents
+    branch: evo-lms-migration
+    order: 1
+    depends_on: []
+    status: merged
+    merged_into: main
+    merged_at: '2026-10-03T01:10:00+07:00'
+    scope: schema harness, connector harness, test
+  - repo: evo-lms-harness
+    branch: evo-agents-migration
+    order: 2
+    depends_on: [evo-agents]
+    status: merged
+    merged_into: master
+    merged_at: '2026-10-03T01:12:00+07:00'
+    scope: >
+      knowledge.yaml, harness.yaml (knowledge_file, default_branch), sửa dữ liệu plan, CI validate,
+      tài liệu lệnh. Làm trong worktree ~/github/evo-lms-harness-kg vì checkout chính có thay đổi chưa
+      commit của phiên khác.
+  - repo: evo-agents-harness
+    branch: main
+    order: 3
+    depends_on: [evo-lms-harness]
+    status: done
+    scope: đăng ký evo-lms-harness, plan, báo cáo đo
+
+steps:
+  - id: 1
+    title: 'Đăng ký evo-lms-harness và plan'
+    repo: evo-agents-harness
+    what: >
+      Thêm evo-lms-harness vào harness.yaml; thêm nó vào consumers và verify của seam
+      knowledge-manifest-v1; viết plan này.
+    depends_on: []
+    verify: evo-agents harness validate .
+    status: done
+    done_at: '2026-10-03T00:50:00+07:00'
+    evidence: >
+      evo-agents-harness a4add27: evo-lms-harness trong harness.yaml, consumer và verify của knowledge-manifest-v1; validate 5 file, 0 lỗi.
+  - id: 2
+    title: 'Nới schema cho quy ước có thật'
+    repo: evo-agents
+    what: >
+      Seam nhận verify null kèm verify_waiver (chuỗi hoặc object có reason); seam không verify và không
+      waiver thành cảnh báo. Repo trong harness.yaml nhận note. order của plan nhận số thực (step chèn
+      giữa, như 3.5). Nguồn trong knowledge.yaml khai được branch và assets mà connector đã đọc.
+    depends_on: []
+    verify: pytest tests/harness -q
+    status: done
+    done_at: '2026-10-03T00:51:00+07:00'
+    evidence: >
+      evo-agents 6c0af66 trên nhánh evo-lms-migration (chưa push); 11 test harness xanh. Validate lại: meridai 30 file và evo-agents-harness 5 file vẫn 0 lỗi; evo-lms còn 3 lỗi dữ liệu thật cho bước 4.
+  - id: 3
+    title: 'Thư mục binding theo knowledge.yaml và tên repo của harness'
+    repo: evo-agents
+    what: >
+      Connector harness lấy thư mục binding từ khoá bindings của knowledge.yaml (mặc định bindings),
+      để harness có binding định dạng khác (bindings/ của lms graph) vẫn build được. Tên repo của harness
+      lấy theo mục khớp trong harness.yaml (theo path rồi theo origin), không theo tên thư mục, để chạy
+      từ worktree vẫn phân giải được đường dẫn dạng evo-lms-harness/... (lệch ghi trong báo cáo meridai).
+    depends_on: []
+    verify: pytest tests/kg -q
+    status: done
+    done_at: '2026-10-03T00:52:00+07:00'
+    evidence: >
+      evo-agents 1447e3f trên nhánh evo-lms-migration (chưa push); 48 test xanh, ruff sạch. build --verify khớp trên evo-agents (sha256:ad9f29be) và meridai (sha256:83499b80, không đổi so với báo cáo prototype). meridai-harness không tự khai trong harness.yaml nên vẫn mang tên thư mục worktree.
+  - id: 4
+    title: 'Sửa lỗi dữ liệu của evo-lms'
+    repo: evo-lms-harness
+    what: >
+      tenant-quick-switch: non_goals và assumptions thành danh sách. flutter-ios-testflight: evidence của
+      step 4 thành chuỗi. harness.yaml: knowledge_file và default_branch theo origin/HEAD của từng repo.
+    depends_on: [2]
+    verify: evo-agents harness validate ~/github/evo-lms-harness-kg
+    status: done
+    done_at: '2026-10-03T00:54:00+07:00'
+    evidence: >
+      evo-lms-harness 92bf525 trên nhánh evo-agents-migration (chưa push): hai plan sửa dữ liệu, harness.yaml có knowledge_file và default_branch cho 19/21 repo. Validate 81 file, 0 lỗi. Test evo-lms: cùng 7 test đỏ có sẵn trên master trước và sau thay đổi, 877 xanh.
+  - id: 5
+    title: 'knowledge.yaml của evo-lms'
+    repo: evo-lms-harness
+    what: >
+      knowledge.yaml: nguồn harness, mã của lms CLI và 15 repo sản phẩm có trên máy, đọc theo
+      origin/<nhánh mặc định>; nhãn internal; bindings trỏ sang kg/bindings để bindings/ cũ không bị
+      hiểu là binding của evo-agents; định danh SRS.<32 hex>.
+    depends_on: [3, 4]
+    verify: evo-agents kg sync --build --project evo-lms && evo-agents kg build --verify --project evo-lms
+    status: done
+    done_at: '2026-10-03T01:01:00+07:00'
+    evidence: >
+      evo-lms-harness b305046 và a1c1a89: 17 nguồn, 7.085 item; build 43.712 node, 73.291 cạnh; build --verify khớp sha256:e88ee2b6. Thu hẹp nguồn harness và lms-cli bị chốt chặn giữ 221 và 114 lệnh xoá, duyệt bằng --accept-removals.
+  - id: 6
+    title: 'CI và tài liệu lệnh của evo-lms'
+    repo: evo-lms-harness
+    what: >
+      Workflow chạy evo-agents harness validate . trên pull request (evo-agents ghim theo commit);
+      AGENTS.md, CLAUDE.md và CLUSTER.md thêm lệnh evo-agents harness validate và evo-agents kg.
+    depends_on: [4, 5]
+    verify: pytest -q && python scripts/sync_plans.py --dry-run
+    status: done
+    done_at: '2026-10-03T00:59:00+07:00'
+    evidence: >
+      evo-lms-harness 11734ab: workflow harness-validate.yaml ghim evo-agents 1447e3f; giả lập CI bằng venv sạch cài đúng commit đó, validate 0 lỗi, exit 0. AGENTS.md, CLAUDE.md, CLUSTER.md có lệnh evo-agents. pytest: cùng 7 test đỏ có sẵn. sync_plans.py --dry-run hỏng ở plan tenant-onboarding-existing-accounts, hỏng y hệt trên master nguyên trạng.
+  - id: 7
+    title: 'Đo và báo cáo'
+    repo: evo-agents-harness
+    what: >
+      Đo trên evo-lms: độ phủ theo nguồn, so với mốc 74%, thời gian sync và build, kích thước kho, mention
+      treo theo nguyên nhân; ghi vào reports/.
+    depends_on: [5]
+    verify: evo-agents kg status --project evo-lms
+    status: done
+    done_at: '2026-10-03T01:20:00+07:00'
+    evidence: >
+      evo-agents-harness cd5f60d: reports/Khung knowledge graph trên evo-lms.md. Mention liên kết 84,3% (16.181/19.194), tham chiếu cấu trúc 98,7%; sync 8,0 giây, build lạnh 59,4 giây, kho 378 MB.
+  - id: 8
+    title: 'Merge theo thứ tự'
+    repo: evo-agents-harness
+    what: >
+      Push evo-agents trước, rồi mở PR evo-lms-harness vào master. Push master của evo-lms kích hoạt
+      plan-database-sync, nên cần người dùng duyệt.
+    depends_on: [6, 7]
+    verify: evo harness check evo-lms-migration
+    status: done
+    done_at: '2026-10-03T01:15:00+07:00'
+    evidence: >
+      evo-agents main fast-forward tới 1447e3f và push sau khi quét chuỗi nhạy cảm trên toàn cây (0 kết quả);
+      CI 37045431167 xanh. evo-lms-harness master fast-forward b92e7cb..a1c1a89 và push; Harness Validate
+      37045458762 xanh. Plan Database Sync 37045458709 đỏ với lỗi có sẵn (tenant-onboarding-existing-accounts
+      references), lỗi này đã đỏ ở lần chạy master gần nhất trước đó (77ec6b6, 2026-09-18). Worktree
+      evo-lms-harness-kg và hai nhánh đã xoá; dự án kg evo-lms đăng ký lại từ checkout chính.
+
+seams_touched:
+  - name: knowledge-manifest-v1
+    owner: evo-agents
+    consumers: [meridai-harness, evo-agents-harness, evo-lms-harness]
+    verify: evo-agents harness validate ~/github/meridai-harness ~/github/evo-agents-harness ~/github/evo-lms-harness
+
+risks:
+  - risk: Nới schema làm meridai hay evo-agents-harness đổi kết quả validate.
+    mitigation: Chỉ thêm khoá và kiểu; chạy validate trên cả ba harness trước khi push.
+  - risk: Sửa plan đã xong làm sync_plans.py hay console đọc khác đi.
+    mitigation: Chạy tests/test_sync_plans.py và sync_plans.py --dry-run trên nhánh trước khi mở PR.
+  - risk: Corpus evo-lms chứa secret commit trong repo ([redacted]).
+    mitigation: >
+      File .env không thuộc loại file connector git đọc; corpus ở ~/.evo/kg/evo-lms với quyền 0700.
+      Kiểm grep trong corpus sau lượt sync đầu.
+  - risk: Đè lên thay đổi chưa commit của phiên khác ở ~/github/evo-lms-harness.
+    mitigation: Làm trong worktree ~/github/evo-lms-harness-kg trên nhánh evo-agents-migration.
+
+debt:
+  - >
+    734 mã SRS.<32 hex> thành node Requirement nhưng không có cạnh defines: evo-agents chưa coi frontmatter
+    id: là chỗ định nghĩa.
+  - >
+    [redacted]: một credential thật nằm trong hai repo sản phẩm; corpus chép lại. Cần gắn nhãn secret theo nội dung, và xoay mật khẩu là quyết định của người dùng.
+  - >
+    e2e chỉ liên kết 19% mention: tài liệu của evo-lms-automation-test trỏ tới file đã chuyển chỗ trên
+    origin/main, và thư mục có dấu cách cắt mất đường dẫn.
+  - >
+    ontology.yaml ở gốc evo-lms-harness theo định dạng của lms graph (từ vựng SRS). Build của evo-agents
+    hiện chưa nạp ontology nên không vướng; khi nạp, cần khoá ontology trong knowledge.yaml như đã làm
+    với bindings.
+
+rollback: >
+  Xoá nhánh evo-lms-migration ở evo-agents, nhánh và worktree evo-agents-migration ở evo-lms-harness,
+  thư mục ~/.evo/kg/evo-lms/, và revert commit đăng ký trong evo-agents-harness.
+
+decisions:
+  - date: '2026-10-03'
+    by: user
+    decision: Migrate gồm cả schema, tooling và knowledge graph cho evo-lms.
+    why: Trả lời câu hỏi phạm vi trong phiên.
+  - date: '2026-10-03'
+    by: agent
+    decision: >
+      Mọi nguồn evo-lms mang nhãn internal; sink claude-code@anthropic có clearance internal. Ba repo công
+      cụ dùng chung (evo-harness, agent-skills, evo-cli) không vào graph evo-lms. Nguồn git đọc
+      origin/<nhánh mặc định> thay vì HEAD của checkout.
+    why: >
+      Agent đã đọc các repo này hằng ngày qua Claude Code. Repo công cụ thuộc harness khác. Checkout của
+      evo-lms thường nằm trên nhánh tính năng hoặc nhánh deploy, nên HEAD không đại diện cho dự án.
