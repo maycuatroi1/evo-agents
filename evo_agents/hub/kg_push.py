@@ -4,7 +4,21 @@ For a project: send its knowledge config (``evo_agents.hub.kg_ingest.knowledge_c
 then push every finished run here that it has not ingested, oldest first, in the three steps the hub takes
 (``evo_agents.hub.server.kg``): upload the log through a presigned PUT, have the hub check it, upload and commit the
 blobs it says it lacks, commit the run. A log the hub holds already from an attempt that stopped half way is named by
-its hash instead of being uploaded again. Blobs go in batches of UPLOAD_BATCH, PARALLEL_PUTS at a time.
+its hash instead of being uploaded again.
+
+The hub reads every upload back from its blob store when it is committed, a few round trips each, so a commit takes
+longer the more it carries: 0.2.0 hubs on R2 needed about 90 ms per upload, and one commit of 459 outlasted the
+30 seconds a request waited. Blobs therefore go in batches of at most COMMIT_BATCH uploads and COMMIT_BYTES bytes,
+each asked for, PUT (PARALLEL_PUTS at a time) and committed before the next, so no presigned URL waits long enough
+to expire. A commit waits ``commit_timeout`` for its answer and the log check ``log_timeout``, both grown from the
+work they carry. A commit that got no answer may still finish on the hub: the push asks which of the batch's blobs
+the project holds for as long again before it calls the batch failed.
+
+Every step is idempotent (the hub keeps blobs by hash and runs by id), so a run that fails on the way for a reason
+that may pass (no answer, a refused connection, 408, 429, 502, 503, 504) is pushed again from its start, at most
+RUN_ATTEMPTS times with RETRY_DELAYS between them; the hub answers what it has already and only the rest is sent. A
+PUT to the blob store is tried PUT_ATTEMPTS times. ``progress``, when given, receives a line per run and per batch
+(``hub kg push`` prints them on stderr).
 
 A run of a source whose own label the project's hub sink does not clear never leaves the machine: it is counted as
 kept here, not sent to be refused. A run the hub refuses (an item raised above the hub sink, a blob over the size
@@ -18,17 +32,32 @@ Standard library only, like the rest of the client.
 from __future__ import annotations
 
 import hashlib
+import time
+from collections.abc import Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
+from functools import partial
 from pathlib import Path
 from urllib.parse import quote
 
-from evo_agents.hub.client import Hub, HubError, put_presigned
+from evo_agents.hub.client import Hub, HubError, Unreachable, put_presigned
 from evo_agents.hub.kg_ingest import knowledge_config, log_header, run_id_of
 from evo_agents.kg.project import Project, ProjectError
 
-UPLOAD_BATCH = 1000  # items in one request of the blob routes
+MiB = 1024 * 1024
+COMMIT_BATCH = 100  # uploads in one blob commit
+COMMIT_BYTES = 256 * MiB  # bytes in one blob commit; a larger blob goes alone
 PARALLEL_PUTS = 8
+BASE_TIMEOUT = 30.0  # seconds any request may take, as Hub's default
+SECONDS_PER_UPLOAD = 0.5  # what a commit may take per upload; 0.2.0 hubs needed about 0.09 on R2
+READ_RATE = 8 * MiB  # bytes per second the hub reads uploads back at, at the least
+LOG_READ_RATE = 1 * MiB  # bytes of a run log per second the hub checks, reading it twice and labelling every item
+SETTLE_INTERVAL = 5.0  # seconds between asking whether a commit that got no answer finished after all
+RUN_ATTEMPTS = 3
+RETRY_DELAYS = (10.0, 30.0)  # seconds before the second and the third attempt at a run
+PUT_ATTEMPTS = 3
+PUT_DELAYS = (1.0, 5.0)
+TRANSIENT = frozenset({408, 429, 502, 503, 504})  # answers that may not come again
 CHUNK = 1024 * 1024
 STOPS_PROJECT = (403, 404)  # the project itself is refused: no run of it can go
 
@@ -78,6 +107,40 @@ class PushReport:
         return line
 
 
+def commit_timeout(uploads: int, size: int) -> float:
+    """Seconds a commit of ``uploads`` uploads of ``size`` bytes in all may take before the push stops waiting."""
+    return BASE_TIMEOUT + uploads * SECONDS_PER_UPLOAD + size / READ_RATE
+
+
+def log_timeout(size: int) -> float:
+    """Seconds the hub may take to check a run log of ``size`` bytes (POST .../runs)."""
+    return BASE_TIMEOUT + size / LOG_READ_RATE
+
+
+def transient(exc: HubError) -> bool:
+    """Whether the failure may pass: sending the same request again later may succeed."""
+    return isinstance(exc, Unreachable) or exc.status in TRANSIENT
+
+
+def unanswered(exc: HubError) -> bool:
+    """Whether the request may have been carried out although no answer came back."""
+    return (isinstance(exc, Unreachable) and not exc.refused) or exc.status in (502, 504)
+
+
+def batches(sizes: dict[str, int]) -> Iterator[list[str]]:
+    """The hashes of ``sizes`` in order, in batches of at most COMMIT_BATCH and COMMIT_BYTES (a larger blob alone)."""
+    batch: list[str] = []
+    total = 0
+    for digest, size in sizes.items():
+        if batch and (len(batch) >= COMMIT_BATCH or total + size > COMMIT_BYTES):
+            yield batch
+            batch, total = [], 0
+        batch.append(digest)
+        total += size
+    if batch:
+        yield batch
+
+
 def _sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with open(path, "rb") as handle:
@@ -87,37 +150,106 @@ def _sha256(path: Path) -> str:
 
 
 class Pusher:
-    def __init__(self, hub: Hub, project: Project):
+    def __init__(
+        self,
+        hub: Hub,
+        project: Project,
+        *,
+        progress: Callable[[str], None] | None = None,
+        sleep: Callable[[float], None] = time.sleep,
+        clock: Callable[[], float] = time.monotonic,
+    ):
         self.hub = hub
         self.project = project
         self.name = project.name
         self.base = f"/v1/kg/{quote(project.name, safe='')}"
+        self.progress = progress
+        self.sleep = sleep
+        self.clock = clock
 
-    def _upload_blobs(self, corpus, hashes: list[str]) -> int:
-        """Upload and commit the blobs ``hashes`` from the corpus here; how many were uploaded."""
-        uploaded = 0
-        for start in range(0, len(hashes), UPLOAD_BATCH):
-            paths = {}
-            for digest in hashes[start : start + UPLOAD_BATCH]:
-                path = corpus.blob_path(f"sha256:{digest}")
-                if not path.is_file():
-                    raise HubError(f"blob {digest} is missing from the corpus at {corpus.root}")
-                paths[digest] = path
-            items = [
-                {"sha256": digest, "size": path.stat().st_size, "kind": "kg-blob"} for digest, path in paths.items()
-            ]
+    def _say(self, line: str) -> None:
+        if self.progress is not None:
+            self.progress(line)
+
+    def _retrying(self, what: str, attempt: Callable[[bool], object]):
+        """``attempt(again)`` until it succeeds, RUN_ATTEMPTS times at most while it fails with ``transient``;
+        ``again`` is True from the second time on."""
+        for number in range(1, RUN_ATTEMPTS + 1):
+            try:
+                return attempt(number > 1)
+            except HubError as exc:
+                if number == RUN_ATTEMPTS or not transient(exc):
+                    raise
+                delay = RETRY_DELAYS[min(number, len(RETRY_DELAYS)) - 1]
+                self._say(f"{what}: {exc}; trying again in {delay:g}s (attempt {number + 1} of {RUN_ATTEMPTS})")
+                self.sleep(delay)
+        raise AssertionError("unreachable")
+
+    def _put(self, url: str, path: Path) -> None:
+        """PUT the file to a presigned URL, PUT_ATTEMPTS times at most while it fails with ``transient``."""
+        for number in range(1, PUT_ATTEMPTS + 1):
+            try:
+                put_presigned(url, path)
+                return
+            except HubError as exc:
+                if number == PUT_ATTEMPTS or not transient(exc):
+                    raise
+                self.sleep(PUT_DELAYS[min(number, len(PUT_DELAYS)) - 1])
+
+    def _held_within(self, hashes: list[str], wait: float) -> bool:
+        """Whether the project holds every blob of ``hashes`` within ``wait`` seconds, asking every SETTLE_INTERVAL:
+        a commit the push stopped waiting for goes on on the hub."""
+        deadline = self.clock() + wait
+        while True:
+            try:
+                missing = self.hub.call("POST", f"{self.base}/blobs/check", {"sha256": hashes})["missing"]
+            except HubError:
+                return False
+            if not missing:
+                return True
+            if self.clock() + SETTLE_INTERVAL > deadline:
+                return False
+            self.sleep(SETTLE_INTERVAL)
+
+    def _commit(self, tickets: list[dict], sizes: dict[str, int]) -> None:
+        hashes = [ticket["sha256"] for ticket in tickets]
+        timeout = commit_timeout(len(tickets), sum(sizes[digest] for digest in hashes))
+        body = {"project": self.name, "upload_ids": [ticket["upload_id"] for ticket in tickets]}
+        try:
+            self.hub.call("POST", "/v1/blobs/commit", body, timeout=timeout)
+        except HubError as exc:
+            if not unanswered(exc) or not self._held_within(hashes, timeout):
+                raise
+
+    def _upload_blobs(self, corpus, hashes: list[str], report: PushReport, label: str) -> None:
+        """Upload and commit the blobs ``hashes`` from the corpus here, batch by batch; ``report.blobs`` counts those
+        uploaded as each batch is committed."""
+        paths = {}
+        for digest in dict.fromkeys(hashes):
+            path = corpus.blob_path(f"sha256:{digest}")
+            if not path.is_file():
+                raise HubError(f"blob {digest} is missing from the corpus at {corpus.root}")
+            paths[digest] = path
+        sizes = {digest: path.stat().st_size for digest, path in paths.items()}
+        done = 0
+        for batch in batches(sizes):
+            items = [{"sha256": digest, "size": sizes[digest], "kind": "kg-blob"} for digest in batch]
             asked = self.hub.call("POST", "/v1/blobs/uploads", {"project": self.name, "items": items})
             tickets = asked["uploads"]
-            sends = [(ticket["url"], paths[ticket["sha256"]]) for ticket in tickets]
-            with ThreadPoolExecutor(max_workers=PARALLEL_PUTS, thread_name_prefix="kg-push") as pool:
-                list(pool.map(lambda send: put_presigned(*send), sends))
             if tickets:
-                upload_ids = [ticket["upload_id"] for ticket in tickets]
-                self.hub.call("POST", "/v1/blobs/commit", {"project": self.name, "upload_ids": upload_ids})
-            uploaded += len(tickets)
-        return uploaded
+                with ThreadPoolExecutor(max_workers=PARALLEL_PUTS, thread_name_prefix="kg-push") as pool:
+                    list(pool.map(lambda ticket: self._put(ticket["url"], paths[ticket["sha256"]]), tickets))
+                self._commit(tickets, sizes)
+            report.blobs += len(tickets)
+            done += len(batch)
+            self._say(f"{label}: {done}/{len(sizes)} blob(s) on the hub")
 
-    def push_run(self, corpus, path: Path, run_id: str, report: PushReport) -> None:
+    def push_run(
+        self, corpus, path: Path, run_id: str, report: PushReport, label: str = "", again: bool = False
+    ) -> None:
+        """Push one run; ``again`` when an earlier attempt of this push failed on the way, so a run the hub has
+        ingested meanwhile counts as pushed."""
+        label = label or f"run {run_id}"
         digest, size = _sha256(path), path.stat().st_size
         asked = self.hub.call(
             "POST",
@@ -126,19 +258,26 @@ class Pusher:
         )
         if asked["uploads"]:
             (ticket,) = asked["uploads"]
-            put_presigned(ticket["url"], path)
+            self._put(ticket["url"], path)
             body = {"run_id": run_id, "log_upload_id": ticket["upload_id"]}
         else:  # the hub holds this log already: an earlier push stopped after sending it
             body = {"run_id": run_id, "log_sha256": digest}
-        state = self.hub.call("POST", f"{self.base}/runs", body)
+        state = self.hub.call("POST", f"{self.base}/runs", body, timeout=log_timeout(size))
         if state["status"] == "ingested":
-            report.present += 1
+            if again:
+                report.pushed.append(run_id)
+            else:
+                report.present += 1
+            self._say(f"{label}: on the hub already")
             return
-        report.blobs += self._upload_blobs(corpus, state["missing"])
+        if state["missing"]:
+            self._say(f"{label}: {len(set(state['missing']))} blob(s) to send")
+            self._upload_blobs(corpus, state["missing"], report, label)
         committed = self.hub.call("POST", f"{self.base}/runs/{run_id}/commit")
         report.pushed.append(run_id)
         if committed.get("build"):
             report.build = committed["build"]
+        self._say(f"{label}: ingested")
 
     def _uncleared_source(self, path: Path) -> str | None:
         """The source of the run logged at ``path`` when the project's hub sink does not clear its label."""
@@ -162,8 +301,10 @@ class Pusher:
         try:
             logs = sorted((run_id, path) for path in corpus.log_dir.iterdir() if (run_id := run_id_of(path)))
             report.local_runs = len(logs)
-            self.hub.call("PUT", f"{self.base}/config", config)
-            held = set(self.hub.call("GET", f"{self.base}/runs")["ingested"])
+            where = f"project {self.name}"
+            self._retrying(where, lambda again: self.hub.call("PUT", f"{self.base}/config", config))
+            held = set(self._retrying(where, lambda again: self.hub.call("GET", f"{self.base}/runs"))["ingested"])
+            todo = []
             for run_id, path in logs:
                 if run_id in held:
                     report.present += 1
@@ -172,8 +313,12 @@ class Pusher:
                 if source is not None:
                     report.kept[source] = report.kept.get(source, 0) + 1
                     continue
+                todo.append((run_id, path))
+            self._say(f"{where}: {len(todo)} run(s) to push, {report.present} of {len(logs)} on the hub already")
+            for number, (run_id, path) in enumerate(todo, 1):
+                label = f"[{number}/{len(todo)}] run {run_id}"
                 try:
-                    self.push_run(corpus, path, run_id, report)
+                    self._retrying(label, partial(self.push_run, corpus, path, run_id, report, label))
                 except HubError as exc:
                     if exc.status == 401:
                         raise  # the credential: nothing can go
@@ -189,8 +334,8 @@ class Pusher:
         return report
 
 
-def push_project(hub: Hub, project: Project) -> PushReport:
-    return Pusher(hub, project).push()
+def push_project(hub: Hub, project: Project, progress: Callable[[str], None] | None = None) -> PushReport:
+    return Pusher(hub, project, progress=progress).push()
 
 
 def _pushable(project: dict) -> str | None:
@@ -202,7 +347,9 @@ def _pushable(project: dict) -> str | None:
     return None
 
 
-def push_all(hub: Hub, projects: list[tuple[str, Project | Exception]]) -> list[PushReport]:
+def push_all(
+    hub: Hub, projects: list[tuple[str, Project | Exception]], progress: Callable[[str], None] | None = None
+) -> list[PushReport]:
     """Push each of ``projects`` (name, the project or why it did not load) that is on the hub and takes a push from
     the caller; the others come back skipped, saying why."""
     listed = {p["name"]: p for p in hub.call("GET", "/v1/projects")}
@@ -215,5 +362,5 @@ def push_all(hub: Hub, projects: list[tuple[str, Project | Exception]]) -> list[
         elif isinstance(project, Exception):
             reports.append(PushReport(name, errors=[f"the project does not load here: {project}"]))
         else:
-            reports.append(push_project(hub, project))
+            reports.append(push_project(hub, project, progress))
     return reports

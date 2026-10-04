@@ -11,6 +11,8 @@ The GitHub URLs are configurable so tests and Playwright can point the hub at a 
 The blob store (Cloudflare R2, or any S3 API) is configured by the four EVO_HUB_S3_* variables together: none of
 them leaves it unconfigured, so the blob routes answer 503 and ``hub worker`` refuses to start; some but not all of
 them is a ConfigError naming the first one missing. The key pair is registered as secrets like the DSN password.
+EVO_HUB_BLOB_CONCURRENCY caps the uploads one process checks and copies in the store at once, every commit together
+(``evo_agents.hub.blobs``).
 """
 
 from __future__ import annotations
@@ -23,6 +25,10 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from evo_agents.hub.log import dsn_password, register_secret
+
+# The blob store's bound (evo_agents.hub.blobs takes it from here: that module needs boto3, this one only the stdlib).
+DEFAULT_BLOB_CONCURRENCY = 32
+MAX_BLOB_CONCURRENCY = 256
 
 DEFAULT_DATA_DIR = "~/.evo/hub-server/cache"
 DEFAULT_HOST = "127.0.0.1"
@@ -65,6 +71,7 @@ class HubConfig:
     s3_bucket: str | None = None
     s3_access_key_id: str | None = None  # never logged
     s3_secret_access_key: str | None = None  # never logged or returned
+    blob_concurrency: int = DEFAULT_BLOB_CONCURRENCY  # uploads one process seals or publishes at once
 
     def __repr__(self) -> str:  # the DSNs and secrets are credentials; keep them out of tracebacks and debug output
         return f"HubConfig(data_dir={str(self.data_dir)!r}, host={self.host!r}, port={self.port})"
@@ -104,6 +111,14 @@ def _number(env: Mapping[str, str], name: str, default, kind=int, minimum=None):
         raise ConfigError(name, f"{name} must be {what}, got {raw!r}") from None
     if minimum is not None and value < minimum:
         raise ConfigError(name, f"{name} must be at least {minimum}, got {raw!r}")
+    return value
+
+
+def _blob_concurrency(env: Mapping[str, str]) -> int:
+    name = "EVO_HUB_BLOB_CONCURRENCY"
+    value = _number(env, name, DEFAULT_BLOB_CONCURRENCY, minimum=1)
+    if value > MAX_BLOB_CONCURRENCY:
+        raise ConfigError(name, f"{name} must be at most {MAX_BLOB_CONCURRENCY}, got {value}")
     return value
 
 
@@ -221,5 +236,6 @@ def load_config(
         github_url=_url(env, "EVO_HUB_GITHUB_URL", DEFAULT_GITHUB_URL),
         github_api_url=_url(env, "EVO_HUB_GITHUB_API_URL", DEFAULT_GITHUB_API_URL),
         github_timeout=_number(env, "EVO_HUB_GITHUB_TIMEOUT", DEFAULT_GITHUB_TIMEOUT, kind=float, minimum=0.1),
+        blob_concurrency=_blob_concurrency(env),
         **_blob_store(env),
     )

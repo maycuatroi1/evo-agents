@@ -10,8 +10,15 @@ Keys in the bucket:
   sealed copy and copies that one to the blob key, so a client that PUTs again while its URL still works cannot
   slip other bytes in between the check and the copy.
 
-R2 keeps no SHA-256 of a whole object (only CRC64NVME), so the hub reads every upload back to hash it. Whatever is
-under ``uploads/`` after STALE_AFTER is removed by the worker's cleanup job.
+R2 keeps no SHA-256 of a whole object (only CRC64NVME), so the hub reads every upload back to hash it, streaming it
+in CHUNK pieces rather than holding it whole. Whatever is under ``uploads/`` after STALE_AFTER is removed by the
+worker's cleanup job.
+
+Committing is bound by the store's round trips, not by hashing: R2 answered each call in about 250 ms on the hub's
+deployment, so a commit makes as few calls per upload as the checks allow (``seal`` copies then reads, ``publish``
+copies; three in all for a blob new to the hub) and works on several uploads at once. ``concurrency`` caps the uploads
+being sealed or published at the same time in one process, every request together, so concurrent commits share the
+bound instead of multiplying it; the connection pool is sized from it.
 
 Transient failures (connection errors, timeouts, throttling, 5xx) are retried by botocore in its standard mode, with
 exponential backoff and jitter; reading an object's body is retried here. What still fails raises
@@ -28,6 +35,7 @@ import asyncio
 import hashlib
 import logging
 import re
+import threading
 import time
 import uuid
 from collections.abc import Callable, Iterable, Sequence
@@ -41,7 +49,7 @@ import boto3
 from botocore.config import Config
 from botocore.exceptions import BotoCoreError, ClientError, ParamValidationError
 
-from evo_agents.hub.config import HubConfig
+from evo_agents.hub.config import DEFAULT_BLOB_CONCURRENCY, MAX_BLOB_CONCURRENCY, HubConfig
 
 log = logging.getLogger(__name__)
 
@@ -67,7 +75,9 @@ READ_ATTEMPTS = 3  # per streamed read of an object's body
 CONNECT_TIMEOUT = 5.0
 READ_TIMEOUT = 60.0
 HEALTH_TIMEOUT = 3.0
-PARALLEL = 16  # S3 calls in flight for one commit
+PARALLEL = 16  # objects the worker fetches at once for one build (kg_build)
+DEFAULT_CONCURRENCY = DEFAULT_BLOB_CONCURRENCY  # uploads one process seals or publishes at once, every commit together
+MAX_CONCURRENCY = MAX_BLOB_CONCURRENCY
 DELETE_BATCH = 1000  # the most keys DeleteObjects takes
 
 
@@ -142,9 +152,14 @@ class BlobStore:
         attempts: int = ATTEMPTS,
         connect_timeout: float = CONNECT_TIMEOUT,
         read_timeout: float = READ_TIMEOUT,
+        concurrency: int = DEFAULT_CONCURRENCY,
     ):
+        if not 1 <= concurrency <= MAX_CONCURRENCY:
+            raise ValueError(f"the blob store's concurrency is between 1 and {MAX_CONCURRENCY}, not {concurrency}")
         self.endpoint = endpoint
         self.bucket = bucket
+        self.concurrency = concurrency
+        self._slots = threading.BoundedSemaphore(concurrency)  # shared by every commit of this process
         session = boto3.session.Session()
         common = {
             "signature_version": "s3v4",
@@ -168,7 +183,8 @@ class BlobStore:
             connect_timeout=connect_timeout,
             read_timeout=read_timeout,
             retries={"mode": "standard", "total_max_attempts": attempts},
-            max_pool_connections=PARALLEL * 2,
+            # the commits' bounded work, and room for what runs outside it: a log read, a build's fetches, a delete
+            max_pool_connections=concurrency + PARALLEL,
         )
         self._probe = client(
             connect_timeout=HEALTH_TIMEOUT,
@@ -189,7 +205,13 @@ class BlobStore:
         """The store EVO_HUB_S3_* configure, or None when they are not set."""
         if config.blob_store_missing():
             return None
-        return cls(config.s3_endpoint, config.s3_bucket, config.s3_access_key_id, config.s3_secret_access_key)
+        return cls(
+            config.s3_endpoint,
+            config.s3_bucket,
+            config.s3_access_key_id,
+            config.s3_secret_access_key,
+            concurrency=config.blob_concurrency,
+        )
 
     def _call(self, operation: str, method: str, **params):
         """One S3 call with botocore's retries; None when the object it names does not exist."""
@@ -252,13 +274,18 @@ class BlobStore:
         return self.size(blob_key(sha256)) is not None
 
     def hash(self, key: str, limit: int) -> tuple[str, int] | None:
-        """The SHA-256 and size of the object at ``key``, reading at most ``limit`` + 1 bytes; None when there is
-        none. A body cut off on the way is read again from the start."""
+        """The SHA-256 and size of the object at ``key``, streamed in CHUNK pieces and reading at most ``limit`` + 1
+        bytes; None when there is none. An object the store says is larger than ``limit`` is not read at all: its size
+        comes back with an empty digest. A body cut off on the way is read again from the start."""
         for attempt in range(READ_ATTEMPTS):
             response = self._call("GetObject", "get_object", Key=key)
             if response is None:
                 return None
             body = response["Body"]
+            length = response.get("ContentLength")
+            if isinstance(length, int) and length > limit:
+                body.close()
+                return "", length
             digest = hashlib.sha256()
             read = 0
             try:
@@ -342,20 +369,30 @@ class BlobStore:
     # Uploads
 
     def _each(self, func: Callable, items: Sequence) -> list:
-        """``func`` over ``items``, PARALLEL at a time, in order; the first BlobStoreUnavailable is raised."""
+        """``func`` over ``items``, in order, holding one of the store's ``concurrency`` slots for each, so the
+        commits of this process together never work on more uploads at once. The first exception is raised once the
+        items already started have finished; those not started yet are not."""
+
+        def bounded(item):
+            with self._slots:
+                return func(item)
+
         if len(items) <= 1:
-            return [func(item) for item in items]
-        with ThreadPoolExecutor(max_workers=min(PARALLEL, len(items)), thread_name_prefix="blob-store") as pool:
-            return list(pool.map(func, items))
+            return [bounded(item) for item in items]
+        workers = min(self.concurrency, len(items))
+        with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="blob-store") as pool:
+            futures = [pool.submit(bounded, item) for item in items]
+            try:
+                return [future.result() for future in futures]
+            except BaseException:
+                for future in futures:
+                    future.cancel()
+                raise
 
     def seal(self, upload: Upload) -> Verdict:
-        """Copy the upload to its sealed key and check the sealed copy against what was declared."""
+        """Copy the upload to its sealed key and check the sealed copy against what was declared: two calls, the copy
+        and the read, which learns the size before reading anything."""
         staged, sealed = upload_key(upload.upload_id), sealed_key(upload.upload_id)
-        found = self.size(staged)
-        if found is None:
-            return Verdict(upload, "nothing was uploaded")
-        if found != upload.size:
-            return Verdict(upload, f"{found} bytes were uploaded, {upload.size} were declared")
         if not self.copy(staged, sealed):
             return Verdict(upload, "nothing was uploaded")
         hashed = self.hash(sealed, upload.size)
@@ -371,18 +408,21 @@ class BlobStore:
     def seal_all(self, uploads: Sequence[Upload]) -> list[Verdict]:
         return self._each(self.seal, uploads)
 
-    def publish(self, upload: Upload) -> bool:
-        """Copy a sealed upload that passed ``seal`` to its blob key, unless a blob is there already (it has the
-        same bytes: only verified bytes are ever written there). True when this call wrote the blob."""
+    def publish(self, upload: Upload, held: bool = False) -> bool:
+        """Copy a sealed upload that passed ``seal`` to its blob key; True when this call wrote the blob. ``held``
+        says the hub records the blob already (a ``blobs`` row of any holder): the copy is then made only when the
+        object is missing. Otherwise it is made without asking first, since the key is the hash of verified bytes and
+        a copy over an object left by an earlier commit writes the same bytes again."""
         key = blob_key(upload.sha256)
-        if self.size(key) is not None:
+        if held and self.size(key) is not None:
             return False
         if not self.copy(sealed_key(upload.upload_id), key):
             raise BlobStoreUnavailable(f"the sealed copy of upload {upload.upload_id} disappeared before publishing")
         return True
 
-    def publish_all(self, uploads: Sequence[Upload]) -> list[bool]:
-        return self._each(self.publish, uploads)
+    def publish_all(self, uploads: Sequence[Upload], held: frozenset[str] = frozenset()) -> list[bool]:
+        """``publish`` each upload; ``held`` are the hashes the hub records already."""
+        return self._each(lambda upload: self.publish(upload, upload.sha256 in held), uploads)
 
     def discard(self, upload_ids: Iterable[str]) -> None:
         """Delete the uploaded and the sealed object of each upload."""

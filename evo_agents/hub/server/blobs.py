@@ -6,13 +6,16 @@ uploaded and checked again, so knowing a hash gives nobody another project's blo
 size limit of its kind before any URL is issued, and one item over its limit refuses the whole request with 413.
 Each URL is a presigned PUT to ``uploads/<upload_id>`` that works for 15 minutes and for the declared size only.
 
-POST /v1/blobs/commit {project, upload_ids} reads every upload back (see ``evo_agents.hub.blobs``) and compares its
-size and SHA-256 with what was declared. When all of them match, each is copied to ``blobs/sha256/<sha256>`` unless
-that object exists, and one ``blobs`` row per blob is written with an audit row naming the project. When one does
-not match, the answer is 422 naming it and nothing is written: every upload of the request is discarded and has to
-be asked for again. Either way the uploaded objects are deleted. An upload can be committed by the user who asked
-for it, in its project, within 24 hours; any other id is unknown (422) and left alone. When the blob store does not
-answer, the answer is 503 and the uploads stay, so the same commit can be sent again.
+POST /v1/blobs/commit {project, upload_ids} reads every upload back (see ``evo_agents.hub.blobs``) and compares its size
+and SHA-256 with what was declared. When all of them match, each is copied to ``blobs/sha256/<sha256>`` unless the hub
+records that blob already and its object exists, and one ``blobs`` row per blob is written with an audit row naming the
+project. The time a commit takes grows with its uploads (a few round trips to the store each, at most the store's
+``concurrency`` at a time), so a client commits in batches; ``evo-agents hub kg push`` sends at most
+``evo_agents.hub.kg_push.COMMIT_BATCH`` uploads per commit. When one does not match, the answer is 422 naming it and
+nothing is written: every upload of the request is discarded and has to be asked for again. Either way the uploaded
+objects are deleted. An upload can be committed by the user who asked for it, in its project, within 24 hours; any other
+id is unknown (422) and left alone. When the blob store does not answer, the answer is 503 and the uploads stay, so the
+same commit can be sent again.
 
 A request without ``project`` is about blobs the hub holds itself, outside any project: the bundles of global skills,
 which belong to no project. Only a hub admin uploads or commits those, and only of kind skill-bundle (GLOBAL_KINDS);
@@ -303,8 +306,13 @@ async def commit_uploads(
                 await conn.execute("DELETE FROM blob_uploads WHERE upload_id = ANY(%s::uuid[])", (ids,))
             await _discard(store, ids)
             raise
+    async with pool.connection() as conn:  # the blobs the hub records already: only those are looked for first
+        cursor = await conn.execute(
+            "SELECT DISTINCT sha256 FROM blobs WHERE sha256 = ANY(%s)", ([upload.sha256 for upload in uploads],)
+        )
+        held = frozenset(row[0] for row in await cursor.fetchall())
     try:
-        written = await asyncio.to_thread(store.publish_all, uploads)
+        written = await asyncio.to_thread(store.publish_all, uploads, held)
     except BlobStoreUnavailable:
         raise HTTPException(503, UNAVAILABLE) from None
     async with pool.connection() as conn:

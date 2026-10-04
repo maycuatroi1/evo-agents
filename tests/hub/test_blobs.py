@@ -1,6 +1,7 @@
 """The blob store: uploads through presigned PUTs to a fake S3 (moto, in this process), commits that read the bytes
 back and hash them, the size limit of each kind, the writer role, health with R2 down, retries, the cleanup of
-uploads nobody committed, and S3 credentials kept out of every log line.
+uploads nobody committed, and S3 credentials kept out of every log line. Also what bounds a commit's time on a store
+as slow to answer as R2: the calls it makes per upload, and the uploads all commits of a process work on at once.
 
 Each test gets a Postgres database and a bucket of its own; moto checks no signature (see ``tests.hub.s3``)."""
 
@@ -10,6 +11,7 @@ import io
 import json
 import logging
 import re
+import threading
 import time
 import urllib.request
 import uuid
@@ -217,6 +219,126 @@ def test_a_staged_object_unlike_its_declared_sha256_is_422_deleted_and_leaves_an
     never = ticket(hub, bob, "beta", good)
     assert commit(hub, bob, "beta", never["upload_id"]).json()["detail"][0]["problem"] == "nothing was uploaded"
     assert head(hub.s3, blob_key(sha(good))) == before and pending(hub.db) == 0
+
+
+def store_calls(store) -> list[str]:
+    """The S3 operations ``store`` sends from now on, by name, as botocore sends them (retries included)."""
+    sent: list[str] = []
+
+    def hook(event_name, **kwargs):
+        sent.append(event_name.rsplit(".", 1)[-1])
+
+    store._s3.meta.events.register("before-send.s3", hook)
+    return sent
+
+
+def staged(hub, headers, project: str, blobs: list[bytes]) -> list[str]:
+    """Ask for uploads of ``blobs`` and PUT them; the upload ids, ready to commit."""
+    asked = ask(hub, headers, project, *(item(data) for data in blobs))
+    assert asked.status_code == 200, asked.text
+    tickets = asked.json()["uploads"]
+    by_hash = {sha(data): data for data in blobs}
+    for found in tickets:
+        assert put_presigned(found["url"], by_hash[found["sha256"]]) == 200
+    return [found["upload_id"] for found in tickets]
+
+
+def test_a_commit_makes_three_store_calls_per_upload_and_one_delete(hub):
+    """On R2 every call took about 250 ms: a commit of 459 uploads at five calls each, 16 at a time, took 40 s in
+    production while the push waited 30. Now: copy to the sealed key, read it, copy it to the blob key, or for a blob
+    the hub records already ask whether its object is there instead of copying."""
+    alpha, beta = live.add_project(hub.db, "alpha"), live.add_project(hub.db, "beta")
+    alice = member(hub.db, alpha, "alice", "writer")
+    bob = member(hub.db, beta, "bob", "writer")
+    blobs = [f"blob {i} of a run\n".encode() * (i + 1) for i in range(40)]
+    ids = staged(hub, alice, "alpha", blobs)
+    sent = store_calls(hub.store)
+    committed = commit(hub, alice, "alpha", *ids)
+    assert committed.status_code == 200, committed.text and committed.json()["added"] == 40
+    assert sorted(sent) == sorted(["CopyObject"] * 80 + ["GetObject"] * 40 + ["DeleteObjects"])
+    assert all(hub.s3.get(blob_key(sha(data))) == data for data in blobs)
+
+    ids = staged(hub, bob, "beta", blobs[:10])  # beta must upload what alpha holds, and the hub checks it again
+    sent.clear()
+    assert commit(hub, bob, "beta", *ids).json()["added"] == 10
+    assert sorted(sent) == sorted(["CopyObject"] * 10 + ["GetObject"] * 10 + ["HeadObject"] * 10 + ["DeleteObjects"])
+    assert hub.s3.keys("uploads/") == []
+
+
+def test_commits_running_at_once_share_one_bound_on_the_uploads_they_work_on(hub):
+    """Each commit used to run 16 uploads at once, so three commits ran 48 against the store. The store's slots
+    (EVO_HUB_BLOB_CONCURRENCY, 32 by default) are shared by every commit of the process."""
+    alpha = live.add_project(hub.db, "alpha")
+    alice = member(hub.db, alpha, "alice", "writer")
+    batches = [[f"commit {c} blob {i}\n".encode() for i in range(40)] for c in range(3)]
+    ids = [staged(hub, alice, "alpha", blobs) for blobs in batches]
+    lock = threading.Lock()
+    calls = SimpleNamespace(now=0, peak=0)
+
+    def slow(**kwargs):  # every call takes a while, as on R2, and is counted while it does
+        with lock:
+            calls.now += 1
+            calls.peak = max(calls.peak, calls.now)
+        time.sleep(0.03)
+        with lock:
+            calls.now -= 1
+
+    for operation in ("CopyObject", "GetObject", "HeadObject"):  # what an upload takes; the delete comes after
+        hub.store._s3.meta.events.register(f"before-send.s3.{operation}", slow)
+    start = threading.Barrier(3)
+    answers = []
+
+    def run(upload_ids):
+        start.wait()
+        answers.append(commit(hub, alice, "alpha", *upload_ids))
+
+    threads = [threading.Thread(target=run, args=(upload_ids,)) for upload_ids in ids]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(60)
+    assert [a.status_code for a in answers] == [200, 200, 200], [a.text for a in answers]
+    assert sum(a.json()["added"] for a in answers) == 120
+    assert 16 < calls.peak <= 32, calls.peak  # parallel, within the shared bound
+
+
+def test_the_store_takes_its_bound_from_the_configuration(s3, hub_db, tmp_path):
+    config = make_config(hub_db, tmp_path, s3)
+    store = BlobStore.from_config(config)
+    assert store.concurrency == 32 and store._s3.meta.config.max_pool_connections >= 32
+    store.close()
+    narrow = BlobStore.from_config(
+        load_config({"EVO_HUB_DSN": hub_db.dsn, "EVO_HUB_BLOB_CONCURRENCY": "4", **s3.env()})
+    )
+    assert narrow.concurrency == 4
+    narrow.close()
+    with pytest.raises(ValueError, match="between 1 and 256"):
+        BlobStore(s3.endpoint, s3.bucket, s3.access_key_id, s3.secret_access_key, concurrency=0)
+
+
+def test_an_upload_larger_than_declared_is_refused_from_its_size_without_reading_it(hub, monkeypatch):
+    declared, sent = b"x" * 100, b"y" * 5000
+    upload_ = Upload(new_upload_id(), sha(declared), len(declared), "kg-blob")
+    hub.s3.put(upload_key(upload_.upload_id), sent)
+    real = hub.store._s3.get_object
+    read = []
+
+    def counting(**kwargs):
+        response = real(**kwargs)
+        body = response["Body"]
+        original = body.iter_chunks
+
+        def chunks(size):
+            for chunk in original(size):
+                read.append(len(chunk))
+                yield chunk
+
+        body.iter_chunks = chunks
+        return response
+
+    monkeypatch.setattr(hub.store._s3, "get_object", counting)
+    assert hub.store.seal(upload_).problem == "5000 bytes were uploaded, 100 were declared"
+    assert read == []
 
 
 def test_bytes_put_again_after_the_check_never_reach_the_blob(hub):

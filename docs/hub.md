@@ -218,11 +218,16 @@ writes the latest version of every skill you see into the skills directories of 
 `.agents/skills`. It changes only directories it wrote itself (`--adopt` also takes over copies made by hand),
 saves a copy before replacing anything (under `~/.evo/hub/backups/`), and `--check` reports without writing.
 
-**Knowledge graphs.** A project's graph is built on the hub from the run logs machines push. `evo-agents hub kg
-push --project demo` (or `evo-agents kg sync --push`) sends the connector runs the hub lacks; a run whose label the
-hub sink does not clear stays on the machine. `evo-agents hub kg build --project demo --wait` queues a build and waits
-for it, and `evo-agents hub kg builds --project demo` lists them. Once a build succeeded, `evo-agents kg serve
---backend auto` and the hub's `/mcp` answer the `kg_*` tools from it, filtered by the read rule.
+**Knowledge graphs.** A project's graph is built on the hub from the run logs machines push. `evo-agents hub kg push
+--project demo` (or `evo-agents kg sync --push`) sends the connector runs the hub lacks; a run whose label the hub sink
+does not clear stays on the machine. It reports a line per run and per batch of blobs on stderr. Blobs go in commits of
+at most 100 uploads and 256 MiB, each given time in proportion to what it carries. A commit that gets no answer may
+still finish on the hub, so the push asks which of its blobs the project holds before calling it failed. A run that
+fails for a reason that may pass (no answer, 408, 429, 502, 503, 504) is pushed again from its start, up to three times,
+10 and 30 seconds apart; the hub answers what it has already and only the rest is sent. `evo-agents hub kg build
+--project demo --wait` queues a build and waits for it, and `evo-agents hub kg builds --project demo` lists them. Once a
+build succeeded, `evo-agents kg serve --backend auto` and the hub's `/mcp` answer the `kg_*` tools from it, filtered by
+the read rule.
 
 ## Blobs on R2
 
@@ -238,6 +243,14 @@ the declared size only), PUTs the bytes straight to R2, then calls `POST /v1/blo
 back, hashes it, and copies it under `blobs/sha256/` only when size and hash match what the client declared. A blob
 another project holds must still be uploaded and checked, so knowing a hash gives nobody another project's bytes.
 Limits per kind: 10 MiB for a skill bundle, 256 MiB for a run log, 64 MiB for a source file.
+
+A commit's time grows with its uploads, because R2 takes about a quarter of a second per call. The hub copies each
+upload to a sealed key, streams the copy through SHA-256 in 1 MiB pieces, and copies it to its blob key: three calls
+for a blob new to the hub. For a blob the hub already records, the last call only checks that its object is there.
+`EVO_HUB_BLOB_CONCURRENCY` (default 32, at most 256) caps how many uploads one process works on at once, shared by
+every commit in flight. A commit of 100 uploads therefore takes a few seconds. Release 0.2.0 made five calls per
+upload, 16 at a time per commit, and took 40 seconds over 459 uploads. Clients should commit in batches;
+`evo-agents hub kg push` sends at most 100 uploads per commit.
 
 Downloads work the same way in reverse: after the read check, the hub hands out a presigned GET. Machines therefore
 need to reach the R2 endpoint as well as the hub. The web navigates to the URL instead of fetching it, so the bucket
@@ -288,6 +301,7 @@ the variables in the platform's environment, never in a committed file. `deploy/
 | `EVO_HUB_S3_ENDPOINT`, `EVO_HUB_S3_BUCKET`, `EVO_HUB_S3_ACCESS_KEY_ID`, `EVO_HUB_S3_SECRET_ACCESS_KEY` | api, worker | the blob store, all four or none; for R2 the endpoint is `https://<account id>.r2.cloudflarestorage.com` |
 | `EVO_HUB_SENTRY_DSN` | api, worker | optional error reporting |
 | `EVO_HUB_LOG_LEVEL` | api, worker | `DEBUG`, `INFO` (default), `WARNING` or `ERROR` |
+| `EVO_HUB_BLOB_CONCURRENCY` | api | uploads one process checks and copies in the blob store at once, every commit together; default `32`, at most `256` |
 | `EVO_HUB_WORKER_CPUS`, `EVO_HUB_WORKER_MEMORY` | compose | worker limits, default `2` and `4g` |
 | `EVO_HUB_API_INTERNAL_URL` | web | where the web server reaches the api, default `http://evo-agents-hub-api:8080` (the api's network alias) |
 | `EVO_HUB_WEB_TIME_ZONE` | web | time zone of dates rendered on the server, default `Asia/Ho_Chi_Minh` |

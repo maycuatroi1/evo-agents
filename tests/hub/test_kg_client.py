@@ -1,6 +1,7 @@
 """The client side of knowledge graphs on the hub, without Postgres: the knowledge config a push sends and the checks
 the hub runs on it, run logs read and labelled as the hub reads them, how ``kg serve`` and ``kg query`` choose their
-backend, the push's handling of a hub that refuses, and ``kg sync --push`` on a machine that is not signed in.
+backend, the push's handling of a hub that refuses or does not answer, the batches and timeouts of its blob
+commits, and ``kg sync --push`` on a machine that is not signed in.
 
 Machines are tmp directories with the fake connector of ``tests.kg.fakes``; HOME and EVO_KG_HOME point into tmp."""
 
@@ -13,7 +14,8 @@ from pathlib import Path
 import pytest
 
 from evo_agents.cli import main
-from evo_agents.hub.client import Hub, HubError
+from evo_agents.hub import kg_push
+from evo_agents.hub.client import Hub, HubError, Unreachable
 from evo_agents.hub.kg_cli import RemoteSession, open_session
 from evo_agents.hub.kg_ingest import (
     LogProblem,
@@ -24,7 +26,7 @@ from evo_agents.hub.kg_ingest import (
     refusal,
     run_id_of,
 )
-from evo_agents.hub.kg_push import Pusher
+from evo_agents.hub.kg_push import Pusher, batches, commit_timeout, log_timeout, transient, unanswered
 from evo_agents.kg.policy import Label, Policy
 from evo_agents.kg.project import load_project_at
 from evo_agents.kg.serve import Session
@@ -160,7 +162,7 @@ class RefusingHub:
         self.status = status
         self.calls = []
 
-    def call(self, method, path, body=None):
+    def call(self, method, path, body=None, *, timeout=None):
         self.calls.append((method, path))
         raise HubError(f"refused with {self.status}", self.status)
 
@@ -174,6 +176,48 @@ def test_a_push_stops_at_the_project_or_at_the_credential_the_hub_refuses(machin
     with pytest.raises(HubError):
         Pusher(hub, project).push()
     assert hub.calls == [("PUT", "/v1/kg/alpha/config")]
+
+
+def test_a_hub_that_may_come_back_is_tried_again_and_one_that_refuses_is_not(machine):
+    project, sync, _ = machine
+    sync("docs", item("guide"))
+    waits = []
+    busy = RefusingHub(503)
+    report = Pusher(busy, project, sleep=waits.append).push()
+    assert report.errors == ["refused with 503"]
+    assert busy.calls == [("PUT", "/v1/kg/alpha/config")] * kg_push.RUN_ATTEMPTS
+    assert waits == list(kg_push.RETRY_DELAYS)
+    refusing = RefusingHub(422)
+    assert Pusher(refusing, project, sleep=waits.append).push().errors == ["refused with 422"]
+    assert len(refusing.calls) == 1 and len(waits) == 2
+
+
+def test_errors_that_may_pass_and_requests_that_may_have_been_carried_out():
+    gone = Unreachable("cannot reach https://hub.test: no answer within 30s")
+    refused = Unreachable("cannot reach https://hub.test: [Errno 61] Connection refused", refused=True)
+    assert transient(gone) and transient(refused) and transient(HubError("busy", 503))
+    assert not transient(HubError("no", 422)) and not transient(HubError("no", 401))
+    assert not transient(HubError("a blob is missing from the corpus"))
+    assert unanswered(gone) and unanswered(HubError("gateway", 504)) and unanswered(HubError("bad gateway", 502))
+    assert not unanswered(refused) and not unanswered(HubError("busy", 503))
+
+
+def test_blobs_go_in_batches_bounded_by_count_and_bytes():
+    mib = 1024 * 1024
+    many = {f"{i:064x}": 10 for i in range(250)}
+    assert [len(batch) for batch in batches(many)] == [100, 100, 50]
+    assert [digest for batch in batches(many) for digest in batch] == list(many)
+    big = {"a": 200 * mib, "b": 100 * mib, "c": 300 * mib, "d": 1}
+    assert list(batches(big)) == [["a"], ["b"], ["c"], ["d"]]  # a blob over COMMIT_BYTES goes alone
+    assert list(batches({})) == []
+
+
+def test_a_commit_waits_longer_the_more_it_carries():
+    # a 0.2.0 hub on R2 took 0.088 s per upload: a full batch must be answered with room to spare
+    assert commit_timeout(kg_push.COMMIT_BATCH, 0) > 5 * kg_push.COMMIT_BATCH * 0.088
+    assert commit_timeout(1, 0) == pytest.approx(30.5)
+    assert commit_timeout(1, 64 * 1024 * 1024) == pytest.approx(38.5)  # the hub reads it back at least at 8 MiB/s
+    assert log_timeout(0) == 30.0 and log_timeout(256 * 1024 * 1024) == pytest.approx(30.0 + 256)
 
 
 def test_kg_sync_push_without_signing_in_fails_after_syncing(machine, capsys):
