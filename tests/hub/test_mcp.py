@@ -829,8 +829,12 @@ def test_plan_tools_list_show_and_mark_steps_on_the_hub(hub, monkeypatch):
     assert marked["structuredContent"]["step"]["evidence"] == SECRET and marked["structuredContent"]["step"]["done_at"]
     again = ok(hub, "alice", "plan_step", {"plan_id": "rollout", "step": 1, "status": "done", "evidence": SECRET})
     assert "was already done" in again["content"][0]["text"] and not again["structuredContent"]["changed"]
-    audit = live.sql(hub.db, "SELECT action, target FROM audit WHERE action = 'plan.patch'")
-    assert audit == [("plan.patch", f"{PROJECT}/rollout@2")]
+    audit = live.sql(
+        hub.db,
+        "SELECT a.action, a.target, p.name FROM audit a LEFT JOIN projects p ON p.id = a.project_id "
+        "WHERE a.action = 'plan.patch'",
+    )
+    assert audit == [("plan.patch", f"{PROJECT}/rollout@2", PROJECT)]  # filed under the plan's project
 
     assert "writer role" in failed(hub, "bob", "plan_step", {"plan_id": "rollout", "step": 2, "status": "done"})
     stale = failed(hub, "alice", "plan_step", {"plan_id": "rollout", "step": 2, "status": "done", "if_revision": 1})

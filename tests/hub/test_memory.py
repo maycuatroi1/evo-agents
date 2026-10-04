@@ -468,10 +468,14 @@ def test_if_revision_conflicts_carry_the_current_version_and_delete_leaves_a_tom
         (memory_id,),
     )
     assert history == [(1, "v1 secret-content", False), (2, "v2 from bob", False), (3, "", True), (4, "v4 back", False)]
-    audit = live.sql(hub_db, "SELECT action, target FROM audit WHERE action LIKE 'memory.%%' ORDER BY id")
-    assert audit == [("memory.put", f"memory:{memory_id}")] * 2 + [("memory.delete", f"memory:{memory_id}")] + [
-        ("memory.put", f"memory:{memory_id}")
-    ]
+    audit = live.sql(
+        hub_db,
+        "SELECT a.action, a.target, p.name FROM audit a LEFT JOIN projects p ON p.id = a.project_id "
+        "WHERE a.action LIKE 'memory.%%' ORDER BY a.id",
+    )
+    assert audit == [("memory.put", f"memory:{memory_id}", "demo")] * 2 + [
+        ("memory.delete", f"memory:{memory_id}", "demo")
+    ] + [("memory.put", f"memory:{memory_id}", "demo")]  # filed under the memory's project (schema 0007)
     logged = caplog.text + json.dumps([vars(r) for r in caplog.records], default=str)
     stored = json.dumps(live.sql(hub_db, "SELECT * FROM audit"), default=str) + logged
     for content in ("secret-content", "from bob", "note.md", "v4 back"):
