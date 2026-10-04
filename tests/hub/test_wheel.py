@@ -24,14 +24,14 @@ REVISIONS = revisions()  # every revision of this checkout, oldest first
 
 
 def migration_files() -> set[str]:
-    """Wheel paths of env.py, the script template and every file under versions/ in this checkout."""
+    """Wheel paths of env.py, the script template, every file under versions/ and the vendored SQL in sql/."""
     versions = [
         path
         for path in (MIGRATIONS / "versions").rglob("*")
         if path.is_file() and "__pycache__" not in path.parts and not path.name.startswith(".")
     ]
     assert len(versions) >= len(REVISIONS)  # at least one file per revision
-    files = [MIGRATIONS / "env.py", MIGRATIONS / "script.py.mako", *versions]
+    files = [MIGRATIONS / "env.py", MIGRATIONS / "script.py.mako", *versions, *(MIGRATIONS / "sql").glob("*")]
     return {path.relative_to(ROOT).as_posix() for path in files}
 
 
@@ -88,4 +88,5 @@ def test_the_wheel_ships_the_migrations_and_migrates_from_its_own_venv(hub_db, t
     assert applied == [list(REVISIONS)]
     with pg.admin(hub_db.admin_dsn) as conn:
         assert conn.execute("SELECT version_num FROM alembic_version").fetchall() == [(REVISIONS[-1],)]
-        assert conn.execute("SELECT count(*) FROM pg_tables WHERE schemaname = 'public'").fetchone()[0] == 15
+        tables = 15 + len(pg.BLOB_TABLES | pg.QUEUE_TABLES)
+        assert conn.execute("SELECT count(*) FROM pg_tables WHERE schemaname = 'public'").fetchone()[0] == tables

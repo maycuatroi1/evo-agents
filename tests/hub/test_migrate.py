@@ -39,6 +39,7 @@ TABLES = {
     "kg_ingests",
     "audit",
 }
+TABLES |= pg.BLOB_TABLES | pg.QUEUE_TABLES  # migration 0005
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 SNAPSHOT = """
@@ -192,8 +193,8 @@ def test_revisions_form_one_chain_of_numbered_files():
     assert script.get_heads() == [head_revision()]
     assert tuple(rev.revision for rev in chain) == ALL
     previous = None
-    for number, rev in enumerate(chain, start=1):
-        assert rev.revision == f"{number:04d}"
+    for rev in chain:  # numbers rise along the chain; branches merged in parallel may leave a gap until relinked
+        assert re.fullmatch(r"\d{4}", rev.revision) and (previous is None or rev.revision > previous)
         assert re.fullmatch(rf"{rev.revision}_[a-z0-9_]+\.py", Path(rev.path).name)
         assert rev.down_revision == previous
         previous = rev.revision

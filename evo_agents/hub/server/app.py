@@ -1,10 +1,12 @@
 """The hub's FastAPI application.
 
-The lifespan migrates the database (under the advisory lock, see ``migrate``), opens the connection pool and
-the GitHub client, and closes both on shutdown; a database that cannot be reached or migrated stops the start
-instead of serving errors. Every request gets an id and one access log line without its query string, which can
-carry OAuth codes. Every path under /v1 needs a credential except the few ``security.PUBLIC_PATHS`` lists. The
-OpenAPI document is served at /v1/openapi.json for the web client's generated types.
+The lifespan migrates the database (under the advisory lock, see ``migrate``), opens the connection pool, the
+GitHub client, the blob store client and the job queue the api defers to, and closes them on shutdown; a database
+that cannot be reached or migrated stops the start instead of serving errors. An R2 outage does not: health
+reports it and the blob routes answer 503. Every request gets an id and one access log line without its query
+string, which can carry OAuth codes. Every path under /v1 needs a credential except the few
+``security.PUBLIC_PATHS`` lists. The OpenAPI document is served at /v1/openapi.json for the web client's generated
+types.
 """
 
 from __future__ import annotations
@@ -20,11 +22,13 @@ from fastapi import FastAPI
 from starlette.datastructures import MutableHeaders
 
 from evo_agents import __version__
+from evo_agents.hub.blobs import BlobStore
 from evo_agents.hub.config import HubConfig
 from evo_agents.hub.db import open_pool
+from evo_agents.hub.jobs import JobQueue
 from evo_agents.hub.log import redact_dsn, scrub_data
 from evo_agents.hub.migrate import migrate
-from evo_agents.hub.server import admin, auth, errors, health, projects, tokens, web_auth
+from evo_agents.hub.server import admin, auth, blobs, errors, health, projects, tokens, web_auth
 from evo_agents.hub.server.github import GitHub
 from evo_agents.hub.server.security import Authenticate
 
@@ -99,6 +103,13 @@ def create_app(config: HubConfig) -> FastAPI:
             raise
         app.state.pool = pool
         app.state.github = GitHub(config)
+        app.state.blobs = BlobStore.from_config(config)
+        app.state.jobs = await JobQueue.open(pool)
+        if app.state.blobs is None:
+            log.warning(
+                "blob store not configured: the blob routes answer 503",
+                extra={"missing": config.blob_store_missing()},
+            )
         log.info(
             "hub ready",
             extra={
@@ -107,12 +118,15 @@ def create_app(config: HubConfig) -> FastAPI:
                 "admins": len(config.admins),
                 "device_login": bool(config.github_client_id),
                 "web_login_missing": config.web_login_missing(),
+                "blob_bucket": config.s3_bucket,
             },
         )
         try:
             yield
         finally:
             await app.state.github.aclose()
+            if app.state.blobs is not None:
+                app.state.blobs.close()
             await pool.close()
             log.info("hub stopped, connection pool closed")
 
@@ -134,6 +148,7 @@ def create_app(config: HubConfig) -> FastAPI:
     app.include_router(tokens.router)
     app.include_router(admin.router)
     app.include_router(projects.router)
+    app.include_router(blobs.router)
     return app
 
 
