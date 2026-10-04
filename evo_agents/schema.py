@@ -2,7 +2,7 @@
 
 The core depends only on the standard library and PyYAML, so this module implements the subset of
 JSON Schema the harness and protocol schemas use: type, enum, const, pattern, required, properties,
-additionalProperties, items, minItems, minimum, maximum, minLength, anyOf, oneOf and local $ref.
+additionalProperties, items, minItems, minimum, maximum, minLength, maxLength, anyOf, oneOf and local $ref.
 
 Two extensions keep readers lenient while writers stay strict: ``"x-unknown": "warn"`` on an object
 schema reports keys outside ``properties`` as warnings instead of errors, and ``"x-severity":
@@ -111,6 +111,8 @@ class Validator:
                 issues.append(Issue(path, f"does not match pattern {schema['pattern']!r}"))
             if "minLength" in schema and len(value) < schema["minLength"]:
                 issues.append(Issue(path, f"shorter than {schema['minLength']} characters"))
+            if "maxLength" in schema and len(value) > schema["maxLength"]:
+                issues.append(Issue(path, f"longer than {schema['maxLength']} characters"))
 
         if isinstance(value, (int, float)) and not isinstance(value, bool):
             if "minimum" in schema and value < schema["minimum"]:
