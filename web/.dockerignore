@@ -1,0 +1,33 @@
+# The build context is web/. Dependencies are installed and the app is built inside the image.
+node_modules
+.next
+out
+build
+coverage
+*.tsbuildinfo
+next-env.d.ts
+# Tests and their output, which the image never runs.
+e2e
+test-results
+playwright-report
+blob-report
+**/*.test.ts
+**/*.test.tsx
+vitest.config.ts
+playwright.config.ts
+# Caches and version control.
+.git
+.cache
+.turbo
+.eslintcache
+.pnpm-store
+.vercel
+.vscode
+.idea
+# Local files that must not reach a build.
+.env*
+*.pem
+*.log
+.DS_Store
+Dockerfile
+.dockerignore

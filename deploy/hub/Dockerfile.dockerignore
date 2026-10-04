@@ -1,0 +1,16 @@
+# The build context is the repository root; the image needs the Python package and nothing else. Everything is
+# left out first (.git, tests/, web/ and its node_modules and .next, plugins/, deploy/, caches), then the files the
+# wheel is built from are let back in.
+*
+!pyproject.toml
+!README.md
+!LICENSE
+!MANIFEST.in
+!evo_agents/
+# Caches that can sit inside the package directory.
+**/__pycache__
+**/*.py[cod]
+**/.pytest_cache
+**/.ruff_cache
+**/.mypy_cache
+**/.DS_Store
