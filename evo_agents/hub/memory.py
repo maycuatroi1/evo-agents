@@ -8,7 +8,10 @@ the working directory with every character outside [A-Za-z0-9] turned into ``-``
 Where a directory's memories live on the hub, as (scope, project, location):
 
 - a slug equal to the slug of the harness root or of a repo of a hub project the person sees, placed on this machine
-  the way ``hub registry pull`` places it, belongs to that project, at location ``harness`` or the repo's name;
+  the way ``hub registry pull`` places it, belongs to that project, at location ``harness`` or the repo's name. A
+  directory several projects claim goes to the strongest claim: the harness root of a project, then the binding of
+  ``evo-agents kg bind`` among the projects listing it as a repo, then the one project listing it; anything else is
+  refused and never guessed (``Places``);
 - any other slug is personal. Its location is the slug without the home directory's slug and the ``-`` after it
   (``github-blog`` for ``~/github/blog``); ``~`` stands for the home directory itself, ``~`` and the rest of the slug
   for a path whose first part under the home directory starts with a character the rule turns into ``-``
@@ -54,6 +57,7 @@ import yaml
 
 from evo_agents.hub.client import Hub, HubError, host_name, hub_dir, write_atomic
 from evo_agents.hub.registry import cluster_of, default_registry, read_registry
+from evo_agents.kg.project import binding_of, bound_project, read_bindings
 
 TYPES = ("user", "feedback", "project", "reference")
 SHARED_TYPES = frozenset({"project", "reference"})  # in a project, its members see these; their owner the others
@@ -153,26 +157,62 @@ def _owns_cluster(cluster: Mapping, project: Mapping, hub_url: str) -> bool:
     return cluster.get("name") == project["harness"]["name"]
 
 
+def _listed(names) -> str:
+    return ", ".join(sorted(names))
+
+
 class Places:
     """The memory directories of the hub projects a person sees, at the paths ``hub registry pull`` gives their
-    harness and repos on this machine. Any other directory is personal."""
+    harness and repos on this machine. Any other directory is personal.
 
-    def __init__(self, home: Path):
+    A directory several projects claim belongs to the one whose claim is strongest, by this precedence:
+
+    1. the harness root of a project. Two projects whose harness root is one directory here are refused, whatever
+       else claims it: one of the two registrations is a mistake, and guessing would put memories in the wrong one.
+    2. ``evo-agents kg bind``: the project bound.json binds the directory to, by its own binding or that of its
+       nearest bound ancestor, as the knowledge graph reads it. It chooses among the projects that list the
+       directory as a repo; a binding to any other project refuses the directory, since that project has no place
+       for it on the hub.
+    3. a repo listing, when one project alone lists the directory.
+
+    Anything else, such as one repo of two projects without a binding, is refused, and the message names the
+    binding that settles it. So the memories of a directory go to another project only when a stronger claim says
+    so, never because of how projects happen to list their repos; and a memory synced with one project is never
+    moved to another by a push (``MemorySync._push_file``). A binding never makes a directory a project's that no
+    project claims: it has no location there, so it stays personal."""
+
+    def __init__(self, home: Path, bindings: Mapping | None = None):
         self.home = home
+        self.bindings = dict(bindings or {})  # bound.json, as ``evo_agents.kg.project.read_bindings`` reads it
         self._claims: dict[str, set[Place]] = {}
+        self._roots: dict[str, set[str]] = {}  # per directory, the projects whose harness root it is
+        self._paths: dict[str, set[str]] = {}  # per directory, the paths that claimed it
         self._slugs: dict[Place, str] = {}
+        self._decided: dict[str, str | None | HubError] = {}  # what project_of found, per directory
 
-    def add(self, place: Place, path: str) -> None:
-        """``path`` holds ``place`` here; the first path added for a place is where its memories are pulled to."""
+    def add(self, place: Place, path: str, *, root: bool = False) -> None:
+        """``path`` holds ``place`` here, as the harness root of its project when ``root``; the first path added for
+        a place is where its memories are pulled to."""
+        self._decided.clear()
         self._slugs.setdefault(place, slug(path))
         for name in {slug(path), slug(os.path.realpath(path))}:
             self._claims.setdefault(name, set()).add(place)
+            self._paths.setdefault(name, set()).add(os.path.normpath(path))
+            if root:
+                self._roots.setdefault(name, set()).add(place.project)
 
     @classmethod
-    def from_hub(cls, projects: list, registry: Mapping, hub_url: str, home: Path | None = None) -> Places:
+    def from_hub(
+        cls,
+        projects: list,
+        registry: Mapping,
+        hub_url: str,
+        home: Path | None = None,
+        bindings: Mapping | None = None,
+    ) -> Places:
         """``projects`` as GET /v1/projects lists them; the workspace of each is the one its cluster in ``registry``
-        names, or the one it was registered with."""
-        places = cls(home or Path.home())
+        names, or the one it was registered with. ``bindings`` is bound.json of ``evo-agents kg bind``."""
+        places = cls(home or Path.home(), bindings)
         clusters = [c for c in registry.get("clusters") or [] if isinstance(c, dict)]
         for project in projects:
             if not isinstance(project, dict) or not isinstance(project.get("harness"), dict):
@@ -182,38 +222,98 @@ class Places:
             base = Path(workspace).expanduser() if isinstance(workspace, str) and workspace else None
             cluster = cluster_of(project, hub_url, base)
             harness = Place("project", project["name"], HARNESS)
-            places.add(harness, cluster["root"])
+            places.add(harness, cluster["root"], root=True)
             if held and isinstance(held.get("root"), str):
-                places.add(harness, held["root"])
+                places.add(harness, held["root"], root=True)
             for repo, path in zip(project.get("repos") or [], cluster["repos"], strict=True):
                 places.add(Place("project", project["name"], repo["name"]), path)
         return places
 
-    def candidates(self, name: str) -> list[Place]:
-        """The places directory ``name`` may sync with, the preferred first: a project's harness before its repos,
-        else the personal place. HubError when directories of more than one project are at this path."""
+    def _shown(self, name: str) -> str:
+        paths = sorted(self._paths.get(name, ()))
+        return " and ".join(paths) if paths else name
+
+    def _bound(self, name: str) -> tuple[set, list[str]]:
+        """The projects the bindings of directory ``name``'s paths name (None for a binding that names none), and
+        the bound directories they come from."""
+        projects, where = set(), []
+        for path in sorted(self._paths.get(name, ())):
+            found = binding_of(path, self.bindings)
+            if found is not None:
+                where.append(found[0])
+                projects.add(bound_project(found[1]))
+        return projects, where
+
+    def project_of(self, name: str) -> str | None:
+        """The project directory ``name`` (a slug) belongs to here, by the precedence of the class: None when no
+        project claims it, so it is personal; HubError naming the way out when the claims do not settle it. Every
+        caller (push, pull, the hooks) decides through here."""
+        if name not in self._decided:
+            try:
+                self._decided[name] = self._decide(name)
+            except HubError as exc:
+                self._decided[name] = exc
+        found = self._decided[name]
+        if isinstance(found, HubError):
+            raise HubError(str(found))
+        return found
+
+    def _decide(self, name: str) -> str | None:
         claims = self._claims.get(name)
         if not claims:
-            return [Place("personal", None, personal_location(name, self.home))]
-        projects = sorted({place.project for place in claims})
-        if len(projects) > 1:
+            return None
+        shown = self._shown(name)
+        roots = self._roots.get(name, set())
+        if len(roots) > 1:
             raise HubError(
-                f"{name}: the directory of projects {', '.join(projects)} at once on this machine, so its memories "
-                "are not synced; give each project its own repos"
+                f"{shown}: the harness root of projects {_listed(roots)} at once on this machine, so its memories are "
+                "not synced; a harness is the root of one hub project, so one of these registrations has to go"
             )
+        if roots:
+            return next(iter(roots))  # the harness root wins over a binding and over repo listings
+        listing = {place.project for place in claims}
+        fix = f"`evo-agents kg bind --project <name> {sorted(self._paths.get(name, {name}))[0]}`"
+        bound, where = self._bound(name)
+        if bound:
+            if len(bound) == 1 and next(iter(bound)) in listing:
+                return next(iter(bound))
+            named = _listed(p or "no project" for p in bound)
+            raise HubError(
+                f"{shown}: bound to {named} (`evo-agents kg bind`, at {', '.join(where)}), while the hub projects "
+                f"listing it as a repo here are {_listed(listing)}; its memories are not synced. Choose one of those "
+                f"with {fix}"
+            )
+        if len(listing) == 1:
+            return next(iter(listing))
+        raise HubError(
+            f"{shown}: a repo of projects {_listed(listing)} at once on this machine and the harness root of none, so "
+            f"its memories are not synced; choose its project with {fix}"
+        )
+
+    def candidates(self, name: str) -> list[Place]:
+        """The places directory ``name`` may sync with, the preferred first: its project's harness before its repos,
+        else the personal place. HubError when ``project_of`` cannot tell its project."""
+        project = self.project_of(name)
+        if project is None:
+            return [Place("personal", None, personal_location(name, self.home))]
+        claims = (place for place in self._claims[name] if place.project == project)
         return sorted(claims, key=lambda place: (place.location != HARNESS, place.location))
 
     def directory(self, place: Place) -> str | None:
         """The directory (slug) the memories of ``place`` are pulled into here; None when there is none: a project
-        location no harness or repo of this machine holds, a personal location that is not a slug, or a directory
-        another project, or for a personal memory any project, holds here."""
+        location no harness or repo of this machine holds, a personal location that is not a slug, a directory that
+        belongs to another project here, or one whose project cannot be told, or for a personal memory a directory
+        any project claims here."""
         if place.scope == "personal":
             name = personal_slug(place.location, self.home)
             return None if name is None or name in self._claims else name
         name = self._slugs.get(place)
-        if name is None or len({p.project for p in self._claims.get(name, ())}) > 1:
+        if name is None or not SLUG.fullmatch(name):
             return None
-        return name if SLUG.fullmatch(name) else None
+        try:
+            return name if self.project_of(name) == place.project else None
+        except HubError:
+            return None
 
 
 # Files
@@ -586,7 +686,7 @@ class MemorySync:
         if not isinstance(projects, list):
             raise HubError(f"the hub at {self.hub.url} did not answer with a list of projects")
         registry, _ = read_registry(self.registry.expanduser())
-        return Places.from_hub(projects, registry, self.hub.url, self.home)
+        return Places.from_hub(projects, registry, self.hub.url, self.home, read_bindings())
 
     def target(self, target: Path | None) -> str:
         """The directory (slug) of ``target``: a working directory, or a directory under the Claude Code projects
@@ -716,6 +816,20 @@ class MemorySync:
             self.report.errors.append(
                 f"{path}: synced with project {previous.project} before, whose directories this one no longer is "
                 "here; not pushed as personal. Run `evo-agents hub registry pull`, or move the file"
+            )
+            return
+        elif (
+            previous is not None
+            and previous.scope == "project"
+            and previous.project != candidates[0].project
+            and entry.get("sha256") is not None
+        ):
+            # Two projects need not share members or labels: a push never moves a live memory from one to the other.
+            self.report.errors.append(
+                f"{path}: synced with project {previous.project} before, and this directory is project "
+                f"{candidates[0].project}'s here now; not pushed, a memory never moves between projects by itself. "
+                f"Rename the file to push it to {candidates[0].project} as a new memory (`evo-agents hub memory push "
+                f"--prune` then deletes it from {previous.project})"
             )
             return
         else:
