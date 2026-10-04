@@ -8,7 +8,14 @@ Source config (knowledge.yaml)::
       ref: HEAD                           # default HEAD of the checkout
       include: ["docs/*", "*.py"]         # optional globs; default: markdown, yaml, text, code
       exclude: ["tests/fixtures/*"]
+      allow: [".claude/CLAUDE.md"]        # optional globs exempt from DEFAULT_EXCLUDE
       code: {backend: auto}               # python-ast, graphify-ast (needs the graphify extra) or none
+
+Paths matching ``DEFAULT_EXCLUDE`` (build output, lock files, virtualenvs, ``.claude/``, ``.agents/``,
+...) are skipped unless they match an ``allow`` glob. The source's own ``exclude`` always wins over
+``allow``, and an allowed path still goes through ``include`` or the default suffixes; one that is not
+selected becomes a path-only asset like any other file. Globs use fnmatch, where ``*`` also matches
+``/``.
 
 Item IDs are ``<source>:file:<path>``; the revision is the blob SHA, so it changes exactly when the
 content does. A git ref can be force-pushed; then the order of revisions is the order syncs observed.
@@ -20,7 +27,7 @@ from pathlib import Path
 
 from evo_agents import __version__
 from evo_agents.kg.connectors import _git
-from evo_agents.kg.connectors._files import DEFAULT_EXCLUDE, asset_item, decode, file_item, matches, selected
+from evo_agents.kg.connectors._files import asset_item, decode, excluded, file_item, selected
 from evo_agents.kg.protocol import finalize_item, hello
 
 
@@ -55,13 +62,11 @@ def run(ctx):
         yield {"type": "closed", "status": "error", "exception": str(exc)}
         return
 
-    include, exclude = ctx.source.get("include"), ctx.source.get("exclude")
+    include, exclude, allow = ctx.source.get("include"), ctx.source.get("exclude"), ctx.source.get("allow")
     assets = ctx.source.get("assets", True)
-    tree = [
-        (sha, path) for sha, path in _git.ls_tree(repo, commit) if not matches(path, DEFAULT_EXCLUDE + (exclude or []))
-    ]
-    files = [(sha, path) for sha, path in tree if selected(path, include, exclude)]
-    others = [(sha, path) for sha, path in tree if assets and not selected(path, include, exclude)]
+    tree = [(sha, path) for sha, path in _git.ls_tree(repo, commit) if not excluded(path, exclude, allow)]
+    files = [(sha, path) for sha, path in tree if selected(path, include, exclude, allow)]
+    others = [(sha, path) for sha, path in tree if assets and not selected(path, include, exclude, allow)]
     times = _git.last_change_times(repo, commit)
     fallback_time = _git.commit_time(repo, commit)
     branch = ctx.source.get("branch")

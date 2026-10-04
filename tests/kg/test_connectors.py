@@ -45,8 +45,8 @@ def make_repo(root: Path) -> Path:
     return root
 
 
-def run_git(repo: Path, source_id="app"):
-    source = {"id": source_id, "connector": "git", "path": str(repo)}
+def run_git(repo: Path, source_id="app", **keys):
+    source = {"id": source_id, "connector": "git", "path": str(repo), **keys}
     return list(ConnectorRun(ConnectorContext("p", source)))
 
 
@@ -85,6 +85,42 @@ def test_git_connector_golden(tmp_path):
     repo = make_repo(tmp_path / "app")
     report = run_conformance({"id": "app", "connector": "git", "path": str(repo)}, golden=GOLDEN / "git.jsonl")
     assert report.ok, report.to_json()
+
+
+BASE = ["app/server.py", "config.yaml", "docs/guide.md", "logo.png"]
+
+
+def add_agent_files(repo: Path) -> Path:
+    (repo / ".claude").mkdir()
+    (repo / ".claude/CLAUDE.md").write_text("# Rules\n\nRun tests with uv.\n")
+    (repo / ".claude/settings.json").write_text("{}\n")
+    (repo / ".claude/icon.png").write_bytes(b"\x89PNG\0\0binary")
+    sh(repo, "add", "-A")
+    sh(repo, "commit", "-q", "-m", "agent files")
+    return repo
+
+
+def test_git_default_excludes_still_drop_claude_dir(tmp_path):
+    repo = add_agent_files(make_repo(tmp_path / "app"))
+    assert sorted(items_by_path(run_git(repo))) == BASE
+
+
+def test_git_allow_reopens_exactly_the_allowed_path(tmp_path):
+    repo = add_agent_files(make_repo(tmp_path / "app"))
+    msgs = run_git(repo, allow=[".claude/CLAUDE.md"])
+    items = items_by_path(msgs)
+    assert sorted(items) == sorted([*BASE, ".claude/CLAUDE.md"])
+    claude = items[".claude/CLAUDE.md"]
+    assert claude["kind"] == "markdown" and "Run tests with uv." in claude["body"]["text"]
+    assert msgs[-2]["count"] == 5
+
+
+def test_git_source_exclude_wins_over_allow(tmp_path):
+    repo = add_agent_files(make_repo(tmp_path / "app"))
+    items = items_by_path(run_git(repo, allow=[".claude/*"], exclude=[".claude/CLAUDE.md"]))
+    assert sorted(items) == sorted([*BASE, ".claude/icon.png", ".claude/settings.json"])
+    assert items[".claude/settings.json"]["kind"] == "config"
+    assert items[".claude/icon.png"]["kind"] == "asset"  # allowed but not text-selectable: a path-only asset
 
 
 def test_missing_repo_is_a_config_error_not_an_empty_listing(tmp_path):
