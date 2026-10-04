@@ -385,3 +385,7 @@ def register_client(hsub) -> None:
     from evo_agents.hub.cli_memory import register_memory
 
     register_memory(hsub)
+
+    from evo_agents.hub.cli_skills import register_skills
+
+    register_skills(hsub)

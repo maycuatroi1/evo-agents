@@ -269,6 +269,33 @@ class BlobStore:
                 body.close()
         raise AssertionError("unreachable")
 
+    def fetch(self, sha256: str, limit: int) -> bytes | None:
+        """The bytes of blob ``sha256``, None when there is no such blob; ValueError when it holds over ``limit``
+        bytes. For a route that has checked the caller may see what refers to the blob. A body cut off on the way is
+        read again from the start."""
+        key = blob_key(sha256)
+        for attempt in range(READ_ATTEMPTS):
+            response = self._call("GetObject", "get_object", Key=key)
+            if response is None:
+                return None
+            body = response["Body"]
+            chunks, read = [], 0
+            try:
+                for chunk in body.iter_chunks(CHUNK):
+                    read += len(chunk)
+                    if read > limit:
+                        raise ValueError(f"blob {sha256} holds over {limit} bytes")
+                    chunks.append(chunk)
+                return b"".join(chunks)
+            except (BotoCoreError, OSError) as exc:
+                if attempt == READ_ATTEMPTS - 1:
+                    raise _unavailable("GetObject", exc) from None
+                log.info("reading a blob was cut off; reading it again", extra={"error": _error_code(exc)})
+                time.sleep(0.5 * 2**attempt)
+            finally:
+                body.close()
+        raise AssertionError("unreachable")
+
     def copy(self, source: str, target: str) -> bool:
         """Copy ``source`` to ``target`` inside the bucket; False when ``source`` does not exist."""
         source_ref = {"Bucket": self.bucket, "Key": source}
