@@ -20,8 +20,18 @@ classifiers = [
 dependencies = ["PyYAML>=6.0"]
 
 [project.optional-dependencies]
-test = ["pytest>=8", "ruff>=0.6"]
+test = ["pytest>=8", "ruff>=0.6", "httpx>=0.27"]
 graphify = ["graphifyy==0.9.73"]
+hub-server = [
+    "fastapi>=0.135",
+    "uvicorn[standard]>=0.34",
+    "psycopg[binary,pool]>=3.2",
+    "psycopg-pool>=3.2",
+    "alembic>=1.16",
+    "sqlalchemy>=2.0",
+    "pydantic>=2.7",
+    "sentry-sdk>=2.20",
+]
 
 [project.urls]
 Repository = "https://github.com/maycuatroi1/evo-agents"
@@ -40,7 +50,12 @@ version = { attr = "evo_agents.__version__" }
 include = ["evo_agents*"]
 
 [tool.setuptools.package-data]
-evo_agents = ["harness/schemas/*.json"]
+evo_agents = [
+    "harness/schemas/*.json",
+    "hub/migrations/*.py",
+    "hub/migrations/*.mako",
+    "hub/migrations/versions/*.py",
+]
 
 [tool.ruff]
 line-length = 120
