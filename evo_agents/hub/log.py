@@ -50,6 +50,7 @@ QUIET_LOGGERS = {
     "botocore": logging.WARNING,
     "s3transfer": logging.WARNING,
     "urllib3": logging.WARNING,
+    "mcp.server.streamable_http": logging.WARNING,  # a line after every stateless /mcp request
 }
 
 # Attributes every LogRecord has; anything else on a record came from ``extra=`` and goes into the JSON.

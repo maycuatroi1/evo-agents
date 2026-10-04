@@ -393,3 +393,7 @@ def register_client(hsub) -> None:
     from evo_agents.hub.kg_cli import register_kg
 
     register_kg(hsub)
+
+    from evo_agents.hub.mcp_proxy import register_mcp
+
+    register_mcp(hsub)
