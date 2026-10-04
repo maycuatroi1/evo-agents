@@ -1,0 +1,587 @@
+"""Memories: the files of Claude Code's auto-memory, so every machine of a person, and the members of a project, see
+the same ones.
+
+A memory is one file of a memory directory, stored whole (frontmatter and all) with its type, a label and an integer
+revision. Its scope is ``project`` when the directory is the harness root (location ``harness``) or a repo (location:
+the repo's name) of a hub project, else ``personal``, where the location is what is left of the directory's slug
+(``evo_agents.hub.memory`` maps directories and places both ways).
+
+Who sees a memory: in a project, project and reference memories go to the members the read rule lets through the
+sink the caller names, and user and feedback memories to their owner alone, under the same rule; personal memories go
+to their owner alone. A memory one cannot see answers exactly as one that does not exist. The sink defaults to the
+Claude Code session's (claude-code@anthropic): a pull writes files that sessions read.
+
+PUT /v1/memories writes a memory by its key: scope, project, location and name, plus the owner for the types only the
+owner sees. ``if_revision`` is the revision the writer last saw: none to create (a tombstone counts as nothing), the
+current one to change it; anything else is a 409 that carries the current version when the caller may see it. The
+same content again changes nothing and writes no audit row, whatever ``if_revision`` says. DELETE /v1/memories/{id}
+leaves a tombstone: deleted, no body, the next revision. Writes into a project follow the write rule (the writer role,
+and a label the project's hub sink clears; the current label, else the project's default, when the request names
+none); personal memories need a signed-in caller. Every change appends one row to memory_revisions and one audit row
+``memory:<id>`` in the same transaction. Neither the audit trail nor the logs carry a name or any content.
+
+GET /v1/memories lists what the caller sees in (updated_at, id) order with an opaque cursor, tombstones included on
+request, which is what a sync needs. GET /v1/memories/search ranks the full-text matches of name and body
+(configuration simple, websearch syntax). GET /v1/memories/{id} is one memory.
+
+Sizes are bounded: a body is at most MAX_BODY bytes of UTF-8, a request at most MAX_REQUEST bytes (read before
+parsing), a page at most MAX_LIMIT memories and about PAGE_BYTES of bodies, and one request examines at most
+SCAN_ROWS rows the caller cannot see.
+"""
+
+from __future__ import annotations
+
+import base64
+import binascii
+import hashlib
+import json
+import logging
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Annotated, Literal
+
+import psycopg
+from fastapi import APIRouter, HTTPException, Path, Query, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.responses import JSONResponse
+from fastapi.routing import APIRoute
+from psycopg.types.json import Jsonb
+from pydantic import BaseModel, Field, model_validator
+
+from evo_agents.hub.access import has_role
+from evo_agents.hub.memory import (
+    AGENT_SINK,
+    HARNESS,
+    MAX_BODY,
+    PERSONAL_LOCATION,
+    SHARED_TYPES,
+    TYPES,
+    body_problem,
+    name_problem,
+)
+from evo_agents.hub.server.admin import PROJECT_NAME
+from evo_agents.hub.server.audit import record
+from evo_agents.hub.server.errors import CODES, ErrorBody
+from evo_agents.hub.server.projects import PRINTABLE, LabelIn, ProjectAccess, project_access
+from evo_agents.hub.server.security import CurrentUser, Principal
+
+log = logging.getLogger(__name__)
+
+PUT = "memory.put"  # audit actions; the target is memory:<id>
+DELETE = "memory.delete"
+MAX_REQUEST = 6 * MAX_BODY + 64 * 1024  # a body escaped as JSON at worst (\u0001 for every byte), and the rest
+DEFAULT_LIMIT = 100
+MAX_LIMIT = 500
+SEARCH_LIMIT = 50
+PAGE_BYTES = 4 * 1024 * 1024  # bodies in one page, past which it ends early
+SCAN_ROWS = 5000
+BATCH = 200  # rows read at a time while filtering by the read rule
+MAX_REVISION = 2**31 - 1
+MAX_ID = 2**63 - 1
+LOCK_CLASS = 0x6D656D  # pg_advisory_xact_lock namespace serializing the writes of one memory key
+TOO_LARGE = f"a request is at most {MAX_REQUEST // 1024} KiB, a memory at most {MAX_BODY // 1024} KiB"
+
+Sink = Annotated[
+    str,
+    Query(min_length=1, max_length=100, pattern=PRINTABLE, description="the sink reading the memories (read rule)"),
+]
+REFUSALS = {
+    403: {"model": ErrorBody},
+    404: {"model": ErrorBody},
+    413: {"model": ErrorBody},
+    422: {"model": ErrorBody},
+}
+
+
+class BoundedRoute(APIRoute):
+    """Reads at most MAX_REQUEST bytes of a request before FastAPI parses it: a larger one is a 413, whether it says
+    its length or not, and is never held in memory whole."""
+
+    def get_route_handler(self):
+        handler = super().get_route_handler()
+
+        async def bounded(request: Request):
+            declared = request.headers.get("content-length")
+            if declared is not None and (not declared.isdigit() or int(declared) > MAX_REQUEST):
+                raise HTTPException(413, TOO_LARGE)
+            chunks, size = [], 0
+            async for chunk in request.stream():
+                size += len(chunk)
+                if size > MAX_REQUEST:
+                    raise HTTPException(413, TOO_LARGE)
+                chunks.append(chunk)
+            request._body = b"".join(chunks)  # what Request.body() returns from now on
+            return await handler(request)
+
+        return bounded
+
+
+router = APIRouter(
+    prefix="/v1/memories", tags=["memories"], route_class=BoundedRoute, responses={401: {"model": ErrorBody}}
+)
+
+
+def _printable(location: str) -> bool:
+    return all(ch.isprintable() for ch in location) and "/" not in location and "\\" not in location
+
+
+class MemoryIn(BaseModel):
+    scope: Literal["project", "personal"]
+    project: str | None = Field(None, pattern=PROJECT_NAME, description="the hub project; scope project only")
+    location: str = Field(
+        min_length=1,
+        max_length=255,
+        description="harness or a repo of the project; for scope personal, what is left of the directory's slug",
+    )
+    name: str = Field(min_length=4, max_length=255, description="the file name, ending in .md")
+    type: Literal[TYPES]
+    body: str = Field(max_length=MAX_BODY, description="the whole file, frontmatter included")
+    label: LabelIn | None = Field(
+        None, description="scope project only; the current label, else the project's default, when left out"
+    )
+    if_revision: int | None = Field(
+        None, ge=1, le=MAX_REVISION, description="the revision last seen; left out to create the memory"
+    )
+
+    @model_validator(mode="after")
+    def _check(self):
+        problems = [p for p in (name_problem(self.name), body_problem(self.body)) if p]
+        if self.scope == "project":
+            if self.project is None:
+                problems.append("a project memory names its project")
+            if not _printable(self.location):
+                problems.append("a project location is printable text without a slash or a backslash")
+        else:
+            if self.project is not None or self.label is not None:
+                problems.append("a personal memory has no project and no label")
+            if not PERSONAL_LOCATION.fullmatch(self.location):
+                problems.append("a personal location is [~A-Za-z0-9-] then [A-Za-z0-9-] characters")
+        if problems:
+            raise ValueError("; ".join(problems))
+        return self
+
+
+class Memory(BaseModel):
+    id: int
+    scope: str
+    project: str | None
+    location: str
+    name: str
+    type: str
+    owner: str = Field(description="the login of the person who created it")
+    label: dict
+    body: str = Field(description="the whole file; empty for a tombstone")
+    revision: int
+    deleted: bool
+    created_at: datetime
+    updated_at: datetime
+    updated_by: str
+
+
+class Written(Memory):
+    created: bool
+    changed: bool = Field(description="false when the hub already held exactly this")
+
+
+class Page(BaseModel):
+    items: list[Memory]
+    next_cursor: str | None = Field(description="the cursor of the next page; null after the last one")
+
+
+class Found(Memory):
+    rank: float
+
+
+class Results(BaseModel):
+    items: list[Found]
+
+
+class Conflict(ErrorBody):
+    current: Memory | None = Field(description="the version the hub holds, when the caller may see it")
+
+
+@dataclass(frozen=True)
+class Row:
+    memory: Memory
+    owner_id: int
+    project_id: int | None
+
+
+COLUMNS = """
+m.id, m.scope, p.name, m.location, m.name, m.type, o.login, m.label, m.body, m.revision, m.deleted, m.created_at,
+m.updated_at, u.login, m.owner_id, m.project_id
+"""
+FROM = """
+  FROM memories m LEFT JOIN projects p ON p.id = m.project_id
+  JOIN users o ON o.id = m.owner_id JOIN users u ON u.id = m.updated_by
+"""
+# What may be visible before labels count: one's personal memories and, in the projects one holds a grant on, the
+# shared memories and one's own.
+CANDIDATE = """
+(m.scope = 'personal' AND m.owner_id = %(user)s
+ OR m.scope = 'project' AND m.project_id = ANY(%(projects)s)
+    AND (m.type IN ('project', 'reference') OR m.owner_id = %(user)s))
+"""
+FILTERS = """
+(%(scope)s::text IS NULL OR m.scope = %(scope)s)
+AND (%(project_id)s::bigint IS NULL OR m.project_id = %(project_id)s)
+AND (%(location)s::text IS NULL OR m.location = %(location)s)
+"""
+LIST = f"""
+SELECT {COLUMNS} {FROM}
+ WHERE {CANDIDATE} AND {FILTERS} AND (%(deleted)s OR NOT m.deleted)
+   AND (m.updated_at, m.id) > (%(after_at)s::timestamptz, %(after_id)s::bigint)
+ ORDER BY m.updated_at, m.id
+ LIMIT %(batch)s
+"""
+SEARCH = f"""
+SELECT {COLUMNS}, ts_rank(m.search, q) AS rank
+  {FROM}, websearch_to_tsquery('simple', %(q)s) q
+ WHERE m.search @@ q AND NOT m.deleted AND {CANDIDATE} AND {FILTERS}
+ ORDER BY rank DESC, m.updated_at DESC, m.id DESC
+ LIMIT %(batch)s OFFSET %(offset)s
+"""
+ONE = f"SELECT {COLUMNS} {FROM} WHERE m.id = %s"
+KEY = f"""
+SELECT {COLUMNS} {FROM}
+ WHERE m.scope = %(scope)s AND m.project_id IS NOT DISTINCT FROM %(project_id)s AND m.location = %(location)s
+   AND m.name = %(name)s AND (%(shared)s AND m.type IN ('project', 'reference')
+                              OR NOT %(shared)s AND m.type IN ('user', 'feedback') AND m.owner_id = %(user)s
+                              OR m.scope = 'personal' AND m.owner_id = %(user)s)
+   FOR UPDATE OF m
+"""
+INSERT = """
+INSERT INTO memories (scope, project_id, location, name, type, owner_id, label, body, updated_by)
+VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id
+"""
+UPDATE = """
+UPDATE memories SET type = %s, label = %s, body = %s, deleted = %s, revision = revision + 1, updated_at = now(),
+       updated_by = %s
+ WHERE id = %s
+"""
+REVISION = """
+INSERT INTO memory_revisions (memory_id, revision, type, label, body, deleted, actor_id)
+SELECT id, revision, type, label, body, deleted, %s FROM memories WHERE id = %s
+"""
+GRANTED = """
+SELECT p.name FROM grants g JOIN projects p ON p.id = g.project_id WHERE g.user_id = %s ORDER BY p.name
+"""
+
+
+FIELDS = tuple(Memory.model_fields)  # the order of COLUMNS, before owner_id and project_id
+
+
+def _row(values) -> Row:
+    memory = Memory(**dict(zip(FIELDS, values[: len(FIELDS)], strict=True)))
+    return Row(memory, values[len(FIELDS)], values[len(FIELDS) + 1])
+
+
+def _visible(row: Row, user: Principal, accesses: dict[str, ProjectAccess], sink: str) -> bool:
+    """The read rule of memories: personal ones and user and feedback ones are their owner's; in a project the
+    label must pass the rule of ``evo_agents.hub.access`` for the caller's grant and ``sink``."""
+    memory = row.memory
+    if memory.scope == "personal":
+        return row.owner_id == user.user_id
+    if memory.type not in SHARED_TYPES and row.owner_id != user.user_id:
+        return False
+    access = accesses.get(memory.project)
+    return access is not None and access.visible(memory.label, sink)
+
+
+async def _access(conn, user: Principal, project: str) -> ProjectAccess | None:
+    """``user``'s access to ``project``, None without one."""
+    try:
+        return await project_access(conn, user, project)
+    except HTTPException as exc:
+        if exc.status_code == 404:
+            return None
+        raise
+
+
+async def _accesses(conn, user: Principal, project: str | None) -> dict[str, ProjectAccess]:
+    """The projects whose memories ``user`` may read, by name: ``project`` alone when given (404 when the caller
+    cannot see it), else every project the caller holds a grant on. A hub admin without a grant reads nothing."""
+    if project is not None:
+        access = await project_access(conn, user, project)
+        return {project: access} if access.role else {}
+    names = [row[0] for row in await (await conn.execute(GRANTED, (user.user_id,))).fetchall()]
+    found = {name: await _access(conn, user, name) for name in names}
+    return {name: access for name, access in found.items() if access is not None and access.role}
+
+
+def _params(user: Principal, accesses: dict[str, ProjectAccess], scope, project, location) -> dict:
+    project_id = accesses[project].project_id if project is not None and project in accesses else None
+    return {
+        "user": user.user_id,
+        "projects": [access.project_id for access in accesses.values()],
+        "scope": scope,
+        "project_id": project_id,
+        "location": location,
+    }
+
+
+# Cursors: the (updated_at, id) of the last row a page examined, base64url JSON. They only position a listing in
+# rows the caller's filters select, so they need no signature.
+
+
+def _cursor(updated_at: datetime, memory_id: int) -> str:
+    return base64.urlsafe_b64encode(json.dumps([updated_at.isoformat(), memory_id]).encode()).decode().rstrip("=")
+
+
+def _after(cursor: str | None) -> tuple[str, int]:
+    if cursor is None:
+        return "-infinity", 0
+    try:
+        moment, memory_id = json.loads(base64.urlsafe_b64decode(cursor + "=" * (-len(cursor) % 4)))
+        if not isinstance(moment, str) or type(memory_id) is not int or not 0 <= memory_id <= MAX_ID:
+            raise ValueError
+        datetime.fromisoformat(moment)
+    except (ValueError, TypeError, binascii.Error, UnicodeDecodeError):
+        raise HTTPException(422, "cursor is not one this hub handed out: start the listing again without it") from None
+    return moment, memory_id
+
+
+def _size(memory: Memory) -> int:
+    return len(memory.body)  # characters: a cheap bound of the page, which needs no exactness
+
+
+@router.get("", response_model=Page)
+async def list_memories(
+    request: Request,
+    user: CurrentUser,
+    scope: Literal["project", "personal"] | None = None,
+    project: Annotated[str | None, Query(pattern=PROJECT_NAME)] = None,
+    location: Annotated[str | None, Query(min_length=1, max_length=255)] = None,
+    deleted: Annotated[bool, Query(description="include tombstones, as a sync needs")] = False,
+    cursor: Annotated[str | None, Query(max_length=200)] = None,
+    limit: Annotated[int, Query(ge=1, le=MAX_LIMIT)] = DEFAULT_LIMIT,
+    sink: Sink = AGENT_SINK,
+) -> Page:
+    """The memories the caller sees, oldest change first."""
+    if project is not None and scope == "personal":
+        raise HTTPException(422, "a personal memory has no project: leave out project or scope")
+    after_at, after_id = _after(cursor)
+    async with request.app.state.pool.connection() as conn:
+        accesses = await _accesses(conn, user, project)
+        if project is not None and not accesses:
+            return Page(items=[], next_cursor=None)  # a hub admin without a grant
+        params = {**_params(user, accesses, scope, project, location), "deleted": deleted, "batch": BATCH}
+        items: list[Memory] = []
+        budget, scanned, following = PAGE_BYTES, 0, None
+        while True:
+            rows = await (await conn.execute(LIST, {**params, "after_at": after_at, "after_id": after_id})).fetchall()
+            for values in rows:
+                row = _row(values)
+                scanned += 1
+                after_at, after_id = row.memory.updated_at, row.memory.id
+                if _visible(row, user, accesses, sink):
+                    items.append(row.memory)
+                    budget -= _size(row.memory)
+                if len(items) >= limit or budget <= 0 or scanned >= SCAN_ROWS:
+                    following = _cursor(after_at, after_id)
+                    break
+            if following or len(rows) < BATCH:
+                break
+    return Page(items=items, next_cursor=following)
+
+
+@router.get("/search", response_model=Results, responses={422: {"model": ErrorBody}})
+async def search_memories(
+    request: Request,
+    user: CurrentUser,
+    q: Annotated[str, Query(min_length=1, max_length=500, description='words, "a phrase", or -excluded')],
+    scope: Literal["project", "personal"] | None = None,
+    project: Annotated[str | None, Query(pattern=PROJECT_NAME)] = None,
+    limit: Annotated[int, Query(ge=1, le=SEARCH_LIMIT)] = 10,
+    sink: Sink = AGENT_SINK,
+) -> Results:
+    """The memories the caller sees whose name or text matches ``q`` (full text, configuration simple), best
+    first."""
+    if "\x00" in q:
+        raise HTTPException(422, "q holds a NUL character")
+    async with request.app.state.pool.connection() as conn:
+        accesses = await _accesses(conn, user, project)
+        if project is not None and not accesses:
+            return Results(items=[])  # a hub admin without a grant
+        params = {**_params(user, accesses, scope, project, None), "q": q, "batch": BATCH}
+        found: list[Found] = []
+        budget = PAGE_BYTES
+        for offset in range(0, SCAN_ROWS, BATCH):
+            rows = await (await conn.execute(SEARCH, {**params, "offset": offset})).fetchall()
+            for values in rows:
+                row = _row(values)
+                if _visible(row, user, accesses, sink):
+                    found.append(Found(**row.memory.model_dump(), rank=values[len(FIELDS) + 2]))
+                    budget -= _size(row.memory)
+                if len(found) >= limit or budget <= 0:
+                    return Results(items=found)
+            if len(rows) < BATCH:
+                break
+    return Results(items=found)
+
+
+def _not_found(memory_id: int) -> str:
+    return f"no memory {memory_id} that you can see on this hub"
+
+
+async def _load(conn, memory_id: int, *, lock: bool = False) -> Row | None:
+    found = await (await conn.execute(ONE + (" FOR UPDATE OF m" if lock else ""), (memory_id,))).fetchone()
+    return _row(found) if found else None
+
+
+async def _readable(conn, user: Principal, memory_id: int, sink: str, *, lock: bool = False):
+    """The memory and the caller's access to its project; 404 when it does not exist or the caller cannot see it."""
+    row = await _load(conn, memory_id, lock=lock)
+    access = None
+    if row is not None and row.memory.project is not None:
+        access = await _access(conn, user, row.memory.project)
+    accesses = {row.memory.project: access} if row is not None and access is not None else {}
+    if row is None or not _visible(row, user, accesses, sink):
+        raise HTTPException(404, _not_found(memory_id))
+    return row, access
+
+
+MemoryId = Annotated[int, Path(ge=1, le=MAX_ID)]
+
+
+@router.get("/{memory_id}", response_model=Memory, responses={404: {"model": ErrorBody}})
+async def show(request: Request, memory_id: MemoryId, user: CurrentUser, sink: Sink = AGENT_SINK) -> Memory:
+    async with request.app.state.pool.connection() as conn:
+        row, _ = await _readable(conn, user, memory_id, sink)
+    return row.memory
+
+
+def _conflict(request: Request, message: str, current: Memory | None) -> JSONResponse:
+    body = Conflict(
+        error=CODES[409], message=message, request_id=getattr(request.state, "request_id", None), current=current
+    )
+    return JSONResponse(jsonable_encoder(body.model_dump(exclude={"detail"})), status_code=409)
+
+
+def _lock_key(body: MemoryIn, user: Principal, project_id: int | None) -> int:
+    owner = user.user_id if body.scope == "personal" or body.type not in SHARED_TYPES else 0
+    key = json.dumps([body.scope, project_id, owner, body.location, body.name]).encode()
+    return int.from_bytes(hashlib.sha256(key).digest()[:4], "big", signed=True)
+
+
+async def _written(conn, user: Principal, memory_id: int, action: str) -> Memory:
+    """After a change: its revision row, its audit row, and the memory as it now is."""
+    await conn.execute(REVISION, (user.user_id, memory_id))
+    await record(conn, actor_id=user.user_id, token_id=user.token_id, action=action, target=f"memory:{memory_id}")
+    return (await _load(conn, memory_id)).memory
+
+
+def _logged(memory: Memory, user: Principal, outcome: str) -> None:
+    extra = {"memory_id": memory.id, "scope": memory.scope, "project": memory.project, "outcome": outcome}
+    log.info("memory write", extra={**extra, "revision": memory.revision, "login": user.login})
+
+
+async def _has_repo(conn, project_id: int, name: str) -> bool:
+    found = await conn.execute("SELECT 1 FROM project_repos WHERE project_id = %s AND name = %s", (project_id, name))
+    return await found.fetchone() is not None
+
+
+@router.put("", response_model=Written, responses={**REFUSALS, 409: {"model": Conflict}})
+async def put(request: Request, body: MemoryIn, user: CurrentUser, sink: Sink = AGENT_SINK) -> Written | JSONResponse:
+    """Create or change the memory at the key ``body`` names."""
+    async with request.app.state.pool.connection() as conn:
+        access = None
+        if body.scope == "project":
+            access = await project_access(conn, user, body.project)
+            if not has_role(access.role, "writer"):
+                access.push_label(None)  # raises the write rule's 403, which checks the role first
+            if body.location != HARNESS and not await _has_repo(conn, access.project_id, body.location):
+                raise HTTPException(
+                    422,
+                    f"location must be {HARNESS} or a repo of project {body.project}: see `evo-agents hub project "
+                    "list --json`",
+                )
+        project_id = access.project_id if access else None
+        await conn.execute("SELECT pg_advisory_xact_lock(%s, %s)", (LOCK_CLASS, _lock_key(body, user, project_id)))
+        key = {
+            "scope": body.scope,
+            "project_id": project_id,
+            "location": body.location,
+            "name": body.name,
+            "shared": body.scope == "project" and body.type in SHARED_TYPES,
+            "user": user.user_id,
+        }
+        found = await (await conn.execute(KEY, key)).fetchone()
+        current = _row(found) if found else None
+        accesses = {body.project: access} if access else {}
+        if current is not None and not _visible(current, user, accesses, sink):
+            return _conflict(
+                request,
+                f"project {body.project} holds a memory {body.name} at {body.location} that you cannot read; "
+                "nothing was written. Use another name",
+                None,
+            )
+        if access is None:
+            label = {}
+        elif body.label is not None:
+            label = access.push_label(body.label.model_dump(exclude_none=True))
+        else:
+            label = access.push_label(current.memory.label if current else None)
+        held = current.memory if current else None
+        if held and not held.deleted and (held.body, held.type, held.label) == (body.body, body.type, label):
+            return Written(**held.model_dump(), created=False, changed=False)
+        if body.if_revision is None and held and not held.deleted:
+            return _conflict(
+                request,
+                f"{body.name} exists on the hub at revision {held.revision}: send the revision you last saw as "
+                "if_revision to change it",
+                held,
+            )
+        if body.if_revision is not None and held is None:
+            return _conflict(
+                request, f"the hub holds no {body.name} here: send it without if_revision to create it", None
+            )
+        if body.if_revision is not None and body.if_revision != held.revision:
+            return _conflict(
+                request,
+                f"{body.name} changed on the hub: it is at revision {held.revision}, not {body.if_revision}",
+                held,
+            )
+        try:
+            if held is None:
+                values = (body.scope, project_id, body.location, body.name, body.type, user.user_id)
+                inserted = await conn.execute(INSERT, (*values, Jsonb(label), body.body, user.user_id))
+                memory_id = (await inserted.fetchone())[0]
+            else:
+                memory_id = held.id
+                update = (body.type, Jsonb(label), body.body, False, user.user_id, memory_id)
+                await conn.execute(UPDATE, update)
+            memory = await _written(conn, user, memory_id, PUT)
+        except psycopg.errors.IntegrityError as exc:  # the checks above match the schema's; this is a backstop
+            log.warning("memory write refused by the schema", extra={"constraint": exc.diag.constraint_name})
+            raise HTTPException(422, "the memory breaks a rule of the hub's schema; nothing was written") from None
+    outcome = "created" if held is None else "restored" if held.deleted else "updated"
+    _logged(memory, user, outcome)
+    return Written(**memory.model_dump(), created=held is None, changed=True)
+
+
+@router.delete("/{memory_id}", response_model=Written, responses={**REFUSALS, 409: {"model": Conflict}})
+async def delete(
+    request: Request,
+    memory_id: MemoryId,
+    user: CurrentUser,
+    if_revision: Annotated[int, Query(ge=1, le=MAX_REVISION, description="the revision last seen")],
+    sink: Sink = AGENT_SINK,
+) -> Written | JSONResponse:
+    """Leave a tombstone of memory ``memory_id``: deleted, no body, the next revision. Deleting a tombstone changes
+    nothing."""
+    async with request.app.state.pool.connection() as conn:
+        row, access = await _readable(conn, user, memory_id, sink, lock=True)
+        held = row.memory
+        if access is not None:
+            access.push_label(held.label)  # the write rule
+        if held.deleted:
+            return Written(**held.model_dump(), created=False, changed=False)
+        if if_revision != held.revision:
+            return _conflict(
+                request, f"{held.name} changed on the hub: it is at revision {held.revision}, not {if_revision}", held
+            )
+        await conn.execute(UPDATE, (held.type, Jsonb(held.label), "", True, user.user_id, memory_id))
+        memory = await _written(conn, user, memory_id, DELETE)
+    _logged(memory, user, "deleted")
+    return Written(**memory.model_dump(), created=False, changed=True)

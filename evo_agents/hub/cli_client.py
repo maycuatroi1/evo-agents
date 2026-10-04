@@ -4,6 +4,7 @@ side of the hub.
 Standard library only, like ``client``; ``project register`` reads the harness with the harness loader (PyYAML, a
 core dependency). Results go to stdout; a failure is one ``error:`` line on stderr and exit status 1, and a 401
 says to run ``evo-agents hub login``. ``--json`` prints what the hub answered. No command ever prints a token.
+``hub memory`` is in ``cli_memory``.
 """
 
 from __future__ import annotations
@@ -376,3 +377,7 @@ def register_client(hsub) -> None:
     pull.add_argument("--registry", help="the registry file (default: ~/.claude/harness/registry.json)")
     pull.add_argument("--json", action="store_true", help="machine-readable output")
     pull.set_defaults(func=cmd_registry_pull)
+
+    from evo_agents.hub.cli_memory import register_memory
+
+    register_memory(hsub)

@@ -134,6 +134,10 @@ def create_app(config: HubConfig) -> FastAPI:
     app.include_router(tokens.router)
     app.include_router(admin.router)
     app.include_router(projects.router)
+
+    from evo_agents.hub.server import memories
+
+    app.include_router(memories.router)
     return app
 
 

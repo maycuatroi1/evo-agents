@@ -52,10 +52,11 @@ LOGIN_HINT = "run `evo-agents hub login --url URL`"
 class HubError(Exception):
     """A request failed; ``str`` is a sentence for the person at the terminal."""
 
-    def __init__(self, message: str, status: int | None = None, code: str | None = None):
+    def __init__(self, message: str, status: int | None = None, code: str | None = None, payload=None):
         super().__init__(message)
         self.status = status
         self.code = code
+        self.payload = payload  # the hub's JSON error body, such as the current version a 409 carries
 
 
 class NotSignedIn(HubError):
@@ -222,7 +223,7 @@ class Hub:
         if status >= 400:
             message = payload.get("message") if isinstance(payload, dict) else None
             code = payload.get("error") if isinstance(payload, dict) else None
-            raise HubError(str(message or f"the hub at {self.url} answered HTTP {status}"), status, code)
+            raise HubError(str(message or f"the hub at {self.url} answered HTTP {status}"), status, code, payload)
         return payload
 
 
