@@ -15,8 +15,6 @@ import pytest
 
 from evo_agents.hub.access import ProjectRules
 from evo_agents.hub.memory import AGENT_SINK
-from evo_agents.hub.server.memories import _through
-from evo_agents.hub.server.security import MACHINE, SESSION_COOKIE, WEB, Principal
 from tests.hub import live, pg
 
 LEVELS = ["public", "internal", "customer", "secret"]
@@ -104,6 +102,10 @@ def test_no_grant_or_a_level_the_ladder_lacks_lets_nothing_through(max_level):
 
 
 def test_a_web_session_reads_through_no_sink_and_a_machine_token_through_claude_codes():
+    pytest.importorskip("fastapi")
+    from evo_agents.hub.server.memories import _through
+    from evo_agents.hub.server.security import MACHINE, WEB, Principal
+
     def principal(kind: str) -> Principal:
         return Principal(user_id=1, login="someone", admin=False, token_id=1, kind=kind, token_hash="x")
 
@@ -144,6 +146,8 @@ def client(hub_db, tmp_path, github):
 @pytest.fixture
 def who(client, hub_db) -> dict:
     """Headers by login and credential: ``who[login]`` a machine token, ``who[login, "web"]`` a web session."""
+    from evo_agents.hub.server.security import SESSION_COOKIE, WEB
+
     logins = (live.ADMIN, *GRANTS, "stranger")
     found = {login: live.bearer(live.insert_token(hub_db, login)) for login in logins}
     for login in logins:

@@ -13,7 +13,6 @@ from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
-from evo_agents.hub.server.security import SESSION_COOKIE, WEB
 from evo_agents.hub.skills import pack
 from tests.hub import live, pg
 
@@ -63,6 +62,8 @@ def make_hub(hub_db, tmp_path, **store):
 
 def headers_of(hub_db, client) -> dict:
     """``who[login]`` a machine token, ``who[login, "web"]`` a web session; project demo with GRANTS."""
+    from evo_agents.hub.server.security import SESSION_COOKIE, WEB
+
     logins = (live.ADMIN, *GRANTS, "stranger")
     who = {login: live.bearer(live.insert_token(hub_db, login)) for login in logins}
     for login in logins:
