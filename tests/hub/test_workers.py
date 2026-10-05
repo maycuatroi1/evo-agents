@@ -32,6 +32,7 @@ from evo_agents.hub.server import audit
 from evo_agents.hub.server.app import create_app
 from evo_agents.hub.server.security import MACHINE, WORKER, authenticate, hash_token
 from evo_agents.hub.server.workers import CROCKFORD, RefusalLimit, normal_code
+from evo_agents.isotime import parse_iso
 from tests.hub.fake_github import Account
 from tests.hub.live import ADMIN, add_project, bearer, sql, table_dump
 from tests.hub.test_run_tables import PLAN, add_run
@@ -142,7 +143,7 @@ def test_a_pairing_code_joins_a_machine_once_and_the_hub_keeps_no_code_or_token(
         2,
         ["gpu"],
     )
-    expires = datetime.fromisoformat(pairing["expires_at"]) - datetime.now(timezone.utc)
+    expires = parse_iso(pairing["expires_at"]) - datetime.now(timezone.utc)
     assert 9 * 60 < expires.total_seconds() <= 10 * 60
     state = client.get(f"/v1/workers/pairings/{pairing['id']}", headers=hub["owner"]).json()
     assert (state["status"], state["tries_left"], state["worker_id"]) == ("waiting", 5, None)
