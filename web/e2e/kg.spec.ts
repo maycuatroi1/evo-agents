@@ -20,6 +20,8 @@ import {
   open,
 } from "./support/kg";
 
+test.use({ uiLocale: "vi" }); // the assertions below read the Vietnamese copy of messages/vi.json
+
 /**
  * The knowledge graph pages against a graph the stack built from the synthetic fixture: build status with the
  * build's content hash, node search, the neighbour table beside the canvas (and its match with kg_context on the

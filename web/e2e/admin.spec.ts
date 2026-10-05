@@ -1,11 +1,15 @@
 import type { Browser, Locator, Page } from "@playwright/test";
 
+import type { Locale } from "../src/i18n/locales";
 import { call } from "../src/lib/api/client";
 
 import { signIn } from "./support/auth";
 import { API_URL, BASE_URL } from "./support/env";
 import { expect, isDeployed, test } from "./support/fixtures";
 import { ADMIN_ACCOUNT, type Account, bearerClient, machineToken, newAccount, uniqueName } from "./support/hub";
+import { setUiLocale } from "./support/locale";
+
+test.use({ uiLocale: "vi" }); // the assertions below read the Vietnamese copy of messages/vi.json
 
 /**
  * The admin area as a hub admin uses it, against the real API: granting and revoking a role (and what the member
@@ -13,14 +17,22 @@ import { ADMIN_ACCOUNT, type Account, bearerClient, machineToken, newAccount, un
  */
 test.skip(isDeployed, "changes grants and tokens on the hub");
 
-/** A second browser, signed in as `account`, for what a member sees while the admin works in `page`. */
-async function memberBrowser(browser: Browser, account: Account): Promise<{ page: Page; close: () => Promise<void> }> {
+/**
+ * A second browser, signed in as `account`, for what a member sees while the admin works in `page`; it reads the
+ * same UI language as the spec's own page.
+ */
+async function memberBrowser(
+  browser: Browser,
+  account: Account,
+  uiLocale: Locale | null,
+): Promise<{ page: Page; close: () => Promise<void> }> {
   const context = await browser.newContext({
     baseURL: BASE_URL,
     locale: "vi-VN",
     timezoneId: "Asia/Ho_Chi_Minh",
     reducedMotion: "reduce",
   });
+  if (uiLocale) await setUiLocale(context, uiLocale);
   const page = await context.newPage();
   await signIn(page, account);
   return { page, close: () => context.close() };
@@ -41,11 +53,12 @@ test.describe("members and grants", () => {
     browser,
     admin,
     signInAs,
+    uiLocale,
   }) => {
     const project = uniqueName("granted");
     await admin.registerProject(project);
     const account = newAccount("grantee");
-    const member = await memberBrowser(browser, account);
+    const member = await memberBrowser(browser, account, uiLocale);
     await expect(member.page.getByTestId("state-empty")).toContainText("Bạn chưa được cấp dự án nào");
 
     await signInAs(ADMIN_ACCOUNT);

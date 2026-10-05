@@ -2,6 +2,8 @@ import { expect, test } from "./support/fixtures";
 import { ADMIN_ACCOUNT, newAccount, uniqueName } from "./support/hub";
 import { ACTIVE_PLAN, open, seedPlans } from "./support/plans";
 
+test.use({ uiLocale: "vi" }); // the assertions below read the Vietnamese copy of messages/vi.json
+
 /**
  * Who may not read a project's plans, decided by the API and only shown by the pages. A hub admin without a grant
  * on the project knows the project exists, so the API answers 403 and the page says there is no access. Anyone

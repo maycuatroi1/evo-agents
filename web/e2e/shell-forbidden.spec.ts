@@ -1,6 +1,8 @@
 import { expect, test } from "./support/fixtures";
 import { uniqueName } from "./support/hub";
 
+test.use({ uiLocale: "vi" }); // the assertions below read the Vietnamese copy of messages/vi.json
+
 test.describe("refusals from the API", () => {
   test.skip(Boolean(process.env.PLAYWRIGHT_BASE_URL), "seeds users through the local stack");
 
