@@ -41,6 +41,11 @@ expires, and each use moves the expiry forward. The join is public, so it is lim
 client address within 10 minutes, and that address gets 429 with `Retry-After` (see `EVO_HUB_FORWARDED_ALLOW_IPS`
 below for the address behind a proxy).
 
+The credential check reads HTTP requests only. A websocket under `/v1` is closed during its handshake, which the
+client sees as a 403, unless its route checks a credential of its own and is listed in `SELF_CHECKED_WEBSOCKETS` of
+the same file. The two ends of a run's web terminal are the only ones: the browser's checks the session cookie, the
+Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
+
 | Area | Routes |
 | --- | --- |
 | health | `GET /v1/health`, `GET /v1/health/live` |
@@ -345,8 +350,11 @@ pool, defaults 1, 10 and 10 seconds); add them to the environment block of the c
 or malformed variable stops the process with a log line naming it.
 
 The reverse proxy routes the public domain: `/v1` and `/mcp` to the api on port 8080, everything else to the web on
-port 3000. `EVO_HUB_PUBLIC_URL` must be that domain, because the web sign-in callback and the `/mcp` host check both
-use it.
+port 3000. `EVO_HUB_PUBLIC_URL` must be that domain, because the web sign-in callback, the `/mcp` host check and the
+web terminal's Origin check all use it. The `/v1` rule also carries the web terminal's two websockets, so the proxy
+must pass a websocket upgrade there (Traefik does without more configuration). They cannot go through the web: its
+`/v1` rewrite, which serves a stack without a proxy, runs in Next.js standalone, which does not forward a websocket
+upgrade.
 
 The api sees the proxy's address as the client's unless `EVO_HUB_FORWARDED_ALLOW_IPS` lists the proxy. The limit on
 refused pairing codes counts per client address, so behind a proxy that is not listed, 10 wrong codes from anyone hold
