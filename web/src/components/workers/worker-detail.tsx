@@ -21,6 +21,7 @@ import { useFormatter, useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
 
 import { NoticeArea, type Notice, useNotice } from "@/components/admin/notice";
+import { WorkerRuns } from "@/components/runs/worker-runs";
 import { PageHeader } from "@/components/shell/page-header";
 import { QueryView, useHubQuery } from "@/components/states/query-view";
 import { NotFoundState, PageSkeleton } from "@/components/states/states";
@@ -40,7 +41,10 @@ import { useRecordPrefetched, useWorkerFailure, useWorkerWrite } from "./hooks";
 import { readCheckouts, readRuntimes, type RuntimeInfo, workerView } from "./model";
 import { changeWorker, type Worker, type WorkerAction, workerKeys, workerQuery } from "./queries";
 
-/** One worker: its runtimes, scope and checkouts, the last hour of heartbeats, and drain, resume and revoke. */
+/**
+ * One worker: its runtimes, scope and checkouts, the last hour of heartbeats, its latest runs, and drain, resume and
+ * revoke.
+ */
 export function WorkerDetail({ id, initialError }: { id: number; initialError: ApiErrorInfo | null }) {
   const t = useTranslations("workers.detail");
   const state = useHubQuery(workerQuery(browserApi, id), initialError);
@@ -126,11 +130,11 @@ function WorkerPage({
             <h2>{t("runs.title")}</h2>
           </CardTitle>
         </CardHeader>
-        <CardContent className="flex flex-col gap-1.5 text-sm">
+        <CardContent className="flex flex-col gap-3 text-sm">
           <p className="tabular-nums">
             {t("runs.held", { held: worker.held_runs, free: Math.max(worker.slots - worker.held_runs, 0) })}
           </p>
-          <p className="text-muted-foreground">{t("runs.history")}</p>
+          <WorkerRuns worker={worker} />
         </CardContent>
       </Card>
     </div>
