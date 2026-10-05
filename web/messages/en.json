@@ -21,6 +21,7 @@
     "project": "Project",
     "overview": "Overview",
     "plans": "Plans",
+    "runs": "Runs",
     "kg": "Knowledge graph",
     "admin": "Administration",
     "toggleSidebar": "Show or hide the sidebar",
@@ -28,7 +29,9 @@
     "memories": "Memories",
     "skills": "Skills",
     "myMemories": "My memories",
-    "globalSkills": "Shared skills"
+    "globalSkills": "Shared skills",
+    "workers": "Workers",
+    "runDiff": "Diff"
   },
   "projectSwitcher": {
     "label": "Projects",
@@ -302,7 +305,8 @@
       "kind": "Kind",
       "kinds": {
         "machine": "Machine token",
-        "web": "Web session"
+        "web": "Web session",
+        "worker": "Worker token"
       },
       "state": "State",
       "states": {
@@ -334,6 +338,7 @@
       "title": "Revoke token {id} of {login}?",
       "machine": "Machine {host} gets a 401 on its next request and has to run evo-agents hub login again.",
       "web": "This web session is signed out on its next request.",
+      "worker": "Worker {host} stops at once: revoking its token revokes the worker too, and the runs it holds go back to the queue.",
       "current": "This is the session you are using: revoking it signs you out at once.",
       "audit": "This cannot be undone, and it is audited.",
       "cancel": "Cancel",
@@ -1028,6 +1033,761 @@
       "truncatedDescription": "{leftOut, plural, one {# more node within reach is not drawn.} other {# more nodes within reach are not drawn.}} This node has {neighbours} direct neighbours: see them all under <link>Relations by edge type</link>, or open a neighbour to see its own area.",
       "smallScreen": "Narrow screen: the graph is replaced by the table of neighbours.",
       "selected": "Selected {name} ({kind}), {count} edges"
+    }
+  },
+  "workers": {
+    "title": "Workers",
+    "eyebrow": "Hub",
+    "description": "Laptops and desktops registered to run plan steps for their owner. A worker sends a heartbeat every 15 seconds; after 5 minutes without one it is offline, and the runs it held go back to the queue.",
+    "registerButton": "Register worker",
+    "register": {
+      "title": "Register a worker",
+      "description": "The worker makes outbound HTTPS calls only and pulls its own work. No port is opened on the machine.",
+      "close": "Close",
+      "tabs": {
+        "label": "How to register",
+        "pairing": "Pairing code",
+        "cli": "CLI only"
+      },
+      "name": "Worker name",
+      "namePlaceholder": "for example my-laptop",
+      "nameHint": "Unique among your workers: letters, digits, dots, dashes and underscores. The machine's hostname works well.",
+      "nameRequired": "Enter a name for the worker.",
+      "nameInvalid": "Start with a letter or digit, then use letters, digits, dots, dashes or underscores, at most 100 in all.",
+      "projects": "Projects it takes runs from",
+      "projectsHint": "Only projects where you hold the writer role are listed. The worker never gets a run from a project outside this list.",
+      "projectsRequired": "Pick at least one project.",
+      "projectsFailed": "The project list could not be loaded. Close the dialog and try again.",
+      "noProjects": "You hold the writer role on no project yet, so a worker would have nothing to run. Ask a project admin for the writer role.",
+      "slots": "Slots",
+      "slotsHint": "Runs it holds at the same time, {min} to {max}.",
+      "slotsInvalid": "Enter a whole number from {min} to {max}.",
+      "labels": "Labels",
+      "labelsPlaceholder": "macos, gpu",
+      "labelsHint": "Optional. Separate them with commas or spaces.",
+      "labelsInvalid": "Not a valid label: {labels}. A label starts with a letter or digit and holds letters, digits, dots, dashes or underscores, at most 40 in all.",
+      "labelsTooMany": "At most {max} labels.",
+      "terminal": "Allow the web terminal",
+      "terminalHint": "Lets you open a shell on this machine from a run's page on the hub. Leave it off unless you need it.",
+      "warning": "Agents on a worker run with your full permissions on that machine, not in a sandbox. Register only machines where that is acceptable. Only you can dispatch runs to it.",
+      "cancel": "Cancel",
+      "create": "Create pairing code",
+      "creating": "Creating…",
+      "errors": {
+        "forbidden": "The hub refused: you need the writer role on every project you pick.",
+        "conflict": "The hub refused the pairing code: you have a worker with this name already, or 5 codes still waiting.",
+        "unavailable": "The hub cannot make pairing codes right now."
+      },
+      "codeHeading": "Pairing code for {name}",
+      "code": "Pairing code, single use",
+      "expiresIn": "Expires in {time}",
+      "expiresAt": "Expires at {time}",
+      "triesLeft": "{count, plural, =0 {No wrong try left.} one {# wrong try left before the code locks.} other {# wrong tries left before the code locks.}}",
+      "stepInstall": "Install the daemon on the machine",
+      "stepJoin": "Pair the machine with the hub",
+      "stepJoinHint": "The machine gets a worker token of its own. It can only claim your runs and send back their logs, heartbeats and state.",
+      "stepService": "Run it in the background at login",
+      "stepServiceHint": "A LaunchAgent on macOS, a systemd user unit on Linux.",
+      "waiting": "Waiting for the machine to join. This dialog updates when it does.",
+      "pollFailed": "The hub did not answer the last check. The dialog keeps asking.",
+      "closeHint": "Closing this dialog does not cancel the code. It works until {time}.",
+      "expiredTitle": "The code expired",
+      "expiredBody": "No machine joined within 10 minutes. Create a new code when the machine is ready.",
+      "lockedTitle": "The code is locked",
+      "lockedBody": "A wrong code was typed 5 times, so this one no longer works. Create a new code.",
+      "newCode": "Create a new code",
+      "openWorker": "Open worker",
+      "joinedTitle": "<strong>{name}</strong> joined at {time}.",
+      "joinedNotice": "Worker {name} joined the hub.",
+      "hostValue": "{hostname}, {os} {arch}",
+      "firstHeartbeat": "Reported with its first heartbeat",
+      "cliIntro": "A machine already signed in with <code>evo-agents hub login</code> registers with your own token. No pairing code is needed.",
+      "cliStepRegister": "Register the machine",
+      "cliStepRegisterHint": "Built from the name, projects, slots and labels on the Pairing code tab. The daemon reports the runtimes and checkouts it finds.",
+      "commands": {
+        "install": "install command",
+        "join": "join command",
+        "register": "register command",
+        "service": "service command"
+      }
+    },
+    "count": "{count, plural, one {# worker} other {# workers}}",
+    "caption": "Workers",
+    "hostLine": "{hostname}, {os} {arch}",
+    "slotsLabel": "{held} of {slots} slots in use",
+    "notReported": "Not reported",
+    "never": "Never",
+    "status": {
+      "idle": "Idle",
+      "busy": "Busy",
+      "draining": "Draining",
+      "offline": "Offline",
+      "revoked": "Revoked"
+    },
+    "summary": {
+      "label": "Summary",
+      "idle": "Idle",
+      "idleHint": "can claim a run now",
+      "busy": "Busy",
+      "busyHint": "{runs, plural, =0 {no run held} one {# run held} other {# runs held}}",
+      "freeSlots": "Free slots",
+      "freeSlotsHint": "{total, plural, =0 {no worker online} one {of # slot online} other {of # slots online}}",
+      "offline": "Offline",
+      "offlineSince": "oldest heartbeat {time}",
+      "offlineNever": "{count, plural, one {# never connected} other {# never connected}}",
+      "offlineNone": "none right now"
+    },
+    "facets": {
+      "label": "Status",
+      "all": "All"
+    },
+    "search": {
+      "label": "Search workers",
+      "placeholder": "Name, host, owner or label",
+      "clear": "Clear search"
+    },
+    "listSummary": {
+      "all": "{count, plural, =0 {No worker.} one {# worker.} other {# workers.}}",
+      "filtered": "{count, plural, =0 {No worker matches.} one {# worker matches.} other {# workers match.}}",
+      "revokedHidden": "{count, plural, one {# revoked worker is hidden; pick Revoked to see it.} other {# revoked workers are hidden; pick Revoked to see them.}}"
+    },
+    "columns": {
+      "worker": "Worker",
+      "status": "Status",
+      "slots": "Slots",
+      "runtimes": "Runtimes",
+      "projects": "Projects",
+      "owner": "Owner",
+      "heartbeat": "Last heartbeat"
+    },
+    "empty": {
+      "title": "No worker yet",
+      "description": "Register a laptop or desktop to run plan steps for you. The worker calls the hub over HTTPS and opens no port on the machine.",
+      "showRevoked": "Show revoked workers"
+    },
+    "noResults": {
+      "title": "No worker matches",
+      "description": "Change the search or pick another status.",
+      "clear": "Show all workers"
+    },
+    "copy": {
+      "copy": "Copy",
+      "copied": "Copied",
+      "label": "Copy the {what}",
+      "copiedLong": "Command copied to the clipboard",
+      "selected": "The command is selected: press Ctrl+C or Cmd+C to copy it"
+    },
+    "confirm": {
+      "typeName": "Type <code>{name}</code> to confirm",
+      "mismatch": "That is not the worker's name. Type {name} exactly.",
+      "cancel": "Cancel"
+    },
+    "errors": {
+      "forbidden": "The hub refused: only the worker's owner can do this. A hub admin may drain or revoke a worker but not resume it.",
+      "notFound": "The hub no longer has this worker, or it is not yours. The page was reloaded.",
+      "conflict": "The worker changed before your action reached the hub, for example it was revoked. The page was reloaded.",
+      "unavailable": "The hub cannot do this right now.",
+      "apiMessage": "API message: {message}"
+    },
+    "heartbeat": {
+      "states": {
+        "received": "Heartbeat received",
+        "missed": "No heartbeat",
+        "unknown": "Not recorded",
+        "before": "Before registration"
+      },
+      "summary": "Of the last {minutes} minutes: {received} with a heartbeat, {missed} without, {unknown} not recorded.",
+      "lastMissed": "Latest gap: {minutes, plural, one {# minute} other {# minutes}} from {time}.",
+      "axisStart": "{minutes} min ago",
+      "axisEnd": "Now",
+      "legend": "Legend",
+      "note": "The hub keeps only the latest heartbeat, so the strip shows what this browser tab has seen since you opened the workers pages."
+    },
+    "detail": {
+      "title": "Worker",
+      "eyebrow": "Worker",
+      "facts": "{os} {arch} on {hostname}. Owner {owner}. Daemon evo-agents {version}, registered {date}.",
+      "notFoundTitle": "Worker not found",
+      "notFoundDescription": "This worker does not exist, or it belongs to another member.",
+      "actionsHelp": "Drain: the worker finishes the runs it holds, then claims no new ones. Revoke: its token stops working at once, and the runs it holds go back to the queue.",
+      "asAdmin": "You see this worker as a hub admin. You may drain or revoke it; only {owner} can resume it or dispatch runs to it.",
+      "revoked": "Revoked {time}. Its token no longer works, and its name is free for a new worker.",
+      "draining": "Draining since {time}. It finishes the runs it holds and claims no new ones until you resume it.",
+      "drainingNotOwner": "Draining since {time}. It finishes the runs it holds and claims no new ones until {owner} resumes it.",
+      "offline": "No heartbeat since {time}. Runs it held go back to the queue once their 5-minute leases run out.",
+      "neverSeen": "No heartbeat yet. Start the daemon on {hostname} with <code>evo-agents worker run</code>, or install it as a service.",
+      "runtimes": {
+        "title": "Detected runtimes",
+        "description": "What its last heartbeat found on the machine.",
+        "empty": "Shown after its first heartbeat.",
+        "none": "Its last heartbeat reported no runtime.",
+        "version": "version {version}",
+        "available": "Available",
+        "missing": "Missing",
+        "unknown": "Unknown"
+      },
+      "scope": {
+        "title": "Scope",
+        "description": "What it may run, set when it was registered.",
+        "projects": "Projects",
+        "slots": "Slots",
+        "slotsValue": "{held} of {slots} in use",
+        "labels": "Labels",
+        "noLabels": "None",
+        "permissions": "Permissions",
+        "permissionsValue": "Full, as {owner}",
+        "dispatch": "Who dispatches",
+        "dispatchValue": "{owner} only",
+        "terminal": "Web terminal",
+        "terminalOn": "Allowed",
+        "terminalOff": "Not allowed",
+        "host": "Host"
+      },
+      "checkouts": {
+        "title": "Checkouts",
+        "description": "Repositories its last heartbeat found; a run works in a worktree of one of them.",
+        "empty": "Shown after its first heartbeat.",
+        "none": "Its last heartbeat reported no checkout."
+      },
+      "heartbeat": {
+        "title": "Heartbeat, last 60 minutes",
+        "last": "Last heartbeat",
+        "never": "No heartbeat yet"
+      },
+      "runs": {
+        "title": "Recent runs",
+        "held": "{held, plural, =0 {Holds no run now} one {Holds # run now} other {Holds # runs now}}, {free, plural, =0 {no slot free} one {# slot free} other {# slots free}}.",
+        "empty": "This worker has taken no run yet.",
+        "caption": "Recent runs of worker {name}",
+        "hidden": "{count, plural, one {Runs of project {projects} are not shown: you hold no grant on it.} other {Runs of projects {projects} are not shown: you hold no grant on them.}}"
+      }
+    },
+    "actions": {
+      "drain": "Drain",
+      "undrain": "Resume",
+      "undrainPending": "Resuming…",
+      "revoke": "Revoke",
+      "drainTitle": "Drain worker {name}?",
+      "drainBody": "It finishes the runs it holds, then claims no new ones until its owner resumes it.",
+      "drainNotOwner": "Only {owner} can resume it afterwards.",
+      "drainConfirm": "Drain worker",
+      "drainPending": "Draining…",
+      "drainSuccess": "{name} is draining: it finishes the runs it holds, then claims no new ones.",
+      "undrainSuccess": "{name} claims runs again.",
+      "revokeTitle": "Revoke worker {name}?",
+      "revokeBody": "Its token stops working at once and its name becomes free. Runs it holds go back to the queue, or fail if they were pinned to it or on their last attempt.",
+      "revokeHeld": "{count, plural, one {It holds # run now.} other {It holds # runs now.}}",
+      "audit": "This cannot be undone, and it is audited.",
+      "revokeConfirm": "Revoke worker",
+      "revokePending": "Revoking…",
+      "revokeSuccess": "Revoked {name}. Its token no longer works."
+    }
+  },
+  "runs": {
+    "title": "Runs",
+    "metaTitle": "Runs of {project}",
+    "description": "Each run is one plan step dispatched to one of your workers. Its state, log and evidence come back to the hub while it runs.",
+    "dispatchButton": "Dispatch",
+    "liveBadge": "Live",
+    "live": "Updates every 5 seconds while a run is active.",
+    "count": "{count, plural, one {# run} other {# runs}}",
+    "caption": "Runs of project {project}",
+    "pagerLabel": "runs",
+    "dispatched": "{count, plural, one {Queued run {ids}.} other {Queued # runs: {ids}.}}",
+    "state": {
+      "queued": "Queued",
+      "leased": "Leased",
+      "running": "Running",
+      "interactive": "Interactive",
+      "verifying": "Verifying",
+      "review": "Review",
+      "done": "Done",
+      "failed": "Failed",
+      "lost": "Lost",
+      "cancelled": "Cancelled"
+    },
+    "runtime": {
+      "any": "Any",
+      "claude-code": "Claude Code",
+      "opencode": "opencode",
+      "codex": "Codex CLI"
+    },
+    "summary": {
+      "label": "Summary",
+      "running": "Running",
+      "runningHint": "{workers, plural, =0 {no worker holds a run} one {on # worker} other {on # workers}}",
+      "queued": "Queued",
+      "queuedSince": "oldest queued {time}",
+      "queuedMany": "{count, plural, one {# run waits for a worker} other {# runs wait for a worker}}",
+      "queuedNone": "nothing waiting",
+      "review": "Review",
+      "reviewOne": "step {step} of {plan}",
+      "reviewMany": "waiting for approval",
+      "reviewNone": "nothing to approve",
+      "failed": "Failed",
+      "failedHint": "{lost, plural, =0 {no lost lease} one {plus # lost lease} other {plus # lost leases}}, {cancelled, plural, =0 {none cancelled} other {# cancelled}}"
+    },
+    "facets": {
+      "label": "State",
+      "all": "All",
+      "active": "Active",
+      "review": "Review",
+      "done": "Done",
+      "ended": "Failed or cancelled"
+    },
+    "search": {
+      "label": "Search runs",
+      "placeholder": "Step, plan, worker or #run",
+      "clear": "Clear search"
+    },
+    "listSummary": {
+      "all": "{count, plural, =0 {No run.} one {# run.} other {# runs.}}",
+      "filtered": "{count, plural, =0 {No run matches.} one {# run matches.} other {# runs match.}}"
+    },
+    "columns": {
+      "run": "Run",
+      "step": "Plan step",
+      "state": "State",
+      "worker": "Worker",
+      "dispatcher": "Dispatched by",
+      "runtime": "Runtime",
+      "started": "Started",
+      "duration": "Duration",
+      "attempt": "Attempt"
+    },
+    "stepLine": "{plan}, step {step}",
+    "stepLineProject": "{project}, {plan}, step {step}",
+    "untitled": "Untitled step",
+    "noWorkerYet": "none yet",
+    "pinnedWaiting": "waiting for its pinned worker",
+    "queuedAt": "Queued at",
+    "waiting": "waiting {duration}",
+    "attemptLabel": "Attempt {attempt} of {max}",
+    "duration": {
+      "lessThanMinute": "under 1 min",
+      "minutes": "{minutes} min",
+      "hours": "{hours} h {minutes} min"
+    },
+    "empty": {
+      "title": "No run yet",
+      "description": "A run is one ready step of a plan, dispatched to one of your workers. Dispatch one to start.",
+      "readerDescription": "Writers of this project dispatch runs to their workers; each one shows here with its state."
+    },
+    "noResults": {
+      "title": "No run matches",
+      "description": "Try other words, or show runs in every state.",
+      "clear": "Show all runs"
+    },
+    "step": {
+      "title": "Runs of this step",
+      "run": "Run this step",
+      "ready": "Ready to run.",
+      "notReady": "Not ready to run: {reason}.",
+      "readerHint": "Writers of this project can dispatch it to their workers.",
+      "empty": "No run of this step yet.",
+      "failed": "The runs of this step could not be loaded.",
+      "caption": "Runs of step {step}",
+      "live": "Updates every 5 seconds while a run is active.",
+      "more": "The latest {shown} of {total}.",
+      "all": "All runs of the project"
+    },
+    "dispatch": {
+      "title": "Dispatch runs",
+      "description": "Pick ready steps of a plan. The hub queues one run per step, and a worker of yours that matches claims each one.",
+      "close": "Close",
+      "plan": "Plan",
+      "noPlans": "This project has no active plan to run.",
+      "plansFailed": "The plans could not be loaded. Close the dialog and try again.",
+      "timeout": "Timeout per run",
+      "timeoutValue": "{minutes} min",
+      "timeoutHint": "The hub stops a run that takes longer.",
+      "steps": "Steps",
+      "stepsHint": "A step can be picked once it is pending, every step it depends on is done, and it has no active run.",
+      "stepsFailed": "The steps of this plan could not be loaded. Close the dialog and try again.",
+      "picked": "{count} of {ready} ready steps picked",
+      "pickAll": "Pick all {count} ready steps",
+      "pickNone": "Clear the selection",
+      "ready": "Ready",
+      "notReady": "Not ready",
+      "untitled": "Untitled step",
+      "repo": "Runs in repo {repo}",
+      "noOpen": "No step of this plan is pending.",
+      "noReady": "No step is ready yet: each pending step waits for a step it depends on, or has an active run.",
+      "settled": "{count, plural, one {# step is done, in progress or blocked} other {# steps are done, in progress or blocked}}",
+      "tooMany": "At most {max} steps in one dispatch.",
+      "reason": {
+        "activeRun": "Run #{id} is {state}, dispatched by {login}",
+        "status": "Its status is {status}, not pending",
+        "unknown": "The hub does not say why"
+      },
+      "runtime": "Runtime",
+      "runtimeAny": "Any runtime the worker has",
+      "runtimeAnyHint": "Claude Code first, then opencode, then Codex CLI",
+      "runtimeCommand": {
+        "claude-code": "claude -p, headless",
+        "opencode": "opencode run",
+        "codex": "codex exec"
+      },
+      "runtimeWorkers": {
+        "none": "None of your workers here reports it.",
+        "all": "{total, plural, one {Your worker here reports it.} other {All # of your workers here report it.}}",
+        "some": "{count} of your {total} workers here report it."
+      },
+      "mode": "Mode",
+      "modes": {
+        "headless": "Headless",
+        "headlessHint": "The log streams to the hub; message the agent or take over at any time.",
+        "interactive": "Interactive from the start",
+        "interactiveHint": "A TUI in a tmux session on the worker; Claude Code also opens Remote Control."
+      },
+      "worker": "Worker",
+      "workerAuto": "Match a worker automatically",
+      "workerAutoHint": "One of yours that is online, with a free slot, the runtime and a checkout of the step's repo.",
+      "workerPin": "Pin to one worker",
+      "workerPinHint": "The runs stay queued until this worker has a free slot.",
+      "workerSelect": "Pinned worker",
+      "workerOption": "{name} ({status})",
+      "noWorkers": "You have no worker registered for project {project} yet.",
+      "registerWorker": "Register a worker",
+      "approval": "When the step's verify commands pass",
+      "approvals": {
+        "review": "Hold for review",
+        "reviewHint": "You read the diff and log, then approve on the run page.",
+        "auto": "Mark the step done with evidence",
+        "autoHint": "The hub writes the step's status, done time and evidence to the plan."
+      },
+      "cancel": "Cancel",
+      "submit": "{count, plural, =0 {Dispatch} one {Dispatch # run} other {Dispatch # runs}}",
+      "submitting": "Dispatching…",
+      "outlook": {
+        "nothing": "Pick at least one ready step.",
+        "noWorker": "You have no worker for project {project}. The runs wait in the queue until you register one.",
+        "now": "Matching now: {workers}.",
+        "later": "No worker of yours is free now; {workers} can take them later. The runs wait in the queue.",
+        "none": "None of your workers can take them as they are ({reasons}). The runs wait in the queue.",
+        "pinnedNow": "{name} can take them now.",
+        "pinnedBusy": "The runs wait in the queue until {name} has a free slot.",
+        "pinnedOffline": "{name} is offline; the runs wait in the queue until it comes back.",
+        "pinnedNo": "{name} cannot take them as it is ({problem}). The runs wait in the queue.",
+        "free": "{name} ({count, plural, one {# free slot} other {# free slots}})",
+        "busy": "{name} (every slot in use)",
+        "offline": "{name} (offline)",
+        "reason": "{name}: {problem}",
+        "more": "{count, plural, other {# more}}"
+      },
+      "problem": {
+        "draining": "draining",
+        "runtime": "no {runtime}",
+        "runtimeAny": "no runtime reported",
+        "checkout": "no checkout of {repo}"
+      },
+      "errors": {
+        "forbidden": "The hub refused: dispatching needs the writer role on this project, and a pinned worker must be one of yours.",
+        "notFound": "The plan is no longer on the hub, or you can no longer read it.",
+        "conflict": "A step is no longer ready, or another dispatch took it first. The steps are updated; check them and try again.",
+        "invalid": "The hub did not accept the dispatch."
+      }
+    },
+    "openRun": "Open run #{id}",
+    "detail": {
+      "metaTitle": "Run #{id} of {project}",
+      "title": "Run",
+      "untitled": "Untitled step",
+      "description": "Plan <planLink>{plan}</planLink>, <stepLink>step {step}: {title}</stepLink>",
+      "notFoundTitle": "Run #{id} not found",
+      "notFoundDescription": "The run does not exist in this project, or it belongs to a plan you cannot read.",
+      "stepper": {
+        "label": "Progress of the run",
+        "phase": {
+          "queued": "Queued",
+          "leased": "Leased",
+          "running": "Running",
+          "verifying": "Verifying",
+          "review": "Review",
+          "done": "Done"
+        },
+        "status": {
+          "done": "passed",
+          "current": "current state",
+          "stopped": "ended here",
+          "todo": "not reached"
+        },
+        "during": "ended while {phase}"
+      },
+      "log": {
+        "title": "Log",
+        "label": "Log of run #{id}",
+        "count": "{total, plural, one {# line} other {# lines}}",
+        "countFiltered": "{shown} of {total, plural, one {# line} other {# lines}}",
+        "lines": "{count, plural, one {# line} other {# lines}}",
+        "filter": "Show",
+        "groups": {
+          "all": "All",
+          "agent": "Agent",
+          "tools": "Tools",
+          "output": "Output",
+          "system": "System"
+        },
+        "search": {
+          "label": "Search the log",
+          "placeholder": "Search the log",
+          "clear": "Clear the search"
+        },
+        "follow": "Follow",
+        "pause": "Pause",
+        "resume": "Resume",
+        "paused": "{count, plural, =0 {Display paused.} one {Display paused: # new line waits.} other {Display paused: # new lines wait.}}",
+        "pollingHint": "The live stream is unavailable: the page reads new lines every 1.5 seconds.",
+        "kept": "The hub keeps a run's events for 30 days after it ends, unless configured otherwise.",
+        "waiting": "Waiting for the first event of the run…",
+        "none": "This run has no events.",
+        "noMatch": "No line matches the filter or the search.",
+        "truncated": "cut by the hub at 64 KiB",
+        "shortened": "shortened here; the event is longer",
+        "status": {
+          "connecting": "Connecting",
+          "live": "Live",
+          "reconnecting": "Reconnecting",
+          "polling": "Polling",
+          "ended": "Finished",
+          "failed": "Log unavailable"
+        },
+        "kind": {
+          "agent_message_chunk": "Agent",
+          "agent_thought_chunk": "Thought",
+          "tool_call": "Tool",
+          "tool_call_update": "Tool result",
+          "plan": "Plan",
+          "usage_update": "Usage",
+          "user_message": "Message",
+          "state": "State",
+          "system": "System",
+          "output": "Output"
+        },
+        "move": "{from} to {to}",
+        "moveBy": "{from} to {to}, by {actor}",
+        "moveTo": "Now {to}",
+        "moveReason": "{move}: {reason}",
+        "actor": {
+          "worker": "the worker",
+          "owner": "the owner",
+          "reaper": "the hub"
+        }
+      },
+      "terminal": {
+        "tabs": {
+          "label": "Session view",
+          "heading": "Live session of run #{id}",
+          "log": "Log",
+          "terminal": "Terminal"
+        },
+        "where": "The agent's TUI on {worker}, relayed through the hub.",
+        "connect": "Connect terminal",
+        "connectAgain": "Connect again",
+        "disconnect": "Disconnect",
+        "signIn": "Sign in again",
+        "label": "Terminal of run #{id} on {worker}",
+        "status": {
+          "idle": "Not connected",
+          "loading": "Loading terminal",
+          "connecting": "Connecting",
+          "waiting": "Waiting for {worker}",
+          "live": "Connected",
+          "closed": "Closed"
+        },
+        "intro": {
+          "headless": "Run #{id} is headless. Connecting takes it over: the agent stops at the end of its current turn, and this terminal resumes the same session in tmux on {worker}.",
+          "interactive": "The agent's TUI runs in tmux on {worker}. Connecting attaches this page to it; it keeps running when you disconnect.",
+          "limits": "A session closes after 15 idle minutes or 4 hours. One browser at a time."
+        },
+        "waiting": {
+          "takeover": "The hub asked {worker} to hand the session over. The agent stops at the end of its turn, then the terminal opens; the worker checks every 15 seconds.",
+          "interactive": "Waiting for {worker} to connect its end of the terminal; the worker checks every 15 seconds."
+        },
+        "end": {
+          "closed": "You disconnected. The agent's TUI keeps running in tmux on {worker}.",
+          "ended": "The terminal session ended.",
+          "shutdown": "The hub restarted and closed the terminal. Connect again.",
+          "protocol": "The hub closed the terminal over a message it does not accept.",
+          "lost": "The connection to the hub was lost. Connect again.",
+          "unavailable": "The hub could not check the request: its database did not answer. Try again shortly.",
+          "signIn": "The hub asks you to sign in again before it opens the terminal.",
+          "forbidden": "The hub refused to open this terminal.",
+          "timeout": "The terminal closed: it was idle for 15 minutes, or open for 4 hours.",
+          "busy": "This run's terminal is open in another browser or tab. Close it there, then connect again.",
+          "upgrade": "{worker} speaks another version of the worker protocol: upgrade evo-agents on it."
+        },
+        "hubSays": "The hub says: {reason}",
+        "notOpen": "Run #{id} is {state}: a terminal opens while a run is {open}.",
+        "tooOld": "You signed in {hours} hours ago. The terminal opens only for a sign-in less than 12 hours old: sign in again, then come back to this run.",
+        "loadFailed": "The terminal could not load in this browser.",
+        "hint": "Keys go to the agent's TUI on {worker}. Press Esc, then Tab, to leave the terminal.",
+        "size": "{cols} × {rows}",
+        "sizeLabel": "Terminal size: {cols} columns, {rows} rows"
+      },
+      "composer": {
+        "label": "Message the agent",
+        "placeholder": "For example: also cover the revoked-token case",
+        "send": "Send",
+        "sending": "Sending…",
+        "hint": "The worker hands it to the agent at its next turn; Ctrl or Cmd + Enter sends. Only you see this box: you dispatched the run.",
+        "sent": "Sent. It waits in the run's inbox for the agent's next turn.",
+        "blank": "Type a message first.",
+        "long": "A message is at most {max} bytes of UTF-8. Shorten it.",
+        "bytes": "{count} of {max} bytes",
+        "conflict": "The run no longer takes messages: it ended, or waits for review."
+      },
+      "facts": {
+        "title": "Details",
+        "worker": "Worker",
+        "runtime": "Runtime",
+        "runtimeAny": "Any, picked when a worker claims it; {mode}",
+        "runtimePicked": "{runtime}, picked by the worker; {mode}",
+        "runtimeMode": "{runtime}, {mode}",
+        "mode": {
+          "headless": "headless",
+          "interactive": "interactive"
+        },
+        "repo": "Repo",
+        "on": "on",
+        "session": "Session",
+        "none": "none yet",
+        "lease": "Lease",
+        "leaseLeft": "expires in {minutes} min {seconds} s",
+        "leaseExpired": "expired; the hub requeues or ends the run within a minute",
+        "leaseNone": "none until a worker claims it",
+        "leaseReleased": "released",
+        "attempt": "Attempt",
+        "attemptValue": "{attempt} of {max}",
+        "parent": "retries run #{id}",
+        "approval": "Approval",
+        "approvals": {
+          "review": "Hold for review",
+          "auto": "Mark the step done when verified"
+        },
+        "timeout": "Timeout",
+        "timeoutValue": "{minutes} min",
+        "dispatched": "Dispatched by",
+        "started": "Started",
+        "finished": "Finished",
+        "duration": "Duration",
+        "waited": "Waiting",
+        "revision": "Plan revision",
+        "revisionValue": "r{revision}"
+      },
+      "result": {
+        "title": "Result",
+        "pending": "Shows once the agent finishes and the worker has run the verify commands again.",
+        "empty": "The run ended without a result.",
+        "verify": "Verify",
+        "exit": "exit {code}",
+        "exitUnknown": "exit unknown",
+        "seconds": "{seconds} s",
+        "commit": "Commit",
+        "onBranch": "on {branch}",
+        "changes": "Changes",
+        "diffstat": "{files, plural, one {# file} other {# files}}, +{insertions} -{deletions}",
+        "viewDiff": "View the diff",
+        "usage": "Usage",
+        "evidence": "Evidence"
+      },
+      "actions": {
+        "diff": "View diff",
+        "rerun": "Rerun",
+        "cancel": "Cancel run",
+        "takeover": "Take over",
+        "handback": "Hand back",
+        "approve": "Approve and mark step done",
+        "confirmCancel": {
+          "title": "Cancel run #{id}?",
+          "now": "The run stops at once, and its step goes back to pending in the plan.",
+          "held": "The worker stops the agent at its next heartbeat, within about 15 seconds, and reports the run cancelled. The step goes back to pending in the plan; what the agent changed stays in its worktree on the worker.",
+          "confirm": "Cancel run",
+          "pending": "Cancelling…",
+          "keep": "Keep it"
+        },
+        "notice": {
+          "cancelled": "Run #{id} is cancelled.",
+          "cancelAsked": "Cancel of run #{id} asked: the worker stops the agent at its next heartbeat.",
+          "approved": "Run #{id} approved: step {step} of {plan} is done.",
+          "takeover": "Takeover of run #{id} asked: the worker stops the agent at the end of its turn and opens {name}.",
+          "handback": "Hand back of run #{id} asked: the agent goes on headless in the same session."
+        }
+      },
+      "takeover": {
+        "title": "Take over run #{id}",
+        "description": "The headless agent stops at the end of its current turn. Its session then opens in a terminal on the worker, with its full history, and you drive it.",
+        "attachTitle": "On {worker}, attach to the session",
+        "attachLabel": "attach command",
+        "attachHint": "Opens the tmux session {name}, which resumes the agent's session {session}.",
+        "attachHintNoSession": "Opens the tmux session {name}, which resumes the agent's session.",
+        "remoteTitle": "Or go on in the Claude app",
+        "remoteHint": "The resumed Claude Code session has Remote Control on, named <code>{name}</code>. Open it from Claude desktop or the mobile app.",
+        "warning": "While you hold the run it stays Interactive: its lease keeps renewing, and the verify commands run only after you hand it back or leave the terminal.",
+        "cancel": "Cancel",
+        "confirm": "Take over",
+        "pending": "Asking…"
+      },
+      "notes": {
+        "cancelAsked": "You asked to cancel this run at {time}. The worker stops the agent at its next heartbeat, within about 15 seconds.",
+        "takeoverAsked": "You asked to take over at {time}. {worker} stops the agent at the end of its turn, then the run turns Interactive.",
+        "handbackAsked": "You asked to hand back at {time}. The worker lets the agent go on headless in the same session.",
+        "interactive": "You hold this run. On {worker}, attach with <code>{command}</code>, and press Hand back when you are done.",
+        "notOwner": "Only {login}, who dispatched this run, can message its agent, take it over or stop it.",
+        "review": "The worker verified this run. Read its log and diff, then approve it to mark the step done, or cancel it.",
+        "reviewNoWriter": "The worker verified this run. Approving it needs the writer role on this project."
+      },
+      "errors": {
+        "forbidden": "The hub refused: only the member who dispatched the run can steer it, and approve and rerun need the writer role.",
+        "notFound": "The run can no longer be read: its plan left the hub, or you lost access to it.",
+        "conflict": "The run moved meanwhile. The page shows its state now; check it and try again.",
+        "full": "The run's log is full (20,000 events), so it takes no more messages.",
+        "apiMessage": "The hub says: {message}"
+      }
+    },
+    "diff": {
+      "metaTitle": "Diff of run #{id} of {project}",
+      "title": "Diff of run",
+      "description": "{title}: {files, plural, one {# file} other {# files}}, {size} KiB.",
+      "back": "Back to the run",
+      "download": "Download .diff",
+      "downloadStarted": "Downloading {file}.",
+      "filesLabel": "Files in this diff",
+      "filesTitle": "{count, plural, one {# file changed} other {# files changed}}",
+      "fileCounts": "{additions} lines added, {deletions} removed",
+      "status": {
+        "added": "Added",
+        "deleted": "Deleted",
+        "renamed": "Renamed",
+        "copied": "Copied",
+        "modified": "Modified"
+      },
+      "renamedTo": "renamed to",
+      "show": "Show",
+      "hide": "Hide",
+      "binary": "Binary file, not shown. Download the diff to apply it.",
+      "modeOnly": "Only the file mode changed.",
+      "noText": "No text change.",
+      "hunkCaption": "Change {index} in {path}, from line {from}",
+      "oldLine": "Line before",
+      "newLine": "Line after",
+      "text": "Text",
+      "added": "Added:",
+      "removed": "Removed:",
+      "cut": "The diff is longer than this page shows: it stops after {lines} lines. Download it for the rest.",
+      "empty": "The diff has no file in it.",
+      "none": {
+        "title": "This run has no diff",
+        "description": "Its worker uploads the diff of the run's commits when the run ends, when the hub has a blob store and the diff is at most 8 MiB."
+      },
+      "unavailable": {
+        "title": "The hub keeps no diffs",
+        "description": "This hub has no blob store configured, so workers cannot upload a run's diff."
+      },
+      "unreadable": {
+        "title": "The diff could not be read",
+        "description": "The blob store did not answer the web's request. Download the diff instead, or reload the page later."
+      }
     }
   }
 }

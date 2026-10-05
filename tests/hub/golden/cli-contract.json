@@ -1268,6 +1268,823 @@
         ]
       }
     },
+    "hub run approve": {
+      "positionals": [
+        {
+          "name": "run",
+          "metavar": "RUN",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "project",
+          "plan_id",
+          "step_key",
+          "title",
+          "plan_revision",
+          "dispatched_by",
+          "worker_id",
+          "worker",
+          "pinned_worker_id",
+          "requested_runtime",
+          "runtime",
+          "mode",
+          "approval",
+          "timeout_min",
+          "attempt",
+          "max_attempts",
+          "parent_run_id",
+          "state",
+          "lease_expires_at",
+          "session_id",
+          "repo",
+          "branch",
+          "commit_sha",
+          "diffstat",
+          "verify",
+          "evidence",
+          "usage",
+          "error",
+          "log_sha256",
+          "diff_sha256",
+          "last_seq",
+          "cancel_requested_at",
+          "takeover_requested_at",
+          "handback_requested_at",
+          "queued_at",
+          "leased_at",
+          "started_at",
+          "finished_at"
+        ],
+        "schema": "Run"
+      }
+    },
+    "hub run cancel": {
+      "positionals": [
+        {
+          "name": "run",
+          "metavar": "RUN",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "project",
+          "plan_id",
+          "step_key",
+          "title",
+          "plan_revision",
+          "dispatched_by",
+          "worker_id",
+          "worker",
+          "pinned_worker_id",
+          "requested_runtime",
+          "runtime",
+          "mode",
+          "approval",
+          "timeout_min",
+          "attempt",
+          "max_attempts",
+          "parent_run_id",
+          "state",
+          "lease_expires_at",
+          "session_id",
+          "repo",
+          "branch",
+          "commit_sha",
+          "diffstat",
+          "verify",
+          "evidence",
+          "usage",
+          "error",
+          "log_sha256",
+          "diff_sha256",
+          "last_seq",
+          "cancel_requested_at",
+          "takeover_requested_at",
+          "handback_requested_at",
+          "queued_at",
+          "leased_at",
+          "started_at",
+          "finished_at"
+        ],
+        "schema": "Run"
+      }
+    },
+    "hub run dispatch": {
+      "positionals": [
+        {
+          "name": "plan",
+          "metavar": "PLAN",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "name": "steps",
+          "metavar": "STEP",
+          "value": "string",
+          "required": true,
+          "repeatable": true
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--runtime"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "any",
+            "claude-code",
+            "opencode",
+            "codex"
+          ]
+        },
+        {
+          "flags": [
+            "--mode"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "headless",
+            "interactive"
+          ]
+        },
+        {
+          "flags": [
+            "--worker"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--approval"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "auto",
+            "review"
+          ]
+        },
+        {
+          "flags": [
+            "--timeout"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false,
+          "minimum": 5,
+          "maximum": 240
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "array",
+        "keys": [
+          "id",
+          "project",
+          "plan_id",
+          "step_key",
+          "title",
+          "plan_revision",
+          "dispatched_by",
+          "worker_id",
+          "worker",
+          "pinned_worker_id",
+          "requested_runtime",
+          "runtime",
+          "mode",
+          "approval",
+          "timeout_min",
+          "attempt",
+          "max_attempts",
+          "parent_run_id",
+          "state",
+          "lease_expires_at",
+          "session_id",
+          "repo",
+          "branch",
+          "commit_sha",
+          "diffstat",
+          "verify",
+          "evidence",
+          "usage",
+          "error",
+          "log_sha256",
+          "diff_sha256",
+          "last_seq",
+          "cancel_requested_at",
+          "takeover_requested_at",
+          "handback_requested_at",
+          "queued_at",
+          "leased_at",
+          "started_at",
+          "finished_at"
+        ],
+        "schema": "Run"
+      }
+    },
+    "hub run handback": {
+      "positionals": [
+        {
+          "name": "run",
+          "metavar": "RUN",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "project",
+          "plan_id",
+          "step_key",
+          "title",
+          "plan_revision",
+          "dispatched_by",
+          "worker_id",
+          "worker",
+          "pinned_worker_id",
+          "requested_runtime",
+          "runtime",
+          "mode",
+          "approval",
+          "timeout_min",
+          "attempt",
+          "max_attempts",
+          "parent_run_id",
+          "state",
+          "lease_expires_at",
+          "session_id",
+          "repo",
+          "branch",
+          "commit_sha",
+          "diffstat",
+          "verify",
+          "evidence",
+          "usage",
+          "error",
+          "log_sha256",
+          "diff_sha256",
+          "last_seq",
+          "cancel_requested_at",
+          "takeover_requested_at",
+          "handback_requested_at",
+          "queued_at",
+          "leased_at",
+          "started_at",
+          "finished_at"
+        ],
+        "schema": "Run"
+      }
+    },
+    "hub run list": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--state"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true,
+          "choices": [
+            "queued",
+            "leased",
+            "running",
+            "interactive",
+            "verifying",
+            "review",
+            "done",
+            "failed",
+            "lost",
+            "cancelled"
+          ]
+        },
+        {
+          "flags": [
+            "--plan"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--step"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--worker"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--by"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--search"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--limit"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false,
+          "minimum": 1,
+          "maximum": 200
+        },
+        {
+          "flags": [
+            "--offset"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "runs",
+          "total",
+          "counts",
+          "limit",
+          "offset"
+        ],
+        "schema": "RunList"
+      }
+    },
+    "hub run logs": {
+      "positionals": [
+        {
+          "name": "run",
+          "metavar": "RUN",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "-f",
+            "--follow"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--after"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--kind"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true,
+          "choices": [
+            "agent_message_chunk",
+            "agent_thought_chunk",
+            "tool_call",
+            "tool_call_update",
+            "plan",
+            "usage_update",
+            "user_message",
+            "state",
+            "system",
+            "output"
+          ]
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "run_id",
+          "state",
+          "last_seq",
+          "events",
+          "more"
+        ],
+        "schema": "RunEvents"
+      }
+    },
+    "hub run rerun": {
+      "positionals": [
+        {
+          "name": "run",
+          "metavar": "RUN",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "project",
+          "plan_id",
+          "step_key",
+          "title",
+          "plan_revision",
+          "dispatched_by",
+          "worker_id",
+          "worker",
+          "pinned_worker_id",
+          "requested_runtime",
+          "runtime",
+          "mode",
+          "approval",
+          "timeout_min",
+          "attempt",
+          "max_attempts",
+          "parent_run_id",
+          "state",
+          "lease_expires_at",
+          "session_id",
+          "repo",
+          "branch",
+          "commit_sha",
+          "diffstat",
+          "verify",
+          "evidence",
+          "usage",
+          "error",
+          "log_sha256",
+          "diff_sha256",
+          "last_seq",
+          "cancel_requested_at",
+          "takeover_requested_at",
+          "handback_requested_at",
+          "queued_at",
+          "leased_at",
+          "started_at",
+          "finished_at"
+        ],
+        "schema": "Run"
+      }
+    },
+    "hub run send": {
+      "positionals": [
+        {
+          "name": "run",
+          "metavar": "RUN",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "name": "text",
+          "metavar": "TEXT",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "run_id",
+          "seq",
+          "text",
+          "sent_by",
+          "created_at",
+          "delivered_at"
+        ],
+        "schema": "Message"
+      }
+    },
+    "hub run show": {
+      "positionals": [
+        {
+          "name": "run",
+          "metavar": "RUN",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "project",
+          "plan_id",
+          "step_key",
+          "title",
+          "plan_revision",
+          "dispatched_by",
+          "worker_id",
+          "worker",
+          "pinned_worker_id",
+          "requested_runtime",
+          "runtime",
+          "mode",
+          "approval",
+          "timeout_min",
+          "attempt",
+          "max_attempts",
+          "parent_run_id",
+          "state",
+          "lease_expires_at",
+          "session_id",
+          "repo",
+          "branch",
+          "commit_sha",
+          "diffstat",
+          "verify",
+          "evidence",
+          "usage",
+          "error",
+          "log_sha256",
+          "diff_sha256",
+          "last_seq",
+          "cancel_requested_at",
+          "takeover_requested_at",
+          "handback_requested_at",
+          "queued_at",
+          "leased_at",
+          "started_at",
+          "finished_at"
+        ],
+        "schema": "Run"
+      }
+    },
+    "hub run takeover": {
+      "positionals": [
+        {
+          "name": "run",
+          "metavar": "RUN",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "project",
+          "plan_id",
+          "step_key",
+          "title",
+          "plan_revision",
+          "dispatched_by",
+          "worker_id",
+          "worker",
+          "pinned_worker_id",
+          "requested_runtime",
+          "runtime",
+          "mode",
+          "approval",
+          "timeout_min",
+          "attempt",
+          "max_attempts",
+          "parent_run_id",
+          "state",
+          "lease_expires_at",
+          "session_id",
+          "repo",
+          "branch",
+          "commit_sha",
+          "diffstat",
+          "verify",
+          "evidence",
+          "usage",
+          "error",
+          "log_sha256",
+          "diff_sha256",
+          "last_seq",
+          "cancel_requested_at",
+          "takeover_requested_at",
+          "handback_requested_at",
+          "queued_at",
+          "leased_at",
+          "started_at",
+          "finished_at"
+        ],
+        "schema": "Run"
+      }
+    },
     "hub serve": {
       "positionals": [],
       "options": [
@@ -1569,7 +2386,7 @@
     "openapi": "3.1.0",
     "info": {
       "title": "evo-agents hub",
-      "version": "0.2.3"
+      "version": "0.3.0"
     },
     "paths": {
       "/v1/health": {
@@ -2028,6 +2845,7 @@
             "tokens"
           ],
           "summary": "Revoke",
+          "description": "Revoke one of the caller's tokens; a worker token's worker is revoked with it.",
           "operationId": "revoke_v1_tokens__token_id__delete",
           "parameters": [
             {
@@ -6791,7 +7609,8 @@
                   {
                     "enum": [
                       "machine",
-                      "web"
+                      "web",
+                      "worker"
                     ],
                     "type": "string"
                   },
@@ -6912,7 +7731,7 @@
             "admin"
           ],
           "summary": "Revoke Any Token",
-          "description": "Revoke a token or web session of any user.",
+          "description": "Revoke a token or web session of any user; a worker token's worker is revoked with it.",
           "operationId": "revoke_any_token_v1_admin_tokens__token_id__delete",
           "parameters": [
             {
@@ -6983,10 +7802,2911 @@
             }
           }
         }
+      },
+      "/v1/workers/pairings": {
+        "post": {
+          "tags": [
+            "workers"
+          ],
+          "summary": "Create Pairing",
+          "description": "A code a machine joins with as a worker of the caller; shown once.",
+          "operationId": "create_pairing_v1_workers_pairings_post",
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PairingRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Pairing"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "403": {
+              "description": "Forbidden",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "404": {
+              "description": "Not Found",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "409": {
+              "description": "Conflict",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "422": {
+              "description": "Unprocessable Entity",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "503": {
+              "description": "Service Unavailable",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/workers/pairings/{pairing_id}": {
+        "get": {
+          "tags": [
+            "workers"
+          ],
+          "summary": "Pairing State",
+          "description": "Whether a machine has joined with one of the caller's pairings yet.",
+          "operationId": "pairing_state_v1_workers_pairings__pairing_id__get",
+          "parameters": [
+            {
+              "name": "pairing_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Pairing Id"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/PairingState"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/workers": {
+        "post": {
+          "tags": [
+            "workers"
+          ],
+          "summary": "Register",
+          "description": "Register the calling machine as a worker of the caller, with its machine token; the worker token is shown\nonce.",
+          "operationId": "register_v1_workers_post",
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkerRegistration"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/WorkerCredential"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        },
+        "get": {
+          "tags": [
+            "workers"
+          ],
+          "summary": "List Workers",
+          "description": "The caller's workers, newest first; every worker for a hub admin.",
+          "operationId": "list_workers_v1_workers_get",
+          "parameters": [
+            {
+              "name": "revoked",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "boolean",
+                "description": "also list revoked workers",
+                "default": false,
+                "title": "Revoked"
+              },
+              "description": "also list revoked workers"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/Worker"
+                    },
+                    "title": "Response List Workers V1 Workers Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/workers/{worker_id}": {
+        "get": {
+          "tags": [
+            "workers"
+          ],
+          "summary": "Show Worker",
+          "operationId": "show_worker_v1_workers__worker_id__get",
+          "parameters": [
+            {
+              "name": "worker_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Worker Id"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Worker"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/workers/{worker_id}/drain": {
+        "post": {
+          "tags": [
+            "workers"
+          ],
+          "summary": "Drain",
+          "description": "Stop new claims; the worker finishes the runs it holds.",
+          "operationId": "drain_v1_workers__worker_id__drain_post",
+          "parameters": [
+            {
+              "name": "worker_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Worker Id"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Worker"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/workers/{worker_id}/undrain": {
+        "post": {
+          "tags": [
+            "workers"
+          ],
+          "summary": "Undrain",
+          "description": "Let a drained worker claim runs again; its owner only.",
+          "operationId": "undrain_v1_workers__worker_id__undrain_post",
+          "parameters": [
+            {
+              "name": "worker_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Worker Id"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Worker"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/workers/{worker_id}/revoke": {
+        "post": {
+          "tags": [
+            "workers"
+          ],
+          "summary": "Revoke",
+          "description": "End the worker and its token at once, and release the runs it holds.",
+          "operationId": "revoke_v1_workers__worker_id__revoke_post",
+          "parameters": [
+            {
+              "name": "worker_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Worker Id"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Worker"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/worker/join": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Join",
+          "description": "Trade a pairing code for the token of a new worker; the token is shown once.",
+          "operationId": "join_v1_worker_join_post",
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JoinRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/WorkerCredential"
+                  }
+                }
+              }
+            },
+            "403": {
+              "description": "Forbidden",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "409": {
+              "description": "Conflict",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "422": {
+              "description": "Unprocessable Entity",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "429": {
+              "description": "too many refused codes from this address; see Retry-After",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "503": {
+              "description": "Service Unavailable",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/plans/{plan_id}/ready-steps": {
+        "get": {
+          "tags": [
+            "runs"
+          ],
+          "summary": "Ready Steps",
+          "description": "Every step of the plan with whether it may be dispatched now, and why not.",
+          "operationId": "ready_steps_v1_projects__project__plans__plan_id__ready_steps_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "plan_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Plan Id"
+              }
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ReadySteps"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/runs": {
+        "get": {
+          "tags": [
+            "runs"
+          ],
+          "summary": "List Runs",
+          "description": "The project's runs, newest first, of the plans the caller may read, with how many are in each state.",
+          "operationId": "list_runs_v1_projects__project__runs_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "state",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "array",
+                "items": {
+                  "enum": [
+                    "queued",
+                    "leased",
+                    "running",
+                    "interactive",
+                    "verifying",
+                    "review",
+                    "done",
+                    "failed",
+                    "lost",
+                    "cancelled"
+                  ],
+                  "type": "string"
+                },
+                "description": "any of these states; repeat it",
+                "default": [],
+                "title": "State"
+              },
+              "description": "any of these states; repeat it"
+            },
+            {
+              "name": "plan_id",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^[a-z0-9][a-z0-9-]{0,99}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Plan Id"
+              }
+            },
+            {
+              "name": "step",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "a step key",
+                "title": "Step"
+              },
+              "description": "a step key"
+            },
+            {
+              "name": "worker_id",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "maximum": 9223372036854775807,
+                    "minimum": 1
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Worker Id"
+              }
+            },
+            {
+              "name": "dispatched_by",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "a login",
+                "title": "Dispatched By"
+              },
+              "description": "a login"
+            },
+            {
+              "name": "q",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "text in the title, step, plan, repo, branch, worker, login or error, or a run number",
+                "title": "Q"
+              },
+              "description": "text in the title, step, plan, repo, branch, worker, login or error, or a run number"
+            },
+            {
+              "name": "limit",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 200,
+                "minimum": 1,
+                "default": 50,
+                "title": "Limit"
+              }
+            },
+            {
+              "name": "offset",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 100000,
+                "minimum": 0,
+                "default": 0,
+                "title": "Offset"
+              }
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/RunList"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "post": {
+          "tags": [
+            "runs"
+          ],
+          "summary": "Dispatch",
+          "description": "Queue a run of each step named, all of them or none; each one goes to a worker of the caller.",
+          "operationId": "dispatch_v1_projects__project__runs_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Dispatch"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/Run"
+                    },
+                    "title": "Response Dispatch V1 Projects  Project  Runs Post"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/runs/{run_id}": {
+        "get": {
+          "tags": [
+            "runs"
+          ],
+          "summary": "Show Run",
+          "operationId": "show_run_v1_projects__project__runs__run_id__get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Run"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/runs/{run_id}/cancel": {
+        "post": {
+          "tags": [
+            "runs"
+          ],
+          "summary": "Cancel",
+          "description": "Cancel a queued run or one in review at once; ask the worker holding a held run to stop it.",
+          "operationId": "cancel_v1_projects__project__runs__run_id__cancel_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Run"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/runs/{run_id}/takeover": {
+        "post": {
+          "tags": [
+            "runs"
+          ],
+          "summary": "Takeover",
+          "description": "Ask the worker to stop the agent at the end of its turn and resume its session in a terminal, where a person\ndrives it (the run becomes interactive).",
+          "operationId": "takeover_v1_projects__project__runs__run_id__takeover_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Run"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/runs/{run_id}/handback": {
+        "post": {
+          "tags": [
+            "runs"
+          ],
+          "summary": "Handback",
+          "description": "Ask the worker to close the terminal and let the agent go on headless in the same session (the run becomes\nrunning again).",
+          "operationId": "handback_v1_projects__project__runs__run_id__handback_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Run"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/runs/{run_id}/approve": {
+        "post": {
+          "tags": [
+            "runs"
+          ],
+          "summary": "Approve",
+          "description": "Approve a run in review: the run is done, and so is its step.",
+          "operationId": "approve_v1_projects__project__runs__run_id__approve_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Run"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/runs/{run_id}/rerun": {
+        "post": {
+          "tags": [
+            "runs"
+          ],
+          "summary": "Rerun",
+          "description": "Queue the step of a run that ended again, with the same runtime, mode, approval, timeout and worker, at the\nplan's current revision.",
+          "operationId": "rerun_v1_projects__project__runs__run_id__rerun_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Run"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/worker/claim": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Claim",
+          "description": "Wait up to ``wait_s`` seconds (25 by default) for a run this worker may take, and lease it.",
+          "operationId": "claim_v1_worker_claim_post",
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ClaimRequest"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Body"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Claim"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "403": {
+              "description": "Forbidden",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/worker/heartbeat": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Heartbeat",
+          "description": "Record the machine, extend the leases of the runs it holds, and say what it should do with them.",
+          "operationId": "heartbeat_v1_worker_heartbeat_post",
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HeartbeatRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HeartbeatAnswer"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "403": {
+              "description": "Forbidden",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/worker/runs/{run_id}/state": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Report State",
+          "description": "Move a run this worker holds, as the transition table lets a worker.",
+          "operationId": "report_state_v1_worker_runs__run_id__state_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StateReport"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Run"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/runs/{run_id}/events": {
+        "get": {
+          "tags": [
+            "runs"
+          ],
+          "summary": "List Events",
+          "description": "The run's events after ``after``, in seq order.",
+          "operationId": "list_events_v1_projects__project__runs__run_id__events_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            },
+            {
+              "name": "after",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 2147483647,
+                "minimum": 0,
+                "description": "the seq of the last event the caller has",
+                "default": 0,
+                "title": "After"
+              },
+              "description": "the seq of the last event the caller has"
+            },
+            {
+              "name": "limit",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 1000,
+                "minimum": 1,
+                "default": 500,
+                "title": "Limit"
+              }
+            },
+            {
+              "name": "kind",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "array",
+                "items": {
+                  "enum": [
+                    "agent_message_chunk",
+                    "agent_thought_chunk",
+                    "tool_call",
+                    "tool_call_update",
+                    "plan",
+                    "usage_update",
+                    "user_message",
+                    "state",
+                    "system",
+                    "output"
+                  ],
+                  "type": "string"
+                },
+                "description": "only these kinds; repeat it",
+                "default": [],
+                "title": "Kind"
+              },
+              "description": "only these kinds; repeat it"
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/RunEvents"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/runs/{run_id}/messages": {
+        "post": {
+          "tags": [
+            "runs"
+          ],
+          "summary": "Send Message",
+          "description": "Leave a message for the run's agent in its inbox, which the worker hands to the agent.",
+          "operationId": "send_message_v1_projects__project__runs__run_id__messages_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Message"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/runs/{run_id}/diff": {
+        "get": {
+          "tags": [
+            "runs"
+          ],
+          "summary": "Diff",
+          "description": "A presigned GET of the diff the run's worker uploaded when the run ended.",
+          "operationId": "diff_v1_projects__project__runs__run_id__diff_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            },
+            {
+              "name": "download",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "boolean",
+                "description": "ask the store to answer as an attachment, run-<id>.diff",
+                "default": false,
+                "title": "Download"
+              },
+              "description": "ask the store to answer as an attachment, run-<id>.diff"
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/DiffLink"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/runs/{run_id}/stream": {
+        "get": {
+          "tags": [
+            "runs"
+          ],
+          "summary": "Stream",
+          "description": "The run's events as server-sent events, each with its seq as id, then an ``end`` event once the run is final\nand every event was sent; a ``: ping`` comment keeps an idle stream open.",
+          "operationId": "stream_v1_projects__project__runs__run_id__stream_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            },
+            {
+              "name": "after",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 2147483647,
+                "minimum": 0,
+                "description": "where a first connection starts",
+                "default": 0,
+                "title": "After"
+              },
+              "description": "where a first connection starts"
+            },
+            {
+              "name": "Last-Event-ID",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "maximum": 2147483647,
+                    "minimum": 0
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "sent by a reconnecting client",
+                "title": "Last-Event-Id"
+              },
+              "description": "sent by a reconnecting client"
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "text/event-stream": {
+                  "itemSchema": {
+                    "type": "object",
+                    "properties": {
+                      "data": {
+                        "type": "string"
+                      },
+                      "event": {
+                        "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "retry": {
+                        "type": "integer",
+                        "minimum": 0
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "403": {
+              "description": "Forbidden",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "404": {
+              "description": "Not Found",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/worker/runs/{run_id}/events": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Post Events",
+          "description": "Store the events of the batch that follow the ones stored, and say up to where the worker's spool may go.",
+          "operationId": "post_events_v1_worker_runs__run_id__events_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventBatch"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/EventsAck"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/worker/runs/{run_id}/inbox": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Take Inbox",
+          "description": "Mark the messages up to ``ack`` delivered, and hand out the ones that still wait, for a run the worker holds.",
+          "operationId": "take_inbox_v1_worker_runs__run_id__inbox_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/InboxAck"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Body"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Inbox"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/worker/runs/{run_id}/uploads": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Request Run Uploads",
+          "description": "Presigned PUT URLs for the log (run-log) and the diff (run-diff) of a run the worker claimed, as its owner.",
+          "operationId": "request_run_uploads_v1_worker_runs__run_id__uploads_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunUploadRequest"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Uploads"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            }
+          }
+        }
+      },
+      "/v1/worker/runs/{run_id}/blobs": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Commit Run Blobs",
+          "description": "Commit the uploads of a run's log and diff, and record them on the run.",
+          "operationId": "commit_run_blobs_v1_worker_runs__run_id__blobs_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunBlobCommit"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/RunBlobs"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            }
+          }
+        }
       }
     },
     "components": {
       "schemas": {
+        "ActiveRun": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "queued",
+                "leased",
+                "running",
+                "interactive",
+                "verifying",
+                "review"
+              ],
+              "title": "State"
+            },
+            "dispatched_by": {
+              "type": "string",
+              "title": "Dispatched By"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "state",
+            "dispatched_by"
+          ],
+          "title": "ActiveRun"
+        },
         "AdminToken": {
           "properties": {
             "id": {
@@ -7002,7 +10722,8 @@
               "type": "string",
               "enum": [
                 "machine",
-                "web"
+                "web",
+                "worker"
               ],
               "title": "Kind"
             },
@@ -7016,7 +10737,7 @@
                 }
               ],
               "title": "Host",
-              "description": "the machine a machine token was issued to; null for a web session"
+              "description": "the machine a machine token or worker token was issued to; null for a web session"
             },
             "created_at": {
               "type": "string",
@@ -7535,6 +11256,72 @@
           ],
           "title": "BundleTicket"
         },
+        "CheckoutReport": {
+          "properties": {
+            "path": {
+              "type": "string",
+              "maxLength": 1024,
+              "minLength": 1,
+              "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+              "title": "Path"
+            },
+            "branch": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 255,
+                  "minLength": 1,
+                  "pattern": "^[^\\x00-\\x1f\\x7f]+$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch",
+              "description": "checked out there"
+            }
+          },
+          "type": "object",
+          "required": [
+            "path"
+          ],
+          "title": "CheckoutReport",
+          "description": "One checkout of a project's repo on the machine, which the daemon makes worktrees from."
+        },
+        "Claim": {
+          "properties": {
+            "run": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/RunSpec"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "null when the wait ended without a run; claim again"
+            }
+          },
+          "type": "object",
+          "required": [
+            "run"
+          ],
+          "title": "Claim"
+        },
+        "ClaimRequest": {
+          "properties": {
+            "wait_s": {
+              "type": "number",
+              "maximum": 25.0,
+              "minimum": 0.0,
+              "title": "Wait S",
+              "description": "how long to wait for a run",
+              "default": 25
+            }
+          },
+          "type": "object",
+          "title": "ClaimRequest"
+        },
         "Clearance": {
           "properties": {
             "level": {
@@ -7656,6 +11443,155 @@
           ],
           "title": "Csrf"
         },
+        "DiffLink": {
+          "properties": {
+            "sha256": {
+              "type": "string",
+              "title": "Sha256"
+            },
+            "size": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Size"
+            },
+            "url": {
+              "type": "string",
+              "title": "Url",
+              "description": "a presigned GET of the diff, working until expires_at"
+            },
+            "expires_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Expires At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "sha256",
+            "size",
+            "url",
+            "expires_at"
+          ],
+          "title": "DiffLink"
+        },
+        "Diffstat": {
+          "properties": {
+            "files": {
+              "type": "integer",
+              "minimum": 0.0,
+              "title": "Files"
+            },
+            "insertions": {
+              "type": "integer",
+              "minimum": 0.0,
+              "title": "Insertions"
+            },
+            "deletions": {
+              "type": "integer",
+              "minimum": 0.0,
+              "title": "Deletions"
+            }
+          },
+          "type": "object",
+          "required": [
+            "files",
+            "insertions",
+            "deletions"
+          ],
+          "title": "Diffstat"
+        },
+        "Dispatch": {
+          "properties": {
+            "plan_id": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+              "title": "Plan Id"
+            },
+            "steps": {
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "string",
+                    "maxLength": 200,
+                    "minLength": 1
+                  }
+                ]
+              },
+              "type": "array",
+              "maxItems": 50,
+              "minItems": 1,
+              "title": "Steps",
+              "description": "step ids (or orders), one run each"
+            },
+            "runtime": {
+              "type": "string",
+              "enum": [
+                "any",
+                "claude-code",
+                "opencode",
+                "codex"
+              ],
+              "title": "Runtime",
+              "description": "any: the claiming worker picks one it has",
+              "default": "any"
+            },
+            "mode": {
+              "type": "string",
+              "enum": [
+                "headless",
+                "interactive"
+              ],
+              "title": "Mode",
+              "default": "headless"
+            },
+            "worker_id": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 9.223372036854776e+18,
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Worker Id",
+              "description": "pin the runs to this worker of yours"
+            },
+            "approval": {
+              "type": "string",
+              "enum": [
+                "auto",
+                "review"
+              ],
+              "title": "Approval",
+              "description": "auto: verified runs mark the step done",
+              "default": "review"
+            },
+            "timeout_min": {
+              "type": "integer",
+              "maximum": 240.0,
+              "minimum": 5.0,
+              "title": "Timeout Min",
+              "default": 60
+            }
+          },
+          "type": "object",
+          "required": [
+            "plan_id",
+            "steps"
+          ],
+          "title": "Dispatch"
+        },
         "ErrorBody": {
           "properties": {
             "error": {
@@ -7699,6 +11635,89 @@
             "message"
           ],
           "title": "ErrorBody"
+        },
+        "EventBatch": {
+          "properties": {
+            "events": {
+              "items": {
+                "$ref": "#/components/schemas/EventIn"
+              },
+              "type": "array",
+              "maxItems": 500,
+              "title": "Events"
+            }
+          },
+          "type": "object",
+          "required": [
+            "events"
+          ],
+          "title": "EventBatch"
+        },
+        "EventIn": {
+          "properties": {
+            "seq": {
+              "type": "integer",
+              "maximum": 2147483647.0,
+              "minimum": 1.0,
+              "title": "Seq",
+              "description": "the worker's number of the event: 1 for the run's first"
+            },
+            "at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "At",
+              "description": "when the worker saw it; a time after the hub's now is taken as now"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "agent_message_chunk",
+                "agent_thought_chunk",
+                "tool_call",
+                "tool_call_update",
+                "plan",
+                "usage_update",
+                "system",
+                "output"
+              ],
+              "title": "Kind",
+              "description": "user_message and state are the hub's own"
+            },
+            "body": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Body",
+              "description": "a JSON object; over 64 KiB of JSON, the hub cuts it"
+            }
+          },
+          "type": "object",
+          "required": [
+            "seq",
+            "at",
+            "kind",
+            "body"
+          ],
+          "title": "EventIn"
+        },
+        "EventsAck": {
+          "properties": {
+            "ack_seq": {
+              "type": "integer",
+              "title": "Ack Seq",
+              "description": "the worker's highest seq stored with none missing below: drop the spool to it"
+            },
+            "stored": {
+              "type": "integer",
+              "title": "Stored",
+              "description": "events of this batch stored now; the others were resends or after a gap"
+            }
+          },
+          "type": "object",
+          "required": [
+            "ack_seq",
+            "stored"
+          ],
+          "title": "EventsAck"
         },
         "Evidence": {
           "properties": {
@@ -8266,6 +12285,160 @@
           ],
           "title": "Health"
         },
+        "HeartbeatAnswer": {
+          "properties": {
+            "drain": {
+              "type": "boolean",
+              "title": "Drain",
+              "description": "claim no new run; finish the ones held"
+            },
+            "runs": {
+              "items": {
+                "$ref": "#/components/schemas/RunControl"
+              },
+              "type": "array",
+              "title": "Runs"
+            }
+          },
+          "type": "object",
+          "required": [
+            "drain",
+            "runs"
+          ],
+          "title": "HeartbeatAnswer"
+        },
+        "HeartbeatRequest": {
+          "properties": {
+            "runtimes": {
+              "additionalProperties": {
+                "$ref": "#/components/schemas/RuntimeReport"
+              },
+              "propertyNames": {
+                "enum": [
+                  "claude-code",
+                  "opencode",
+                  "codex"
+                ]
+              },
+              "type": "object",
+              "title": "Runtimes",
+              "description": "the runtimes on the machine: {\"claude-code\": {\"available\": true, \"version\": \"2.1.289\"}}"
+            },
+            "checkouts": {
+              "patternProperties": {
+                "^[a-z0-9][a-z0-9-]{0,99}/[^\\x00-\\x1f\\x7f/][^\\x00-\\x1f\\x7f]{0,199}$": {
+                  "$ref": "#/components/schemas/CheckoutReport"
+                }
+              },
+              "type": "object",
+              "maxProperties": 500,
+              "title": "Checkouts",
+              "description": "keyed <project>/<repo>: {\"evo-agents/evo-agents\": {\"path\": \"/src/evo-agents\", \"branch\": \"main\"}}"
+            },
+            "free_slots": {
+              "type": "integer",
+              "maximum": 8.0,
+              "minimum": 0.0,
+              "title": "Free Slots"
+            },
+            "runs": {
+              "items": {
+                "type": "integer",
+                "maximum": 9.223372036854776e+18,
+                "minimum": 1.0
+              },
+              "type": "array",
+              "maxItems": 64,
+              "title": "Runs",
+              "description": "the runs the worker holds"
+            },
+            "agent_version": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 100,
+                  "minLength": 1,
+                  "pattern": "^[^\\x00-\\x1f\\x7f]+$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent Version"
+            }
+          },
+          "type": "object",
+          "required": [
+            "free_slots"
+          ],
+          "title": "HeartbeatRequest"
+        },
+        "Inbox": {
+          "properties": {
+            "messages": {
+              "items": {
+                "$ref": "#/components/schemas/InboxMessage"
+              },
+              "type": "array",
+              "title": "Messages",
+              "description": "the messages not delivered yet, oldest first"
+            }
+          },
+          "type": "object",
+          "required": [
+            "messages"
+          ],
+          "title": "Inbox"
+        },
+        "InboxAck": {
+          "properties": {
+            "ack": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 9.223372036854776e+18,
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ack",
+              "description": "the last message handed to the agent: it and the ones before are delivered"
+            }
+          },
+          "type": "object",
+          "title": "InboxAck"
+        },
+        "InboxMessage": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "text": {
+              "type": "string",
+              "title": "Text"
+            },
+            "sent_by": {
+              "type": "string",
+              "title": "Sent By"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "text",
+            "sent_by",
+            "created_at"
+          ],
+          "title": "InboxMessage"
+        },
         "Job": {
           "properties": {
             "job_id": {
@@ -8299,6 +12472,55 @@
             "build_id"
           ],
           "title": "Job"
+        },
+        "JoinRequest": {
+          "properties": {
+            "hostname": {
+              "type": "string",
+              "maxLength": 255,
+              "minLength": 1,
+              "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+              "title": "Hostname"
+            },
+            "os": {
+              "type": "string",
+              "maxLength": 40,
+              "minLength": 1,
+              "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+              "title": "Os"
+            },
+            "arch": {
+              "type": "string",
+              "maxLength": 40,
+              "minLength": 1,
+              "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+              "title": "Arch"
+            },
+            "agent_version": {
+              "type": "string",
+              "maxLength": 100,
+              "minLength": 1,
+              "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+              "title": "Agent Version",
+              "description": "of the evo-agents daemon"
+            },
+            "code": {
+              "type": "string",
+              "maxLength": 32,
+              "minLength": 1,
+              "title": "Code",
+              "description": "the pairing code, XXXX-XXXX"
+            }
+          },
+          "type": "object",
+          "required": [
+            "hostname",
+            "os",
+            "arch",
+            "agent_version",
+            "code"
+          ],
+          "title": "JoinRequest"
         },
         "KgConfig": {
           "properties": {
@@ -8747,6 +12969,76 @@
           ],
           "title": "MemoryRevision"
         },
+        "Message": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "run_id": {
+              "type": "integer",
+              "title": "Run Id"
+            },
+            "seq": {
+              "type": "integer",
+              "title": "Seq",
+              "description": "its user_message event in the run's log"
+            },
+            "text": {
+              "type": "string",
+              "title": "Text"
+            },
+            "sent_by": {
+              "type": "string",
+              "title": "Sent By"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "delivered_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Delivered At",
+              "description": "when the worker took it for the agent"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "run_id",
+            "seq",
+            "text",
+            "sent_by",
+            "created_at",
+            "delivered_at"
+          ],
+          "title": "Message"
+        },
+        "MessageIn": {
+          "properties": {
+            "text": {
+              "type": "string",
+              "maxLength": 8192,
+              "minLength": 1,
+              "title": "Text",
+              "description": "at most 8 KiB of UTF-8"
+            }
+          },
+          "type": "object",
+          "required": [
+            "text"
+          ],
+          "title": "MessageIn"
+        },
         "MissingBlobs": {
           "properties": {
             "missing": {
@@ -8959,6 +13251,211 @@
             "next_cursor"
           ],
           "title": "Page"
+        },
+        "Pairing": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "code": {
+              "type": "string",
+              "title": "Code",
+              "description": "XXXX-XXXX; shown once, the hub keeps only its hash and its first four characters"
+            },
+            "expires_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Expires At"
+            },
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "projects": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Projects"
+            },
+            "slots": {
+              "type": "integer",
+              "title": "Slots"
+            },
+            "labels": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Labels"
+            },
+            "allow_web_terminal": {
+              "type": "boolean",
+              "title": "Allow Web Terminal"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "code",
+            "expires_at",
+            "name",
+            "projects",
+            "slots",
+            "labels",
+            "allow_web_terminal"
+          ],
+          "title": "Pairing"
+        },
+        "PairingRequest": {
+          "properties": {
+            "name": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
+              "title": "Name",
+              "description": "unique among the owner's workers that are not revoked"
+            },
+            "projects": {
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$"
+              },
+              "type": "array",
+              "maxItems": 100,
+              "minItems": 1,
+              "title": "Projects",
+              "description": "projects the worker takes runs of; the writer role on each"
+            },
+            "slots": {
+              "type": "integer",
+              "maximum": 8.0,
+              "minimum": 1.0,
+              "title": "Slots",
+              "description": "runs the worker holds at once",
+              "default": 1
+            },
+            "labels": {
+              "items": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$"
+              },
+              "type": "array",
+              "maxItems": 16,
+              "title": "Labels"
+            },
+            "allow_web_terminal": {
+              "type": "boolean",
+              "title": "Allow Web Terminal",
+              "description": "whether the owner may open a terminal on it from the web",
+              "default": false
+            }
+          },
+          "type": "object",
+          "required": [
+            "name",
+            "projects"
+          ],
+          "title": "PairingRequest"
+        },
+        "PairingState": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "waiting",
+                "joined",
+                "expired",
+                "locked"
+              ],
+              "title": "Status"
+            },
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "projects": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Projects"
+            },
+            "slots": {
+              "type": "integer",
+              "title": "Slots"
+            },
+            "labels": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Labels"
+            },
+            "allow_web_terminal": {
+              "type": "boolean",
+              "title": "Allow Web Terminal"
+            },
+            "tries_left": {
+              "type": "integer",
+              "title": "Tries Left",
+              "description": "wrong codes the pairing takes before it locks"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "expires_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Expires At"
+            },
+            "used_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Used At"
+            },
+            "worker_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Worker Id",
+              "description": "the worker the pairing made, once a machine joined with it"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "status",
+            "name",
+            "projects",
+            "slots",
+            "labels",
+            "allow_web_terminal",
+            "tries_left",
+            "created_at",
+            "expires_at",
+            "used_at",
+            "worker_id"
+          ],
+          "title": "PairingState"
         },
         "Plan": {
           "properties": {
@@ -9681,6 +14178,38 @@
           ],
           "title": "Queued"
         },
+        "ReadySteps": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "plan_id": {
+              "type": "string",
+              "title": "Plan Id"
+            },
+            "revision": {
+              "type": "integer",
+              "title": "Revision"
+            },
+            "steps": {
+              "items": {
+                "$ref": "#/components/schemas/StepReadiness"
+              },
+              "type": "array",
+              "title": "Steps",
+              "description": "every step of the plan, in plan order"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "plan_id",
+            "revision",
+            "steps"
+          ],
+          "title": "ReadySteps"
+        },
         "Registered": {
           "properties": {
             "name": {
@@ -10159,6 +14688,500 @@
           ],
           "title": "Revisions"
         },
+        "Run": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "plan_id": {
+              "type": "string",
+              "title": "Plan Id"
+            },
+            "step_key": {
+              "type": "string",
+              "title": "Step Key"
+            },
+            "title": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Title",
+              "description": "the step's title when the run was dispatched"
+            },
+            "plan_revision": {
+              "type": "integer",
+              "title": "Plan Revision",
+              "description": "the plan revision the run was dispatched from"
+            },
+            "dispatched_by": {
+              "type": "string",
+              "title": "Dispatched By",
+              "description": "the login of the member who dispatched it, its owner"
+            },
+            "worker_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Worker Id",
+              "description": "the worker that claimed it"
+            },
+            "worker": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Worker",
+              "description": "that worker's name"
+            },
+            "pinned_worker_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pinned Worker Id"
+            },
+            "requested_runtime": {
+              "type": "string",
+              "enum": [
+                "any",
+                "claude-code",
+                "opencode",
+                "codex"
+              ],
+              "title": "Requested Runtime"
+            },
+            "runtime": {
+              "type": "string",
+              "enum": [
+                "any",
+                "claude-code",
+                "opencode",
+                "codex"
+              ],
+              "title": "Runtime",
+              "description": "any until a worker claims the run"
+            },
+            "mode": {
+              "type": "string",
+              "enum": [
+                "headless",
+                "interactive"
+              ],
+              "title": "Mode"
+            },
+            "approval": {
+              "type": "string",
+              "enum": [
+                "auto",
+                "review"
+              ],
+              "title": "Approval"
+            },
+            "timeout_min": {
+              "type": "integer",
+              "title": "Timeout Min"
+            },
+            "attempt": {
+              "type": "integer",
+              "title": "Attempt"
+            },
+            "max_attempts": {
+              "type": "integer",
+              "title": "Max Attempts"
+            },
+            "parent_run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Parent Run Id",
+              "description": "the run this one retries or reruns"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "queued",
+                "leased",
+                "running",
+                "interactive",
+                "verifying",
+                "review",
+                "done",
+                "failed",
+                "lost",
+                "cancelled"
+              ],
+              "title": "State"
+            },
+            "lease_expires_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Lease Expires At"
+            },
+            "session_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Session Id"
+            },
+            "repo": {
+              "type": "string",
+              "title": "Repo"
+            },
+            "branch": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch"
+            },
+            "commit_sha": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Commit Sha"
+            },
+            "diffstat": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Diffstat"
+            },
+            "verify": {
+              "anyOf": [
+                {
+                  "items": {},
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Verify"
+            },
+            "evidence": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Evidence"
+            },
+            "usage": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Usage"
+            },
+            "error": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error"
+            },
+            "log_sha256": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Log Sha256",
+              "description": "the blob of kind run-log its worker uploaded"
+            },
+            "diff_sha256": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Diff Sha256",
+              "description": "the blob of kind run-diff: GET .../runs/{id}/diff"
+            },
+            "last_seq": {
+              "type": "integer",
+              "title": "Last Seq",
+              "description": "the seq of the run's latest event; 0 before the first"
+            },
+            "cancel_requested_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cancel Requested At"
+            },
+            "takeover_requested_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Takeover Requested At",
+              "description": "the owner asked to drive the agent in a terminal"
+            },
+            "handback_requested_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Handback Requested At",
+              "description": "the owner asked to let the agent go on headless"
+            },
+            "queued_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Queued At"
+            },
+            "leased_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Leased At"
+            },
+            "started_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Started At"
+            },
+            "finished_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Finished At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "project",
+            "plan_id",
+            "step_key",
+            "title",
+            "plan_revision",
+            "dispatched_by",
+            "worker_id",
+            "worker",
+            "pinned_worker_id",
+            "requested_runtime",
+            "runtime",
+            "mode",
+            "approval",
+            "timeout_min",
+            "attempt",
+            "max_attempts",
+            "parent_run_id",
+            "state",
+            "lease_expires_at",
+            "session_id",
+            "repo",
+            "branch",
+            "commit_sha",
+            "diffstat",
+            "verify",
+            "evidence",
+            "usage",
+            "error",
+            "log_sha256",
+            "diff_sha256",
+            "last_seq",
+            "cancel_requested_at",
+            "takeover_requested_at",
+            "handback_requested_at",
+            "queued_at",
+            "leased_at",
+            "started_at",
+            "finished_at"
+          ],
+          "title": "Run"
+        },
+        "RunBlobCommit": {
+          "properties": {
+            "upload_ids": {
+              "items": {
+                "type": "string",
+                "format": "uuid4"
+              },
+              "type": "array",
+              "maxItems": 2,
+              "minItems": 1,
+              "title": "Upload Ids"
+            }
+          },
+          "type": "object",
+          "required": [
+            "upload_ids"
+          ],
+          "title": "RunBlobCommit"
+        },
+        "RunBlobItem": {
+          "properties": {
+            "sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$",
+              "title": "Sha256",
+              "description": "hex SHA-256 of the bytes"
+            },
+            "size": {
+              "type": "integer",
+              "minimum": 0.0,
+              "title": "Size",
+              "description": "bytes, at most the limit of the kind"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "run-log",
+                "run-diff"
+              ],
+              "title": "Kind"
+            }
+          },
+          "type": "object",
+          "required": [
+            "sha256",
+            "size",
+            "kind"
+          ],
+          "title": "RunBlobItem"
+        },
+        "RunBlobs": {
+          "properties": {
+            "log_sha256": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Log Sha256"
+            },
+            "diff_sha256": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Diff Sha256"
+            }
+          },
+          "type": "object",
+          "required": [
+            "log_sha256",
+            "diff_sha256"
+          ],
+          "title": "RunBlobs"
+        },
         "RunCommitted": {
           "properties": {
             "build": {
@@ -10201,6 +15224,230 @@
           ],
           "title": "RunCommitted"
         },
+        "RunControl": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "held": {
+              "type": "boolean",
+              "title": "Held",
+              "description": "false for a run the worker no longer holds; stop it"
+            },
+            "state": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "queued",
+                    "leased",
+                    "running",
+                    "interactive",
+                    "verifying",
+                    "review",
+                    "done",
+                    "failed",
+                    "lost",
+                    "cancelled"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "State",
+              "description": "null for a run that is not this worker's"
+            },
+            "lease_expires_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Lease Expires At"
+            },
+            "cancel": {
+              "type": "boolean",
+              "title": "Cancel"
+            },
+            "takeover": {
+              "type": "boolean",
+              "title": "Takeover",
+              "description": "the owner asked to drive the agent in a terminal: report interactive",
+              "default": false
+            },
+            "handback": {
+              "type": "boolean",
+              "title": "Handback",
+              "description": "the owner asked to let the agent go on headless: report running",
+              "default": false
+            },
+            "terminal_open": {
+              "type": "boolean",
+              "title": "Terminal Open",
+              "description": "a browser waits for the run's terminal: connect WS /v1/worker/runs/{id}/terminal once the run is interactive",
+              "default": false
+            },
+            "inbox": {
+              "type": "integer",
+              "title": "Inbox",
+              "description": "messages from the owner waiting for the agent: POST .../runs/{id}/inbox",
+              "default": 0
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "held",
+            "state",
+            "lease_expires_at",
+            "cancel"
+          ],
+          "title": "RunControl"
+        },
+        "RunEvent": {
+          "properties": {
+            "seq": {
+              "type": "integer",
+              "title": "Seq",
+              "description": "the hub's number of the event in the run: events?after= and Last-Event-ID take it"
+            },
+            "at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "At"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "agent_message_chunk",
+                "agent_thought_chunk",
+                "tool_call",
+                "tool_call_update",
+                "plan",
+                "usage_update",
+                "user_message",
+                "state",
+                "system",
+                "output"
+              ],
+              "title": "Kind"
+            },
+            "body": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Body"
+            },
+            "truncated": {
+              "type": "boolean",
+              "title": "Truncated",
+              "description": "the hub cut the body to 64 KiB of JSON"
+            }
+          },
+          "type": "object",
+          "required": [
+            "seq",
+            "at",
+            "kind",
+            "body",
+            "truncated"
+          ],
+          "title": "RunEvent"
+        },
+        "RunEvents": {
+          "properties": {
+            "run_id": {
+              "type": "integer",
+              "title": "Run Id"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "queued",
+                "leased",
+                "running",
+                "interactive",
+                "verifying",
+                "review",
+                "done",
+                "failed",
+                "lost",
+                "cancelled"
+              ],
+              "title": "State"
+            },
+            "last_seq": {
+              "type": "integer",
+              "title": "Last Seq",
+              "description": "the seq of the run's latest event"
+            },
+            "events": {
+              "items": {
+                "$ref": "#/components/schemas/RunEvent"
+              },
+              "type": "array",
+              "title": "Events",
+              "description": "in seq order"
+            },
+            "more": {
+              "type": "boolean",
+              "title": "More",
+              "description": "more events follow the last one here: ask again after it"
+            }
+          },
+          "type": "object",
+          "required": [
+            "run_id",
+            "state",
+            "last_seq",
+            "events",
+            "more"
+          ],
+          "title": "RunEvents"
+        },
+        "RunList": {
+          "properties": {
+            "runs": {
+              "items": {
+                "$ref": "#/components/schemas/Run"
+              },
+              "type": "array",
+              "title": "Runs",
+              "description": "newest first"
+            },
+            "total": {
+              "type": "integer",
+              "title": "Total",
+              "description": "runs that match every filter"
+            },
+            "counts": {
+              "$ref": "#/components/schemas/StateCounts",
+              "description": "runs in each state that match the other filters: what the state filter would leave"
+            },
+            "limit": {
+              "type": "integer",
+              "title": "Limit"
+            },
+            "offset": {
+              "type": "integer",
+              "title": "Offset"
+            }
+          },
+          "type": "object",
+          "required": [
+            "runs",
+            "total",
+            "counts",
+            "limit",
+            "offset"
+          ],
+          "title": "RunList"
+        },
         "RunPush": {
           "properties": {
             "run_id": {
@@ -10241,6 +15488,134 @@
             "run_id"
           ],
           "title": "RunPush"
+        },
+        "RunSpec": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "plan_id": {
+              "type": "string",
+              "title": "Plan Id"
+            },
+            "step_key": {
+              "type": "string",
+              "title": "Step Key"
+            },
+            "title": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Title"
+            },
+            "plan_revision": {
+              "type": "integer",
+              "title": "Plan Revision"
+            },
+            "attempt": {
+              "type": "integer",
+              "title": "Attempt"
+            },
+            "max_attempts": {
+              "type": "integer",
+              "title": "Max Attempts"
+            },
+            "parent_run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Parent Run Id"
+            },
+            "runtime": {
+              "type": "string",
+              "enum": [
+                "claude-code",
+                "opencode",
+                "codex"
+              ],
+              "title": "Runtime"
+            },
+            "mode": {
+              "type": "string",
+              "enum": [
+                "headless",
+                "interactive"
+              ],
+              "title": "Mode"
+            },
+            "approval": {
+              "type": "string",
+              "enum": [
+                "auto",
+                "review"
+              ],
+              "title": "Approval"
+            },
+            "timeout_min": {
+              "type": "integer",
+              "title": "Timeout Min"
+            },
+            "repo": {
+              "type": "string",
+              "title": "Repo"
+            },
+            "branch": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch"
+            },
+            "lease_expires_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Lease Expires At"
+            },
+            "prompt": {
+              "type": "string",
+              "title": "Prompt"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "project",
+            "plan_id",
+            "step_key",
+            "title",
+            "plan_revision",
+            "attempt",
+            "max_attempts",
+            "parent_run_id",
+            "runtime",
+            "mode",
+            "approval",
+            "timeout_min",
+            "repo",
+            "branch",
+            "lease_expires_at",
+            "prompt"
+          ],
+          "title": "RunSpec"
         },
         "RunState": {
           "properties": {
@@ -10291,6 +15666,25 @@
           ],
           "title": "RunState"
         },
+        "RunUploadRequest": {
+          "properties": {
+            "items": {
+              "items": {
+                "$ref": "#/components/schemas/RunBlobItem"
+              },
+              "type": "array",
+              "maxItems": 2,
+              "minItems": 1,
+              "title": "Items",
+              "description": "one blob per kind"
+            }
+          },
+          "type": "object",
+          "required": [
+            "items"
+          ],
+          "title": "RunUploadRequest"
+        },
         "Runs": {
           "properties": {
             "ingested": {
@@ -10316,6 +15710,50 @@
             "pending"
           ],
           "title": "Runs"
+        },
+        "RuntimeReport": {
+          "properties": {
+            "available": {
+              "type": "boolean",
+              "title": "Available",
+              "description": "whether runs may use it; false with a reason when it is installed but not"
+            },
+            "version": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 100,
+                  "minLength": 1,
+                  "pattern": "^[^\\x00-\\x1f\\x7f]+$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Version"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 500,
+                  "minLength": 1,
+                  "pattern": "^[^\\x00-\\x1f\\x7f]+$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason",
+              "description": "why it is unavailable"
+            }
+          },
+          "type": "object",
+          "required": [
+            "available"
+          ],
+          "title": "RuntimeReport",
+          "description": "One runtime as the daemon found it on the machine."
         },
         "SignedIn": {
           "properties": {
@@ -10523,6 +15961,295 @@
           ],
           "title": "SkillHistory"
         },
+        "StateCounts": {
+          "properties": {
+            "queued": {
+              "type": "integer",
+              "minimum": 0.0,
+              "title": "Queued",
+              "default": 0
+            },
+            "leased": {
+              "type": "integer",
+              "minimum": 0.0,
+              "title": "Leased",
+              "default": 0
+            },
+            "running": {
+              "type": "integer",
+              "minimum": 0.0,
+              "title": "Running",
+              "default": 0
+            },
+            "interactive": {
+              "type": "integer",
+              "minimum": 0.0,
+              "title": "Interactive",
+              "default": 0
+            },
+            "verifying": {
+              "type": "integer",
+              "minimum": 0.0,
+              "title": "Verifying",
+              "default": 0
+            },
+            "review": {
+              "type": "integer",
+              "minimum": 0.0,
+              "title": "Review",
+              "default": 0
+            },
+            "done": {
+              "type": "integer",
+              "minimum": 0.0,
+              "title": "Done",
+              "default": 0
+            },
+            "failed": {
+              "type": "integer",
+              "minimum": 0.0,
+              "title": "Failed",
+              "default": 0
+            },
+            "lost": {
+              "type": "integer",
+              "minimum": 0.0,
+              "title": "Lost",
+              "default": 0
+            },
+            "cancelled": {
+              "type": "integer",
+              "minimum": 0.0,
+              "title": "Cancelled",
+              "default": 0
+            }
+          },
+          "type": "object",
+          "title": "StateCounts",
+          "description": "Runs in each state."
+        },
+        "StateReport": {
+          "properties": {
+            "state": {
+              "type": "string",
+              "enum": [
+                "queued",
+                "leased",
+                "running",
+                "interactive",
+                "verifying",
+                "review",
+                "done",
+                "failed",
+                "lost",
+                "cancelled"
+              ],
+              "title": "State",
+              "description": "the state the run moves to"
+            },
+            "from": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "queued",
+                    "leased",
+                    "running",
+                    "interactive",
+                    "verifying",
+                    "review",
+                    "done",
+                    "failed",
+                    "lost",
+                    "cancelled"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "From",
+              "description": "the state the worker believes the run is in; 409 when it is in another"
+            },
+            "session_id": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "pattern": "^[^\\x00-\\x1f\\x7f]+$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Session Id"
+            },
+            "commit_sha": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Commit Sha"
+            },
+            "diffstat": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Diffstat"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "verify": {
+              "anyOf": [
+                {
+                  "items": {
+                    "$ref": "#/components/schemas/VerifyResult"
+                  },
+                  "type": "array",
+                  "maxItems": 50
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Verify",
+              "description": "each verify command the daemon ran"
+            },
+            "usage": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Usage"
+            },
+            "error": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 2000,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error"
+            },
+            "summary": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 8000
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Summary",
+              "description": "the agent's summary, for the evidence"
+            }
+          },
+          "type": "object",
+          "required": [
+            "state"
+          ],
+          "title": "StateReport"
+        },
+        "StepReadiness": {
+          "properties": {
+            "key": {
+              "type": "string",
+              "title": "Key",
+              "description": "the step's id, else its order, else its position, as plans name steps"
+            },
+            "title": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Title"
+            },
+            "repo": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Repo",
+              "description": "the repo its run would check out, as the plan's repos name it"
+            },
+            "status": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status",
+              "description": "as the plan holds it; pending when the step has none"
+            },
+            "ready": {
+              "type": "boolean",
+              "title": "Ready",
+              "description": "whether a dispatch of it now would be taken"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason",
+              "description": "why it is not ready, in words to show next to it"
+            },
+            "active_run": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ActiveRun"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "type": "object",
+          "required": [
+            "key",
+            "title",
+            "repo",
+            "status",
+            "ready",
+            "reason",
+            "active_run"
+          ],
+          "title": "StepReadiness"
+        },
         "TokenInfo": {
           "properties": {
             "id": {
@@ -10617,7 +16344,8 @@
               "type": "string",
               "enum": [
                 "machine",
-                "web"
+                "web",
+                "worker"
               ],
               "title": "Kind"
             },
@@ -10772,7 +16500,9 @@
               "enum": [
                 "skill-bundle",
                 "kg-log",
-                "kg-blob"
+                "kg-blob",
+                "run-log",
+                "run-diff"
               ],
               "title": "Kind"
             }
@@ -11010,6 +16740,38 @@
           ],
           "title": "ValidationError"
         },
+        "VerifyResult": {
+          "properties": {
+            "command": {
+              "type": "string",
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Command"
+            },
+            "exit_code": {
+              "type": "integer",
+              "title": "Exit Code"
+            },
+            "duration_ms": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Duration Ms"
+            }
+          },
+          "type": "object",
+          "required": [
+            "command",
+            "exit_code"
+          ],
+          "title": "VerifyResult"
+        },
         "Version": {
           "properties": {
             "version": {
@@ -11103,6 +16865,278 @@
             "grants"
           ],
           "title": "WhoAmI"
+        },
+        "Worker": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "owner": {
+              "type": "string",
+              "title": "Owner",
+              "description": "the login of the member who registered it"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "online",
+                "offline",
+                "draining",
+                "revoked"
+              ],
+              "title": "Status"
+            },
+            "hostname": {
+              "type": "string",
+              "title": "Hostname"
+            },
+            "os": {
+              "type": "string",
+              "title": "Os"
+            },
+            "arch": {
+              "type": "string",
+              "title": "Arch"
+            },
+            "agent_version": {
+              "type": "string",
+              "title": "Agent Version"
+            },
+            "slots": {
+              "type": "integer",
+              "title": "Slots"
+            },
+            "labels": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Labels"
+            },
+            "projects": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Projects"
+            },
+            "runtimes": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Runtimes",
+              "description": "the runtimes its last heartbeat reported, keyed claude-code, opencode or codex, each {available, version, reason}"
+            },
+            "checkouts": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Checkouts",
+              "description": "the checkouts its last heartbeat reported, keyed <project>/<repo>, each {path, branch}"
+            },
+            "free_slots": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Free Slots",
+              "description": "the free slots its last heartbeat reported; null before the first"
+            },
+            "allow_web_terminal": {
+              "type": "boolean",
+              "title": "Allow Web Terminal"
+            },
+            "held_runs": {
+              "type": "integer",
+              "title": "Held Runs",
+              "description": "runs it holds now (leased, running, interactive or verifying)"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "last_heartbeat_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last Heartbeat At"
+            },
+            "drained_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Drained At"
+            },
+            "revoked_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Revoked At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "name",
+            "owner",
+            "status",
+            "hostname",
+            "os",
+            "arch",
+            "agent_version",
+            "slots",
+            "labels",
+            "projects",
+            "runtimes",
+            "checkouts",
+            "free_slots",
+            "allow_web_terminal",
+            "held_runs",
+            "created_at",
+            "last_heartbeat_at",
+            "drained_at",
+            "revoked_at"
+          ],
+          "title": "Worker"
+        },
+        "WorkerCredential": {
+          "properties": {
+            "token": {
+              "type": "string",
+              "title": "Token",
+              "description": "the worker token, evw_...; shown once, the hub keeps only its SHA-256"
+            },
+            "token_id": {
+              "type": "integer",
+              "title": "Token Id"
+            },
+            "expires_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Expires At",
+              "description": "moves forward with every use"
+            },
+            "worker": {
+              "$ref": "#/components/schemas/Worker"
+            }
+          },
+          "type": "object",
+          "required": [
+            "token",
+            "token_id",
+            "expires_at",
+            "worker"
+          ],
+          "title": "WorkerCredential"
+        },
+        "WorkerRegistration": {
+          "properties": {
+            "hostname": {
+              "type": "string",
+              "maxLength": 255,
+              "minLength": 1,
+              "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+              "title": "Hostname"
+            },
+            "os": {
+              "type": "string",
+              "maxLength": 40,
+              "minLength": 1,
+              "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+              "title": "Os"
+            },
+            "arch": {
+              "type": "string",
+              "maxLength": 40,
+              "minLength": 1,
+              "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+              "title": "Arch"
+            },
+            "agent_version": {
+              "type": "string",
+              "maxLength": 100,
+              "minLength": 1,
+              "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+              "title": "Agent Version",
+              "description": "of the evo-agents daemon"
+            },
+            "name": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
+              "title": "Name",
+              "description": "unique among the owner's workers that are not revoked"
+            },
+            "projects": {
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$"
+              },
+              "type": "array",
+              "maxItems": 100,
+              "minItems": 1,
+              "title": "Projects",
+              "description": "projects the worker takes runs of; the writer role on each"
+            },
+            "slots": {
+              "type": "integer",
+              "maximum": 8.0,
+              "minimum": 1.0,
+              "title": "Slots",
+              "description": "runs the worker holds at once",
+              "default": 1
+            },
+            "labels": {
+              "items": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$"
+              },
+              "type": "array",
+              "maxItems": 16,
+              "title": "Labels"
+            },
+            "allow_web_terminal": {
+              "type": "boolean",
+              "title": "Allow Web Terminal",
+              "description": "whether the owner may open a terminal on it from the web",
+              "default": false
+            }
+          },
+          "type": "object",
+          "required": [
+            "hostname",
+            "os",
+            "arch",
+            "agent_version",
+            "name",
+            "projects"
+          ],
+          "title": "WorkerRegistration"
         },
         "evo_agents__hub__server__memories__Conflict": {
           "properties": {

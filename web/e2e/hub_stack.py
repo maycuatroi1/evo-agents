@@ -17,7 +17,15 @@ upload, commit and publish routes, and a browser sent to a presigned GET downloa
 /skills/bundle {name, description, files} packs a skill directory with ``evo_agents.hub.skills.pack`` and answers
 the bundle as base64 with its SHA-256, since the tests have no tar.gz writer of their own. The knowledge graph tests
 push their fixture through the same store, and POST /kg/seed and /kg/build run the worker's build in this process
-(``kg_seed.py``).
+(``kg_seed.py``). POST /workers/heartbeat {worker_id, runtimes, checkouts, seconds_ago} records what a worker
+daemon's heartbeat would (its time, and the runtimes and checkouts it reports), since this release of the API has
+no heartbeat route yet.
+
+The terminal specs need the worker's end of a run's terminal: POST /terminal/worker {run_id, token} connects it the way
+the daemon does (``FakeTerminal``: the worker's token and protocol header, retried until a browser waits on the run)
+over a real PTY, whose line discipline echoes what is typed and whose program answers each line with ``echo: <line>``
+and each resize with ``size: <cols>x<rows>``; GET /terminal/worker/<run_id> says how it went. POST /sessions/age
+{login, hours} makes that member's web sessions that many hours older, for the 12-hour limit of the terminal.
 
 Environment: EVO_HUB_TEST_DSN (required, a superuser DSN), E2E_API_PORT (18324), E2E_STACK_PORT (18325),
 E2E_WEB_ORIGIN (http://localhost:3324, the hub's public URL), E2E_ADMIN_LOGIN (e2e-admin).
@@ -26,13 +34,16 @@ E2E_WEB_ORIGIN (http://localhost:3324, the hub's public URL), E2E_ADMIN_LOGIN (e
 from __future__ import annotations
 
 import base64
+import fcntl
 import json
 import os
 import secrets
 import signal
+import struct
 import subprocess
 import sys
 import tempfile
+import termios
 import threading
 import time
 import urllib.request
@@ -148,7 +159,153 @@ def skill_bundle(body: dict) -> dict:
     return {"data": base64.b64encode(bundle.data).decode(), "sha256": bundle.sha256, "size": bundle.size}
 
 
-def control_server(port: int, github: BrowserGitHub, info: dict, seeder: KgSeeder) -> ThreadingHTTPServer:
+def stamp_heartbeat(dsn: str, body: dict) -> dict:
+    """What a worker's heartbeat records: its time (``seconds_ago`` before now) and, when given, the runtimes and
+    checkouts it reports. 404 for a worker the stack does not have."""
+    import psycopg
+    from psycopg.types.json import Jsonb
+
+    runtimes = Jsonb(body["runtimes"]) if isinstance(body.get("runtimes"), dict) else None
+    checkouts = Jsonb(body["checkouts"]) if isinstance(body.get("checkouts"), dict) else None
+    with psycopg.connect(dsn, autocommit=True) as conn:
+        row = conn.execute(
+            "UPDATE workers SET last_heartbeat_at = now() - make_interval(secs => %s), "
+            "runtimes = coalesce(%s, runtimes), checkouts = coalesce(%s, checkouts) "
+            "WHERE id = %s RETURNING id, last_heartbeat_at",
+            (float(body.get("seconds_ago") or 0), runtimes, checkouts, int(body["worker_id"])),
+        ).fetchone()
+    if row is None:
+        raise LookupError(f"no worker {body['worker_id']}")
+    return {"worker_id": row[0], "last_heartbeat_at": row[1].isoformat()}
+
+
+def age_sessions(dsn: str, body: dict) -> dict:
+    """Make the web sessions of member ``login`` ``hours`` older than they are."""
+    import psycopg
+
+    with psycopg.connect(dsn, autocommit=True) as conn:
+        rows = conn.execute(
+            "UPDATE tokens SET created_at = created_at - make_interval(hours => %s) "
+            "WHERE kind = 'web' AND user_id = (SELECT id FROM users WHERE login = %s) RETURNING id",
+            (int(body["hours"]), str(body["login"])),
+        ).fetchall()
+    return {"sessions": len(rows)}
+
+
+INPUT, OUTPUT, RESIZE = 0, 1, 2  # evo_agents.hub.terminal: the frame types
+CONNECT_FOR = 30.0  # seconds the fake worker keeps trying while no browser waits
+
+
+class FakeTerminal:
+    """The worker's end of a run's terminal as the daemon holds it, over a real PTY. The PTY's line discipline echoes
+    what the browser types; the program on its other side (a thread here) answers each line with ``echo: <line>`` and
+    each resize with ``size: <cols>x<rows>``. ``state`` is what GET /terminal/worker/<run_id> answers."""
+
+    def __init__(self, api_url: str, run_id: int, token: str):
+        self.url = api_url.replace("http://", "ws://", 1) + f"/v1/worker/runs/{run_id}/terminal"
+        self.run_id = run_id
+        self.headers = {"Authorization": f"Bearer {token}", "X-Evo-Worker-Protocol": "1"}
+        self.state = {"connected": False, "refused": [], "closed": None, "sizes": [], "lines": []}
+        self.lock = threading.Lock()  # writes to the PTY's program side
+
+    def start(self) -> None:
+        threading.Thread(target=self._run, daemon=True).start()
+
+    def _connect(self):
+        from websockets.exceptions import ConnectionClosed
+        from websockets.sync.client import connect
+
+        deadline = time.monotonic() + CONNECT_FOR
+        while True:
+            try:
+                ws = connect(self.url, additional_headers=self.headers, open_timeout=5, max_size=2**20)
+                try:
+                    return ws, ws.recv(timeout=10)  # the browser's size comes first
+                except ConnectionClosed as exc:  # refused: no browser waits yet, or the run is not interactive
+                    self.state["refused"].append(exc.rcvd.code if exc.rcvd else None)
+            except (OSError, TimeoutError) as exc:
+                self.state["refused"].append(type(exc).__name__)
+            if time.monotonic() > deadline:
+                return None, None
+            time.sleep(0.3)
+
+    def _say(self, slave: int, text: str) -> None:
+        with self.lock:
+            os.write(slave, text.encode())
+
+    def _resize(self, master: int, slave: int, payload: bytes, announce: bool) -> None:
+        cols, rows = struct.unpack(">HH", payload)
+        fcntl.ioctl(master, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
+        self.state["sizes"].append([cols, rows])
+        if announce:
+            self._say(slave, f"\nsize: {cols}x{rows}\n$ ")
+
+    def _program(self, slave: int) -> None:
+        while True:
+            try:
+                data = os.read(slave, 4096)  # a whole line: the PTY is in canonical mode
+            except OSError:
+                return
+            if not data:
+                return
+            for line in data.decode(errors="replace").splitlines():
+                self.state["lines"].append(line)
+                self._say(slave, f"echo: {line}\n$ ")
+
+    def _pump(self, ws, master: int) -> None:
+        while True:
+            try:
+                data = os.read(master, 16 * 1024)
+            except OSError:
+                return
+            if not data:
+                return
+            try:
+                ws.send(bytes((OUTPUT,)) + data)
+            except Exception:  # the hub closed the session
+                return
+
+    def _run(self) -> None:
+        from websockets.exceptions import ConnectionClosed
+
+        ws, first = self._connect()
+        if ws is None:
+            self.state["closed"] = "never connected"
+            return
+        self.state["connected"] = True
+        master, slave = os.openpty()
+        try:
+            if isinstance(first, bytes) and first[:1] == bytes((RESIZE,)):
+                self._resize(master, slave, first[1:], announce=False)
+            cols, rows = self.state["sizes"][-1] if self.state["sizes"] else (80, 24)
+            threading.Thread(target=self._program, args=(slave,), daemon=True).start()
+            threading.Thread(target=self._pump, args=(ws, master), daemon=True).start()
+            self._say(slave, f"fake worker terminal of run {self.run_id}, {cols}x{rows}\n$ ")
+            try:
+                for message in ws:
+                    if not isinstance(message, bytes) or not message:
+                        continue
+                    if message[0] == INPUT:
+                        os.write(master, message[1:])
+                    elif message[0] == RESIZE:
+                        self._resize(master, slave, message[1:], announce=True)
+                self.state["closed"] = ws.close_code
+            except ConnectionClosed as exc:
+                self.state["closed"] = exc.rcvd.code if exc.rcvd else None
+        finally:
+            ws.close()
+            for fd in (master, slave):
+                try:
+                    os.close(fd)
+                except OSError:
+                    pass
+
+
+def control_server(
+    port: int, github: BrowserGitHub, info: dict, seeder: KgSeeder, dsn: str, api_url: str
+) -> ThreadingHTTPServer:
+    terminals: dict[int, FakeTerminal] = {}
+
     class Handler(BaseHTTPRequestHandler):
         def _reply(self, status: int, payload: dict) -> None:
             data = json.dumps(payload).encode()
@@ -161,6 +318,9 @@ def control_server(port: int, github: BrowserGitHub, info: dict, seeder: KgSeede
         def do_GET(self):  # the names http.server calls
             if self.path == "/health":
                 self._reply(200, info)
+            elif self.path.startswith("/terminal/worker/") and self.path.rsplit("/", 1)[1].isdigit():
+                terminal = terminals.get(int(self.path.rsplit("/", 1)[1]))
+                self._reply(200, terminal.state) if terminal else self._reply(404, {"error": "no fake terminal"})
             else:
                 self._reply(404, {"error": "not found"})
 
@@ -172,6 +332,18 @@ def control_server(port: int, github: BrowserGitHub, info: dict, seeder: KgSeede
                 self._reply(200, {"token": token})
             elif self.path == "/skills/bundle":
                 self._reply(200, skill_bundle(body))
+            elif self.path == "/workers/heartbeat":
+                try:
+                    self._reply(200, stamp_heartbeat(dsn, body))
+                except LookupError as exc:
+                    self._reply(404, {"error": str(exc)})
+            elif self.path == "/terminal/worker":
+                terminal = FakeTerminal(api_url, int(body["run_id"]), str(body["token"]))
+                terminals[terminal.run_id] = terminal
+                terminal.start()
+                self._reply(200, {"started": True})
+            elif self.path == "/sessions/age":
+                self._reply(200, age_sessions(dsn, body))
             elif self.path in ("/kg/seed", "/kg/build"):
                 try:
                     self._reply(200, seeder.handle(self.path, body))
@@ -236,7 +408,7 @@ def main() -> int:
         wait_for(f"{api_url}/v1/health/live", proc, log_path)
         info = {"api": api_url, "github": github.url, "s3": s3.endpoint, "admin": admin_login, "database": db.name}
         seeder = KgSeeder(api_url, github, db.dsn, s3.config(), STATE_DIR / "kg")
-        control = control_server(stack_port, github, info, seeder)
+        control = control_server(stack_port, github, info, seeder, db.dsn, api_url)
         threading.Thread(target=control.serve_forever, daemon=True).start()
         print(
             f"hub_stack ready: api {api_url}, fake github {github.url}, fake s3 {s3.endpoint}, db {db.name}, "

@@ -1,12 +1,23 @@
 import { test as base } from "@playwright/test";
 
+import type { Locale } from "../../src/i18n/locales";
+
 import { signIn } from "./auth";
 import { DEPLOYED_BASE_URL } from "./env";
 import { type Account, HubAdmin, newAccount, type Role, uniqueName } from "./hub";
+import { setUiLocale } from "./locale";
 
 type Grant = { role: Role; maxLevel: string };
 
 export type Member = Account & { projects: string[] };
+
+type Options = {
+  /**
+   * The UI language the spec reads. `null` (the default) sends no locale cookie, so pages render in the web's
+   * default, English; a spec that matches Vietnamese copy says `test.use({ uiLocale: "vi" })`.
+   */
+  uiLocale: Locale | null;
+};
 
 type Fixtures = {
   /** Sign the page in as `account` through the fake GitHub. */
@@ -17,7 +28,12 @@ type Fixtures = {
 
 type WorkerFixtures = { admin: HubAdmin };
 
-export const test = base.extend<Fixtures, WorkerFixtures>({
+export const test = base.extend<Options & Fixtures, WorkerFixtures>({
+  uiLocale: [null, { option: true }],
+  context: async ({ context, uiLocale }, use) => {
+    if (uiLocale) await setUiLocale(context, uiLocale);
+    await use(context);
+  },
   admin: [
     async ({}, use) => {
       await use(new HubAdmin());

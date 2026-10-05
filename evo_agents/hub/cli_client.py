@@ -11,10 +11,11 @@ flag (``contract.json_option``). No command ever prints a token.
 harness through ``registration``, and ``registry pull`` writes the registry through ``registry``.
 
 ``register_client`` also registers the client commands that live in their own modules: ``hub plan`` in
-``plan_cli`` (over ``plans``; its harness copies in ``mirror``), ``hub memory`` in ``cli_memory`` (over
-``memory``), ``hub skills`` in ``cli_skills`` (over ``skill_sync`` and ``skills``), ``hub kg`` in ``kg_cli`` (over
-``kg_push``), ``hub mcp`` in ``mcp_proxy`` (its tools in ``mcp_tools``), ``hub hook`` (the evo-hub plugin's hooks)
-in ``hooks``. ``hub contract``, ``hub openapi`` and the server commands are registered by ``cli``.
+``plan_cli`` (over ``plans``; its harness copies in ``mirror``), ``hub run`` in ``run_cli`` (over the hub's runs),
+``hub memory`` in ``cli_memory`` (over ``memory``), ``hub skills`` in ``cli_skills`` (over ``skill_sync`` and
+``skills``), ``hub kg`` in ``kg_cli`` (over ``kg_push``), ``hub mcp`` in ``mcp_proxy`` (its tools in ``mcp_tools``),
+``hub hook`` (the evo-hub plugin's hooks) in ``hooks``. ``hub contract``, ``hub openapi`` and the server commands are
+registered by ``cli``.
 """
 
 from __future__ import annotations
@@ -408,6 +409,10 @@ def register_client(hsub) -> None:
     from evo_agents.hub.plan_cli import register_plans
 
     register_plans(hsub)
+
+    from evo_agents.hub.run_cli import register_runs
+
+    register_runs(hsub)
 
     from evo_agents.hub.cli_memory import register_memory
 

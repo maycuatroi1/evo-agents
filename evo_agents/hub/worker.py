@@ -18,6 +18,9 @@ Jobs (names in ``evo_agents.hub.jobs``):
   frees their project's lock, and their projects get a new build.
 - ``hub.prune_kg_artifacts``, hourly: the artifacts of each project's graphs beyond its EVO_HUB_KG_KEEP_ARTIFACTS
   newest leave the bucket (``evo_agents.hub.kg_prune``).
+- ``hub.recover_runs``, every minute: runs whose worker stopped extending the lease become lost, and the next attempt
+  of their step is queued, or fail on their last attempt (``evo_agents.hub.server.run_state``).
+- ``hub.prune_run_events``, daily: the events of runs that ended more than EVO_HUB_RUN_LOG_DAYS ago.
 
 procrastinate allows one App per process; ``queue`` is that App here. ``run`` gives it a connector of its own for
 the time it runs, and the jobs reach the hub's tables and the blob store through ``HubContext``. The worker handles
@@ -122,6 +125,23 @@ async def prune_kg_artifacts(context: JobContext, timestamp: int | None = None) 
     found = hub(context)
     report = await prune(found.pool, found.blobs, found.config.kg_keep_artifacts)
     return report.summary()
+
+
+@queue.periodic(cron="* * * * *")
+@queue.task(name=jobs.RECOVER_RUNS, pass_context=True, queueing_lock=jobs.RECOVER_RUNS)
+async def recover_runs(context: JobContext, timestamp: int | None = None) -> dict:
+    from evo_agents.hub.server.run_state import recover_runs as recover
+
+    return await recover(hub(context).pool)
+
+
+@queue.periodic(cron="13 4 * * *")
+@queue.task(name=jobs.PRUNE_RUN_EVENTS, pass_context=True, queueing_lock=jobs.PRUNE_RUN_EVENTS)
+async def prune_run_events(context: JobContext, timestamp: int | None = None) -> dict:
+    from evo_agents.hub.server.run_state import prune_run_events as prune
+
+    found = hub(context)
+    return await prune(found.pool, found.config.run_log_days)
 
 
 @queue.periodic(cron="43 3 * * *")

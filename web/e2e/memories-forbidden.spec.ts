@@ -2,6 +2,8 @@ import { expect, isDeployed, test } from "./support/fixtures";
 import { ADMIN_ACCOUNT, newAccount, uniqueName } from "./support/hub";
 import { apiOf, memoryFile, memoryProject, putMemory } from "./support/memories";
 
+test.use({ uiLocale: "vi" }); // the assertions below read the Vietnamese copy of messages/vi.json
+
 /**
  * Memories the visitor may not read, and failures: the API decides, the page shows its answer. Without a grant the
  * project is not found (the API answers 404, as for a project that does not exist); a hub admin without a grant is

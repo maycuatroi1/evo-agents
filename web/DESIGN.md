@@ -1,11 +1,12 @@
 # Design system of the hub web
 
 The hub web is an internal, read-mostly dashboard for a small team: projects, members, plans, memories,
-skills and the knowledge graph. People read it in Vietnamese first and on laptops first, but it has to work
-on a 375 px phone. The choices below came from the `ui-ux-pro-max` skill (design-system queries for an
-admin dashboard and a data-dense developer tool, the `typography` domain for Vietnamese, the `shadcn` stack
-and the `web` accessibility guidelines). The tokens live in `src/app/globals.css`; components use the
-Tailwind names (`bg-background`, `text-muted-foreground`, ...) and never raw colours.
+skills and the knowledge graph. People read it in English first, with Vietnamese one pick away in the user
+menu, and on laptops first, but it has to work on a 375 px phone. The choices below came from the
+`ui-ux-pro-max` skill (design-system queries for an admin dashboard and a data-dense developer tool, the
+`typography` domain for Vietnamese, the `shadcn` stack and the `web` accessibility guidelines). The tokens live
+in `src/app/globals.css`; components use the Tailwind names (`bg-background`, `text-muted-foreground`, ...) and
+never raw colours.
 
 ## Style
 
@@ -32,14 +33,19 @@ warnings. Ratios are WCAG contrast against the surface named; the e2e axe run ch
 | `destructive` | `#b91c1c` (6.5:1 on card) | `#f87171` (6.5:1 on card) | errors |
 | `border` / `input` | `#e2e8f0` / `#cbd5e1` | `#1e293b` / `#334155` | dividers, fields |
 | `ring` | `#2563eb` (5.2:1 on card) | `#60a5fa` (7.9:1 on canvas) | focus outline |
+| `log` / `log-foreground` | `#0f172a` / `#e2e8f0` (14.5:1) | `#020617` / `#e2e8f0` (16.4:1) | a run's log, a terminal surface in both themes |
+| `log-muted`, `log-agent`, `log-tool`, `log-system`, `log-user`, `log-ok`, `log-error` | slate-400, blue-300, amber-300, violet-300, pink-300, green-300, red-300 (7.0:1 to 12.7:1 on `log`) | the same (7.9:1 to 14.4:1) | time, kinds and tones of log lines |
 
 Charts (steps 26 to 28) use `chart-1` to `chart-5`: blue, amber, emerald, violet, slate. A role or state is
-never told by colour alone: badges carry an icon and a word (`Quản trị`, `Ghi`, `Đọc`).
+never told by colour alone: badges carry an icon and a word (`Admin`, `Writer`, `Reader`; `Quản trị`, `Ghi`,
+`Đọc` in Vietnamese).
 
 ## Type
 
 - Be Vietnam Pro, weights 400, 500, 600 and 700, Latin and Vietnamese subsets, for all interface text. The
-  skill's "Vietnamese Friendly" pairing; it draws Vietnamese diacritics cleanly at small sizes.
+  skill's "Vietnamese Friendly" pairing; it draws Vietnamese diacritics cleanly at small sizes. It stays with
+  English first: the Vietnamese interface and the Vietnamese prose people write (plans, memories, evidence)
+  render in the same face as the English copy around them.
 - JetBrains Mono for identifiers: project names on their own page, levels, branches, paths, request ids and
   table counts. It has a Vietnamese subset, so mixed text never falls back to another font.
 - Both load through `next/font/google`, which serves the files from the app's own origin (`font-src 'self'`).
@@ -69,6 +75,7 @@ changed where the defaults fell short:
 - `table.tsx`: `scrollLabel` makes a table's scroll container a named, focusable region.
 - `badge.tsx`: `info`, `success` and `warning` variants.
 - `hooks/use-mobile.ts`: `useSyncExternalStore` instead of state set inside an effect.
+- `tabs.tsx` (Radix tabs): a line style, the selected tab underlined in `primary` and set in a heavier weight.
 - Menus (`DropdownMenu`) are not modal, so the page behind stays readable by assistive technology.
 
 Shared pieces built on them:
@@ -85,12 +92,60 @@ Shared pieces built on them:
   300 ms pause or on Enter) and a facet as a labelled group of `aria-pressed` toggles with counts. Filters live in
   the URL and change it through `window.history.replaceState`, which Next.js syncs with `useSearchParams` without
   rendering the page on the server again.
+- `components/workers`: the workers pages poll the hub every 10 seconds (`refetchInterval`), the Register dialog
+  every 2 seconds while its pairing code waits. Draining or revoking a worker asks for its name, typed out
+  (`confirm-by-name.tsx`). The hub keeps only a worker's latest heartbeat, so the 60-minute heartbeat strip is built
+  from what the tab has read (`heartbeats.ts`): a received minute is a full bar, a missed one a short red bar, a
+  minute nobody watched a dot, with the counts written out beside it.
+- `components/runs`: the runs pages ask the hub every 5 seconds while the project (or the step, or the worker) has an
+  active run and every 30 seconds otherwise; the list's facets (active, review, done, failed or cancelled) and search
+  are the API's own filters, so a page of 50 runs comes back with the count of each state. A run's state is a badge
+  with an icon and a word. The Dispatch dialog lists every pending step of a plan in plan order and folds the done,
+  in progress and blocked ones away; a step that is not ready keeps a disabled checkbox and says why. Its footer says
+  which of the visitor's own workers could take the runs now, from what their heartbeats report, the way the hub
+  matches them at claim time. The Dispatch and Run this step buttons show only for a writer of the project (whoami's
+  grants); the API decides again on every dispatch.
+- `components/runs`, a run's page (`/p/{project}/runs/{id}`): a stepper of its states (the current one
+  `aria-current="step"`, a run that ended badly marked where it stopped), the log, the details and the result, and the
+  owner's controls in the header, each shown only when the state and the visitor's rights allow it (`run-model.ts`,
+  `runControls`): Cancel (confirmed in a dialog), Take over (a dialog with `evo-agents worker attach N` and, for Claude
+  Code, the Remote Control session `evo-run-N`), Hand back, Approve and Rerun, plus the message box under the log. Anyone
+  but the run's owner reads only. The header puts these actions under the title until the xl breakpoint
+  (`PageHeader`'s `metaBelow`), so they wrap instead of pushing the page sideways.
+- The log (`use-run-log.ts`, `run-log.tsx`) follows the run's server-sent events with an EventSource; the browser
+  reconnects by itself with `Last-Event-ID`, every event is kept once by its seq, and the stream's `end` closes it for
+  good. When the stream fails (closed by the browser, three errors without opening, or 10 seconds behind the run's
+  `last_seq`), the page reads `events?after=` every 1.5 seconds and tries the stream again every 30. The lines sit in a
+  `role="log"` region (polite), with filters by group, a search that highlights, Follow (scrolling up turns it off) and
+  Pause; past 2,000 lines shown only the rows in view render (`@tanstack/react-virtual`). Where the web forwards `/v1`
+  itself, `proxy.ts` asks for the stream unencoded: Next.js would gzip it and hold the events back.
+- The Terminal tab (`run-terminal.tsx`, `use-run-terminal.ts`, `terminal-model.ts`) shows beside the Log tab in the log
+  card only for the run's owner on a worker of theirs registered with `--allow-web-terminal` (`terminalAccess`), while
+  the run is leased, running or interactive, and stays for the rest of the visit once shown. Both tabs stay mounted
+  (Radix tabs with `forceMount`), so switching keeps the terminal's session and the log's place. Connect loads the
+  terminal (wterm's DOM renderer over libghostty's VT core, WebAssembly from the web's own origin, `terminal-view.tsx`
+  through `next/dynamic`, so the page carries none of it until then), then opens a websocket on the page's own origin:
+  a text hello with the session's CSRF value and the terminal's size, then binary frames (input, output, resize as in
+  ttyd). Keys go out only once the worker's end has printed something, since the hub drops earlier input. The status
+  badge reads Not connected, Loading terminal, Connecting, Waiting for the worker, Connected or Closed; every close of
+  the hub (4401, 4403, 4408, 4409, 4426, 1011, a lost connection) says what happened and what to do, with the hub's own
+  reason under it, and a sign-in older than 12 hours (whoami's `token.created_at`) asks to sign in again before
+  anything is tried. On a headless run the intro and the waiting message say that connecting takes the run over. The
+  surface is the log's (`hub-terminal` in `globals.css`): JetBrains Mono 13 px, 16 ANSI colours readable on it, a 2 px
+  `ring` outline inside its edge while focused; Esc then Tab leaves it, as the footer says. The CSP allows
+  `'wasm-unsafe-eval'` (WebAssembly only, no JavaScript eval) and keeps connect-src `'self'`, which covers a websocket
+  to the page's own host in Chromium and Firefox (`e2e/terminal.spec.ts` runs in both).
+- The diff page (`/p/{project}/runs/{id}/diff`) reads the run's diff on the web's server through the presigned GET
+  the API signs (`diff-blob.ts`), so the blob store needs no CORS rule and connect-src stays `'self'`; the download is
+  a navigation to the presigned URL, as for skill bundles. It renders up to 20,000 lines, file by file.
 - `components/memories/markdown.tsx`: Markdown written by people (memory bodies) through react-markdown without
   raw HTML: tags show as text, only listed elements render, links keep http(s), mailto and anchors, images are
   never loaded, headings move under the page's h1 and the card's h2.
 
 Themes come from `next-themes` with the `class` strategy and follow the system until the person picks light
-or dark in the user menu. The language (Vietnamese by default, English) is a cookie set from the same menu.
+or dark in the user menu. The language is the `NEXT_LOCALE` cookie set from the same menu: English without it
+(or with a value that is not a locale), Vietnamese when it says `vi`. The browser's Accept-Language is not read,
+so the server renders a page the same way for everyone who has not picked a language.
 
 ## Motion
 
@@ -114,4 +169,6 @@ in through `tw-animate-css`. `prefers-reduced-motion: reduce` turns every animat
 3. Add the sidebar entry to `PROJECT_NAV` or `HUB_NAV` in `components/shell/nav.ts`, and its label under
    `nav` in both `messages/vi.json` and `messages/en.json` (a unit test keeps the two files in step).
 4. Add the page to `PAGES` in `e2e/a11y.spec.ts`. Seed data with the `admin`, `member` and `signInAs`
-   fixtures from `e2e/support/fixtures.ts`.
+   fixtures from `e2e/support/fixtures.ts`. Specs see the English default; a spec that matches Vietnamese
+   copy says so with `test.use({ uiLocale: "vi" })`, which sets the locale cookie on its browser context
+   (`e2e/locale.spec.ts` checks both).

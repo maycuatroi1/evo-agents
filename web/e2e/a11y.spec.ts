@@ -6,11 +6,29 @@ import { ADMIN_ACCOUNT, machineToken, newAccount, uniqueName } from "./support/h
 import { graphReady, grantOn, HUB_NODE, kgPath, nodePath, sharedKg } from "./support/kg";
 import { apiOf, memoryFile, putMemory } from "./support/memories";
 import { ACTIVE_PLAN, EVIDENCE_STEP, open, seedPlans } from "./support/plans";
+import {
+  claimRun,
+  dispatch,
+  liveWorker,
+  reportState,
+  RUN_PLAN,
+  runPath,
+  runToReview,
+  say,
+  seedRunPlan,
+  sendEvents,
+  startRun,
+  tool,
+  uploadDiff,
+} from "./support/runs";
 import { packSkill, publishSkill } from "./support/skills";
+import { CHECKOUTS, heartbeat, registerWorker, RUNTIMES } from "./support/workers";
 
 /**
  * axe (WCAG 2.2 A and AA rules) on every page of the web, in light and dark: no serious or critical violation.
  * Later steps add their pages to PAGES; each entry opens the page in a given state and waits for its content.
+ * Pages render in the default language, English, and entries find what they click by role, test id or ARIA
+ * state rather than by copy.
  */
 type Context = { page: Page; me: Member; hidden: string };
 type Entry = { name: string; open: (context: Context) => Promise<void>; deployed?: boolean };
@@ -32,6 +50,46 @@ async function seedMemories(me: Member) {
   });
   await putMemory(api, { project, name: "mine.md", type: "user", body: memoryFile("Mine", "Private", "x", "user") });
   return { runbook };
+}
+
+/** Three workers of `me`: idle with what a heartbeat reports, offline, and draining; returns the idle one. */
+async function seedWorkers(me: Member) {
+  const project = me.projects[0];
+  const idle = await registerWorker(me, { name: uniqueName("idle"), projects: [project], slots: 2, labels: ["macos", "gpu"] });
+  await heartbeat(idle.id, { runtimes: RUNTIMES, checkouts: CHECKOUTS, secondsAgo: 3 });
+  await registerWorker(me, { name: uniqueName("offline"), projects: [project] });
+  const draining = await registerWorker(me, { name: uniqueName("draining"), projects: [project] });
+  await heartbeat(draining.id);
+  const api = await apiOf(me);
+  await api.POST("/v1/workers/{worker_id}/drain", { params: { path: { worker_id: draining.id } } });
+  return idle;
+}
+
+/** The runs plan in the first project of `me`, a live worker, and two runs: one failed on it, one queued. */
+async function seedRuns(me: Member) {
+  const project = me.projects[0];
+  await seedRunPlan(me, project);
+  const live = await liveWorker(me, project, uniqueName("a11y"));
+  const [failing, waiting] = await dispatch(me, project, ["2", "4"]);
+  await claimRun(live);
+  await reportState(live, failing.id, { state: "failed", error: "verify failed: pnpm test exited 1" });
+  return { project, live, failing, waiting };
+}
+
+/** A run of `me` that their worker started, with a few lines in its log. */
+async function seedLiveRun(me: Member) {
+  const project = me.projects[0];
+  await seedRunPlan(me, project);
+  const live = await liveWorker(me, project, uniqueName("a11y"));
+  const [run] = await dispatch(me, project, ["2"]);
+  await claimRun(live);
+  await startRun(live, run.id);
+  await sendEvents(live, run.id, [
+    say("Reading the plan."),
+    tool("Bash", "pnpm test"),
+    { kind: "system", body: { text: "verify: `pnpm test` exited 1 after 900 ms", exit_code: 1 } },
+  ]);
+  return { project, live, run };
 }
 
 async function seedSkill(me: Member) {
@@ -241,11 +299,175 @@ const PAGES: Entry[] = [
     },
   },
   {
+    name: "workers with no worker yet",
+    open: async ({ page }) => {
+      await page.goto("/workers");
+      await expect(page.locator("#main").getByTestId("state-empty")).toBeVisible();
+    },
+  },
+  {
+    name: "workers list with its summary and facets",
+    open: async ({ page, me }) => {
+      await seedWorkers(me);
+      await page.goto("/workers");
+      await expect(page.locator("#main").getByTestId("workers-table").locator("tbody tr")).toHaveCount(3);
+      await expect(page.locator("#main").getByTestId("workers-summary")).toBeVisible();
+    },
+  },
+  {
+    name: "register worker dialog, form with errors, CLI tab and pairing code",
+    open: async ({ page }) => {
+      await page.goto("/workers");
+      await page.getByTestId("workers-register").click();
+      const dialog = page.getByTestId("register-dialog");
+      await dialog.getByTestId("register-labels").fill("bad/label");
+      await dialog.getByTestId("register-create").click(); // shows the field errors
+      await expect(dialog.getByTestId("register-name")).toHaveAttribute("aria-invalid", "true");
+      await expectNoSeriousViolations(page, "register form with errors");
+      await dialog.getByTestId("register-tab-cli").click();
+      await expect(dialog.getByTestId("register-cli")).toBeVisible();
+      await expectNoSeriousViolations(page, "register, CLI only");
+      await dialog.getByTestId("register-tab-pairing").click();
+      await dialog.getByTestId("register-name").fill(uniqueName("a11y"));
+      await dialog.getByTestId("register-labels").fill("macos");
+      await dialog.getByTestId("register-create").click();
+      await expect(dialog.getByTestId("pairing-code")).toBeVisible();
+    },
+  },
+  {
+    name: "worker detail with its heartbeat strip",
+    open: async ({ page, me }) => {
+      const idle = await seedWorkers(me);
+      await page.goto(`/workers/${idle.id}`);
+      await expect(page.locator("#main").getByTestId("heartbeat-strip")).toBeVisible();
+      await expect(page.locator("#main").getByTestId("worker-runtimes")).toContainText("2.1.289");
+    },
+  },
+  {
+    name: "worker revoke confirmation with a wrong name",
+    open: async ({ page, me }) => {
+      const idle = await seedWorkers(me);
+      await page.goto(`/workers/${idle.id}`);
+      await page.locator("#main").getByTestId("worker-revoke").click();
+      const dialog = page.getByTestId("revoke-worker-dialog");
+      await dialog.getByTestId("revoke-worker-dialog-name").fill("not-the-name");
+      await dialog.getByTestId("revoke-worker-dialog-confirm").click();
+      await expect(dialog.getByTestId("revoke-worker-dialog-name")).toHaveAttribute("aria-invalid", "true");
+    },
+  },
+  {
+    name: "workers on a small screen",
+    open: async ({ page, me }) => {
+      const idle = await seedWorkers(me);
+      await page.setViewportSize({ width: 375, height: 812 });
+      await page.goto("/workers");
+      await expect(page.locator("#main").getByTestId("workers-table")).toBeVisible();
+      await expectNoSeriousViolations(page, "workers at 375 px");
+      await page.goto(`/workers/${idle.id}`);
+      await expect(page.locator("#main").getByTestId("heartbeat-strip")).toBeVisible();
+    },
+  },
+  {
+    name: "runs with no run yet",
+    open: async ({ page, me }) => {
+      await page.goto(`/p/${me.projects[0]}/runs`);
+      await expect(page.locator("#main").getByTestId("state-empty")).toBeVisible();
+    },
+  },
+  {
+    name: "runs list with its summary, facets and a failed run",
+    open: async ({ page, me }) => {
+      await seedRuns(me);
+      await open(page, `/p/${me.projects[0]}/runs`);
+      await expect(page.locator("#main").getByTestId("runs-table").locator("tbody tr")).toHaveCount(2);
+      await expect(page.locator("#main").getByTestId("runs-summary")).toBeVisible();
+    },
+  },
+  {
+    name: "dispatch dialog with ready, waiting and folded steps",
+    open: async ({ page, me }) => {
+      const project = me.projects[0];
+      await seedRunPlan(me, project);
+      await liveWorker(me, project, uniqueName("a11y"));
+      await open(page, `/p/${project}/runs`);
+      await page.locator("#main").getByTestId("runs-empty-dispatch").click();
+      const dialog = page.getByTestId("dispatch-dialog");
+      await dialog.getByTestId("dispatch-step-2").click();
+      await dialog.getByTestId("dispatch-settled").locator("summary").click();
+      await expect(dialog.getByTestId("dispatch-outlook")).toHaveAttribute("data-kind", "now");
+      await expectNoSeriousViolations(page, "dispatch, automatic match");
+      await dialog.getByTestId("dispatch-target-pin").click();
+      await expect(dialog.getByTestId("dispatch-pinned-worker")).toBeVisible();
+    },
+  },
+  {
+    name: "plan step with its runs and the Run button",
+    open: async ({ page, me }) => {
+      await seedRuns(me);
+      await open(page, `/p/${me.projects[0]}/plans/${RUN_PLAN}/steps/4`);
+      await expect(page.locator("#main").getByTestId("step-runs-table")).toBeVisible();
+      await expect(page.locator("#main").getByTestId("step-run")).toBeVisible();
+    },
+  },
+  {
+    name: "runs on a small screen",
+    open: async ({ page, me }) => {
+      const { live } = await seedRuns(me);
+      await page.setViewportSize({ width: 375, height: 812 });
+      await open(page, `/p/${me.projects[0]}/runs`);
+      await expect(page.locator("#main").getByTestId("runs-table")).toBeVisible();
+      await expectNoSeriousViolations(page, "runs at 375 px");
+      await open(page, `/workers/${live.worker.id}`);
+      await expect(page.locator("#main").getByTestId("worker-runs-table")).toBeVisible();
+    },
+  },
+  {
+    name: "run page with its live log, the owner's controls and the Take over dialog",
+    open: async ({ page, me }) => {
+      const { project, run } = await seedLiveRun(me);
+      await open(page, runPath(project, run.id));
+      await expect(page.locator("#main").getByTestId("log-status")).toHaveAttribute("data-status", "live");
+      await expect(page.locator("#main").getByTestId("log-line").first()).toBeVisible();
+      await expect(page.locator("#main").getByTestId("run-composer")).toBeVisible();
+      await page.locator("#main").getByTestId("log-search").fill("plan");
+      await expect(page.locator("#main").getByTestId("log-lines").locator("mark").first()).toBeVisible();
+      await expectNoSeriousViolations(page, "run page");
+      await page.locator("#main").getByTestId("run-takeover").click();
+      await expect(page.getByTestId("takeover-dialog")).toBeVisible();
+    },
+  },
+  {
+    name: "run in review with its result, and its diff page",
+    open: async ({ page, me }) => {
+      const { project, live, run } = await seedLiveRun(me);
+      await runToReview(live, run.id);
+      await uploadDiff(live, run.id, `diff --git a/a.txt b/a.txt\n--- a/a.txt\n+++ b/a.txt\n@@ -1 +1 @@\n-old ${run.id}\n+new ${run.id}\n`);
+      await open(page, runPath(project, run.id));
+      await expect(page.locator("#main").getByTestId("run-verify")).toBeVisible();
+      await expectNoSeriousViolations(page, "run in review");
+      await page.locator("#main").getByTestId("run-cancel").click();
+      await expect(page.getByTestId("cancel-run-dialog")).toBeVisible();
+      await expectNoSeriousViolations(page, "cancel run dialog");
+      await page.keyboard.press("Escape");
+      await open(page, `${runPath(project, run.id)}/diff`);
+      await expect(page.locator("#main").getByTestId("diff-file")).toHaveCount(1);
+    },
+  },
+  {
+    name: "run page on a small screen",
+    open: async ({ page, me }) => {
+      const { project, run } = await seedLiveRun(me);
+      await page.setViewportSize({ width: 375, height: 812 });
+      await open(page, runPath(project, run.id));
+      await expect(page.locator("#main").getByTestId("log-line").first()).toBeVisible();
+    },
+  },
+  {
     name: "small screen with the sidebar open",
     open: async ({ page }) => {
       await page.setViewportSize({ width: 375, height: 812 });
       await page.goto("/");
-      await page.getByRole("button", { name: "Ẩn hoặc hiện thanh bên" }).click();
+      await page.locator('button[data-sidebar="trigger"]').click();
       await expect(page.getByRole("dialog")).toBeVisible();
     },
   },
@@ -265,13 +487,13 @@ const ADMIN_PAGES: { name: string; open: (page: Page) => Promise<void> }[] = [
     open: async (page) => {
       await page.goto("/admin/members");
       await page.getByTestId("grant-open").click();
-      const dialog = page.getByRole("dialog", { name: "Cấp quyền theo dự án" });
-      await dialog.getByRole("button", { name: "Tiếp tục" }).click(); // shows the field errors
-      await expect(dialog.getByText("Nhập tên đăng nhập GitHub.")).toBeVisible();
+      const dialog = page.getByTestId("grant-dialog");
+      await dialog.getByTestId("grant-continue").click(); // shows the field errors
+      await expect(dialog.getByTestId("grant-login")).toHaveAttribute("aria-invalid", "true");
       await expectNoSeriousViolations(page, "grant form with errors");
-      await dialog.getByLabel("Tên đăng nhập GitHub").fill("e2e-someone");
-      await dialog.getByLabel("Dự án").selectOption({ index: 1 });
-      await dialog.getByRole("button", { name: "Tiếp tục" }).click();
+      await dialog.getByTestId("grant-login").fill("e2e-someone");
+      await dialog.getByTestId("grant-project").selectOption({ index: 1 });
+      await dialog.getByTestId("grant-continue").click();
       await expect(page.getByTestId("grant-summary")).toBeVisible();
     },
   },
@@ -289,7 +511,7 @@ const ADMIN_PAGES: { name: string; open: (page: Page) => Promise<void> }[] = [
       await page.goto("/admin/tokens");
       await expect(page.getByTestId("tokens-table")).toBeVisible();
       await expectNoSeriousViolations(page, "tokens");
-      await page.getByTestId("tokens-table").getByRole("button", { name: /^Thu hồi token/ }).first().click();
+      await page.getByTestId("tokens-table").locator('[data-testid^="revoke-token-"]').first().click();
       await expect(page.getByTestId("revoke-token-dialog")).toBeVisible();
     },
   },
@@ -302,7 +524,7 @@ const ADMIN_PAGES: { name: string; open: (page: Page) => Promise<void> }[] = [
       await expect(page.getByTestId("audit-table")).toBeVisible();
       await expectNoSeriousViolations(page, "audit");
       await page.getByTestId("pager-next").click();
-      await expect(page.getByTestId("pager-page")).toHaveText("Trang 2");
+      await expect(page.getByTestId("pager-page")).toHaveText(/\b2$/); // "Page 2" in English, "Trang 2" in Vietnamese
     },
   },
   {

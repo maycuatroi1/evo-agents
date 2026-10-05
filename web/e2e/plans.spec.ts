@@ -15,6 +15,8 @@ import {
   seedPlans,
 } from "./support/plans";
 
+test.use({ uiLocale: "vi" }); // the assertions below read the Vietnamese copy of messages/vi.json
+
 /**
  * The plan pages against the real API (step 26 of the agent-hub plan): the list shows each plan's steps done of
  * total, a step shows its evidence verbatim, the diff between two revisions shows exactly the lines that changed,

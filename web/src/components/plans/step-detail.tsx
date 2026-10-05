@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useFormatter, useTranslations } from "next-intl";
 import { type ReactNode, useMemo } from "react";
 
+import { StepRuns } from "@/components/runs/step-runs";
 import { QueryView, useHubQuery } from "@/components/states/query-view";
 import { PageSkeleton } from "@/components/states/states";
 import { browserApi } from "@/lib/api/browser";
@@ -179,6 +180,7 @@ function Detail({ project, plan, stepKey }: { project: string; plan: Plan; stepK
         <StepNavigator steps={view.steps} current={step} context={context} />
         <article className="flex min-w-0 flex-col gap-6" aria-label={t("detailLabel", { key: step.key })}>
           <Facts step={step} context={context} />
+          <StepRuns project={project} planId={plan.plan_id} stepKey={step.key} />
           <Block title={t("what")} testId="step-what">
             {step.what ? <Prose>{step.what}</Prose> : <Missing>{t("noWhat")}</Missing>}
           </Block>

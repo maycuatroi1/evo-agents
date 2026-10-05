@@ -3,6 +3,8 @@ import { WEB_ORIGIN } from "./support/env";
 import { expect, isDeployed, test } from "./support/fixtures";
 import { newAccount } from "./support/hub";
 
+test.use({ uiLocale: "vi" }); // the assertions below read the Vietnamese copy of messages/vi.json
+
 const PROTECTED = ["/", "/admin", "/p/some-project", "/p/some-project/plans", "/no/such/page"];
 
 test.describe("signed out", () => {

@@ -1,0 +1,106 @@
+# A plan in the shape of the harness plans, for ready_steps and build_prompt in tests/hub/test_runs_model.py.
+# The comment on each step says whether it is ready and why.
+id: fleet-demo
+goal: >
+  Members run plan steps on their own machines: the hub hands a ready step to the worker of the member who
+  dispatched it, and the worker reports logs, state and evidence back.
+created_at: '2026-10-05T09:00:00+07:00'
+context: >
+  The hub keeps plans as JSON bodies with one revision per write. Workers pull work over HTTPS and never open a
+  port on the member's machine.
+repos:
+  - repo: evo-agents
+    branch: feat/fleet-demo
+    order: 1
+    depends_on: []
+    status: pending
+  - repo: evo-agents-harness
+    branch: main
+    order: 2
+    depends_on: [evo-agents]
+    status: pending
+steps:
+  - id: 1  # done
+    title: Survey the runtimes
+    repo: evo-agents-harness
+    what: Run the three agent CLIs headless and write down what they print.
+    depends_on: []
+    verify: test -f research_notes/runtimes.md
+    status: done
+    done_at: '2026-10-05'
+    evidence: evo-agents-harness@e749e55 adds research_notes/runtimes.md with one section per runtime.
+    blocking: true
+  - id: 2  # ready: its one dependency is done
+    title: Model runs and workers
+    repo: evo-agents
+    what: Write the run states, the transitions and who may make them.
+    depends_on: [1]
+    verify: python -m pytest -q tests/hub/test_runs_model.py
+    status: pending
+    blocking: true
+    note: Later steps read the transition table.
+  - id: 3  # not ready: step 2 is pending
+    title: Tables for runs
+    repo: evo-agents
+    what: Add the runs and run_events tables.
+    depends_on: [2]
+    verify: python -m pytest -q tests/hub/test_migrate.py
+    status: pending
+    blocking: true
+  - id: 4  # not ready: blocked
+    title: Sign dispatches
+    repo: evo-agents
+    what: Sign each dispatch with a key that stays on the owner's machine.
+    depends_on: []
+    status: blocked
+    blocking: true
+    note: Waits for a decision on key storage.
+  - id: 5  # not ready: step 4 is blocked
+    title: Check signatures on claim
+    repo: evo-agents
+    what: Refuse a claimed run whose signature does not match.
+    depends_on: [4]
+    status: pending
+  - id: 6  # ready: no dependency, although steps 2 to 5 before it are blocking and not done
+    title: English web locale
+    repo: evo-agents
+    what: Make English the default locale of the web.
+    depends_on: []
+    status: pending
+    blocking: true
+  - id: 7  # not ready: in progress
+    title: Pairing codes
+    repo: evo-agents
+    what: Register a worker with a pairing code.
+    depends_on: [1]
+    status: in_progress
+  - id: 8  # ready: "1" names step 1, ids compare as text
+    title: Worker daemon
+    repo: evo-agents
+    what: Claim runs and stream their events.
+    depends_on: ['1']
+    status: pending
+  - id: 9  # ready: a step without a status is pending
+    title: Service files
+    repo: evo-agents
+    what: Install the daemon as a LaunchAgent or a systemd user unit.
+    depends_on: [1]
+  - id: 10  # not ready: step 42 does not exist
+    title: Release
+    repo: evo-agents
+    what: Publish the release.
+    depends_on: [1, 42]
+    status: pending
+  - id: 11  # done
+    title: Stack decisions
+    repo: evo-agents-harness
+    what: Agree the stack with the user.
+    depends_on: [1]
+    status: done
+    evidence: Five decisions recorded on the hub at revision 2.
+  - id: 12  # ready: steps 1 and 11 are done
+    title: Run commands
+    repo: evo-agents
+    what: Add `evo-agents hub run` commands.
+    depends_on: [1, 11]
+    status: pending
