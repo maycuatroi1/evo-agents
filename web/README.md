@@ -51,9 +51,12 @@ the API; a skill bundle is downloaded from the moto bucket the way a browser fol
 knowledge graph specs push a small synthetic graph and have the stack build it (`e2e/kg_seed.py`).
 
 ```sh
-pnpm exec playwright install chromium
+pnpm exec playwright install chromium firefox
 EVO_HUB_TEST_DSN=postgresql://postgres:test@localhost:55433/postgres pnpm exec playwright test
 ```
+
+Every spec runs in Chromium; `e2e/terminal.spec.ts` also runs in Firefox (the `firefox` project), since the run page's
+terminal depends on how each browser applies the CSP to its websocket and to WebAssembly.
 
 `EVO_HUB_TEST_DSN` names a superuser on a throwaway Postgres; the stack creates `evo_hub_e2e_<random>` and
 drops it when Playwright stops. Ports default to 3324 (web), 18324 (API) and 18325 (stack control); change
@@ -67,7 +70,11 @@ skills and runs ones also at 375 px).
 
 The runs specs are the worker themselves: they claim runs, report states and send events, messages and diffs with a
 worker token, as the daemon does (`e2e/support/runs.ts`), and `e2e/run-detail.spec.ts` checks the run page's live log
-against them.
+against them. For the terminal the stack plays the worker's end (`FakeTerminal` in `e2e/hub_stack.py`, driven through
+`e2e/support/terminal.ts`): once a browser waits on a run it connects with the worker's token over a real PTY, whose line
+discipline echoes what is typed and whose program answers each line with `echo: <line>` and each resize with
+`size: <cols>x<rows>`. The browser opens the websocket on the web's own origin and the web forwards it to the API, as
+the reverse proxy does in production.
 
 Specs tagged `@deployed` also run against a deployed hub. Save a signed-in session once with
 `pnpm exec playwright codegen --save-storage=e2e/.auth/hub.json https://hub.example.org` (sign in by
