@@ -564,13 +564,14 @@ def test_a_hub_admin_revokes_a_worker_its_token_stops_and_its_runs_are_released(
         pinned_queued: "failed",
         elsewhere: "running",  # another worker's run is left alone
     }
-    # the lost run's step is queued again as the next attempt, unpinned and claimed by nobody
+    # the lost run's step is queued again as the next attempt, unpinned, claimed by nobody, and asking for the
+    # runtime its dispatch asked for (any), not the one the lost run's worker picked
     assert sql(
         hub_db,
-        "SELECT step_key, attempt, state, worker_id, pinned_worker_id, runtime, mode FROM runs "
+        "SELECT step_key, attempt, state, worker_id, pinned_worker_id, requested_runtime, runtime, mode FROM runs "
         "WHERE parent_run_id = %s",
         (retried,),
-    ) == [("1", 2, "queued", None, None, "claude-code", "headless")]
+    ) == [("1", 2, "queued", None, None, "any", "any", "headless")]
     errors = dict(sql(hub_db, "SELECT id, error FROM runs WHERE id = ANY(%s)", ([last, pinned_held, pinned_queued],)))
     assert all(error.startswith("its worker mac-mini was revoked") for error in errors.values())
     assert "attempt 3 of 3" in errors[last] and "pinned" in errors[pinned_held]

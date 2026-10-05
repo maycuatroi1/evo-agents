@@ -10,8 +10,9 @@ change to the module takes a new revision.
 
 tokens.kind takes 'worker', the evw_ token of one worker, whose host is the worker's hostname. workers is a machine
 its owner registered: a name unique among the owner's workers that are not revoked (a revoked worker's name may be
-used again), host facts, 1 to 8 slots, labels, what its heartbeats report of its runtimes and checkouts (JSON
-objects whose keys the api sets), whether it allows the web terminal, and its last heartbeat, drain and revocation,
+used again), host facts, 1 to 8 slots, labels, what its heartbeats report of its runtimes, checkouts (JSON
+objects whose keys the api sets) and free slots, whether it allows the web terminal, and its last heartbeat, drain
+and revocation,
 from which ``runs.worker_status`` reads its status. worker_projects lists the projects a worker takes runs of.
 worker_pairings is a code the web created for a machine to join with: it lasts at most 10 minutes and is locked
 after 5 wrong tries, and once used it names the worker it made. The hub keeps the HMAC-SHA256 of the whole code under
@@ -20,10 +21,11 @@ a wrong rest of the code counts as a wrong try against that pairing, and no two 
 is an array of project ids, checked by the api when the worker joins.
 
 runs is one attempt at one plan step on one worker, dispatched from a revision of the plan that plan_revisions
-holds. runtime is the one the dispatch asked for, or 'any' until a worker claims the run and picks one of its own;
-pinned_worker_id is the worker a dispatch named, worker_id the one that claimed the run. A run that left 'queued'
-other than to 'cancelled' or 'failed' was claimed, so it has a worker, a runtime and leased_at; a held run has a
-lease, which the reaper reads; a final run has finished_at, and a failed one an error. attempt counts the runs of
+holds. requested_runtime is the runtime the dispatch asked for, 'any' included, which the next attempt asks for
+again; runtime is the same until a worker claims the run, when a request for 'any' takes the runtime the worker
+picked. pinned_worker_id is the worker a dispatch named, worker_id the one that claimed the run. A run that left
+'queued' other than to 'cancelled' or 'failed' was claimed, so it has a worker, a runtime and leased_at; a held run
+has a lease, which the reaper reads; a final run has finished_at, and a failed one an error. attempt counts the runs of
 one dispatch, at most max_attempts (3, as runs.MAX_ATTEMPTS), and each one after the first names the run it
 retries. At most one run of a step is active, which a partial unique index over the active states holds.
 
@@ -109,6 +111,7 @@ UPGRADE = (
         {LABELS},
         runtimes jsonb NOT NULL DEFAULT '{{}}' CHECK (jsonb_typeof(runtimes) = 'object'),
         checkouts jsonb NOT NULL DEFAULT '{{}}' CHECK (jsonb_typeof(checkouts) = 'object'),
+        free_slots smallint CHECK (free_slots BETWEEN 0 AND 8),  -- as the last heartbeat reported them
         allow_web_terminal boolean NOT NULL DEFAULT false,
         created_at timestamptz NOT NULL DEFAULT now(),
         last_heartbeat_at timestamptz,
@@ -158,6 +161,7 @@ UPGRADE = (
         dispatched_by bigint NOT NULL REFERENCES users (id) ON DELETE RESTRICT,
         pinned_worker_id bigint REFERENCES workers (id) ON DELETE RESTRICT,
         worker_id bigint REFERENCES workers (id) ON DELETE RESTRICT,
+        requested_runtime text NOT NULL CHECK (requested_runtime IN {RUNTIMES}),
         runtime text NOT NULL CHECK (runtime IN {RUNTIMES}),
         mode text NOT NULL CHECK (mode IN {MODES}),
         approval text NOT NULL CHECK (approval IN {APPROVALS}),
@@ -191,6 +195,7 @@ UPGRADE = (
         CHECK (attempt = 1 OR parent_run_id IS NOT NULL),
         CHECK (parent_run_id <> id),
         CHECK (pinned_worker_id IS NULL OR worker_id IS NULL OR worker_id = pinned_worker_id),
+        CHECK (runtime = requested_runtime OR (requested_runtime = 'any' AND worker_id IS NOT NULL)),
         CHECK (state IN {UNCLAIMED} OR (worker_id IS NOT NULL AND runtime <> 'any' AND leased_at IS NOT NULL)),
         CHECK (state NOT IN {HELD} OR lease_expires_at IS NOT NULL),
         CHECK ((state IN {TERMINAL}) = (finished_at IS NOT NULL)),

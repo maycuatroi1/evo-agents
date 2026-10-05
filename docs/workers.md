@@ -10,8 +10,11 @@ This page describes version 1 of the worker protocol as planned. `evo_agents/hub
 on: the run states and who may change them, a worker's status, the event kinds, which steps are ready, and the
 prompt a run gives its agent. It needs only the standard library, so the api and the daemon share it. Schema 0009
 holds the tables, and `evo_agents/hub/server/workers.py` the routes that register and stop workers (pairings, join,
-direct registration, list, drain, undrain, revoke). The run routes and the `evo-agents worker` daemon come in later
-releases, and this page changes with them. The daemon has its own command group because `evo-agents hub worker` is
+direct registration, list, drain, undrain, revoke). `evo_agents/hub/server/runs.py` holds the queue: ready steps,
+dispatch, claim, heartbeat, state reports, and the owner's cancel, approve and rerun; `evo_agents/hub/server/run_state.py`
+moves runs, records each move in the plan, and holds the reaper and the pruning of events. Events, the event stream,
+messages, takeover, the terminal and the `evo-agents worker` daemon come in later releases, and this page changes
+with them. The daemon has its own command group because `evo-agents hub worker` is
 already the server's job worker (see `docs/hub.md`).
 
 ## Entities
@@ -26,7 +29,9 @@ already the server's job worker (see `docs/hub.md`).
 | inbox message | a message from the owner to the run's agent, waiting for the worker | `run_inbox` |
 
 A run records the project, plan and step key, the plan revision it was dispatched from, who dispatched it, the worker
-(or the worker it is pinned to), the runtime (`claude-code`, `opencode` or `codex`; a dispatch may ask for any), the
+(or the worker it is pinned to), the runtime the dispatch asked for (`requested_runtime`: `claude-code`, `opencode`,
+`codex` or `any`, which the next attempt asks for again) and the one the run has (`runtime`: the same, except that
+`any` becomes the runtime the claiming worker picked), the
 mode (`headless` or `interactive`), the approval (`auto` or `review`), a timeout of 5 to 240 minutes, its attempt out
 of at most 3, the run it retries (`parent_run_id`), its state and lease, the agent's session id, the repo and branch,
 and at the end the commit, diffstat, verify results, evidence, usage and error.
@@ -120,11 +125,20 @@ pinned to it, since no other worker may claim either. Each of these moves writes
 `reaper`. Cancelling a held run sets `cancel_requested_at`; the next heartbeat tells the worker, which stops the agent
 and reports `cancelled`.
 
-The hub writes the plan as the member who dispatched the run, through the same item update as `evo harness step`,
-with `if_revision`, retrying up to 5 times on a revision conflict. When a run starts `running`, the step becomes
-`in_progress` with the note `run #N on worker W`. When it ends `done`, the step gets `done`, `done_at` and
-`evidence` (commit, verify commands, results) in one revision. When the last run of a dispatch ends `failed`,
-`cancelled` or `lost`, the step goes back to `pending` with a note naming why.
+The hub writes the plan as the member who dispatched the run, through the same item update as `evo harness step`
+(PATCH's own write), with `if_revision`, retrying up to 5 times on a revision conflict; each try reads the plan again.
+When a run starts (`leased` to `running` or `interactive`), the step becomes `in_progress` with the note
+`run #N on worker W`. When it ends `done`, the step gets `done`, `done_at` (the UTC date) and `evidence` in one
+revision: the run, the worker, the runtime and attempt, `repo@commit` on the branch with the diffstat, each verify
+command with its exit code, and the agent's summary, at most 16 KiB. When a run ends `failed` or `cancelled`, the step
+goes back to `pending` with a note naming why (`run #N failed: ...`, `run #N was cancelled: ...`). A `lost` run leaves
+the step alone, since its next attempt is queued at once; the last attempt fails rather than being lost. A step that
+is `done` already is never set back. The plan write is the step's record, not the run's truth: it runs in a savepoint
+of the move's transaction, so a dispatcher who lost the writer role, a plan that is gone, or 5 conflicts in a row leave
+the move in place and a warning in the log. Each write is a `plan.patch` audit row of the dispatcher, with the worker's
+token when the worker reported the move.
+
+Revoking a worker, or its token, writes the steps of the runs that ended the same way, in the same transaction.
 
 ## Which steps are ready
 
@@ -209,27 +223,80 @@ the join gets 409 and the code is not used up. A machine already signed in with
 
 ### Claim
 
-`POST /v1/worker/claim` waits up to 25 seconds for a run. The hub listens on the Postgres channel `evo_runs`, which
-each dispatch notifies, and also looks again periodically, so a missed notification delays a claim but never loses
-one. It picks a queued run with `SELECT ... FOR UPDATE SKIP LOCKED` when all of these hold: the worker's owner
-dispatched it, the project is one of the worker's and the owner still holds writer on it, the worker has the runtime
-and a checkout of the repo and a free slot, and it is neither draining nor revoked. The answer is the run (id,
-project, plan, step, attempt, runtime, mode, approval, timeout, repo, branch, lease expiry and the prompt), or no run
-when the wait ends empty, and the daemon claims again at once. A worker has at most one claim waiting.
+`POST /v1/worker/claim` waits up to 25 seconds for a run; the body `{"wait_s": 10}` asks for a shorter wait, and may
+be left out. The hub listens on the Postgres channel `evo_runs`, which each dispatch, rerun and next attempt notifies
+with the run's id, on one connection of the api process opened by the first claim, and also looks again every 5
+seconds, so a missed notification delays a claim but never loses one. It picks a queued run with `SELECT ... FOR UPDATE SKIP LOCKED` when all of these hold: the worker's owner
+dispatched it, the project is one of the worker's and the owner still holds writer on it, the worker reported the
+runtime as available (a run asking for `any` takes the first of `claude-code`, `opencode`, `codex` it has) and a
+checkout of the repo, the run is pinned to no other worker, the worker holds fewer runs than its slots, and it is
+neither draining nor revoked. The oldest such run is leased for 300 seconds. The answer is `{"run": {...}}` with the
+id, project, plan, step key and title, plan revision, attempt, max attempts, parent run, runtime, mode, approval,
+timeout in minutes, repo, branch, lease expiry and the prompt (built from the plan revision the run was dispatched
+from), or `{"run": null}` when the wait ends empty, and the daemon claims again at once. A worker has at most one
+claim waiting: a newer claim ends the older one, which answers no run.
 
 ### Heartbeat
 
 Every 15 seconds the daemon sends `POST /v1/worker/heartbeat` with its runtimes, checkouts, free slots and the runs
-it holds. The hub records the heartbeat, extends the lease of each of those runs by 300 seconds, and answers with
-control for the worker: for each run, whether to `cancel`, `takeover`, `handback` or open the terminal
-(`terminal_open`) and whether the `inbox` has new messages; for the worker, whether to `drain`. A run the worker
-reports but no longer holds (lost, cancelled, or another worker's now) comes back with `cancel`.
+it holds:
+
+```json
+{
+  "runtimes": {
+    "claude-code": {"available": true, "version": "2.1.289"},
+    "codex": {"available": false, "version": "0.153.4", "reason": "not signed in"}
+  },
+  "checkouts": {"evo-agents/evo-agents": {"path": "/Users/me/github/evo-agents", "branch": "main"}},
+  "free_slots": 1,
+  "runs": [12],
+  "agent_version": "0.3.0"
+}
+```
+
+`runtimes` is keyed `claude-code`, `opencode` or `codex`, each `{available, version, reason}`: `available` is
+required, `reason` says why a runtime that is there cannot take runs, and only an available runtime is claimed for.
+`checkouts` is keyed `<project>/<repo>`, as the project and its repo are named on the hub, each `{path, branch}` with
+the path required. The hub keeps both as sent, every key present (a missing one is null), and `GET /v1/workers/{id}`
+shows them in that shape. `free_slots` is what the daemon counts free, at most the worker's slots; the hub shows it,
+and counts the runs a worker holds against its slots itself. `agent_version` is optional and replaces the version
+the worker registered with.
+
+The hub records the heartbeat, extends the lease of each run named that the worker still holds by 300 seconds, and
+answers with control:
+
+```json
+{
+  "drain": false,
+  "runs": [{"id": 12, "held": true, "state": "running", "lease_expires_at": "...", "cancel": false,
+            "takeover": false, "handback": false, "terminal_open": false, "inbox": 0}]
+}
+```
+
+For each run: whether to `cancel` (the owner asked for it), `takeover`, `handback` or open the terminal
+(`terminal_open`), and how many `inbox` messages wait; for the worker, whether to `drain`. A run the worker reports
+but no longer holds (lost, cancelled, or another worker's now) comes back with `held: false`, `state: null` and
+`cancel: true`. Takeover, handback and the terminal stay false until the routes that ask for them exist.
 
 ### State
 
 `POST /v1/worker/runs/{id}/state` reports a move of a run the worker holds, with the commit, diffstat, verify results
-and usage when it has them. The hub checks the move against the transition table with the worker as actor and answers
-409 when the table refuses it, and 404 when the worker does not hold the run.
+and usage when it has them:
+
+```json
+{"state": "done", "from": "verifying", "commit_sha": "<40 or 64 hex>", "session_id": "...",
+ "diffstat": {"files": 3, "insertions": 120, "deletions": 4},
+ "verify": [{"command": "ruff check .", "exit_code": 0, "duration_ms": 900}],
+ "usage": {"input_tokens": 1200}, "error": null, "summary": "what the agent says it did"}
+```
+
+The hub checks the move against the transition table with the worker as actor and answers 409 when the table refuses
+it, and 404 when the worker does not hold the run (another worker's, or one no longer held: lost, cancelled, in
+review or done). `from`, when given, must be the state the run is in (409 otherwise). `done` needs approval `auto`
+and at least one verify result, every one with exit code 0; `review` needs approval `review`; otherwise 409. A
+`failed` report without an `error` gets one naming the worker. Reporting the state the run is in already moves
+nothing and keeps the session id, commit, diffstat, verify results and usage it carries, so a resend after a lost
+answer is safe. The answer is the run as the hub holds it.
 
 ### Events
 
@@ -274,8 +341,8 @@ For members, with a web session or a machine token. `{p}` is a project, and run 
 | `GET /v1/workers`, `GET /v1/workers/{id}` | owner; a hub admin sees all | list and show workers |
 | `POST /v1/workers/{id}/drain`, `/revoke` | owner or hub admin | stop new claims, end the worker |
 | `POST /v1/workers/{id}/undrain` | owner | resume claims |
-| `GET /v1/projects/{p}/plans/{plan}/ready-steps` | reader | the steps that may be dispatched |
-| `POST /v1/projects/{p}/runs` | writer | dispatch steps |
+| `GET /v1/projects/{p}/plans/{plan}/ready-steps` | reader | every step, with whether it may be dispatched and why not |
+| `POST /v1/projects/{p}/runs` | writer | dispatch steps, all or none |
 | `GET /v1/projects/{p}/runs`, `GET .../runs/{id}` | reader | list and show runs |
 | `GET .../runs/{id}/events?after=SEQ` | reader | events after a number |
 | `GET .../runs/{id}/stream` | reader | the same as server-sent events, with a ping every 15 s, resumed by `Last-Event-ID` |
@@ -284,6 +351,24 @@ For members, with a web session or a machine token. `{p}` is a project, and run 
 | `POST .../runs/{id}/takeover`, `/handback` | owner | switch between headless and interactive |
 | `POST .../runs/{id}/cancel`, `/approve`, `/rerun` | owner | stop, approve a run in review, run the step again |
 | websocket `/v1/projects/{p}/runs/{id}/terminal` | owner of the worker | the browser's end of the terminal |
+
+### Dispatching and the owner's controls
+
+`POST /v1/projects/{p}/runs` takes `plan_id`, `steps` (1 to 50 step ids or orders), `runtime` (`any` by default,
+or `claude-code`, `opencode`, `codex`), `mode` (`headless` by default), `worker_id` (optional: pin the runs to a
+worker of the caller's), `approval` (`review` by default, or `auto`) and `timeout_min` (5 to 240, 60 by default). It
+queues one run per step, at the plan's current revision, or nothing: a step that is not ready or has an active run is
+409, a step the plan does not have or one without a repo is 422, a worker that is not the caller's (or no worker) is
+403, and a revoked worker or one that does not serve the project is 409. `ready-steps` answers every step of the plan
+in plan order with `ready`, `reason` (as `unready_reason` says it, or the active run) and the active run.
+
+The owner of a run is the member who dispatched it; another member gets 403 and someone without a grant 404.
+`.../cancel` moves a queued run, or one in review, to `cancelled` at once; for a held run it sets
+`cancel_requested_at`, the next heartbeat says `cancel`, and the worker reports `cancelled` (an expired lease after
+that ends the run `cancelled` too). `.../approve` moves a run in review to `done` and writes the step done with the
+evidence the run got when it went to review. `.../rerun` queues the step of a run that ended again, at the plan's
+current revision, with the same requested runtime, mode, approval, timeout and pinned worker, attempt 1 and
+`parent_run_id` naming the old run; the step must be ready again. Approve and rerun need the writer role.
 
 ## Event kinds
 
@@ -323,7 +408,8 @@ it replays when the browser connects again.
 
 | What | Limit |
 | --- | --- |
-| claim wait | 25 s |
+| claim wait | 25 s, looking again every 5 s besides the notifications |
+| steps per dispatch | 50 |
 | heartbeat | every 15 s |
 | offline after | 300 s without a heartbeat |
 | lease | 300 s, extended by each heartbeat |
