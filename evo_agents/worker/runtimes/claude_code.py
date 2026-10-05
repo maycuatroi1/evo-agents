@@ -156,10 +156,17 @@ def events_of(message) -> list[AgentEvent]:
 class ClaudeCodeAdapter(QueueAdapter):
     runtime = "claude-code"
     binary = "claude"
+    interactive = True
 
     @classmethod
     def detect(cls) -> Detection:
         return detect_runtime(cls.runtime, cls.binary, MIN_VERSION, packages=(SDK,))
+
+    @classmethod
+    def tui(cls, context: RunContext, session_id: str | None):
+        from evo_agents.worker.interactive import ClaudeCodeTui
+
+        return ClaudeCodeTui(context, session_id)
 
     def __init__(self, context: RunContext):
         super().__init__(context)

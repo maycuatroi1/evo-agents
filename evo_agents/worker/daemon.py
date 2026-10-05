@@ -6,13 +6,16 @@
   for this worker, and how many messages of the owner wait.
 - It claims a run whenever it has a free slot and is neither draining nor stopping, one long poll of up to 25
   seconds at a time, and runs each run it gets (``run.Run``) next to the others.
+- The answer's ``takeover`` and ``handback`` hand a run's agent to a person in tmux and back (``interactive``), and
+  ``terminal_open`` connects the worker's end of the run's web terminal.
 - A call the hub does not answer is sent again with a backoff from 1 to 60 seconds; runs go on meanwhile.
 - SIGTERM or SIGINT: no new claim; the runs held go on until they end or reach their timeout, then the daemon exits
   0. A second signal stops the agents now and fails their runs.
 - A token the hub no longer takes (401, 403: the worker or its token was revoked) or a protocol it no longer speaks
   (426) stops the daemon with exit status 1.
 - At the start, the events a previous daemon left in the spool are sent, and runs it left unfinished are marked
-  ended. At the start and every hour, the worktrees of runs that ended more than 7 days ago are removed.
+  ended, their tmux sessions closed. At the start and every hour, the worktrees of runs that ended more than 7 days
+  ago are removed.
 """
 
 from __future__ import annotations
@@ -30,7 +33,7 @@ from pathlib import Path
 from evo_agents import __version__
 from evo_agents.hub import runs
 from evo_agents.isotime import parse_iso
-from evo_agents.worker import checkouts, gitops
+from evo_agents.worker import checkouts, gitops, interactive
 from evo_agents.worker.adapter import Adapter, detect_runtimes
 from evo_agents.worker.home import WorkerConfig, WorkerHome
 from evo_agents.worker.hubapi import Backoff, HubProblem, Outdated, Refused, Unreachable, WorkerHub, new_session
@@ -79,6 +82,7 @@ class Daemon:
         self.draining = False
         self.exit_code = 0
         self.hub: WorkerHub | None = None
+        self.tmux = interactive.Tmux.from_env(self.env)
         self._repo_locks: dict[str, asyncio.Lock] = {}
         self._runtimes_at = float("-inf")
         self._checkouts_at = float("-inf")
@@ -147,8 +151,11 @@ class Daemon:
                     "runtimes": available,
                     "checkouts": sorted(self.checkouts),
                     "version": __version__,
+                    "tmux": self.tmux.binary,
                 },
             )
+            if not self.tmux.available:
+                log.warning("tmux is not on PATH: this worker takes headless runs only, with no takeover or terminal")
             if not available:
                 log.warning("no runtime can take runs here; the worker claims nothing until one can")
             if not self.checkouts:
@@ -265,9 +272,11 @@ class Daemon:
                 if control.get("inbox"):
                     run._spawn(run.deliver_inbox())
                 if control.get("takeover"):
-                    run.unsupported("takeover")
+                    run.request_takeover()
                 if control.get("handback"):
-                    run.unsupported("handback")
+                    run.request_handback()
+                if control.get("terminal_open"):
+                    run.open_terminal()
         return True
 
     # Claims
@@ -342,13 +351,18 @@ class Daemon:
     # What earlier daemons left
 
     def _close_abandoned_runs(self) -> None:
-        """Runs a previous daemon left without an end: their leases ran out on the hub; their worktrees age now."""
+        """Runs a previous daemon left without an end: their leases ran out on the hub; their worktrees age now, and
+        a terminal UI left running in their tmux session is closed."""
         for record in self.home.load_runs():
             if record.get("finished_at") is None:
                 record["finished_at"] = datetime.now(timezone.utc).isoformat()
                 record["state"] = f"{record.get('state')} when the worker stopped"
                 with contextlib.suppress(OSError):
                     self.home.save_run(record)
+                if record.get("tmux_session"):
+                    socket = record.get("tmux_socket")
+                    tmux = interactive.Tmux.from_env(self.env, socket=socket) if socket else self.tmux
+                    tmux.kill_sync(str(record["tmux_session"]))
 
     async def _send_leftovers(self) -> None:
         for run_id in leftover_runs(self.home.spool_dir):

@@ -16,6 +16,8 @@ Modules, each with one concern:
 - ``run``: one run from claim to its last report.
 - ``daemon``: the claim loop, the heartbeat, signals and the cleanup of old worktrees.
 - ``runtimes``: the adapters of Claude Code, opencode and Codex, through each runtime's SDK or API.
+- ``interactive``: takeover and handback, the runtimes' terminal UIs in tmux, their logs, and the worker's end of the
+  web terminal.
 - ``selftest``: ``evo-agents worker selftest``, one real run of an adapter in a scratch repository.
 - ``service``: the daemon in the background, as a launchd LaunchAgent or a systemd user unit.
 - ``cli``: the commands.

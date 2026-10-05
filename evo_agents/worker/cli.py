@@ -5,6 +5,7 @@
   with the machine token of ``evo-agents hub login``.
 - ``run``: the daemon in the foreground (``daemon``).
 - ``status``: what this machine is to the hub, and what the daemon sees here.
+- ``attach N``: this terminal on the tmux session of run N while a person drives its agent (``evo-run-N``).
 - ``drain [--resume]``, ``revoke [--force]``: the owner's controls, with the machine token.
 
 The worker token goes to ``~/.evo/worker/token`` (0600) and is never printed. A failure is one ``error:`` line on
@@ -19,6 +20,7 @@ import asyncio
 import functools
 import json
 import logging
+import os
 import platform
 import sys
 from datetime import datetime, timezone
@@ -264,13 +266,37 @@ def _dir_bytes(path) -> int:
 
 
 @_worker_command
+def cmd_attach(args) -> int:
+    from evo_agents.worker import interactive
+
+    home = WorkerHome()
+    record = next((item for item in home.load_runs() if item["id"] == args.run), {})
+    socket = record.get("tmux_socket") if isinstance(record.get("tmux_socket"), str) else None
+    tmux = interactive.Tmux.from_env(os.environ, socket=socket)
+    if not tmux.available:
+        raise WorkerStateError("tmux is not on PATH: interactive runs need it on the worker")
+    name = interactive.session_name(args.run)
+    if not tmux.has_session(name):
+        raise WorkerStateError(
+            f"run {args.run} has no terminal on this machine: tmux session {name} is not there. A run has one while "
+            "it is interactive, after a takeover from the web or `evo-agents hub run takeover`."
+        )
+    argv, env = tmux.attach_command(name, os.environ)
+    sys.stdout.flush()
+    os.execvpe(argv[0], argv, env)
+    return 0  # pragma: no cover - execvpe does not return
+
+
+@_worker_command
 def cmd_status(args) -> int:
     from evo_agents.worker.adapter import detect_runtimes, load_adapters
     from evo_agents.worker.checkouts import discover
+    from evo_agents.worker.interactive import Tmux
 
     home = WorkerHome()
     config = home.load_config()
     runtimes = detect_runtimes(load_adapters())
+    tmux = Tmux.from_env(os.environ)
     found = discover(config)
     records = home.load_runs()
     pid = home.read_pid()
@@ -292,6 +318,8 @@ def cmd_status(args) -> int:
         "labels": config.labels,
         "daemon_pid": pid,
         "runtimes": runtimes,
+        "tmux": {"path": tmux.binary, "version": tmux.version()},
+        "allow_web_terminal": config.allow_web_terminal,
         "checkouts": found,
         "spool_bytes": _dir_bytes(home.spool_dir),
         "runs": [{k: r.get(k) for k in ("id", "state", "worktree", "finished_at")} for r in records],
@@ -320,6 +348,11 @@ def cmd_status(args) -> int:
     for name, report in runtimes.items():
         state = "available" if report["available"] else f"unavailable ({report.get('reason') or 'no reason given'})"
         print(f"  runtime {name}: {report.get('version') or '-'}, {state}")
+    if tmux.available:
+        terminal = "allowed" if config.allow_web_terminal else "not allowed"
+        print(f"  interactive runs: tmux {status['tmux']['version'] or '?'} at {tmux.binary}; web terminal {terminal}")
+    else:
+        print("  interactive runs: unsupported (tmux is not on PATH); headless runs only")
     for key in sorted(found):
         print(f"  checkout {key}: {found[key]['path']} ({found[key].get('branch') or 'detached'})")
     if not found:
@@ -428,6 +461,12 @@ def register(sub) -> None:
     from evo_agents.worker.selftest import add_parser as add_selftest  # `selftest --runtime NAME`
 
     add_selftest(wsub)
+
+    attach = wsub.add_parser(
+        "attach", help="put this terminal on the tmux session of an interactive run (evo-run-N), as tmux attach does"
+    )
+    attach.add_argument("run", type=int, help="the run's id, as the web and `evo-agents hub run list` show it")
+    attach.set_defaults(func=cmd_attach)
 
     drain = wsub.add_parser("drain", help="stop claiming new runs; the runs held finish (needs `hub login`)")
     drain.add_argument("--resume", action="store_true", help="claim runs again")
