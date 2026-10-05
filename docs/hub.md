@@ -54,6 +54,8 @@ below for the address behind a proxy).
 | blobs | `POST /v1/blobs/uploads`, `POST /v1/blobs/commit` |
 | knowledge graphs | `/v1/kg/{project}/config`, `.../runs`, `.../blobs/check`, `.../builds`, `.../tools/{tool}`, and the web's `.../graph`, `.../nodes`, `.../node`, `.../neighbourhood` |
 | workers | `POST /v1/workers/pairings`, `GET /v1/workers/pairings/{id}`, `POST /v1/worker/join`, `GET` and `POST /v1/workers`, `GET /v1/workers/{id}`, `POST /v1/workers/{id}/{drain,undrain,revoke}` |
+| runs | `/v1/projects/{project}/plans/{plan_id}/ready-steps`, `GET` and `POST /v1/projects/{project}/runs`, `.../runs/{id}`, `.../events`, `.../stream`, `.../diff`, `.../messages`, `.../{cancel,approve,rerun,takeover,handback}` |
+| worker protocol | `/v1/worker/{claim,heartbeat}`, `/v1/worker/runs/{id}/{state,events,inbox,uploads,blobs}` |
 
 `/mcp` speaks MCP's Streamable HTTP transport, statelessly: each POST carries one JSON-RPC message and gets one JSON
 answer. It takes machine tokens only, and the `Host` header must be the host of `EVO_HUB_PUBLIC_URL` or a loopback
@@ -209,6 +211,53 @@ block, and multi-line text a literal block, so two machines exporting the same r
 push the edit with `plan put` or restore the hub's copy with `plan export`. The evo-hub plugin's SessionStart hook
 exports the copies of the session's harness without committing, and leaves a file edited by hand as it is and names
 it, so it never overwrites someone's work.
+
+## Workers and runs
+
+A worker is a member's own laptop or desktop that runs plan steps for that member. The member dispatches a ready step
+and the hub queues a run; a worker of that member claims it, runs the step with Claude Code, opencode or Codex CLI,
+and sends its log, state and evidence back over HTTPS, and the hub records the step's progress in the plan. Only the
+owner of a worker dispatches runs to it, and dispatching needs the writer role. `docs/workers.md` describes the
+protocol, the run states and who may move a run between them.
+
+The daemon on the member's machine is the `evo-agents worker` command group, which needs the `worker` extra
+(`uv tool install 'evo-ak[worker]'`). It is not `evo-agents hub worker`, the hub's own job worker (see Worker and
+queue below). A machine joins with a pairing code from the web's Workers page, or registers directly once signed in
+with `evo-agents hub login`.
+
+Runs are driven from any machine signed in to the hub:
+
+```sh
+evo-agents hub run dispatch rollout 2 4 --approval auto       # one run per step, all of them queued or none
+evo-agents hub run dispatch rollout 5 --worker mac-mini --runtime codex --mode interactive --timeout 90
+evo-agents hub run list --state running --state review        # newest first, with the runs in each state
+evo-agents hub run show 41
+evo-agents hub run logs 41 --follow                           # the live log, until the run ends
+evo-agents hub run send 41 "also run ruff before you commit"
+evo-agents hub run takeover 41                                # a person drives the agent in a terminal on the worker
+evo-agents hub run handback 41                                # the agent goes on headless in the same session
+evo-agents hub run approve 41                                 # a run in review: the run and its step are done
+evo-agents hub run cancel 41
+evo-agents hub run rerun 41                                   # the step again, after a run that ended
+```
+
+Every command after `dispatch` and `list` takes the id of a run, as `list` shows it, and finds its project as the plan
+commands do: `--project`, or `hub.project` in the harness around the current directory. `dispatch` takes `--runtime`
+(`any` by default: the first runtime the claiming worker has), `--mode` (`headless` by default, or `interactive`),
+`--worker` (the id or the name of one of your workers, which pins the runs to it), `--approval` (`review` by default,
+which waits for `run approve`; `auto` marks the step done once every verify command the worker runs again exits 0)
+and `--timeout` in minutes (5 to 240, 60 by default). `list` filters by `--state` (repeat it for several), `--plan`,
+`--step`, `--worker`, `--by` (the login that dispatched) and `--search`, a page at a time with `--limit` and
+`--offset`.
+
+`run logs` prints one line per event: its number, its time in UTC, its kind and what it says. With `--follow` it reads
+the run's server-sent events (`GET .../runs/{id}/stream`) until the hub sends `end` once the run is final, and stops
+there. A stream that breaks off before that, because a proxy closed it or the hub restarted, is opened again with
+`Last-Event-ID` set to the last event read, so no event is missed or printed twice; after five tries in a row to read
+on that bring nothing, not even the hub's ping, the command gives up and names the `--after` that reads what came
+since. `--json` prints what the hub answered, with the keys the command line contract declares; for `logs` that is
+every event read as one object, so it does not go with `--follow`. `send`, `cancel`, `approve`, `takeover`,
+`handback` and `rerun` belong to the member who dispatched the run: another member gets 403.
 
 ## Memories, skills and knowledge graphs
 
