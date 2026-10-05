@@ -24,7 +24,7 @@ router = APIRouter(prefix="/v1/tokens", tags=["tokens"], responses={401: {"model
 
 class TokenRow(BaseModel):
     id: int
-    kind: Literal["machine", "web"]
+    kind: Literal["machine", "web", "worker"]
     host: str | None
     created_at: datetime
     last_used_at: datetime | None
