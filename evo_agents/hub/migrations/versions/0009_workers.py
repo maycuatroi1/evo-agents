@@ -14,10 +14,10 @@ used again), host facts, 1 to 8 slots, labels, what its heartbeats report of its
 objects whose keys the api sets), whether it allows the web terminal, and its last heartbeat, drain and revocation,
 from which ``runs.worker_status`` reads its status. worker_projects lists the projects a worker takes runs of.
 worker_pairings is a code the web created for a machine to join with: it lasts at most 10 minutes and is locked
-after 5 wrong tries, and once used it names the worker it made. The hub keeps the SHA-256 of the whole code and its
-first four characters in clear, the selector: a join finds the pairing by its selector, so a wrong rest of the code
-counts as a wrong try against that pairing, and no two unused pairings share one. projects is an array of project
-ids, checked by the api when the worker joins.
+after 5 wrong tries, and once used it names the worker it made. The hub keeps the HMAC-SHA256 of the whole code under
+the session secret and its first four characters in clear, the selector: a join finds the pairing by its selector, so
+a wrong rest of the code counts as a wrong try against that pairing, and no two unused pairings share one. projects
+is an array of project ids, checked by the api when the worker joins.
 
 runs is one attempt at one plan step on one worker, dispatched from a revision of the plan that plan_revisions
 holds. runtime is the one the dispatch asked for, or 'any' until a worker claims the run and picks one of its own;

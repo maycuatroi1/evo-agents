@@ -55,6 +55,10 @@ def test_missing_dsn_stops_the_command_and_names_the_variable(command):
         ("EVO_HUB_KG_KEEP_ARTIFACTS", "0"),
         ("EVO_HUB_KG_KEEP_ARTIFACTS", "1001"),
         ("EVO_HUB_KG_KEEP_ARTIFACTS", "all"),
+        ("EVO_HUB_FORWARDED_ALLOW_IPS", "proxy.internal"),
+        ("EVO_HUB_FORWARDED_ALLOW_IPS", "10.0.0.1/8"),  # host bits set: uvicorn would read it as a literal
+        ("EVO_HUB_FORWARDED_ALLOW_IPS", " , "),
+        ("EVO_HUB_FORWARDED_ALLOW_IPS", "*, 10.0.0.1"),
     ],
 )
 def test_a_malformed_value_names_its_variable(variable, value):
@@ -89,6 +93,31 @@ def test_flags_win_over_variables_and_defaults_fill_the_rest(tmp_path):
     assert config.kg_keep_artifacts == 3  # the retention of built graphs keeps each project's 3 newest
     assert load_config({**env, "EVO_HUB_KG_KEEP_ARTIFACTS": "1"}).kg_keep_artifacts == 1
     assert load_config({"EVO_HUB_DSN": "host=db dbname=hub"}).data_dir == Path("~/.evo/hub-server/cache").expanduser()
+    assert config.forwarded_allow_ips is None  # uvicorn's default: no proxy beyond the loopback is believed
+    proxies = load_config({**env, "EVO_HUB_FORWARDED_ALLOW_IPS": " 10.0.0.0/8, 172.18.0.5 ,fd00::/8"})
+    assert proxies.forwarded_allow_ips == "10.0.0.0/8,172.18.0.5,fd00::/8"
+    assert load_config({**env, "EVO_HUB_FORWARDED_ALLOW_IPS": "*"}).forwarded_allow_ips == "*"
+
+
+def test_serve_hands_uvicorn_the_proxies_it_may_believe(monkeypatch, tmp_path):
+    import argparse
+    import os
+
+    import uvicorn
+
+    from evo_agents.hub import cli as hub_cli
+
+    calls = []
+    monkeypatch.setattr(uvicorn, "run", lambda app, **kwargs: calls.append(kwargs))
+    for name in [name for name in os.environ if name.startswith("EVO_HUB_")]:
+        monkeypatch.delenv(name)
+    monkeypatch.setenv("EVO_HUB_DSN", "postgresql://hub@db/hub")
+    monkeypatch.setenv("EVO_HUB_DATA_DIR", str(tmp_path))
+    args = argparse.Namespace(dsn=None, data_dir=None, host=None, port=None, hub_command="serve")
+    assert hub_cli.cmd_serve.__wrapped__(args) == 0
+    monkeypatch.setenv("EVO_HUB_FORWARDED_ALLOW_IPS", "10.0.0.0/8")
+    assert hub_cli.cmd_serve.__wrapped__(args) == 0
+    assert [call["forwarded_allow_ips"] for call in calls] == [None, "10.0.0.0/8"]
 
 
 def test_sign_in_settings_load_and_their_secrets_never_reach_a_log():
@@ -278,6 +307,32 @@ def test_sentry_is_off_without_its_dsn_and_scrubs_what_it_sends(monkeypatch, tmp
     event = {"message": "failed on Event-Secret-6", "exception": {"values": [{"value": f"bad {sentry_dsn}"}]}}
     sent = str(kwargs["before_send"](event, {}))
     assert "Event-Secret-6" not in sent and "Sentry-Key-5" not in sent
+
+
+def test_sentry_gets_no_request_body_query_string_or_pairing_code(monkeypatch, tmp_path):
+    import sentry_sdk
+
+    from evo_agents.hub.server.app import init_sentry
+
+    calls = []
+    monkeypatch.setattr(sentry_sdk, "init", lambda **kwargs: calls.append(kwargs))
+    config = HubConfig(dsn="postgresql://h@db/h", data_dir=tmp_path, sentry_dsn="https://key@o1.ingest.example/1")
+    assert init_sentry(config) is True
+    (kwargs,) = calls
+    assert kwargs["max_request_body_size"] == "never"
+    event = {
+        "message": "join failed for ABCD-EF12",
+        "request": {
+            "url": "https://hub.test/v1/worker/join",
+            "method": "POST",
+            "data": {"code": "abcd-ef12", "hostname": "box"},
+            "query_string": "code=oauth-code-7&state=state-8",
+        },
+    }
+    sent = kwargs["before_send"](event, {})
+    assert sent["request"] == {"url": "https://hub.test/v1/worker/join", "method": "POST"}
+    assert sent["message"] == "join failed for ***"
+    assert kwargs["before_breadcrumb"]({"message": "code ABCD-EF12"}, {}) == {"message": "code ***"}
 
 
 def test_load_dsn_prefers_the_flag():

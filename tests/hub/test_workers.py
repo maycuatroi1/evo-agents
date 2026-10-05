@@ -6,8 +6,14 @@ pairing for a project where the caller is only a reader is 403; another member a
 hub admin can revoke any worker; and no log record holds a code or a token. Around them: a web session and a machine
 token keep working on their own routes as before, the worker routes need the protocol header, a revoked worker's
 token is 401 at once and the runs it held are released as the reaper would, every change leaves its audit row, and
-the database keeps neither a code nor a token in clear."""
+the database keeps neither a code nor a token in clear.
 
+And what a security review of the first version asked for: revoking a worker's token revokes the worker, refused
+joins are limited per client address, a code is kept as an HMAC under the session secret, only the owner undrains a
+worker, and a locked code counts against the member's five until it expires."""
+
+import hashlib
+import hmac
 import logging
 from datetime import datetime, timezone
 
@@ -22,9 +28,10 @@ from fastapi.testclient import TestClient
 from psycopg.types.json import Jsonb
 
 from evo_agents.hub.log import scrub
+from evo_agents.hub.server import audit
 from evo_agents.hub.server.app import create_app
 from evo_agents.hub.server.security import MACHINE, WORKER, authenticate, hash_token
-from evo_agents.hub.server.workers import CROCKFORD, normal_code
+from evo_agents.hub.server.workers import CROCKFORD, RefusalLimit, normal_code
 from tests.hub.fake_github import Account
 from tests.hub.live import ADMIN, add_project, bearer, sql, table_dump
 from tests.hub.test_run_tables import PLAN, add_run
@@ -213,6 +220,68 @@ def test_five_wrong_tries_lock_the_code_and_the_right_one_is_refused_after_them(
     assert joined(client, unrelated["code"])["worker"]["name"] == "desk"
 
 
+def test_a_locked_code_counts_against_the_five_until_it_expires(client, hub, hub_db):
+    pairings = [paired(client, hub["owner"], name=f"box-{number}") for number in range(5)]
+    for attempt in wrong_rest(pairings[0]["code"], 5):
+        assert join(client, attempt).status_code == 403
+    assert client.get(f"/v1/workers/pairings/{pairings[0]['id']}", headers=hub["owner"]).json()["status"] == "locked"
+    # locking a code by hand frees no place, so a member cannot hold more selectors that way
+    refused = pair(client, hub["owner"], name="box-5")
+    assert refused.status_code == 409 and "waiting or locked" in refused.json()["message"]
+    sql(
+        hub_db,
+        "UPDATE worker_pairings SET created_at = created_at - interval '11 minutes', "
+        "expires_at = expires_at - interval '11 minutes' WHERE id = %s",
+        (pairings[0]["id"],),
+    )
+    assert pair(client, hub["owner"], name="box-5").status_code == 201
+
+
+def unknown_code(pairing: dict) -> str:
+    """A well-formed code whose selector is not the one of ``pairing``."""
+    return "YYYY-YYYY" if pairing["code"].startswith("ZZZZ") else "ZZZZ-ZZZZ"
+
+
+def test_refused_codes_from_one_address_are_limited(client, hub, hub_db):
+    now = [1000.0]
+    client.app.state.join_refusals.clock = lambda: now[0]
+    pairing = paired(client, hub["owner"])
+    for _ in range(3):
+        assert join(client, "ABCD-EFG").status_code == 422  # a malformed code is refused before it counts
+    for _ in range(10):
+        assert join(client, unknown_code(pairing)).status_code == 403
+        now[0] += 30  # ten refusals in four and a half minutes
+    limited = join(client, pairing["code"])  # the right code waits too
+    assert limited.status_code == 429, limited.text
+    assert limited.json()["error"] == "too_many_requests"
+    assert limited.headers["retry-after"] == "300"  # the first refusal, at 1000, leaves the window at 1600
+    assert "300 seconds" in limited.json()["message"]
+    state = client.get(f"/v1/workers/pairings/{pairing['id']}", headers=hub["owner"]).json()
+    assert (state["status"], state["tries_left"]) == ("waiting", 5)  # a 429 never reaches the pairing
+    now[0] = 1599.0
+    assert join(client, pairing["code"]).headers["retry-after"] == "1"
+    now[0] = 1600.0
+    assert joined(client, pairing["code"])["worker"]["name"] == "mac-mini"
+    assert sql(hub_db, "SELECT count(*) FROM workers") == [(1,)]
+
+
+def test_the_refusal_limit_counts_each_address_apart_and_forgets_the_least_recent():
+    now = [0.0]
+    limit = RefusalLimit(limit=2, window=60, max_clients=2, clock=lambda: now[0])
+    limit.refuse("10.0.0.1")
+    limit.refuse("10.0.0.1")
+    assert limit.retry_after("10.0.0.1") == 60 and limit.retry_after("10.0.0.2") is None
+    now[0] = 10.0
+    limit.refuse("10.0.0.2")
+    assert limit.retry_after("10.0.0.1") == 50 and limit.retry_after("10.0.0.2") is None
+    limit.refuse("10.0.0.3")  # a third address: 10.0.0.1, refused least recently, is forgotten
+    assert limit.retry_after("10.0.0.1") is None
+    limit.refuse("10.0.0.2")
+    assert limit.retry_after("10.0.0.2") == 60  # still counted: its first refusal was kept
+    now[0] = 71.0
+    assert limit.retry_after("10.0.0.2") is None  # the first refusal left the window
+
+
 def test_a_malformed_code_is_422_and_counts_against_nothing(client, hub, hub_db):
     paired(client, hub["owner"])
     for code in ("ABCD-EFG", "ABCD-EFGU", "not a pairing code"):
@@ -251,6 +320,31 @@ def test_a_member_has_at_most_five_waiting_codes(client, hub, hub_db):
     joined(client, pairings[0]["code"])  # a used code is no longer waiting
     assert pair(client, hub["owner"], name="box-5").status_code == 201
     assert pair(client, hub["owner"], name="box-6").status_code == 409
+
+
+def test_the_hub_keeps_an_hmac_of_the_code_under_the_session_secret(client, hub, hub_db, config):
+    code = paired(client, hub["owner"])["code"].replace("-", "")
+    ((selector, stored),) = sql(hub_db, "SELECT code_selector, code_hash FROM worker_pairings")
+    assert selector == code[:4]
+    assert stored != hashlib.sha256(code.encode()).hexdigest()  # a plain hash would let the rest be tried offline
+    keyed = hmac.new(config.session_secret.encode(), b"pairing-code\0" + code.encode(), hashlib.sha256).hexdigest()
+    assert stored == keyed
+
+
+def test_without_the_session_secret_pairing_and_joining_answer_503(hub_db, tmp_path, github):
+    config = live.hub_config(hub_db, tmp_path, github)  # device flow only: no session secret
+    with TestClient(create_app(config), base_url="https://hub.test") as client:
+        add_project(hub_db, "demo")
+        admin = bearer(live.sign_in(client, github, ADMIN, ADMIN_ID)["token"])
+        owner = bearer(live.sign_in(client, github, OWNER, OWNER_ID)["token"])
+        assert client.put(f"/v1/admin/projects/demo/grants/{OWNER}", json=WRITER, headers=admin).status_code == 200
+        refused = pair(client, owner)
+        assert refused.status_code == 503 and "EVO_HUB_SESSION_SECRET" in refused.json()["message"]
+        assert join(client, "ABCD-EFGH").status_code == 503
+        assert sql(hub_db, "SELECT count(*) FROM worker_pairings") == [(0,)]
+        # a machine token registers its machine directly all the same
+        body = {"name": "box", "projects": ["demo"], **HOST}
+        assert client.post("/v1/workers", json=body, headers=owner).status_code == 201
 
 
 def test_another_members_pairing_is_404(client, hub):
@@ -389,18 +483,27 @@ def test_a_member_sees_only_their_own_workers_and_a_hub_admin_sees_all(client, h
     assert client.get(f"/v1/workers/{mine['id']}", headers=hub["admin"]).status_code == 200
 
 
-def test_drain_and_undrain_change_the_status_once(client, hub, hub_db):
+def test_drain_and_undrain_change_the_status_once_and_only_the_owner_undrains(client, hub, hub_db):
     worker = joined(client, paired(client, hub["owner"])["code"])
     worker_id = worker["worker"]["id"]
+    target = f"worker:{worker_id} name=mac-mini owner={OWNER}"
     sql(hub_db, "UPDATE workers SET last_heartbeat_at = now() WHERE id = %s", (worker_id,))
     assert client.get(f"/v1/workers/{worker_id}", headers=hub["owner"]).json()["status"] == "online"
     for _ in range(2):  # the second drain changes nothing and writes no audit row
         drained = client.post(f"/v1/workers/{worker_id}/drain", headers=hub["owner"])
         assert drained.status_code == 200 and drained.json()["status"] == "draining"
     assert len(audit_rows(hub_db, "worker.drain")) == 1
-    undrained = client.post(f"/v1/workers/{worker_id}/undrain", headers=hub["admin"])
+    # a hub admin may stop another member's worker, never set it going again
+    refused = client.post(f"/v1/workers/{worker_id}/undrain", headers=hub["admin"])
+    assert refused.status_code == 403 and f"only {OWNER}" in refused.json()["message"]
+    assert client.get(f"/v1/workers/{worker_id}", headers=hub["owner"]).json()["status"] == "draining"
+    assert audit_rows(hub_db, "worker.undrain") == []
+    undrained = client.post(f"/v1/workers/{worker_id}/undrain", headers=hub["owner"])
     assert undrained.status_code == 200 and undrained.json()["status"] == "online"
-    assert audit_rows(hub_db, "worker.undrain") == [(f"worker:{worker_id} name=mac-mini owner={OWNER}", ADMIN)]
+    assert audit_rows(hub_db, "worker.undrain") == [(target, OWNER)]
+    drained = client.post(f"/v1/workers/{worker_id}/drain", headers=hub["admin"])
+    assert drained.status_code == 200 and drained.json()["status"] == "draining"
+    assert sorted(login for _, login in audit_rows(hub_db, "worker.drain")) == sorted([OWNER, ADMIN])
 
 
 def seed_plan(db, project: str = "demo") -> dict:
@@ -500,6 +603,43 @@ def test_the_owner_revokes_their_own_worker(client, hub, hub_db):
     assert audit_rows(hub_db, "worker.revoke")[0][1] == OWNER
 
 
+def test_revoking_a_worker_token_revokes_its_worker(client, hub, hub_db):
+    answer = joined(client, paired(client, hub["owner"])["code"])
+    token, token_id, worker_id = answer["token"], answer["token_id"], answer["worker"]["id"]
+    ids = seed_plan(hub_db) | {"worker": worker_id}
+    with pg.admin(hub_db.admin_dsn) as conn:
+        held = add_run(conn, ids, "running", step="1")
+    # another member's token is unknown to them, and their worker stays as it was
+    assert client.delete(f"/v1/tokens/{token_id}", headers=hub["other"]).status_code == 404
+    assert client.get(f"/v1/workers/{worker_id}", headers=hub["owner"]).json()["revoked_at"] is None
+
+    assert client.delete(f"/v1/tokens/{token_id}", headers=hub["owner"]).status_code == 204
+    shown = client.get(f"/v1/workers/{worker_id}", headers=hub["owner"]).json()
+    assert (shown["status"], shown["held_runs"]) == ("revoked", 0)
+    assert client.post("/v1/worker/no-such-route", headers=worker_headers(token)).status_code == 401
+    assert sql(hub_db, "SELECT state FROM runs WHERE id = %s", (held,)) == [("lost",)]
+    assert sql(hub_db, "SELECT state FROM runs WHERE parent_run_id = %s", (held,)) == [("queued",)]
+    assert audit_rows(hub_db, "worker.revoke") == [(f"worker:{worker_id} name=mac-mini owner={OWNER}", OWNER)]
+    assert audit_rows(hub_db, "token.revoke") == [(audit.token_target(token_id), OWNER)]
+    again = client.post(f"/v1/workers/{worker_id}/revoke", headers=hub["owner"])
+    assert again.status_code == 409 and "revoked already" in again.json()["message"]
+    assert pair(client, hub["owner"], name="mac-mini").status_code == 201  # the name is free again
+
+    # a hub admin revoking a worker token from the admin console ends that worker the same way
+    desk = joined(client, paired(client, hub["owner"], name="desk")["code"])
+    assert client.delete(f"/v1/admin/tokens/{desk['token_id']}", headers=hub["admin"]).status_code == 204
+    assert client.get(f"/v1/workers/{desk['worker']['id']}", headers=hub["owner"]).json()["status"] == "revoked"
+    assert (f"worker:{desk['worker']['id']} name=desk owner={OWNER}", ADMIN) in audit_rows(hub_db, "worker.revoke")
+    # a token no worker holds revokes no worker
+    ((machine_id,),) = sql(
+        hub_db,
+        "SELECT t.id FROM tokens t JOIN users u ON u.id = t.user_id WHERE t.kind = 'machine' AND u.login = %s",
+        (OTHER,),
+    )
+    assert client.delete(f"/v1/admin/tokens/{machine_id}", headers=hub["admin"]).status_code == 204
+    assert len(audit_rows(hub_db, "worker.revoke")) == 2
+
+
 # Logs
 
 
@@ -536,3 +676,10 @@ def test_no_log_record_holds_a_code_or_a_token(client, hub, hub_db, caplog):
 def test_a_worker_token_in_any_log_line_is_masked():
     token = "evw_" + "Wk-_9" * 8 + "abc"
     assert scrub(f"worker said {token} at join") == "worker said evw_*** at join"
+
+
+def test_a_pairing_code_in_any_log_line_is_masked():
+    assert scrub("joined with 7K2M-Q9XZ now") == "joined with *** now"
+    assert scrub('{"code": "ABCD-EF12"}') == '{"code": "***"}'
+    for kept in ("123E4567-E89B-12D3-A456-426614174000", "fast-path", "ABCD-EFGHJ", "XABCD-EFGH", "ILOU-1234"):
+        assert scrub(kept) == kept

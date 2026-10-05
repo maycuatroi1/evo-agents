@@ -3,22 +3,28 @@
 A machine joins in one of two ways. A member creates a pairing (POST /v1/workers/pairings, with a web session and its
 CSRF header or with a machine token) naming the worker, its projects, slots, labels and whether it allows the web
 terminal; every project must be one the member holds the writer role on. The answer carries a code of CODE_LENGTH
-characters of Crockford base32, written XXXX-XXXX, shown once: the hub keeps the SHA-256 of the code and its first
-SELECTOR_LENGTH characters in clear, the selector, which no two unused pairings share. A code lasts PAIRING_TTL, and a
-member has at most MAX_LIVE_PAIRINGS codes that are neither used, expired nor locked. The web follows a pairing with
-GET /v1/workers/pairings/{id}. On the machine, the daemon sends the code and its host facts to POST /v1/worker/join,
-the one public worker route: the hub finds the pairing by the selector and compares the hash of the whole code, so a
-wrong rest counts against that pairing, and MAX_WRONG_TRIES wrong tries lock it for good. Unknown, wrong, expired,
-used and locked codes all get the same 403, which names none of them. A code that matches makes the worker and its
-``evw_`` token, which the answer carries once; the pairing is used from then on. A machine signed in with
+characters of Crockford base32, written XXXX-XXXX, shown once: the hub keeps an HMAC-SHA256 of the code under the
+session secret (EVO_HUB_SESSION_SECRET; without it pairing and joining answer 503) and its first SELECTOR_LENGTH
+characters in clear, the selector, which no two unused pairings share. A code lasts PAIRING_TTL, and a member has at
+most MAX_LIVE_PAIRINGS codes that are neither used nor expired; a locked code counts until it expires, so locking codes
+on purpose cannot take more selectors. The web follows a pairing with GET /v1/workers/pairings/{id}. On the machine,
+the daemon sends the code and its host facts to POST /v1/worker/join, the one public worker route: the hub finds the
+pairing by the selector and compares the HMAC of the whole code, so a wrong rest counts against that pairing, and
+MAX_WRONG_TRIES wrong tries lock it for good. Unknown, wrong, expired, used and locked codes all get the same 403,
+which names none of them, and an address with JOIN_REFUSALS of them within JOIN_WINDOW gets 429 with Retry-After
+until the oldest leaves the window (``RefusalLimit``, in this process's memory; behind a reverse proxy the address is
+the one it forwards only for a proxy listed in EVO_HUB_FORWARDED_ALLOW_IPS). A code that matches makes the worker and
+its ``evw_`` token, which the answer carries once; the pairing is used from then on. A machine signed in with
 ``evo-agents hub login`` registers directly instead, with POST /v1/workers and its machine token.
 
 A worker belongs to the member who registered it. GET /v1/workers lists the caller's workers, every worker for a hub
 admin; GET /v1/workers/{id} shows one; drain stops new claims, undrain resumes them, and revoke ends the worker and its
 token at once. Each of them answers 404 for another member's worker, so an id tells nothing about workers one does not
-own; a hub admin may see, drain, undrain and revoke any worker. Revoking releases the runs the worker holds as the
-reaper would (``release_runs``): a run whose cancel was asked for is cancelled, a run pinned to this worker or on its
-last attempt fails, and any other becomes lost with a new attempt queued for the same step.
+own; a hub admin may see, drain and revoke any worker, but only its owner undrains one (403 for an admin). Revoking
+releases the runs the worker holds as the reaper would (``release_runs``): a run whose cancel was asked for is
+cancelled, a run pinned to this worker or on its last attempt fails, and any other becomes lost with a new attempt
+queued for the same step. Revoking a worker's token (DELETE /v1/tokens/{id}, DELETE /v1/admin/tokens/{id}) revokes
+its worker the same way, in the same transaction (``lock_worker_of_token``, then ``end_worker``).
 
 Every pairing, join, registration, drain, undrain and revocation adds an audit row naming the pairing or worker, never
 the code or the token, and neither ever reaches a log line.
@@ -26,9 +32,11 @@ the code or the token, and neither ever reaches a log line.
 
 from __future__ import annotations
 
-import hashlib
 import logging
+import math
 import secrets
+import time
+from collections import deque
 from datetime import datetime, timedelta
 from typing import Annotated, Literal
 
@@ -44,7 +52,15 @@ from evo_agents.hub.server.admin import PROJECT_NAME
 from evo_agents.hub.server.auth import NO_STORE
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.projects import project_access
-from evo_agents.hub.server.security import MACHINE, WORKER, CurrentUser, Principal, issue_token, same
+from evo_agents.hub.server.security import (
+    MACHINE,
+    WORKER,
+    CurrentUser,
+    Principal,
+    issue_token,
+    keyed_digest,
+    same,
+)
 
 log = logging.getLogger(__name__)
 
@@ -55,14 +71,19 @@ CODE_LENGTH = 8
 SELECTOR_LENGTH = 4  # the start of a code, kept in clear so a wrong try finds the pairing it is against
 PAIRING_TTL = timedelta(minutes=10)
 PAIRING_KEPT = timedelta(days=1)  # an unused pairing is deleted once its expiry is this far behind
-MAX_LIVE_PAIRINGS = 5  # per member: neither used, expired nor locked
+MAX_LIVE_PAIRINGS = 5  # per member: neither used nor expired, locked ones included
 MAX_WRONG_TRIES = 5
+PAIRING_PURPOSE = "pairing-code"  # keeps the HMAC of a code apart from every other HMAC of the session secret
+JOIN_REFUSALS = 10  # refused joins from one address within JOIN_WINDOW, before the next join gets 429
+JOIN_WINDOW = 600.0  # seconds
+MAX_JOIN_CLIENTS = 10_000  # addresses RefusalLimit tracks at once; past that it forgets the least recently refused
 DRAWS = 20  # codes drawn before giving up on a selector no unused pairing holds
 WRITER_ROLES = [role for role in ROLES if has_role(role, "writer")]
 REFUSED_CODE = (
     "the pairing code is wrong, expired, used already or locked after 5 wrong tries: create a new one on the web"
 )
 NO_WORKER = "you have no worker {id} on this hub: see GET /v1/workers"
+NO_SECRET = "pairing codes need EVO_HUB_SESSION_SECRET, which this hub does not have: ask its operator to set it"
 WORKER_NAME = r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$"  # as the workers table accepts it
 LABEL = r"^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$"
 LINE = r"^[^\x00-\x1f\x7f]+$"  # one line, without control characters
@@ -95,8 +116,69 @@ def shown_code(code: str) -> str:
     return f"{code[:SELECTOR_LENGTH]}-{code[SELECTOR_LENGTH:]}"
 
 
-def code_hash(code: str) -> str:
-    return hashlib.sha256(code.encode()).hexdigest()
+def code_hash(secret: str, code: str) -> str:
+    """How the hub keeps a code: its HMAC under the session secret. A plain hash next to the selector in clear would
+    let whoever reads worker_pairings try the 32**4 rests of the code offline."""
+    return keyed_digest(secret, PAIRING_PURPOSE, code)
+
+
+def _pairing_secret(request: Request) -> str:
+    secret = request.app.state.config.session_secret
+    if not secret:
+        raise HTTPException(503, NO_SECRET)
+    return secret
+
+
+# Refused joins
+
+
+class RefusalLimit:
+    """Refusals per client address in a sliding window, in this process's memory: an address refused ``limit``
+    times within ``window`` seconds waits until the oldest of those refusals leaves the window. At most
+    ``max_clients`` addresses are tracked; past that the one refused least recently is forgotten."""
+
+    def __init__(
+        self,
+        limit: int = JOIN_REFUSALS,
+        window: float = JOIN_WINDOW,
+        max_clients: int = MAX_JOIN_CLIENTS,
+        clock=time.monotonic,
+    ):
+        self.limit, self.window, self.max_clients, self.clock = limit, window, max_clients, clock
+        self._refused: dict[str, deque[float]] = {}  # oldest refused first
+
+    def _recent(self, client: str, now: float) -> deque[float] | None:
+        times = self._refused.get(client)
+        while times and times[0] <= now - self.window:
+            times.popleft()
+        if times is not None and not times:
+            del self._refused[client]
+            return None
+        return times
+
+    def retry_after(self, client: str) -> int | None:
+        """Whole seconds until ``client`` may try again; None while it is under the limit."""
+        now = self.clock()
+        times = self._recent(client, now)
+        if times is None or len(times) < self.limit:
+            return None
+        return max(1, math.ceil(times[0] + self.window - now))
+
+    def refuse(self, client: str) -> None:
+        """Count one refusal of ``client``."""
+        now = self.clock()
+        times = self._recent(client, now) or deque(maxlen=self.limit)
+        self._refused.pop(client, None)
+        times.append(now)
+        self._refused[client] = times  # moved to the end: refused most recently
+        while len(self._refused) > self.max_clients:
+            del self._refused[next(iter(self._refused))]
+
+
+def client_address(request: Request) -> str:
+    """Where a request came from: the peer's address, or the client's that a trusted proxy forwarded (uvicorn's
+    forwarded_allow_ips, set by EVO_HUB_FORWARDED_ALLOW_IPS)."""
+    return request.client.host if request.client else "unknown"
 
 
 # Models
@@ -335,10 +417,9 @@ async def _credential(conn, issued, worker_id: int) -> WorkerCredential:
 # Pairings
 
 PRUNE_PAIRINGS = "DELETE FROM worker_pairings WHERE used_at IS NULL AND expires_at < now() - %s"
-LIVE_PAIRINGS = (
-    "SELECT count(*) FROM worker_pairings "
-    "WHERE owner_id = %s AND used_at IS NULL AND expires_at > now() AND attempts < %s"
-)
+# A locked code holds its selector until it is pruned, so it counts as live until it expires: a member cannot take
+# more selectors by locking codes with wrong tries.
+LIVE_PAIRINGS = "SELECT count(*) FROM worker_pairings WHERE owner_id = %s AND used_at IS NULL AND expires_at > now()"
 INSERT_PAIRING = """
 INSERT INTO worker_pairings (code_selector, code_hash, owner_id, name, projects, slots, labels, allow_web_terminal,
                              expires_at)
@@ -349,21 +430,27 @@ RETURNING id, expires_at
 """
 
 
-@router.post("/pairings", status_code=201, response_model=Pairing, responses={**REFUSALS, 422: {"model": ErrorBody}})
+@router.post(
+    "/pairings",
+    status_code=201,
+    response_model=Pairing,
+    responses={**REFUSALS, 422: {"model": ErrorBody}, 503: {"model": ErrorBody}},
+)
 async def create_pairing(request: Request, body: PairingRequest, user: CurrentUser, response: Response) -> Pairing:
     """A code a machine joins with as a worker of the caller; shown once."""
     projects, labels = _unique(body.projects), _unique(body.labels)
+    secret = _pairing_secret(request)
     async with request.app.state.pool.connection() as conn:
         project_ids = await _writable(conn, user, projects)
         # One pairing of a member at a time, so two of them cannot both pass the count.
         await conn.execute("SELECT 1 FROM users WHERE id = %s FOR UPDATE", (user.user_id,))
         await conn.execute(PRUNE_PAIRINGS, (PAIRING_KEPT,))
-        live = (await (await conn.execute(LIVE_PAIRINGS, (user.user_id, MAX_WRONG_TRIES))).fetchone())[0]
+        live = (await (await conn.execute(LIVE_PAIRINGS, (user.user_id,))).fetchone())[0]
         if live >= MAX_LIVE_PAIRINGS:
             raise HTTPException(
                 409,
-                f"you have {MAX_LIVE_PAIRINGS} pairing codes waiting already: join with one of them, or wait until "
-                f"one expires ({int(PAIRING_TTL.total_seconds() // 60)} minutes after it was made)",
+                f"you have {MAX_LIVE_PAIRINGS} pairing codes waiting or locked already: join with one of them, or "
+                f"wait until one expires ({int(PAIRING_TTL.total_seconds() // 60)} minutes after it was made)",
             )
         if await _name_taken(conn, user.user_id, body.name):
             raise _name_conflict(body.name)
@@ -378,7 +465,7 @@ async def create_pairing(request: Request, body: PairingRequest, user: CurrentUs
         }
         for _ in range(DRAWS):
             code = new_code()
-            params |= {"selector": code[:SELECTOR_LENGTH], "hash": code_hash(code)}
+            params |= {"selector": code[:SELECTOR_LENGTH], "hash": code_hash(secret, code)}
             row = await (await conn.execute(INSERT_PAIRING, params)).fetchone()
             if row is not None:
                 break
@@ -463,19 +550,35 @@ OWNER_WRITES = "SELECT count(*) FROM grants WHERE user_id = %s AND project_id = 
     "/join",
     status_code=201,
     response_model=WorkerCredential,
-    responses={403: {"model": ErrorBody}, 409: {"model": ErrorBody}, 422: {"model": ErrorBody}},
+    responses={
+        403: {"model": ErrorBody},
+        409: {"model": ErrorBody},
+        422: {"model": ErrorBody},
+        429: {"model": ErrorBody, "description": "too many refused codes from this address; see Retry-After"},
+        503: {"model": ErrorBody},
+    },
 )
 async def join(request: Request, body: JoinRequest, response: Response) -> WorkerCredential:
     """Trade a pairing code for the token of a new worker; the token is shown once."""
+    limit: RefusalLimit = request.app.state.join_refusals
+    client = client_address(request)
+    wait = limit.retry_after(client)
+    if wait is not None:
+        raise HTTPException(
+            429,
+            f"too many refused pairing codes from this address: try again in {wait} seconds",
+            headers={"Retry-After": str(wait)},
+        )
     code = normal_code(body.code)
     if code is None:
         raise HTTPException(422, f"a pairing code is {CODE_LENGTH} characters of Crockford base32, written XXXX-XXXX")
+    secret = _pairing_secret(request)
     refused = False
     async with request.app.state.pool.connection() as conn:
         row = await (await conn.execute(FIND_PAIRING, (code[:SELECTOR_LENGTH],))).fetchone()
         if row is None or row[8] >= MAX_WRONG_TRIES or not row[9]:
             refused = True
-        elif not same(code_hash(code), row[1]):
+        elif not same(code_hash(secret, code), row[1]):
             # Counted in this transaction, which commits: a refusal must not roll the wrong try back.
             await conn.execute("UPDATE worker_pairings SET attempts = attempts + 1 WHERE id = %s", (row[0],))
             refused = True
@@ -483,6 +586,9 @@ async def join(request: Request, body: JoinRequest, response: Response) -> Worke
         else:
             credential = await _join(conn, row, body)
     if refused:
+        limit.refuse(client)
+        if limit.retry_after(client) is not None:
+            log.warning("pairing joins limited", extra={"refusals": limit.limit, "window_s": limit.window})
         raise HTTPException(403, REFUSED_CODE)
     response.headers.update(NO_STORE)
     return credential
@@ -585,7 +691,11 @@ def _target(worker_id: int, name: str, owner: str) -> str:
 
 async def _set_drain(request: Request, user: Principal, worker_id: int, drain: bool) -> Worker:
     async with request.app.state.pool.connection() as conn:
-        _, owner, name, _, drained_at, revoked_at = await _owned(conn, user, worker_id, lock=True)
+        owner_id, owner, name, _, drained_at, revoked_at = await _owned(conn, user, worker_id, lock=True)
+        if not drain and owner_id != user.user_id:  # a hub admin may stop a worker, never set one going again
+            raise HTTPException(
+                403, f"only {owner}, who owns worker {worker_id}, may undrain it; a hub admin may drain or revoke it"
+            )
         if revoked_at is not None:
             raise HTTPException(409, f"worker {worker_id} was revoked at {revoked_at.isoformat()}; it takes no runs")
         if (drained_at is not None) != drain:  # drained already, or not drained: nothing changes, nothing is audited
@@ -606,7 +716,7 @@ async def drain(request: Request, worker_id: WorkerId, user: CurrentUser) -> Wor
 
 @router.post("/{worker_id}/undrain", response_model=Worker, responses=REFUSALS)
 async def undrain(request: Request, worker_id: WorkerId, user: CurrentUser) -> Worker:
-    """Let a drained worker claim runs again."""
+    """Let a drained worker claim runs again; its owner only."""
     return await _set_drain(request, user, worker_id, False)
 
 
@@ -617,14 +727,38 @@ async def revoke(request: Request, worker_id: WorkerId, user: CurrentUser) -> Wo
         _, owner, name, token_id, _, revoked_at = await _owned(conn, user, worker_id, lock=True)
         if revoked_at is not None:
             raise HTTPException(409, f"worker {worker_id} was revoked already, at {revoked_at.isoformat()}")
-        await conn.execute("UPDATE workers SET revoked_at = now() WHERE id = %s", (worker_id,))
-        await conn.execute("UPDATE tokens SET revoked_at = now() WHERE id = %s AND revoked_at IS NULL", (token_id,))
-        released = await release_runs(conn, worker_id, f"its worker {name} was revoked")
-        target, action = _target(worker_id, name, owner), audit.WORKER_REVOKE
-        await audit.record(conn, actor_id=user.user_id, token_id=user.token_id, action=action, target=target)
+        released = await end_worker(conn, user, worker_id, name, owner, token_id)
         worker = await _one_worker(conn, worker_id)
     log.info("worker revoked", extra={"worker_id": worker_id, "by": user.login, "runs_released": released})
     return worker
+
+
+LIVE_WORKER_OF_TOKEN = """
+SELECT w.id, w.name, u.login
+  FROM workers w JOIN users u ON u.id = w.owner_id
+ WHERE w.token_id = %(token)s AND w.revoked_at IS NULL AND (%(owner)s::bigint IS NULL OR w.owner_id = %(owner)s)
+   FOR UPDATE OF w
+"""
+
+
+async def lock_worker_of_token(conn, token_id: int, owner_id: int | None = None) -> tuple[int, str, str] | None:
+    """(id, name, owner login) of the live worker whose token is ``token_id``, of ``owner_id`` when given, with its
+    row locked; None for any other token. Called before the token's row is changed, so a token revocation locks the
+    two rows in the order POST /v1/workers/{id}/revoke does, and neither waits on the other in the opposite order."""
+    params = {"token": token_id, "owner": owner_id}
+    row = await (await conn.execute(LIVE_WORKER_OF_TOKEN, params)).fetchone()
+    return None if row is None else tuple(row)
+
+
+async def end_worker(conn, actor: Principal, worker_id: int, name: str, owner: str, token_id: int) -> int:
+    """Revoke a live worker whose row the caller holds locked, and its token, release the runs it holds and add the
+    worker.revoke audit row, all in the caller's transaction. Returns how many runs were released."""
+    await conn.execute("UPDATE workers SET revoked_at = now() WHERE id = %s", (worker_id,))
+    await conn.execute("UPDATE tokens SET revoked_at = now() WHERE id = %s AND revoked_at IS NULL", (token_id,))
+    released = await release_runs(conn, worker_id, f"its worker {name} was revoked")
+    target, action = _target(worker_id, name, owner), audit.WORKER_REVOKE
+    await audit.record(conn, actor_id=actor.user_id, token_id=actor.token_id, action=action, target=target)
+    return released
 
 
 # The runs of a worker that goes away

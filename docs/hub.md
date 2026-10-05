@@ -30,13 +30,16 @@ A request carries one of three credentials:
   DELETE) also needs the `X-Evo-CSRF` header, whose value `GET /v1/auth/web/csrf` hands out;
 - a worker token (`evw_...`) as `Authorization: Bearer`, which a worker gets once when it joins or registers. It
   works only on `/v1/worker/*`, where machine tokens and web sessions get 403, and gets 403 everywhere else
-  (`docs/workers.md`).
+  (`docs/workers.md`). Revoking it (`DELETE /v1/tokens/{id}`, or `DELETE /v1/admin/tokens/{id}`) revokes its worker
+  too and releases the runs the worker holds.
 
 Only the health checks, the OpenAPI document, the first steps of sign-in (`/v1/auth/config`, `/v1/auth/github`,
 `/v1/auth/web/login`, `/v1/auth/web/callback`) and a worker's join with a pairing code (`/v1/worker/join`) answer
 without one. A route added later needs a credential unless it is added to that list in
 `evo_agents/hub/server/security.py`. Postgres keeps only the SHA-256 of a token. A token nobody uses for 90 days
-expires, and each use moves the expiry forward.
+expires, and each use moves the expiry forward. The join is public, so it is limited: 10 refused pairing codes from one
+client address within 10 minutes, and that address gets 429 with `Retry-After` (see `EVO_HUB_FORWARDED_ALLOW_IPS`
+below for the address behind a proxy).
 
 | Area | Routes |
 | --- | --- |
@@ -320,13 +323,14 @@ the variables in the platform's environment, never in a committed file. `deploy/
 | `EVO_HUB_ADMINS` | api | GitHub logins of hub admins, comma-separated |
 | `EVO_HUB_GITHUB_CLIENT_ID` | api | the OAuth App's client id; without it nobody can sign in |
 | `EVO_HUB_GITHUB_CLIENT_SECRET` | api | the OAuth App's secret, for web sign-in and the App check |
-| `EVO_HUB_SESSION_SECRET` | api | at least 32 random characters; signs session and CSRF values |
+| `EVO_HUB_SESSION_SECRET` | api | at least 32 random characters; signs session and CSRF values and keys the hashes of worker pairing codes, which answer 503 without it |
 | `EVO_HUB_PUBLIC_URL` | api | the URL browsers use, such as `https://hub.example.org` |
 | `EVO_HUB_S3_ENDPOINT`, `EVO_HUB_S3_BUCKET`, `EVO_HUB_S3_ACCESS_KEY_ID`, `EVO_HUB_S3_SECRET_ACCESS_KEY` | api, worker | the blob store, all four or none; for R2 the endpoint is `https://<account id>.r2.cloudflarestorage.com` |
 | `EVO_HUB_SENTRY_DSN` | api, worker | optional error reporting |
 | `EVO_HUB_LOG_LEVEL` | api, worker | `DEBUG`, `INFO` (default), `WARNING` or `ERROR` |
 | `EVO_HUB_BLOB_CONCURRENCY` | api | uploads one process checks and copies in the blob store at once, every commit together; default `32`, at most `256` |
 | `EVO_HUB_KG_KEEP_ARTIFACTS` | api, worker | newest built graphs of each project whose artifact stays in the bucket; older ones are deleted every hour; default `3`, at least `1` |
+| `EVO_HUB_FORWARDED_ALLOW_IPS` | api | the reverse proxies whose `X-Forwarded-For` the api believes: IP addresses or networks, comma-separated, or `*`; unset keeps uvicorn's default, the loopback addresses (or its own `FORWARDED_ALLOW_IPS`) |
 | `EVO_HUB_WORKER_CPUS`, `EVO_HUB_WORKER_MEMORY` | compose | worker limits, default `2` and `4g` |
 | `EVO_HUB_API_INTERNAL_URL` | web | where the web server reaches the api, default `http://evo-agents-hub-api:8080` (the api's network alias) |
 | `EVO_HUB_WEB_TIME_ZONE` | web | time zone of dates rendered on the server, default `Asia/Ho_Chi_Minh` |
@@ -339,6 +343,12 @@ or malformed variable stops the process with a log line naming it.
 The reverse proxy routes the public domain: `/v1` and `/mcp` to the api on port 8080, everything else to the web on
 port 3000. `EVO_HUB_PUBLIC_URL` must be that domain, because the web sign-in callback and the `/mcp` host check both
 use it.
+
+The api sees the proxy's address as the client's unless `EVO_HUB_FORWARDED_ALLOW_IPS` lists the proxy. The limit on
+refused pairing codes counts per client address, so behind a proxy that is not listed, 10 wrong codes from anyone hold
+every join for 10 minutes. List the address or network the proxy reaches the api from, as `docker inspect` shows it on
+the shared network, and nothing wider: a listed address can claim any client address in `X-Forwarded-For`, and `*`
+lets every client do that. The default trusts nobody new.
 
 ### Running the stack locally
 
@@ -401,8 +411,9 @@ answers from its cache. Point uptime monitoring at `/v1/health`.
 
 **Logs.** The api and the worker write JSON lines to stderr. The api writes one access line per request, with its
 id and without the query string, and one line per MCP tool call with its name and outcome but not its arguments.
-Tokens, DSN passwords, S3 keys and presigned signatures are masked before a line is written. Set
-`EVO_HUB_SENTRY_DSN` to also send errors to Sentry.
+Tokens, worker pairing codes, DSN passwords, S3 keys and presigned signatures are masked before a line is written.
+Set `EVO_HUB_SENTRY_DSN` to also send errors to Sentry; an event carries no request body, query string, cookie or
+local variable and goes through the same masking.
 
 **Upgrades.** Set `EVO_HUB_VERSION` to the new release, pull, and recreate the services; the api migrates on start.
 Take a backup first when the release notes mention a migration.
