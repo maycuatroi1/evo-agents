@@ -27,7 +27,11 @@ picked. pinned_worker_id is the worker a dispatch named, worker_id the one that 
 'queued' other than to 'cancelled' or 'failed' was claimed, so it has a worker, a runtime and leased_at; a held run
 has a lease, which the reaper reads; a final run has finished_at, and a failed one an error. attempt counts the runs of
 one dispatch, at most max_attempts (3, as runs.MAX_ATTEMPTS), and each one after the first names the run it
-retries. At most one run of a step is active, which a partial unique index over the active states holds.
+retries. At most one run of a step is active, which a partial unique index over the active states holds. title is
+the step's title when the run was dispatched, for lists and search. takeover_requested_at and handback_requested_at
+are the owner's asks to switch a held run between headless and interactive, which the heartbeat hands the worker: a
+takeover only while the run is leased or running, a handback only while it is interactive, and a move out of those
+states drops the ask.
 
 run_events is a run's log. seq is the hub's own count over all of the run's events, the worker's and the hub's;
 runs.event_seq is the last seq it gave out. A worker numbers its events too, and runs.events_acked is the highest of
@@ -76,6 +80,7 @@ HELD = "('leased', 'running', 'interactive', 'verifying')"
 ACTIVE = "('queued', 'leased', 'running', 'interactive', 'verifying', 'review')"
 TERMINAL = "('done', 'failed', 'lost', 'cancelled')"
 UNCLAIMED = "('queued', 'cancelled', 'failed')"  # the states of a run no worker claimed
+TAKEOVER_FROM = "('leased', 'running')"  # the states a takeover may be asked in
 EVENT_KINDS = (
     "('agent_message_chunk', 'agent_thought_chunk', 'tool_call', 'tool_call_update', 'plan', 'usage_update', "
     "'user_message', 'state', 'system', 'output')"
@@ -157,6 +162,7 @@ UPGRADE = (
         project_id bigint NOT NULL REFERENCES projects (id) ON DELETE RESTRICT,
         plan_id text NOT NULL,
         step_key text NOT NULL CHECK ({_line("step_key", 200)}),
+        title text CHECK ({_line("title", 200)}),  -- the step's, when the run was dispatched
         plan_revision integer NOT NULL,
         dispatched_by bigint NOT NULL REFERENCES users (id) ON DELETE RESTRICT,
         pinned_worker_id bigint REFERENCES workers (id) ON DELETE RESTRICT,
@@ -185,6 +191,8 @@ UPGRADE = (
         event_seq integer NOT NULL DEFAULT 0,  -- the last run_events.seq given out
         events_acked integer NOT NULL DEFAULT 0,  -- ack_seq, counted in the numbers of the worker
         cancel_requested_at timestamptz,
+        takeover_requested_at timestamptz,  -- the owner asked to drive the agent in a terminal
+        handback_requested_at timestamptz,  -- the owner asked to let the agent go on headless
         queued_at timestamptz NOT NULL DEFAULT now(),
         leased_at timestamptz,
         started_at timestamptz,
@@ -200,7 +208,9 @@ UPGRADE = (
         CHECK (state NOT IN {HELD} OR lease_expires_at IS NOT NULL),
         CHECK ((state IN {TERMINAL}) = (finished_at IS NOT NULL)),
         CHECK (state <> 'failed' OR error IS NOT NULL),
-        CHECK (events_acked BETWEEN 0 AND event_seq)
+        CHECK (events_acked BETWEEN 0 AND event_seq),
+        CHECK (takeover_requested_at IS NULL OR state IN {TAKEOVER_FROM}),
+        CHECK (handback_requested_at IS NULL OR state = 'interactive')
     )
     """,
     f"CREATE UNIQUE INDEX runs_active_step_key ON runs (project_id, plan_id, step_key) WHERE state IN {ACTIVE}",
@@ -209,6 +219,7 @@ UPGRADE = (
     f"CREATE INDEX runs_lease_idx ON runs (lease_expires_at) WHERE state IN {HELD}",  # the reaper's scan
     "CREATE INDEX runs_worker_idx ON runs (worker_id, id DESC) WHERE worker_id IS NOT NULL",
     "CREATE INDEX runs_project_idx ON runs (project_id, id DESC)",
+    "CREATE INDEX runs_step_idx ON runs (project_id, plan_id, step_key, id DESC)",  # the runs of one step
     f"""
     CREATE TABLE run_events (
         run_id bigint NOT NULL REFERENCES runs (id) ON DELETE CASCADE,

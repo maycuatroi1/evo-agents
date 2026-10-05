@@ -392,6 +392,11 @@ def test_the_claim_and_the_reaper_read_through_an_index(db):
         ("UPDATE runs SET events_acked = 3 WHERE id = {done_run}", errors.CheckViolation),
         ("UPDATE runs SET step_key = '' WHERE id = {run}", errors.CheckViolation),
         ("UPDATE runs SET log_sha256 = 'sha256:' || repeat('a', 64) WHERE id = {done_run}", errors.CheckViolation),
+        ("UPDATE runs SET title = '' WHERE id = {run}", errors.CheckViolation),
+        ("UPDATE runs SET title = repeat('t', 201) WHERE id = {run}", errors.CheckViolation),
+        ("UPDATE runs SET title = E'two\\nlines' WHERE id = {run}", errors.CheckViolation),
+        ("UPDATE runs SET takeover_requested_at = now() WHERE id = {run}", errors.CheckViolation),  # queued
+        ("UPDATE runs SET handback_requested_at = now() WHERE id = {done_run}", errors.CheckViolation),
         ("DELETE FROM plans WHERE plan_id = 'worker-fleet'", errors.ForeignKeyViolation),
         # events and inbox
         ("INSERT INTO run_events (run_id, seq, kind, body) VALUES ({run}, 1, 'stdout', '{{}}')", errors.CheckViolation),
@@ -440,10 +445,12 @@ def test_constraints_accept_good_rows(db):
         # a run through its states as the worker reports them, pinned to the worker that claims it
         "UPDATE runs SET state = 'leased', worker_id = {worker}, pinned_worker_id = {worker}, runtime = 'codex', "
         "leased_at = now(), lease_expires_at = now() + interval '5 minutes' WHERE id = {run}",
-        "UPDATE runs SET state = 'running', started_at = now(), session_id = '0199a3c1-0000-7000-8000-00000000000a' "
+        "UPDATE runs SET state = 'running', started_at = now(), session_id = '0199a3c1-0000-7000-8000-00000000000a', "
+        "title = 'Log trực tiếp, inbox và kết quả', takeover_requested_at = now() WHERE id = {run}",
+        "UPDATE runs SET state = 'interactive', cancel_requested_at = now(), takeover_requested_at = NULL, "
+        "handback_requested_at = now() WHERE id = {run}",
+        "UPDATE runs SET state = 'verifying', event_seq = 40, events_acked = 37, handback_requested_at = NULL "
         "WHERE id = {run}",
-        "UPDATE runs SET state = 'interactive', cancel_requested_at = now() WHERE id = {run}",
-        "UPDATE runs SET state = 'verifying', event_seq = 40, events_acked = 37 WHERE id = {run}",
         "UPDATE runs SET state = 'review', lease_expires_at = NULL, commit_sha = repeat('a', 40), "
         "diffstat = '{diffstat}', verify = '{verify}', evidence = 'commit aaaaaaa; ruff 0', usage = '{usage}', "
         "log_sha256 = repeat('b', 64), diff_sha256 = repeat('c', 64) WHERE id = {run}",

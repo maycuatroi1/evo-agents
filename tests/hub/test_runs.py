@@ -772,6 +772,33 @@ def test_a_heartbeat_keeps_the_reaper_away_and_an_asked_cancel_ends_cancelled(cl
     assert step(client, hub["owner"], 2)["status"] == "pending"
 
 
+def test_a_run_past_its_timeout_fails_and_is_not_tried_again(client, hub, hub_db):
+    worker = add_worker(client, hub["owner"], "mac-mini")
+    run_id = dispatched(client, hub["owner"], [2], timeout_min=5)[0]["id"]
+    claim(client, worker)
+    moved(client, worker, run_id, "running")
+    assert recover(client) == {"lost": 0, "failed": 0, "cancelled": 0}
+    sql(hub_db, "UPDATE runs SET started_at = now() - interval '301 seconds' WHERE id = %s", (run_id,))
+    beat(client, worker, runs_held=[run_id])  # a lease the worker keeps extending does not keep the timeout away
+    assert recover(client) == {"lost": 0, "failed": 1, "cancelled": 0}
+    reason = "it ran past its timeout of 5 minutes"
+    assert sql(hub_db, "SELECT state, error FROM runs WHERE id = %s", (run_id,)) == [("failed", reason)]
+    assert moves(hub_db, run_id)[-1] == (3, "running", "failed", "reaper")
+    assert sql(hub_db, "SELECT count(*) FROM runs WHERE parent_run_id = %s", (run_id,)) == [(0,)]
+    back = step(client, hub["owner"], 2)
+    assert (back["status"], back["note"]) == ("pending", f"run #{run_id} failed: {reason}")
+    assert beat(client, worker, runs_held=[run_id])["runs"][0]["cancel"] is True  # the worker stops the agent
+    # a run not started yet counts from its claim, and one whose cancel was asked for ends cancelled
+    second = dispatched(client, hub["owner"], [4], timeout_min=5)[0]["id"]
+    claim(client, worker)
+    assert control(client, hub["owner"], second, "cancel").status_code == 200
+    assert recover(client) == {"lost": 0, "failed": 0, "cancelled": 0}
+    sql(hub_db, "UPDATE runs SET leased_at = now() - interval '301 seconds' WHERE id = %s", (second,))
+    assert recover(client) == {"lost": 0, "failed": 0, "cancelled": 1}
+    assert state_of(hub_db, second) == "cancelled"
+    assert moves(hub_db, second)[-1] == (2, "leased", "cancelled", "reaper")
+
+
 def test_revoking_a_worker_fails_its_pinned_runs_and_their_steps_go_back_to_pending(client, hub, hub_db):
     worker = add_worker(client, hub["owner"], "mac-mini")
     held = dispatched(client, hub["owner"], [2], worker_id=worker["id"])[0]["id"]

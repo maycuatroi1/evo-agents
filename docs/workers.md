@@ -11,11 +11,12 @@ on: the run states and who may change them, a worker's status, the event kinds, 
 prompt a run gives its agent. It needs only the standard library, so the api and the daemon share it. Schema 0009
 holds the tables, and `evo_agents/hub/server/workers.py` the routes that register and stop workers (pairings, join,
 direct registration, list, drain, undrain, revoke). `evo_agents/hub/server/runs.py` holds the queue: ready steps,
-dispatch, claim, heartbeat, state reports, and the owner's cancel, approve and rerun; `evo_agents/hub/server/run_state.py`
-moves runs, records each move in the plan, and holds the reaper and the pruning of events. Events, the event stream,
-messages, takeover, the terminal and the `evo-agents worker` daemon come in later releases, and this page changes
-with them. The daemon has its own command group because `evo-agents hub worker` is
-already the server's job worker (see `docs/hub.md`).
+dispatch, claim, heartbeat, state reports, the list of runs, and the owner's cancel, approve, rerun, takeover and
+handback; `evo_agents/hub/server/run_state.py` moves runs, records each move in the plan, and holds the reaper and the
+pruning of events; `evo_agents/hub/server/run_events.py` holds a run's events, their stream, the owner's messages and
+the log and diff the worker uploads. The terminal and the `evo-agents worker` daemon come in later releases, and this
+page changes with them. The daemon has its own command group because `evo-agents hub worker` is already the server's
+job worker (see `docs/hub.md`).
 
 ## Entities
 
@@ -28,10 +29,10 @@ already the server's job worker (see `docs/hub.md`).
 | run event | one entry of a run's log, numbered within the run | `run_events` |
 | inbox message | a message from the owner to the run's agent, waiting for the worker | `run_inbox` |
 
-A run records the project, plan and step key, the plan revision it was dispatched from, who dispatched it, the worker
-(or the worker it is pinned to), the runtime the dispatch asked for (`requested_runtime`: `claude-code`, `opencode`,
-`codex` or `any`, which the next attempt asks for again) and the one the run has (`runtime`: the same, except that
-`any` becomes the runtime the claiming worker picked), the
+A run records the project, plan and step key, the step's title at dispatch, the plan revision it was dispatched from,
+who dispatched it, the worker (or the worker it is pinned to), the runtime the dispatch asked for
+(`requested_runtime`: `claude-code`, `opencode`, `codex` or `any`, which the next attempt asks for again) and the one
+the run has (`runtime`: the same, except that `any` becomes the runtime the claiming worker picked), the
 mode (`headless` or `interactive`), the approval (`auto` or `review`), a timeout of 5 to 240 minutes, its attempt out
 of at most 3, the run it retries (`parent_run_id`), its state and lease, the agent's session id, the repo and branch,
 and at the end the commit, diffstat, verify results, evidence, usage and error.
@@ -63,7 +64,9 @@ acts on them with the owner's permissions. Whoever controls the hub server itsel
 through the API, can hand work to every worker; signing dispatches with a key kept on the owner's machine is an open
 question. The web terminal is a remote shell into the machine, which is why it has the extra checks under
 [Terminal](#terminal). Every dispatch, cancel, approve, rerun, pairing, join, registration, drain, revoke and terminal
-session leaves an audit row (`run.*`, `worker.*`, `terminal.open`, `terminal.close`).
+session leaves an audit row (`run.*`, `worker.*`, `terminal.open`, `terminal.close`), and so does each message,
+takeover and handback (`run.message`, `run.takeover`, `run.handback`); a row names the run and the message by id,
+never the text.
 
 ## Worker status
 
@@ -124,6 +127,11 @@ once to the runs it holds; a held run pinned to that worker fails rather than co
 pinned to it, since no other worker may claim either. Each of these moves writes a `state` event with the actor
 `reaper`. Cancelling a held run sets `cancel_requested_at`; the next heartbeat tells the worker, which stops the agent
 and reports `cancelled`.
+
+The reaper also ends a held run that ran past its timeout, counted from when the agent started, or from the claim
+while it has not: such a run ends `failed` with the error `it ran past its timeout of N minutes` (or `cancelled`, when
+its cancel was asked for) and is not tried again, and the next heartbeat tells the worker to stop it. The reaper looks at
+timeouts before leases, so a run both past its timeout and without a lease fails rather than coming back.
 
 The hub writes the plan as the member who dispatched the run, through the same item update as `evo harness step`
 (PATCH's own write), with `if_revision`, retrying up to 5 times on a revision conflict; each try reads the plan again.
@@ -276,7 +284,9 @@ answers with control:
 For each run: whether to `cancel` (the owner asked for it), `takeover`, `handback` or open the terminal
 (`terminal_open`), and how many `inbox` messages wait; for the worker, whether to `drain`. A run the worker reports
 but no longer holds (lost, cancelled, or another worker's now) comes back with `held: false`, `state: null` and
-`cancel: true`. Takeover, handback and the terminal stay false until the routes that ask for them exist.
+`cancel: true`. `takeover` stays true from the owner's ask until the worker reports `interactive`, and `handback`
+until it reports `running` (see [Takeover and handback](#takeover-and-handback)); `terminal_open` stays false until
+the terminal relay exists.
 
 ### State
 
@@ -300,17 +310,51 @@ answer is safe. The answer is the run as the hub holds it.
 
 ### Events
 
-`POST /v1/worker/runs/{id}/events` sends a batch of at most 500 events and 1 MiB. Each event has `seq`, `at`, `kind`
-and `body`. `seq` is the worker's own count for the run: 1 for the first event and one more for each next. The hub
-remembers the highest `seq` it has stored with none missing below it and answers with it as `ack_seq`; the daemon
-then deletes its spool up to there. An event at or below `ack_seq` is a resend and is skipped, so a batch can always
-be sent again safely; one that comes after a gap is not stored, and the daemon sends again from `ack_seq + 1`.
+`POST /v1/worker/runs/{id}/events` sends a batch of at most 500 events and 1 MiB of request (413 with the detail
+`{"limit": "batch_bytes"}` beyond, before anything is parsed). Each event has `seq`, `at` (with its time zone; a time
+after the hub's clock is stored as the hub's now), `kind` (one of the worker's kinds below: `user_message` and `state`
+get 422) and `body`, a JSON object:
+
+```json
+{"events": [{"seq": 41, "at": "2026-10-05T09:12:03.120Z", "kind": "agent_message_chunk", "body": {"text": "..."}}]}
+```
+
+`seq` is the worker's own count for the run: 1 for the first event and one more for each next. The hub remembers the
+highest `seq` it has stored with none missing below it and answers with it as `ack_seq`, with how many events of the
+batch it `stored`; the daemon then deletes its spool up to there. The hub takes a batch in `seq` order. An event at
+or below `ack_seq` is a resend and is skipped, so a batch can always be sent again safely; one that comes after a gap
+is not stored, and neither is anything after it, so the daemon sends again from `ack_seq + 1`. The worker that claimed
+the run sends its events while it holds the run and after (its spool may still hold some when the run ends; it sends
+them before the report that ends the run); any other worker gets 404.
 
 The hub numbers what it stores itself: `run_events.seq` counts all of the run's events, those from the worker and
 those the hub writes (`user_message` when the owner sends a message, `state` on each move), and is what
-`events?after=SEQ` and the SSE stream's `Last-Event-ID` refer to. A body over 64 KiB is cut and the event marked
-`truncated`. A run keeps at most 20,000 events; a batch beyond that gets 413. The full log and the diff go to the blob
-store when the run ends, as blob kinds `run-log` (64 MiB) and `run-diff` (8 MiB).
+`events?after=SEQ` and the SSE stream's `Last-Event-ID` refer to. The number is given under the run's row lock, so a
+reader never sees an event before the ones numbered below it. A body whose JSON is over 64 KiB is cut and the event
+marked `truncated`: its longest strings end early with the mark `[cut by the hub: the event was over 65536 bytes]`, so
+its keys stay, and a body of many short values becomes `{"cut": "<the start of its JSON>"}`. A run keeps at most
+20,000 events of the worker and the owner: a batch that would pass it stores nothing and gets 413 with the detail
+`{"limit": "events_per_run", "max": 20000, "ack_seq": N}`, and the worker should send no more of that run's events.
+The hub's own `state` events are written past the limit, since a move must never fail for it.
+
+### The inbox
+
+The owner's messages wait in the run's inbox until the worker takes them: the heartbeat counts them (`inbox`), and
+`POST /v1/worker/runs/{id}/inbox` with `{"ack": ID}` marks the messages up to `ID` delivered, the ones the daemon
+handed to the agent, and answers with those still waiting, oldest first, at most 100 (`{"messages": [{id, text,
+sent_by, created_at}]}`). The body may be left out to read without acknowledging. Only the worker holding the run
+reads its inbox (404 otherwise).
+
+### Log and diff
+
+When the run ends, the worker uploads the whole log as blob kind `run-log` (at most 64 MiB) and the diff of the run's
+commits as `run-diff` (at most 8 MiB), through the blob store's own uploads and commit, as its owner, who must still
+hold writer on the project. `POST /v1/worker/runs/{id}/uploads` takes `{"items": [{sha256, size, kind}]}`, one item of
+each kind at most (another kind gets 422, a size over the kind's limit 413), and answers as `POST /v1/blobs/uploads`:
+a presigned PUT per blob the project does not hold yet. The worker PUTs the bytes, then `POST
+/v1/worker/runs/{id}/blobs` with `{"upload_ids": [...]}` checks and commits them as `POST /v1/blobs/commit` does (an
+upload of another kind is unknown, 422) and records them on the run (`log_sha256`, `diff_sha256`). Only the worker
+that claimed the run uploads for it.
 
 ### When the hub does not answer
 
@@ -329,6 +373,8 @@ For the worker, with an `evw_` token and the version header:
 | `POST /v1/worker/heartbeat` | reports the machine, extends leases, returns control |
 | `POST /v1/worker/runs/{id}/state` | reports a move |
 | `POST /v1/worker/runs/{id}/events` | sends a batch of events |
+| `POST /v1/worker/runs/{id}/inbox` | acknowledges messages handed to the agent, takes the waiting ones |
+| `POST /v1/worker/runs/{id}/uploads`, `/blobs` | uploads the run's log and diff, records them on the run |
 | websocket `/v1/worker/runs/{id}/terminal` | the worker's end of the terminal |
 
 For members, with a web session or a machine token. `{p}` is a project, and run routes sit under
@@ -343,7 +389,7 @@ For members, with a web session or a machine token. `{p}` is a project, and run 
 | `POST /v1/workers/{id}/undrain` | owner | resume claims |
 | `GET /v1/projects/{p}/plans/{plan}/ready-steps` | reader | every step, with whether it may be dispatched and why not |
 | `POST /v1/projects/{p}/runs` | writer | dispatch steps, all or none |
-| `GET /v1/projects/{p}/runs`, `GET .../runs/{id}` | reader | list and show runs |
+| `GET /v1/projects/{p}/runs`, `GET .../runs/{id}` | reader | list (filters, pages, counts by state) and show runs |
 | `GET .../runs/{id}/events?after=SEQ` | reader | events after a number |
 | `GET .../runs/{id}/stream` | reader | the same as server-sent events, with a ping every 15 s, resumed by `Last-Event-ID` |
 | `GET .../runs/{id}/diff` | reader | a presigned URL of the run's diff |
@@ -369,6 +415,54 @@ that ends the run `cancelled` too). `.../approve` moves a run in review to `done
 evidence the run got when it went to review. `.../rerun` queues the step of a run that ended again, at the plan's
 current revision, with the same requested runtime, mode, approval, timeout and pinned worker, attempt 1 and
 `parent_run_id` naming the old run; the step must be ready again. Approve and rerun need the writer role.
+
+### Reading runs
+
+A member with a grant on the project reads its runs, of the plans it may read through the sink it names
+(`X-Evo-Sink`, the project's hub sink without one), by the plan's label as the hub holds it now: a run of a plan it
+may not read, or of a plan no longer on the hub, reads as no run (404), and a hub admin without a grant gets 403.
+
+`GET /v1/projects/{p}/runs` lists runs newest first. It takes `state` (repeated for several), `plan_id`, `step` (a
+step key), `worker_id`, `dispatched_by` (a login, in any case) and `q`, text found in the step's title, the step key,
+the plan, the repo, the branch, the worker's name, the dispatcher's login or the error (`%` and `_` taken literally),
+or a run number such as `#12`; and `limit` (1 to 200, 50 by default) and `offset`. The answer has the page of
+`runs`, the `total` that match every filter, and `counts`, the runs in each of the ten states that match the other
+filters, every state present: what the summary cards and the state facet show, so picking a state does not change
+the counts beside it. `GET .../runs/{id}` shows one run. A run carries the step's `title`, `last_seq` (its latest
+event, 0 before the first), `log_sha256` and `diff_sha256`, and the owner's open asks (`cancel_requested_at`,
+`takeover_requested_at`, `handback_requested_at`).
+
+`GET .../runs/{id}/events?after=SEQ` answers the events after `SEQ` in seq order, at most `limit` (500 by default,
+1,000 at most), only the kinds named when `kind` is given, with the run's `state`, its `last_seq` and whether `more`
+follow. `GET .../runs/{id}/stream` sends the same events as server-sent events (`text/event-stream`, through FastAPI's
+own `EventSourceResponse`): each one's `id` is its seq and its `data` the event as `events` answers it. A first
+connection starts after `after` (0 by default), and a reconnecting browser's `Last-Event-ID` wins over it, so an
+`EventSource` resumes where it stopped without a gap or a repeat. FastAPI sends a `: ping` comment after 15 idle
+seconds, which keeps proxies from closing the stream. Once the run is final and every event of it was sent, the stream
+sends `event: end` with `{"state": ..., "last_seq": ...}` and closes; a client should stop there instead of
+reconnecting. A stream holds no database connection while it waits: a notification on the Postgres channel
+`evo_run_events`, which each write of a run's events sends with the run's id, wakes it, and it also looks again every
+5 seconds, so a missed notification delays an event and never loses one. Every claim and stream of an api process
+shares one listening connection.
+
+`GET .../runs/{id}/diff` answers a presigned GET of the run's diff, working for 5 minutes, with its sha256 and size;
+`download=true` asks the store to answer as the attachment `run-<id>.diff`. A run without a diff gets 404.
+
+### Messages
+
+`POST .../runs/{id}/messages` with `{"text": "..."}` (at most 8 KiB of UTF-8, not blank) leaves a message for the
+run's agent, while the run is queued or held (409 otherwise: no agent would read it). The run's log gets a
+`user_message` event `{"text", "from", "message_id"}` and the answer is the message with its `seq`. Only the owner
+sends messages (403 for another member), and a message counts against the run's 20,000 events (413).
+
+### Takeover and handback
+
+`POST .../runs/{id}/takeover` asks the worker of a `leased` or `running` run to stop the agent at the end of its turn
+and resume its session in a terminal, where a person drives it; `POST .../runs/{id}/handback` asks the worker of an
+`interactive` run to let the agent go on headless in the same session. Each sets `takeover_requested_at` or
+`handback_requested_at`, the next heartbeat says `takeover` or `handback`, and the worker's report of `interactive`
+or `running` ends the ask; any other move out of the states it was asked in drops it too. A run in another state gets
+409. Asking again while an ask is open changes nothing and writes no second audit row. Only the owner asks.
 
 ## Event kinds
 
@@ -420,9 +514,13 @@ it replays when the browser connects again.
 | refused joins | 10 per client address in 10 minutes, then 429 |
 | prompt | 32 KiB |
 | event batch | 500 events and 1 MiB |
-| event body | 64 KiB, longer ones cut and marked `truncated` |
-| events per run | 20,000 |
+| event body | 64 KiB of JSON, longer ones cut and marked `truncated` |
+| events per run | 20,000 of the worker and the owner |
+| events per read | 500 by default, 1,000 at most |
+| runs per page of the list | 50 by default, 200 at most |
+| stream | a ping after 15 idle seconds, a look every 5 s besides the notifications |
 | message to the agent | 8 KiB |
+| inbox per read | 100 messages |
 | run log, diff | 64 MiB, 8 MiB in the blob store |
 | events kept | 30 days after the run ends (`EVO_HUB_RUN_LOG_DAYS`) |
 | terminal | 64 KiB frames, 15 minutes idle, 4 hours, one browser per run, sessions under 12 hours old |
