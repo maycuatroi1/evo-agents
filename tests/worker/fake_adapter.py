@@ -16,7 +16,15 @@ EVO_FAKE_SCENARIOS names a JSON file ``{"<step key>": [action, ...]}``; a run fo
 - ``{"result": {...}}``: write .evo-run/result.json.
 - ``{"fail": "why"}``: end the turn as failed.
 
+A run that goes on with a session (after a handback) follows ``"<step key>/resume"`` when the scenarios have it.
+``stop_at_turn_boundary`` ends a ``wait_for`` or ``sleep`` as a completed turn, as a takeover would. Each start is
+written as a JSON line ``{"session", "resume", "prompt"}`` to the file EVO_FAKE_STARTS names.
+
 The messages ``send`` hands the agent are written, one per line, to the file EVO_FAKE_MESSAGES names.
+
+The adapter is interactive: its terminal UI (``FakeTui``) is ``tests/worker/fake_tui.py``, which prints its session and
+the first line of its prompt, echoes each line typed (``echo: <line>``), clears the screen on ``clear`` and ends on
+``exit``. It keeps no transcript, so the daemon logs its terminal.
 """
 
 from __future__ import annotations
@@ -24,10 +32,14 @@ from __future__ import annotations
 import asyncio
 import json
 import subprocess
+import sys
 import uuid
 from pathlib import Path
 
 from evo_agents.worker.adapter import Adapter, AgentEvent, Detection, Outcome
+from evo_agents.worker.interactive import Tui
+
+FAKE_TUI = Path(__file__).with_name("fake_tui.py")
 
 VERSION = "2.1.289"
 
@@ -180,25 +192,57 @@ def translate(raw: dict) -> list[AgentEvent]:
     return [AgentEvent("output", {"raw": raw})]
 
 
+class FakeTui(Tui):
+    """The fake agent's terminal UI: tests/worker/fake_tui.py on the session, with no transcript."""
+
+    runtime = "claude-code"
+
+    def __init__(self, context, session_id):
+        super().__init__(context, session_id)
+        if self.session_id is None:
+            self.session_id = str(uuid.uuid4())
+
+    async def prepare(self) -> list[str]:
+        return [f"The fake terminal UI {'goes on with' if self.resumed else 'starts'} session {self.session_id}."]
+
+    def command(self, name: str) -> list[str]:
+        first_line = "" if self.resumed else self.context.prompt.splitlines()[0]
+        return [sys.executable, "-u", str(FAKE_TUI), self.session_id, name, first_line]
+
+
 class FakeAdapter(Adapter):
     runtime = "claude-code"
     binary = "claude"
+    interactive = True
 
     @classmethod
     def detect(cls) -> Detection:
         return Detection(True, VERSION, None)
 
+    @classmethod
+    def tui(cls, context, session_id):
+        return FakeTui(context, session_id)
+
     def __init__(self, context):
         super().__init__(context)
-        self._session = str(uuid.uuid4())
+        self._session = context.resume_session or str(uuid.uuid4())
         self._queue: asyncio.Queue = asyncio.Queue()
         self._interrupted = asyncio.Event()
+        self._boundary = asyncio.Event()
         self._task: asyncio.Task | None = None
         self._outcome = Outcome(False, "the fake agent did not run")
         path = context.env.get("EVO_FAKE_SCENARIOS")
         scenarios = json.loads(Path(path).read_text(encoding="utf-8")) if path else {}
-        self.actions = scenarios.get(str(context.run.get("step_key")), [])
+        key = str(context.run.get("step_key"))
+        if context.resume_session and f"{key}/resume" in scenarios:
+            key = f"{key}/resume"
+        self.actions = scenarios.get(key, [])
         self.messages_path = context.env.get("EVO_FAKE_MESSAGES")
+        starts = context.env.get("EVO_FAKE_STARTS")
+        if starts:
+            with open(starts, "a", encoding="utf-8") as handle:
+                start = {"session": self._session, "resume": context.resume_session, "prompt": context.prompt}
+                handle.write(json.dumps(start) + "\n")
 
     @property
     def session_id(self) -> str | None:
@@ -214,7 +258,7 @@ class FakeAdapter(Adapter):
         await self._queue.put(AgentEvent("agent_message_chunk", {"content": text_block(f"got: {text}")}))
 
     async def stop_at_turn_boundary(self) -> None:
-        pass
+        self._boundary.set()
 
     async def interrupt(self) -> None:
         self._interrupted.set()
@@ -232,12 +276,18 @@ class FakeAdapter(Adapter):
         return self._outcome
 
     async def _pause(self, seconds: float) -> bool:
-        """Sleep; whether an interrupt came first."""
+        """Sleep; whether an interrupt or the end of the turn came first."""
         try:
             await asyncio.wait_for(self._interrupted.wait(), seconds)
         except asyncio.TimeoutError:
-            return False
+            return self._boundary.is_set()
         return True
+
+    def _stopped(self) -> Outcome:
+        """How the turn ends when the agent was stopped while it waited."""
+        if self._interrupted.is_set():
+            return Outcome(False, "interrupted")
+        return Outcome(True, None, None, "stopped at the end of the turn")
 
     def _git(self, *args: str) -> None:
         subprocess.run(["git", "-C", str(self.context.worktree), *args], check=True, capture_output=True)
@@ -279,11 +329,11 @@ class FakeAdapter(Adapter):
                     target = Path(action["wait_for"])
                     while not target.exists():
                         if await self._pause(0.05):
-                            self._outcome = Outcome(False, "interrupted")
+                            self._outcome = self._stopped()
                             return
                 elif "sleep" in action:
                     if await self._pause(float(action["sleep"])):
-                        self._outcome = Outcome(False, "interrupted")
+                        self._outcome = self._stopped()
                         return
                 elif "result" in action:
                     path = worktree / ".evo-run" / "result.json"
@@ -299,7 +349,7 @@ class FakeAdapter(Adapter):
             await self._queue.put(None)
 
 
-def environment(scenarios: Path, messages: Path | None = None) -> dict[str, str]:
+def environment(scenarios: Path, messages: Path | None = None, starts: Path | None = None) -> dict[str, str]:
     """What the daemon's environment needs for this adapter."""
     env = {
         "EVO_WORKER_ADAPTERS": "claude-code=tests.worker.fake_adapter:FakeAdapter",
@@ -307,4 +357,6 @@ def environment(scenarios: Path, messages: Path | None = None) -> dict[str, str]
     }
     if messages is not None:
         env["EVO_FAKE_MESSAGES"] = str(messages)
+    if starts is not None:
+        env["EVO_FAKE_STARTS"] = str(starts)
     return env

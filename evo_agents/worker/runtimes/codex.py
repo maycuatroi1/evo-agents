@@ -167,10 +167,17 @@ def events_of(method: str, params: dict) -> list[AgentEvent]:
 class CodexAdapter(QueueAdapter):
     runtime = "codex"
     binary = "codex"
+    interactive = True
 
     @classmethod
     def detect(cls) -> Detection:
         return detect_runtime(cls.runtime, cls.binary, MIN_VERSION, packages=(SDK,))
+
+    @classmethod
+    def tui(cls, context: RunContext, session_id: str | None):
+        from evo_agents.worker.interactive import CodexTui
+
+        return CodexTui(context, session_id)
 
     def __init__(self, context: RunContext):
         super().__init__(context)
