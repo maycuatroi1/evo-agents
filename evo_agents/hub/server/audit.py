@@ -32,6 +32,11 @@ WORKER_REGISTER = "worker.register"  # a machine registered itself with its mach
 WORKER_DRAIN = "worker.drain"
 WORKER_UNDRAIN = "worker.undrain"
 WORKER_REVOKE = "worker.revoke"  # the worker and its token are revoked, its runs released
+# Runs happen in a project, which the caller names; a target is "<project>/<plan>#<step> run:<id>", never a prompt.
+RUN_DISPATCH = "run.dispatch"  # a member queued a run of a ready step
+RUN_CANCEL = "run.cancel"  # the owner cancelled a run, or asked its worker to stop it
+RUN_APPROVE = "run.approve"  # the owner approved a run in review, and the step is done
+RUN_RERUN = "run.rerun"  # the owner queued the step again after a run that ended
 
 NAMED_FAMILIES = frozenset({"grant", "project", "plan", "kg", "blob"})  # targets that start with the project's name
 _FIRST_NAME = re.compile(r"([a-z0-9][a-z0-9-]{0,99})(?:[/ @]|$)")
