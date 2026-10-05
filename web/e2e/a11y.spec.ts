@@ -6,7 +6,21 @@ import { ADMIN_ACCOUNT, machineToken, newAccount, uniqueName } from "./support/h
 import { graphReady, grantOn, HUB_NODE, kgPath, nodePath, sharedKg } from "./support/kg";
 import { apiOf, memoryFile, putMemory } from "./support/memories";
 import { ACTIVE_PLAN, EVIDENCE_STEP, open, seedPlans } from "./support/plans";
-import { claimRun, dispatch, liveWorker, reportState, RUN_PLAN, seedRunPlan } from "./support/runs";
+import {
+  claimRun,
+  dispatch,
+  liveWorker,
+  reportState,
+  RUN_PLAN,
+  runPath,
+  runToReview,
+  say,
+  seedRunPlan,
+  sendEvents,
+  startRun,
+  tool,
+  uploadDiff,
+} from "./support/runs";
 import { packSkill, publishSkill } from "./support/skills";
 import { CHECKOUTS, heartbeat, registerWorker, RUNTIMES } from "./support/workers";
 
@@ -60,6 +74,22 @@ async function seedRuns(me: Member) {
   await claimRun(live);
   await reportState(live, failing.id, { state: "failed", error: "verify failed: pnpm test exited 1" });
   return { project, live, failing, waiting };
+}
+
+/** A run of `me` that their worker started, with a few lines in its log. */
+async function seedLiveRun(me: Member) {
+  const project = me.projects[0];
+  await seedRunPlan(me, project);
+  const live = await liveWorker(me, project, uniqueName("a11y"));
+  const [run] = await dispatch(me, project, ["2"]);
+  await claimRun(live);
+  await startRun(live, run.id);
+  await sendEvents(live, run.id, [
+    say("Reading the plan."),
+    tool("Bash", "pnpm test"),
+    { kind: "system", body: { text: "verify: `pnpm test` exited 1 after 900 ms", exit_code: 1 } },
+  ]);
+  return { project, live, run };
 }
 
 async function seedSkill(me: Member) {
@@ -389,6 +419,47 @@ const PAGES: Entry[] = [
       await expectNoSeriousViolations(page, "runs at 375 px");
       await open(page, `/workers/${live.worker.id}`);
       await expect(page.locator("#main").getByTestId("worker-runs-table")).toBeVisible();
+    },
+  },
+  {
+    name: "run page with its live log, the owner's controls and the Take over dialog",
+    open: async ({ page, me }) => {
+      const { project, run } = await seedLiveRun(me);
+      await open(page, runPath(project, run.id));
+      await expect(page.locator("#main").getByTestId("log-status")).toHaveAttribute("data-status", "live");
+      await expect(page.locator("#main").getByTestId("log-line").first()).toBeVisible();
+      await expect(page.locator("#main").getByTestId("run-composer")).toBeVisible();
+      await page.locator("#main").getByTestId("log-search").fill("plan");
+      await expect(page.locator("#main").getByTestId("log-lines").locator("mark").first()).toBeVisible();
+      await expectNoSeriousViolations(page, "run page");
+      await page.locator("#main").getByTestId("run-takeover").click();
+      await expect(page.getByTestId("takeover-dialog")).toBeVisible();
+    },
+  },
+  {
+    name: "run in review with its result, and its diff page",
+    open: async ({ page, me }) => {
+      const { project, live, run } = await seedLiveRun(me);
+      await runToReview(live, run.id);
+      await uploadDiff(live, run.id, `diff --git a/a.txt b/a.txt\n--- a/a.txt\n+++ b/a.txt\n@@ -1 +1 @@\n-old ${run.id}\n+new ${run.id}\n`);
+      await open(page, runPath(project, run.id));
+      await expect(page.locator("#main").getByTestId("run-verify")).toBeVisible();
+      await expectNoSeriousViolations(page, "run in review");
+      await page.locator("#main").getByTestId("run-cancel").click();
+      await expect(page.getByTestId("cancel-run-dialog")).toBeVisible();
+      await expectNoSeriousViolations(page, "cancel run dialog");
+      await page.keyboard.press("Escape");
+      await open(page, `${runPath(project, run.id)}/diff`);
+      await expect(page.locator("#main").getByTestId("diff-file")).toHaveCount(1);
+    },
+  },
+  {
+    name: "run page on a small screen",
+    open: async ({ page, me }) => {
+      const { project, run } = await seedLiveRun(me);
+      await page.setViewportSize({ width: 375, height: 812 });
+      await open(page, runPath(project, run.id));
+      await expect(page.locator("#main").getByTestId("log-line").first()).toBeVisible();
     },
   },
   {

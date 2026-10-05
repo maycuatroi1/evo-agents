@@ -3,12 +3,27 @@ import path from "node:path";
 import { expect, test } from "./support/fixtures";
 import { uniqueName } from "./support/hub";
 import { open } from "./support/plans";
-import { claimRun, dispatch, liveWorker, reportState, RUN_PLAN, seedRunPlan } from "./support/runs";
+import {
+  claimRun,
+  dispatch,
+  liveWorker,
+  reportState,
+  RUN_PLAN,
+  runPath,
+  runToReview,
+  say,
+  seedRunPlan,
+  sendEvents,
+  startRun,
+  tool,
+  uploadDiff,
+  type WorkerEvent,
+} from "./support/runs";
 
 /**
- * Review screenshots of the runs pages and the Dispatch dialog, light and dark, desktop and 375 px, written to
- * E2E_SCREENSHOT_DIR. Skipped unless it is set; like screenshots.spec.ts it asserts nothing beyond the page being
- * ready.
+ * Review screenshots of the runs pages, the Dispatch dialog and a run's page (live, in review, its diff and the Take
+ * over dialog), light and dark, desktop and 375 px, written to E2E_SCREENSHOT_DIR. Skipped unless it is set; like
+ * screenshots.spec.ts it asserts nothing beyond the page being ready.
  */
 const dir = process.env.E2E_SCREENSHOT_DIR;
 
@@ -64,6 +79,66 @@ test.describe("runs screenshots", () => {
         await open(page, `/workers/${live.worker.id}`);
         await expect(page.locator("#main").getByTestId("worker-runs-table")).toBeVisible();
         await shot("worker-runs");
+      }
+    });
+  }
+
+  /** A log with a line of each kind a worker sends. */
+  const SESSION: WorkerEvent[] = [
+    { kind: "system", body: { text: "Created worktree ~/.evo/worker/worktrees/demo-12 on branch feat/rollout" } },
+    say("Reading plan rollout. Step 2 depends on step 1, which is done."),
+    { kind: "agent_thought_chunk", body: { text: "The queue needs a lease column before claim can use SKIP LOCKED." } },
+    { kind: "plan", body: { entries: [{ content: "Add the lease column", status: "completed" }, { content: "Write claim", status: "in_progress" }] } },
+    tool("Bash", "pytest -q tests/hub/test_queue.py"),
+    { kind: "tool_call_update", body: { status: "failed", rawOutput: "FAILED test_lease_expiry_requeues: assert 'queued' == 'leased'" } },
+    say("The fake clock never advanced. Moving it forward 301 s."),
+    { kind: "tool_call_update", body: { status: "completed", rawOutput: "10 passed in 3.41s" } },
+    { kind: "usage_update", body: { input_tokens: 41200, output_tokens: 6800 } },
+    { kind: "system", body: { text: "verify: `pnpm test` exited 0 after 1400 ms", exit_code: 0, output: "Tests 57 passed (57)" } },
+  ];
+
+  for (const scheme of ["light", "dark"] as const) {
+    test(`run page in ${scheme}`, async ({ page, member }) => {
+      await page.emulateMedia({ colorScheme: scheme });
+      const me = await member([{ role: "writer", maxLevel: "internal" }]);
+      const project = me.projects[0];
+      await seedRunPlan(me, project);
+      const live = await liveWorker(me, project, uniqueName("laptop"), 2);
+      const [running, review] = await dispatch(me, project, ["2", "4"]);
+      await claimRun(live);
+      await claimRun(live);
+      await startRun(live, running.id);
+      await sendEvents(live, running.id, SESSION);
+      await startRun(live, review.id);
+      await sendEvents(live, review.id, SESSION);
+      await runToReview(live, review.id);
+      await uploadDiff(
+        live,
+        review.id,
+        ["diff --git a/src/queue.ts b/src/queue.ts", "--- a/src/queue.ts", "+++ b/src/queue.ts", "@@ -1,3 +1,4 @@ export class Queue {", " import { db } from './db';", "-export function claim() {}", "+export function claim(worker: string) {", "+  return db.lease(worker);", " }", ""].join("\n"),
+      );
+
+      for (const [width, height, suffix] of [
+        [1440, 1000, ""],
+        [375, 812, "-375"],
+      ] as const) {
+        await page.setViewportSize({ width, height });
+        const shot = (name: string) => page.screenshot({ path: path.join(dir!, `${name}${suffix}-${scheme}.png`), fullPage: true });
+        await open(page, runPath(project, running.id));
+        await expect(page.locator("#main").getByTestId("log-status")).toHaveAttribute("data-status", "live");
+        await expect(page.locator("#main").getByTestId("log-line")).toHaveCount(SESSION.length + 2);
+        await shot("run-live");
+        await page.locator("#main").getByTestId("run-takeover").click();
+        await expect(page.getByTestId("takeover-dialog")).toBeVisible();
+        await page.screenshot({ path: path.join(dir!, `run-takeover${suffix}-${scheme}.png`) });
+        await page.keyboard.press("Escape");
+        await open(page, runPath(project, review.id));
+        await expect(page.locator("#main").getByTestId("run-verify")).toBeVisible();
+        await expect(page.locator("#main").getByTestId("log-line")).toHaveCount(SESSION.length + 4);
+        await shot("run-review");
+        await open(page, `${runPath(project, review.id)}/diff`);
+        await expect(page.locator("#main").getByTestId("diff-file")).toHaveCount(1);
+        await shot("run-diff");
       }
     });
   }
