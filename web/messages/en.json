@@ -21,6 +21,7 @@
     "project": "Project",
     "overview": "Overview",
     "plans": "Plans",
+    "runs": "Runs",
     "kg": "Knowledge graph",
     "admin": "Administration",
     "toggleSidebar": "Show or hide the sidebar",
@@ -1253,9 +1254,11 @@
         "never": "No heartbeat yet"
       },
       "runs": {
-        "title": "Runs",
+        "title": "Recent runs",
         "held": "{held, plural, =0 {Holds no run now} one {Holds # run now} other {Holds # runs now}}, {free, plural, =0 {no slot free} one {# slot free} other {# slots free}}.",
-        "history": "This hub does not list a worker's past runs yet."
+        "empty": "This worker has taken no run yet.",
+        "caption": "Recent runs of worker {name}",
+        "hidden": "{count, plural, one {Runs of project {projects} are not shown: you hold no grant on it.} other {Runs of projects {projects} are not shown: you hold no grant on them.}}"
       }
     },
     "actions": {
@@ -1277,6 +1280,212 @@
       "revokeConfirm": "Revoke worker",
       "revokePending": "Revoking…",
       "revokeSuccess": "Revoked {name}. Its token no longer works."
+    }
+  },
+  "runs": {
+    "title": "Runs",
+    "metaTitle": "Runs of {project}",
+    "description": "Each run is one plan step dispatched to one of your workers. Its state, log and evidence come back to the hub while it runs.",
+    "dispatchButton": "Dispatch",
+    "liveBadge": "Live",
+    "live": "Updates every 5 seconds while a run is active.",
+    "count": "{count, plural, one {# run} other {# runs}}",
+    "caption": "Runs of project {project}",
+    "pagerLabel": "runs",
+    "dispatched": "{count, plural, one {Queued run {ids}.} other {Queued # runs: {ids}.}}",
+    "state": {
+      "queued": "Queued",
+      "leased": "Leased",
+      "running": "Running",
+      "interactive": "Interactive",
+      "verifying": "Verifying",
+      "review": "Review",
+      "done": "Done",
+      "failed": "Failed",
+      "lost": "Lost",
+      "cancelled": "Cancelled"
+    },
+    "runtime": {
+      "any": "Any",
+      "claude-code": "Claude Code",
+      "opencode": "opencode",
+      "codex": "Codex CLI"
+    },
+    "summary": {
+      "label": "Summary",
+      "running": "Running",
+      "runningHint": "{workers, plural, =0 {no worker holds a run} one {on # worker} other {on # workers}}",
+      "queued": "Queued",
+      "queuedSince": "oldest queued {time}",
+      "queuedMany": "{count, plural, one {# run waits for a worker} other {# runs wait for a worker}}",
+      "queuedNone": "nothing waiting",
+      "review": "Review",
+      "reviewOne": "step {step} of {plan}",
+      "reviewMany": "waiting for approval",
+      "reviewNone": "nothing to approve",
+      "failed": "Failed",
+      "failedHint": "{lost, plural, =0 {no lost lease} one {plus # lost lease} other {plus # lost leases}}, {cancelled, plural, =0 {none cancelled} other {# cancelled}}"
+    },
+    "facets": {
+      "label": "State",
+      "all": "All",
+      "active": "Active",
+      "review": "Review",
+      "done": "Done",
+      "ended": "Failed or cancelled"
+    },
+    "search": {
+      "label": "Search runs",
+      "placeholder": "Step, plan, worker or #run",
+      "clear": "Clear search"
+    },
+    "listSummary": {
+      "all": "{count, plural, =0 {No run.} one {# run.} other {# runs.}}",
+      "filtered": "{count, plural, =0 {No run matches.} one {# run matches.} other {# runs match.}}"
+    },
+    "columns": {
+      "run": "Run",
+      "step": "Plan step",
+      "state": "State",
+      "worker": "Worker",
+      "dispatcher": "Dispatched by",
+      "runtime": "Runtime",
+      "started": "Started",
+      "duration": "Duration",
+      "attempt": "Attempt"
+    },
+    "stepLine": "{plan}, step {step}",
+    "stepLineProject": "{project}, {plan}, step {step}",
+    "untitled": "Untitled step",
+    "noWorkerYet": "none yet",
+    "pinnedWaiting": "waiting for its pinned worker",
+    "queuedAt": "Queued at",
+    "waiting": "waiting {duration}",
+    "attemptLabel": "Attempt {attempt} of {max}",
+    "duration": {
+      "lessThanMinute": "under 1 min",
+      "minutes": "{minutes} min",
+      "hours": "{hours} h {minutes} min"
+    },
+    "empty": {
+      "title": "No run yet",
+      "description": "A run is one ready step of a plan, dispatched to one of your workers. Dispatch one to start.",
+      "readerDescription": "Writers of this project dispatch runs to their workers; each one shows here with its state."
+    },
+    "noResults": {
+      "title": "No run matches",
+      "description": "Try other words, or show runs in every state.",
+      "clear": "Show all runs"
+    },
+    "step": {
+      "title": "Runs of this step",
+      "run": "Run this step",
+      "ready": "Ready to run.",
+      "notReady": "Not ready to run: {reason}.",
+      "readerHint": "Writers of this project can dispatch it to their workers.",
+      "empty": "No run of this step yet.",
+      "failed": "The runs of this step could not be loaded.",
+      "caption": "Runs of step {step}",
+      "live": "Updates every 5 seconds while a run is active.",
+      "more": "The latest {shown} of {total}.",
+      "all": "All runs of the project"
+    },
+    "dispatch": {
+      "title": "Dispatch runs",
+      "description": "Pick ready steps of a plan. The hub queues one run per step, and a worker of yours that matches claims each one.",
+      "close": "Close",
+      "plan": "Plan",
+      "noPlans": "This project has no active plan to run.",
+      "plansFailed": "The plans could not be loaded. Close the dialog and try again.",
+      "timeout": "Timeout per run",
+      "timeoutValue": "{minutes} min",
+      "timeoutHint": "The hub stops a run that takes longer.",
+      "steps": "Steps",
+      "stepsHint": "A step can be picked once it is pending, every step it depends on is done, and it has no active run.",
+      "stepsFailed": "The steps of this plan could not be loaded. Close the dialog and try again.",
+      "picked": "{count} of {ready} ready steps picked",
+      "pickAll": "Pick all {count} ready steps",
+      "pickNone": "Clear the selection",
+      "ready": "Ready",
+      "notReady": "Not ready",
+      "untitled": "Untitled step",
+      "repo": "Runs in repo {repo}",
+      "noOpen": "No step of this plan is pending.",
+      "noReady": "No step is ready yet: each pending step waits for a step it depends on, or has an active run.",
+      "settled": "{count, plural, one {# step is done, in progress or blocked} other {# steps are done, in progress or blocked}}",
+      "tooMany": "At most {max} steps in one dispatch.",
+      "reason": {
+        "activeRun": "Run #{id} is {state}, dispatched by {login}",
+        "status": "Its status is {status}, not pending",
+        "unknown": "The hub does not say why"
+      },
+      "runtime": "Runtime",
+      "runtimeAny": "Any runtime the worker has",
+      "runtimeAnyHint": "Claude Code first, then opencode, then Codex CLI",
+      "runtimeCommand": {
+        "claude-code": "claude -p, headless",
+        "opencode": "opencode run",
+        "codex": "codex exec"
+      },
+      "runtimeWorkers": {
+        "none": "None of your workers here reports it.",
+        "all": "{total, plural, one {Your worker here reports it.} other {All # of your workers here report it.}}",
+        "some": "{count} of your {total} workers here report it."
+      },
+      "mode": "Mode",
+      "modes": {
+        "headless": "Headless",
+        "headlessHint": "The log streams to the hub; message the agent or take over at any time.",
+        "interactive": "Interactive from the start",
+        "interactiveHint": "A TUI in a tmux session on the worker; Claude Code also opens Remote Control."
+      },
+      "worker": "Worker",
+      "workerAuto": "Match a worker automatically",
+      "workerAutoHint": "One of yours that is online, with a free slot, the runtime and a checkout of the step's repo.",
+      "workerPin": "Pin to one worker",
+      "workerPinHint": "The runs stay queued until this worker has a free slot.",
+      "workerSelect": "Pinned worker",
+      "workerOption": "{name} ({status})",
+      "noWorkers": "You have no worker registered for project {project} yet.",
+      "registerWorker": "Register a worker",
+      "approval": "When the step's verify commands pass",
+      "approvals": {
+        "review": "Hold for review",
+        "reviewHint": "You read the diff and log, then approve on the run page.",
+        "auto": "Mark the step done with evidence",
+        "autoHint": "The hub writes the step's status, done time and evidence to the plan."
+      },
+      "cancel": "Cancel",
+      "submit": "{count, plural, =0 {Dispatch} one {Dispatch # run} other {Dispatch # runs}}",
+      "submitting": "Dispatching…",
+      "outlook": {
+        "nothing": "Pick at least one ready step.",
+        "noWorker": "You have no worker for project {project}. The runs wait in the queue until you register one.",
+        "now": "Matching now: {workers}.",
+        "later": "No worker of yours is free now; {workers} can take them later. The runs wait in the queue.",
+        "none": "None of your workers can take them as they are ({reasons}). The runs wait in the queue.",
+        "pinnedNow": "{name} can take them now.",
+        "pinnedBusy": "The runs wait in the queue until {name} has a free slot.",
+        "pinnedOffline": "{name} is offline; the runs wait in the queue until it comes back.",
+        "pinnedNo": "{name} cannot take them as it is ({problem}). The runs wait in the queue.",
+        "free": "{name} ({count, plural, one {# free slot} other {# free slots}})",
+        "busy": "{name} (every slot in use)",
+        "offline": "{name} (offline)",
+        "reason": "{name}: {problem}",
+        "more": "{count, plural, other {# more}}"
+      },
+      "problem": {
+        "draining": "draining",
+        "runtime": "no {runtime}",
+        "runtimeAny": "no runtime reported",
+        "checkout": "no checkout of {repo}"
+      },
+      "errors": {
+        "forbidden": "The hub refused: dispatching needs the writer role on this project, and a pinned worker must be one of yours.",
+        "notFound": "The plan is no longer on the hub, or you can no longer read it.",
+        "conflict": "A step is no longer ready, or another dispatch took it first. The steps are updated; check them and try again.",
+        "invalid": "The hub did not accept the dispatch."
+      }
     }
   }
 }

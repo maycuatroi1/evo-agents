@@ -7,6 +7,7 @@ import {
   type LucideIcon,
   Network,
   NotebookPen,
+  Play,
   Puzzle,
   Server,
   ShieldCheck,
@@ -14,7 +15,7 @@ import {
 import type { Route } from "next";
 
 /**
- * The sidebar's links. Steps that add a project area (plans, memories, skills, knowledge graph) add one entry to
+ * The sidebar's links. Steps that add a project area (plans, runs, memories, skills, knowledge graph) add one entry to
  * PROJECT_NAV, a hub-wide area (workers) one entry to HUB_NAV, and one label under `nav` in messages/vi.json and
  * messages/en.json.
  */
@@ -23,6 +24,7 @@ export type NavLabel =
   | "projects"
   | "admin"
   | "plans"
+  | "runs"
   | "memories"
   | "skills"
   | "kg"
@@ -47,6 +49,7 @@ export type HubNavItem = {
 export const PROJECT_NAV: readonly ProjectNavItem[] = [
   { label: "overview", icon: LayoutDashboard, segment: "" },
   { label: "plans", icon: ListChecks, segment: "plans" },
+  { label: "runs", icon: Play, segment: "runs" },
   { label: "memories", icon: Brain, segment: "memories" },
   { label: "skills", icon: Puzzle, segment: "skills" },
   { label: "kg", icon: Network, segment: "kg" },
