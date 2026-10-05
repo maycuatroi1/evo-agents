@@ -73,6 +73,7 @@ changed where the defaults fell short:
 - `table.tsx`: `scrollLabel` makes a table's scroll container a named, focusable region.
 - `badge.tsx`: `info`, `success` and `warning` variants.
 - `hooks/use-mobile.ts`: `useSyncExternalStore` instead of state set inside an effect.
+- `tabs.tsx` (Radix tabs): a line style, the selected tab underlined in `primary` and set in a heavier weight.
 - Menus (`DropdownMenu`) are not modal, so the page behind stays readable by assistive technology.
 
 Shared pieces built on them:
@@ -89,6 +90,11 @@ Shared pieces built on them:
   300 ms pause or on Enter) and a facet as a labelled group of `aria-pressed` toggles with counts. Filters live in
   the URL and change it through `window.history.replaceState`, which Next.js syncs with `useSearchParams` without
   rendering the page on the server again.
+- `components/workers`: the workers pages poll the hub every 10 seconds (`refetchInterval`), the Register dialog
+  every 2 seconds while its pairing code waits. Draining or revoking a worker asks for its name, typed out
+  (`confirm-by-name.tsx`). The hub keeps only a worker's latest heartbeat, so the 60-minute heartbeat strip is built
+  from what the tab has read (`heartbeats.ts`): a received minute is a full bar, a missed one a short red bar, a
+  minute nobody watched a dot, with the counts written out beside it.
 - `components/memories/markdown.tsx`: Markdown written by people (memory bodies) through react-markdown without
   raw HTML: tags show as text, only listed elements render, links keep http(s), mailto and anchors, images are
   never loaded, headings move under the page's h1 and the card's h2.
