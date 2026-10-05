@@ -8,13 +8,15 @@ import {
   Network,
   NotebookPen,
   Puzzle,
+  Server,
   ShieldCheck,
 } from "lucide-react";
 import type { Route } from "next";
 
 /**
  * The sidebar's links. Steps that add a project area (plans, memories, skills, knowledge graph) add one entry to
- * PROJECT_NAV and one label under `nav` in messages/vi.json and messages/en.json.
+ * PROJECT_NAV, a hub-wide area (workers) one entry to HUB_NAV, and one label under `nav` in messages/vi.json and
+ * messages/en.json.
  */
 export type NavLabel =
   | "overview"
@@ -25,7 +27,8 @@ export type NavLabel =
   | "skills"
   | "kg"
   | "myMemories"
-  | "globalSkills";
+  | "globalSkills"
+  | "workers";
 
 export type ProjectNavItem = {
   label: NavLabel;
@@ -51,6 +54,7 @@ export const PROJECT_NAV: readonly ProjectNavItem[] = [
 
 export const HUB_NAV: readonly HubNavItem[] = [
   { label: "projects", icon: FolderGit2, href: "/" },
+  { label: "workers", icon: Server, href: "/workers" },
   { label: "myMemories", icon: NotebookPen, href: "/memories" },
   { label: "globalSkills", icon: Blocks, href: "/skills" },
   { label: "admin", icon: ShieldCheck, href: "/admin", adminOnly: true },

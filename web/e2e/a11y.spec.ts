@@ -7,6 +7,7 @@ import { graphReady, grantOn, HUB_NODE, kgPath, nodePath, sharedKg } from "./sup
 import { apiOf, memoryFile, putMemory } from "./support/memories";
 import { ACTIVE_PLAN, EVIDENCE_STEP, open, seedPlans } from "./support/plans";
 import { packSkill, publishSkill } from "./support/skills";
+import { CHECKOUTS, heartbeat, registerWorker, RUNTIMES } from "./support/workers";
 
 /**
  * axe (WCAG 2.2 A and AA rules) on every page of the web, in light and dark: no serious or critical violation.
@@ -34,6 +35,19 @@ async function seedMemories(me: Member) {
   });
   await putMemory(api, { project, name: "mine.md", type: "user", body: memoryFile("Mine", "Private", "x", "user") });
   return { runbook };
+}
+
+/** Three workers of `me`: idle with what a heartbeat reports, offline, and draining; returns the idle one. */
+async function seedWorkers(me: Member) {
+  const project = me.projects[0];
+  const idle = await registerWorker(me, { name: uniqueName("idle"), projects: [project], slots: 2, labels: ["macos", "gpu"] });
+  await heartbeat(idle.id, { runtimes: RUNTIMES, checkouts: CHECKOUTS, secondsAgo: 3 });
+  await registerWorker(me, { name: uniqueName("offline"), projects: [project] });
+  const draining = await registerWorker(me, { name: uniqueName("draining"), projects: [project] });
+  await heartbeat(draining.id);
+  const api = await apiOf(me);
+  await api.POST("/v1/workers/{worker_id}/drain", { params: { path: { worker_id: draining.id } } });
+  return idle;
 }
 
 async function seedSkill(me: Member) {
@@ -240,6 +254,75 @@ const PAGES: Entry[] = [
     open: async ({ page }) => {
       await page.goto("/skills");
       await expect(page.locator("#main").getByRole("heading", { level: 1 })).toBeVisible();
+    },
+  },
+  {
+    name: "workers with no worker yet",
+    open: async ({ page }) => {
+      await page.goto("/workers");
+      await expect(page.locator("#main").getByTestId("state-empty")).toBeVisible();
+    },
+  },
+  {
+    name: "workers list with its summary and facets",
+    open: async ({ page, me }) => {
+      await seedWorkers(me);
+      await page.goto("/workers");
+      await expect(page.locator("#main").getByTestId("workers-table").locator("tbody tr")).toHaveCount(3);
+      await expect(page.locator("#main").getByTestId("workers-summary")).toBeVisible();
+    },
+  },
+  {
+    name: "register worker dialog, form with errors, CLI tab and pairing code",
+    open: async ({ page }) => {
+      await page.goto("/workers");
+      await page.getByTestId("workers-register").click();
+      const dialog = page.getByTestId("register-dialog");
+      await dialog.getByTestId("register-labels").fill("bad/label");
+      await dialog.getByTestId("register-create").click(); // shows the field errors
+      await expect(dialog.getByTestId("register-name")).toHaveAttribute("aria-invalid", "true");
+      await expectNoSeriousViolations(page, "register form with errors");
+      await dialog.getByTestId("register-tab-cli").click();
+      await expect(dialog.getByTestId("register-cli")).toBeVisible();
+      await expectNoSeriousViolations(page, "register, CLI only");
+      await dialog.getByTestId("register-tab-pairing").click();
+      await dialog.getByTestId("register-name").fill(uniqueName("a11y"));
+      await dialog.getByTestId("register-labels").fill("macos");
+      await dialog.getByTestId("register-create").click();
+      await expect(dialog.getByTestId("pairing-code")).toBeVisible();
+    },
+  },
+  {
+    name: "worker detail with its heartbeat strip",
+    open: async ({ page, me }) => {
+      const idle = await seedWorkers(me);
+      await page.goto(`/workers/${idle.id}`);
+      await expect(page.locator("#main").getByTestId("heartbeat-strip")).toBeVisible();
+      await expect(page.locator("#main").getByTestId("worker-runtimes")).toContainText("2.1.289");
+    },
+  },
+  {
+    name: "worker revoke confirmation with a wrong name",
+    open: async ({ page, me }) => {
+      const idle = await seedWorkers(me);
+      await page.goto(`/workers/${idle.id}`);
+      await page.locator("#main").getByTestId("worker-revoke").click();
+      const dialog = page.getByTestId("revoke-worker-dialog");
+      await dialog.getByTestId("revoke-worker-dialog-name").fill("not-the-name");
+      await dialog.getByTestId("revoke-worker-dialog-confirm").click();
+      await expect(dialog.getByTestId("revoke-worker-dialog-name")).toHaveAttribute("aria-invalid", "true");
+    },
+  },
+  {
+    name: "workers on a small screen",
+    open: async ({ page, me }) => {
+      const idle = await seedWorkers(me);
+      await page.setViewportSize({ width: 375, height: 812 });
+      await page.goto("/workers");
+      await expect(page.locator("#main").getByTestId("workers-table")).toBeVisible();
+      await expectNoSeriousViolations(page, "workers at 375 px");
+      await page.goto(`/workers/${idle.id}`);
+      await expect(page.locator("#main").getByTestId("heartbeat-strip")).toBeVisible();
     },
   },
   {

@@ -219,7 +219,10 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Revoke */
+        /**
+         * Revoke
+         * @description Revoke one of the caller's tokens; a worker token's worker is revoked with it.
+         */
         delete: operations["revoke_v1_tokens__token_id__delete"];
         options?: never;
         head?: never;
@@ -1046,9 +1049,171 @@ export interface paths {
         post?: never;
         /**
          * Revoke Any Token
-         * @description Revoke a token or web session of any user.
+         * @description Revoke a token or web session of any user; a worker token's worker is revoked with it.
          */
         delete: operations["revoke_any_token_v1_admin_tokens__token_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/workers/pairings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Pairing
+         * @description A code a machine joins with as a worker of the caller; shown once.
+         */
+        post: operations["create_pairing_v1_workers_pairings_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/workers/pairings/{pairing_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Pairing State
+         * @description Whether a machine has joined with one of the caller's pairings yet.
+         */
+        get: operations["pairing_state_v1_workers_pairings__pairing_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/workers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Workers
+         * @description The caller's workers, newest first; every worker for a hub admin.
+         */
+        get: operations["list_workers_v1_workers_get"];
+        put?: never;
+        /**
+         * Register
+         * @description Register the calling machine as a worker of the caller, with its machine token; the worker token is shown
+         *     once.
+         */
+        post: operations["register_v1_workers_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/workers/{worker_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Show Worker */
+        get: operations["show_worker_v1_workers__worker_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/workers/{worker_id}/drain": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Drain
+         * @description Stop new claims; the worker finishes the runs it holds.
+         */
+        post: operations["drain_v1_workers__worker_id__drain_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/workers/{worker_id}/undrain": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Undrain
+         * @description Let a drained worker claim runs again; its owner only.
+         */
+        post: operations["undrain_v1_workers__worker_id__undrain_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/workers/{worker_id}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revoke
+         * @description End the worker and its token at once, and release the runs it holds.
+         */
+        post: operations["revoke_v1_workers__worker_id__revoke_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/join": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Join
+         * @description Trade a pairing code for the token of a new worker; the token is shown once.
+         */
+        post: operations["join_v1_worker_join_post"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1071,10 +1236,10 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "machine" | "web";
+            kind: "machine" | "web" | "worker";
             /**
              * Host
-             * @description the machine a machine token was issued to; null for a web session
+             * @description the machine a machine token or worker token was issued to; null for a web session
              */
             host: string | null;
             /**
@@ -1586,6 +1751,25 @@ export interface components {
             /** Build Id */
             build_id: number | null;
         };
+        /** JoinRequest */
+        JoinRequest: {
+            /** Hostname */
+            hostname: string;
+            /** Os */
+            os: string;
+            /** Arch */
+            arch: string;
+            /**
+             * Agent Version
+             * @description of the evo-agents daemon
+             */
+            agent_version: string;
+            /**
+             * Code
+             * @description the pairing code, XXXX-XXXX
+             */
+            code: string;
+        };
         /** KgConfig */
         KgConfig: {
             /**
@@ -1886,6 +2070,100 @@ export interface components {
              * @description the cursor of the next page; null after the last one
              */
             next_cursor: string | null;
+        };
+        /** Pairing */
+        Pairing: {
+            /** Id */
+            id: number;
+            /**
+             * Code
+             * @description XXXX-XXXX; shown once, the hub keeps only its hash and its first four characters
+             */
+            code: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /** Name */
+            name: string;
+            /** Projects */
+            projects: string[];
+            /** Slots */
+            slots: number;
+            /** Labels */
+            labels: string[];
+            /** Allow Web Terminal */
+            allow_web_terminal: boolean;
+        };
+        /** PairingRequest */
+        PairingRequest: {
+            /**
+             * Name
+             * @description unique among the owner's workers that are not revoked
+             */
+            name: string;
+            /**
+             * Projects
+             * @description projects the worker takes runs of; the writer role on each
+             */
+            projects: string[];
+            /**
+             * Slots
+             * @description runs the worker holds at once
+             * @default 1
+             */
+            slots: number;
+            /** Labels */
+            labels?: string[];
+            /**
+             * Allow Web Terminal
+             * @description whether the owner may open a terminal on it from the web
+             * @default false
+             */
+            allow_web_terminal: boolean;
+        };
+        /** PairingState */
+        PairingState: {
+            /** Id */
+            id: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "waiting" | "joined" | "expired" | "locked";
+            /** Name */
+            name: string;
+            /** Projects */
+            projects: string[];
+            /** Slots */
+            slots: number;
+            /** Labels */
+            labels: string[];
+            /** Allow Web Terminal */
+            allow_web_terminal: boolean;
+            /**
+             * Tries Left
+             * @description wrong codes the pairing takes before it locks
+             */
+            tries_left: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /** Used At */
+            used_at: string | null;
+            /**
+             * Worker Id
+             * @description the worker the pairing made, once a machine joined with it
+             */
+            worker_id: number | null;
         };
         /** Plan */
         Plan: {
@@ -2597,7 +2875,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "machine" | "web";
+            kind: "machine" | "web" | "worker";
             /** Host */
             host: string | null;
             /**
@@ -2792,6 +3070,124 @@ export interface components {
             token: components["schemas"]["TokenInfo"];
             /** Grants */
             grants: components["schemas"]["GrantInfo"][];
+        };
+        /** Worker */
+        Worker: {
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+            /**
+             * Owner
+             * @description the login of the member who registered it
+             */
+            owner: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "online" | "offline" | "draining" | "revoked";
+            /** Hostname */
+            hostname: string;
+            /** Os */
+            os: string;
+            /** Arch */
+            arch: string;
+            /** Agent Version */
+            agent_version: string;
+            /** Slots */
+            slots: number;
+            /** Labels */
+            labels: string[];
+            /** Projects */
+            projects: string[];
+            /**
+             * Runtimes
+             * @description the runtimes its last heartbeat reported
+             */
+            runtimes: {
+                [key: string]: unknown;
+            };
+            /**
+             * Checkouts
+             * @description the checkouts its last heartbeat reported
+             */
+            checkouts: {
+                [key: string]: unknown;
+            };
+            /** Allow Web Terminal */
+            allow_web_terminal: boolean;
+            /**
+             * Held Runs
+             * @description runs it holds now (leased, running, interactive or verifying)
+             */
+            held_runs: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Last Heartbeat At */
+            last_heartbeat_at: string | null;
+            /** Drained At */
+            drained_at: string | null;
+            /** Revoked At */
+            revoked_at: string | null;
+        };
+        /** WorkerCredential */
+        WorkerCredential: {
+            /**
+             * Token
+             * @description the worker token, evw_...; shown once, the hub keeps only its SHA-256
+             */
+            token: string;
+            /** Token Id */
+            token_id: number;
+            /**
+             * Expires At
+             * Format: date-time
+             * @description moves forward with every use
+             */
+            expires_at: string;
+            worker: components["schemas"]["Worker"];
+        };
+        /** WorkerRegistration */
+        WorkerRegistration: {
+            /** Hostname */
+            hostname: string;
+            /** Os */
+            os: string;
+            /** Arch */
+            arch: string;
+            /**
+             * Agent Version
+             * @description of the evo-agents daemon
+             */
+            agent_version: string;
+            /**
+             * Name
+             * @description unique among the owner's workers that are not revoked
+             */
+            name: string;
+            /**
+             * Projects
+             * @description projects the worker takes runs of; the writer role on each
+             */
+            projects: string[];
+            /**
+             * Slots
+             * @description runs the worker holds at once
+             * @default 1
+             */
+            slots: number;
+            /** Labels */
+            labels?: string[];
+            /**
+             * Allow Web Terminal
+             * @description whether the owner may open a terminal on it from the web
+             * @default false
+             */
+            allow_web_terminal: boolean;
         };
         /** Conflict */
         evo_agents__hub__server__memories__Conflict: {
@@ -6380,7 +6776,7 @@ export interface operations {
             query?: {
                 /** @description one user's tokens, any case */
                 login?: string | null;
-                kind?: ("machine" | "web") | null;
+                kind?: ("machine" | "web" | "worker") | null;
                 /** @description live tokens unless set */
                 state?: ("active" | "revoked" | "expired") | "any";
                 /** @description next_cursor of the previous page, with the same filters */
@@ -6493,6 +6889,562 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_pairing_v1_workers_pairings_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PairingRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Pairing"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    pairing_state_v1_workers_pairings__pairing_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pairing_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PairingState"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_workers_v1_workers_get: {
+        parameters: {
+            query?: {
+                /** @description also list revoked workers */
+                revoked?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Worker"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    register_v1_workers_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkerRegistration"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkerCredential"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    show_worker_v1_workers__worker_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                worker_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Worker"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    drain_v1_workers__worker_id__drain_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                worker_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Worker"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    undrain_v1_workers__worker_id__undrain_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                worker_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Worker"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revoke_v1_workers__worker_id__revoke_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                worker_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Worker"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    join_v1_worker_join_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JoinRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkerCredential"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description too many refused codes from this address; see Retry-After */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
         };

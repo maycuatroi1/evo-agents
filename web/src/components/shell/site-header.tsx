@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/breadcrumb";
 import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
+import { useWorkerName } from "@/components/workers/hooks";
 
 import { HUB_NAV, type NavLabel, PROJECT_NAV, projectHref } from "./nav";
 
@@ -37,6 +38,7 @@ function useCrumbs(): Crumb[] {
   const tAdmin = useTranslations("admin.nav");
   const pathname = usePathname();
   const parts = pathname.split("/").filter(Boolean);
+  const workerName = useWorkerName(parts[0] === "workers" ? parts[1] : undefined);
   if (parts[0] === "p" && parts[1]) {
     const project = decodeURIComponent(parts[1]);
     const section = PROJECT_NAV.find((item) => item.segment !== "" && item.segment === parts[2]);
@@ -58,7 +60,9 @@ function useCrumbs(): Crumb[] {
   }
   if (parts[0] === "admin") return adminCrumbs(parts.slice(1), t("admin"), tAdmin);
   const hub = HUB_NAV.find((item) => item.href !== "/" && parts[0] === item.href.slice(1));
-  if (hub && parts.length > 1) return [{ label: t(hub.label), href: hub.href }, { label: itemLabel(parts[1]) }];
+  if (hub && parts.length > 1) {
+    return [{ label: t(hub.label), href: hub.href }, { label: workerName ?? itemLabel(parts[1]) }];
+  }
   if (hub) return [{ label: t(hub.label) }];
   return [{ label: t("projects") }];
 }
