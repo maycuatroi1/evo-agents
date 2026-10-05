@@ -16,13 +16,19 @@ took the revision in between. The write is the step's record, not the run's trut
 the dispatcher can no longer write (the writer role gone, the plan deleted or no longer valid) leaves the move in
 place and logs a warning. A step that is ``done`` already is never set back.
 
+A move also drops the owner's ask for a takeover once the run leaves leased and running, and for a handback once it
+leaves interactive, and notifies EVENTS_CHANNEL with the run's id, as every write of a run's events does, so the
+streams of the run (``run_events``) send the new event at once.
+
 ``release_runs`` is what happens to the runs of a revoked worker, and ``recover_runs`` (the job hub.recover_runs,
-every minute) to the runs whose lease ran out: a run whose cancel was asked for is cancelled, the last attempt fails,
-and any other run is lost, with its next attempt queued for the same step (``parent_run_id`` pointing back, the
-attempt one higher, the runtime the dispatch asked for) and the channel RUNS_CHANNEL notified with the new run's id.
-A revoked worker also fails the runs pinned to it, held or queued, since no other worker may claim them; an expired
-lease does not, since the worker may come back. ``prune_run_events`` (hub.prune_run_events, daily) deletes the
-events of runs that ended more than EVO_HUB_RUN_LOG_DAYS ago.
+every minute) to the held runs that ran past their timeout (counted from when the agent started, or from the claim
+before it did) and to the runs whose lease ran out. A run past its timeout fails, or is cancelled when its cancel was
+asked for, and is not tried again. Of the runs whose lease ran out, one whose cancel was asked for is cancelled, the
+last attempt fails, and any other run is lost, with its next attempt queued for the same step (``parent_run_id``
+pointing back, the attempt one higher, the runtime the dispatch asked for) and the channel RUNS_CHANNEL notified with
+the new run's id. A revoked worker also fails the runs pinned to it, held or queued, since no other worker may claim
+them; an expired lease does not, since the worker may come back. ``prune_run_events`` (hub.prune_run_events, daily)
+deletes the events of runs that ended more than EVO_HUB_RUN_LOG_DAYS ago.
 """
 
 from __future__ import annotations
@@ -47,6 +53,7 @@ from evo_agents.hub.server.security import MACHINE, Principal
 log = logging.getLogger(__name__)
 
 RUNS_CHANNEL = "evo_runs"  # notified with a run's id when it is queued, so a waiting claim looks again
+EVENTS_CHANNEL = "evo_run_events"  # notified with a run's id when an event of it is written, so its streams look again
 PLAN_TRIES = 5  # writes of a step tried before giving up on revision conflicts
 MAX_NOTE_CHARS = 1000  # a note the hub sets on a step
 MAX_EVIDENCE_BYTES = 16 * 1024  # runs.evidence, as schema 0009 bounds it
@@ -73,14 +80,17 @@ UPDATE runs SET state = %(to)s, error = coalesce(%(error)s, error), event_seq = 
                          ELSE started_at END,
        lease_expires_at = CASE WHEN %(to)s = ANY(%(held)s) THEN coalesce(lease_expires_at, now() + %(lease)s)
                                ELSE NULL END,
-       finished_at = CASE WHEN %(to)s = ANY(%(terminal)s) THEN now() ELSE finished_at END{extra}
+       finished_at = CASE WHEN %(to)s = ANY(%(terminal)s) THEN now() ELSE finished_at END,
+       takeover_requested_at = CASE WHEN %(to)s = ANY(%(takeover)s) THEN takeover_requested_at END,
+       handback_requested_at = CASE WHEN %(to)s = ANY(%(handback)s) THEN handback_requested_at END{extra}
  WHERE id = %(id)s AND state = %(from)s
 RETURNING event_seq
 """
 NEXT_ATTEMPT = """
-INSERT INTO runs (project_id, plan_id, step_key, plan_revision, dispatched_by, pinned_worker_id, requested_runtime,
-                  runtime, mode, approval, timeout_s, attempt, max_attempts, parent_run_id, repo, branch)
-SELECT project_id, plan_id, step_key, plan_revision, dispatched_by, pinned_worker_id, requested_runtime,
+INSERT INTO runs (project_id, plan_id, step_key, title, plan_revision, dispatched_by, pinned_worker_id,
+                  requested_runtime, runtime, mode, approval, timeout_s, attempt, max_attempts, parent_run_id, repo,
+                  branch)
+SELECT project_id, plan_id, step_key, title, plan_revision, dispatched_by, pinned_worker_id, requested_runtime,
        requested_runtime, mode, approval, timeout_s, attempt + 1, max_attempts, id, repo, branch
   FROM runs WHERE id = %s
 RETURNING id
@@ -94,6 +104,14 @@ SELECT id, state, attempt, max_attempts, pinned_worker_id, cancel_requested_at I
 """
 PINNED_QUEUED = "SELECT id, state FROM runs WHERE pinned_worker_id = %s AND state = 'queued' ORDER BY id FOR UPDATE"
 EXPIRED = "SELECT id FROM runs WHERE state = ANY(%s) AND lease_expires_at < now() ORDER BY lease_expires_at LIMIT %s"
+PAST_TIMEOUT = "coalesce(started_at, leased_at) + make_interval(secs => timeout_s) < now()"
+TIMED_OUT = f"SELECT id FROM runs WHERE state = ANY(%s) AND {PAST_TIMEOUT} ORDER BY id LIMIT %s"
+LOCK_TIMED_OUT = f"""
+SELECT state, timeout_s, cancel_requested_at IS NOT NULL
+  FROM runs
+ WHERE id = %s AND state = ANY(%s) AND {PAST_TIMEOUT}
+   FOR UPDATE SKIP LOCKED
+"""
 LOCK_EXPIRED = """
 SELECT r.id, r.state, r.attempt, r.max_attempts, r.cancel_requested_at IS NOT NULL, w.name
   FROM runs r LEFT JOIN workers w ON w.id = r.worker_id
@@ -124,6 +142,12 @@ SELECT r.id, p.name, r.plan_id, r.step_key, r.dispatched_by, u.login, w.name, r.
 async def notify_queued(conn, run_id: int) -> None:
     """Wake the claims waiting on RUNS_CHANNEL once the caller's transaction commits."""
     await conn.execute("SELECT pg_notify(%s, %s)", (RUNS_CHANNEL, str(run_id)))
+
+
+async def notify_events(conn, run_id: int) -> None:
+    """Wake the streams of run ``run_id`` on EVENTS_CHANNEL once the caller's transaction commits; the notifications
+    of one transaction with the same run arrive as one."""
+    await conn.execute("SELECT pg_notify(%s, %s)", (EVENTS_CHANNEL, str(run_id)))
 
 
 def _column_value(value):
@@ -161,6 +185,8 @@ async def move_run(
         "error": error,
         "held": list(runs.HELD_STATES),
         "terminal": list(runs.TERMINAL_STATES),
+        "takeover": list(runs.TAKEOVER_STATES),
+        "handback": list(runs.HANDBACK_STATES),
         "lease": LEASE,
         **{f"set_{name}": _column_value(value) for name, value in columns.items()},
     }
@@ -171,6 +197,7 @@ async def move_run(
     await conn.execute(
         "INSERT INTO run_events (run_id, seq, kind, body) VALUES (%s, %s, 'state', %s)", (run_id, row[0], Jsonb(body))
     )
+    await notify_events(conn, run_id)
     return await record_move(conn, run_id, old, new, reason=reason, token_id=token_id)
 
 
@@ -383,10 +410,29 @@ async def release_runs(conn, worker_id: int, reason: str) -> int:
     return moved
 
 
+async def end_timed_out(pool, batch: int, ended: Counter) -> None:
+    """Fail every held run past its timeout, or cancel it when its cancel was asked for, each in a transaction of its
+    own; count them in ``ended``."""
+    async with pool.connection() as conn:
+        late = [row[0] for row in await (await conn.execute(TIMED_OUT, (list(runs.HELD_STATES), batch))).fetchall()]
+    for run_id in late:
+        async with pool.connection() as conn:
+            row = await (await conn.execute(LOCK_TIMED_OUT, (run_id, list(runs.HELD_STATES)))).fetchone()
+            if row is None:  # it ended meanwhile, or another pass took it
+                continue
+            state, timeout_s, cancel = row
+            reason = f"it ran past its timeout of {timeout_s // 60} minutes"
+            new = "cancelled" if cancel else "failed"
+            await move_run(conn, run_id, state, new, "reaper", reason=reason, error=None if cancel else reason)
+            ended[new] += 1
+
+
 async def recover_runs(pool, batch: int = RECOVER_BATCH) -> dict:
-    """One pass of the reaper: every held run whose lease ran out ends as ``end_held`` says, each in a transaction of
-    its own, and a queued run pinned to a revoked worker fails. Returns how many runs ended in each state."""
+    """One pass of the reaper: every held run past its timeout ends as ``end_timed_out`` says, then every held run
+    whose lease ran out ends as ``end_held`` says, each in a transaction of its own, and a queued run pinned to a
+    revoked worker fails. Returns how many runs ended in each state."""
     ended: Counter[str] = Counter()
+    await end_timed_out(pool, batch, ended)
     async with pool.connection() as conn:
         expired = [row[0] for row in await (await conn.execute(EXPIRED, (list(runs.HELD_STATES), batch))).fetchall()]
     for run_id in expired:

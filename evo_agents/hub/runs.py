@@ -22,6 +22,7 @@ the database, not for this module.
 from __future__ import annotations
 
 import json
+import math
 from datetime import datetime, timedelta
 
 from evo_agents.hub.plans import step_key
@@ -51,6 +52,9 @@ HELD_STATES = ("leased", "running", "interactive", "verifying")  # a worker hold
 ACTIVE_STATES = ("queued", *HELD_STATES, "review")  # at most one run of a step is in one of these
 TERMINAL_STATES = ("done", "failed", "lost", "cancelled")
 RUN_STATES = ACTIVE_STATES + TERMINAL_STATES
+TAKEOVER_STATES = ("leased", "running")  # the owner may ask for a takeover while the agent is not driven by a person
+HANDBACK_STATES = ("interactive",)  # and for a handback while it is
+MESSAGE_STATES = ("queued", *HELD_STATES)  # a message waits in the inbox only while an agent may still read it
 ACTORS = ("worker", "owner", "reaper")
 
 _W, _O, _R = frozenset({"worker"}), frozenset({"owner"}), frozenset({"reaper"})
@@ -79,6 +83,9 @@ ACP_EVENT_KINDS = (  # the session/update kinds of the Agent Client Protocol
 HUB_EVENT_KINDS = ("user_message", "state", "system", "output")  # output: a runtime event no adapter knows, raw
 EVENT_KINDS = ACP_EVENT_KINDS + HUB_EVENT_KINDS
 WORKER_EVENT_KINDS = ACP_EVENT_KINDS + ("system", "output")  # the hub alone writes user_message and state
+
+EVENT_CUT_MARK = "\n[cut by the hub: the event was over {limit} bytes]"
+MAX_CUT_PASSES = 64  # strings of one body fit_event_body cuts before it keeps the start of the body's JSON instead
 
 RESULT_DIR = ".evo-run"  # in the run's checkout, never committed
 RESULT_FILE = f"{RESULT_DIR}/result.json"  # {"verify_commands": [str, ...], "summary": str}, written by the agent
@@ -127,6 +134,80 @@ def check_transition(old: str, new: str, actor: str) -> None:
     if actor not in allowed:
         who = " or the ".join(name for name in ACTORS if name in allowed)
         raise TransitionRefused(f"the {actor} cannot move a run from {old} to {new}; only the {who} can")
+
+
+# Events
+
+
+def _json_size(value) -> int:
+    return len(json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode())
+
+
+def _longest_string(value) -> tuple[object, object, int] | None:
+    """(container, key, size) of the string in ``value`` whose JSON is the largest, among those longer than a cut
+    mark; None when there is none. A walk with a stack of its own, so a deeply nested body cannot exhaust the
+    interpreter's."""
+    best = None
+    stack = [value]
+    while stack:
+        node = stack.pop()
+        items = node.items() if isinstance(node, dict) else enumerate(node) if isinstance(node, list) else ()
+        for key, child in items:
+            if isinstance(child, str):
+                size = _json_size(child)
+                if size > len(EVENT_CUT_MARK) + 16 and (best is None or size > best[2]):
+                    best = (node, key, size)
+            elif isinstance(child, (dict, list)):
+                stack.append(child)
+    return best
+
+
+def _cut_strings(body: dict, limit: int) -> bool:
+    """Cut the longest strings of ``body`` in place until its JSON takes at most ``limit`` bytes; whether it does."""
+    mark = EVENT_CUT_MARK.format(limit=limit)
+    mark_size = _json_size(mark) - 2  # in a JSON string, without its quotes
+    for _ in range(MAX_CUT_PASSES):
+        size = _json_size(body)
+        if size <= limit:
+            return True
+        found = _longest_string(body)
+        if found is None:
+            return False
+        node, key, _ = found
+        text = node[key].removesuffix(mark)  # a string cut before is cut again from its text, not its mark
+        size -= _json_size(node[key]) - _json_size(text)
+        data = text.encode()
+        # Drop as many bytes as the text's JSON takes per byte (more where it is escaped); a string escaped unevenly
+        # may need another pass.
+        ratio = (_json_size(text) - 2) / len(data)
+        drop = math.ceil((size + mark_size - limit) / ratio)
+        node[key] = data[: max(0, len(data) - drop)].decode("utf-8", "ignore") + mark
+    return _json_size(body) <= limit
+
+
+def fit_event_body(body: dict, limit: int = MAX_EVENT_BODY_BYTES) -> tuple[dict, bool]:
+    """``body`` and False when its JSON takes at most ``limit`` bytes of UTF-8. Otherwise a cut copy and True: its
+    longest strings end early with EVENT_CUT_MARK, so the keys of the body stay and the web shows the start of the
+    text; and when cutting strings is not enough (a body of many short values), ``{"cut": ...}`` with the start of
+    the body's JSON as text."""
+    if _json_size(body) <= limit:
+        return body, False
+    copy = json.loads(json.dumps(body))
+    if _cut_strings(copy, limit):
+        return copy, True
+    fallback = {"cut": json.dumps(body, ensure_ascii=False, separators=(",", ":"))}
+    if not _cut_strings(fallback, limit):
+        fallback = {"cut": EVENT_CUT_MARK.format(limit=limit).strip()}
+    return fallback, True
+
+
+def step_title(step: dict) -> str | None:
+    """The title a run keeps of its step: one line of at most SHORT_BYTES characters, or None."""
+    title = step.get("title") if isinstance(step, dict) else None
+    if title is None:
+        return None
+    text = " ".join("".join(ch if ch.isprintable() else " " for ch in _text(title)).split())
+    return text[:SHORT_BYTES] or None
 
 
 # Workers

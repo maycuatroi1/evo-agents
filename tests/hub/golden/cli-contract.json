@@ -7785,6 +7785,240 @@
         }
       },
       "/v1/projects/{project}/runs": {
+        "get": {
+          "tags": [
+            "runs"
+          ],
+          "summary": "List Runs",
+          "description": "The project's runs, newest first, of the plans the caller may read, with how many are in each state.",
+          "operationId": "list_runs_v1_projects__project__runs_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "state",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "array",
+                "items": {
+                  "enum": [
+                    "queued",
+                    "leased",
+                    "running",
+                    "interactive",
+                    "verifying",
+                    "review",
+                    "done",
+                    "failed",
+                    "lost",
+                    "cancelled"
+                  ],
+                  "type": "string"
+                },
+                "description": "any of these states; repeat it",
+                "default": [],
+                "title": "State"
+              },
+              "description": "any of these states; repeat it"
+            },
+            {
+              "name": "plan_id",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^[a-z0-9][a-z0-9-]{0,99}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Plan Id"
+              }
+            },
+            {
+              "name": "step",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "a step key",
+                "title": "Step"
+              },
+              "description": "a step key"
+            },
+            {
+              "name": "worker_id",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "maximum": 9223372036854775807,
+                    "minimum": 1
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Worker Id"
+              }
+            },
+            {
+              "name": "dispatched_by",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "a login",
+                "title": "Dispatched By"
+              },
+              "description": "a login"
+            },
+            {
+              "name": "q",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "text in the title, step, plan, repo, branch, worker, login or error, or a run number",
+                "title": "Q"
+              },
+              "description": "text in the title, step, plan, repo, branch, worker, login or error, or a run number"
+            },
+            {
+              "name": "limit",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 200,
+                "minimum": 1,
+                "default": 50,
+                "title": "Limit"
+              }
+            },
+            {
+              "name": "offset",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 100000,
+                "minimum": 0,
+                "default": 0,
+                "title": "Offset"
+              }
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/RunList"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        },
         "post": {
           "tags": [
             "runs"
@@ -7882,6 +8116,106 @@
           }
         }
       },
+      "/v1/projects/{project}/runs/{run_id}": {
+        "get": {
+          "tags": [
+            "runs"
+          ],
+          "summary": "Show Run",
+          "operationId": "show_run_v1_projects__project__runs__run_id__get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Run"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "/v1/projects/{project}/runs/{run_id}/cancel": {
         "post": {
           "tags": [
@@ -7890,6 +8224,196 @@
           "summary": "Cancel",
           "description": "Cancel a queued run or one in review at once; ask the worker holding a held run to stop it.",
           "operationId": "cancel_v1_projects__project__runs__run_id__cancel_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Run"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/runs/{run_id}/takeover": {
+        "post": {
+          "tags": [
+            "runs"
+          ],
+          "summary": "Takeover",
+          "description": "Ask the worker to stop the agent at the end of its turn and resume its session in a terminal, where a person\ndrives it (the run becomes interactive).",
+          "operationId": "takeover_v1_projects__project__runs__run_id__takeover_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Run"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/runs/{run_id}/handback": {
+        "post": {
+          "tags": [
+            "runs"
+          ],
+          "summary": "Handback",
+          "description": "Ask the worker to close the terminal and let the agent go on headless in the same session (the run becomes\nrunning again).",
+          "operationId": "handback_v1_projects__project__runs__run_id__handback_post",
           "parameters": [
             {
               "name": "project",
@@ -8389,6 +8913,945 @@
                   }
                 }
               }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/runs/{run_id}/events": {
+        "get": {
+          "tags": [
+            "runs"
+          ],
+          "summary": "List Events",
+          "description": "The run's events after ``after``, in seq order.",
+          "operationId": "list_events_v1_projects__project__runs__run_id__events_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            },
+            {
+              "name": "after",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 2147483647,
+                "minimum": 0,
+                "description": "the seq of the last event the caller has",
+                "default": 0,
+                "title": "After"
+              },
+              "description": "the seq of the last event the caller has"
+            },
+            {
+              "name": "limit",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 1000,
+                "minimum": 1,
+                "default": 500,
+                "title": "Limit"
+              }
+            },
+            {
+              "name": "kind",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "array",
+                "items": {
+                  "enum": [
+                    "agent_message_chunk",
+                    "agent_thought_chunk",
+                    "tool_call",
+                    "tool_call_update",
+                    "plan",
+                    "usage_update",
+                    "user_message",
+                    "state",
+                    "system",
+                    "output"
+                  ],
+                  "type": "string"
+                },
+                "description": "only these kinds; repeat it",
+                "default": [],
+                "title": "Kind"
+              },
+              "description": "only these kinds; repeat it"
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/RunEvents"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/runs/{run_id}/messages": {
+        "post": {
+          "tags": [
+            "runs"
+          ],
+          "summary": "Send Message",
+          "description": "Leave a message for the run's agent in its inbox, which the worker hands to the agent.",
+          "operationId": "send_message_v1_projects__project__runs__run_id__messages_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Message"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/runs/{run_id}/diff": {
+        "get": {
+          "tags": [
+            "runs"
+          ],
+          "summary": "Diff",
+          "description": "A presigned GET of the diff the run's worker uploaded when the run ended.",
+          "operationId": "diff_v1_projects__project__runs__run_id__diff_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            },
+            {
+              "name": "download",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "boolean",
+                "description": "ask the store to answer as an attachment, run-<id>.diff",
+                "default": false,
+                "title": "Download"
+              },
+              "description": "ask the store to answer as an attachment, run-<id>.diff"
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/DiffLink"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/runs/{run_id}/stream": {
+        "get": {
+          "tags": [
+            "runs"
+          ],
+          "summary": "Stream",
+          "description": "The run's events as server-sent events, each with its seq as id, then an ``end`` event once the run is final\nand every event was sent; a ``: ping`` comment keeps an idle stream open.",
+          "operationId": "stream_v1_projects__project__runs__run_id__stream_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            },
+            {
+              "name": "after",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 2147483647,
+                "minimum": 0,
+                "description": "where a first connection starts",
+                "default": 0,
+                "title": "After"
+              },
+              "description": "where a first connection starts"
+            },
+            {
+              "name": "Last-Event-ID",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "maximum": 2147483647,
+                    "minimum": 0
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "sent by a reconnecting client",
+                "title": "Last-Event-Id"
+              },
+              "description": "sent by a reconnecting client"
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "text/event-stream": {
+                  "itemSchema": {
+                    "type": "object",
+                    "properties": {
+                      "data": {
+                        "type": "string"
+                      },
+                      "event": {
+                        "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "retry": {
+                        "type": "integer",
+                        "minimum": 0
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "403": {
+              "description": "Forbidden",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "404": {
+              "description": "Not Found",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/worker/runs/{run_id}/events": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Post Events",
+          "description": "Store the events of the batch that follow the ones stored, and say up to where the worker's spool may go.",
+          "operationId": "post_events_v1_worker_runs__run_id__events_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventBatch"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/EventsAck"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/worker/runs/{run_id}/inbox": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Take Inbox",
+          "description": "Mark the messages up to ``ack`` delivered, and hand out the ones that still wait, for a run the worker holds.",
+          "operationId": "take_inbox_v1_worker_runs__run_id__inbox_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/InboxAck"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Body"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Inbox"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/worker/runs/{run_id}/uploads": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Request Run Uploads",
+          "description": "Presigned PUT URLs for the log (run-log) and the diff (run-diff) of a run the worker claimed, as its owner.",
+          "operationId": "request_run_uploads_v1_worker_runs__run_id__uploads_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunUploadRequest"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Uploads"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            }
+          }
+        }
+      },
+      "/v1/worker/runs/{run_id}/blobs": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Commit Run Blobs",
+          "description": "Commit the uploads of a run's log and diff, and record them on the run.",
+          "operationId": "commit_run_blobs_v1_worker_runs__run_id__blobs_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunBlobCommit"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/RunBlobs"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
             }
           }
         }
@@ -9163,6 +10626,43 @@
           ],
           "title": "Csrf"
         },
+        "DiffLink": {
+          "properties": {
+            "sha256": {
+              "type": "string",
+              "title": "Sha256"
+            },
+            "size": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Size"
+            },
+            "url": {
+              "type": "string",
+              "title": "Url",
+              "description": "a presigned GET of the diff, working until expires_at"
+            },
+            "expires_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Expires At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "sha256",
+            "size",
+            "url",
+            "expires_at"
+          ],
+          "title": "DiffLink"
+        },
         "Diffstat": {
           "properties": {
             "files": {
@@ -9318,6 +10818,89 @@
             "message"
           ],
           "title": "ErrorBody"
+        },
+        "EventBatch": {
+          "properties": {
+            "events": {
+              "items": {
+                "$ref": "#/components/schemas/EventIn"
+              },
+              "type": "array",
+              "maxItems": 500,
+              "title": "Events"
+            }
+          },
+          "type": "object",
+          "required": [
+            "events"
+          ],
+          "title": "EventBatch"
+        },
+        "EventIn": {
+          "properties": {
+            "seq": {
+              "type": "integer",
+              "maximum": 2147483647.0,
+              "minimum": 1.0,
+              "title": "Seq",
+              "description": "the worker's number of the event: 1 for the run's first"
+            },
+            "at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "At",
+              "description": "when the worker saw it; a time after the hub's now is taken as now"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "agent_message_chunk",
+                "agent_thought_chunk",
+                "tool_call",
+                "tool_call_update",
+                "plan",
+                "usage_update",
+                "system",
+                "output"
+              ],
+              "title": "Kind",
+              "description": "user_message and state are the hub's own"
+            },
+            "body": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Body",
+              "description": "a JSON object; over 64 KiB of JSON, the hub cuts it"
+            }
+          },
+          "type": "object",
+          "required": [
+            "seq",
+            "at",
+            "kind",
+            "body"
+          ],
+          "title": "EventIn"
+        },
+        "EventsAck": {
+          "properties": {
+            "ack_seq": {
+              "type": "integer",
+              "title": "Ack Seq",
+              "description": "the worker's highest seq stored with none missing below: drop the spool to it"
+            },
+            "stored": {
+              "type": "integer",
+              "title": "Stored",
+              "description": "events of this batch stored now; the others were resends or after a gap"
+            }
+          },
+          "type": "object",
+          "required": [
+            "ack_seq",
+            "stored"
+          ],
+          "title": "EventsAck"
         },
         "Evidence": {
           "properties": {
@@ -9973,6 +11556,72 @@
           ],
           "title": "HeartbeatRequest"
         },
+        "Inbox": {
+          "properties": {
+            "messages": {
+              "items": {
+                "$ref": "#/components/schemas/InboxMessage"
+              },
+              "type": "array",
+              "title": "Messages",
+              "description": "the messages not delivered yet, oldest first"
+            }
+          },
+          "type": "object",
+          "required": [
+            "messages"
+          ],
+          "title": "Inbox"
+        },
+        "InboxAck": {
+          "properties": {
+            "ack": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 9.223372036854776e+18,
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ack",
+              "description": "the last message handed to the agent: it and the ones before are delivered"
+            }
+          },
+          "type": "object",
+          "title": "InboxAck"
+        },
+        "InboxMessage": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "text": {
+              "type": "string",
+              "title": "Text"
+            },
+            "sent_by": {
+              "type": "string",
+              "title": "Sent By"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "text",
+            "sent_by",
+            "created_at"
+          ],
+          "title": "InboxMessage"
+        },
         "Job": {
           "properties": {
             "job_id": {
@@ -10502,6 +12151,76 @@
             "body"
           ],
           "title": "MemoryRevision"
+        },
+        "Message": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "run_id": {
+              "type": "integer",
+              "title": "Run Id"
+            },
+            "seq": {
+              "type": "integer",
+              "title": "Seq",
+              "description": "its user_message event in the run's log"
+            },
+            "text": {
+              "type": "string",
+              "title": "Text"
+            },
+            "sent_by": {
+              "type": "string",
+              "title": "Sent By"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "delivered_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Delivered At",
+              "description": "when the worker took it for the agent"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "run_id",
+            "seq",
+            "text",
+            "sent_by",
+            "created_at",
+            "delivered_at"
+          ],
+          "title": "Message"
+        },
+        "MessageIn": {
+          "properties": {
+            "text": {
+              "type": "string",
+              "maxLength": 8192,
+              "minLength": 1,
+              "title": "Text",
+              "description": "at most 8 KiB of UTF-8"
+            }
+          },
+          "type": "object",
+          "required": [
+            "text"
+          ],
+          "title": "MessageIn"
         },
         "MissingBlobs": {
           "properties": {
@@ -12170,6 +13889,18 @@
               "type": "string",
               "title": "Step Key"
             },
+            "title": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Title",
+              "description": "the step's title when the run was dispatched"
+            },
             "plan_revision": {
               "type": "integer",
               "title": "Plan Revision",
@@ -12399,6 +14130,35 @@
               ],
               "title": "Error"
             },
+            "log_sha256": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Log Sha256",
+              "description": "the blob of kind run-log its worker uploaded"
+            },
+            "diff_sha256": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Diff Sha256",
+              "description": "the blob of kind run-diff: GET .../runs/{id}/diff"
+            },
+            "last_seq": {
+              "type": "integer",
+              "title": "Last Seq",
+              "description": "the seq of the run's latest event; 0 before the first"
+            },
             "cancel_requested_at": {
               "anyOf": [
                 {
@@ -12410,6 +14170,32 @@
                 }
               ],
               "title": "Cancel Requested At"
+            },
+            "takeover_requested_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Takeover Requested At",
+              "description": "the owner asked to drive the agent in a terminal"
+            },
+            "handback_requested_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Handback Requested At",
+              "description": "the owner asked to let the agent go on headless"
             },
             "queued_at": {
               "type": "string",
@@ -12459,6 +14245,7 @@
             "project",
             "plan_id",
             "step_key",
+            "title",
             "plan_revision",
             "dispatched_by",
             "worker_id",
@@ -12483,13 +14270,100 @@
             "evidence",
             "usage",
             "error",
+            "log_sha256",
+            "diff_sha256",
+            "last_seq",
             "cancel_requested_at",
+            "takeover_requested_at",
+            "handback_requested_at",
             "queued_at",
             "leased_at",
             "started_at",
             "finished_at"
           ],
           "title": "Run"
+        },
+        "RunBlobCommit": {
+          "properties": {
+            "upload_ids": {
+              "items": {
+                "type": "string",
+                "format": "uuid4"
+              },
+              "type": "array",
+              "maxItems": 2,
+              "minItems": 1,
+              "title": "Upload Ids"
+            }
+          },
+          "type": "object",
+          "required": [
+            "upload_ids"
+          ],
+          "title": "RunBlobCommit"
+        },
+        "RunBlobItem": {
+          "properties": {
+            "sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$",
+              "title": "Sha256",
+              "description": "hex SHA-256 of the bytes"
+            },
+            "size": {
+              "type": "integer",
+              "minimum": 0.0,
+              "title": "Size",
+              "description": "bytes, at most the limit of the kind"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "run-log",
+                "run-diff"
+              ],
+              "title": "Kind"
+            }
+          },
+          "type": "object",
+          "required": [
+            "sha256",
+            "size",
+            "kind"
+          ],
+          "title": "RunBlobItem"
+        },
+        "RunBlobs": {
+          "properties": {
+            "log_sha256": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Log Sha256"
+            },
+            "diff_sha256": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Diff Sha256"
+            }
+          },
+          "type": "object",
+          "required": [
+            "log_sha256",
+            "diff_sha256"
+          ],
+          "title": "RunBlobs"
         },
         "RunCommitted": {
           "properties": {
@@ -12587,22 +14461,25 @@
             "takeover": {
               "type": "boolean",
               "title": "Takeover",
+              "description": "the owner asked to drive the agent in a terminal: report interactive",
               "default": false
             },
             "handback": {
               "type": "boolean",
               "title": "Handback",
+              "description": "the owner asked to let the agent go on headless: report running",
               "default": false
             },
             "terminal_open": {
               "type": "boolean",
               "title": "Terminal Open",
+              "description": "open the web terminal; false until the terminal relay exists",
               "default": false
             },
             "inbox": {
               "type": "integer",
               "title": "Inbox",
-              "description": "messages from the owner waiting for the agent",
+              "description": "messages from the owner waiting for the agent: POST .../runs/{id}/inbox",
               "default": 0
             }
           },
@@ -12615,6 +14492,144 @@
             "cancel"
           ],
           "title": "RunControl"
+        },
+        "RunEvent": {
+          "properties": {
+            "seq": {
+              "type": "integer",
+              "title": "Seq",
+              "description": "the hub's number of the event in the run: events?after= and Last-Event-ID take it"
+            },
+            "at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "At"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "agent_message_chunk",
+                "agent_thought_chunk",
+                "tool_call",
+                "tool_call_update",
+                "plan",
+                "usage_update",
+                "user_message",
+                "state",
+                "system",
+                "output"
+              ],
+              "title": "Kind"
+            },
+            "body": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Body"
+            },
+            "truncated": {
+              "type": "boolean",
+              "title": "Truncated",
+              "description": "the hub cut the body to 64 KiB of JSON"
+            }
+          },
+          "type": "object",
+          "required": [
+            "seq",
+            "at",
+            "kind",
+            "body",
+            "truncated"
+          ],
+          "title": "RunEvent"
+        },
+        "RunEvents": {
+          "properties": {
+            "run_id": {
+              "type": "integer",
+              "title": "Run Id"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "queued",
+                "leased",
+                "running",
+                "interactive",
+                "verifying",
+                "review",
+                "done",
+                "failed",
+                "lost",
+                "cancelled"
+              ],
+              "title": "State"
+            },
+            "last_seq": {
+              "type": "integer",
+              "title": "Last Seq",
+              "description": "the seq of the run's latest event"
+            },
+            "events": {
+              "items": {
+                "$ref": "#/components/schemas/RunEvent"
+              },
+              "type": "array",
+              "title": "Events",
+              "description": "in seq order"
+            },
+            "more": {
+              "type": "boolean",
+              "title": "More",
+              "description": "more events follow the last one here: ask again after it"
+            }
+          },
+          "type": "object",
+          "required": [
+            "run_id",
+            "state",
+            "last_seq",
+            "events",
+            "more"
+          ],
+          "title": "RunEvents"
+        },
+        "RunList": {
+          "properties": {
+            "runs": {
+              "items": {
+                "$ref": "#/components/schemas/Run"
+              },
+              "type": "array",
+              "title": "Runs",
+              "description": "newest first"
+            },
+            "total": {
+              "type": "integer",
+              "title": "Total",
+              "description": "runs that match every filter"
+            },
+            "counts": {
+              "$ref": "#/components/schemas/StateCounts",
+              "description": "runs in each state that match the other filters: what the state filter would leave"
+            },
+            "limit": {
+              "type": "integer",
+              "title": "Limit"
+            },
+            "offset": {
+              "type": "integer",
+              "title": "Offset"
+            }
+          },
+          "type": "object",
+          "required": [
+            "runs",
+            "total",
+            "counts",
+            "limit",
+            "offset"
+          ],
+          "title": "RunList"
         },
         "RunPush": {
           "properties": {
@@ -12833,6 +14848,25 @@
             "missing"
           ],
           "title": "RunState"
+        },
+        "RunUploadRequest": {
+          "properties": {
+            "items": {
+              "items": {
+                "$ref": "#/components/schemas/RunBlobItem"
+              },
+              "type": "array",
+              "maxItems": 2,
+              "minItems": 1,
+              "title": "Items",
+              "description": "one blob per kind"
+            }
+          },
+          "type": "object",
+          "required": [
+            "items"
+          ],
+          "title": "RunUploadRequest"
         },
         "Runs": {
           "properties": {
@@ -13109,6 +15143,73 @@
             "versions"
           ],
           "title": "SkillHistory"
+        },
+        "StateCounts": {
+          "properties": {
+            "queued": {
+              "type": "integer",
+              "minimum": 0.0,
+              "title": "Queued",
+              "default": 0
+            },
+            "leased": {
+              "type": "integer",
+              "minimum": 0.0,
+              "title": "Leased",
+              "default": 0
+            },
+            "running": {
+              "type": "integer",
+              "minimum": 0.0,
+              "title": "Running",
+              "default": 0
+            },
+            "interactive": {
+              "type": "integer",
+              "minimum": 0.0,
+              "title": "Interactive",
+              "default": 0
+            },
+            "verifying": {
+              "type": "integer",
+              "minimum": 0.0,
+              "title": "Verifying",
+              "default": 0
+            },
+            "review": {
+              "type": "integer",
+              "minimum": 0.0,
+              "title": "Review",
+              "default": 0
+            },
+            "done": {
+              "type": "integer",
+              "minimum": 0.0,
+              "title": "Done",
+              "default": 0
+            },
+            "failed": {
+              "type": "integer",
+              "minimum": 0.0,
+              "title": "Failed",
+              "default": 0
+            },
+            "lost": {
+              "type": "integer",
+              "minimum": 0.0,
+              "title": "Lost",
+              "default": 0
+            },
+            "cancelled": {
+              "type": "integer",
+              "minimum": 0.0,
+              "title": "Cancelled",
+              "default": 0
+            }
+          },
+          "type": "object",
+          "title": "StateCounts",
+          "description": "Runs in each state."
         },
         "StateReport": {
           "properties": {
@@ -13582,7 +15683,9 @@
               "enum": [
                 "skill-bundle",
                 "kg-log",
-                "kg-blob"
+                "kg-blob",
+                "run-log",
+                "run-diff"
               ],
               "title": "Kind"
             }

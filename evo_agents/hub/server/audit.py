@@ -37,6 +37,9 @@ RUN_DISPATCH = "run.dispatch"  # a member queued a run of a ready step
 RUN_CANCEL = "run.cancel"  # the owner cancelled a run, or asked its worker to stop it
 RUN_APPROVE = "run.approve"  # the owner approved a run in review, and the step is done
 RUN_RERUN = "run.rerun"  # the owner queued the step again after a run that ended
+RUN_MESSAGE = "run.message"  # the owner sent the run's agent a message; the target names the message, not its text
+RUN_TAKEOVER = "run.takeover"  # the owner asked to drive the run's agent in a terminal
+RUN_HANDBACK = "run.handback"  # the owner asked to let the run's agent go on headless
 
 NAMED_FAMILIES = frozenset({"grant", "project", "plan", "kg", "blob"})  # targets that start with the project's name
 _FIRST_NAME = re.compile(r"([a-z0-9][a-z0-9-]{0,99})(?:[/ @]|$)")

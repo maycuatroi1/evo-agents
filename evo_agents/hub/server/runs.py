@@ -1,36 +1,47 @@
-"""Runs on the hub: the steps of a plan that may be dispatched, dispatching them, the worker's side of the queue
-(claim, heartbeat, state) and the owner's cancel, approve and rerun. ``docs/workers.md`` is the protocol, and
-``run_state`` moves the runs and records each move in the plan.
+"""Runs on the hub: the steps of a plan that may be dispatched, dispatching them, listing and showing runs, the
+worker's side of the queue (claim, heartbeat, state) and the owner's cancel, approve, rerun, takeover and handback.
+``docs/workers.md`` is the protocol, ``run_state`` moves the runs and records each move in the plan, and
+``run_events`` holds a run's log, stream, messages and blobs.
 
 GET /v1/projects/{p}/plans/{plan}/ready-steps (reader) lists every step of the plan, ready or not, with why it is not
 (``runs.unready_reason``, or the active run it has). POST /v1/projects/{p}/runs (writer) queues one run per step
 named: every step must be ready and without an active run (409 otherwise, and nothing is queued), and a worker named
 must be one of the caller's own (403 for any other id, a hub admin's included), live and serving the project (409).
-Each run is notified on RUNS_CHANNEL and audited (run.dispatch).
+Each run is notified on RUNS_CHANNEL and audited (run.dispatch), and keeps the step's title.
 
-A worker claims with POST /v1/worker/claim, which waits up to CLAIM_WAIT_SECONDS: the api process LISTENs on
-RUNS_CHANNEL on one connection of its own (``RunWakeups``, opened by the first claim) and looks again every
-CLAIM_POLL_SECONDS besides, so a lost notification delays a claim but never loses it. A claim takes the oldest queued
-run, ``FOR UPDATE SKIP LOCKED``, that its owner dispatched, of a project the worker serves and on which the owner
-still holds writer, asking for a runtime the worker reported (``any`` takes the first of runs.RUNTIMES it has), of a
-repo it has a checkout of, pinned to no other worker, while the worker is neither draining nor revoked and holds
-fewer runs than its slots. A worker has one claim waiting at a time: a newer claim answers the older one with no run.
-The claimed run is leased for LEASE_SECONDS and comes with its prompt (``runs.build_prompt`` over the plan revision
-it was dispatched from).
+GET /v1/projects/{p}/runs (reader) lists the project's runs newest first, filtered by state, plan, step, worker,
+dispatcher and text, a page at a time, with how many runs each state has under the other filters; GET .../runs/{id}
+shows one. A reader sees the runs of the plans it may read through the sink it names (``visible_plans``), and a run
+of another plan reads as no run (``readable_run``).
+
+A worker claims with POST /v1/worker/claim, which waits up to CLAIM_WAIT_SECONDS: ``RunWakeups`` wakes it when
+RUNS_CHANNEL is notified, on the api process's one LISTEN connection (``listen``, opened by the first claim or
+stream), and it looks again every CLAIM_POLL_SECONDS besides, so a lost notification delays a claim but never loses
+it. A claim takes the oldest queued run, ``FOR UPDATE SKIP LOCKED``, that its owner dispatched, of a project the
+worker serves and on which the owner still holds writer, asking for a runtime the worker reported (``any`` takes the
+first of runs.RUNTIMES it has), of a repo it has a checkout of, pinned to no other worker, while the worker is
+neither draining nor revoked and holds fewer runs than its slots. A worker has one claim waiting at a time: a newer
+claim answers the older one with no run. The claimed run is leased for LEASE_SECONDS and comes with its prompt
+(``runs.build_prompt`` over the plan revision it was dispatched from).
 
 POST /v1/worker/heartbeat records the machine (runtimes, checkouts keyed ``<project>/<repo>``, free slots), extends
 the lease of every run the worker names and still holds, and answers with control: per run, whether to cancel (asked
 by the owner, or a run the worker no longer holds), takeover, handback, terminal_open and how many inbox messages
-wait; for the worker, whether to drain. Takeover, handback and the terminal are always false until the routes that
-ask for them exist. POST /v1/worker/runs/{id}/state reports a move of a run the worker holds (404 otherwise), checked
-against ``runs.TRANSITIONS`` with the worker as actor (409 otherwise): ``done`` only for approval auto with every
-verify command exited 0, ``review`` only for approval review. Reporting the state the run is in already changes
-nothing but the session id, commit, diffstat, verify results and usage given, so a resend is safe.
+wait; for the worker, whether to drain. terminal_open stays false until the terminal relay exists.
+
+POST /v1/worker/runs/{id}/state reports a move of a run the worker holds (404 otherwise), checked against
+``runs.TRANSITIONS`` with the worker as actor (409 otherwise): ``done`` only for approval auto with every verify
+command exited 0, ``review`` only for approval review. Reporting the state the run is in already changes nothing but
+the session id, commit, diffstat, verify results and usage given, so a resend is safe.
 
 The owner of a run is the member who dispatched it. Cancel moves a queued run or one in review to ``cancelled`` and
 asks the worker holding a held run to stop it (the next heartbeat says cancel); approve moves a run in review to
-``done``; rerun queues the step again, at the plan's current revision, after a run that ended. Each one is audited
-(run.cancel, run.approve, run.rerun); another member gets 403, someone without a grant on the project 404.
+``done``; rerun queues the step again, at the plan's current revision, after a run that ended. Takeover asks the
+worker holding a leased or running run to let a person drive the agent in a terminal, and handback asks it to let
+an interactive run's agent go on headless: the next heartbeat says takeover or handback until the worker reports
+interactive or running, and any other move drops the ask. Each one is audited (run.cancel, run.approve, run.rerun,
+run.takeover, run.handback; an ask repeated is not); another member gets 403, someone without a grant on the
+project 404.
 """
 
 from __future__ import annotations
@@ -38,24 +49,24 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 from dataclasses import replace
 from datetime import datetime
 from typing import Annotated, Literal
 
 import psycopg
-from fastapi import APIRouter, Header, HTTPException, Path, Request
-from psycopg import sql
+from fastapi import APIRouter, Header, HTTPException, Path, Query, Request
 from psycopg.types.json import Jsonb
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, create_model, model_validator
 
 from evo_agents.hub import runs
 from evo_agents.hub.access import has_role
-from evo_agents.hub.db import CONNECT_TIMEOUT
 from evo_agents.hub.plans import PlanProblem, step_index, step_key
 from evo_agents.hub.server import audit
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
+from evo_agents.hub.server.listen import Listener
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.run_state import (
     LEASE,
@@ -72,14 +83,12 @@ log = logging.getLogger(__name__)
 MAX_ID = 2**63 - 1  # bigint
 MAX_DISPATCH_STEPS = 50
 CLAIM_POLL_SECONDS = 5.0  # a waiting claim looks again this often, notification or not
-LISTEN_BACKOFF = (1.0, 60.0)  # seconds between attempts to LISTEN again after the connection failed
 MAX_HEARTBEAT_RUNS = 64
 MAX_REPORT_BYTES = 64 * 1024  # runtimes and checkouts of a heartbeat, or the usage of a state report, as JSON
 LINE = r"^[^\x00-\x1f\x7f]+$"
 OBJECT_NAME = r"^([0-9a-f]{40}|[0-9a-f]{64})$"
 CHECKOUT_KEY = r"^[a-z0-9][a-z0-9-]{0,99}/[^\x00-\x1f\x7f/][^\x00-\x1f\x7f]{0,199}$"  # <project>/<repo>
 STEP_KEY_CHARS = 200
-APPLICATION_NAME = "evo-agents-hub-runs"
 REQUESTED_RUNTIMES = ("any", *runs.RUNTIMES)
 WRITER_ROLES = [role for role in ("reader", "writer", "admin") if has_role(role, "writer")]
 NOT_HELD = "this worker does not hold run {id}: it may have been lost, cancelled or taken by another attempt"
@@ -135,6 +144,7 @@ class Run(BaseModel):
     project: str
     plan_id: str
     step_key: str
+    title: str | None = Field(description="the step's title when the run was dispatched")
     plan_revision: int = Field(description="the plan revision the run was dispatched from")
     dispatched_by: str = Field(description="the login of the member who dispatched it, its owner")
     worker_id: int | None = Field(description="the worker that claimed it")
@@ -159,7 +169,12 @@ class Run(BaseModel):
     evidence: str | None
     usage: dict | None
     error: str | None
+    log_sha256: str | None = Field(description="the blob of kind run-log its worker uploaded")
+    diff_sha256: str | None = Field(description="the blob of kind run-diff: GET .../runs/{id}/diff")
+    last_seq: int = Field(description="the seq of the run's latest event; 0 before the first")
     cancel_requested_at: datetime | None
+    takeover_requested_at: datetime | None = Field(description="the owner asked to drive the agent in a terminal")
+    handback_requested_at: datetime | None = Field(description="the owner asked to let the agent go on headless")
     queued_at: datetime
     leased_at: datetime | None
     started_at: datetime | None
@@ -260,10 +275,10 @@ class RunControl(BaseModel):
     state: Literal[runs.RUN_STATES] | None = Field(description="null for a run that is not this worker's")
     lease_expires_at: datetime | None
     cancel: bool
-    takeover: bool = False
-    handback: bool = False
-    terminal_open: bool = False
-    inbox: int = Field(0, description="messages from the owner waiting for the agent")
+    takeover: bool = Field(False, description="the owner asked to drive the agent in a terminal: report interactive")
+    handback: bool = Field(False, description="the owner asked to let the agent go on headless: report running")
+    terminal_open: bool = Field(False, description="open the web terminal; false until the terminal relay exists")
+    inbox: int = Field(0, description="messages from the owner waiting for the agent: POST .../runs/{id}/inbox")
 
 
 class HeartbeatAnswer(BaseModel):
@@ -307,22 +322,25 @@ class StateReport(BaseModel):
 
 # Reading runs
 
-RUN_VIEW = """
-SELECT r.id, p.name, r.plan_id, r.step_key, r.plan_revision, u.login, r.worker_id, w.name, r.pinned_worker_id,
-       r.requested_runtime, r.runtime, r.mode, r.approval, r.timeout_s / 60, r.attempt, r.max_attempts,
-       r.parent_run_id, r.state, r.lease_expires_at, r.session_id, r.repo, r.branch, r.commit_sha, r.diffstat,
-       r.verify, r.evidence, r.usage, r.error, r.cancel_requested_at, r.queued_at, r.leased_at, r.started_at,
-       r.finished_at
+RUN_COLUMNS = """
+SELECT r.id, p.name, r.plan_id, r.step_key, r.title, r.plan_revision, u.login, r.worker_id, w.name,
+       r.pinned_worker_id, r.requested_runtime, r.runtime, r.mode, r.approval, r.timeout_s / 60, r.attempt,
+       r.max_attempts, r.parent_run_id, r.state, r.lease_expires_at, r.session_id, r.repo, r.branch, r.commit_sha,
+       r.diffstat, r.verify, r.evidence, r.usage, r.error, r.log_sha256, r.diff_sha256, r.event_seq,
+       r.cancel_requested_at, r.takeover_requested_at, r.handback_requested_at, r.queued_at, r.leased_at,
+       r.started_at, r.finished_at
   FROM runs r JOIN projects p ON p.id = r.project_id JOIN users u ON u.id = r.dispatched_by
   LEFT JOIN workers w ON w.id = r.worker_id
- WHERE r.id = ANY(%s)
- ORDER BY r.id
 """
+RUN_VIEW = RUN_COLUMNS + " WHERE r.id = ANY(%s) ORDER BY r.id"
+
+
+def _runs_of(rows) -> list[Run]:
+    return [Run(**dict(zip(Run.model_fields, row, strict=True))) for row in rows]
 
 
 async def run_views(conn, run_ids: list[int]) -> list[Run]:
-    rows = await (await conn.execute(RUN_VIEW, (list(run_ids),))).fetchall()
-    return [Run(**dict(zip(Run.model_fields, row, strict=True))) for row in rows]
+    return _runs_of(await (await conn.execute(RUN_VIEW, (list(run_ids),))).fetchall())
 
 
 async def run_view(conn, run_id: int) -> Run:
@@ -395,6 +413,155 @@ async def ready_steps(
     return ReadySteps(project=project, plan_id=plan_id, revision=held.revision, steps=shown)
 
 
+# Listing and showing runs
+
+MAX_LIST = 200
+MAX_OFFSET = 100_000
+StateCounts = create_model(
+    "StateCounts",
+    __doc__="Runs in each state.",
+    **{state: (int, Field(0, ge=0)) for state in runs.RUN_STATES},
+)
+
+
+class RunList(BaseModel):
+    runs: list[Run] = Field(description="newest first")
+    total: int = Field(description="runs that match every filter")
+    counts: StateCounts = Field(
+        description="runs in each state that match the other filters: what the state filter would leave"
+    )
+    limit: int
+    offset: int
+
+
+PLAN_LABELS = "SELECT plan_id, label FROM plans WHERE project_id = %s"
+
+
+async def visible_plans(conn, access: ProjectAccess, sink: str | None) -> list[str]:
+    """The plans of the project whose runs the caller may read: those it may read through ``sink`` (the project's
+    hub sink when None), by the plan's label. A run of a plan no longer on the hub is shown to nobody."""
+    plan_routes._reader(access)
+    through = plan_routes._sink(access, sink)
+    rows = await (await conn.execute(PLAN_LABELS, (access.project_id,))).fetchall()
+    return [plan_id for plan_id, label in rows if access.visible(label, through)]
+
+
+READABLE_RUN = "SELECT plan_id FROM runs WHERE id = %s AND project_id = %s"
+
+
+async def readable_run(conn, user: Principal, project: str, run_id: int, sink: str | None) -> ProjectAccess:
+    """The caller's access to ``project`` when it may read run ``run_id`` of it: a grant on the project (404 without,
+    403 for a hub admin without one) and the run's plan visible to it (404 otherwise, as for no run)."""
+    access = await project_access(conn, user, project)
+    plan_routes._reader(access)
+    row = await (await conn.execute(READABLE_RUN, (run_id, access.project_id))).fetchone()
+    if row is None or row[0] not in await visible_plans(conn, access, sink):
+        raise HTTPException(404, f"project {project} has no run {run_id}: see GET /v1/projects/{project}/runs")
+    return access
+
+
+LIST_FILTERS = """
+ WHERE r.project_id = %(project)s AND r.plan_id = ANY(%(plans)s)
+   AND (%(plan)s::text IS NULL OR r.plan_id = %(plan)s)
+   AND (%(step)s::text IS NULL OR r.step_key = %(step)s)
+   AND (%(worker)s::bigint IS NULL OR r.worker_id = %(worker)s)
+   AND (%(login)s::text IS NULL OR lower(u.login) = lower(%(login)s))
+   AND (%(q)s::text IS NULL OR r.title ILIKE %(q)s OR r.step_key ILIKE %(q)s OR r.plan_id ILIKE %(q)s
+        OR r.repo ILIKE %(q)s OR r.branch ILIKE %(q)s OR w.name ILIKE %(q)s OR u.login ILIKE %(q)s
+        OR r.error ILIKE %(q)s OR r.id = %(run)s::bigint)
+"""
+LIST_PAGE = (
+    RUN_COLUMNS
+    + LIST_FILTERS
+    + """   AND (cardinality(%(states)s::text[]) = 0 OR r.state = ANY(%(states)s))
+ ORDER BY r.id DESC
+ LIMIT %(limit)s OFFSET %(offset)s
+"""
+)
+LIST_COUNTS = (
+    """
+SELECT r.state, count(*)
+  FROM runs r JOIN users u ON u.id = r.dispatched_by LEFT JOIN workers w ON w.id = r.worker_id
+"""
+    + LIST_FILTERS
+    + " GROUP BY r.state"
+)
+RUN_NUMBER = re.compile(r"#?([0-9]{1,18})")
+
+
+def _like(text: str) -> str:
+    """``text`` as an ILIKE pattern that matches it anywhere, its own wildcards taken literally."""
+    return "%" + text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+
+
+@router.get("/{project}/runs", response_model=RunList, responses={403: {"model": ErrorBody}, 404: {"model": ErrorBody}})
+async def list_runs(
+    request: Request,
+    project: ProjectName,
+    user: CurrentUser,
+    state: Annotated[list[Literal[runs.RUN_STATES]], Query(description="any of these states; repeat it")] = [],  # noqa: B006
+    plan_id: Annotated[str | None, Query(pattern=plan_routes.PLAN_ID)] = None,
+    step: Annotated[str | None, Query(min_length=1, max_length=STEP_KEY_CHARS, description="a step key")] = None,
+    worker_id: Annotated[int | None, Query(ge=1, le=MAX_ID)] = None,
+    dispatched_by: Annotated[str | None, Query(min_length=1, max_length=100, description="a login")] = None,
+    q: Annotated[
+        str | None,
+        Query(
+            min_length=1,
+            max_length=200,
+            description="text in the title, step, plan, repo, branch, worker, login or error, or a run number",
+        ),
+    ] = None,
+    limit: Annotated[int, Query(ge=1, le=MAX_LIST)] = 50,
+    offset: Annotated[int, Query(ge=0, le=MAX_OFFSET)] = 0,
+    sink: Annotated[str | None, Header(alias=plan_routes.SINK_HEADER)] = None,
+) -> RunList:
+    """The project's runs, newest first, of the plans the caller may read, with how many are in each state."""
+    text = q.strip() if q else None
+    number = RUN_NUMBER.fullmatch(text) if text else None
+    params = {
+        "plan": plan_id,
+        "step": step,
+        "worker": worker_id,
+        "login": dispatched_by,
+        "q": _like(text) if text else None,
+        "run": int(number[1]) if number else None,
+        "states": list(dict.fromkeys(state)),
+        "limit": limit,
+        "offset": offset,
+    }
+    async with request.app.state.pool.connection() as conn:
+        access = await project_access(conn, user, project)
+        params |= {"project": access.project_id, "plans": await visible_plans(conn, access, sink)}
+        page = _runs_of(await (await conn.execute(LIST_PAGE, params)).fetchall())
+        counts = dict(await (await conn.execute(LIST_COUNTS, params)).fetchall())
+    wanted = params["states"] or runs.RUN_STATES
+    return RunList(
+        runs=page,
+        total=sum(counts.get(name, 0) for name in wanted),
+        counts=StateCounts(**counts),
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.get(
+    "/{project}/runs/{run_id}",
+    response_model=Run,
+    responses={403: {"model": ErrorBody}, 404: {"model": ErrorBody}},
+)
+async def show_run(
+    request: Request,
+    project: ProjectName,
+    run_id: RunId,
+    user: CurrentUser,
+    sink: Annotated[str | None, Header(alias=plan_routes.SINK_HEADER)] = None,
+) -> Run:
+    async with request.app.state.pool.connection() as conn:
+        await readable_run(conn, user, project, run_id, sink)
+        return await run_view(conn, run_id)
+
+
 # Dispatching
 
 
@@ -428,10 +595,10 @@ async def _pinnable(conn, user: Principal, access: ProjectAccess, worker_id: int
 
 
 INSERT_RUN = """
-INSERT INTO runs (project_id, plan_id, step_key, plan_revision, dispatched_by, pinned_worker_id, requested_runtime,
-                  runtime, mode, approval, timeout_s, parent_run_id, repo, branch)
-VALUES (%(project)s, %(plan)s, %(step)s, %(revision)s, %(user)s, %(pinned)s, %(runtime)s, %(runtime)s, %(mode)s,
-        %(approval)s, %(timeout)s, %(parent)s, %(repo)s, %(branch)s)
+INSERT INTO runs (project_id, plan_id, step_key, title, plan_revision, dispatched_by, pinned_worker_id,
+                  requested_runtime, runtime, mode, approval, timeout_s, parent_run_id, repo, branch)
+VALUES (%(project)s, %(plan)s, %(step)s, %(title)s, %(revision)s, %(user)s, %(pinned)s, %(runtime)s, %(runtime)s,
+        %(mode)s, %(approval)s, %(timeout)s, %(parent)s, %(repo)s, %(branch)s)
 RETURNING id
 """
 
@@ -477,6 +644,7 @@ async def _queue_run(
         "project": access.project_id,
         "plan": held.plan_id,
         "step": key,
+        "title": runs.step_title(step),
         "revision": held.revision,
         "user": user.user_id,
         "pinned": pinned,
@@ -604,6 +772,51 @@ async def cancel(request: Request, project: ProjectName, run_id: RunId, user: Cu
     return view
 
 
+ASK_TAKEOVER = """
+UPDATE runs SET takeover_requested_at = now() WHERE id = %s AND takeover_requested_at IS NULL RETURNING id
+"""
+ASK_HANDBACK = """
+UPDATE runs SET handback_requested_at = now() WHERE id = %s AND handback_requested_at IS NULL RETURNING id
+"""
+
+
+async def _ask(request: Request, project: str, run_id: int, user: Principal, action: str) -> Run:
+    """Ask the worker holding run ``run_id`` for a takeover or a handback, which its next heartbeat says."""
+    takeover = action == audit.RUN_TAKEOVER
+    allowed, verb = (runs.TAKEOVER_STATES, "take over") if takeover else (runs.HANDBACK_STATES, "hand back")
+    async with request.app.state.pool.connection() as conn:
+        access, row = await _owned_run(conn, user, project, run_id, verb)
+        state, plan_id, key = row[2], row[3], row[4]
+        if state not in allowed:
+            if takeover:
+                why = "a person drives it already" if state == "interactive" else "no agent of it runs now"
+                needs = "leased or running"
+            else:
+                why = "it runs headless" if state in runs.TAKEOVER_STATES else "no agent of it runs now"
+                needs = "interactive"
+            raise HTTPException(409, f"run {run_id} is {state}, so {why}: one may {verb} a run that is {needs}")
+        asked = await (await conn.execute(ASK_TAKEOVER if takeover else ASK_HANDBACK, (run_id,))).fetchone()
+        if asked is not None:  # an ask repeated while open changes nothing and is not audited again
+            await _audit_run(conn, user, access, action, _run_target(project, plan_id, key, run_id))
+        view = await run_view(conn, run_id)
+    log.info("run control asked", extra={"action": action, "run_id": run_id, "state": view.state, "login": user.login})
+    return view
+
+
+@router.post("/{project}/runs/{run_id}/takeover", response_model=Run, responses=REFUSALS)
+async def takeover(request: Request, project: ProjectName, run_id: RunId, user: CurrentUser) -> Run:
+    """Ask the worker to stop the agent at the end of its turn and resume its session in a terminal, where a person
+    drives it (the run becomes interactive)."""
+    return await _ask(request, project, run_id, user, audit.RUN_TAKEOVER)
+
+
+@router.post("/{project}/runs/{run_id}/handback", response_model=Run, responses=REFUSALS)
+async def handback(request: Request, project: ProjectName, run_id: RunId, user: CurrentUser) -> Run:
+    """Ask the worker to close the terminal and let the agent go on headless in the same session (the run becomes
+    running again)."""
+    return await _ask(request, project, run_id, user, audit.RUN_HANDBACK)
+
+
 @router.post("/{project}/runs/{run_id}/approve", response_model=Run, responses=REFUSALS)
 async def approve(request: Request, project: ProjectName, run_id: RunId, user: CurrentUser) -> Run:
     """Approve a run in review: the run is done, and so is its step."""
@@ -659,62 +872,40 @@ async def rerun(request: Request, project: ProjectName, run_id: RunId, user: Cur
 
 
 class RunWakeups:
-    """The api process's one LISTEN on RUNS_CHANNEL, opened by the first claim, and the claims waiting on it. A
-    notification, or a newer claim of the same worker, wakes every waiting claim, which then looks at the queue
-    again; a claim also looks every CLAIM_POLL_SECONDS, so it never depends on the connection being up."""
+    """The claims waiting in this api process, woken by RUNS_CHANNEL on the process's one LISTEN (``listen``),
+    opened by the first claim or stream. A notification, or a newer claim of the same worker, wakes every waiting
+    claim, which then looks at the queue again; a claim also looks every CLAIM_POLL_SECONDS, so it never depends on
+    the connection being up."""
 
-    def __init__(self, dsn: str):
-        self._dsn = dsn
-        self._task: asyncio.Task | None = None
-        self._condition = asyncio.Condition()
+    def __init__(self, listener: Listener):
+        self._listener = listener
+        listener.on(RUNS_CHANNEL, lambda payload: self.wake())
+        self._event = asyncio.Event()  # set by the next wake-up, then replaced
         self.generation = 0  # counts wake-ups; a claim waits only while it has not changed
         self._tickets: dict[int, int] = {}  # worker id: the number of its newest claim
 
     def start(self) -> None:
-        if self._task is None or self._task.done():
-            self._task = asyncio.get_running_loop().create_task(self._listen(), name="evo-hub-run-wakeups")
+        self._listener.start()
 
-    async def _listen(self) -> None:
-        backoff = LISTEN_BACKOFF[0]
-        while True:
-            try:
-                conn = await psycopg.AsyncConnection.connect(
-                    self._dsn, autocommit=True, application_name=APPLICATION_NAME, connect_timeout=CONNECT_TIMEOUT
-                )
-                async with conn:
-                    await conn.execute(sql.SQL("LISTEN {}").format(sql.Identifier(RUNS_CHANNEL)))
-                    backoff = LISTEN_BACKOFF[0]
-                    await self.wake()  # a run queued while nobody listened is found by this look
-                    async for _ in conn.notifies():
-                        await self.wake()
-            except (psycopg.Error, OSError) as exc:
-                log.warning(
-                    "cannot listen for queued runs; claims look every few seconds instead",
-                    extra={"error": type(exc).__name__, "retry_s": backoff},
-                )
-                await asyncio.sleep(backoff)
-                backoff = min(backoff * 2, LISTEN_BACKOFF[1])
-
-    async def wake(self) -> None:
+    def wake(self) -> None:
         self.generation += 1
-        async with self._condition:
-            self._condition.notify_all()
+        self._event.set()
+        self._event = asyncio.Event()
 
     async def wait(self, seen: int, timeout: float) -> None:
         """Return once something woke the claims after generation ``seen``, or after ``timeout`` seconds."""
-        async with self._condition:
-            if self.generation != seen:
-                return
-            try:
-                await asyncio.wait_for(self._condition.wait(), timeout)
-            except asyncio.TimeoutError:  # not TimeoutError itself before Python 3.11
-                pass
+        if self.generation != seen:
+            return
+        try:
+            await asyncio.wait_for(self._event.wait(), timeout)
+        except asyncio.TimeoutError:  # not TimeoutError itself before Python 3.11
+            pass
 
     async def ticket(self, worker_id: int) -> int:
         """The number of a new claim of ``worker_id``, which makes any older one of it end without a run."""
         number = self._tickets.get(worker_id, 0) + 1
         self._tickets[worker_id] = number
-        await self.wake()
+        self.wake()
         return number
 
     def current(self, worker_id: int, number: int) -> bool:
@@ -723,15 +914,6 @@ class RunWakeups:
     def done(self, worker_id: int, number: int) -> None:
         if self._tickets.get(worker_id) == number:
             del self._tickets[worker_id]
-
-    async def close(self) -> None:
-        if self._task is not None:
-            self._task.cancel()
-            try:
-                await self._task
-            except asyncio.CancelledError:
-                pass
-            self._task = None
 
 
 WORKER_OF_TOKEN = """
@@ -881,7 +1063,8 @@ async def claim(request: Request, user: CurrentUser, body: ClaimRequest | None =
 EXTEND = """
 UPDATE runs SET lease_expires_at = now() + %(lease)s
  WHERE worker_id = %(worker)s AND id = ANY(%(ids)s) AND state = ANY(%(held)s)
-RETURNING id, state, cancel_requested_at IS NOT NULL, lease_expires_at
+RETURNING id, state, cancel_requested_at IS NOT NULL, lease_expires_at, takeover_requested_at IS NOT NULL,
+          handback_requested_at IS NOT NULL
 """
 INBOX = """
 SELECT run_id, count(*) FROM run_inbox WHERE run_id = ANY(%s) AND delivered_at IS NULL GROUP BY run_id
@@ -916,7 +1099,7 @@ async def heartbeat(request: Request, body: HeartbeatRequest, user: CurrentUser)
     controls = []
     for run_id in reported:
         if run_id in extended:
-            state, cancel, lease = extended[run_id]
+            state, cancel, lease, takeover, handback = extended[run_id]
             controls.append(
                 RunControl(
                     id=run_id,
@@ -924,6 +1107,8 @@ async def heartbeat(request: Request, body: HeartbeatRequest, user: CurrentUser)
                     state=state,
                     lease_expires_at=lease,
                     cancel=cancel,
+                    takeover=takeover,
+                    handback=handback,
                     inbox=waiting.get(run_id, 0),
                 )
             )
