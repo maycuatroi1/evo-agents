@@ -115,8 +115,8 @@ def seed_runs(conn, ids: dict | None = None) -> dict:
     )
     ids["pairing"] = one(
         conn,
-        "INSERT INTO worker_pairings (code_hash, owner_id, name, projects, expires_at) "
-        "VALUES (%s, %s, 'laptop', %s, now() + interval '10 minutes') RETURNING id",
+        "INSERT INTO worker_pairings (code_selector, code_hash, owner_id, name, projects, expires_at) "
+        "VALUES ('ABCD', %s, %s, 'laptop', %s, now() + interval '10 minutes') RETURNING id",
         "e" * 64,
         ids["user"],
         [ids["project"]],
@@ -305,30 +305,45 @@ def test_the_claim_and_the_reaper_read_through_an_index(db):
         ("UPDATE workers SET checkouts = 'null' WHERE id = {worker}", errors.CheckViolation),
         ("DELETE FROM workers WHERE id = {worker}", errors.ForeignKeyViolation),  # its runs keep it
         ("DELETE FROM tokens WHERE id = {worker_token}", errors.ForeignKeyViolation),
-        # pairings
+        # pairings: an unused code holds its selector, the first four characters of the code
         (
-            "INSERT INTO worker_pairings (code_hash, owner_id, name, projects, expires_at) "
-            "VALUES (repeat('e', 64), {user}, 'again', ARRAY[{project}]::bigint[], now() + interval '5 minutes')",
+            "INSERT INTO worker_pairings (code_selector, code_hash, owner_id, name, projects, expires_at) "
+            "VALUES ('ABCD', repeat('2', 64), {user}, 'again', ARRAY[{project}]::bigint[], "
+            "now() + interval '5 minutes')",
             errors.UniqueViolation,
         ),
         (
-            "INSERT INTO worker_pairings (code_hash, owner_id, name, projects, expires_at) "
-            "VALUES ('ABCD-EFGH', {user}, 'plain', ARRAY[{project}]::bigint[], now() + interval '5 minutes')",
+            "INSERT INTO worker_pairings (code_selector, code_hash, owner_id, name, projects, expires_at) "
+            "VALUES ('WXYZ', 'ABCD-EFGH', {user}, 'plain', ARRAY[{project}]::bigint[], now() + interval '5 minutes')",
             errors.CheckViolation,
         ),
         (
-            "INSERT INTO worker_pairings (code_hash, owner_id, name, projects, expires_at) "
-            "VALUES (repeat('2', 64), {user}, 'long', ARRAY[{project}]::bigint[], now() + interval '11 minutes')",
+            "INSERT INTO worker_pairings (code_selector, code_hash, owner_id, name, projects, expires_at) "
+            "VALUES ('ABCDEFGH', repeat('2', 64), {user}, 'long-selector', ARRAY[{project}]::bigint[], "
+            "now() + interval '5 minutes')",
             errors.CheckViolation,
         ),
         (
-            "INSERT INTO worker_pairings (code_hash, owner_id, name, projects, expires_at) "
-            "VALUES (repeat('2', 64), {user}, 'none', '{{}}', now() + interval '5 minutes')",
+            "INSERT INTO worker_pairings (code_selector, code_hash, owner_id, name, projects, expires_at) "
+            "VALUES ('ABCU', repeat('2', 64), {user}, 'not-crockford', ARRAY[{project}]::bigint[], "
+            "now() + interval '5 minutes')",
             errors.CheckViolation,
         ),
         (
-            "INSERT INTO worker_pairings (code_hash, owner_id, name, projects, expires_at) "
-            "VALUES (repeat('2', 64), {user}, 'null', ARRAY[{project}, NULL]::bigint[], now() + interval '5 minutes')",
+            "INSERT INTO worker_pairings (code_selector, code_hash, owner_id, name, projects, expires_at) "
+            "VALUES ('WXYZ', repeat('2', 64), {user}, 'long', ARRAY[{project}]::bigint[], "
+            "now() + interval '11 minutes')",
+            errors.CheckViolation,
+        ),
+        (
+            "INSERT INTO worker_pairings (code_selector, code_hash, owner_id, name, projects, expires_at) "
+            "VALUES ('WXYZ', repeat('2', 64), {user}, 'none', '{{}}', now() + interval '5 minutes')",
+            errors.CheckViolation,
+        ),
+        (
+            "INSERT INTO worker_pairings (code_selector, code_hash, owner_id, name, projects, expires_at) "
+            "VALUES ('WXYZ', repeat('2', 64), {user}, 'null', ARRAY[{project}, NULL]::bigint[], "
+            "now() + interval '5 minutes')",
             errors.CheckViolation,
         ),
         ("UPDATE worker_pairings SET attempts = 6 WHERE id = {pairing}", errors.CheckViolation),
@@ -448,9 +463,9 @@ def test_constraints_accept_good_rows(db):
         "UPDATE workers SET labels = '{{}}', last_heartbeat_at = now(), drained_at = now() WHERE id = {other_worker}",
         # a pairing that made a worker, and another with the same code, locked by five wrong tries
         "UPDATE worker_pairings SET used_at = now(), worker_id = {other_worker} WHERE id = {pairing}",
-        "INSERT INTO worker_pairings (code_hash, owner_id, name, projects, slots, labels, allow_web_terminal, "
-        "attempts, expires_at) VALUES (repeat('e', 64), {user}, 'desk', ARRAY[{project}]::bigint[], 4, "
-        "ARRAY['linux'], true, 5, now() + interval '10 minutes')",
+        "INSERT INTO worker_pairings (code_selector, code_hash, owner_id, name, projects, slots, labels, "
+        "allow_web_terminal, attempts, expires_at) VALUES ('ABCD', repeat('e', 64), {user}, 'desk', "
+        "ARRAY[{project}]::bigint[], 4, ARRAY['linux'], true, 5, now() + interval '10 minutes')",
     ):
         conn.execute(statement.format(**ids, **values))
     states = "SELECT step_key, attempt, state FROM runs ORDER BY id"

@@ -13,9 +13,11 @@ its owner registered: a name unique among the owner's workers that are not revok
 used again), host facts, 1 to 8 slots, labels, what its heartbeats report of its runtimes and checkouts (JSON
 objects whose keys the api sets), whether it allows the web terminal, and its last heartbeat, drain and revocation,
 from which ``runs.worker_status`` reads its status. worker_projects lists the projects a worker takes runs of.
-worker_pairings is a code the web created for a machine to join with: only its SHA-256 is kept, it lasts at most 10
-minutes and is locked after 5 wrong tries, and once used it names the worker it made. projects is an array of
-project ids, checked by the api when the worker joins.
+worker_pairings is a code the web created for a machine to join with: it lasts at most 10 minutes and is locked
+after 5 wrong tries, and once used it names the worker it made. The hub keeps the SHA-256 of the whole code and its
+first four characters in clear, the selector: a join finds the pairing by its selector, so a wrong rest of the code
+counts as a wrong try against that pairing, and no two unused pairings share one. projects is an array of project
+ids, checked by the api when the worker joins.
 
 runs is one attempt at one plan step on one worker, dispatched from a revision of the plan that plan_revisions
 holds. runtime is the one the dispatch asked for, or 'any' until a worker claims the run and picks one of its own;
@@ -52,6 +54,7 @@ depends_on = None
 HEX_SHA256 = "'^[0-9a-f]{64}$'"
 OBJECT_NAME = "'^([0-9a-f]{40}|[0-9a-f]{64})$'"  # a full SHA-1 or SHA-256 git object name
 WORKER_NAME = "'^[A-Za-z0-9][A-Za-z0-9._-]*$'"
+SELECTOR = "'^[0-9A-HJKMNP-TV-Z]{4}$'"  # four characters of Crockford base32
 LABEL = "[A-Za-z0-9][A-Za-z0-9._-]{0,39}"
 MAX_LABELS = 16
 SLOTS = "smallint NOT NULL DEFAULT 1 CHECK (slots BETWEEN 1 AND 8)"
@@ -124,7 +127,8 @@ UPGRADE = (
     f"""
     CREATE TABLE worker_pairings (
         id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-        code_hash text NOT NULL CHECK (code_hash ~ {HEX_SHA256}),
+        code_selector text NOT NULL CHECK (code_selector ~ {SELECTOR}),  -- the first four characters of the code
+        code_hash text NOT NULL CHECK (code_hash ~ {HEX_SHA256}),  -- of all eight, without the hyphen
         owner_id bigint NOT NULL REFERENCES users (id) ON DELETE CASCADE,
         name text NOT NULL CHECK (name ~ {WORKER_NAME} AND char_length(name) <= 100),
         projects bigint[] NOT NULL CHECK (cardinality(projects) BETWEEN 1 AND 100
@@ -141,8 +145,8 @@ UPGRADE = (
         CHECK ((used_at IS NULL) = (worker_id IS NULL))
     )
     """,
-    # a join looks a code up among the unused ones; an unused code that came out twice is drawn again
-    "CREATE UNIQUE INDEX worker_pairings_code_key ON worker_pairings (code_hash) WHERE used_at IS NULL",
+    # a join looks a code up by its selector among the unused ones; a selector an unused code holds is drawn again
+    "CREATE UNIQUE INDEX worker_pairings_selector_key ON worker_pairings (code_selector) WHERE used_at IS NULL",
     "CREATE INDEX worker_pairings_owner_idx ON worker_pairings (owner_id) WHERE used_at IS NULL",
     f"""
     CREATE TABLE runs (

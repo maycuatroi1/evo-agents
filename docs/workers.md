@@ -8,9 +8,11 @@ opens a port on the machine.
 
 This page describes version 1 of the worker protocol as planned. `evo_agents/hub/runs.py` holds the model it rests
 on: the run states and who may change them, a worker's status, the event kinds, which steps are ready, and the
-prompt a run gives its agent. It needs only the standard library, so the api and the daemon share it. The tables,
-the routes and the `evo-agents worker` daemon come in later releases, and this page changes with them. The daemon
-has its own command group because `evo-agents hub worker` is already the server's job worker (see `docs/hub.md`).
+prompt a run gives its agent. It needs only the standard library, so the api and the daemon share it. Schema 0009
+holds the tables, and `evo_agents/hub/server/workers.py` the routes that register and stop workers (pairings, join,
+direct registration, list, drain, undrain, revoke). The run routes and the `evo-agents worker` daemon come in later
+releases, and this page changes with them. The daemon has its own command group because `evo-agents hub worker` is
+already the server's job worker (see `docs/hub.md`).
 
 ## Entities
 
@@ -110,8 +112,10 @@ A claim and each heartbeat set a held run's lease to expire 300 seconds later. E
 (`hub.recover_runs`) looks for held runs whose lease has expired. Such a run becomes `lost`, and the hub queues a
 new run for the same step with `parent_run_id` pointing back and the attempt one higher; a third attempt becomes
 `failed` instead, and a run the owner had asked to cancel becomes `cancelled`. Revoking a worker does the same at
-once to the runs it holds. Cancelling a held run sets `cancel_requested_at`; the next heartbeat tells the worker,
-which stops the agent and reports `cancelled`.
+once to the runs it holds; a held run pinned to that worker fails rather than coming back, and so does a queued run
+pinned to it, since no other worker may claim either. Each of these moves writes a `state` event with the actor
+`reaper`. Cancelling a held run sets `cancel_requested_at`; the next heartbeat tells the worker, which stops the agent
+and reports `cancelled`.
 
 The hub writes the plan as the member who dispatched the run, through the same item update as `evo harness step`,
 with `if_revision`, retrying up to 5 times on a revision conflict. When a run starts `running`, the step becomes
@@ -167,19 +171,31 @@ Multica (a wake-up plus a catch-up poll).
 
 ### Version header
 
-Every request to `/v1/worker/*` carries `X-Evo-Worker-Protocol: 1`. A request with another value, or without the
-header, gets 426 in the hub's usual error shape, so an old daemon learns that it must be upgraded instead of
-misreading answers. Routes for members do not use the header.
+Every request to `/v1/worker/*`, the public join included, carries `X-Evo-Worker-Protocol: 1`. A request with
+another value, or without the header, gets 426 (`upgrade_required`) in the hub's usual error shape before any
+credential is looked at, so an old daemon learns that it must be upgraded instead of misreading answers. Routes for
+members do not use the header.
 
 ### Joining
 
-The owner creates a pairing on the web (`POST /v1/workers/pairings`), naming the worker, its projects (each one the
-owner holds writer on), slots, labels and whether it allows the web terminal. The code is 8 characters of Crockford
-base32 written `XXXX-XXXX`; it lasts 10 minutes, a member has at most 5 unused codes, and the hub keeps only its hash.
-The web polls `GET /v1/workers/pairings/{id}` until the machine joins. On the machine, the daemon sends the code and
-its host facts to `POST /v1/worker/join`, the one public worker route, and gets its `evw_` token once. Five wrong
-tries lock the code. A machine already signed in with `evo-agents hub login` can register directly instead
-(`POST /v1/workers` with its machine token).
+The owner creates a pairing on the web (`POST /v1/workers/pairings`, with the session's CSRF header, or with a
+machine token), naming the worker, its projects (each one the owner holds writer on; 403 otherwise), slots, labels
+and whether it allows the web terminal. The code is 8 characters of Crockford base32 written `XXXX-XXXX`; it lasts 10
+minutes, and a member has at most 5 codes that are neither used, expired nor locked (409 for a sixth). The hub keeps
+the SHA-256 of the whole code and, in clear, its first four characters, the selector, which no two unused pairings
+share: a join finds the pairing by its selector, so a wrong rest of the code counts as a wrong try against that
+pairing. An unused pairing is deleted a day after it expired.
+
+The web polls `GET /v1/workers/pairings/{id}` until the machine joins; the answer says `waiting`, `joined`, `expired`
+or `locked` and how many wrong tries are left. On the machine, the daemon sends the code (any case, with or without
+the hyphen; O reads as 0, I and L as 1) and its host facts (`hostname`, `os`, `arch`, `agent_version`) to
+`POST /v1/worker/join`, the one public worker route, and gets its `evw_` token once. Five wrong tries lock the code,
+and the right code is refused after them. An unknown, wrong, expired, used or locked code gets the same 403, so the
+answer tells nothing about which codes exist; a code that is not 8 characters of the alphabet gets 422 and counts
+against nothing. When the owner has lost the writer role on one of the pairing's projects since, or has a live worker
+of that name by then, the join gets 409 and the code is not used up. A machine already signed in with
+`evo-agents hub login` can register directly instead (`POST /v1/workers` with its machine token; a web session gets
+403 there).
 
 ### Claim
 
