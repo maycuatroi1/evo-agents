@@ -1268,6 +1268,823 @@
         ]
       }
     },
+    "hub run approve": {
+      "positionals": [
+        {
+          "name": "run",
+          "metavar": "RUN",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "project",
+          "plan_id",
+          "step_key",
+          "title",
+          "plan_revision",
+          "dispatched_by",
+          "worker_id",
+          "worker",
+          "pinned_worker_id",
+          "requested_runtime",
+          "runtime",
+          "mode",
+          "approval",
+          "timeout_min",
+          "attempt",
+          "max_attempts",
+          "parent_run_id",
+          "state",
+          "lease_expires_at",
+          "session_id",
+          "repo",
+          "branch",
+          "commit_sha",
+          "diffstat",
+          "verify",
+          "evidence",
+          "usage",
+          "error",
+          "log_sha256",
+          "diff_sha256",
+          "last_seq",
+          "cancel_requested_at",
+          "takeover_requested_at",
+          "handback_requested_at",
+          "queued_at",
+          "leased_at",
+          "started_at",
+          "finished_at"
+        ],
+        "schema": "Run"
+      }
+    },
+    "hub run cancel": {
+      "positionals": [
+        {
+          "name": "run",
+          "metavar": "RUN",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "project",
+          "plan_id",
+          "step_key",
+          "title",
+          "plan_revision",
+          "dispatched_by",
+          "worker_id",
+          "worker",
+          "pinned_worker_id",
+          "requested_runtime",
+          "runtime",
+          "mode",
+          "approval",
+          "timeout_min",
+          "attempt",
+          "max_attempts",
+          "parent_run_id",
+          "state",
+          "lease_expires_at",
+          "session_id",
+          "repo",
+          "branch",
+          "commit_sha",
+          "diffstat",
+          "verify",
+          "evidence",
+          "usage",
+          "error",
+          "log_sha256",
+          "diff_sha256",
+          "last_seq",
+          "cancel_requested_at",
+          "takeover_requested_at",
+          "handback_requested_at",
+          "queued_at",
+          "leased_at",
+          "started_at",
+          "finished_at"
+        ],
+        "schema": "Run"
+      }
+    },
+    "hub run dispatch": {
+      "positionals": [
+        {
+          "name": "plan",
+          "metavar": "PLAN",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "name": "steps",
+          "metavar": "STEP",
+          "value": "string",
+          "required": true,
+          "repeatable": true
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--runtime"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "any",
+            "claude-code",
+            "opencode",
+            "codex"
+          ]
+        },
+        {
+          "flags": [
+            "--mode"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "headless",
+            "interactive"
+          ]
+        },
+        {
+          "flags": [
+            "--worker"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--approval"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "auto",
+            "review"
+          ]
+        },
+        {
+          "flags": [
+            "--timeout"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false,
+          "minimum": 5,
+          "maximum": 240
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "array",
+        "keys": [
+          "id",
+          "project",
+          "plan_id",
+          "step_key",
+          "title",
+          "plan_revision",
+          "dispatched_by",
+          "worker_id",
+          "worker",
+          "pinned_worker_id",
+          "requested_runtime",
+          "runtime",
+          "mode",
+          "approval",
+          "timeout_min",
+          "attempt",
+          "max_attempts",
+          "parent_run_id",
+          "state",
+          "lease_expires_at",
+          "session_id",
+          "repo",
+          "branch",
+          "commit_sha",
+          "diffstat",
+          "verify",
+          "evidence",
+          "usage",
+          "error",
+          "log_sha256",
+          "diff_sha256",
+          "last_seq",
+          "cancel_requested_at",
+          "takeover_requested_at",
+          "handback_requested_at",
+          "queued_at",
+          "leased_at",
+          "started_at",
+          "finished_at"
+        ],
+        "schema": "Run"
+      }
+    },
+    "hub run handback": {
+      "positionals": [
+        {
+          "name": "run",
+          "metavar": "RUN",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "project",
+          "plan_id",
+          "step_key",
+          "title",
+          "plan_revision",
+          "dispatched_by",
+          "worker_id",
+          "worker",
+          "pinned_worker_id",
+          "requested_runtime",
+          "runtime",
+          "mode",
+          "approval",
+          "timeout_min",
+          "attempt",
+          "max_attempts",
+          "parent_run_id",
+          "state",
+          "lease_expires_at",
+          "session_id",
+          "repo",
+          "branch",
+          "commit_sha",
+          "diffstat",
+          "verify",
+          "evidence",
+          "usage",
+          "error",
+          "log_sha256",
+          "diff_sha256",
+          "last_seq",
+          "cancel_requested_at",
+          "takeover_requested_at",
+          "handback_requested_at",
+          "queued_at",
+          "leased_at",
+          "started_at",
+          "finished_at"
+        ],
+        "schema": "Run"
+      }
+    },
+    "hub run list": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--state"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true,
+          "choices": [
+            "queued",
+            "leased",
+            "running",
+            "interactive",
+            "verifying",
+            "review",
+            "done",
+            "failed",
+            "lost",
+            "cancelled"
+          ]
+        },
+        {
+          "flags": [
+            "--plan"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--step"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--worker"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--by"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--search"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--limit"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false,
+          "minimum": 1,
+          "maximum": 200
+        },
+        {
+          "flags": [
+            "--offset"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "runs",
+          "total",
+          "counts",
+          "limit",
+          "offset"
+        ],
+        "schema": "RunList"
+      }
+    },
+    "hub run logs": {
+      "positionals": [
+        {
+          "name": "run",
+          "metavar": "RUN",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "-f",
+            "--follow"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--after"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--kind"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true,
+          "choices": [
+            "agent_message_chunk",
+            "agent_thought_chunk",
+            "tool_call",
+            "tool_call_update",
+            "plan",
+            "usage_update",
+            "user_message",
+            "state",
+            "system",
+            "output"
+          ]
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "run_id",
+          "state",
+          "last_seq",
+          "events",
+          "more"
+        ],
+        "schema": "RunEvents"
+      }
+    },
+    "hub run rerun": {
+      "positionals": [
+        {
+          "name": "run",
+          "metavar": "RUN",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "project",
+          "plan_id",
+          "step_key",
+          "title",
+          "plan_revision",
+          "dispatched_by",
+          "worker_id",
+          "worker",
+          "pinned_worker_id",
+          "requested_runtime",
+          "runtime",
+          "mode",
+          "approval",
+          "timeout_min",
+          "attempt",
+          "max_attempts",
+          "parent_run_id",
+          "state",
+          "lease_expires_at",
+          "session_id",
+          "repo",
+          "branch",
+          "commit_sha",
+          "diffstat",
+          "verify",
+          "evidence",
+          "usage",
+          "error",
+          "log_sha256",
+          "diff_sha256",
+          "last_seq",
+          "cancel_requested_at",
+          "takeover_requested_at",
+          "handback_requested_at",
+          "queued_at",
+          "leased_at",
+          "started_at",
+          "finished_at"
+        ],
+        "schema": "Run"
+      }
+    },
+    "hub run send": {
+      "positionals": [
+        {
+          "name": "run",
+          "metavar": "RUN",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "name": "text",
+          "metavar": "TEXT",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "run_id",
+          "seq",
+          "text",
+          "sent_by",
+          "created_at",
+          "delivered_at"
+        ],
+        "schema": "Message"
+      }
+    },
+    "hub run show": {
+      "positionals": [
+        {
+          "name": "run",
+          "metavar": "RUN",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "project",
+          "plan_id",
+          "step_key",
+          "title",
+          "plan_revision",
+          "dispatched_by",
+          "worker_id",
+          "worker",
+          "pinned_worker_id",
+          "requested_runtime",
+          "runtime",
+          "mode",
+          "approval",
+          "timeout_min",
+          "attempt",
+          "max_attempts",
+          "parent_run_id",
+          "state",
+          "lease_expires_at",
+          "session_id",
+          "repo",
+          "branch",
+          "commit_sha",
+          "diffstat",
+          "verify",
+          "evidence",
+          "usage",
+          "error",
+          "log_sha256",
+          "diff_sha256",
+          "last_seq",
+          "cancel_requested_at",
+          "takeover_requested_at",
+          "handback_requested_at",
+          "queued_at",
+          "leased_at",
+          "started_at",
+          "finished_at"
+        ],
+        "schema": "Run"
+      }
+    },
+    "hub run takeover": {
+      "positionals": [
+        {
+          "name": "run",
+          "metavar": "RUN",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "project",
+          "plan_id",
+          "step_key",
+          "title",
+          "plan_revision",
+          "dispatched_by",
+          "worker_id",
+          "worker",
+          "pinned_worker_id",
+          "requested_runtime",
+          "runtime",
+          "mode",
+          "approval",
+          "timeout_min",
+          "attempt",
+          "max_attempts",
+          "parent_run_id",
+          "state",
+          "lease_expires_at",
+          "session_id",
+          "repo",
+          "branch",
+          "commit_sha",
+          "diffstat",
+          "verify",
+          "evidence",
+          "usage",
+          "error",
+          "log_sha256",
+          "diff_sha256",
+          "last_seq",
+          "cancel_requested_at",
+          "takeover_requested_at",
+          "handback_requested_at",
+          "queued_at",
+          "leased_at",
+          "started_at",
+          "finished_at"
+        ],
+        "schema": "Run"
+      }
+    },
     "hub serve": {
       "positionals": [],
       "options": [

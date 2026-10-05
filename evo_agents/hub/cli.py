@@ -7,9 +7,9 @@ configuration error is a log line naming the variable, and an unexpected excepti
 traceback, secrets removed, rather than a bare traceback from the interpreter.
 
 The client commands (``login``, ``logout``, ``whoami``, ``token``, ``admin``, ``project``, ``registry``, ``plan``,
-``memory``, ``skills``, ``kg``, ``mcp``, ``hook``) are registered by ``cli_client`` and need nothing beyond the core
-package, so they work on a core install. ``hub openapi`` (``openapi``) and ``hub contract print`` (``contract``) need
-the extra for the API document; ``hub contract check`` does not.
+``run``, ``memory``, ``skills``, ``kg``, ``mcp``, ``hook``) are registered by ``cli_client`` and need nothing beyond the
+core package, so they work on a core install. ``hub openapi`` (``openapi``) and ``hub contract print`` (``contract``)
+need the extra for the API document; ``hub contract check`` does not.
 """
 
 from __future__ import annotations
