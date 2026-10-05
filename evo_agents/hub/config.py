@@ -14,6 +14,8 @@ them is a ConfigError naming the first one missing. The key pair is registered a
 EVO_HUB_BLOB_CONCURRENCY caps the uploads one process checks and copies in the store at once, every commit together
 (``evo_agents.hub.blobs``). EVO_HUB_KG_KEEP_ARTIFACTS is how many of each project's newest built graphs keep their
 artifact in the bucket (``evo_agents.hub.kg_prune``); at least 1, since the api reads the newest.
+EVO_HUB_RUN_LOG_DAYS is how many days the events of a finished run are kept before the daily hub.prune_run_events
+deletes them (``evo_agents.hub.server.run_state``).
 
 EVO_HUB_FORWARDED_ALLOW_IPS lists the addresses or networks of the reverse proxies whose X-Forwarded-For uvicorn
 believes, comma-separated, or ``*``; the client address it yields keys the limit on refused pairing codes. Unset, it
@@ -39,6 +41,9 @@ MAX_BLOB_CONCURRENCY = 256
 # The retention of built graphs (evo_agents.hub.kg_prune): the artifacts of each project's newest graphs that stay.
 DEFAULT_KG_KEEP_ARTIFACTS = 3
 MAX_KG_KEEP_ARTIFACTS = 1000
+# Days the events of a finished run stay (evo_agents.hub.server.run_state.prune_run_events).
+DEFAULT_RUN_LOG_DAYS = 30
+MAX_RUN_LOG_DAYS = 3650
 
 DEFAULT_DATA_DIR = "~/.evo/hub-server/cache"
 DEFAULT_HOST = "127.0.0.1"
@@ -83,6 +88,7 @@ class HubConfig:
     s3_secret_access_key: str | None = None  # never logged or returned
     blob_concurrency: int = DEFAULT_BLOB_CONCURRENCY  # uploads one process seals or publishes at once
     kg_keep_artifacts: int = DEFAULT_KG_KEEP_ARTIFACTS  # newest graphs per project whose artifact the retention keeps
+    run_log_days: int = DEFAULT_RUN_LOG_DAYS  # days a finished run's events are kept
     forwarded_allow_ips: str | None = None  # proxies whose X-Forwarded-For uvicorn believes; None: uvicorn's default
 
     def __repr__(self) -> str:  # the DSNs and secrets are credentials; keep them out of tracebacks and debug output
@@ -139,6 +145,14 @@ def _kg_keep_artifacts(env: Mapping[str, str]) -> int:
     value = _number(env, name, DEFAULT_KG_KEEP_ARTIFACTS, minimum=1)
     if value > MAX_KG_KEEP_ARTIFACTS:
         raise ConfigError(name, f"{name} must be at most {MAX_KG_KEEP_ARTIFACTS}, got {value}")
+    return value
+
+
+def _run_log_days(env: Mapping[str, str]) -> int:
+    name = "EVO_HUB_RUN_LOG_DAYS"
+    value = _number(env, name, DEFAULT_RUN_LOG_DAYS, minimum=1)
+    if value > MAX_RUN_LOG_DAYS:
+        raise ConfigError(name, f"{name} must be at most {MAX_RUN_LOG_DAYS}, got {value}")
     return value
 
 
@@ -280,6 +294,7 @@ def load_config(
         github_timeout=_number(env, "EVO_HUB_GITHUB_TIMEOUT", DEFAULT_GITHUB_TIMEOUT, kind=float, minimum=0.1),
         blob_concurrency=_blob_concurrency(env),
         kg_keep_artifacts=_kg_keep_artifacts(env),
+        run_log_days=_run_log_days(env),
         forwarded_allow_ips=_forwarded_allow_ips(env),
         **_blob_store(env),
     )

@@ -55,6 +55,8 @@ def add_run(conn, ids, state: str = "queued", step: str = "3", **columns) -> int
     if state == "failed":
         row["error"] = "verify command 1 exited 1"
     row |= columns
+    # a dispatch asked for the runtime a queued run has, or for any one a worker then picked
+    row.setdefault("requested_runtime", "any" if row.get("worker_id") is not None else row["runtime"])
     statement = sql.SQL("INSERT INTO runs ({}) VALUES ({}) RETURNING id").format(
         sql.SQL(", ").join(map(sql.Identifier, row)), sql.SQL(", ").join(sql.Placeholder() * len(row))
     )
@@ -372,6 +374,10 @@ def test_the_claim_and_the_reaper_read_through_an_index(db):
             errors.CheckViolation,  # held without a lease
         ),
         ("UPDATE runs SET state = 'done' WHERE id = {run}", errors.CheckViolation),  # never claimed
+        ("UPDATE runs SET runtime = 'codex' WHERE id = {run}", errors.CheckViolation),  # queued: as it was asked for
+        ("UPDATE runs SET requested_runtime = 'opencode' WHERE id = {done_run}", errors.CheckViolation),
+        ("UPDATE runs SET requested_runtime = 'gemini' WHERE id = {run}", errors.CheckViolation),
+        ("UPDATE workers SET free_slots = 9 WHERE id = {worker}", errors.CheckViolation),
         ("UPDATE runs SET finished_at = NULL WHERE id = {done_run}", errors.CheckViolation),
         ("UPDATE runs SET finished_at = now() WHERE id = {run}", errors.CheckViolation),
         ("UPDATE runs SET state = 'failed', finished_at = now() WHERE id = {run}", errors.CheckViolation),
@@ -444,9 +450,9 @@ def test_constraints_accept_good_rows(db):
         "UPDATE runs SET state = 'done', finished_at = now() WHERE id = {run}",
         # a lost run, the attempt that retries it, and its failure while queued, as the reaper writes them
         "UPDATE runs SET state = 'lost', finished_at = now() WHERE id = {lost}",
-        "INSERT INTO runs (project_id, plan_id, step_key, plan_revision, dispatched_by, runtime, mode, approval, "
-        "timeout_s, attempt, parent_run_id, repo) VALUES ({project}, 'worker-fleet', '4', 1, {user}, 'opencode', "
-        "'interactive', 'auto', 14400, 3, {lost}, 'evo-agents')",
+        "INSERT INTO runs (project_id, plan_id, step_key, plan_revision, dispatched_by, requested_runtime, runtime, "
+        "mode, approval, timeout_s, attempt, parent_run_id, repo) VALUES ({project}, 'worker-fleet', '4', 1, {user}, "
+        "'opencode', 'opencode', 'interactive', 'auto', 14400, 3, {lost}, 'evo-agents')",
         "UPDATE runs SET state = 'failed', finished_at = now(), error = 'the lease of the last attempt ran out' "
         "WHERE parent_run_id = {lost}",
         # events of the worker, one of them cut, and a message of 8 KiB the worker has

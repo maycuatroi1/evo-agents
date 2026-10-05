@@ -21,10 +21,11 @@ A worker belongs to the member who registered it. GET /v1/workers lists the call
 admin; GET /v1/workers/{id} shows one; drain stops new claims, undrain resumes them, and revoke ends the worker and its
 token at once. Each of them answers 404 for another member's worker, so an id tells nothing about workers one does not
 own; a hub admin may see, drain and revoke any worker, but only its owner undrains one (403 for an admin). Revoking
-releases the runs the worker holds as the reaper would (``release_runs``): a run whose cancel was asked for is
-cancelled, a run pinned to this worker or on its last attempt fails, and any other becomes lost with a new attempt
-queued for the same step. Revoking a worker's token (DELETE /v1/tokens/{id}, DELETE /v1/admin/tokens/{id}) revokes
-its worker the same way, in the same transaction (``lock_worker_of_token``, then ``end_worker``).
+releases the runs the worker holds as the reaper would (``run_state.release_runs``): a run whose cancel was asked
+for is cancelled, a run pinned to this worker or on its last attempt fails, and any other becomes lost with a new
+attempt queued for the same step; the steps of the runs that ended go back to pending in their plans. Revoking a
+worker's token (DELETE /v1/tokens/{id}, DELETE /v1/admin/tokens/{id}) revokes its worker the same way, in the same
+transaction (``lock_worker_of_token``, then ``end_worker``).
 
 Every pairing, join, registration, drain, undrain and revocation adds an audit row naming the pairing or worker, never
 the code or the token, and neither ever reaches a log line.
@@ -42,7 +43,6 @@ from typing import Annotated, Literal
 
 import psycopg
 from fastapi import APIRouter, HTTPException, Path, Query, Request, Response
-from psycopg.types.json import Jsonb
 from pydantic import BaseModel, Field
 
 from evo_agents.hub import runs
@@ -52,6 +52,7 @@ from evo_agents.hub.server.admin import PROJECT_NAME
 from evo_agents.hub.server.auth import NO_STORE
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.projects import project_access
+from evo_agents.hub.server.run_state import release_runs
 from evo_agents.hub.server.security import (
     MACHINE,
     WORKER,
@@ -251,8 +252,14 @@ class Worker(BaseModel):
     slots: int
     labels: list[str]
     projects: list[str]
-    runtimes: dict = Field(description="the runtimes its last heartbeat reported")
-    checkouts: dict = Field(description="the checkouts its last heartbeat reported")
+    runtimes: dict = Field(
+        description="the runtimes its last heartbeat reported, keyed claude-code, opencode or codex, each "
+        "{available, version, reason}"
+    )
+    checkouts: dict = Field(
+        description="the checkouts its last heartbeat reported, keyed <project>/<repo>, each {path, branch}"
+    )
+    free_slots: int | None = Field(description="the free slots its last heartbeat reported; null before the first")
     allow_web_terminal: bool
     held_runs: int = Field(description="runs it holds now (leased, running, interactive or verifying)")
     created_at: datetime
@@ -274,7 +281,7 @@ WORKERS = """
 SELECT w.id, w.name, u.login, w.hostname, w.os, w.arch, w.agent_version, w.slots, w.labels,
        ARRAY(SELECT p.name FROM worker_projects wp JOIN projects p ON p.id = wp.project_id
               WHERE wp.worker_id = w.id ORDER BY p.name),
-       w.runtimes, w.checkouts, w.allow_web_terminal,
+       w.runtimes, w.checkouts, w.free_slots, w.allow_web_terminal,
        (SELECT count(*) FROM runs r WHERE r.worker_id = w.id AND r.state = ANY(%(held)s)),
        w.created_at, w.last_heartbeat_at, w.drained_at, w.revoked_at, now()
   FROM workers w JOIN users u ON u.id = w.owner_id
@@ -294,6 +301,7 @@ WORKER_FIELDS = (
     "projects",
     "runtimes",
     "checkouts",
+    "free_slots",
     "allow_web_terminal",
     "held_runs",
     "created_at",
@@ -759,68 +767,3 @@ async def end_worker(conn, actor: Principal, worker_id: int, name: str, owner: s
     target, action = _target(worker_id, name, owner), audit.WORKER_REVOKE
     await audit.record(conn, actor_id=actor.user_id, token_id=actor.token_id, action=action, target=target)
     return released
-
-
-# The runs of a worker that goes away
-
-HELD_RUNS = """
-SELECT id, state, attempt, max_attempts, pinned_worker_id, cancel_requested_at IS NOT NULL
-  FROM runs
- WHERE worker_id = %s AND state = ANY(%s)
- ORDER BY id
-   FOR UPDATE
-"""
-PINNED_QUEUED = "SELECT id, state FROM runs WHERE pinned_worker_id = %s AND state = 'queued' ORDER BY id FOR UPDATE"
-MOVE = """
-UPDATE runs SET state = %(to)s, error = coalesce(%(error)s, error), event_seq = event_seq + 1,
-       finished_at = CASE WHEN %(to)s = ANY(%(terminal)s) THEN now() ELSE finished_at END
- WHERE id = %(id)s
-RETURNING event_seq
-"""
-NEXT_ATTEMPT = """
-INSERT INTO runs (project_id, plan_id, step_key, plan_revision, dispatched_by, pinned_worker_id, runtime, mode,
-                  approval, timeout_s, attempt, max_attempts, parent_run_id, repo, branch)
-SELECT project_id, plan_id, step_key, plan_revision, dispatched_by, pinned_worker_id, runtime, mode, approval,
-       timeout_s, attempt + 1, max_attempts, id, repo, branch
-  FROM runs WHERE id = %s
-RETURNING id
-"""
-RUNS_CHANNEL = "evo_runs"  # notified when a run is queued, so a waiting claim looks again
-
-
-async def move_run(conn, run_id: int, old: str, new: str, actor: str, *, reason: str, error: str | None = None) -> None:
-    """Move run ``run_id`` from ``old`` to ``new`` as ``actor``, with the ``state`` event the hub writes for each
-    move. Raises ``runs.TransitionRefused`` for a move the table refuses."""
-    runs.check_transition(old, new, actor)
-    params = {"id": run_id, "to": new, "error": error, "terminal": list(runs.TERMINAL_STATES)}
-    seq = (await (await conn.execute(MOVE, params)).fetchone())[0]
-    body = {"from": old, "to": new, "actor": actor, "reason": reason}
-    await conn.execute(
-        "INSERT INTO run_events (run_id, seq, kind, body) VALUES (%s, %s, 'state', %s)", (run_id, seq, Jsonb(body))
-    )
-
-
-async def release_runs(conn, worker_id: int, reason: str) -> int:
-    """What the reaper does to the runs of a worker that will never extend a lease again, in the caller's
-    transaction: each run it holds is cancelled when its cancel was asked for, fails when it is pinned to this worker
-    or on its last attempt, and is otherwise lost, with the next attempt queued for the same step. Queued runs pinned
-    to the worker fail, since no other worker may claim them. Returns how many runs were moved."""
-    moved = 0
-    for run_id, state, attempt, max_attempts, pinned, cancel in await (
-        await conn.execute(HELD_RUNS, (worker_id, list(runs.HELD_STATES)))
-    ).fetchall():
-        if cancel:
-            await move_run(conn, run_id, state, "cancelled", "reaper", reason=reason)
-        elif pinned == worker_id or attempt >= max_attempts:
-            why = "the run was pinned to it" if pinned == worker_id else f"it was attempt {attempt} of {max_attempts}"
-            await move_run(conn, run_id, state, "failed", "reaper", reason=reason, error=f"{reason}, and {why}")
-        else:
-            await move_run(conn, run_id, state, "lost", "reaper", reason=reason, error=reason)
-            next_id = (await (await conn.execute(NEXT_ATTEMPT, (run_id,))).fetchone())[0]
-            await conn.execute("SELECT pg_notify(%s, %s)", (RUNS_CHANNEL, str(next_id)))
-        moved += 1
-    for run_id, state in await (await conn.execute(PINNED_QUEUED, (worker_id,))).fetchall():
-        error = f"{reason}, and the run was pinned to it"
-        await move_run(conn, run_id, state, "failed", "reaper", reason=reason, error=error)
-        moved += 1
-    return moved
