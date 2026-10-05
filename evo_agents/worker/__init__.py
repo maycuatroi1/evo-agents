@@ -15,6 +15,7 @@ Modules, each with one concern:
 - ``gitops``: the git commands of a run: fetch, worktree, commit, push.
 - ``run``: one run from claim to its last report.
 - ``daemon``: the claim loop, the heartbeat, signals and the cleanup of old worktrees.
+- ``service``: the daemon in the background, as a launchd LaunchAgent or a systemd user unit.
 - ``cli``: the commands.
 
 Only ``hubapi``, ``daemon`` and ``run`` need the worker extra (``evo-ak[worker]``); the others need the core package,
