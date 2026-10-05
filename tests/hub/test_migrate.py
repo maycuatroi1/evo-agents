@@ -1,4 +1,4 @@
-"""Migrations: a fresh database gets the twenty-four hub tables, a second run changes nothing, processes that start
+"""Migrations: a fresh database gets the thirty hub tables, a second run changes nothing, processes that start
 together apply each revision once, a database at 0001 with rows in it moves to 0002, and a database the code
 cannot read is refused. Then the constraints schemas 0001 and 0002 promise."""
 
@@ -42,6 +42,7 @@ TABLES = {
 TABLES |= pg.BLOB_TABLES | pg.QUEUE_TABLES  # migration 0004
 TABLES |= pg.KG_TABLES  # migration 0006
 TABLES |= pg.RETENTION_TABLES  # migration 0008
+TABLES |= pg.RUN_TABLES  # migration 0009
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 SNAPSHOT = """
@@ -72,8 +73,8 @@ def tables(db) -> set[str]:
     }
 
 
-def test_a_fresh_database_gets_the_twenty_four_tables(hub_db):
-    assert len(TABLES) == 24  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_thirty_tables(hub_db):
+    assert len(TABLES) == 30  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
@@ -274,7 +275,7 @@ def test_0008_keeps_the_builds_and_going_back_fails_the_pruned_ones(hub_db):
     assert "blob_deletions" not in tables(hub_db)
     builds = query(hub_db, "SELECT id, status, artifact_sha256, error IS NOT NULL FROM kg_builds ORDER BY id")
     assert builds == [(first, "failed", None, True), (second, "succeeded", "b" * 64, False)]
-    assert migrate(hub_db.dsn).applied == ("0008",)
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0008") :]
 
 
 def test_downgrade_to_base_removes_everything_and_upgrade_restores_it(hub_db):
