@@ -3,6 +3,8 @@ import type { Page } from "@playwright/test";
 import { expect, isDeployed, test } from "./support/fixtures";
 import { ADMIN_ACCOUNT, newAccount, uniqueName } from "./support/hub";
 
+test.use({ uiLocale: "vi" }); // the assertions below read the Vietnamese copy of messages/vi.json
+
 async function openPicker(page: Page) {
   await page.getByTestId("project-switcher").click();
   const menu = page.getByTestId("project-switcher-menu");
