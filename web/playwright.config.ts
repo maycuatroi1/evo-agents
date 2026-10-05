@@ -14,12 +14,14 @@ import {
 
 /**
  * Locally and in CI: the Python stack (test Postgres, fake GitHub, `hub serve` from this checkout) and the web's
- * production build, on one origin through the /v1 rewrite. With PLAYWRIGHT_BASE_URL set, only the @deployed specs
+ * production build, on one origin through the /v1 rewrite. Every spec runs in Chromium; e2e/terminal.spec.ts runs in
+ * Firefox too (`pnpm exec playwright install chromium firefox`). With PLAYWRIGHT_BASE_URL set, only the @deployed specs
  * run, against that hub, signed in with the storage state in EVO_E2E_STORAGE_STATE.
  */
 const python = process.env.PYTHON ?? "python3";
 const reuse = process.env.E2E_REUSE_SERVERS === "1";
 const chrome = { ...devices["Desktop Chrome"], locale: "vi-VN", timezoneId: "Asia/Ho_Chi_Minh" };
+const firefox = { ...devices["Desktop Firefox"], locale: "vi-VN", timezoneId: "Asia/Ho_Chi_Minh" };
 
 export default defineConfig({
   testDir: "./e2e",
@@ -45,7 +47,11 @@ export default defineConfig({
           use: { ...chrome, storageState: process.env.EVO_E2E_STORAGE_STATE },
         },
       ]
-    : [{ name: "chromium", use: chrome }],
+    : [
+        { name: "chromium", use: chrome },
+        // The web terminal also in Firefox: its websocket under connect-src 'self', and WebAssembly under the CSP.
+        { name: "firefox", use: firefox, testMatch: /terminal\.spec\.ts$/ },
+      ],
   webServer: DEPLOYED_BASE_URL
     ? undefined
     : [
