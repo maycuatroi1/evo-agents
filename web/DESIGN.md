@@ -95,6 +95,14 @@ Shared pieces built on them:
   (`confirm-by-name.tsx`). The hub keeps only a worker's latest heartbeat, so the 60-minute heartbeat strip is built
   from what the tab has read (`heartbeats.ts`): a received minute is a full bar, a missed one a short red bar, a
   minute nobody watched a dot, with the counts written out beside it.
+- `components/runs`: the runs pages ask the hub every 5 seconds while the project (or the step, or the worker) has an
+  active run and every 30 seconds otherwise; the list's facets (active, review, done, failed or cancelled) and search
+  are the API's own filters, so a page of 50 runs comes back with the count of each state. A run's state is a badge
+  with an icon and a word. The Dispatch dialog lists every pending step of a plan in plan order and folds the done,
+  in progress and blocked ones away; a step that is not ready keeps a disabled checkbox and says why. Its footer says
+  which of the visitor's own workers could take the runs now, from what their heartbeats report, the way the hub
+  matches them at claim time. The Dispatch and Run this step buttons show only for a writer of the project (whoami's
+  grants); the API decides again on every dispatch.
 - `components/memories/markdown.tsx`: Markdown written by people (memory bodies) through react-markdown without
   raw HTML: tags show as text, only listed elements render, links keep http(s), mailto and anchors, images are
   never loaded, headings move under the page's h1 and the card's h2.

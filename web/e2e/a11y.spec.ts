@@ -6,6 +6,7 @@ import { ADMIN_ACCOUNT, machineToken, newAccount, uniqueName } from "./support/h
 import { graphReady, grantOn, HUB_NODE, kgPath, nodePath, sharedKg } from "./support/kg";
 import { apiOf, memoryFile, putMemory } from "./support/memories";
 import { ACTIVE_PLAN, EVIDENCE_STEP, open, seedPlans } from "./support/plans";
+import { claimRun, dispatch, liveWorker, reportState, RUN_PLAN, seedRunPlan } from "./support/runs";
 import { packSkill, publishSkill } from "./support/skills";
 import { CHECKOUTS, heartbeat, registerWorker, RUNTIMES } from "./support/workers";
 
@@ -48,6 +49,17 @@ async function seedWorkers(me: Member) {
   const api = await apiOf(me);
   await api.POST("/v1/workers/{worker_id}/drain", { params: { path: { worker_id: draining.id } } });
   return idle;
+}
+
+/** The runs plan in the first project of `me`, a live worker, and two runs: one failed on it, one queued. */
+async function seedRuns(me: Member) {
+  const project = me.projects[0];
+  await seedRunPlan(me, project);
+  const live = await liveWorker(me, project, uniqueName("a11y"));
+  const [failing, waiting] = await dispatch(me, project, ["2", "4"]);
+  await claimRun(live);
+  await reportState(live, failing.id, { state: "failed", error: "verify failed: pnpm test exited 1" });
+  return { project, live, failing, waiting };
 }
 
 async function seedSkill(me: Member) {
@@ -323,6 +335,60 @@ const PAGES: Entry[] = [
       await expectNoSeriousViolations(page, "workers at 375 px");
       await page.goto(`/workers/${idle.id}`);
       await expect(page.locator("#main").getByTestId("heartbeat-strip")).toBeVisible();
+    },
+  },
+  {
+    name: "runs with no run yet",
+    open: async ({ page, me }) => {
+      await page.goto(`/p/${me.projects[0]}/runs`);
+      await expect(page.locator("#main").getByTestId("state-empty")).toBeVisible();
+    },
+  },
+  {
+    name: "runs list with its summary, facets and a failed run",
+    open: async ({ page, me }) => {
+      await seedRuns(me);
+      await open(page, `/p/${me.projects[0]}/runs`);
+      await expect(page.locator("#main").getByTestId("runs-table").locator("tbody tr")).toHaveCount(2);
+      await expect(page.locator("#main").getByTestId("runs-summary")).toBeVisible();
+    },
+  },
+  {
+    name: "dispatch dialog with ready, waiting and folded steps",
+    open: async ({ page, me }) => {
+      const project = me.projects[0];
+      await seedRunPlan(me, project);
+      await liveWorker(me, project, uniqueName("a11y"));
+      await open(page, `/p/${project}/runs`);
+      await page.locator("#main").getByTestId("runs-empty-dispatch").click();
+      const dialog = page.getByTestId("dispatch-dialog");
+      await dialog.getByTestId("dispatch-step-2").click();
+      await dialog.getByTestId("dispatch-settled").locator("summary").click();
+      await expect(dialog.getByTestId("dispatch-outlook")).toHaveAttribute("data-kind", "now");
+      await expectNoSeriousViolations(page, "dispatch, automatic match");
+      await dialog.getByTestId("dispatch-target-pin").click();
+      await expect(dialog.getByTestId("dispatch-pinned-worker")).toBeVisible();
+    },
+  },
+  {
+    name: "plan step with its runs and the Run button",
+    open: async ({ page, me }) => {
+      await seedRuns(me);
+      await open(page, `/p/${me.projects[0]}/plans/${RUN_PLAN}/steps/4`);
+      await expect(page.locator("#main").getByTestId("step-runs-table")).toBeVisible();
+      await expect(page.locator("#main").getByTestId("step-run")).toBeVisible();
+    },
+  },
+  {
+    name: "runs on a small screen",
+    open: async ({ page, me }) => {
+      const { live } = await seedRuns(me);
+      await page.setViewportSize({ width: 375, height: 812 });
+      await open(page, `/p/${me.projects[0]}/runs`);
+      await expect(page.locator("#main").getByTestId("runs-table")).toBeVisible();
+      await expectNoSeriousViolations(page, "runs at 375 px");
+      await open(page, `/workers/${live.worker.id}`);
+      await expect(page.locator("#main").getByTestId("worker-runs-table")).toBeVisible();
     },
   },
   {

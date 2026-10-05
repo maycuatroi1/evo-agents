@@ -64,7 +64,12 @@ export function AppSidebar() {
                   return (
                     <SidebarMenuItem key={item.label}>
                       <SidebarMenuButton asChild isActive={active} tooltip={t(item.label)}>
-                        <Link href={href} aria-current={active ? "page" : undefined} onClick={closeOnMobile}>
+                        <Link
+                          href={href}
+                          aria-current={active ? "page" : undefined}
+                          onClick={closeOnMobile}
+                          data-testid={`nav-${item.label}`}
+                        >
                           <item.icon aria-hidden="true" />
                           <span>{t(item.label)}</span>
                         </Link>
