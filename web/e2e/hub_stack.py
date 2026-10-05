@@ -17,7 +17,9 @@ upload, commit and publish routes, and a browser sent to a presigned GET downloa
 /skills/bundle {name, description, files} packs a skill directory with ``evo_agents.hub.skills.pack`` and answers
 the bundle as base64 with its SHA-256, since the tests have no tar.gz writer of their own. The knowledge graph tests
 push their fixture through the same store, and POST /kg/seed and /kg/build run the worker's build in this process
-(``kg_seed.py``).
+(``kg_seed.py``). POST /workers/heartbeat {worker_id, runtimes, checkouts, seconds_ago} records what a worker
+daemon's heartbeat would (its time, and the runtimes and checkouts it reports), since this release of the API has
+no heartbeat route yet.
 
 Environment: EVO_HUB_TEST_DSN (required, a superuser DSN), E2E_API_PORT (18324), E2E_STACK_PORT (18325),
 E2E_WEB_ORIGIN (http://localhost:3324, the hub's public URL), E2E_ADMIN_LOGIN (e2e-admin).
@@ -148,7 +150,27 @@ def skill_bundle(body: dict) -> dict:
     return {"data": base64.b64encode(bundle.data).decode(), "sha256": bundle.sha256, "size": bundle.size}
 
 
-def control_server(port: int, github: BrowserGitHub, info: dict, seeder: KgSeeder) -> ThreadingHTTPServer:
+def stamp_heartbeat(dsn: str, body: dict) -> dict:
+    """What a worker's heartbeat records: its time (``seconds_ago`` before now) and, when given, the runtimes and
+    checkouts it reports. 404 for a worker the stack does not have."""
+    import psycopg
+    from psycopg.types.json import Jsonb
+
+    runtimes = Jsonb(body["runtimes"]) if isinstance(body.get("runtimes"), dict) else None
+    checkouts = Jsonb(body["checkouts"]) if isinstance(body.get("checkouts"), dict) else None
+    with psycopg.connect(dsn, autocommit=True) as conn:
+        row = conn.execute(
+            "UPDATE workers SET last_heartbeat_at = now() - make_interval(secs => %s), "
+            "runtimes = coalesce(%s, runtimes), checkouts = coalesce(%s, checkouts) "
+            "WHERE id = %s RETURNING id, last_heartbeat_at",
+            (float(body.get("seconds_ago") or 0), runtimes, checkouts, int(body["worker_id"])),
+        ).fetchone()
+    if row is None:
+        raise LookupError(f"no worker {body['worker_id']}")
+    return {"worker_id": row[0], "last_heartbeat_at": row[1].isoformat()}
+
+
+def control_server(port: int, github: BrowserGitHub, info: dict, seeder: KgSeeder, dsn: str) -> ThreadingHTTPServer:
     class Handler(BaseHTTPRequestHandler):
         def _reply(self, status: int, payload: dict) -> None:
             data = json.dumps(payload).encode()
@@ -172,6 +194,11 @@ def control_server(port: int, github: BrowserGitHub, info: dict, seeder: KgSeede
                 self._reply(200, {"token": token})
             elif self.path == "/skills/bundle":
                 self._reply(200, skill_bundle(body))
+            elif self.path == "/workers/heartbeat":
+                try:
+                    self._reply(200, stamp_heartbeat(dsn, body))
+                except LookupError as exc:
+                    self._reply(404, {"error": str(exc)})
             elif self.path in ("/kg/seed", "/kg/build"):
                 try:
                     self._reply(200, seeder.handle(self.path, body))
@@ -236,7 +263,7 @@ def main() -> int:
         wait_for(f"{api_url}/v1/health/live", proc, log_path)
         info = {"api": api_url, "github": github.url, "s3": s3.endpoint, "admin": admin_login, "database": db.name}
         seeder = KgSeeder(api_url, github, db.dsn, s3.config(), STATE_DIR / "kg")
-        control = control_server(stack_port, github, info, seeder)
+        control = control_server(stack_port, github, info, seeder, db.dsn)
         threading.Thread(target=control.serve_forever, daemon=True).start()
         print(
             f"hub_stack ready: api {api_url}, fake github {github.url}, fake s3 {s3.endpoint}, db {db.name}, "

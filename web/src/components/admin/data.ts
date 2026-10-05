@@ -2,6 +2,7 @@ import { keepPreviousData, queryOptions } from "@tanstack/react-query";
 import type { Route } from "next";
 
 import { type ApiClient, call } from "@/lib/api/client";
+import { csrfHeaders } from "@/lib/api/csrf";
 import type { components } from "@/lib/api/schema";
 import { type ApiSource, PROJECT_NAME } from "@/lib/queries";
 
@@ -31,7 +32,7 @@ export const PAGE_SIZES = [25, 50, 100] as const;
 export type PageSize = (typeof PAGE_SIZES)[number];
 export const DEFAULT_PAGE_SIZE: PageSize = 50;
 
-export const TOKEN_KINDS = ["machine", "web"] as const;
+export const TOKEN_KINDS = ["machine", "web", "worker"] as const;
 export type TokenKind = (typeof TOKEN_KINDS)[number];
 export const TOKEN_STATES = ["active", "revoked", "expired", "any"] as const;
 export type TokenStateFilter = (typeof TOKEN_STATES)[number];
@@ -284,11 +285,6 @@ export function tokensHref(filters: Partial<TokenFilters>): Route {
 }
 
 // Writes. Each one made with the session cookie carries the session's X-Evo-CSRF header, fetched just before it.
-
-async function csrfHeaders(api: ApiClient): Promise<Record<string, string>> {
-  const { csrf, header } = await call(api.GET("/v1/auth/web/csrf"));
-  return { [header]: csrf };
-}
 
 export type GrantInput = { login: string; project: string; role: Role; maxLevel: string };
 
