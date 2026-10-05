@@ -129,6 +129,7 @@ def create_app(config: HubConfig) -> FastAPI:
             async with app.state.mcp.session_manager.run():  # a mounted app's own lifespan does not run
                 yield
         finally:
+            await app.state.run_wakeups.close()
             await app.state.github.aclose()
             if app.state.blobs is not None:
                 app.state.blobs.close()
@@ -187,6 +188,12 @@ def create_app(config: HubConfig) -> FastAPI:
     app.include_router(workers.router)
     app.include_router(workers.worker_router)
     app.state.join_refusals = workers.RefusalLimit()  # refused pairing codes per client address, this process only
+
+    from evo_agents.hub.server import runs
+
+    app.include_router(runs.router)
+    app.include_router(runs.worker_router)
+    app.state.run_wakeups = runs.RunWakeups(config.dsn)  # the claims' LISTEN, opened by the first claim
     return app
 
 
