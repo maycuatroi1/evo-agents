@@ -9,7 +9,10 @@
    starts: the daemon never pushes the default branch.
 2. ``running``: the runtime's adapter starts the agent on the run's prompt; its events go to the spool and on to
    the hub. The owner's messages reach the agent through ``send``; a cancel, the run's timeout (counted from the
-   agent's start), or the hub no longer holding the run for this worker interrupt it.
+   agent's start), or the hub no longer holding the run for this worker interrupt it. ``interactive``: after a
+   takeover, or from the start in interactive mode, a person drives the agent's session in its runtime's terminal UI
+   in tmux (``interactive``), and a handback, or the person leaving the UI, lets a new adapter go on headless in the
+   same session (``running`` again).
 3. ``verifying``: the agent wrote ``.evo-run/result.json``; the daemon runs each of its ``verify_commands`` again in
    the worktree, with the run's time left, and records each exit code as a ``system`` event. A command that exits
    other than 0 fails the run, and nothing is pushed: the work stays in the worktree.
@@ -38,8 +41,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from evo_agents.hub import runs
-from evo_agents.worker import gitops
-from evo_agents.worker.adapter import AgentEvent, Outcome, RunContext
+from evo_agents.worker import gitops, interactive
+from evo_agents.worker.adapter import AgentEvent, AgentFinished, Outcome, RunContext
 from evo_agents.worker.checkouts import default_branch_of
 from evo_agents.worker.hubapi import Backoff, HubProblem, Outdated, Refused, Unreachable
 from evo_agents.worker.spool import Spool, encode_event
@@ -62,6 +65,14 @@ DIFF_LIMIT = 8 * 1024 * 1024  # the run-diff blob
 STOP_GRACE = 30.0  # seconds an interrupted agent has to end its events
 HARD_STOP_TRIES = 3  # tries of a report once the daemon is stopping now
 FLUSH_DEBOUNCE = 0.2  # seconds of events gathered into one batch
+TERMINAL_POLL = 1.0  # seconds between looks at the tmux session while a person drives the agent
+TERMINAL_LOG_GRACE = 5.0  # seconds the log of the terminal has, once its session is closed, to read the last records
+# What the agent is told when a person hands its session back.
+HANDBACK_PROMPT = (
+    "The owner of this run drove this session in a terminal and has handed it back to you. Go on with the task of "
+    "the run from where the session and the working tree stand now, and finish it as the first message of this "
+    f"session asks, writing {runs.RESULT_FILE} at the end."
+)
 
 
 class RunGone(Exception):
@@ -225,7 +236,16 @@ class Run:
         self._stop = asyncio.Event()
         self.adapter = None
         self.agent_running = False
+        self.agent_started = False  # the agent (headless or in a terminal) has started once: the timeout counts
         self.session_reported: str | None = None
+        self.phase = "prepare"  # prepare, headless, interactive (a person drives the agent), after
+        self.takeover_asked = False
+        self.handback_asked = asyncio.Event()
+        self.tui = None  # the runtime's terminal UI while a person drives the agent
+        self.terminal: interactive.WebTerminal | None = None
+        self.terminal_wanted = False  # a browser asked for the terminal before the run was interactive
+        self.terminal_failed: str | None = None  # why a terminal UI did not open; later takeovers are refused
+        self._inbox_waits = False
         self.loop = asyncio.get_running_loop()
         self.deadline = self.loop.time() + self.timeout_s  # from the claim until the agent starts, then from there
         self.worktree: Path | None = None
@@ -297,25 +317,106 @@ class Run:
         self._background.add(task)
         task.add_done_callback(self._background.discard)
 
-    def unsupported(self, what: str) -> None:
-        """The owner asked for something this daemon cannot do yet: say so once in the run's log."""
+    def unsupported(self, what: str, why: str) -> None:
+        """The owner asked for something this worker cannot do: say so once in the run's log."""
         if what in self._unsupported_noted:
             return
         self._unsupported_noted.add(what)
-        self.note(f"The owner asked for a {what}; this worker cannot hand an agent to a terminal yet, so it goes on.")
+        self.note(f"The owner asked for a {what}; this worker cannot do it ({why}), so the run goes on.")
+
+    def interactive_unsupported(self, cls=None) -> str | None:
+        """Why this run's agent cannot be handed to a person in a terminal here, or None when it can."""
+        cls = cls or self.daemon.adapters.get(self.runtime)
+        if cls is None or not getattr(cls, "interactive", False):
+            return f"its {self.runtime} adapter cannot hand the session to a terminal"
+        if not self.daemon.tmux.available:
+            return "tmux is not on PATH"
+        if self.terminal_failed:
+            return f"the terminal UI did not open earlier: {self.terminal_failed}"
+        return None
+
+    def request_takeover(self) -> None:
+        """The heartbeat says the owner asked to drive the agent in a terminal; it says so until the run is
+        interactive."""
+        if self.ended or self.takeover_asked or self.phase in ("interactive", "after"):
+            return
+        why = self.interactive_unsupported()
+        if why is not None:
+            self.unsupported("takeover", why)
+            return
+        self.takeover_asked = True
+        name = interactive.session_name(self.id)
+        log.info("takeover asked", extra={"run_id": self.id, "phase": self.phase})
+        if self.phase == "headless":
+            self.note(
+                "The owner asked for a takeover: the agent ends its turn, then its session opens in its terminal UI "
+                f"in tmux session {name}."
+            )
+            if self.agent_running and self.adapter is not None:
+                self._spawn(self._stop_at_boundary(self.adapter))
+        else:
+            self.note(f"The owner asked for a takeover: the agent starts in its terminal UI in tmux session {name}.")
+
+    def request_handback(self) -> None:
+        """The heartbeat says the owner asked to let the agent go on headless; it says so until the run is running."""
+        if self.phase == "interactive" and not self.handback_asked.is_set():
+            log.info("handback asked", extra={"run_id": self.id})
+            self.handback_asked.set()
+
+    def open_terminal(self) -> None:
+        """The heartbeat says a browser waits for the run's terminal: connect the worker's end once the run is
+        interactive, or say in the terminal that this worker does not allow it."""
+        if self.ended:
+            return
+        if self.phase != "interactive" or self.tui is None or self.state != "interactive":
+            self.terminal_wanted = True
+            return
+        self.terminal_wanted = False
+        config = self.daemon.config
+        if self.terminal is None:
+            self.terminal = interactive.WebTerminal(
+                self.id,
+                self.daemon.tmux,
+                allowed=config.allow_web_terminal,
+                worker=config.name,
+                config_path=self.daemon.home.config_path,
+            )
+        if not self.terminal.connected and not self.terminal.allowed and "web terminal" not in self._unsupported_noted:
+            self._unsupported_noted.add("web terminal")
+            self.note(
+                "The owner opened the web terminal; this worker does not allow it (allow_web_terminal is off in its "
+                "config.json), so the terminal says so and closes."
+            )
+        self.terminal.open(self.daemon.hub.session, self.daemon.hub.url, self.daemon.token)
+
+    async def _stop_at_boundary(self, adapter) -> None:
+        try:
+            await asyncio.wait_for(adapter.stop_at_turn_boundary(), STOP_GRACE)
+        except Exception:
+            log.warning("the agent was not asked to end its turn", extra={"run_id": self.id}, exc_info=True)
 
     async def deliver_inbox(self) -> None:
-        """Hand the owner's waiting messages to the agent, then mark them delivered on the hub."""
+        """Hand the owner's waiting messages to the agent, then mark them delivered on the hub. Messages the agent
+        no longer takes (its last turn is over, or a person drives it) wait in the inbox for the next agent."""
         if self._delivering or not self.agent_running or self.adapter is None:
             return
         self._delivering = True
+        adapter = self.adapter
         try:
             messages = await self.daemon.hub.inbox(self.id)
-            while messages and self.agent_running:
+            while messages and self.agent_running and adapter is self.adapter:
                 last = None
-                for message in messages:
-                    await self.adapter.send(str(message.get("text") or ""))
-                    last = message.get("id")
+                try:
+                    for message in messages:
+                        await adapter.send(str(message.get("text") or ""))
+                        last = message.get("id")
+                except AgentFinished:
+                    if last is not None:
+                        await self.daemon.hub.inbox(self.id, ack=int(last))
+                    if not self._inbox_waits:
+                        self._inbox_waits = True
+                        log.info("messages wait in the inbox: the agent takes no more input", extra={"run_id": self.id})
+                    return
                 if last is None:
                     break
                 messages = await self.daemon.hub.inbox(self.id, ack=int(last))
@@ -375,8 +476,11 @@ class Run:
 
     async def _report_running(self, only_from: tuple[str, ...]) -> None:
         session_id = self.adapter.session_id if self.adapter is not None else None
+        await self._report_session("running", only_from, session_id)
+
+    async def _report_session(self, state: str, only_from: tuple[str, ...], session_id: str | None) -> None:
         try:
-            await self._report("running", only_from=only_from, session_id=session_id)
+            await self._report(state, only_from=only_from, session_id=session_id)
             self.session_reported = session_id
         except RunGone as exc:
             log.warning("run is not this worker's any more", extra={"run_id": self.id, "error": str(exc)})
@@ -417,6 +521,8 @@ class Run:
         finally:
             for task in list(self._background):
                 task.cancel()
+            if self.terminal is not None:
+                await self.terminal.close()
             self.sender.close()
             if not self.daemon.hard_stop.is_set():
                 with contextlib.suppress(asyncio.TimeoutError):
@@ -468,8 +574,10 @@ class Run:
         cls = self.daemon.adapters.get(self.runtime)
         if cls is None:
             raise RunFailed(f"this worker has no adapter for {self.runtime}")
-        if self.mode == "interactive" and not cls.interactive:
-            raise RunFailed(f"this worker cannot hand a {self.runtime} agent to a terminal yet: run it headless")
+        if self.mode == "interactive":
+            why = self.interactive_unsupported(cls)
+            if why is not None:
+                raise RunFailed(f"this worker cannot run {self.runtime} interactive ({why}): run it headless")
         checkout = self.daemon.checkout_for(self.project, self.repo)
         if checkout is None:
             raise RunFailed(f"this worker has no checkout of {self.project}/{self.repo}")
@@ -578,29 +686,187 @@ class Run:
         return env
 
     async def _run_agent(self, cls) -> None:
-        context = RunContext(
-            run=dict(self.spec), worktree=self.worktree, prompt=self.spec["prompt"], env=self.agent_env()
+        """Run the agent until its last turn is over: headless, and in its terminal UI while a person drives it
+        (interactive mode, or a takeover), each phase going on with the session of the one before."""
+        session_id: str | None = None
+        prompt = self.spec["prompt"]
+        in_terminal = self.mode == "interactive" or self.takeover_asked
+        try:
+            while True:
+                if in_terminal:
+                    session_id = await self._in_terminal(cls, session_id, prompt)
+                    in_terminal = False
+                    prompt = HANDBACK_PROMPT if session_id else self.spec["prompt"]
+                    continue
+                outcome = await self._headless(cls, prompt, session_id)
+                session_id = self.adapter.session_id or session_id
+                self._check()
+                if self.takeover_asked and session_id and self.interactive_unsupported(cls) is None:
+                    in_terminal = True
+                    continue
+                self.outcome = outcome
+                break
+        finally:
+            self.phase = "after"
+        if not self.outcome.completed:
+            raise RunFailed(
+                self.outcome.error or f"{self.runtime} ended before its turn completed", usage=self.outcome.usage
+            )
+
+    def _agent_starts(self) -> None:
+        """The run's timeout counts from the first start of its agent."""
+        if not self.agent_started:
+            self.agent_started = True
+            self.deadline = self.loop.time() + self.timeout_s
+
+    def _context(self, prompt: str, session_id: str | None) -> RunContext:
+        return RunContext(
+            run=dict(self.spec), worktree=self.worktree, prompt=prompt, env=self.agent_env(), resume_session=session_id
         )
-        adapter = cls(context)
+
+    async def _headless(self, cls, prompt: str, session_id: str | None) -> Outcome:
+        """The agent headless, on a new session or going on with ``session_id``, until its events end."""
+        adapter = cls(self._context(prompt, session_id))
         self.adapter = adapter
+        self.phase = "headless"
+        self._inbox_waits = False
         try:
             await adapter.start()
         except Exception as exc:
             log.warning("agent did not start", extra={"run_id": self.id}, exc_info=True)
             raise RunFailed(f"{self.runtime} did not start: {type(exc).__name__}: {exc}") from None
         self.agent_running = True
-        self.deadline = self.loop.time() + self.timeout_s
-        self.note(f"{self.runtime} started in {self.worktree}.")
-        self._spawn(self._report_running(("leased",)))
+        self._agent_starts()
+        if session_id:
+            self.note(f"{self.runtime} goes on headless in session {session_id}.")
+        else:
+            self.note(f"{self.runtime} started in {self.worktree}.")
+        self._spawn(self._report_running(("interactive",) if self.state == "interactive" else ("leased",)))
+        if self.takeover_asked:  # asked while the agent was starting
+            self._spawn(self._stop_at_boundary(adapter))
         try:
-            self.outcome = await self._consume(adapter)
+            return await self._consume(adapter)
         finally:
             self.agent_running = False
-        self._check()
-        if not self.outcome.completed:
-            raise RunFailed(
-                self.outcome.error or f"{self.runtime} ended before its turn completed", usage=self.outcome.usage
+
+    async def _in_terminal(self, cls, session_id: str | None, prompt: str) -> str | None:
+        """Hand the agent's session (a new one on ``prompt`` when ``session_id`` is None) to a person: the runtime's
+        terminal UI in tmux session evo-run-N, the run reported interactive, until a handback or the person leaves the
+        UI. The session's id, for the agent that goes on headless."""
+        self.phase = "interactive"
+        self.takeover_asked = False
+        self.handback_asked.clear()
+        tmux = self.daemon.tmux
+        name = interactive.session_name(self.id)
+        tui = cls.tui(self._context(prompt, session_id), session_id)
+        try:
+            for line in await tui.prepare():
+                self.note(line)
+            command = tui.command(name)
+            await tmux.start(
+                name,
+                command,
+                tui.environment(),
+                cwd=self.worktree,
+                scratch=self.daemon.home.run_dir(self.id),
+                drop=tui.drop_env,
             )
+        except Exception as exc:
+            with contextlib.suppress(Exception):
+                await tui.close()
+            with contextlib.suppress(Exception):
+                await tmux.kill(name)
+            reason = _cut(f"{type(exc).__name__}: {exc}", 300)
+            log.warning("the terminal UI did not open", extra={"run_id": self.id, "error": reason})
+            self.terminal_failed = reason
+            if self.mode == "interactive" and not self.agent_started:
+                raise RunFailed(f"the terminal UI of {self.runtime} did not open: {reason}") from None
+            self.note(f"The terminal UI of {self.runtime} did not open ({reason}); the agent goes on headless.")
+            return session_id
+        self.tui = tui
+        self._agent_starts()
+        logs = asyncio.create_task(self._terminal_log(tui, name))  # before anyone is told the session is there
+        try:
+            self.record["tmux_session"] = name
+            socket = await tmux.socket_path(name)
+            if socket:
+                self.record["tmux_socket"] = socket
+            with contextlib.suppress(OSError):
+                self.daemon.home.save_run(self.record)
+            await self._report("interactive", only_from=("leased", "running"), session_id=tui.session_id)
+            self.session_reported = tui.session_id
+            shown = f", session {tui.session_id}" if tui.session_id else ""
+            self.note(
+                f"{self.runtime} runs in its terminal UI in tmux session {name}{shown}: `evo-agents worker attach "
+                f"{self.id}` on {self.daemon.config.name} opens it, and so does the run's Terminal tab on the web."
+            )
+            if self.terminal_wanted:
+                self.open_terminal()
+            how = await self._wait_in_terminal(tui, name)
+        finally:
+            if self.terminal is not None:
+                await self.terminal.close()
+            await tmux.kill(name)
+            await tui.close()  # sets logs_done: the log reads what came last, then ends
+            try:
+                await asyncio.wait_for(asyncio.shield(logs), TERMINAL_LOG_GRACE)
+            except asyncio.TimeoutError:
+                logs.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await logs
+            self.tui = None
+        session_id = tui.session_id or session_id
+        then = f"{self.runtime} goes on headless" + (f" in session {session_id}" if session_id else "")
+        if how == "handback":
+            self.note(f"The owner handed the run back: the terminal UI was closed, and {then}.")
+        else:
+            self.note(f"The terminal UI ended: {then}.")
+        return session_id
+
+    async def _wait_in_terminal(self, tui, name: str) -> str:
+        """Wait while a person drives the agent: ``handback`` or ``exit`` (the UI ended); Stopped on a cancel, the
+        run's timeout or the hub letting go of the run."""
+        tmux = self.daemon.tmux
+        while True:
+            self._check()
+            if self.handback_asked.is_set():
+                return "handback"
+            if not await tmux.alive(name):
+                return "exit"
+            if tui.session_id and tui.session_id != self.session_reported:  # a new session's id, found late
+                self.session_reported = tui.session_id
+                self._spawn(self._report_session("interactive", ("interactive",), tui.session_id))
+            waits = {asyncio.create_task(self.handback_asked.wait()), asyncio.create_task(self._stop.wait())}
+            try:
+                await asyncio.wait(
+                    waits,
+                    timeout=max(0.0, min(TERMINAL_POLL, self.deadline - self.loop.time())),
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+            finally:
+                for task in waits:
+                    task.cancel()
+
+    async def _terminal_log(self, tui, name: str) -> None:
+        """The run's log while a person drives the agent: the runtime's record of the session, or what the terminal
+        prints when the runtime keeps none this worker reads."""
+        source = tui.logs()
+        pane_log = None
+        try:
+            if source is None:
+                pane_log = self.daemon.home.run_dir(self.id) / "terminal.log"
+                await self.daemon.tmux.pipe(name, pane_log)
+                self.note(
+                    "The terminal UI keeps no record this worker reads: the log shows the text its terminal prints."
+                )
+                source = interactive.follow_pane(pane_log, tui.logs_done)
+            async for event in source:
+                self.event(event.kind, event.body, event.at)
+        except Exception:
+            log.warning("the log of the terminal failed", extra={"run_id": self.id}, exc_info=True)
+        finally:
+            if pane_log is not None:
+                pane_log.unlink(missing_ok=True)
 
     async def _consume(self, adapter) -> Outcome:
         async def pump() -> None:

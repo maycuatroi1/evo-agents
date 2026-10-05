@@ -37,7 +37,15 @@ from collections.abc import Iterable, Mapping
 from importlib import metadata
 from pathlib import Path
 
-from evo_agents.worker.adapter import Adapter, AgentEvent, Detection, Outcome, RunContext, probe_binary
+from evo_agents.worker.adapter import (  # noqa: F401 (AgentFinished: the adapters raise it from here)
+    Adapter,
+    AgentEvent,
+    AgentFinished,
+    Detection,
+    Outcome,
+    RunContext,
+    probe_binary,
+)
 
 log = logging.getLogger("evo_agents.worker")
 
@@ -74,10 +82,6 @@ _NEW_SESSION = (
     "os.close(fd)\n"
     "os.execv(sys.argv[2], sys.argv[2:])\n"
 )
-
-
-class AgentFinished(RuntimeError):
-    """``send`` after the agent took its last input: nothing would read the message, so it stays in the inbox."""
 
 
 # Versions and detection

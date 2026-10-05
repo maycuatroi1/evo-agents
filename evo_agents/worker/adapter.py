@@ -22,6 +22,11 @@ adapter in this order:
 ``session_id`` is the runtime's id of the agent's session once it is known (from the start for a runtime that takes
 an id, from its first event otherwise); the daemon reports it, and a later takeover resumes that session.
 
+An adapter whose ``interactive`` is true can also hand the session to a person: ``tui(context, session_id)`` gives the
+runtime's own terminal UI on that session (a new one on ``context.prompt`` when ``session_id`` is None), which the
+daemon runs in tmux (``evo_agents.worker.interactive``). Once the person hands the run back, a new adapter goes on
+headless with ``context.resume_session`` set to the same session.
+
 Rules every adapter keeps, from what the runtimes do (research_notes/worker-runtimes.md of the harness):
 
 - The state of a turn comes from the events, never from the exit code: a runtime may exit 0 when interrupted.
@@ -51,10 +56,13 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from importlib.metadata import entry_points
 from pathlib import Path
-from typing import ClassVar
+from typing import TYPE_CHECKING, ClassVar
 
 from evo_agents import __version__
 from evo_agents.hub import runs
+
+if TYPE_CHECKING:
+    from evo_agents.worker.interactive import Tui
 
 log = logging.getLogger(__name__)
 
@@ -127,6 +135,10 @@ class RunContext:
         return int(self.run["id"])
 
 
+class AgentFinished(RuntimeError):
+    """``send`` after the agent took its last input: nothing would read the message, so it stays in the inbox."""
+
+
 @dataclass
 class Outcome:
     """How the agent ended."""
@@ -142,12 +154,18 @@ class Adapter(abc.ABC):
 
     runtime: ClassVar[str]
     binary: ClassVar[str]
-    interactive: ClassVar[bool] = False  # whether it can hand its session to a person in a terminal
+    interactive: ClassVar[bool] = False  # whether it can hand its session to a person in a terminal (``tui``)
 
     @classmethod
     def detect(cls) -> Detection:
         """The runtime on this machine: ``binary`` on PATH and its ``--version``."""
         return probe_binary(cls.binary)
+
+    @classmethod
+    def tui(cls, context: RunContext, session_id: str | None) -> Tui:
+        """The runtime's terminal UI on the session ``session_id``, or on a new session that starts on
+        ``context.prompt`` when it is None; only for an adapter whose ``interactive`` is true."""
+        raise NotImplementedError(f"the {cls.runtime} adapter cannot hand its session to a terminal")
 
     def __init__(self, context: RunContext):
         self.context = context
@@ -158,7 +176,8 @@ class Adapter(abc.ABC):
 
     @abc.abstractmethod
     async def send(self, text: str) -> None:
-        """Hand the agent a message of the owner, now or at the end of its turn."""
+        """Hand the agent a message of the owner, now or at the end of its turn; AgentFinished once the agent takes
+        no more input."""
 
     @abc.abstractmethod
     async def stop_at_turn_boundary(self) -> None:

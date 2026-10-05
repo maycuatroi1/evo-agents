@@ -215,10 +215,17 @@ async def start_server(binary: str, cwd: str, env: Mapping[str, str]) -> Server:
 class OpencodeAdapter(QueueAdapter):
     runtime = "opencode"
     binary = "opencode"
+    interactive = True
 
     @classmethod
     def detect(cls) -> Detection:
         return detect_runtime(cls.runtime, cls.binary, MIN_VERSION, packages=(AIOHTTP,))
+
+    @classmethod
+    def tui(cls, context: RunContext, session_id: str | None):
+        from evo_agents.worker.interactive import OpencodeTui
+
+        return OpencodeTui(context, session_id)
 
     def __init__(self, context: RunContext):
         super().__init__(context)
