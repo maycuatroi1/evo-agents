@@ -9,13 +9,14 @@ Each URL is a presigned PUT to ``uploads/<upload_id>`` that works for 15 minutes
 POST /v1/blobs/commit {project, upload_ids} reads every upload back (see ``evo_agents.hub.blobs``) and compares its size
 and SHA-256 with what was declared. When all of them match, each is copied to ``blobs/sha256/<sha256>`` unless the hub
 records that blob already and its object exists, and one ``blobs`` row per blob is written with an audit row naming the
-project. The time a commit takes grows with its uploads (a few round trips to the store each, at most the store's
-``concurrency`` at a time), so a client commits in batches; ``evo-agents hub kg push`` sends at most
-``evo_agents.hub.kg_push.COMMIT_BATCH`` uploads per commit. When one does not match, the answer is 422 naming it and
-nothing is written: every upload of the request is discarded and has to be asked for again. Either way the uploaded
-objects are deleted. An upload can be committed by the user who asked for it, in its project, within 24 hours; any other
-id is unknown (422) and left alone. When the blob store does not answer, the answer is 503 and the uploads stay, so the
-same commit can be sent again.
+project. The rows are written holding the blob lock shared, and a blob the hub was deleting meanwhile (a built graph the
+retention dropped, ``evo_agents.hub.blob_gc``) is copied again first. The time a commit takes grows with its uploads (a
+few round trips to the store each, at most the store's ``concurrency`` at a time), so a client commits in batches;
+``evo-agents hub kg push`` sends at most ``evo_agents.hub.kg_push.COMMIT_BATCH`` uploads per commit. When one does not
+match, the answer is 422 naming it and nothing is written: every upload of the request is discarded and has to be asked
+for again. Either way the uploaded objects are deleted. An upload can be committed by the user who asked for it, in its
+project, within 24 hours; any other id is unknown (422) and left alone. When the blob store does not answer, the answer
+is 503 and the uploads stay, so the same commit can be sent again.
 
 A request without ``project`` is about blobs the hub holds itself, outside any project: the bundles of global skills,
 which belong to no project. Only a hub admin uploads or commits those, and only of kind skill-bundle (GLOBAL_KINDS);
@@ -39,6 +40,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import UUID4, BaseModel, Field
 
+from evo_agents.hub import blob_gc
 from evo_agents.hub.access import has_role
 from evo_agents.hub.blobs import (
     KIND_LIMITS,
@@ -318,6 +320,15 @@ async def commit_uploads(
     async with pool.connection() as conn:
         access = await holder(conn, user, project, "committing")  # the grant may have changed while the bytes were read
         blobs = list({upload.sha256: upload for upload in reversed(uploads)}.values())  # the first upload of a hash
+        # A blob found held above may have lost its object to a deletion since (evo_agents.hub.blob_gc): copy those
+        # sealed bytes again, while the lock keeps any deletion out until the rows are written.
+        await blob_gc.lock_shared(conn)
+        revived = set(await blob_gc.revive(conn, [b.sha256 for b in blobs]))
+        if revived:
+            try:
+                await asyncio.to_thread(store.publish_all, [b for b in blobs if b.sha256 in revived])
+            except BlobStoreUnavailable:
+                raise HTTPException(503, UNAVAILABLE) from None
         cursor = await conn.execute(
             INSERT_BLOBS,
             (

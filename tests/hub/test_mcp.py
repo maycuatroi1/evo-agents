@@ -18,10 +18,12 @@ in this process (TestClient), and the CLI ones run ``hub serve`` as a process of
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import io
 import json
 import logging
+import socket
 import subprocess
 import sys
 import threading
@@ -128,27 +130,46 @@ def test_names_follow_the_hub_s_patterns():
 
 class FakeHub:
     """A hub on a local port whose /mcp answers with ``reply(message, headers) -> (status, body)``; the requests it
-    received, with their headers."""
+    received, with their headers. With ``keep_alive`` it speaks HTTP/1.1 and keeps connections open, as uvicorn does;
+    ``connections`` counts those it accepted. ``reply`` may return CLOSE_IDLE with its answer to close the connection
+    once the answer is sent, without saying so, as a server does when a connection was idle too long, or HANG_UP alone
+    to close it without answering."""
 
-    def __init__(self, reply, port: int | None = None, delay: float = 0.0):
+    def __init__(self, reply, port: int | None = None, delay: float = 0.0, keep_alive: bool = False):
         self.reply = reply
         self.delay = delay
         self.requests: list[tuple[dict, object]] = []
+        self.connections = 0
+        self.sockets: list[socket.socket] = []
         fake = self
 
         class Handler(BaseHTTPRequestHandler):
+            protocol_version = "HTTP/1.1" if keep_alive else "HTTP/1.0"
+
+            def setup(self):
+                fake.connections += 1
+                fake.sockets.append(self.request)
+                super().setup()
+
             def do_POST(self):
                 raw = self.rfile.read(int(self.headers.get("content-length", 0)))
                 message = json.loads(raw)
                 fake.requests.append(({k.lower(): v for k, v in self.headers.items()}, message))
                 time.sleep(fake.delay)
-                status, body = fake.reply(message, self.headers)
+                answer = fake.reply(message, self.headers)
+                if answer is HANG_UP:
+                    self.close_connection = True
+                    return
+                close = len(answer) == 3 and answer[2] is CLOSE_IDLE
+                status, body = answer[:2]
                 data = b"" if body is None else json.dumps(body).encode()
                 self.send_response(status)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(data)))
                 self.end_headers()
                 self.wfile.write(data)
+                if close:
+                    self.close_connection = True
 
             def log_message(self, *args):
                 pass
@@ -163,8 +184,17 @@ class FakeHub:
         self.thread.start()
 
     def stop(self):
+        """Stop as a process does: the open connections go with it."""
         self.server.shutdown()
         self.server.server_close()
+        for sock in self.sockets:
+            with contextlib.suppress(OSError):
+                sock.shutdown(socket.SHUT_RDWR)
+            sock.close()
+
+
+HANG_UP = object()
+CLOSE_IDLE = object()
 
 
 def mcp_reply(message, headers):
@@ -343,6 +373,98 @@ def test_a_refused_connection_is_tried_again_and_a_request_that_may_have_been_se
     with pytest.raises(Unreachable) as caught:
         never.post(request(1, "ping"))
     assert caught.value.refused
+
+
+def test_the_proxy_sends_every_message_over_one_kept_alive_connection():
+    from evo_agents.hub.client import Connections
+
+    hub = FakeHub(mcp_reply, keep_alive=True)
+    connections = Connections()
+    try:
+        client = McpClient(hub.url, TOKEN, "alpha", AGENT, connections=connections)
+        for _ in range(20):
+            assert client.call_tool("kg_search", {"query": "x"})["content"][0]["text"] == "called kg_search"
+        assert hub.connections == 1 and connections.opened == 1 and len(hub.requests) == 20
+        proxy = Proxy("alpha", credentials=signed_in(hub.url), err=io.StringIO(), workers=1, connections=connections)
+        replies = run_proxy(proxy, request(1, "initialize", HELLO), *(call(i, "kg_status") for i in range(2, 12)))
+        assert len(replies) == 11 and all("result" in reply for reply in replies)
+        assert hub.connections == 1 and len(hub.requests) == 31  # a proxy carries on over the same connection
+        for headers, _ in hub.requests:
+            assert headers["authorization"] == f"Bearer {TOKEN}" and headers["x-evo-project"] == "alpha"
+    finally:
+        connections.close()
+        hub.stop()
+
+
+def test_a_kept_alive_connection_the_hub_closed_is_replaced_and_no_request_goes_twice():
+    from evo_agents.hub.client import Connections
+
+    sent = []
+
+    def close_after_the_second(message, headers):  # then the server closes the connection, as when it was idle
+        sent.append(message["id"])
+        status, body = mcp_reply(message, headers)
+        return (status, body, CLOSE_IDLE) if len(sent) == 2 else (status, body)
+
+    hub = FakeHub(close_after_the_second, keep_alive=True)
+    connections = Connections()
+    try:
+        client = McpClient(hub.url, TOKEN, "alpha", AGENT, connections=connections)
+        for id_ in range(1, 6):
+            client.post(call(id_, "kg_status"), "2025-06-18")
+            if id_ == 2:
+                time.sleep(0.2)  # the server's close reaches this side
+        assert sent == [1, 2, 3, 4, 5]  # every call answered, none sent twice
+        assert hub.connections == 2 and connections.opened == 2
+    finally:
+        hub.stop()
+
+    # the hub restarts on the same port: the next call reaches it on a new connection
+    restarted = FakeHub(mcp_reply, port=int(hub.url.rsplit(":", 1)[1]), keep_alive=True)
+    try:
+        assert client.call_tool("kg_status", {})["content"][0]["text"] == "called kg_status"
+        assert restarted.connections == 1 and connections.opened == 3
+    finally:
+        connections.close()
+        restarted.stop()
+
+    # a connection the hub drops once it has the request is not sent again: the request may have been carried out
+    answered = []
+
+    def hang_up_on_the_second(message, headers):
+        answered.append(message["id"])
+        return HANG_UP if len(answered) == 2 else mcp_reply(message, headers)
+
+    dropping = FakeHub(hang_up_on_the_second, keep_alive=True)
+    try:
+        client = McpClient(dropping.url, TOKEN, "alpha", AGENT, connections=Connections(), sleep=lambda s: None)
+        client.call_tool("kg_status", {})
+        with pytest.raises(Unreachable) as caught:
+            client.call_tool("memory_write", {"name": "x.md", "body": SECRET})
+        assert not caught.value.refused and dropping.url in str(caught.value)
+        assert answered == [1, 1] and len(dropping.requests) == 2
+    finally:
+        dropping.stop()
+
+
+def test_a_connection_idle_too_long_is_not_reused():
+    from evo_agents.hub.client import Connections
+
+    now = [0.0]
+    hub = FakeHub(mcp_reply, keep_alive=True)
+    connections = Connections(idle_timeout=30.0, clock=lambda: now[0])
+    try:
+        client = McpClient(hub.url, TOKEN, "alpha", AGENT, connections=connections)
+        client.call_tool("kg_status", {})
+        now[0] = 29.0
+        client.call_tool("kg_status", {})
+        assert connections.opened == 1
+        now[0] = 60.0
+        client.call_tool("kg_status", {})
+        assert connections.opened == 2 and hub.connections == 2
+    finally:
+        connections.close()
+        hub.stop()
 
 
 def test_refusals_of_the_hub_become_tool_errors_naming_it():

@@ -337,11 +337,11 @@ class BlobStore:
                 body.close()
         raise AssertionError("unreachable")
 
-    def put_file(self, sha256: str, path: Path) -> bool:
+    def put_file(self, sha256: str, path: Path, *, replace: bool = False) -> bool:
         """Store the file at ``path`` as blob ``sha256``, which the caller computed from these very bytes, unless the
-        blob is there already. True when this call wrote it."""
+        blob is there already; with ``replace``, whether it is there or not. True when this call wrote it."""
         key = blob_key(sha256)
-        if self.size(key) is not None:
+        if not replace and self.size(key) is not None:
             return False
         size = path.stat().st_size
         with open(path, "rb") as handle:

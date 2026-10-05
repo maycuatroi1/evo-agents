@@ -283,9 +283,10 @@ def test_the_cleanup_and_the_pruning_are_periodic_and_queue_at_most_one():
     periodic = {p.task.name: p for p in queue.periodic_registry.periodic_tasks.values()}
     assert periodic[jobs.CLEANUP_UPLOADS].cron == "17 * * * *"  # hourly
     assert periodic[jobs.PRUNE_JOBS].cron == "43 3 * * *"  # daily
-    for name in (jobs.CLEANUP_UPLOADS, jobs.PRUNE_JOBS):
+    assert periodic[jobs.PRUNE_KG_ARTIFACTS].cron == "31 * * * *"  # hourly
+    for name in (jobs.CLEANUP_UPLOADS, jobs.PRUNE_JOBS, jobs.PRUNE_KG_ARTIFACTS):
         assert queue.tasks[name].queueing_lock == name
-    assert {jobs.PING, jobs.CLEANUP_UPLOADS, jobs.PRUNE_JOBS} <= set(queue.tasks)
+    assert {jobs.PING, jobs.CLEANUP_UPLOADS, jobs.PRUNE_JOBS, jobs.PRUNE_KG_ARTIFACTS} <= set(queue.tasks)
 
 
 # Refusing to start

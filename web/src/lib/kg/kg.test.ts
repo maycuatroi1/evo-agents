@@ -26,6 +26,8 @@ function build(overrides: Partial<KgBuild> = {}): KgBuild {
     runs: 1,
     artifact_sha256: null,
     artifact_size: null,
+    artifact_reused_from: null,
+    artifact_pruned_at: null,
     content_hash: "sha256:" + "ab".repeat(32),
     nodes: 3,
     edges: 2,

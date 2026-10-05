@@ -9,6 +9,11 @@ Requests carry the token as a Bearer header and never follow a redirect, which w
 host the redirect names. A hub URL must be https, or http to a loopback address for local runs. Every request has
 a timeout, and a hub or a GitHub that does not answer is an error naming its URL.
 
+``Connections`` keeps HTTP(S) connections to hubs open between requests, for callers that send many small ones, such
+as ``evo-agents hub mcp`` (``evo_agents.hub.mcp_proxy``): a TLS handshake costs more than the request itself. It sends
+the same requests ``_send`` does, answers and fails the same way, and falls back to ``_send`` when a proxy is
+configured for the hub.
+
 Sign-in is GitHub's device flow: the CLI asks GitHub for a user code, the person enters it at the verification
 URL, and the CLI polls until GitHub hands over a token, honouring ``interval`` and adding SLOW_DOWN_STEP seconds on
 every ``slow_down``. The client id comes from the hub (GET /v1/auth/config). GitHub's own URL comes from
@@ -19,12 +24,16 @@ page of its choosing. The GitHub token goes to the hub once, which trades it for
 from __future__ import annotations
 
 import contextlib
+import functools
 import http.client
 import json
 import os
+import select
 import socket
+import ssl
 import sys
 import tempfile
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -44,6 +53,8 @@ DEFAULT_INTERVAL = 5  # seconds between polls when GitHub does not say
 SLOW_DOWN_STEP = 5  # seconds added to the interval on every slow_down
 POLL_FAILURES = 3  # network failures in a row while polling before giving up
 LOOPBACK = frozenset({"localhost", "127.0.0.1", "::1"})
+IDLE_TIMEOUT = 30.0  # seconds a kept-alive connection may wait unused before it is closed rather than reused
+MAX_IDLE = 8  # kept-alive connections per hub
 DIR_MODE = 0o700
 FILE_MODE = 0o600
 LOGIN_HINT = "run `evo-agents hub login --url URL`"
@@ -197,6 +208,124 @@ def _send(method: str, url: str, headers: dict, data: bytes | None, timeout: flo
     except (TimeoutError, OSError, http.client.HTTPException) as exc:
         reason = f"no answer within {timeout:g}s" if isinstance(exc, TimeoutError) else str(exc) or type(exc).__name__
         raise Unreachable(f"cannot reach {_origin(url)}: {reason}") from None
+
+
+@functools.lru_cache(maxsize=32)
+def _proxied(scheme: str, host: str) -> bool:
+    """Whether urllib would send a request for ``host`` through a proxy (the environment's, or the system's)."""
+    return scheme in urllib.request.getproxies() and not urllib.request.proxy_bypass(host)
+
+
+def _dropped(sock) -> bool:
+    """Whether an idle connection's socket has something to read: the other end closed it (or sent what nobody asked
+    for), so it cannot carry another request."""
+    try:
+        if isinstance(sock, ssl.SSLSocket) and sock.pending():
+            return True
+        if hasattr(select, "poll"):
+            poller = select.poll()
+            poller.register(sock, select.POLLIN | select.POLLPRI)
+            return bool(poller.poll(0))
+        return bool(select.select([sock], [], [], 0)[0])
+    except (OSError, ValueError):
+        return True
+
+
+class Connections:
+    """Kept-alive connections to hubs, shared by the threads of a process: each request takes one to itself, and
+    gives it back once the answer is read whole, unless either side asked to close it.
+
+    A connection idle for over ``idle_timeout`` seconds, or that the hub closed meanwhile, is closed instead of
+    reused, so a hub that restarted is reached on a new connection. A request whose sending fails on a reused
+    connection is sent once more on a new one: the hub closed the connection before it could read the request whole.
+    Once a request is sent, it is never sent again, whatever happens to its answer. Errors are those of ``_send``:
+    ``Unreachable`` (``refused`` when connecting was refused) for a hub that gives no answer."""
+
+    def __init__(self, idle_timeout: float = IDLE_TIMEOUT, max_idle: int = MAX_IDLE, clock=time.monotonic):
+        self.idle_timeout = idle_timeout
+        self.max_idle = max_idle
+        self.clock = clock
+        self.opened = 0  # connections opened so far
+        self._lock = threading.Lock()
+        self._idle: dict[tuple, list[tuple[float, http.client.HTTPConnection]]] = {}
+
+    def close(self) -> None:
+        with self._lock:
+            idle, self._idle = self._idle, {}
+        for connections in idle.values():
+            for _, conn in connections:
+                conn.close()
+
+    def _take(self, key: tuple) -> http.client.HTTPConnection | None:
+        """The connection to ``key`` used last that can carry a request, or None."""
+        while True:
+            with self._lock:
+                idle = self._idle.get(key)
+                if not idle:
+                    return None
+                since, conn = idle.pop()
+            if self.clock() - since <= self.idle_timeout and conn.sock is not None and not _dropped(conn.sock):
+                return conn
+            conn.close()
+
+    def _give_back(self, key: tuple, conn: http.client.HTTPConnection) -> None:
+        with self._lock:
+            idle = self._idle.setdefault(key, [])
+            if len(idle) < self.max_idle:
+                idle.append((self.clock(), conn))
+                return
+        conn.close()
+
+    def _open(self, scheme: str, host: str, port: int | None, timeout: float) -> http.client.HTTPConnection:
+        kind = http.client.HTTPSConnection if scheme == "https" else http.client.HTTPConnection
+        conn = kind(host, port, timeout=timeout)
+        conn.connect()
+        with self._lock:
+            self.opened += 1
+        return conn
+
+    def send(self, method: str, url: str, headers: dict, data: bytes | None, timeout: float) -> tuple[int, bytes]:
+        """The status and body of ``method`` on ``url``, as ``_send`` answers them, on a kept-alive connection."""
+        parts = urllib.parse.urlsplit(url)
+        if _proxied(parts.scheme, parts.hostname or ""):
+            return _send(method, url, headers, data, timeout)
+        key = (parts.scheme, parts.hostname, parts.port)
+        target = (parts.path or "/") + (f"?{parts.query}" if parts.query else "")
+        conn = self._take(key)
+        reused = conn is not None
+        while True:
+            try:
+                if conn is None:
+                    conn = self._open(parts.scheme, parts.hostname, parts.port, timeout)
+                else:
+                    conn.sock.settimeout(timeout)
+                conn.request(method, target, body=data, headers=headers)
+                break
+            except (OSError, http.client.HTTPException) as exc:
+                if conn is not None:
+                    conn.close()
+                if reused:  # closed by the hub while it was idle: the request never reached it whole
+                    conn, reused = None, False
+                    continue
+                refused = isinstance(exc, ConnectionRefusedError)
+                raise Unreachable(f"cannot reach {_origin(url)}: {exc}", refused) from None
+        try:
+            response = conn.getresponse()
+            body = response.read()
+        except (TimeoutError, OSError, http.client.HTTPException) as exc:
+            conn.close()
+            reason = (
+                f"no answer within {timeout:g}s" if isinstance(exc, TimeoutError) else str(exc) or type(exc).__name__
+            )
+            raise Unreachable(f"cannot reach {_origin(url)}: {reason}") from None
+        if response.will_close:
+            conn.close()
+        else:
+            self._give_back(key, conn)
+        return response.status, body
+
+
+CONNECTIONS = Connections()  # the process's kept-alive connections to hubs
 
 
 def _json(raw: bytes):

@@ -39,7 +39,7 @@ nobody uses for 90 days expires, and each use moves the expiry forward.
 | health | `GET /v1/health`, `GET /v1/health/live` |
 | sign-in | `/v1/auth/config`, `/v1/auth/github`, `/v1/auth/whoami`, `/v1/auth/logout`, `/v1/auth/web/{login,callback,csrf,logout}` |
 | tokens | `GET /v1/tokens`, `DELETE /v1/tokens/{id}` |
-| admin | `/v1/admin/users`, `/v1/admin/stats`, `/v1/admin/projects/{project}/grants/{login}`, `/v1/admin/audit`, `/v1/admin/tokens` |
+| admin | `/v1/admin/users`, `/v1/admin/stats`, `/v1/admin/projects/{project}/grants/{login}`, `/v1/admin/audit`, `/v1/admin/tokens`, `/v1/admin/kg/prune` |
 | projects | `GET /v1/projects`, `GET` and `PUT /v1/projects/{project}` |
 | plans | `/v1/projects/{project}/plans`, `.../plans/{plan_id}` (`GET`, `PUT`, `PATCH`), `.../revisions`, `.../diff`, `.../complete` |
 | memories | `/v1/memories` (`GET`, `PUT`), `/v1/memories/search`, `/v1/memories/{id}`, `.../revisions` |
@@ -232,13 +232,27 @@ fails for a reason that may pass (no answer, 408, 429, 502, 503, 504) is pushed 
 build succeeded, `evo-agents kg serve --backend auto` and the hub's `/mcp` answer the `kg_*` tools from it, filtered by
 the read rule.
 
+A build's artifact is the graph's SQLite file in the bucket, and its bytes differ from one build to the next even when
+the graph does not. A build whose content hash equals that of the project's latest build still holding an artifact
+therefore uploads nothing: it points at that artifact, and `artifact_reused_from` names the build that uploaded it.
+Every hour the worker deletes the artifacts of graphs older than each project's `EVO_HUB_KG_KEEP_ARTIFACTS` newest (3 by
+default; an artifact several builds share counts once, and the newest always stays). A pruned build keeps its row, its
+content hash and its counts, gets `artifact_pruned_at`, and loses `artifact_sha256`, so no row names an object that is
+gone. Run logs, source blobs and skill bundles are never deleted. A hub admin can run the same retention by hand:
+
+```sh
+evo-agents hub kg prune --dry-run              # what would go, for every project; changes nothing
+evo-agents hub kg prune --project demo --keep 5
+```
+
 ## Blobs on R2
 
 Postgres holds metadata; the blob store holds bytes. The bucket stays private, and the access key the hub gets should
 be limited to that one bucket. Keys:
 
 - `blobs/sha256/<sha256>`: a blob, written only by the hub and only with bytes whose SHA-256 the hub computed. A
-  blob never changes and the hub never deletes one. The `blobs` table says which projects hold each.
+  blob never changes. The hub deletes only built graphs that the retention dropped (see above), and only once no row
+  refers to them. The `blobs` table says which projects hold each.
 - `uploads/<upload_id>` and `uploads/<upload_id>.sealed`: an upload in progress, and the hub's own copy of it.
 
 An upload takes three calls. The client asks `POST /v1/blobs/uploads` for presigned PUT URLs (valid 15 minutes, for
@@ -267,6 +281,8 @@ Postgres database; there is no separate broker. The api only defers jobs. Jobs:
 
 - `hub.kg_build`: one build of a project's graph. Builds of one project run one at a time, and at most one waits.
 - `hub.recover_kg_builds`, every 5 minutes: fails builds whose worker stopped sending heartbeats and queues a new one.
+- `hub.prune_kg_artifacts`, hourly at minute 31: deletes the artifacts of graphs older than each project's
+  `EVO_HUB_KG_KEEP_ARTIFACTS` newest.
 - `hub.cleanup_uploads`, hourly: removes uploads nobody committed within 24 hours.
 - `hub.prune_jobs`, daily: removes finished jobs older than 14 days.
 
@@ -305,6 +321,7 @@ the variables in the platform's environment, never in a committed file. `deploy/
 | `EVO_HUB_SENTRY_DSN` | api, worker | optional error reporting |
 | `EVO_HUB_LOG_LEVEL` | api, worker | `DEBUG`, `INFO` (default), `WARNING` or `ERROR` |
 | `EVO_HUB_BLOB_CONCURRENCY` | api | uploads one process checks and copies in the blob store at once, every commit together; default `32`, at most `256` |
+| `EVO_HUB_KG_KEEP_ARTIFACTS` | api, worker | newest built graphs of each project whose artifact stays in the bucket; older ones are deleted every hour; default `3`, at least `1` |
 | `EVO_HUB_WORKER_CPUS`, `EVO_HUB_WORKER_MEMORY` | compose | worker limits, default `2` and `4g` |
 | `EVO_HUB_API_INTERNAL_URL` | web | where the web server reaches the api, default `http://evo-agents-hub-api:8080` (the api's network alias) |
 | `EVO_HUB_WEB_TIME_ZONE` | web | time zone of dates rendered on the server, default `Asia/Ho_Chi_Minh` |
@@ -350,11 +367,20 @@ refused before anything runs, so going back to an older release means restoring 
 
 ```sh
 pg_dump --format=custom --no-owner --file hub-$(date +%Y%m%d).dump "$EVO_HUB_DSN"
-rclone sync r2:<bucket>/blobs backup:<bucket>/blobs    # any S3-capable copy tool works
+rclone copy r2:<bucket>/blobs backup:<bucket>/blobs    # any S3-capable copy tool works
 ```
 
-Dump first, then copy the bucket. Blobs never change and are never deleted, so a bucket copy taken after the dump
-holds every blob the dump refers to. Skip `uploads/` (transient) and the cache volumes.
+Dump first, then copy the bucket, with a copy that never deletes from the backup (`rclone copy`, not `rclone sync`).
+Blobs never change, and the only ones the hub deletes are artifacts of old graphs, so a bucket copy taken after the
+dump holds every blob the dump refers to, as long as no prune ran in between: the hourly prune runs at minute 31. Skip
+`uploads/` (transient) and the cache volumes.
+
+In a live database every hash that `blobs`, `skill_versions`, `kg_builds.artifact_sha256` and `kg_ingests.log_sha256`
+name has its object in the bucket, prunes included: a prune drops the references in one transaction, then deletes the
+objects. `blob_deletions` lists the blobs being deleted, which are not references. A restore check that compares an
+older dump with today's bucket can find artifacts pruned since the dump. When the newest build of a restored project
+is one of them, its `kg_*` tools answer with an error until `evo-agents hub kg build --project P` builds the graph
+again from the run logs, which are never deleted.
 
 **Restore.** Stop the api and the worker. Restore the dump into an empty database with `pg_restore --no-owner
 --dbname "$EVO_HUB_DSN" hub-<date>.dump`, copy `blobs/` back into the bucket if it was lost, and start the services

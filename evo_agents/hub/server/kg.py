@@ -20,16 +20,18 @@ Pushing (the writer role, and a hub sink in the project's knowledge.yaml; ``evo-
 - POST /v1/kg/{project}/blobs/check returns the hashes of a list that the project does not hold.
 
 Building: POST /v1/kg/{project}/builds (writer) queues a build; GET /v1/kg/{project}/builds lists the builds, newest
-first, and the jobs of the project still in the queue; GET /v1/kg/{project}/builds/{id} is one build. A build job
+first, and the jobs of the project still in the queue; GET /v1/kg/{project}/builds/{id} is one build. A build whose
+content did not change names the build whose artifact it reuses (``artifact_reused_from``), and a build whose artifact
+the retention deleted has ``artifact_pruned_at`` and no ``artifact_sha256`` (``evo_agents.hub.kg_prune``). A build job
 holds the lock and the queueing lock ``kg:<project>``, so one runs at a time and at most one waits; queueing while one
 waits returns the waiting build. The waiting job's row is locked until the queueing transaction commits, and the
 worker takes jobs with SKIP LOCKED, so a build that is already queued always sees the run that asked for it.
 
-Reading: POST /v1/kg/{project}/tools/{tool} {arguments, sink} answers one of the seven kg_* tools of ``kg serve`` for
-a member, from the latest successful build (``evo_agents.hub.kg_graph``), with the hub's read rule: the meet of the
-member's grant and the sink's clearance. The sink defaults to Claude Code's; ``cli``, when the project declares no
-such sink, reads through the hub sink, as the local ``cli`` sink reads everything on the machine. The answer is the
-MCP tool result, an error included; a graph that cannot be fetched is 503, and one whose bytes are not those the
+Reading: POST /v1/kg/{project}/tools/{tool} {arguments, sink} answers one of the seven kg_* tools of ``kg serve`` for a
+member, from the latest successful build holding an artifact (``evo_agents.hub.kg_graph``), with the hub's read rule:
+the meet of the member's grant and the sink's clearance. The sink defaults to Claude Code's; ``cli``, when the project
+declares no such sink, reads through the hub sink, as the local ``cli`` sink reads everything on the machine. The answer
+is the MCP tool result, an error included; a graph that cannot be fetched is 503, and one whose bytes are not those the
 build recorded is 502 and is never opened. The kg_* tools of /mcp (``evo_agents.hub.server.mcp``) answer through the
 same ``tool_result``, so the REST route and MCP read and filter alike.
 """
@@ -56,6 +58,7 @@ from evo_agents.hub.blobs import BlobStore, BlobStoreUnavailable, Upload, blob_k
 from evo_agents.hub.jobs import kg_lock
 from evo_agents.hub.kg_build import QueueBusy, queue_build
 from evo_agents.hub.kg_graph import (
+    GRAPHS,
     TOOL_NAMES,
     ArtifactMismatch,
     BuiltGraph,
@@ -84,6 +87,7 @@ log = logging.getLogger(__name__)
 MAX_CHECK = 10_000  # hashes in one blobs/check
 MISSING_SHOWN = 100  # missing blobs named in a refused commit
 BUILDS_LIMIT = 100
+GRAPHS_TRIED = 10  # builds holding an artifact a tool call may fall back on when the newest cannot be fetched
 CLI_SINK = "cli"
 LOG_KIND = "kg-log"
 REFUSALS = {code: {"model": ErrorBody} for code in (403, 404, 409, 422, 503)}
@@ -147,8 +151,16 @@ class Build(BaseModel):
     requested_by: str | None = Field(description="the member who queued it; null when a pushed run did")
     config_digest: str | None
     runs: int | None
-    artifact_sha256: str | None
+    artifact_sha256: str | None = Field(
+        description="the graph file in the blob store; null until the build succeeded, and once it was pruned"
+    )
     artifact_size: int | None
+    artifact_reused_from: int | None = Field(
+        description="the build whose artifact this one points at, uploading nothing, because their content is the same"
+    )
+    artifact_pruned_at: datetime | None = Field(
+        description="when the retention deleted the artifact; the build's content hash and counts still describe it"
+    )
     content_hash: str | None
     nodes: int | None
     edges: int | None
@@ -473,8 +485,8 @@ async def push_run(request: Request, project: ProjectName, body: RunPush, user: 
 
 
 BUILD_COLUMNS = """
-b.id, b.status, b.job_id, u.login, b.config_digest, b.runs, b.artifact_sha256, b.artifact_size, b.content_hash,
-b.nodes, b.edges, b.error, b.queued_at, b.started_at, b.finished_at
+b.id, b.status, b.job_id, u.login, b.config_digest, b.runs, b.artifact_sha256, b.artifact_size, b.artifact_reused_from,
+b.artifact_pruned_at, b.content_hash, b.nodes, b.edges, b.error, b.queued_at, b.started_at, b.finished_at
 """
 BUILD_FIELDS = tuple(Build.model_fields)
 
@@ -616,11 +628,7 @@ async def tool_result(state, user: Principal, project: str, tool: str, arguments
     async with state.pool.connection() as conn:
         access = await project_access(conn, user, project)
         _member(access)
-        cursor = await conn.execute(
-            "SELECT id, artifact_sha256, artifact_size, content_hash, nodes, edges, finished_at FROM kg_builds "
-            "WHERE project_id = %s AND status = 'succeeded' ORDER BY id DESC LIMIT 10",
-            (access.project_id,),
-        )
+        cursor = await conn.execute(GRAPHS, (access.project_id, GRAPHS_TRIED))
         graphs = [BuiltGraph(*row) for row in await cursor.fetchall()]
     if not graphs:
         message = (

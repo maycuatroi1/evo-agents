@@ -19,6 +19,9 @@ export type Build = {
   id: number;
   status: "queued" | "running" | "succeeded" | "failed";
   content_hash: string | null;
+  artifact_sha256: string | null;
+  artifact_reused_from: number | null;
+  artifact_pruned_at: string | null;
   nodes: number | null;
   edges: number | null;
   error: string | null;
@@ -67,6 +70,13 @@ export async function seededKg(admin: HubAdmin): Promise<KgProject> {
   const build = await stack<Build>("/kg/seed", { project, login: writer.login, id: writer.id });
   expect(build.status, `the fixture's build: ${build.error ?? ""}`).toBe("succeeded");
   return { project, writer, build };
+}
+
+/** Push the fixture of `project` again with one more note, `extra`, and build it: a graph with other content. */
+export async function changeKg(project: string, writer: Account, extra: string): Promise<Build> {
+  const build = await stack<Build>("/kg/seed", { project, login: writer.login, id: writer.id, extra });
+  expect(build.status, `the changed fixture's build: ${build.error ?? ""}`).toBe("succeeded");
+  return build;
 }
 
 /** Queue a build of `project` as `writer`; with `run`, the stack runs it at once. */
