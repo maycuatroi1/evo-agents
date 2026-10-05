@@ -1,5 +1,6 @@
 import type { Page } from "@playwright/test";
 
+import { cspSources } from "./support/csp";
 import { expect, isDeployed, test } from "./support/fixtures";
 import { ADMIN_ACCOUNT, newAccount, uniqueName } from "./support/hub";
 
@@ -49,7 +50,7 @@ test.describe("security headers", () => {
     expect(csp).toContain("default-src 'self'");
     expect(csp).toContain("frame-ancestors 'none'");
     expect(csp).toContain("object-src 'none'");
-    expect(csp).not.toContain("unsafe-eval");
+    expect(cspSources(csp)).not.toContain("'unsafe-eval'"); // 'wasm-unsafe-eval' is a source of its own
     const nonce = /'nonce-([^']+)'/.exec(csp)?.[1];
     expect(nonce, "script-src carries a nonce").toBeTruthy();
     expect(headers["x-content-type-options"]).toBe("nosniff");
