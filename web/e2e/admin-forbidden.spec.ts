@@ -1,6 +1,8 @@
 import { expect, isDeployed, test } from "./support/fixtures";
 import { ADMIN_ACCOUNT, newAccount, uniqueName } from "./support/hub";
 
+test.use({ uiLocale: "vi" }); // the assertions below read the Vietnamese copy of messages/vi.json
+
 /**
  * The admin area belongs to hub admins because the API says so, not because the web hides a menu: a reader opening
  * any admin page sees the no-access state, every admin route answers 403 to their session, and a cookie write

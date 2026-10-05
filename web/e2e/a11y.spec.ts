@@ -11,6 +11,8 @@ import { packSkill, publishSkill } from "./support/skills";
 /**
  * axe (WCAG 2.2 A and AA rules) on every page of the web, in light and dark: no serious or critical violation.
  * Later steps add their pages to PAGES; each entry opens the page in a given state and waits for its content.
+ * Pages render in the default language, English, and entries find what they click by role, test id or ARIA
+ * state rather than by copy.
  */
 type Context = { page: Page; me: Member; hidden: string };
 type Entry = { name: string; open: (context: Context) => Promise<void>; deployed?: boolean };
@@ -245,7 +247,7 @@ const PAGES: Entry[] = [
     open: async ({ page }) => {
       await page.setViewportSize({ width: 375, height: 812 });
       await page.goto("/");
-      await page.getByRole("button", { name: "Ẩn hoặc hiện thanh bên" }).click();
+      await page.locator('button[data-sidebar="trigger"]').click();
       await expect(page.getByRole("dialog")).toBeVisible();
     },
   },
@@ -265,13 +267,13 @@ const ADMIN_PAGES: { name: string; open: (page: Page) => Promise<void> }[] = [
     open: async (page) => {
       await page.goto("/admin/members");
       await page.getByTestId("grant-open").click();
-      const dialog = page.getByRole("dialog", { name: "Cấp quyền theo dự án" });
-      await dialog.getByRole("button", { name: "Tiếp tục" }).click(); // shows the field errors
-      await expect(dialog.getByText("Nhập tên đăng nhập GitHub.")).toBeVisible();
+      const dialog = page.getByTestId("grant-dialog");
+      await dialog.getByTestId("grant-continue").click(); // shows the field errors
+      await expect(dialog.getByTestId("grant-login")).toHaveAttribute("aria-invalid", "true");
       await expectNoSeriousViolations(page, "grant form with errors");
-      await dialog.getByLabel("Tên đăng nhập GitHub").fill("e2e-someone");
-      await dialog.getByLabel("Dự án").selectOption({ index: 1 });
-      await dialog.getByRole("button", { name: "Tiếp tục" }).click();
+      await dialog.getByTestId("grant-login").fill("e2e-someone");
+      await dialog.getByTestId("grant-project").selectOption({ index: 1 });
+      await dialog.getByTestId("grant-continue").click();
       await expect(page.getByTestId("grant-summary")).toBeVisible();
     },
   },
@@ -289,7 +291,7 @@ const ADMIN_PAGES: { name: string; open: (page: Page) => Promise<void> }[] = [
       await page.goto("/admin/tokens");
       await expect(page.getByTestId("tokens-table")).toBeVisible();
       await expectNoSeriousViolations(page, "tokens");
-      await page.getByTestId("tokens-table").getByRole("button", { name: /^Thu hồi token/ }).first().click();
+      await page.getByTestId("tokens-table").locator('[data-testid^="revoke-token-"]').first().click();
       await expect(page.getByTestId("revoke-token-dialog")).toBeVisible();
     },
   },
@@ -302,7 +304,7 @@ const ADMIN_PAGES: { name: string; open: (page: Page) => Promise<void> }[] = [
       await expect(page.getByTestId("audit-table")).toBeVisible();
       await expectNoSeriousViolations(page, "audit");
       await page.getByTestId("pager-next").click();
-      await expect(page.getByTestId("pager-page")).toHaveText("Trang 2");
+      await expect(page.getByTestId("pager-page")).toHaveText(/\b2$/); // "Page 2" in English, "Trang 2" in Vietnamese
     },
   },
   {

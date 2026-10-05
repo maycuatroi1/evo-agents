@@ -1,11 +1,12 @@
 # Design system of the hub web
 
 The hub web is an internal, read-mostly dashboard for a small team: projects, members, plans, memories,
-skills and the knowledge graph. People read it in Vietnamese first and on laptops first, but it has to work
-on a 375 px phone. The choices below came from the `ui-ux-pro-max` skill (design-system queries for an
-admin dashboard and a data-dense developer tool, the `typography` domain for Vietnamese, the `shadcn` stack
-and the `web` accessibility guidelines). The tokens live in `src/app/globals.css`; components use the
-Tailwind names (`bg-background`, `text-muted-foreground`, ...) and never raw colours.
+skills and the knowledge graph. People read it in English first, with Vietnamese one pick away in the user
+menu, and on laptops first, but it has to work on a 375 px phone. The choices below came from the
+`ui-ux-pro-max` skill (design-system queries for an admin dashboard and a data-dense developer tool, the
+`typography` domain for Vietnamese, the `shadcn` stack and the `web` accessibility guidelines). The tokens live
+in `src/app/globals.css`; components use the Tailwind names (`bg-background`, `text-muted-foreground`, ...) and
+never raw colours.
 
 ## Style
 
@@ -34,12 +35,15 @@ warnings. Ratios are WCAG contrast against the surface named; the e2e axe run ch
 | `ring` | `#2563eb` (5.2:1 on card) | `#60a5fa` (7.9:1 on canvas) | focus outline |
 
 Charts (steps 26 to 28) use `chart-1` to `chart-5`: blue, amber, emerald, violet, slate. A role or state is
-never told by colour alone: badges carry an icon and a word (`Quản trị`, `Ghi`, `Đọc`).
+never told by colour alone: badges carry an icon and a word (`Admin`, `Writer`, `Reader`; `Quản trị`, `Ghi`,
+`Đọc` in Vietnamese).
 
 ## Type
 
 - Be Vietnam Pro, weights 400, 500, 600 and 700, Latin and Vietnamese subsets, for all interface text. The
-  skill's "Vietnamese Friendly" pairing; it draws Vietnamese diacritics cleanly at small sizes.
+  skill's "Vietnamese Friendly" pairing; it draws Vietnamese diacritics cleanly at small sizes. It stays with
+  English first: the Vietnamese interface and the Vietnamese prose people write (plans, memories, evidence)
+  render in the same face as the English copy around them.
 - JetBrains Mono for identifiers: project names on their own page, levels, branches, paths, request ids and
   table counts. It has a Vietnamese subset, so mixed text never falls back to another font.
 - Both load through `next/font/google`, which serves the files from the app's own origin (`font-src 'self'`).
@@ -90,7 +94,9 @@ Shared pieces built on them:
   never loaded, headings move under the page's h1 and the card's h2.
 
 Themes come from `next-themes` with the `class` strategy and follow the system until the person picks light
-or dark in the user menu. The language (Vietnamese by default, English) is a cookie set from the same menu.
+or dark in the user menu. The language is the `NEXT_LOCALE` cookie set from the same menu: English without it
+(or with a value that is not a locale), Vietnamese when it says `vi`. The browser's Accept-Language is not read,
+so the server renders a page the same way for everyone who has not picked a language.
 
 ## Motion
 
@@ -114,4 +120,6 @@ in through `tw-animate-css`. `prefers-reduced-motion: reduce` turns every animat
 3. Add the sidebar entry to `PROJECT_NAV` or `HUB_NAV` in `components/shell/nav.ts`, and its label under
    `nav` in both `messages/vi.json` and `messages/en.json` (a unit test keeps the two files in step).
 4. Add the page to `PAGES` in `e2e/a11y.spec.ts`. Seed data with the `admin`, `member` and `signInAs`
-   fixtures from `e2e/support/fixtures.ts`.
+   fixtures from `e2e/support/fixtures.ts`. Specs see the English default; a spec that matches Vietnamese
+   copy says so with `test.use({ uiLocale: "vi" })`, which sets the locale cookie on its browser context
+   (`e2e/locale.spec.ts` checks both).

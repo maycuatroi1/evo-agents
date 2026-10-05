@@ -5,6 +5,8 @@ import { ADMIN_ACCOUNT, type HubAdmin, newAccount, registration, uniqueName } fr
 import { apiOf } from "./support/memories";
 import { type Bundle, packSkill, publishSkill, sha256 } from "./support/skills";
 
+test.use({ uiLocale: "vi" }); // the assertions below read the Vietnamese copy of messages/vi.json
+
 /**
  * Skills on the web, against the real API and the stack's S3: a member sees the project's skills and the global
  * ones, every version with its SHA-256, size and source commit on GitHub, and downloads a bundle by navigating to

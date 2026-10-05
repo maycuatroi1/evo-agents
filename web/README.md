@@ -1,9 +1,9 @@
 # evo-agents hub web
 
 The web interface of the hub: Next.js (App Router, TypeScript strict), Tailwind and shadcn/ui, TanStack Query
-and Table, next-intl (Vietnamese by default). It reads the hub API only through a client generated from the
-API's OpenAPI document, and writes nothing except the admin actions and sign-out. `DESIGN.md` describes the
-design system.
+and Table, next-intl (English by default, Vietnamese from the user menu). It reads the hub API only through a
+client generated from the API's OpenAPI document, and writes nothing except the admin actions and sign-out.
+`DESIGN.md` describes the design system.
 
 In production it is its own image (`output: "standalone"`, built by `web/Dockerfile`) behind the same domain as
 the API: the reverse proxy sends `/v1` and `/mcp` to the API and everything else here. It never ships in the Python
