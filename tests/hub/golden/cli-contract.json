@@ -6791,7 +6791,8 @@
                   {
                     "enum": [
                       "machine",
-                      "web"
+                      "web",
+                      "worker"
                     ],
                     "type": "string"
                   },
@@ -6983,6 +6984,674 @@
             }
           }
         }
+      },
+      "/v1/workers/pairings": {
+        "post": {
+          "tags": [
+            "workers"
+          ],
+          "summary": "Create Pairing",
+          "description": "A code a machine joins with as a worker of the caller; shown once.",
+          "operationId": "create_pairing_v1_workers_pairings_post",
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PairingRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Pairing"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "403": {
+              "description": "Forbidden",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "404": {
+              "description": "Not Found",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "409": {
+              "description": "Conflict",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "422": {
+              "description": "Unprocessable Entity",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/workers/pairings/{pairing_id}": {
+        "get": {
+          "tags": [
+            "workers"
+          ],
+          "summary": "Pairing State",
+          "description": "Whether a machine has joined with one of the caller's pairings yet.",
+          "operationId": "pairing_state_v1_workers_pairings__pairing_id__get",
+          "parameters": [
+            {
+              "name": "pairing_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Pairing Id"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/PairingState"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/workers": {
+        "post": {
+          "tags": [
+            "workers"
+          ],
+          "summary": "Register",
+          "description": "Register the calling machine as a worker of the caller, with its machine token; the worker token is shown\nonce.",
+          "operationId": "register_v1_workers_post",
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkerRegistration"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/WorkerCredential"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        },
+        "get": {
+          "tags": [
+            "workers"
+          ],
+          "summary": "List Workers",
+          "description": "The caller's workers, newest first; every worker for a hub admin.",
+          "operationId": "list_workers_v1_workers_get",
+          "parameters": [
+            {
+              "name": "revoked",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "boolean",
+                "description": "also list revoked workers",
+                "default": false,
+                "title": "Revoked"
+              },
+              "description": "also list revoked workers"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/Worker"
+                    },
+                    "title": "Response List Workers V1 Workers Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/workers/{worker_id}": {
+        "get": {
+          "tags": [
+            "workers"
+          ],
+          "summary": "Show Worker",
+          "operationId": "show_worker_v1_workers__worker_id__get",
+          "parameters": [
+            {
+              "name": "worker_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Worker Id"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Worker"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/workers/{worker_id}/drain": {
+        "post": {
+          "tags": [
+            "workers"
+          ],
+          "summary": "Drain",
+          "description": "Stop new claims; the worker finishes the runs it holds.",
+          "operationId": "drain_v1_workers__worker_id__drain_post",
+          "parameters": [
+            {
+              "name": "worker_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Worker Id"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Worker"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/workers/{worker_id}/undrain": {
+        "post": {
+          "tags": [
+            "workers"
+          ],
+          "summary": "Undrain",
+          "description": "Let a drained worker claim runs again.",
+          "operationId": "undrain_v1_workers__worker_id__undrain_post",
+          "parameters": [
+            {
+              "name": "worker_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Worker Id"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Worker"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/workers/{worker_id}/revoke": {
+        "post": {
+          "tags": [
+            "workers"
+          ],
+          "summary": "Revoke",
+          "description": "End the worker and its token at once, and release the runs it holds.",
+          "operationId": "revoke_v1_workers__worker_id__revoke_post",
+          "parameters": [
+            {
+              "name": "worker_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Worker Id"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Worker"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/worker/join": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Join",
+          "description": "Trade a pairing code for the token of a new worker; the token is shown once.",
+          "operationId": "join_v1_worker_join_post",
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JoinRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/WorkerCredential"
+                  }
+                }
+              }
+            },
+            "403": {
+              "description": "Forbidden",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "409": {
+              "description": "Conflict",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "422": {
+              "description": "Unprocessable Entity",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        }
       }
     },
     "components": {
@@ -7002,7 +7671,8 @@
               "type": "string",
               "enum": [
                 "machine",
-                "web"
+                "web",
+                "worker"
               ],
               "title": "Kind"
             },
@@ -7016,7 +7686,7 @@
                 }
               ],
               "title": "Host",
-              "description": "the machine a machine token was issued to; null for a web session"
+              "description": "the machine a machine token or worker token was issued to; null for a web session"
             },
             "created_at": {
               "type": "string",
@@ -8300,6 +8970,55 @@
           ],
           "title": "Job"
         },
+        "JoinRequest": {
+          "properties": {
+            "hostname": {
+              "type": "string",
+              "maxLength": 255,
+              "minLength": 1,
+              "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+              "title": "Hostname"
+            },
+            "os": {
+              "type": "string",
+              "maxLength": 40,
+              "minLength": 1,
+              "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+              "title": "Os"
+            },
+            "arch": {
+              "type": "string",
+              "maxLength": 40,
+              "minLength": 1,
+              "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+              "title": "Arch"
+            },
+            "agent_version": {
+              "type": "string",
+              "maxLength": 100,
+              "minLength": 1,
+              "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+              "title": "Agent Version",
+              "description": "of the evo-agents daemon"
+            },
+            "code": {
+              "type": "string",
+              "maxLength": 32,
+              "minLength": 1,
+              "title": "Code",
+              "description": "the pairing code, XXXX-XXXX"
+            }
+          },
+          "type": "object",
+          "required": [
+            "hostname",
+            "os",
+            "arch",
+            "agent_version",
+            "code"
+          ],
+          "title": "JoinRequest"
+        },
         "KgConfig": {
           "properties": {
             "knowledge": {
@@ -8959,6 +9678,211 @@
             "next_cursor"
           ],
           "title": "Page"
+        },
+        "Pairing": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "code": {
+              "type": "string",
+              "title": "Code",
+              "description": "XXXX-XXXX; shown once, the hub keeps only its hash and its first four characters"
+            },
+            "expires_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Expires At"
+            },
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "projects": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Projects"
+            },
+            "slots": {
+              "type": "integer",
+              "title": "Slots"
+            },
+            "labels": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Labels"
+            },
+            "allow_web_terminal": {
+              "type": "boolean",
+              "title": "Allow Web Terminal"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "code",
+            "expires_at",
+            "name",
+            "projects",
+            "slots",
+            "labels",
+            "allow_web_terminal"
+          ],
+          "title": "Pairing"
+        },
+        "PairingRequest": {
+          "properties": {
+            "name": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
+              "title": "Name",
+              "description": "unique among the owner's workers that are not revoked"
+            },
+            "projects": {
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$"
+              },
+              "type": "array",
+              "maxItems": 100,
+              "minItems": 1,
+              "title": "Projects",
+              "description": "projects the worker takes runs of; the writer role on each"
+            },
+            "slots": {
+              "type": "integer",
+              "maximum": 8.0,
+              "minimum": 1.0,
+              "title": "Slots",
+              "description": "runs the worker holds at once",
+              "default": 1
+            },
+            "labels": {
+              "items": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$"
+              },
+              "type": "array",
+              "maxItems": 16,
+              "title": "Labels"
+            },
+            "allow_web_terminal": {
+              "type": "boolean",
+              "title": "Allow Web Terminal",
+              "description": "whether the owner may open a terminal on it from the web",
+              "default": false
+            }
+          },
+          "type": "object",
+          "required": [
+            "name",
+            "projects"
+          ],
+          "title": "PairingRequest"
+        },
+        "PairingState": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "waiting",
+                "joined",
+                "expired",
+                "locked"
+              ],
+              "title": "Status"
+            },
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "projects": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Projects"
+            },
+            "slots": {
+              "type": "integer",
+              "title": "Slots"
+            },
+            "labels": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Labels"
+            },
+            "allow_web_terminal": {
+              "type": "boolean",
+              "title": "Allow Web Terminal"
+            },
+            "tries_left": {
+              "type": "integer",
+              "title": "Tries Left",
+              "description": "wrong codes the pairing takes before it locks"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "expires_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Expires At"
+            },
+            "used_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Used At"
+            },
+            "worker_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Worker Id",
+              "description": "the worker the pairing made, once a machine joined with it"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "status",
+            "name",
+            "projects",
+            "slots",
+            "labels",
+            "allow_web_terminal",
+            "tries_left",
+            "created_at",
+            "expires_at",
+            "used_at",
+            "worker_id"
+          ],
+          "title": "PairingState"
         },
         "Plan": {
           "properties": {
@@ -10617,7 +11541,8 @@
               "type": "string",
               "enum": [
                 "machine",
-                "web"
+                "web",
+                "worker"
               ],
               "title": "Kind"
             },
@@ -11103,6 +12028,265 @@
             "grants"
           ],
           "title": "WhoAmI"
+        },
+        "Worker": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "owner": {
+              "type": "string",
+              "title": "Owner",
+              "description": "the login of the member who registered it"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "online",
+                "offline",
+                "draining",
+                "revoked"
+              ],
+              "title": "Status"
+            },
+            "hostname": {
+              "type": "string",
+              "title": "Hostname"
+            },
+            "os": {
+              "type": "string",
+              "title": "Os"
+            },
+            "arch": {
+              "type": "string",
+              "title": "Arch"
+            },
+            "agent_version": {
+              "type": "string",
+              "title": "Agent Version"
+            },
+            "slots": {
+              "type": "integer",
+              "title": "Slots"
+            },
+            "labels": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Labels"
+            },
+            "projects": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Projects"
+            },
+            "runtimes": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Runtimes",
+              "description": "the runtimes its last heartbeat reported"
+            },
+            "checkouts": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Checkouts",
+              "description": "the checkouts its last heartbeat reported"
+            },
+            "allow_web_terminal": {
+              "type": "boolean",
+              "title": "Allow Web Terminal"
+            },
+            "held_runs": {
+              "type": "integer",
+              "title": "Held Runs",
+              "description": "runs it holds now (leased, running, interactive or verifying)"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "last_heartbeat_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last Heartbeat At"
+            },
+            "drained_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Drained At"
+            },
+            "revoked_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Revoked At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "name",
+            "owner",
+            "status",
+            "hostname",
+            "os",
+            "arch",
+            "agent_version",
+            "slots",
+            "labels",
+            "projects",
+            "runtimes",
+            "checkouts",
+            "allow_web_terminal",
+            "held_runs",
+            "created_at",
+            "last_heartbeat_at",
+            "drained_at",
+            "revoked_at"
+          ],
+          "title": "Worker"
+        },
+        "WorkerCredential": {
+          "properties": {
+            "token": {
+              "type": "string",
+              "title": "Token",
+              "description": "the worker token, evw_...; shown once, the hub keeps only its SHA-256"
+            },
+            "token_id": {
+              "type": "integer",
+              "title": "Token Id"
+            },
+            "expires_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Expires At",
+              "description": "moves forward with every use"
+            },
+            "worker": {
+              "$ref": "#/components/schemas/Worker"
+            }
+          },
+          "type": "object",
+          "required": [
+            "token",
+            "token_id",
+            "expires_at",
+            "worker"
+          ],
+          "title": "WorkerCredential"
+        },
+        "WorkerRegistration": {
+          "properties": {
+            "hostname": {
+              "type": "string",
+              "maxLength": 255,
+              "minLength": 1,
+              "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+              "title": "Hostname"
+            },
+            "os": {
+              "type": "string",
+              "maxLength": 40,
+              "minLength": 1,
+              "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+              "title": "Os"
+            },
+            "arch": {
+              "type": "string",
+              "maxLength": 40,
+              "minLength": 1,
+              "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+              "title": "Arch"
+            },
+            "agent_version": {
+              "type": "string",
+              "maxLength": 100,
+              "minLength": 1,
+              "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+              "title": "Agent Version",
+              "description": "of the evo-agents daemon"
+            },
+            "name": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
+              "title": "Name",
+              "description": "unique among the owner's workers that are not revoked"
+            },
+            "projects": {
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$"
+              },
+              "type": "array",
+              "maxItems": 100,
+              "minItems": 1,
+              "title": "Projects",
+              "description": "projects the worker takes runs of; the writer role on each"
+            },
+            "slots": {
+              "type": "integer",
+              "maximum": 8.0,
+              "minimum": 1.0,
+              "title": "Slots",
+              "description": "runs the worker holds at once",
+              "default": 1
+            },
+            "labels": {
+              "items": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$"
+              },
+              "type": "array",
+              "maxItems": 16,
+              "title": "Labels"
+            },
+            "allow_web_terminal": {
+              "type": "boolean",
+              "title": "Allow Web Terminal",
+              "description": "whether the owner may open a terminal on it from the web",
+              "default": false
+            }
+          },
+          "type": "object",
+          "required": [
+            "hostname",
+            "os",
+            "arch",
+            "agent_version",
+            "name",
+            "projects"
+          ],
+          "title": "WorkerRegistration"
         },
         "evo_agents__hub__server__memories__Conflict": {
           "properties": {

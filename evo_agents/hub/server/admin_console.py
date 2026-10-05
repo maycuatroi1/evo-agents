@@ -156,8 +156,10 @@ TokenState = Literal["active", "revoked", "expired"]
 class AdminToken(BaseModel):
     id: int
     login: str = Field(description="whose token it is")
-    kind: Literal["machine", "web"]
-    host: str | None = Field(description="the machine a machine token was issued to; null for a web session")
+    kind: Literal["machine", "web", "worker"]
+    host: str | None = Field(
+        description="the machine a machine token or worker token was issued to; null for a web session"
+    )
     created_at: datetime
     last_used_at: datetime | None
     expires_at: datetime
@@ -199,7 +201,7 @@ async def all_tokens(
     request: Request,
     user: AdminUser,
     login: Annotated[str | None, Query(pattern=LOGIN_NAME, description="one user's tokens, any case")] = None,
-    kind: Literal["machine", "web"] | None = None,
+    kind: Literal["machine", "web", "worker"] | None = None,
     state: Annotated[TokenState | Literal["any"], Query(description="live tokens unless set")] = "active",
     cursor: CursorParam = None,
     limit: Limit = DEFAULT_LIMIT,

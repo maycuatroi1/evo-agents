@@ -28,6 +28,7 @@ CODES = {
     413: "too_large",
     421: "misdirected",  # /mcp for a host the hub does not answer MCP for
     422: "invalid_request",
+    426: "upgrade_required",  # a worker that speaks another version of the worker protocol
     429: "too_many_requests",
     500: "internal_error",
     502: "bad_gateway",  # GitHub did not answer, or answered with an error of its own

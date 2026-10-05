@@ -181,6 +181,11 @@ def create_app(config: HubConfig) -> FastAPI:
     from evo_agents.hub.server import admin_console
 
     app.include_router(admin_console.router)
+
+    from evo_agents.hub.server import workers
+
+    app.include_router(workers.router)
+    app.include_router(workers.worker_router)
     return app
 
 

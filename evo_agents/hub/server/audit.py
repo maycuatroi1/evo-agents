@@ -25,6 +25,13 @@ KG_CONFIG = "kg.config"  # the knowledge config a project's graph is built with 
 KG_INGEST = "kg.ingest"  # a pushed run became part of the project's corpus; the target is the project, never the run
 KG_BUILD = "kg.build"  # a member queued a build; the target is the project
 KG_PRUNE = "kg.prune"  # the retention deleted artifacts of a project's older graphs; the target is "<project> keep=<n>"
+# Workers belong to no project; a target names the pairing or the worker by id and name, never a code or a token.
+WORKER_PAIR = "worker.pair"  # a member created a pairing code: "pairing:<id> name=<worker name>"
+WORKER_JOIN = "worker.join"  # a machine joined with a code, as its owner with the new worker token
+WORKER_REGISTER = "worker.register"  # a machine registered itself with its machine token
+WORKER_DRAIN = "worker.drain"
+WORKER_UNDRAIN = "worker.undrain"
+WORKER_REVOKE = "worker.revoke"  # the worker and its token are revoked, its runs released
 
 NAMED_FAMILIES = frozenset({"grant", "project", "plan", "kg", "blob"})  # targets that start with the project's name
 _FIRST_NAME = re.compile(r"([a-z0-9][a-z0-9-]{0,99})(?:[/ @]|$)")

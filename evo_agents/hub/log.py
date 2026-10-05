@@ -6,7 +6,7 @@ session secret, the S3 key pair) becomes ``***``, and so do the password of any 
 (``evh_...``) and web sessions (``evs_...``), GitHub tokens (``gho_...``, ``github_pat_...``), bearer credentials,
 the signature, access key id and session token of an S3 request or presigned URL, which is a bearer credential
 until it expires, and the value of every query parameter in ``QUERY_SECRETS`` (the OAuth code and state of a web
-sign-in callback among them), whichever logger wrote the URL.
+sign-in callback among them), whichever logger wrote the URL. Worker tokens (``evw_...``) are masked as hub tokens are.
 Standard library only: the CLI configures logging before it knows whether the hub-server extra is there.
 """
 
@@ -45,7 +45,7 @@ _PATTERNS = (
     (re.compile(r"(?P<head>\b[A-Za-z][A-Za-z0-9+.-]*://[^:/@\s]*:)[^@\s/]+@"), r"\g<head>" + MASK + "@"),
     # password=... in a libpq key=value DSN or a query string, quoted or bare
     (re.compile(r"(?P<head>\bpassword\s*=\s*)(?:'(?:[^'\\]|\\.)*'|[^\s&]+)", re.IGNORECASE), r"\g<head>" + MASK),
-    (re.compile(r"\b(?P<head>ev[hs]_)[A-Za-z0-9_-]{8,}"), r"\g<head>" + MASK),
+    (re.compile(r"\b(?P<head>ev[hsw]_)[A-Za-z0-9_-]{8,}"), r"\g<head>" + MASK),
     (re.compile(r"\b(?P<head>gh[opsur]_|github_pat_)[A-Za-z0-9_]{16,}"), r"\g<head>" + MASK),
     (re.compile(r"(?P<head>\bBearer\s+)[A-Za-z0-9._~+/=-]{8,}", re.IGNORECASE), r"\g<head>" + MASK),
     # SigV4: X-Amz-Signature= and X-Amz-Credential= of a presigned URL, Signature= and Credential= of a header,

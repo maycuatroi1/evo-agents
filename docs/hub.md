@@ -23,16 +23,20 @@ Every route lives under `/v1` and answers JSON. Errors have one shape, `{error, 
 wrong: a 404, a validation failure or an unhandled exception never answers with HTML or a traceback, and the
 `request_id` is the one in the api's log line for that request.
 
-A request carries one of two credentials:
+A request carries one of three credentials:
 
 - a machine token (`evh_...`) as `Authorization: Bearer`, which `evo-agents hub login` stores on a machine;
 - a web session (`evs_...`) in the `evo_hub_session` cookie. A write made with the cookie (POST, PUT, PATCH,
-  DELETE) also needs the `X-Evo-CSRF` header, whose value `GET /v1/auth/web/csrf` hands out.
+  DELETE) also needs the `X-Evo-CSRF` header, whose value `GET /v1/auth/web/csrf` hands out;
+- a worker token (`evw_...`) as `Authorization: Bearer`, which a worker gets once when it joins or registers. It
+  works only on `/v1/worker/*`, where machine tokens and web sessions get 403, and gets 403 everywhere else
+  (`docs/workers.md`).
 
-Only the health checks, the OpenAPI document and the first steps of sign-in (`/v1/auth/config`, `/v1/auth/github`,
-`/v1/auth/web/login`, `/v1/auth/web/callback`) answer without one. A route added later needs a credential unless it
-is added to that list in `evo_agents/hub/server/security.py`. Postgres keeps only the SHA-256 of a token. A token
-nobody uses for 90 days expires, and each use moves the expiry forward.
+Only the health checks, the OpenAPI document, the first steps of sign-in (`/v1/auth/config`, `/v1/auth/github`,
+`/v1/auth/web/login`, `/v1/auth/web/callback`) and a worker's join with a pairing code (`/v1/worker/join`) answer
+without one. A route added later needs a credential unless it is added to that list in
+`evo_agents/hub/server/security.py`. Postgres keeps only the SHA-256 of a token. A token nobody uses for 90 days
+expires, and each use moves the expiry forward.
 
 | Area | Routes |
 | --- | --- |
@@ -46,6 +50,7 @@ nobody uses for 90 days expires, and each use moves the expiry forward.
 | skills | `GET /v1/skills`, `/v1/skills/global/{name}` and `/v1/skills/projects/{project}/{name}`, each with `/versions` and `/bundle` |
 | blobs | `POST /v1/blobs/uploads`, `POST /v1/blobs/commit` |
 | knowledge graphs | `/v1/kg/{project}/config`, `.../runs`, `.../blobs/check`, `.../builds`, `.../tools/{tool}`, and the web's `.../graph`, `.../nodes`, `.../node`, `.../neighbourhood` |
+| workers | `POST /v1/workers/pairings`, `GET /v1/workers/pairings/{id}`, `POST /v1/worker/join`, `GET` and `POST /v1/workers`, `GET /v1/workers/{id}`, `POST /v1/workers/{id}/{drain,undrain,revoke}` |
 
 `/mcp` speaks MCP's Streamable HTTP transport, statelessly: each POST carries one JSON-RPC message and gets one JSON
 answer. It takes machine tokens only, and the `Host` header must be the host of `EVO_HUB_PUBLIC_URL` or a loopback
