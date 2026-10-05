@@ -23,6 +23,7 @@ import contextlib
 import json
 import os
 import shutil
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
@@ -32,6 +33,11 @@ DIR_MODE = 0o700
 FILE_MODE = 0o600
 HOME_VARIABLE = "EVO_WORKER_HOME"
 JOIN_HINT = "join this machine first: `evo-agents worker join --url URL --code CODE` or `evo-agents worker register`"
+# `worker run` on a machine that is not a worker (any more), or a daemon the hub no longer takes, exits with this
+# status: starting it again changes nothing. EVO_WORKER_REVOKED_EXIT names another, for a service manager that tells
+# exits apart only as 0 or not (launchd).
+EXIT_REVOKED = 3
+REVOKED_EXIT_VARIABLE = "EVO_WORKER_REVOKED_EXIT"
 
 
 class WorkerStateError(Exception):
@@ -73,6 +79,16 @@ class WorkerConfig:
         if not isinstance(config.projects, list) or not all(isinstance(p, str) for p in config.projects):
             raise ValueError("config.json has no list of projects")
         return config
+
+
+def revoked_exit(env: Mapping[str, str]) -> int:
+    """The exit status for a machine that is no longer a worker: EVO_WORKER_REVOKED_EXIT when it holds a status from
+    0 to 255, else EXIT_REVOKED."""
+    try:
+        value = int(env.get(REVOKED_EXIT_VARIABLE) or EXIT_REVOKED)
+    except ValueError:
+        return EXIT_REVOKED
+    return value if 0 <= value <= 255 else EXIT_REVOKED
 
 
 def default_root() -> Path:

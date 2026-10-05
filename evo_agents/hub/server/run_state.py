@@ -58,7 +58,7 @@ PLAN_TRIES = 5  # writes of a step tried before giving up on revision conflicts
 MAX_NOTE_CHARS = 1000  # a note the hub sets on a step
 MAX_EVIDENCE_BYTES = 16 * 1024  # runs.evidence, as schema 0009 bounds it
 RECOVER_BATCH = 500  # expired runs one pass of the reaper takes
-LEASE = timedelta(seconds=runs.LEASE_SECONDS)
+LEASE = timedelta(seconds=runs.LEASE_SECONDS)  # the api's own comes from EVO_HUB_RUN_LEASE_SECONDS
 # Columns a move may set besides the state, its times and the lease.
 MOVE_COLUMNS = frozenset(
     {
@@ -165,11 +165,13 @@ async def move_run(
     error: str | None = None,
     columns: dict | None = None,
     token_id: int | None = None,
+    lease: timedelta = LEASE,
 ) -> int | None:
     """Move run ``run_id``, whose row the caller holds locked, from ``old`` to ``new`` as ``actor``, setting
     ``columns`` (of MOVE_COLUMNS) too; write the ``state`` event, then record the move in the plan (see the module's
-    docstring), as the dispatcher with ``token_id`` in the audit row. Returns the plan revision the move wrote, or
-    None. Raises ``runs.TransitionRefused`` for a move the table refuses or a run that is no longer in ``old``."""
+    docstring), as the dispatcher with ``token_id`` in the audit row. A run that comes to be held without a lease
+    (the claim) is leased for ``lease``. Returns the plan revision the move wrote, or None. Raises
+    ``runs.TransitionRefused`` for a move the table refuses or a run that is no longer in ``old``."""
     runs.check_transition(old, new, actor)
     columns = dict(columns or {})
     unknown = set(columns) - MOVE_COLUMNS
@@ -187,7 +189,7 @@ async def move_run(
         "terminal": list(runs.TERMINAL_STATES),
         "takeover": list(runs.TAKEOVER_STATES),
         "handback": list(runs.HANDBACK_STATES),
-        "lease": LEASE,
+        "lease": lease,
         **{f"set_{name}": _column_value(value) for name, value in columns.items()},
     }
     row = await (await conn.execute(sql.SQL(MOVE).format(extra=extra), params)).fetchone()

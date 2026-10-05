@@ -173,6 +173,7 @@ def test_the_launch_agent_runs_the_daemon_with_the_path_of_the_install_and_again
                 + ["/bin", "/usr/sbin", "/sbin"]
             ),
             "EVO_WORKER_HOME": str(state),
+            "EVO_WORKER_REVOKED_EXIT": "0",  # launchd starts again a job that exits other than 0
         },
         "WorkingDirectory": str(state),
         "RunAtLoad": True,
@@ -216,6 +217,8 @@ def test_the_systemd_unit_restarts_on_failure_and_quotes_what_systemd_would_read
     assert f"{environment} EVO_WORKER_HOME=/home/octo/.evo/worker" in lines
     for line in ("Type=simple", "Restart=on-failure", "RestartSec=10", "KillMode=mixed", "TimeoutStopSec=60"):
         assert line in lines
+    assert "RestartPreventExitStatus=3" in lines, "a daemon that is no longer a worker is not started again"
+    assert not any("EVO_WORKER_REVOKED_EXIT" in line for line in lines), "systemd tells the exit statuses apart"
     assert lines[lines.index("[Install]") + 1] == "WantedBy=default.target"
     assert unit.endswith("\n")
 
@@ -339,6 +342,21 @@ def test_install_refuses_a_machine_that_is_not_a_worker_or_lacks_the_extra(home,
     err = capsys.readouterr().err
     assert "needs the worker extra (missing module aiohttp)" in err and "evo-ak[worker]" in err
     assert fake.calls == [] and not service.Launchd().file().exists()
+
+
+def test_run_on_a_machine_that_is_no_longer_a_worker_exits_so_the_service_leaves_it_stopped(home, monkeypatch, capsys):
+    forbid_real_commands(monkeypatch)
+    monkeypatch.delenv("EVO_WORKER_REVOKED_EXIT", raising=False)
+    assert main(["worker", "run", "--quiet"]) == 3, "RestartPreventExitStatus of the systemd unit"
+    assert "this machine is not a worker yet" in capsys.readouterr().err
+    WorkerHome().save(WorkerConfig(url="https://hub.example.org", worker_id=7, name="mac", projects=["demo"]), "evw_x")
+    WorkerHome().forget()  # what `worker revoke` leaves
+    monkeypatch.setenv("EVO_WORKER_REVOKED_EXIT", "0")  # as the LaunchAgent sets it
+    assert main(["worker", "run", "--quiet"]) == 0
+    assert "this machine is not a worker yet" in capsys.readouterr().err
+    for value in ("three", "256", "-1"):
+        monkeypatch.setenv("EVO_WORKER_REVOKED_EXIT", value)
+        assert main(["worker", "run", "--quiet"]) == 3, value
 
 
 def test_install_refuses_while_a_daemon_runs_outside_the_service(home, joined, monkeypatch, capsys):

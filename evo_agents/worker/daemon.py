@@ -11,8 +11,10 @@
 - A call the hub does not answer is sent again with a backoff from 1 to 60 seconds; runs go on meanwhile.
 - SIGTERM or SIGINT: no new claim; the runs held go on until they end or reach their timeout, then the daemon exits
   0. A second signal stops the agents now and fails their runs.
-- A token the hub no longer takes (401, 403: the worker or its token was revoked) or a protocol it no longer speaks
-  (426) stops the daemon with exit status 1.
+- A token the hub no longer takes (401, 403: the worker or its token was revoked) stops the daemon with exit status
+  ``home.EXIT_REVOKED`` (3), or the one EVO_WORKER_REVOKED_EXIT names: starting it again changes nothing, and the
+  service tells its manager not to (``service``). A protocol the hub no longer speaks (426) stops it with exit status
+  1, which an upgrade can mend.
 - At the start, the events a previous daemon left in the spool are sent, and runs it left unfinished are marked
   ended, their tmux sessions closed. At the start and every hour, the worktrees of runs that ended more than 7 days
   ago are removed.
@@ -35,7 +37,7 @@ from evo_agents.hub import runs
 from evo_agents.isotime import parse_iso
 from evo_agents.worker import checkouts, gitops, interactive
 from evo_agents.worker.adapter import Adapter, detect_runtimes
-from evo_agents.worker.home import WorkerConfig, WorkerHome
+from evo_agents.worker.home import WorkerConfig, WorkerHome, revoked_exit
 from evo_agents.worker.hubapi import Backoff, HubProblem, Outdated, Refused, Unreachable, WorkerHub, new_session
 from evo_agents.worker.run import Run, Sender
 from evo_agents.worker.spool import Spool, SpoolBudget, leftover_runs
@@ -43,6 +45,7 @@ from evo_agents.worker.spool import Spool, SpoolBudget, leftover_runs
 log = logging.getLogger("evo_agents.worker")
 
 HEARTBEAT_VARIABLE = "EVO_WORKER_HEARTBEAT_SECONDS"  # for tests: a shorter heartbeat than the protocol's 15 s
+EXIT_FAILED = 1
 RUNTIMES_EVERY = 300.0  # seconds between looks at the runtimes
 CHECKOUTS_EVERY = 60.0  # and at the checkouts
 CLEANUP_EVERY = 3600.0
@@ -81,6 +84,7 @@ class Daemon:
         self.checkouts: dict[str, dict] = {}
         self.draining = False
         self.exit_code = 0
+        self.stopped_by_hub = False
         self.hub: WorkerHub | None = None
         self.tmux = interactive.Tmux.from_env(self.env)
         self._repo_locks: dict[str, asyncio.Lock] = {}
@@ -98,12 +102,18 @@ class Daemon:
         return self._repo_locks.setdefault(str(checkout), asyncio.Lock())
 
     def fatal(self, problem: HubProblem) -> None:
-        """The hub no longer takes this worker: stop everything, without reports."""
-        if self.exit_code == 0:
+        """The hub no longer takes this worker (a revoked worker or token, or a protocol the hub no longer speaks):
+        stop everything, without reports."""
+        if not self.stopped_by_hub:
+            self.stopped_by_hub = True
+            outdated = isinstance(problem, Outdated)
+            self.exit_code = EXIT_FAILED if outdated else revoked_exit(self.env)
             log.error(
-                "the hub no longer takes this worker; stopping", extra={"status": problem.status, "error": str(problem)}
+                "the hub no longer speaks this daemon's protocol; upgrade evo-agents"
+                if outdated
+                else "the hub no longer takes this worker: it or its token was revoked; stopping",
+                extra={"status": problem.status, "error": str(problem), "exit_code": self.exit_code},
             )
-        self.exit_code = 1
         for run in self.runs.values():
             run.request_stop("gone")
         self.stopping.set()

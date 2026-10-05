@@ -28,6 +28,7 @@ from tests.hub import live, pg
 
 if not pg.DSN:
     pytest.skip(pg.SKIP_REASON, allow_module_level=True)
+pytest.importorskip("aiohttp", reason="the daemon needs the worker extra, evo-ak[worker]")
 
 import httpx
 import uvicorn
@@ -672,19 +673,35 @@ def test_join_with_a_pairing_code_then_status_drain_and_revoke(make_stack):
     assert stack.cli("drain", "--resume").returncode == 0
     assert stack.client.get(f"/v1/workers/{worker_id}", headers=stack.owner).json()["drained_at"] is None
 
-    revoked = stack.cli("revoke")
+    service_files = (  # a background service installed for this user, as launchd and systemd keep it
+        stack.home / "Library" / "LaunchAgents" / "io.github.maycuatroi1.evo-agents.worker.plist",
+        stack.home / ".config" / "systemd" / "user" / "evo-agents-worker.service",
+    )
+    for path in service_files:
+        path.parent.mkdir(parents=True)
+        path.write_text("installed\n", encoding="utf-8")
+    env = {key: value for key, value in stack.env.items() if key != "XDG_CONFIG_HOME"}
+    revoked = stack.cli("revoke", env=env)
     assert revoked.returncode == 0, revoked.stderr
+    assert "does not start the daemon again" in revoked.stdout
+    assert "evo-agents worker service uninstall" in revoked.stdout
+    assert all(path.exists() for path in service_files), "revoke leaves the service to `service uninstall`"
     assert stack.client.get(f"/v1/workers/{worker_id}", headers=stack.owner).json()["revoked_at"] is not None
     assert not (stack.state / "token").exists() and not (stack.state / "config.json").exists()
     no_worker = stack.cli("status")
     assert no_worker.returncode == 1 and "evo-agents worker join" in no_worker.stderr
 
 
-def test_a_revoked_worker_stops_its_daemon(make_stack):
+def test_a_revoked_worker_stops_its_daemon_with_the_status_a_service_does_not_restart(make_stack):
     stack = make_stack()
     config = stack.register()
     proc = stack.start_daemon()
     revoked = stack.client.post(f"/v1/workers/{config['worker_id']}/revoke", headers=stack.owner)
     assert revoked.status_code == 200, revoked.text
-    assert proc.wait(WAIT) == 1, stack.daemon_output()
+    assert proc.wait(WAIT) == 3, stack.daemon_output()  # RestartPreventExitStatus=3 in the systemd unit
     assert "the hub no longer takes this worker" in stack.daemon_output()
+
+    # Under the LaunchAgent, which sets EVO_WORKER_REVOKED_EXIT to 0: launchd starts any other status again.
+    again = stack.cli("run", env={**stack.env, "EVO_WORKER_REVOKED_EXIT": "0"})
+    assert again.returncode == 0, again.stderr
+    assert (stack.state / "worker.log").read_text(encoding="utf-8").count("the hub no longer takes this worker") == 2

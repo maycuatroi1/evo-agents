@@ -94,6 +94,11 @@ def client(hub_db, tmp_path, github):
 def hub(client, github) -> dict:
     """Project evo-agents with a hub sink, where owner and someone-else are writers and reader a reader, and the
     plan rollout pushed by owner: the headers of each member, a stranger and a hub admin without a grant."""
+    return members(client, github)
+
+
+def members(client, github) -> dict:
+    """What the ``hub`` fixture sets up, on ``client``."""
     logins = {"admin": ADMIN, "owner": OWNER, "other": OTHER, "reader": READER, "stranger": STRANGER}
     headers = {
         name: bearer(live.sign_in(client, github, login, number)["token"])
@@ -754,6 +759,29 @@ def test_an_expired_lease_loses_the_run_and_the_third_attempt_fails_back_to_pend
     back = step(client, hub["owner"], 2)
     assert back["status"] == "pending" and back["note"] == f"run #{third} failed: {error}"
     assert ready(client, hub["reader"])["2"]["ready"] is True
+
+
+def test_a_claim_and_each_heartbeat_lease_the_run_for_evo_hub_run_lease_seconds(hub_db, tmp_path, github):
+    config = live.hub_config(hub_db, tmp_path, github, run_lease_seconds=30)
+    with TestClient(create_app(config), base_url="https://hub.test") as client:
+        headers = members(client, github)
+        worker = add_worker(client, headers["owner"], "mac-mini")
+        run_id = dispatched(client, headers["owner"], [2])[0]["id"]
+        assert claim(client, worker)["id"] == run_id
+        leased = "SELECT extract(epoch FROM lease_expires_at - leased_at) FROM runs WHERE id = %s"
+        assert float(sql(hub_db, leased, (run_id,))[0][0]) == 30.0
+        sql(hub_db, "UPDATE runs SET lease_expires_at = now() + interval '1 second' WHERE id = %s", (run_id,))
+        beat(client, worker, runs_held=[run_id])
+        left = sql(hub_db, "SELECT extract(epoch FROM lease_expires_at - now()) FROM runs WHERE id = %s", (run_id,))
+        assert 20 < float(left[0][0]) <= 30, "the heartbeat extends it by the same time"
+
+    env = {"EVO_HUB_DSN": "postgresql://hub@db/hub"}
+    assert load_config(env).run_lease_seconds == runs.LEASE_SECONDS == 300
+    assert load_config({**env, "EVO_HUB_RUN_LEASE_SECONDS": "8"}).run_lease_seconds == 8
+    for value in ("4", "3601", "soon"):
+        with pytest.raises(ConfigError) as caught:
+            load_config({**env, "EVO_HUB_RUN_LEASE_SECONDS": value})
+        assert caught.value.variable == "EVO_HUB_RUN_LEASE_SECONDS"
 
 
 def test_a_heartbeat_keeps_the_reaper_away_and_an_asked_cancel_ends_cancelled(client, hub, hub_db):

@@ -10,7 +10,9 @@
 
 The worker token goes to ``~/.evo/worker/token`` (0600) and is never printed. A failure is one ``error:`` line on
 stderr and exit status 1; a command that needs the worker extra and lacks it says how to install it (status 2).
-``run`` needs the extra (aiohttp) and so does ``join``; the others need the core package only.
+``run`` on a machine that is not a worker, such as one revoked with ``revoke``, exits ``home.EXIT_REVOKED`` (3, or
+what EVO_WORKER_REVOKED_EXIT says), so a service does not start it again and again. ``run`` needs the extra (aiohttp)
+and so does ``join``; the others need the core package only.
 """
 
 from __future__ import annotations
@@ -28,7 +30,7 @@ from urllib.parse import quote
 
 from evo_agents import __version__
 from evo_agents.hub.client import Hub, HubError, check_url, host_name, load_credentials
-from evo_agents.worker.home import PidLock, WorkerConfig, WorkerHome, WorkerStateError
+from evo_agents.worker.home import NotJoined, PidLock, WorkerConfig, WorkerHome, WorkerStateError, revoked_exit
 
 EXIT_FAILED = 1
 EXIT_USAGE = 2
@@ -223,8 +225,12 @@ def cmd_register(args) -> int:
 @_worker_command
 def cmd_run(args) -> int:
     home = WorkerHome()
-    config = home.load_config()
-    token = home.load_token()
+    try:
+        config = home.load_config()
+        token = home.load_token()
+    except NotJoined as exc:  # not a worker, or not any more: starting the daemon again changes nothing
+        print(f"error: {exc}", file=sys.stderr)
+        return revoked_exit(os.environ)
     try:
         import aiohttp  # noqa: F401
 
@@ -402,7 +408,24 @@ def cmd_revoke(args) -> int:
     pid = home.read_pid()
     if pid:
         print(f"The daemon running here (pid {pid}) stops at its next heartbeat.")
+    installed = _service_file()
+    if installed is not None:
+        print(
+            f"The background service ({installed}) does not start the daemon again; remove it with "
+            "`evo-agents worker service uninstall`."
+        )
     return 0
+
+
+def _service_file():
+    """The file of the background service when one is installed for this user, without asking its manager."""
+    from evo_agents.worker import service
+
+    try:
+        path = service.manager().file()
+    except service.ServiceError:  # neither launchd nor systemd here
+        return None
+    return path if path.exists() else None
 
 
 def _slots(value: str) -> int:
