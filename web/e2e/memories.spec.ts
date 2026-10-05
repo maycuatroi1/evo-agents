@@ -4,6 +4,8 @@ import { expect, isDeployed, test } from "./support/fixtures";
 import { type Account, type HubAdmin, newAccount, uniqueName } from "./support/hub";
 import { apiOf, type Memory, memoryFile, memoryProject, putMemory } from "./support/memories";
 
+test.use({ uiLocale: "vi" }); // the assertions below read the Vietnamese copy of messages/vi.json
+
 /**
  * Memories on the web, against the real API: what a member browses, searches and reads is what the API returns for
  * the browser's own session, filtered by the grant's max level and by owner on the server. Each test seeds its own

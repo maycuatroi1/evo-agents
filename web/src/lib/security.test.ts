@@ -14,7 +14,7 @@ function directives(policy: string): Map<string, string[]> {
 describe("contentSecurityPolicy", () => {
   it("allows scripts only with the nonce and never lets the page be framed", () => {
     const policy = directives(contentSecurityPolicy({ nonce: "abc123" }));
-    expect(policy.get("script-src")).toEqual(["'self'", "'nonce-abc123'", "'strict-dynamic'"]);
+    expect(policy.get("script-src")).toEqual(["'self'", "'nonce-abc123'", "'strict-dynamic'", "'wasm-unsafe-eval'"]);
     expect(policy.get("frame-ancestors")).toEqual(["'none'"]);
     expect(policy.get("object-src")).toEqual(["'none'"]);
     expect(policy.get("base-uri")).toEqual(["'self'"]);
@@ -24,7 +24,8 @@ describe("contentSecurityPolicy", () => {
   });
 
   it("adds eval and websockets only for next dev, and the upgrade only over https", () => {
-    expect(contentSecurityPolicy({ nonce: "n" })).not.toContain("unsafe-eval");
+    expect(contentSecurityPolicy({ nonce: "n" })).not.toContain("'unsafe-eval'");
+    expect(directives(contentSecurityPolicy({ nonce: "n" })).get("connect-src")).not.toContain("ws:");
     const dev = directives(contentSecurityPolicy({ nonce: "n", dev: true }));
     expect(dev.get("script-src")).toContain("'unsafe-eval'");
     expect(dev.get("connect-src")).toContain("ws:");

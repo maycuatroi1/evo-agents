@@ -1,7 +1,8 @@
 # The evo-agents hub in production: api, worker and web from the images GitHub Actions publishes on GHCR for each
 # release (.github/workflows/images.yml). Nothing is built here. Postgres is not in this file: the hub expects a
 # database it can reach at EVO_HUB_DSN, such as one the platform manages, on the network EVO_HUB_PLATFORM_NETWORK.
-# A reverse proxy in front sends /v1 and /mcp to api:8080 and everything else to web:3000, on one domain.
+# A reverse proxy in front sends /v1 and /mcp to api:8080 and everything else to web:3000, on one domain. The /v1
+# rule carries the web terminal's websockets too, so the proxy must pass a websocket upgrade there.
 # docs/hub.md describes every variable; deploy/hub/.env.example lists them.
 #
 # The volumes are caches only: the state lives in Postgres and the blob store (R2), and a lost volume is rebuilt.
@@ -27,6 +28,8 @@ x-hub-environment: &hub-environment
   EVO_HUB_LOG_LEVEL: ${EVO_HUB_LOG_LEVEL:-INFO}
   EVO_HUB_BLOB_CONCURRENCY: ${EVO_HUB_BLOB_CONCURRENCY:-32}
   EVO_HUB_KG_KEEP_ARTIFACTS: ${EVO_HUB_KG_KEEP_ARTIFACTS:-3}
+  EVO_HUB_RUN_LOG_DAYS: ${EVO_HUB_RUN_LOG_DAYS:-30}
+  EVO_HUB_FORWARDED_ALLOW_IPS: ${EVO_HUB_FORWARDED_ALLOW_IPS:-}
 
 x-hardening: &hardening
   init: true

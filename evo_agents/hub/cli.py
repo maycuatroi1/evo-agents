@@ -7,9 +7,9 @@ configuration error is a log line naming the variable, and an unexpected excepti
 traceback, secrets removed, rather than a bare traceback from the interpreter.
 
 The client commands (``login``, ``logout``, ``whoami``, ``token``, ``admin``, ``project``, ``registry``, ``plan``,
-``memory``, ``skills``, ``kg``, ``mcp``, ``hook``) are registered by ``cli_client`` and need nothing beyond the core
-package, so they work on a core install. ``hub openapi`` (``openapi``) and ``hub contract print`` (``contract``) need
-the extra for the API document; ``hub contract check`` does not.
+``run``, ``memory``, ``skills``, ``kg``, ``mcp``, ``hook``) are registered by ``cli_client`` and need nothing beyond the
+core package, so they work on a core install. ``hub openapi`` (``openapi``) and ``hub contract print`` (``contract``)
+need the extra for the API document; ``hub contract check`` does not.
 """
 
 from __future__ import annotations
@@ -83,6 +83,7 @@ def cmd_serve(args) -> int:
         lifespan="on",
         log_config=None,  # uvicorn's loggers propagate to the JSON handler
         access_log=False,  # replaced by the app's own access line, which leaves out query strings
+        forwarded_allow_ips=config.forwarded_allow_ips,  # None keeps uvicorn's default: the loopback addresses
         server_header=False,
         timeout_graceful_shutdown=10,
     )

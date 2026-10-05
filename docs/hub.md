@@ -23,16 +23,28 @@ Every route lives under `/v1` and answers JSON. Errors have one shape, `{error, 
 wrong: a 404, a validation failure or an unhandled exception never answers with HTML or a traceback, and the
 `request_id` is the one in the api's log line for that request.
 
-A request carries one of two credentials:
+A request carries one of three credentials:
 
 - a machine token (`evh_...`) as `Authorization: Bearer`, which `evo-agents hub login` stores on a machine;
 - a web session (`evs_...`) in the `evo_hub_session` cookie. A write made with the cookie (POST, PUT, PATCH,
-  DELETE) also needs the `X-Evo-CSRF` header, whose value `GET /v1/auth/web/csrf` hands out.
+  DELETE) also needs the `X-Evo-CSRF` header, whose value `GET /v1/auth/web/csrf` hands out;
+- a worker token (`evw_...`) as `Authorization: Bearer`, which a worker gets once when it joins or registers. It
+  works only on `/v1/worker/*`, where machine tokens and web sessions get 403, and gets 403 everywhere else
+  (`docs/workers.md`). Revoking it (`DELETE /v1/tokens/{id}`, or `DELETE /v1/admin/tokens/{id}`) revokes its worker
+  too and releases the runs the worker holds.
 
-Only the health checks, the OpenAPI document and the first steps of sign-in (`/v1/auth/config`, `/v1/auth/github`,
-`/v1/auth/web/login`, `/v1/auth/web/callback`) answer without one. A route added later needs a credential unless it
-is added to that list in `evo_agents/hub/server/security.py`. Postgres keeps only the SHA-256 of a token. A token
-nobody uses for 90 days expires, and each use moves the expiry forward.
+Only the health checks, the OpenAPI document, the first steps of sign-in (`/v1/auth/config`, `/v1/auth/github`,
+`/v1/auth/web/login`, `/v1/auth/web/callback`) and a worker's join with a pairing code (`/v1/worker/join`) answer
+without one. A route added later needs a credential unless it is added to that list in
+`evo_agents/hub/server/security.py`. Postgres keeps only the SHA-256 of a token. A token nobody uses for 90 days
+expires, and each use moves the expiry forward. The join is public, so it is limited: 10 refused pairing codes from one
+client address within 10 minutes, and that address gets 429 with `Retry-After` (see `EVO_HUB_FORWARDED_ALLOW_IPS`
+below for the address behind a proxy).
+
+The credential check reads HTTP requests only. A websocket under `/v1` is closed during its handshake, which the
+client sees as a 403, unless its route checks a credential of its own and is listed in `SELF_CHECKED_WEBSOCKETS` of
+the same file. The two ends of a run's web terminal are the only ones: the browser's checks the session cookie, the
+Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 
 | Area | Routes |
 | --- | --- |
@@ -46,6 +58,9 @@ nobody uses for 90 days expires, and each use moves the expiry forward.
 | skills | `GET /v1/skills`, `/v1/skills/global/{name}` and `/v1/skills/projects/{project}/{name}`, each with `/versions` and `/bundle` |
 | blobs | `POST /v1/blobs/uploads`, `POST /v1/blobs/commit` |
 | knowledge graphs | `/v1/kg/{project}/config`, `.../runs`, `.../blobs/check`, `.../builds`, `.../tools/{tool}`, and the web's `.../graph`, `.../nodes`, `.../node`, `.../neighbourhood` |
+| workers | `POST /v1/workers/pairings`, `GET /v1/workers/pairings/{id}`, `POST /v1/worker/join`, `GET` and `POST /v1/workers`, `GET /v1/workers/{id}`, `POST /v1/workers/{id}/{drain,undrain,revoke}` |
+| runs | `/v1/projects/{project}/plans/{plan_id}/ready-steps`, `GET` and `POST /v1/projects/{project}/runs`, `.../runs/{id}`, `.../events`, `.../stream`, `.../diff`, `.../messages`, `.../{cancel,approve,rerun,takeover,handback}` |
+| worker protocol | `/v1/worker/{claim,heartbeat}`, `/v1/worker/runs/{id}/{state,events,inbox,uploads,blobs}` |
 
 `/mcp` speaks MCP's Streamable HTTP transport, statelessly: each POST carries one JSON-RPC message and gets one JSON
 answer. It takes machine tokens only, and the `Host` header must be the host of `EVO_HUB_PUBLIC_URL` or a loopback
@@ -202,6 +217,53 @@ push the edit with `plan put` or restore the hub's copy with `plan export`. The 
 exports the copies of the session's harness without committing, and leaves a file edited by hand as it is and names
 it, so it never overwrites someone's work.
 
+## Workers and runs
+
+A worker is a member's own laptop or desktop that runs plan steps for that member. The member dispatches a ready step
+and the hub queues a run; a worker of that member claims it, runs the step with Claude Code, opencode or Codex CLI,
+and sends its log, state and evidence back over HTTPS, and the hub records the step's progress in the plan. Only the
+owner of a worker dispatches runs to it, and dispatching needs the writer role. `docs/workers.md` describes the
+protocol, the run states and who may move a run between them.
+
+The daemon on the member's machine is the `evo-agents worker` command group, which needs the `worker` extra
+(`uv tool install 'evo-ak[worker]'`). It is not `evo-agents hub worker`, the hub's own job worker (see Worker and
+queue below). A machine joins with a pairing code from the web's Workers page, or registers directly once signed in
+with `evo-agents hub login`.
+
+Runs are driven from any machine signed in to the hub:
+
+```sh
+evo-agents hub run dispatch rollout 2 4 --approval auto       # one run per step, all of them queued or none
+evo-agents hub run dispatch rollout 5 --worker mac-mini --runtime codex --mode interactive --timeout 90
+evo-agents hub run list --state running --state review        # newest first, with the runs in each state
+evo-agents hub run show 41
+evo-agents hub run logs 41 --follow                           # the live log, until the run ends
+evo-agents hub run send 41 "also run ruff before you commit"
+evo-agents hub run takeover 41                                # a person drives the agent in a terminal on the worker
+evo-agents hub run handback 41                                # the agent goes on headless in the same session
+evo-agents hub run approve 41                                 # a run in review: the run and its step are done
+evo-agents hub run cancel 41
+evo-agents hub run rerun 41                                   # the step again, after a run that ended
+```
+
+Every command after `dispatch` and `list` takes the id of a run, as `list` shows it, and finds its project as the plan
+commands do: `--project`, or `hub.project` in the harness around the current directory. `dispatch` takes `--runtime`
+(`any` by default: the first runtime the claiming worker has), `--mode` (`headless` by default, or `interactive`),
+`--worker` (the id or the name of one of your workers, which pins the runs to it), `--approval` (`review` by default,
+which waits for `run approve`; `auto` marks the step done once every verify command the worker runs again exits 0)
+and `--timeout` in minutes (5 to 240, 60 by default). `list` filters by `--state` (repeat it for several), `--plan`,
+`--step`, `--worker`, `--by` (the login that dispatched) and `--search`, a page at a time with `--limit` and
+`--offset`.
+
+`run logs` prints one line per event: its number, its time in UTC, its kind and what it says. With `--follow` it reads
+the run's server-sent events (`GET .../runs/{id}/stream`) until the hub sends `end` once the run is final, and stops
+there. A stream that breaks off before that, because a proxy closed it or the hub restarted, is opened again with
+`Last-Event-ID` set to the last event read, so no event is missed or printed twice; after five tries in a row to read
+on that bring nothing, not even the hub's ping, the command gives up and names the `--after` that reads what came
+since. `--json` prints what the hub answered, with the keys the command line contract declares; for `logs` that is
+every event read as one object, so it does not go with `--follow`. `send`, `cancel`, `approve`, `takeover`,
+`handback` and `rerun` belong to the member who dispatched the run: another member gets 403.
+
 ## Memories, skills and knowledge graphs
 
 **Memories.** `evo-agents hub memory push` and `evo-agents hub memory pull` sync Claude Code's memory files for a
@@ -283,6 +345,9 @@ Postgres database; there is no separate broker. The api only defers jobs. Jobs:
 - `hub.recover_kg_builds`, every 5 minutes: fails builds whose worker stopped sending heartbeats and queues a new one.
 - `hub.prune_kg_artifacts`, hourly at minute 31: deletes the artifacts of graphs older than each project's
   `EVO_HUB_KG_KEEP_ARTIFACTS` newest.
+- `hub.recover_runs`, every minute: runs whose worker stopped extending the lease become lost and their step is
+  queued again, or fail on their third attempt (`docs/workers.md`).
+- `hub.prune_run_events`, daily at 04:13: deletes the events of runs that ended more than `EVO_HUB_RUN_LOG_DAYS` ago.
 - `hub.cleanup_uploads`, hourly: removes uploads nobody committed within 24 hours.
 - `hub.prune_jobs`, daily: removes finished jobs older than 14 days.
 
@@ -310,30 +375,43 @@ the variables in the platform's environment, never in a committed file. `deploy/
 
 | Variable | Used by | Meaning |
 | --- | --- | --- |
-| `EVO_HUB_VERSION` | compose | image tag, a released version such as `0.2.3` |
+| `EVO_HUB_VERSION` | compose | image tag, a released version such as `0.3.0` |
 | `EVO_HUB_DSN` | api, worker | `postgresql://` URI of the hub database (required) |
 | `EVO_HUB_ADMINS` | api | GitHub logins of hub admins, comma-separated |
 | `EVO_HUB_GITHUB_CLIENT_ID` | api | the OAuth App's client id; without it nobody can sign in |
 | `EVO_HUB_GITHUB_CLIENT_SECRET` | api | the OAuth App's secret, for web sign-in and the App check |
-| `EVO_HUB_SESSION_SECRET` | api | at least 32 random characters; signs session and CSRF values |
+| `EVO_HUB_SESSION_SECRET` | api | at least 32 random characters; signs session and CSRF values and keys the hashes of worker pairing codes, which answer 503 without it |
 | `EVO_HUB_PUBLIC_URL` | api | the URL browsers use, such as `https://hub.example.org` |
 | `EVO_HUB_S3_ENDPOINT`, `EVO_HUB_S3_BUCKET`, `EVO_HUB_S3_ACCESS_KEY_ID`, `EVO_HUB_S3_SECRET_ACCESS_KEY` | api, worker | the blob store, all four or none; for R2 the endpoint is `https://<account id>.r2.cloudflarestorage.com` |
 | `EVO_HUB_SENTRY_DSN` | api, worker | optional error reporting |
 | `EVO_HUB_LOG_LEVEL` | api, worker | `DEBUG`, `INFO` (default), `WARNING` or `ERROR` |
 | `EVO_HUB_BLOB_CONCURRENCY` | api | uploads one process checks and copies in the blob store at once, every commit together; default `32`, at most `256` |
 | `EVO_HUB_KG_KEEP_ARTIFACTS` | api, worker | newest built graphs of each project whose artifact stays in the bucket; older ones are deleted every hour; default `3`, at least `1` |
+| `EVO_HUB_RUN_LOG_DAYS` | worker | days the events of a finished run are kept before the daily pruning deletes them; default `30`, from `1` to `3650` |
+| `EVO_HUB_FORWARDED_ALLOW_IPS` | api | the reverse proxies whose `X-Forwarded-For` the api believes: IP addresses or networks, comma-separated, or `*`; unset keeps uvicorn's default, the loopback addresses (or its own `FORWARDED_ALLOW_IPS`) |
 | `EVO_HUB_WORKER_CPUS`, `EVO_HUB_WORKER_MEMORY` | compose | worker limits, default `2` and `4g` |
 | `EVO_HUB_API_INTERNAL_URL` | web | where the web server reaches the api, default `http://evo-agents-hub-api:8080` (the api's network alias) |
 | `EVO_HUB_WEB_TIME_ZONE` | web | time zone of dates rendered on the server, default `Asia/Ho_Chi_Minh` |
 | `EVO_HUB_PLATFORM_NETWORK` | compose | the external network the database is on |
 
 The server also reads `EVO_HUB_POOL_MIN_SIZE`, `EVO_HUB_POOL_MAX_SIZE` and `EVO_HUB_POOL_TIMEOUT` (the connection
-pool, defaults 1, 10 and 10 seconds); add them to the environment block of the compose file to change them. A missing
-or malformed variable stops the process with a log line naming it.
+pool, defaults 1, 10 and 10 seconds), and the api `EVO_HUB_RUN_LEASE_SECONDS`, how long a claim and each heartbeat of
+a worker daemon lease a run for before the reaper finds it lost (default 300, from 5 to 3600; the end-to-end tests
+shorten it, and it must stay well above the daemon's heartbeat of 15 seconds); add them to the environment block of
+the compose file to change them. A missing or malformed variable stops the process with a log line naming it.
 
 The reverse proxy routes the public domain: `/v1` and `/mcp` to the api on port 8080, everything else to the web on
-port 3000. `EVO_HUB_PUBLIC_URL` must be that domain, because the web sign-in callback and the `/mcp` host check both
-use it.
+port 3000. `EVO_HUB_PUBLIC_URL` must be that domain, because the web sign-in callback, the `/mcp` host check and the
+web terminal's Origin check all use it. The `/v1` rule also carries the web terminal's two websockets, so the proxy
+must pass a websocket upgrade there (Traefik does without more configuration). A stack without a proxy serves them
+through the web's `/v1` rewrite instead, since Next.js standalone forwards the upgrade to the api
+(`web/e2e/terminal.spec.ts` checks it).
+
+The api sees the proxy's address as the client's unless `EVO_HUB_FORWARDED_ALLOW_IPS` lists the proxy. The limit on
+refused pairing codes counts per client address, so behind a proxy that is not listed, 10 wrong codes from anyone hold
+every join for 10 minutes. List the address or network the proxy reaches the api from, as `docker inspect` shows it on
+the shared network, and nothing wider: a listed address can claim any client address in `X-Forwarded-For`, and `*`
+lets every client do that. The default trusts nobody new.
 
 ### Running the stack locally
 
@@ -396,8 +474,9 @@ answers from its cache. Point uptime monitoring at `/v1/health`.
 
 **Logs.** The api and the worker write JSON lines to stderr. The api writes one access line per request, with its
 id and without the query string, and one line per MCP tool call with its name and outcome but not its arguments.
-Tokens, DSN passwords, S3 keys and presigned signatures are masked before a line is written. Set
-`EVO_HUB_SENTRY_DSN` to also send errors to Sentry.
+Tokens, worker pairing codes, DSN passwords, S3 keys and presigned signatures are masked before a line is written.
+Set `EVO_HUB_SENTRY_DSN` to also send errors to Sentry; an event carries no request body, query string, cookie or
+local variable and goes through the same masking.
 
 **Upgrades.** Set `EVO_HUB_VERSION` to the new release, pull, and recreate the services; the api migrates on start.
 Take a backup first when the release notes mention a migration.

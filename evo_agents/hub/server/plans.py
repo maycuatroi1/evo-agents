@@ -625,28 +625,60 @@ async def patch(request: Request, project: ProjectName, plan_id: PlanId, payload
         async with request.app.state.pool.connection() as conn:
             access = await project_access(conn, user, project)
             _writer(access)
-            held = await _visible(conn, access, plan_id, None, lock=True)
-            label = access.push_label(held.label)
-            if payload.if_revision != held.revision:
-                raise _stale(access, held, payload.if_revision)
-            try:
-                index = payload.index if payload.step is None else step_index(held.body, payload.step)
-                body, old = update_item(held.body, payload.section, index, payload.updates)
-            except PlanProblem as exc:
-                raise PlanError(422, f"plan {plan_id}: {exc}; nothing was written") from None
-            _schema_checked(body, plan_id)
-            warnings = await _warnings(conn, access, body, held.area)
-            if plan_digest(body) == held.digest:
-                _logged(project, held, "unchanged", user)
-                return _written(access, held, created=False, changed=False, warnings=warnings)
-            summary = update_summary(body, payload.section, index, old, payload.updates)
-            stored = await _store(
-                conn, access, user, held, area=held.area, label=label, body=body, summary=summary, action=PLAN_PATCH
+            stored, changed, warnings = await apply_patch(
+                conn,
+                access,
+                user,
+                plan_id,
+                payload.section,
+                payload.updates,
+                if_revision=payload.if_revision,
+                index=payload.index,
+                step=payload.step,
             )
-            _logged(project, stored, "patched", user)
-            return _written(access, stored, created=False, changed=True, warnings=warnings)
+            return _written(access, stored, created=False, changed=changed, warnings=warnings)
     except PlanError as exc:
         return _refusal(request, exc)
+
+
+async def apply_patch(
+    conn,
+    access: ProjectAccess,
+    user,
+    plan_id: str,
+    section: str,
+    updates: dict[str, str],
+    *,
+    if_revision: int,
+    index: int | None = None,
+    step=None,
+) -> tuple[Held, bool, list[Problem]]:
+    """PATCH's write, in the caller's transaction, for a ``user`` whose writer role the caller checked: set
+    ``updates`` on one item of ``section``, named by ``index`` or (for steps) by ``step``, when ``if_revision`` is
+    the revision the hub holds. Returns the plan as held afterwards, whether it changed, and the warnings of
+    ``plan_semantics``. Raises PlanError: 409 ``revision_conflict`` for another revision, 422 for an update the plan
+    refuses; and HTTPException 404 for a plan ``user`` cannot see, 403 or 422 when its label refuses the push. The
+    hub's own writes of a run's step (``evo_agents.hub.server.run_state``) go through here as the dispatcher."""
+    held = await _visible(conn, access, plan_id, None, lock=True)
+    label = access.push_label(held.label)
+    if if_revision != held.revision:
+        raise _stale(access, held, if_revision)
+    try:
+        position = index if step is None else step_index(held.body, step)
+        body, old = update_item(held.body, section, position, updates)
+    except PlanProblem as exc:
+        raise PlanError(422, f"plan {plan_id}: {exc}; nothing was written") from None
+    _schema_checked(body, plan_id)
+    warnings = await _warnings(conn, access, body, held.area)
+    if plan_digest(body) == held.digest:
+        _logged(access.name, held, "unchanged", user)
+        return held, False, warnings
+    summary = update_summary(body, section, position, old, updates)
+    stored = await _store(
+        conn, access, user, held, area=held.area, label=label, body=body, summary=summary, action=PLAN_PATCH
+    )
+    _logged(access.name, stored, "patched", user)
+    return stored, True, warnings
 
 
 @router.post("/{plan_id}/complete", response_model=Written, responses=REFUSALS)

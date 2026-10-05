@@ -2,6 +2,8 @@ import { expect, test } from "./support/fixtures";
 import { ADMIN_ACCOUNT, newAccount } from "./support/hub";
 import { kgPath, nodePath, open, RUNBOOK, sharedKg } from "./support/kg";
 
+test.use({ uiLocale: "vi" }); // the assertions below read the Vietnamese copy of messages/vi.json
+
 /**
  * Who may not read a project's knowledge graph: a user without a grant on the project. A hub admin sees that the
  * project exists, so the API answers 403 and the pages show the no-access state; anyone else is told nothing about

@@ -22,9 +22,10 @@ A request without ``project`` is about blobs the hub holds itself, outside any p
 which belong to no project. Only a hub admin uploads or commits those, and only of kind skill-bundle (GLOBAL_KINDS);
 logs and the audit trail name that holder GLOBAL.
 
-``commit_uploads`` is the commit on its own, for routes that take uploads as part of something larger. No route here
-reads a blob: a route that has checked that the caller may see what refers to a blob hands out
-``BlobStore.presign_get``, or reads it with ``BlobStore.fetch``.
+``issue_uploads`` and ``commit_uploads`` are the two halves on their own, for routes that take uploads as part of
+something larger, such as the worker's log and diff of a run (``run_events``). No route here reads a blob: a route
+that has checked that the caller may see what refers to a blob hands out ``BlobStore.presign_get``, or reads it with
+``BlobStore.fetch``.
 """
 
 from __future__ import annotations
@@ -180,10 +181,19 @@ INSERT INTO blob_uploads (upload_id, project_id, sha256, size, kind, created_by)
 @router.post("/uploads", response_model=Uploads, responses=UPLOAD_REFUSALS)
 async def request_uploads(request: Request, body: UploadRequest, user: CurrentUser) -> Uploads:
     """Presigned PUT URLs for the blobs of ``items`` that the project does not hold yet."""
+    return await issue_uploads(request, user, body.project, body.items)
+
+
+async def issue_uploads(
+    request: Request, user: Principal, project: str | None, items: list[UploadItem]
+) -> Uploads | JSONResponse:
+    """What POST /v1/blobs/uploads answers, for routes that take uploads as part of something larger: the uploads of
+    ``items`` of ``project`` (None: of the hub itself) as ``user``, or the 413 response when one is over its limit.
+    Raises the HTTPException of ``holder`` and the blob store."""
     store = blob_store(request)
-    items = _distinct(body.items)
+    items = _distinct(items)
     async with request.app.state.pool.connection() as conn:
-        access = await holder(conn, user, body.project, "uploading")
+        access = await holder(conn, user, project, "uploading")
         if access.project_id is None and any(item.kind not in GLOBAL_KINDS for item in items):
             raise HTTPException(
                 422, f"outside a project the hub holds only blobs of kind {', '.join(sorted(GLOBAL_KINDS))}"

@@ -2,7 +2,7 @@
   "mcpServers": {
     "evo-hub": {
       "command": "uvx",
-      "args": ["--from", "evo-ak==0.2.3", "evo-agents", "hub", "mcp", "--sink", "claude-code@anthropic"]
+      "args": ["--from", "evo-ak==0.3.0", "evo-agents", "hub", "mcp", "--sink", "claude-code@anthropic"]
     }
   }
 }

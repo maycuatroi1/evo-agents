@@ -3,6 +3,8 @@ import { type HubAdmin, newAccount, uniqueName } from "./support/hub";
 import { apiOf } from "./support/memories";
 import { packSkill, publishSkill } from "./support/skills";
 
+test.use({ uiLocale: "vi" }); // the assertions below read the Vietnamese copy of messages/vi.json
+
 /**
  * Skills the visitor may not read, and failures. A project's skills are its members': anyone else gets 403 from the
  * API (the same whether the project exists or not) and the no-access state on the page, and asking for a bundle URL

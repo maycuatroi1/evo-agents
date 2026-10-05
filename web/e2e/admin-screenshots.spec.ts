@@ -5,7 +5,8 @@ import { ADMIN_ACCOUNT, machineToken, newAccount, uniqueName } from "./support/h
 
 /**
  * Review screenshots of the admin area in light and dark, at desktop width and at 375 px, written to
- * E2E_SCREENSHOT_DIR. Skipped unless it is set; it asserts nothing beyond the pages being ready.
+ * E2E_SCREENSHOT_DIR. Skipped unless it is set; it asserts nothing beyond the pages being ready. The pages are in
+ * the default language, English, so the locators below go by test id rather than copy.
  *
  * Locators are scoped to <main>: a screenshot or a viewport change while the next page streams in can make React
  * render that page in the browser instead of hydrating it, which leaves the server's copy behind, hidden, outside
@@ -60,18 +61,18 @@ test.describe("admin screenshots", () => {
 
       await page.setViewportSize({ width: 1440, height: 900 });
       await page.goto(`/admin/members?q=${alice.login}`);
-      await page.getByRole("button", { name: `Cấp quyền cho ${alice.login}` }).click();
-      const dialog = page.getByRole("dialog", { name: "Cấp quyền theo dự án" });
-      await dialog.getByLabel("Dự án").selectOption(atlas);
+      await main.getByTestId(`grant-to-${alice.login}`).click();
+      const dialog = page.getByTestId("grant-dialog"); // in a portal, outside <main>
+      await dialog.getByTestId("grant-project").selectOption(atlas);
       await expect(dialog.getByTestId("grant-existing")).toBeVisible();
       await shot("grant-form");
-      await dialog.getByLabel("Mức nhãn tối đa").selectOption("internal");
-      await dialog.getByRole("button", { name: "Tiếp tục" }).click();
+      await dialog.getByTestId("grant-max-level").selectOption("internal");
+      await dialog.getByTestId("grant-continue").click();
       await expect(page.getByTestId("grant-summary")).toBeVisible(); // in a dialog, outside <main>
       await shot("grant-confirm");
       await page.keyboard.press("Escape");
       await page.goto(`/admin/tokens?login=${alice.login}`);
-      await main.getByTestId("tokens-table").getByRole("button", { name: /^Thu hồi token/ }).first().click();
+      await main.getByTestId("tokens-table").locator('[data-testid^="revoke-token-"]').first().click();
       await expect(page.getByTestId("revoke-token-dialog")).toBeVisible();
       await shot("revoke-token");
     });

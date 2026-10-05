@@ -25,6 +25,25 @@ KG_CONFIG = "kg.config"  # the knowledge config a project's graph is built with 
 KG_INGEST = "kg.ingest"  # a pushed run became part of the project's corpus; the target is the project, never the run
 KG_BUILD = "kg.build"  # a member queued a build; the target is the project
 KG_PRUNE = "kg.prune"  # the retention deleted artifacts of a project's older graphs; the target is "<project> keep=<n>"
+# Workers belong to no project; a target names the pairing or the worker by id and name, never a code or a token.
+WORKER_PAIR = "worker.pair"  # a member created a pairing code: "pairing:<id> name=<worker name>"
+WORKER_JOIN = "worker.join"  # a machine joined with a code, as its owner with the new worker token
+WORKER_REGISTER = "worker.register"  # a machine registered itself with its machine token
+WORKER_DRAIN = "worker.drain"
+WORKER_UNDRAIN = "worker.undrain"
+WORKER_REVOKE = "worker.revoke"  # the worker and its token are revoked, its runs released
+# Runs happen in a project, which the caller names; a target is "<project>/<plan>#<step> run:<id>", never a prompt.
+RUN_DISPATCH = "run.dispatch"  # a member queued a run of a ready step
+RUN_CANCEL = "run.cancel"  # the owner cancelled a run, or asked its worker to stop it
+RUN_APPROVE = "run.approve"  # the owner approved a run in review, and the step is done
+RUN_RERUN = "run.rerun"  # the owner queued the step again after a run that ended
+RUN_MESSAGE = "run.message"  # the owner sent the run's agent a message; the target names the message, not its text
+RUN_TAKEOVER = "run.takeover"  # the owner asked to drive the run's agent in a terminal
+RUN_HANDBACK = "run.handback"  # the owner asked to let the run's agent go on headless
+# The web terminal of a run; the target names the run as above, and on close the bytes relayed each way and how it
+# ended ("... to_worker=<n> to_browser=<n> end=<idle|timeout|browser|worker|protocol|shutdown>"), never the bytes.
+TERMINAL_OPEN = "terminal.open"  # the owner opened the run's terminal in a browser
+TERMINAL_CLOSE = "terminal.close"
 
 NAMED_FAMILIES = frozenset({"grant", "project", "plan", "kg", "blob"})  # targets that start with the project's name
 _FIRST_NAME = re.compile(r"([a-z0-9][a-z0-9-]{0,99})(?:[/ @]|$)")
