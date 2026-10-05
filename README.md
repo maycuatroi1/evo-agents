@@ -121,8 +121,8 @@ Hooks:
   off.
 
 The plugin needs [uv](https://docs.astral.sh/uv/) on `PATH` and pins the release it runs: the server
-starts with `uvx --from evo-ak==0.2.3 evo-agents`, which downloads and caches that version on first start. The hooks
-run `uvx --offline --from evo-ak==0.2.3 evo-agents`, so they never wait on the network; they stay silent when `uvx`
+starts with `uvx --from evo-ak==0.3.0 evo-agents`, which downloads and caches that version on first start. The hooks
+run `uvx --offline --from evo-ak==0.3.0 evo-agents`, so they never wait on the network; they stay silent when `uvx`
 is missing or until the server has cached the package.
 
 ### The team hub
