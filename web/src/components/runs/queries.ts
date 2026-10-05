@@ -185,3 +185,108 @@ export const RUNS_SEGMENT = "runs";
 export function runsHref(project: string): Route {
   return projectHref(project, RUNS_SEGMENT);
 }
+
+// One run: its page, its log, the owner's controls and its diff.
+
+export type RunEvent = Schemas["RunEvent"];
+export type RunEventKind = RunEvent["kind"];
+export type RunEventPage = Schemas["RunEvents"];
+export type RunMessage = Schemas["Message"];
+export type DiffLink = Schemas["DiffLink"];
+
+/** `runs.TERMINAL_STATES`: a run in one of these never moves again. */
+export const TERMINAL_STATES = ["done", "failed", "lost", "cancelled"] as const satisfies readonly RunState[];
+/** `runs.TAKEOVER_STATES` and `runs.HANDBACK_STATES`: when the owner may ask for each. */
+export const TAKEOVER_STATES = ["leased", "running"] as const satisfies readonly RunState[];
+export const HANDBACK_STATES = ["interactive"] as const satisfies readonly RunState[];
+/** `runs.MESSAGE_STATES`: a message waits in the inbox only while an agent may still read it. */
+export const MESSAGE_STATES = ["queued", ...HELD_STATES] as const satisfies readonly RunState[];
+/** `runs.MAX_MESSAGE_BYTES`: a message to the agent is at most 8 KiB of UTF-8. */
+export const MAX_MESSAGE_BYTES = 8 * 1024;
+/** `MAX_EVENTS_PAGE` of the API: the most events one read of `events?after=` answers. */
+export const EVENTS_PAGE = 1000;
+
+export function isTerminalState(state: string): boolean {
+  return (TERMINAL_STATES as readonly string[]).includes(state);
+}
+
+/** A run id as the API accepts it (`MAX_ID`, a positive bigint); null for anything else. */
+export function parseRunId(text: string): number | null {
+  if (!/^[1-9][0-9]{0,18}$/.test(text)) return null;
+  const id = Number(text);
+  return Number.isSafeInteger(id) ? id : null;
+}
+
+export function runHref(project: string, id: number): Route {
+  return projectHref(project, `${RUNS_SEGMENT}/${id}`);
+}
+
+export function runDiffHref(project: string, id: number): Route {
+  return projectHref(project, `${RUNS_SEGMENT}/${id}/diff`);
+}
+
+/** Where a browser follows a run's events as server-sent events, on the page's own origin. */
+export function runStreamPath(project: string, id: number, after: number): string {
+  return `/v1/projects/${encodeURIComponent(project)}/runs/${id}/stream?after=${after}`;
+}
+
+/** Below `runKeys.all`, so a dispatch, a rerun or a control reloads it with the lists. */
+export function runKey(project: string, id: number) {
+  return ["projects", project, "runs", "one", id] as const;
+}
+
+/** One run, asked again every 5 seconds while it is active (its lease, a state the stream has not told yet). */
+export const runQuery = (api: ApiSource, project: string, id: number) =>
+  queryOptions({
+    queryKey: runKey(project, id),
+    queryFn: ({ signal }) =>
+      call(api().GET("/v1/projects/{project}/runs/{run_id}", { params: { path: { project, run_id: id } }, signal })),
+    refetchInterval: (query) => (query.state.data && isActiveState(query.state.data.state) ? LIVE_REFRESH_MS : false),
+  });
+
+/** The run's events after `after`, in seq order: what the log reads when the stream cannot be used. */
+export function runEvents(api: ApiClient, project: string, id: number, after: number, signal?: AbortSignal) {
+  return call(
+    api.GET("/v1/projects/{project}/runs/{run_id}/events", {
+      params: { path: { project, run_id: id }, query: { after, limit: EVENTS_PAGE } },
+      signal,
+    }),
+  );
+}
+
+export type RunControl = "cancel" | "takeover" | "handback" | "approve" | "rerun";
+
+/** One of the owner's controls, with the session's CSRF header; rerun answers the new run. */
+export async function controlRun(api: ApiClient, project: string, id: number, action: RunControl): Promise<Run> {
+  const headers = await csrfHeaders(api);
+  const params = { path: { project, run_id: id } };
+  switch (action) {
+    case "cancel":
+      return call(api.POST("/v1/projects/{project}/runs/{run_id}/cancel", { params, headers }));
+    case "takeover":
+      return call(api.POST("/v1/projects/{project}/runs/{run_id}/takeover", { params, headers }));
+    case "handback":
+      return call(api.POST("/v1/projects/{project}/runs/{run_id}/handback", { params, headers }));
+    case "approve":
+      return call(api.POST("/v1/projects/{project}/runs/{run_id}/approve", { params, headers }));
+    case "rerun":
+      return call(api.POST("/v1/projects/{project}/runs/{run_id}/rerun", { params, headers }));
+  }
+}
+
+/** A message from the owner to the run's agent, which the worker hands over at the agent's next turn. */
+export async function sendRunMessage(api: ApiClient, project: string, id: number, text: string): Promise<RunMessage> {
+  const headers = await csrfHeaders(api);
+  return call(
+    api.POST("/v1/projects/{project}/runs/{run_id}/messages", { params: { path: { project, run_id: id } }, body: { text }, headers }),
+  );
+}
+
+/** A presigned GET of the run's diff, working for 5 minutes; `download` asks for the attachment run-<id>.diff. */
+export function runDiffLink(api: ApiClient, project: string, id: number, download = false): Promise<DiffLink> {
+  return call(
+    api.GET("/v1/projects/{project}/runs/{run_id}/diff", {
+      params: { path: { project, run_id: id }, query: { download } },
+    }),
+  );
+}

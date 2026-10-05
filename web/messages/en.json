@@ -30,7 +30,8 @@
     "skills": "Skills",
     "myMemories": "My memories",
     "globalSkills": "Shared skills",
-    "workers": "Workers"
+    "workers": "Workers",
+    "runDiff": "Diff"
   },
   "projectSwitcher": {
     "label": "Projects",
@@ -1485,6 +1486,256 @@
         "notFound": "The plan is no longer on the hub, or you can no longer read it.",
         "conflict": "A step is no longer ready, or another dispatch took it first. The steps are updated; check them and try again.",
         "invalid": "The hub did not accept the dispatch."
+      }
+    },
+    "openRun": "Open run #{id}",
+    "detail": {
+      "metaTitle": "Run #{id} of {project}",
+      "title": "Run",
+      "untitled": "Untitled step",
+      "description": "Plan <planLink>{plan}</planLink>, <stepLink>step {step}: {title}</stepLink>",
+      "notFoundTitle": "Run #{id} not found",
+      "notFoundDescription": "The run does not exist in this project, or it belongs to a plan you cannot read.",
+      "stepper": {
+        "label": "Progress of the run",
+        "phase": {
+          "queued": "Queued",
+          "leased": "Leased",
+          "running": "Running",
+          "verifying": "Verifying",
+          "review": "Review",
+          "done": "Done"
+        },
+        "status": {
+          "done": "passed",
+          "current": "current state",
+          "stopped": "ended here",
+          "todo": "not reached"
+        },
+        "during": "ended while {phase}"
+      },
+      "log": {
+        "title": "Log",
+        "label": "Log of run #{id}",
+        "count": "{total, plural, one {# line} other {# lines}}",
+        "countFiltered": "{shown} of {total, plural, one {# line} other {# lines}}",
+        "lines": "{count, plural, one {# line} other {# lines}}",
+        "filter": "Show",
+        "groups": {
+          "all": "All",
+          "agent": "Agent",
+          "tools": "Tools",
+          "output": "Output",
+          "system": "System"
+        },
+        "search": {
+          "label": "Search the log",
+          "placeholder": "Search the log",
+          "clear": "Clear the search"
+        },
+        "follow": "Follow",
+        "pause": "Pause",
+        "resume": "Resume",
+        "paused": "{count, plural, =0 {Display paused.} one {Display paused: # new line waits.} other {Display paused: # new lines wait.}}",
+        "pollingHint": "The live stream is unavailable: the page reads new lines every 1.5 seconds.",
+        "kept": "The hub keeps a run's events for 30 days after it ends, unless configured otherwise.",
+        "waiting": "Waiting for the first event of the run…",
+        "none": "This run has no events.",
+        "noMatch": "No line matches the filter or the search.",
+        "truncated": "cut by the hub at 64 KiB",
+        "shortened": "shortened here; the event is longer",
+        "status": {
+          "connecting": "Connecting",
+          "live": "Live",
+          "reconnecting": "Reconnecting",
+          "polling": "Polling",
+          "ended": "Finished",
+          "failed": "Log unavailable"
+        },
+        "kind": {
+          "agent_message_chunk": "Agent",
+          "agent_thought_chunk": "Thought",
+          "tool_call": "Tool",
+          "tool_call_update": "Tool result",
+          "plan": "Plan",
+          "usage_update": "Usage",
+          "user_message": "Message",
+          "state": "State",
+          "system": "System",
+          "output": "Output"
+        },
+        "move": "{from} to {to}",
+        "moveBy": "{from} to {to}, by {actor}",
+        "moveTo": "Now {to}",
+        "moveReason": "{move}: {reason}",
+        "actor": {
+          "worker": "the worker",
+          "owner": "the owner",
+          "reaper": "the hub"
+        }
+      },
+      "composer": {
+        "label": "Message the agent",
+        "placeholder": "For example: also cover the revoked-token case",
+        "send": "Send",
+        "sending": "Sending…",
+        "hint": "The worker hands it to the agent at its next turn; Ctrl or Cmd + Enter sends. Only you see this box: you dispatched the run.",
+        "sent": "Sent. It waits in the run's inbox for the agent's next turn.",
+        "blank": "Type a message first.",
+        "long": "A message is at most {max} bytes of UTF-8. Shorten it.",
+        "bytes": "{count} of {max} bytes",
+        "conflict": "The run no longer takes messages: it ended, or waits for review."
+      },
+      "facts": {
+        "title": "Details",
+        "worker": "Worker",
+        "runtime": "Runtime",
+        "runtimeAny": "Any, picked when a worker claims it; {mode}",
+        "runtimePicked": "{runtime}, picked by the worker; {mode}",
+        "runtimeMode": "{runtime}, {mode}",
+        "mode": {
+          "headless": "headless",
+          "interactive": "interactive"
+        },
+        "repo": "Repo",
+        "on": "on",
+        "session": "Session",
+        "none": "none yet",
+        "lease": "Lease",
+        "leaseLeft": "expires in {minutes} min {seconds} s",
+        "leaseExpired": "expired; the hub requeues or ends the run within a minute",
+        "leaseNone": "none until a worker claims it",
+        "leaseReleased": "released",
+        "attempt": "Attempt",
+        "attemptValue": "{attempt} of {max}",
+        "parent": "retries run #{id}",
+        "approval": "Approval",
+        "approvals": {
+          "review": "Hold for review",
+          "auto": "Mark the step done when verified"
+        },
+        "timeout": "Timeout",
+        "timeoutValue": "{minutes} min",
+        "dispatched": "Dispatched by",
+        "started": "Started",
+        "finished": "Finished",
+        "duration": "Duration",
+        "waited": "Waiting",
+        "revision": "Plan revision",
+        "revisionValue": "r{revision}"
+      },
+      "result": {
+        "title": "Result",
+        "pending": "Shows once the agent finishes and the worker has run the verify commands again.",
+        "empty": "The run ended without a result.",
+        "verify": "Verify",
+        "exit": "exit {code}",
+        "exitUnknown": "exit unknown",
+        "seconds": "{seconds} s",
+        "commit": "Commit",
+        "onBranch": "on {branch}",
+        "changes": "Changes",
+        "diffstat": "{files, plural, one {# file} other {# files}}, +{insertions} -{deletions}",
+        "viewDiff": "View the diff",
+        "usage": "Usage",
+        "evidence": "Evidence"
+      },
+      "actions": {
+        "diff": "View diff",
+        "rerun": "Rerun",
+        "cancel": "Cancel run",
+        "takeover": "Take over",
+        "handback": "Hand back",
+        "approve": "Approve and mark step done",
+        "confirmCancel": {
+          "title": "Cancel run #{id}?",
+          "now": "The run stops at once, and its step goes back to pending in the plan.",
+          "held": "The worker stops the agent at its next heartbeat, within about 15 seconds, and reports the run cancelled. The step goes back to pending in the plan; what the agent changed stays in its worktree on the worker.",
+          "confirm": "Cancel run",
+          "pending": "Cancelling…",
+          "keep": "Keep it"
+        },
+        "notice": {
+          "cancelled": "Run #{id} is cancelled.",
+          "cancelAsked": "Cancel of run #{id} asked: the worker stops the agent at its next heartbeat.",
+          "approved": "Run #{id} approved: step {step} of {plan} is done.",
+          "takeover": "Takeover of run #{id} asked: the worker stops the agent at the end of its turn and opens {name}.",
+          "handback": "Hand back of run #{id} asked: the agent goes on headless in the same session."
+        }
+      },
+      "takeover": {
+        "title": "Take over run #{id}",
+        "description": "The headless agent stops at the end of its current turn. Its session then opens in a terminal on the worker, with its full history, and you drive it.",
+        "attachTitle": "On {worker}, attach to the session",
+        "attachLabel": "attach command",
+        "attachHint": "Opens the tmux session {name}, which resumes the agent's session {session}.",
+        "attachHintNoSession": "Opens the tmux session {name}, which resumes the agent's session.",
+        "remoteTitle": "Or go on in the Claude app",
+        "remoteHint": "The resumed Claude Code session has Remote Control on, named <code>{name}</code>. Open it from Claude desktop or the mobile app.",
+        "warning": "While you hold the run it stays Interactive: its lease keeps renewing, and the verify commands run only after you hand it back or leave the terminal.",
+        "cancel": "Cancel",
+        "confirm": "Take over",
+        "pending": "Asking…"
+      },
+      "notes": {
+        "cancelAsked": "You asked to cancel this run at {time}. The worker stops the agent at its next heartbeat, within about 15 seconds.",
+        "takeoverAsked": "You asked to take over at {time}. {worker} stops the agent at the end of its turn, then the run turns Interactive.",
+        "handbackAsked": "You asked to hand back at {time}. The worker lets the agent go on headless in the same session.",
+        "interactive": "You hold this run. On {worker}, attach with <code>{command}</code>, and press Hand back when you are done.",
+        "notOwner": "Only {login}, who dispatched this run, can message its agent, take it over or stop it.",
+        "review": "The worker verified this run. Read its log and diff, then approve it to mark the step done, or cancel it.",
+        "reviewNoWriter": "The worker verified this run. Approving it needs the writer role on this project."
+      },
+      "errors": {
+        "forbidden": "The hub refused: only the member who dispatched the run can steer it, and approve and rerun need the writer role.",
+        "notFound": "The run can no longer be read: its plan left the hub, or you lost access to it.",
+        "conflict": "The run moved meanwhile. The page shows its state now; check it and try again.",
+        "full": "The run's log is full (20,000 events), so it takes no more messages.",
+        "apiMessage": "The hub says: {message}"
+      }
+    },
+    "diff": {
+      "metaTitle": "Diff of run #{id} of {project}",
+      "title": "Diff of run",
+      "description": "{title}: {files, plural, one {# file} other {# files}}, {size} KiB.",
+      "back": "Back to the run",
+      "download": "Download .diff",
+      "downloadStarted": "Downloading {file}.",
+      "filesLabel": "Files in this diff",
+      "filesTitle": "{count, plural, one {# file changed} other {# files changed}}",
+      "fileCounts": "{additions} lines added, {deletions} removed",
+      "status": {
+        "added": "Added",
+        "deleted": "Deleted",
+        "renamed": "Renamed",
+        "copied": "Copied",
+        "modified": "Modified"
+      },
+      "renamedTo": "renamed to",
+      "show": "Show",
+      "hide": "Hide",
+      "binary": "Binary file, not shown. Download the diff to apply it.",
+      "modeOnly": "Only the file mode changed.",
+      "noText": "No text change.",
+      "hunkCaption": "Change {index} in {path}, from line {from}",
+      "oldLine": "Line before",
+      "newLine": "Line after",
+      "text": "Text",
+      "added": "Added:",
+      "removed": "Removed:",
+      "cut": "The diff is longer than this page shows: it stops after {lines} lines. Download it for the rest.",
+      "empty": "The diff has no file in it.",
+      "none": {
+        "title": "This run has no diff",
+        "description": "Its worker uploads the diff of the run's commits when the run ends, when the hub has a blob store and the diff is at most 8 MiB."
+      },
+      "unavailable": {
+        "title": "The hub keeps no diffs",
+        "description": "This hub has no blob store configured, so workers cannot upload a run's diff."
+      },
+      "unreadable": {
+        "title": "The diff could not be read",
+        "description": "The blob store did not answer the web's request. Download the diff instead, or reload the page later."
       }
     }
   }
