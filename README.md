@@ -158,6 +158,20 @@ and `evo-agents hub worker` need the server extra: `pip install 'evo-ak[hub-serv
 covers the API and its OpenAPI document, sign-in from the CLI and the web, who sees what, the plan copies in git,
 blobs on R2, the worker and its queue, and operations: migrations, backup, restore and health checks.
 
+### Running steps on your machine
+
+A member's laptop or desktop can run plan steps the hub hands it, with that member's own coding agent:
+
+```sh
+uv tool install 'evo-ak[worker]'
+evo-agents worker join --url https://hub.example.org --code XXXX-XXXX   # the code from the web's Workers page
+evo-agents worker run                                                    # the daemon, in the foreground
+```
+
+The daemon claims runs, works in a git worktree of its own under `~/.evo/worker`, runs the agent's verify commands
+again, and pushes the plan's branch, never the default branch. [docs/workers.md](docs/workers.md) covers the protocol
+and the daemon.
+
 ## Writing a connector
 
 A connector is a generator in process or any executable. It writes JSON objects, one per line:
@@ -179,10 +193,11 @@ evo_agents/
   harness/    schema and loader for harness.yaml, knowledge.yaml, contracts.yaml, plans
   kg/         protocol, connectors, corpus, pipeline, store, policy, MCP server
   hub/        team hub: server, client commands, MCP proxy, plugin hooks
+  worker/     the worker daemon, `evo-agents worker`
 plugins/      Claude Code marketplace (plugins evo-kg and evo-hub)
 web/          the hub's web interface (Next.js, its own image)
 deploy/hub/   the hub's Dockerfile and compose files
-docs/         hub.md: running and using the hub
+docs/         hub.md: running and using the hub; workers.md: workers, runs and the daemon
 ```
 
 ## License
