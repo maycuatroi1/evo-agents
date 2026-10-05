@@ -602,7 +602,8 @@ upgrade. There the browser opens the terminal on the api's own address, whose po
 | `evo-agents worker service install` | keeps the daemon running in the background, now and at each login (see [In the background](#in-the-background)) |
 | `evo-agents worker service uninstall` | stops the daemon and removes the service; the worker stays registered |
 | `evo-agents worker service status [--json]` | whether the service is installed and the daemon runs, its pid and last exit |
-| `evo-agents worker status [--json]` | the worker as this machine and the hub see it: runtimes, checkouts, the daemon's pid, runs kept, the spool |
+| `evo-agents worker status [--json]` | the worker as this machine and the hub see it: runtimes, tmux and whether the web terminal is allowed, checkouts, the daemon's pid, runs kept, the spool |
+| `evo-agents worker attach N` | puts this terminal on the tmux session `evo-run-N` of an interactive run (`tmux attach`, or `switch-client` from inside tmux on the same server) |
 | `evo-agents worker selftest --runtime NAME [--model M] [--effort E] [--keep]` | runs the runtime's adapter for real on a tiny prompt in a scratch git repository, prints each event and how many of each kind came, and exits 0 when the turn completed and the agent wrote the file it was asked for (it spends a little of the owner's quota; Claude Code and Codex run at effort `low` unless `--effort` says otherwise) |
 | `evo-agents worker drain [--resume]` | stops claims (or resumes them) through `POST /v1/workers/{id}/drain` or `/undrain`, with the machine token |
 | `evo-agents worker revoke [--force]` | revokes the worker on the hub and deletes its token here; `--force` deletes it even when the hub cannot be reached |
@@ -686,7 +687,9 @@ hands it no run.
    session id. The owner's messages are handed to the agent when the heartbeat counts them, then acknowledged. A
    cancel, the run's timeout counted from the agent's start, or a heartbeat answering `held: false` interrupt the
    agent; a cancelled run is reported `cancelled`, a timed-out one `failed`, and a run no longer held gets no report.
-   A takeover or handback the daemon cannot do yet is noted once in the run's log, and the run goes on.
+   A takeover hands the agent to a person and a handback gives it back (see [Interactive runs](#interactive-runs));
+   one the worker cannot do (no tmux, or an adapter without a terminal UI) is noted once in the run's log, and the
+   run goes on headless.
 3. The agent ends its turn and has written `.evo-run/result.json`. The daemon reports `verifying` and runs each of
    its `verify_commands` (1 to 50 shell commands) in the worktree with `/bin/sh`, within the time the run has left,
    and records each exit code and the end of its output as a `system` event. A missing or malformed result file, or
@@ -699,6 +702,49 @@ hands it no run.
    when the hub has a blob store, and moves the worktree off the plan's branch, so the owner can check the branch
    out elsewhere. The worktree, and an `evo-run/<run>` branch, are removed 7 days after the run ended; the daemon
    looks every hour.
+
+### Interactive runs
+
+A person can drive a run's agent in its runtime's own terminal UI, in tmux on the worker. Interactive mode needs
+`tmux` on the daemon's PATH; without it the daemon says so when it starts, an interactive run fails before its agent
+starts, and a takeover is noted as unsupported while the run goes on headless.
+
+- **Takeover.** When the heartbeat says `takeover`, the adapter lets the agent finish its turn
+  (`stop_at_turn_boundary`); the daemon then starts the runtime's UI on the same session in the detached tmux session
+  `evo-run-N` and reports `interactive` with the session id. The lease goes on being extended. A run dispatched in
+  interactive mode, or taken over before its agent started, starts there, the UI given the run's prompt.
+- **The UIs.** Claude Code: `claude --resume ID --dangerously-skip-permissions --remote-control evo-run-N`
+  (`--session-id` and the prompt for a new session), so the session also shows in the Claude apps through Remote
+  Control. Claude Code stops at its folder trust dialog in every new folder, the bypass flag notwithstanding, so the
+  daemon first sets `projects[<worktree>].hasTrustDialogAccepted` to true in Claude Code's state file (`~/.claude.json`,
+  or `.claude.json` under `CLAUDE_CONFIG_DIR`), for the worktree's path as given and resolved; the file is replaced
+  atomically with its mode and every other key, and one that is not a JSON object is left alone (the dialog then
+  waits in the terminal). opencode: `opencode attach URL --session ID --dir WORKTREE` on an `opencode serve` of the
+  UI's own (127.0.0.1, a free port, a random password), which also creates a new session and hands it the prompt.
+  Codex: `codex resume ID --dangerously-bypass-approvals-and-sandbox -C WORKTREE` (`codex` with the prompt for a new
+  session), with `--dangerously-bypass-hook-trust` when the help of that codex lists it, so the UI does not stop at
+  "Hooks need review"; that flag runs the owner's enabled hooks without their recorded trust. The run's model and
+  effort go along when the run names them.
+- **The pane.** tmux runs the UI through a script in the run's directory (mode 0700, removed once read) that enters
+  the worktree, sets the agent's environment over the tmux server's and executes the UI, so the UI has the run's
+  variables whatever server it lands on: the default one, the one of `$TMUX` when the daemon runs inside tmux, or
+  `EVO_WORKER_TMUX_SOCKET`. `evo-agents worker attach N` reads the server from the run's record.
+- **The log.** While a person drives the agent, the run's log follows the runtime's own record of the session, in the
+  same event kinds: Claude Code's transcript (`<config>/projects/*/<ID>.jsonl`), Codex's rollout
+  (`$CODEX_HOME/sessions/Y/M/D/rollout-*-<ID>.jsonl`, the one whose `session_meta` names the worktree for a new
+  session) and opencode's event stream. What the person types shows as `output`. A UI without such a record is logged
+  from its terminal (`tmux pipe-pane`), escape sequences removed, as `output` `{"terminal": text}`. Messages of the
+  owner wait in the inbox meanwhile and go to the agent once it is headless again.
+- **Handback.** When the heartbeat says `handback`, or the person leaves the UI, the daemon closes the tmux session (a
+  turn the person started in the UI is cut there), and a new adapter goes on headless in the same session with a
+  message saying the session was handed back; the run is reported `running` and goes on to its verify commands as
+  any run. A cancel, the run's timeout or the hub letting go of the run close the UI as well.
+- **The web terminal.** When the heartbeat says `terminal_open` for an interactive run, the daemon opens the worker's
+  end of the terminal (see [Terminal](#terminal)) with aiohttp and joins it to `tmux attach` of the run's session,
+  on a PTY of its own whose size follows the browser's. The last 256 KiB that terminal printed are kept for the run
+  and sent first when a browser connects again. A worker whose `config.json` has `allow_web_terminal` off connects
+  only to print that in the terminal, then closes: nothing is attached and nothing typed reaches the machine.
+- A daemon that starts closes the tmux sessions of the runs a previous daemon left unfinished.
 
 ### When the hub does not answer, and stopping
 
@@ -749,5 +795,6 @@ it again every 10 seconds until `evo-agents worker service uninstall`.
   today; more processes or replicas would need a relay through Postgres or a broker.
 - Workers run on macOS and Linux; Windows only through WSL. Interactive mode and the terminal need tmux on the
   worker, and a worker without it takes headless runs only.
+- A handback closes the terminal UI where it stands: the daemon cannot see a turn the person started there end.
 - Only the owner dispatches to a worker; workers shared by a team are a later decision.
 - A finished step never dispatches the next one, and nothing opens or merges a pull request.
