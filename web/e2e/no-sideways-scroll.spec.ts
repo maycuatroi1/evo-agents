@@ -5,7 +5,7 @@ import { ADMIN_ACCOUNT, machineToken } from "./support/hub";
 import { grantOn, kgPath, nodePath, SHARED_NODE, sharedKg } from "./support/kg";
 import { apiOf, memoryFile, putMemory } from "./support/memories";
 import { ACTIVE_PLAN, open, seedPlans } from "./support/plans";
-import { claimRun, dispatch, liveWorker, RUN_PLAN, seedRunPlan } from "./support/runs";
+import { claimRun, dispatch, liveWorker, RUN_PLAN, runPath, runToReview, say, seedRunPlan, sendEvents, startRun, uploadDiff } from "./support/runs";
 import { packSkill, publishSkill } from "./support/skills";
 import { heartbeat, registerWorker, RUNTIMES } from "./support/workers";
 
@@ -109,11 +109,17 @@ test("runs pages never scroll sideways at 375, 768 and 1024 px", async ({ page, 
   const project = me.projects[0];
   await seedRunPlan(me, project);
   const live = await liveWorker(me, project, `${LONG}-worker`);
-  await dispatch(me, project, ["2", "4"]);
+  const [run] = await dispatch(me, project, ["2", "4"]);
   await claimRun(live);
+  await startRun(live, run.id, `${LONG}-session`);
+  await sendEvents(live, run.id, [say(`${LONG} ${LONG}`), { kind: "tool_call", body: { title: "Read", rawInput: { file_path: `/${LONG}/${LONG}/${LONG}.ts` } } }]);
+  await runToReview(live, run.id);
+  await uploadDiff(live, run.id, `diff --git a/${LONG}/${LONG}.ts b/${LONG}/${LONG}.ts\n--- a/${LONG}/${LONG}.ts\n+++ b/${LONG}/${LONG}.ts\n@@ -1 +1 @@\n-${LONG}${LONG}\n+${LONG}${LONG}${LONG}\n`);
   await noSidewaysScroll(page, [
     { path: `/p/${project}/runs`, ready: shown("runs-table") },
     { path: `/p/${project}/plans/${RUN_PLAN}/steps/2`, ready: shown("step-runs-table") },
     { path: `/workers/${live.worker.id}`, ready: shown("worker-runs-table") },
+    { path: runPath(project, run.id), ready: shown("log-line") },
+    { path: `${runPath(project, run.id)}/diff`, ready: shown("diff-file") },
   ]);
 });

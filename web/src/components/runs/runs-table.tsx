@@ -12,7 +12,7 @@ import { cn } from "@/lib/utils";
 
 import { RunStateBadge } from "./badges";
 import { durationParts, runTiming } from "./model";
-import { isActiveState, type Run } from "./queries";
+import { isActiveState, type Run, runHref } from "./queries";
 
 /** Who reads the table: a worker links to its page only for the member who owns it (or a hub admin). */
 export type Viewer = { login: string; admin: boolean };
@@ -136,10 +136,7 @@ function WorkerCell({ run, viewer }: { run: Run; viewer: Viewer | null }) {
   );
 }
 
-/**
- * Runs as a table, newest first as the API sends them; the order is the server's, so the columns do not sort. The run
- * number is plain text until the run's own page exists (step 16 of the worker-fleet plan).
- */
+/** Runs as a table, newest first as the API sends them; the order is the server's, so the columns do not sort. */
 export function RunsTable({
   runs,
   caption,
@@ -161,9 +158,15 @@ export function RunsTable({
       id: "run",
       header: () => t("columns.run"),
       cell: (info) => (
-        <span className="font-mono text-sm font-medium tabular-nums" data-run-id={info.row.original.id}>
+        <Link
+          href={runHref(info.row.original.project, info.row.original.id)}
+          className="font-mono text-sm font-medium text-primary tabular-nums underline-offset-4 hover:underline"
+          aria-label={t("openRun", { id: info.row.original.id })}
+          data-run-id={info.row.original.id}
+          data-testid="run-link"
+        >
           #{info.row.original.id}
-        </span>
+        </Link>
       ),
     });
     const step = helper.display({

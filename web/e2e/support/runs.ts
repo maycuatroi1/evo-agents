@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import type { Page } from "@playwright/test";
 
 import { type ApiClient, call } from "../../src/lib/api/client";
@@ -10,7 +12,8 @@ import { HOST, PROTOCOL_HEADER } from "./workers";
 /**
  * Plans with steps to run, workers that can take them, and the worker's side of the queue, all through the real API:
  * a plan pushed as a writer (`evo-agents hub plan import`), a worker registered from a signed-in machine
- * (`evo-agents worker register`), and the daemon's heartbeat and claim with its worker token (docs/workers.md).
+ * (`evo-agents worker register`), and the daemon's heartbeat, claim, state reports, events, inbox and diff upload
+ * with its worker token (docs/workers.md). The specs are the fake worker: they emit what a daemon would.
  */
 export type Run = components["schemas"]["Run"];
 export type Worker = components["schemas"]["Worker"];
@@ -145,4 +148,109 @@ export async function runsOf(account: Account, project: string): Promise<Run[]> 
 /** The row of run `id` in a runs table. */
 export function runRow(page: Page, id: number, table = "runs-table") {
   return page.locator("#main").getByTestId(table).locator("tbody tr").filter({ has: page.locator(`[data-run-id="${id}"]`) });
+}
+
+/** The daemon's report that the agent started, with its session id. */
+export async function startRun(live: LiveWorker, runId: number, sessionId = "3f2a9c1e-0000-4000-8000-000000000001"): Promise<Run> {
+  await workerHeartbeat(live, [runId]);
+  return reportState(live, runId, { state: "running", session_id: sessionId });
+}
+
+/** A commit name as the hub takes it: 40 hex digits. */
+export const COMMIT = "7c1e9a2f3b4c5d6e7f8091a2b3c4d5e6f7081920";
+
+/** The daemon's reports after the agent finished: verifying, then review with what it verified. */
+export async function runToReview(live: LiveWorker, runId: number): Promise<Run> {
+  await reportState(live, runId, { state: "verifying" });
+  return reportState(live, runId, {
+    state: "review",
+    commit_sha: COMMIT,
+    diffstat: { files: 2, insertions: 12, deletions: 3 },
+    verify: [{ command: "pnpm test", exit_code: 0, duration_ms: 1400 }],
+    usage: { input_tokens: 41200, output_tokens: 6800 },
+    summary: "Added the queue with dispatch and claim.",
+  });
+}
+
+export type WorkerEvent = { kind: string; body: Record<string, unknown>; at?: string };
+
+/**
+ * Events of a run as the daemon sends them: numbered on from what the hub acknowledged (an empty batch asks), in
+ * batches of at most 500. Answers the hub's ack_seq.
+ */
+export async function sendEvents(live: LiveWorker, runId: number, events: WorkerEvent[]): Promise<number> {
+  const path = `/v1/worker/runs/${runId}/events`;
+  let { ack_seq: seq } = (await workerCall(live, path, { events: [] })) as { ack_seq: number };
+  for (let start = 0; start < events.length; start += 500) {
+    const batch = events.slice(start, start + 500).map((event) => ({
+      seq: ++seq,
+      at: event.at ?? new Date().toISOString(),
+      kind: event.kind,
+      body: event.body,
+    }));
+    const answer = (await workerCall(live, path, { events: batch })) as { ack_seq: number };
+    seq = answer.ack_seq;
+  }
+  return seq;
+}
+
+/** What the agent says, as one event. */
+export function say(text: string): WorkerEvent {
+  return { kind: "agent_message_chunk", body: { text } };
+}
+
+/** A tool the agent ran, as one event. */
+export function tool(title: string, command: string): WorkerEvent {
+  return { kind: "tool_call", body: { toolCallId: `call-${command.length}`, title, rawInput: { command }, status: "in_progress" } };
+}
+
+/** The messages waiting in the run's inbox, as the worker holding it takes them (without acknowledging any). */
+export async function workerInbox(live: LiveWorker, runId: number): Promise<{ id: number; text: string; sent_by: string }[]> {
+  const answer = (await workerCall(live, `/v1/worker/runs/${runId}/inbox`, {})) as { messages: { id: number; text: string; sent_by: string }[] };
+  return answer.messages;
+}
+
+/** The daemon's heartbeat answer for one run: what the owner asked of it. */
+export async function runControl(live: LiveWorker, runId: number): Promise<Record<string, unknown>> {
+  const answer = (await workerCall(live, "/v1/worker/heartbeat", {
+    runtimes: { "claude-code": { available: true, version: "2.1.289" } },
+    checkouts: { [`${live.project}/${REPO}`]: { path: `~/github/${REPO}`, branch: "main" } },
+    free_slots: 0,
+    runs: [runId],
+  })) as { runs: Record<string, unknown>[] };
+  return answer.runs.find((run) => run.id === runId) ?? {};
+}
+
+/** The run's diff, uploaded as the daemon does when the run ends: ask, PUT to the presigned URL, commit. */
+export async function uploadDiff(live: LiveWorker, runId: number, text: string): Promise<string> {
+  const data = Buffer.from(text, "utf8");
+  const sha256 = createHash("sha256").update(data).digest("hex");
+  const asked = (await workerCall(live, `/v1/worker/runs/${runId}/uploads`, {
+    items: [{ sha256, size: data.length, kind: "run-diff" }],
+  })) as { uploads: { upload_id: string; url: string }[] };
+  for (const ticket of asked.uploads) {
+    const put = await fetch(ticket.url, { method: "PUT", body: new Uint8Array(data), headers: { "content-type": "application/octet-stream" } });
+    if (!put.ok) throw new Error(`PUT to the presigned URL: ${put.status}`);
+  }
+  if (asked.uploads.length) {
+    await workerCall(live, `/v1/worker/runs/${runId}/blobs`, { upload_ids: asked.uploads.map((ticket) => ticket.upload_id) });
+  }
+  return sha256;
+}
+
+/** A run as `account` reads it through the API. */
+export async function runOf(account: Account, project: string, id: number): Promise<Run> {
+  const api = bearerClient(await machineToken(account));
+  return call(api.GET("/v1/projects/{project}/runs/{run_id}", { params: { path: { project, run_id: id } } }));
+}
+
+/** A run's events as `account` reads them through the API. */
+export async function eventsOf(account: Account, project: string, id: number) {
+  const api = bearerClient(await machineToken(account));
+  return call(api.GET("/v1/projects/{project}/runs/{run_id}/events", { params: { path: { project, run_id: id }, query: { limit: 1000 } } }));
+}
+
+/** The run's page. */
+export function runPath(project: string, id: number): string {
+  return `/p/${project}/runs/${id}`;
 }

@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { describe, expect, it } from "vitest";
 
-import { config, proxy } from "./proxy";
+import { config, proxy, RUN_STREAM } from "./proxy";
 
 const SESSION = `evs_${"b".repeat(43)}`;
 
@@ -51,8 +51,24 @@ describe("proxy", () => {
     expect(https.headers.get("content-security-policy")).toContain("upgrade-insecure-requests");
   });
 
+  it("asks for a run's event stream unencoded, with no sign-in redirect and nothing else changed", () => {
+    const response = proxy(request("/v1/projects/demo/runs/12/stream", undefined, { "accept-encoding": "gzip, br", authorization: "Bearer x" }));
+    expect(response.headers.get("location")).toBeNull();
+    expect(response.headers.get("x-middleware-next")).toBe("1");
+    expect(response.headers.get("x-middleware-request-accept-encoding")).toBe("identity");
+    expect(response.headers.get("x-middleware-request-authorization")).toBe("Bearer x");
+    expect(response.headers.get("content-security-policy")).toBeNull();
+    expect(RUN_STREAM.test("/v1/projects/demo/runs/12/stream")).toBe(true);
+    for (const path of ["/v1/projects/demo/runs/12/events", "/v1/projects/demo/runs/x/stream", "/v1/projects/demo/runs/12/stream/more"]) {
+      expect(RUN_STREAM.test(path), path).toBe(false);
+    }
+    expect(config.matcher).toContain("/v1/projects/:project/runs/:id/stream");
+  });
+
   it("does not run on the API or on build assets", () => {
-    const source = new RegExp(`^${config.matcher[0].source}$`);
+    const pages = config.matcher[0];
+    if (typeof pages === "string") throw new Error("the first matcher is the pages' one");
+    const source = new RegExp(`^${pages.source}$`);
     for (const path of ["/", "/login", "/admin", "/p/demo"]) expect(source.test(path), path).toBe(true);
     for (const path of ["/v1/projects", "/mcp", "/_next/static/chunk.js", "/icon.svg"]) {
       expect(source.test(path), path).toBe(false);

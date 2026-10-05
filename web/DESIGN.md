@@ -33,6 +33,8 @@ warnings. Ratios are WCAG contrast against the surface named; the e2e axe run ch
 | `destructive` | `#b91c1c` (6.5:1 on card) | `#f87171` (6.5:1 on card) | errors |
 | `border` / `input` | `#e2e8f0` / `#cbd5e1` | `#1e293b` / `#334155` | dividers, fields |
 | `ring` | `#2563eb` (5.2:1 on card) | `#60a5fa` (7.9:1 on canvas) | focus outline |
+| `log` / `log-foreground` | `#0f172a` / `#e2e8f0` (14.5:1) | `#020617` / `#e2e8f0` (16.4:1) | a run's log, a terminal surface in both themes |
+| `log-muted`, `log-agent`, `log-tool`, `log-system`, `log-user`, `log-ok`, `log-error` | slate-400, blue-300, amber-300, violet-300, pink-300, green-300, red-300 (7.0:1 to 12.7:1 on `log`) | the same (7.9:1 to 14.4:1) | time, kinds and tones of log lines |
 
 Charts (steps 26 to 28) use `chart-1` to `chart-5`: blue, amber, emerald, violet, slate. A role or state is
 never told by colour alone: badges carry an icon and a word (`Admin`, `Writer`, `Reader`; `Quản trị`, `Ghi`,
@@ -103,6 +105,23 @@ Shared pieces built on them:
   which of the visitor's own workers could take the runs now, from what their heartbeats report, the way the hub
   matches them at claim time. The Dispatch and Run this step buttons show only for a writer of the project (whoami's
   grants); the API decides again on every dispatch.
+- `components/runs`, a run's page (`/p/{project}/runs/{id}`): a stepper of its states (the current one
+  `aria-current="step"`, a run that ended badly marked where it stopped), the log, the details and the result, and the
+  owner's controls in the header, each shown only when the state and the visitor's rights allow it (`run-model.ts`,
+  `runControls`): Cancel (confirmed in a dialog), Take over (a dialog with `evo-agents worker attach N` and, for Claude
+  Code, the Remote Control session `evo-run-N`), Hand back, Approve and Rerun, plus the message box under the log. Anyone
+  but the run's owner reads only. The header puts these actions under the title until the xl breakpoint
+  (`PageHeader`'s `metaBelow`), so they wrap instead of pushing the page sideways.
+- The log (`use-run-log.ts`, `run-log.tsx`) follows the run's server-sent events with an EventSource; the browser
+  reconnects by itself with `Last-Event-ID`, every event is kept once by its seq, and the stream's `end` closes it for
+  good. When the stream fails (closed by the browser, three errors without opening, or 10 seconds behind the run's
+  `last_seq`), the page reads `events?after=` every 1.5 seconds and tries the stream again every 30. The lines sit in a
+  `role="log"` region (polite), with filters by group, a search that highlights, Follow (scrolling up turns it off) and
+  Pause; past 2,000 lines shown only the rows in view render (`@tanstack/react-virtual`). Where the web forwards `/v1`
+  itself, `proxy.ts` asks for the stream unencoded: Next.js would gzip it and hold the events back.
+- The diff page (`/p/{project}/runs/{id}/diff`) reads the run's diff on the web's server through the presigned GET
+  the API signs (`diff-blob.ts`), so the blob store needs no CORS rule and connect-src stays `'self'`; the download is
+  a navigation to the presigned URL, as for skill bundles. It renders up to 20,000 lines, file by file.
 - `components/memories/markdown.tsx`: Markdown written by people (memory bodies) through react-markdown without
   raw HTML: tags show as text, only listed elements render, links keep http(s), mailto and anchors, images are
   never loaded, headings move under the page's h1 and the card's h2.
