@@ -1,14 +1,14 @@
 """The api's side of a knowledge graph on the hub: the built graphs it keeps in its cache, and the kg_* tools answered
 from them with the code of ``evo-agents kg serve``.
 
-A tool call reads the project's latest successful build. Its artifact, the SQLite file the worker uploaded, is
-looked up in ``<data dir>/kg/graphs/<project>/<sha256>.sqlite``; when it is not there it is fetched from the blob
-store into a temporary file in the same directory, its SHA-256 and size are checked, and only then is it renamed into
-place, so a file in the cache always holds the bytes its name promises. A file that does not match is deleted and
-never opened. The cache keeps the KEEP files installed last per project: an older one is deleted unless a call is
-reading it (an open file stays readable after it is deleted anyway). When the blob store does not answer, the newest
-build whose artifact is cached answers instead, and kg_status says which build that is. Files are opened read-only
-and immutable: nothing writes them again, so SQLite takes no lock.
+A tool call reads the project's latest successful build that still holds an artifact (``GRAPHS``). Its artifact, the
+SQLite file the worker uploaded, is looked up in ``<data dir>/kg/graphs/<project>/<sha256>.sqlite``; when it is not
+there it is fetched from the blob store into a temporary file in the same directory, its SHA-256 and size are checked,
+and only then is it renamed into place, so a file in the cache always holds the bytes its name promises. A file that
+does not match is deleted and never opened. The cache keeps the KEEP files installed last per project: an older one is
+deleted unless a call is reading it (an open file stays readable after it is deleted anyway). When the blob store does
+not answer, the newest build whose artifact is cached answers instead, and kg_status says which build that is. Files are
+opened read-only and immutable: nothing writes them again, so SQLite takes no lock.
 
 ``HubSession`` is ``evo_agents.kg.serve.Session`` over such a file, with the hub's read rule as its clearance: the
 meet of the caller's grant and the sink's clearance (``ProjectRules.ceiling``). The tools, their schemas, CAP_CHARS
@@ -37,6 +37,13 @@ from evo_agents.kg.store import Store
 TOOL_NAMES = tuple(tool["name"] for tool in TOOLS)
 KEEP = 2  # graphs kept per project: the latest, and the one before it to fall back on
 MAX_HANDLES = 100  # kg_more handles kept per user and project
+# The successful builds of a project that still hold an artifact, newest first: ``BuiltGraph`` rows. Several builds
+# may share one artifact (a build with unchanged content reuses it), and the retention takes away the artifact of
+# older ones (``evo_agents.hub.kg_prune``).
+GRAPHS = """
+SELECT id, artifact_sha256, artifact_size, content_hash, nodes, edges, finished_at FROM kg_builds
+ WHERE project_id = %s AND status = 'succeeded' AND artifact_sha256 IS NOT NULL ORDER BY id DESC LIMIT %s
+"""
 
 
 class GraphUnavailable(Exception):

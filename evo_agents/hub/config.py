@@ -12,7 +12,8 @@ The blob store (Cloudflare R2, or any S3 API) is configured by the four EVO_HUB_
 them leaves it unconfigured, so the blob routes answer 503 and ``hub worker`` refuses to start; some but not all of
 them is a ConfigError naming the first one missing. The key pair is registered as secrets like the DSN password.
 EVO_HUB_BLOB_CONCURRENCY caps the uploads one process checks and copies in the store at once, every commit together
-(``evo_agents.hub.blobs``).
+(``evo_agents.hub.blobs``). EVO_HUB_KG_KEEP_ARTIFACTS is how many of each project's newest built graphs keep their
+artifact in the bucket (``evo_agents.hub.kg_prune``); at least 1, since the api reads the newest.
 """
 
 from __future__ import annotations
@@ -29,6 +30,9 @@ from evo_agents.hub.log import dsn_password, register_secret
 # The blob store's bound (evo_agents.hub.blobs takes it from here: that module needs boto3, this one only the stdlib).
 DEFAULT_BLOB_CONCURRENCY = 32
 MAX_BLOB_CONCURRENCY = 256
+# The retention of built graphs (evo_agents.hub.kg_prune): the artifacts of each project's newest graphs that stay.
+DEFAULT_KG_KEEP_ARTIFACTS = 3
+MAX_KG_KEEP_ARTIFACTS = 1000
 
 DEFAULT_DATA_DIR = "~/.evo/hub-server/cache"
 DEFAULT_HOST = "127.0.0.1"
@@ -72,6 +76,7 @@ class HubConfig:
     s3_access_key_id: str | None = None  # never logged
     s3_secret_access_key: str | None = None  # never logged or returned
     blob_concurrency: int = DEFAULT_BLOB_CONCURRENCY  # uploads one process seals or publishes at once
+    kg_keep_artifacts: int = DEFAULT_KG_KEEP_ARTIFACTS  # newest graphs per project whose artifact the retention keeps
 
     def __repr__(self) -> str:  # the DSNs and secrets are credentials; keep them out of tracebacks and debug output
         return f"HubConfig(data_dir={str(self.data_dir)!r}, host={self.host!r}, port={self.port})"
@@ -119,6 +124,14 @@ def _blob_concurrency(env: Mapping[str, str]) -> int:
     value = _number(env, name, DEFAULT_BLOB_CONCURRENCY, minimum=1)
     if value > MAX_BLOB_CONCURRENCY:
         raise ConfigError(name, f"{name} must be at most {MAX_BLOB_CONCURRENCY}, got {value}")
+    return value
+
+
+def _kg_keep_artifacts(env: Mapping[str, str]) -> int:
+    name = "EVO_HUB_KG_KEEP_ARTIFACTS"
+    value = _number(env, name, DEFAULT_KG_KEEP_ARTIFACTS, minimum=1)
+    if value > MAX_KG_KEEP_ARTIFACTS:
+        raise ConfigError(name, f"{name} must be at most {MAX_KG_KEEP_ARTIFACTS}, got {value}")
     return value
 
 
@@ -237,5 +250,6 @@ def load_config(
         github_api_url=_url(env, "EVO_HUB_GITHUB_API_URL", DEFAULT_GITHUB_API_URL),
         github_timeout=_number(env, "EVO_HUB_GITHUB_TIMEOUT", DEFAULT_GITHUB_TIMEOUT, kind=float, minimum=0.1),
         blob_concurrency=_blob_concurrency(env),
+        kg_keep_artifacts=_kg_keep_artifacts(env),
         **_blob_store(env),
     )

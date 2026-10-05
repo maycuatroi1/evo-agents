@@ -41,6 +41,8 @@ QUEUE_TABLES = frozenset(
 )
 # Tables of migration 0006: knowledge graphs on the hub
 KG_TABLES = frozenset({"kg_configs", "kg_pending_runs", "kg_builds"})
+# Tables of migration 0008: blobs being deleted, such as the artifacts of old graphs
+RETENTION_TABLES = frozenset({"blob_deletions"})
 HUB_ENV = ("EVO_HUB_",)  # variables a test environment must not inherit from the shell running pytest
 
 

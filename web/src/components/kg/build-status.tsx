@@ -1,6 +1,16 @@
 "use client";
 
-import { CircleAlert, Hourglass, ListChecks, type LucideIcon, Network, ScanText, TriangleAlert } from "lucide-react";
+import {
+  Archive,
+  CircleAlert,
+  Hourglass,
+  ListChecks,
+  type LucideIcon,
+  Network,
+  Recycle,
+  ScanText,
+  TriangleAlert,
+} from "lucide-react";
 import { useTranslations } from "next-intl";
 import { type ReactNode, useMemo } from "react";
 
@@ -17,10 +27,50 @@ import { BuildStatusBadge, CopyButton, Duration, JobStatusBadge, When } from "./
  * The build side of the knowledge graph page, from GET /v1/kg/{project}/builds (kg_builds and the procrastinate
  * queue): the graph the pages read, the latest build with its times and error, the jobs still queued, and the
  * history. Read-only: builds are queued by pushes (`evo-agents hub kg push`), never from the web.
+ *
+ * A build's artifact is its graph file in the blob store. A build whose content did not change points at the artifact
+ * of an earlier one (`artifact_reused_from`), and the hub's retention deletes the artifacts of older graphs
+ * (`artifact_pruned_at`): such a build keeps its content hash and counts, but no page reads it any more.
  */
 
+/** The graph the pages read: the newest successful build that still holds an artifact. */
 export function latestSucceeded(builds: readonly KgBuild[]): KgBuild | undefined {
-  return builds.find((build) => build.status === "succeeded");
+  return builds.find((build) => build.status === "succeeded" && build.artifact_sha256 !== null);
+}
+
+export type ArtifactState = "own" | "reused" | "pruned" | "none";
+
+/** What became of a build's artifact. */
+export function artifactState(build: KgBuild): ArtifactState {
+  if (build.status !== "succeeded") return "none";
+  if (build.artifact_pruned_at) return "pruned";
+  return build.artifact_reused_from !== null ? "reused" : "own";
+}
+
+/** The artifact of a build in a few words: pruned and when, reused from which build, or its own. */
+export function ArtifactNote({ build, now }: { build: KgBuild; now: number | null }) {
+  const t = useTranslations("kg.artifact");
+  const state = artifactState(build);
+  return (
+    <span className="inline-flex flex-wrap items-center gap-x-1.5" data-testid="build-artifact" data-state={state}>
+      {state === "none" ? <span className="text-muted-foreground">-</span> : null}
+      {state === "pruned" ? (
+        <>
+          <Archive className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+          <span>
+            {t("pruned")} <When iso={build.artifact_pruned_at} now={now} />
+          </span>
+        </>
+      ) : null}
+      {state === "reused" ? (
+        <>
+          <Recycle className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+          <span>{t("reused", { id: build.artifact_reused_from ?? 0 })}</span>
+        </>
+      ) : null}
+      {state === "own" ? <span>{t("own")}</span> : null}
+    </span>
+  );
 }
 
 function Tile({
@@ -179,6 +229,16 @@ export function LatestBuild({ build, now }: { build: KgBuild; now: number | null
               <span className="text-muted-foreground">{t("noHash")}</span>
             )}
           </dd>
+          <dt className="text-muted-foreground">{t("artifact")}</dt>
+          <dd className="flex min-w-0 flex-col gap-0.5">
+            <ArtifactNote build={build} now={now} />
+            {build.artifact_sha256 ? (
+              <span className="text-xs text-muted-foreground">
+                <Mono title={build.artifact_sha256}>{shortHash(build.artifact_sha256)}</Mono>
+                {build.artifact_size !== null ? <> ({t("artifactSize", { size: build.artifact_size })})</> : null}
+              </span>
+            ) : null}
+          </dd>
           <dt className="text-muted-foreground">{t("config")}</dt>
           <dd>{build.config_digest ? <Mono title={build.config_digest}>{shortHash(build.config_digest)}</Mono> : "-"}</dd>
         </dl>
@@ -249,6 +309,7 @@ const NARROW = {
   nodes: "hidden lg:table-cell",
   edges: "hidden lg:table-cell",
   hash: "hidden xl:table-cell",
+  artifact: "hidden lg:table-cell",
   queued: "hidden md:table-cell",
 };
 
@@ -306,6 +367,12 @@ export function BuildHistory({ builds, now }: { builds: KgBuild[]; now: number |
             {shortHash(info.getValue())}
           </span>
         ),
+      }),
+      helper.accessor((row) => artifactState(row), {
+        id: "artifact",
+        header: () => t("artifact"),
+        sortFn: "text",
+        cell: (info) => <ArtifactNote build={info.row.original} now={now} />,
       }),
       helper.accessor((row) => row.error ?? "", {
         id: "error",
