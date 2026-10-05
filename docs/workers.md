@@ -15,9 +15,10 @@ dispatch, claim, heartbeat, state reports, the list of runs, and the owner's can
 handback; `evo_agents/hub/server/run_state.py` moves runs, records each move in the plan, and holds the reaper and the
 pruning of events; `evo_agents/hub/server/run_events.py` holds a run's events, their stream, the owner's messages and
 the log and diff the worker uploads; `evo_agents/hub/server/terminal.py` relays the web terminal, whose frames and
-close codes `evo_agents/hub/terminal.py` holds for the api and the daemon alike. The `evo-agents worker` daemon comes
-in a later release, and this page changes with it. The daemon has its own command group because `evo-agents hub
-worker` is already the server's job worker (see `docs/hub.md`).
+close codes `evo_agents/hub/terminal.py` holds for the api and the daemon alike. `evo_agents/worker` is the daemon,
+`evo-agents worker` (see [The daemon](#the-daemon)); its adapters for the three runtimes and its end of the terminal
+come in later releases, and this page changes with them. The daemon has its own command group because `evo-agents
+hub worker` is already the server's job worker (see `docs/hub.md`).
 
 ## Entities
 
@@ -587,6 +588,88 @@ upgrade. There the browser opens the terminal on the api's own address, whose po
 | terminal | hello within 10 s, 64 KiB frames, 15 minutes idle, 4 hours, one browser per run, sessions under 12 hours old |
 | daemon spool | 256 MiB |
 | daemon worktrees | removed 7 days after their run ends |
+
+## The daemon
+
+`evo-agents worker` turns the machine into a worker. It needs the worker extra, `uv tool install 'evo-ak[worker]'`
+(aiohttp, and the SDKs the runtime adapters use).
+
+| Command | What it does |
+| --- | --- |
+| `evo-agents worker join --url URL --code CODE` | trades a pairing code from the web for a worker token |
+| `evo-agents worker register --name NAME --project P [--project P ...] --slots N [--label L ...]` | registers the machine with the machine token of `evo-agents hub login`, without a code; `--allow-web-terminal` lets the owner open the terminal |
+| `evo-agents worker run` | the daemon in the foreground |
+| `evo-agents worker status [--json]` | the worker as this machine and the hub see it: runtimes, checkouts, the daemon's pid, runs kept, the spool |
+| `evo-agents worker drain [--resume]` | stops claims (or resumes them) through `POST /v1/workers/{id}/drain` or `/undrain`, with the machine token |
+| `evo-agents worker revoke [--force]` | revokes the worker on the hub and deletes its token here; `--force` deletes it even when the hub cannot be reached |
+
+`join` and `register` refuse a machine that is a worker already, unless `--replace` is given. When the machine is
+signed in to the same hub, they keep the repos of the worker's projects as the hub lists them, and `run` reads them
+again at its start.
+
+### State on the machine
+
+Everything lives under `~/.evo/worker`, mode 0700: `token` (0600) holds the `evw_` token, which no command prints;
+`config.json` (0600) the hub, the worker as the hub registered it and the repos of its projects; `worker.log` (0600)
+the daemon's JSON log lines, rotated at 10 MiB with three old files kept, with tokens, pairing codes and presigned
+signatures masked; `daemon.pid`, locked while a daemon runs, so a second one refuses to start; `spool/` the events not
+acknowledged yet; `runs/<id>/` what the daemon knows of each run and its whole event log; `worktrees/` the runs'
+worktrees.
+
+### Runtimes and checkouts
+
+The heartbeat reports each of `claude-code`, `opencode` and `codex`. A runtime counts as available when its adapter
+finds it (by default its binary, `claude`, `opencode` or `codex`, on PATH, answering `--version`); a runtime whose
+binary is there but that has no adapter in the installed release is reported unavailable with that reason, so the
+hub hands it no run. Adapters are found by runtime name in the package, in the entry point group
+`evo_agents.worker.adapters`, and in `EVO_WORKER_ADAPTERS` (`runtime=module:Class`, separated by commas), each later
+source winning; `evo_agents/worker/adapter.py` holds the interface an adapter implements.
+
+A checkout is keyed `<project>/<repo>` and found, the first source winning, in `checkouts` of `config.json` (set by
+hand), in the project's repos as the hub lists them, placed in the workspace of the project's cluster in the harness
+registry (else the workspace the project was registered with), and in the registry's cluster of the project
+(`hub.project`, on the same hub), keyed by directory name. The registry is `~/.evo/harness/registry.json`, then
+`~/.claude/harness/registry.json`, as `evo-agents hub registry pull` writes it. Only a git work tree counts.
+
+### A run on the machine
+
+1. The daemon fetches `origin` in the checkout and makes the worktree `~/.evo/worker/worktrees/<project>-<run>` on
+   the plan's branch for the repo, from `origin/<branch>` when the remote has it, else the local branch, else the
+   remote's default branch. When that branch is checked out in another worktree (the owner's checkout, say), or has
+   local commits the start lacks, the worktree is on `evo-run/<run>` instead and the push still goes to the plan's
+   branch. A plan that names no branch for the repo, or names its default branch (the remote's HEAD, the hub's
+   `default_branch`, `main` or `master`), fails the run before the agent starts.
+2. The run's adapter starts the agent on the prompt in the worktree, and the daemon reports `running` with the
+   session id. The owner's messages are handed to the agent when the heartbeat counts them, then acknowledged. A
+   cancel, the run's timeout counted from the agent's start, or a heartbeat answering `held: false` interrupt the
+   agent; a cancelled run is reported `cancelled`, a timed-out one `failed`, and a run no longer held gets no report.
+   A takeover or handback the daemon cannot do yet is noted once in the run's log, and the run goes on.
+3. The agent ends its turn and has written `.evo-run/result.json`. The daemon reports `verifying` and runs each of
+   its `verify_commands` (1 to 50 shell commands) in the worktree with `/bin/sh`, within the time the run has left,
+   and records each exit code and the end of its output as a `system` event. A missing or malformed result file, or
+   a command that exits other than 0, fails the run; nothing is pushed and the work stays in the worktree.
+4. The daemon commits what the agent left uncommitted as `run #N: <title>`, without `.evo-run/`; refuses to push a
+   detached HEAD, a branch the agent switched to, or a default branch; and pushes `HEAD` to the plan's branch on
+   origin, never forced and never merged. A push the remote refuses (not a fast-forward, say) fails the run.
+5. Once every event of the run is acknowledged, it reports `done` (approval `auto`) or `review`, with the commit,
+   the diffstat, the verify results, the agent's summary and its usage. It then uploads the run's log and diff
+   when the hub has a blob store, and moves the worktree off the plan's branch, so the owner can check the branch
+   out elsewhere. The worktree, and an `evo-run/<run>` branch, are removed 7 days after the run ended; the daemon
+   looks every hour.
+
+### When the hub does not answer, and stopping
+
+Each event goes to the spool on disk before it is sent; batches of up to 500 events and under 1 MiB go from
+`ack_seq + 1`, and the hub's `ack_seq` drops them from the spool. A body over 64 KiB is cut before it is spooled, as
+the hub would cut it. The spools of all runs share 256 MiB: an event beyond that is dropped without taking a seq, and
+the run's next event that fits is preceded by a `system` event saying how many were dropped. A call that gets no
+answer, a 5xx or a 429 is sent again after 1 second, doubling up to 60 (with `Retry-After` when the hub sends one),
+while the run goes on. A daemon that starts finds the spools a previous one left and sends them, and marks the runs
+it left unfinished as ended.
+
+SIGTERM (or SIGINT) stops the claims, including one waiting; the runs held go on, with heartbeats, until they end or
+reach their timeout, and the daemon exits 0. A second signal interrupts the agents and fails their runs. A 401 or
+403 (the worker or its token was revoked) or a 426 stops the daemon with exit status 1.
 
 ## What version 1 does not do
 

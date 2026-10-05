@@ -40,6 +40,13 @@ hub-server = [
     # Pinned: /mcp subclasses MCPServer and mounts its Streamable HTTP app, whose surface still moves within 2.x.
     "mcp==2.3.0",
 ]
+# `evo-agents worker`, the daemon that runs plan steps on a member's machine: aiohttp for its HTTP and websocket,
+# and the SDKs of the runtimes its adapters drive.
+worker = [
+    "aiohttp>=3.9",
+    "claude-agent-sdk>=0.2",
+    "openai-codex>=0.154",
+]
 
 [project.urls]
 Repository = "https://github.com/maycuatroi1/evo-agents"
