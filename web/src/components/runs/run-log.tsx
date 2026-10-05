@@ -11,6 +11,7 @@ import {
   Play,
   Radio,
   RefreshCw,
+  ScrollText,
   Settings2,
   SquareTerminal,
   WifiOff,
@@ -23,6 +24,7 @@ import { FacetGroup } from "@/components/data/facet-group";
 import { SearchField } from "@/components/data/search-field";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 
 import {
@@ -213,20 +215,31 @@ export function LogStatusBadge({ status }: { status: LogStatus }) {
   );
 }
 
+type SessionTab = "log" | "terminal";
+
 export function RunLogCard({
   runId,
   log,
   active,
   composer,
+  terminal = null,
 }: {
   runId: number;
   log: RunLog;
   /** The run may still write events: an empty log says it waits for them. */
   active: boolean;
   composer: ReactNode;
+  /**
+   * The Terminal tab's panel, for the owner of the run and of its worker (run-terminal.tsx), given whether it is the
+   * tab shown. Without it the card is the log alone. Both panels stay mounted, so switching tabs keeps the terminal's
+   * session and the log's place.
+   */
+  terminal?: ((shown: boolean) => ReactNode) | null;
 }) {
   const t = useTranslations("runs.detail.log");
+  const tTabs = useTranslations("runs.detail.terminal.tabs");
   const ids = useId();
+  const [tab, setTab] = useState<SessionTab>("log");
   const [group, setGroup] = useState<LogGroup | null>(null);
   const [query, setQuery] = useState("");
   const [follow, setFollow] = useState(true);
@@ -244,14 +257,14 @@ export function RunLogCard({
   const virtualRef = useRef<Virtual | null>(null);
   const lastTop = useRef(0);
 
-  // Keep the newest line in view while following.
+  // Keep the newest line in view while following, and when the Log tab is shown again (hidden, the log cannot scroll).
   useLayoutEffect(() => {
     const element = scrollRef.current;
-    if (!follow || !element || shown.length === 0) return;
+    if (!follow || !element || shown.length === 0 || tab !== "log") return;
     if (virtual && virtualRef.current) virtualRef.current.scrollToIndex(shown.length - 1, { align: "end" });
     else element.scrollTop = element.scrollHeight;
     lastTop.current = element.scrollTop;
-  }, [shown, follow, virtual]);
+  }, [shown, follow, virtual, tab]);
 
   // The page only ever scrolls the log down, to its end; a move up away from the end is the person's.
   const onScroll = () => {
@@ -267,19 +280,19 @@ export function RunLogCard({
   const filtered = group !== null || deferredQuery.trim() !== "";
   const empty = shown.length === 0;
 
-  return (
-    <section aria-labelledby={`${ids}-title`} className="flex min-w-0 flex-col rounded-xl border bg-card" data-testid="run-log">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b px-4 py-3">
-        <h2 id={`${ids}-title`} className="text-base font-medium">
-          {t("title")}
-        </h2>
-        <span role="status" className="inline-flex">
-          <LogStatusBadge status={log.status} />
-        </span>
-        <span className="ml-auto text-xs text-muted-foreground tabular-nums" data-testid="log-count">
-          {filtered ? t("countFiltered", { shown: shown.length, total: base.length }) : t("count", { total: base.length })}
-        </span>
-      </div>
+  const logState = (
+    <>
+      <span role="status" className="inline-flex">
+        <LogStatusBadge status={log.status} />
+      </span>
+      <span className="ml-auto text-xs text-muted-foreground tabular-nums" data-testid="log-count">
+        {filtered ? t("countFiltered", { shown: shown.length, total: base.length }) : t("count", { total: base.length })}
+      </span>
+    </>
+  );
+
+  const logBody = (
+    <>
       <div className="flex flex-col gap-3 border-b px-4 py-3">
         <FacetGroup
           label={t("filter")}
@@ -358,6 +371,54 @@ export function RunLogCard({
         <span>{t("kept")}</span>
       </div>
       {composer}
-    </section>
+    </>
+  );
+
+  if (!terminal) {
+    return (
+      <section aria-labelledby={`${ids}-title`} className="flex min-w-0 flex-col rounded-xl border bg-card" data-testid="run-log">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b px-4 py-3">
+          <h2 id={`${ids}-title`} className="text-base font-medium">
+            {t("title")}
+          </h2>
+          {logState}
+        </div>
+        {logBody}
+      </section>
+    );
+  }
+
+  return (
+    <Tabs value={tab} onValueChange={(value) => setTab(value === "terminal" ? "terminal" : "log")} className="gap-0" asChild>
+      <section
+        aria-labelledby={`${ids}-title`}
+        className="flex min-w-0 flex-col rounded-xl border bg-card"
+        data-testid="run-log"
+        data-tab={tab}
+      >
+        <h2 id={`${ids}-title`} className="sr-only">
+          {tTabs("heading", { id: runId })}
+        </h2>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b px-4">
+          <TabsList aria-label={tTabs("label")} className="w-auto border-b-0">
+            <TabsTrigger value="log" className="h-12" data-testid="run-tab-log">
+              <ScrollText aria-hidden="true" />
+              {tTabs("log")}
+            </TabsTrigger>
+            <TabsTrigger value="terminal" className="h-12" data-testid="run-tab-terminal">
+              <SquareTerminal aria-hidden="true" />
+              {tTabs("terminal")}
+            </TabsTrigger>
+          </TabsList>
+          {tab === "log" ? logState : null}
+        </div>
+        <TabsContent value="log" forceMount className="gap-0 data-[state=inactive]:hidden">
+          {logBody}
+        </TabsContent>
+        <TabsContent value="terminal" forceMount className="gap-0 data-[state=inactive]:hidden">
+          {terminal(tab === "terminal")}
+        </TabsContent>
+      </section>
+    </Tabs>
   );
 }

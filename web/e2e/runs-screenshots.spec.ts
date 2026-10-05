@@ -17,13 +17,15 @@ import {
   startRun,
   tool,
   uploadDiff,
+  workerHeartbeat,
   type WorkerEvent,
 } from "./support/runs";
+import { startFakeTerminal } from "./support/terminal";
 
 /**
- * Review screenshots of the runs pages, the Dispatch dialog and a run's page (live, in review, its diff and the Take
- * over dialog), light and dark, desktop and 375 px, written to E2E_SCREENSHOT_DIR. Skipped unless it is set; like
- * screenshots.spec.ts it asserts nothing beyond the page being ready.
+ * Review screenshots of the runs pages, the Dispatch dialog and a run's page (live, in review, its diff, the Take
+ * over dialog and the Terminal tab), light and dark, desktop and 375 px, written to E2E_SCREENSHOT_DIR. Skipped unless
+ * it is set; like screenshots.spec.ts it asserts nothing beyond the page being ready.
  */
 const dir = process.env.E2E_SCREENSHOT_DIR;
 
@@ -139,6 +141,60 @@ test.describe("runs screenshots", () => {
         await open(page, `${runPath(project, review.id)}/diff`);
         await expect(page.locator("#main").getByTestId("diff-file")).toHaveCount(1);
         await shot("run-diff");
+      }
+    });
+  }
+
+  for (const scheme of ["light", "dark"] as const) {
+    test(`terminal tab in ${scheme}`, async ({ page, member }) => {
+      await page.emulateMedia({ colorScheme: scheme });
+      const me = await member([{ role: "writer", maxLevel: "internal" }]);
+      const project = me.projects[0];
+      await seedRunPlan(me, project);
+      const live = await liveWorker(me, project, uniqueName("laptop"), 2, { terminal: true });
+      const [headless, interactive] = await dispatch(me, project, ["2", "4"]);
+      await claimRun(live);
+      await claimRun(live);
+      await workerHeartbeat(live, [headless.id, interactive.id]);
+      await startRun(live, headless.id);
+      await reportState(live, interactive.id, { state: "interactive" });
+
+      for (const [width, height, suffix] of [
+        [1440, 1000, ""],
+        [375, 812, "-375"],
+      ] as const) {
+        await page.setViewportSize({ width, height });
+        const main = page.locator("#main");
+        const shot = (name: string) => page.screenshot({ path: path.join(dir!, `${name}${suffix}-${scheme}.png`), fullPage: true });
+        await open(page, runPath(project, headless.id));
+        await main.getByRole("tab", { name: "Terminal" }).click();
+        await expect(main.getByTestId("terminal-intro")).toBeVisible();
+        await shot("run-terminal-idle");
+
+        await open(page, runPath(project, interactive.id));
+        await main.getByRole("tab", { name: "Terminal" }).click();
+        await main.getByTestId("terminal-connect").click();
+        await expect(main.getByTestId("terminal-status")).toHaveAttribute("data-status", "waiting");
+        await shot("run-terminal-waiting");
+        await startFakeTerminal(interactive.id, live.token);
+        await expect(main.getByTestId("terminal-screen")).toContainText("fake worker terminal");
+        await page.keyboard.type("ls -la ~/.evo/worker/worktrees");
+        await page.keyboard.press("Enter");
+        await page.keyboard.type("xin chào tiếng Việt");
+        await expect(main.getByTestId("terminal-screen")).toContainText("xin chào tiếng Việt");
+        await shot("run-terminal-live");
+
+        const other = await page.context().newPage();
+        await other.setViewportSize({ width, height });
+        await other.emulateMedia({ colorScheme: scheme });
+        await open(other, runPath(project, interactive.id));
+        await other.locator("#main").getByRole("tab", { name: "Terminal" }).click();
+        await other.locator("#main").getByTestId("terminal-connect").click();
+        await expect(other.locator("#main").getByTestId("terminal-message")).toHaveAttribute("data-kind", "busy");
+        await other.screenshot({ path: path.join(dir!, `run-terminal-busy${suffix}-${scheme}.png`), fullPage: true });
+        await other.close();
+        await main.getByTestId("terminal-disconnect").click();
+        await expect(main.getByTestId("terminal-status")).toHaveAttribute("data-status", "closed");
       }
     });
   }

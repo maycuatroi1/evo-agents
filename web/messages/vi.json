@@ -1574,6 +1574,57 @@
           "reaper": "hub"
         }
       },
+      "terminal": {
+        "tabs": {
+          "label": "Cách xem phiên",
+          "heading": "Phiên trực tiếp của run #{id}",
+          "log": "Log",
+          "terminal": "Terminal"
+        },
+        "where": "TUI của agent trên {worker}, chuyển tiếp qua hub.",
+        "connect": "Kết nối terminal",
+        "connectAgain": "Kết nối lại",
+        "disconnect": "Ngắt kết nối",
+        "signIn": "Đăng nhập lại",
+        "label": "Terminal của run #{id} trên {worker}",
+        "status": {
+          "idle": "Chưa kết nối",
+          "loading": "Đang tải terminal",
+          "connecting": "Đang kết nối",
+          "waiting": "Đang chờ {worker}",
+          "live": "Đã kết nối",
+          "closed": "Đã đóng"
+        },
+        "intro": {
+          "headless": "Run #{id} đang chạy headless. Kết nối nghĩa là tiếp quản run: agent dừng ở cuối lượt hiện tại, và terminal này resume đúng session đó trong tmux trên {worker}.",
+          "interactive": "TUI của agent đang chạy trong tmux trên {worker}. Kết nối sẽ gắn trang này vào đó; TUI vẫn chạy tiếp khi bạn ngắt kết nối.",
+          "limits": "Một phiên đóng sau 15 phút không hoạt động hoặc sau 4 giờ. Mỗi lúc chỉ một trình duyệt."
+        },
+        "waiting": {
+          "takeover": "Hub đã yêu cầu {worker} trao lại session. Agent dừng ở cuối lượt, rồi terminal mở ra; worker kiểm tra 15 giây một lần.",
+          "interactive": "Đang chờ {worker} nối đầu terminal của nó; worker kiểm tra 15 giây một lần."
+        },
+        "end": {
+          "closed": "Bạn đã ngắt kết nối. TUI của agent vẫn chạy trong tmux trên {worker}.",
+          "ended": "Phiên terminal đã kết thúc.",
+          "shutdown": "Hub khởi động lại và đã đóng terminal. Hãy kết nối lại.",
+          "protocol": "Hub đóng terminal vì một message nó không nhận.",
+          "lost": "Mất kết nối tới hub. Hãy kết nối lại.",
+          "unavailable": "Hub không kiểm tra được yêu cầu vì database không trả lời. Thử lại sau ít phút.",
+          "signIn": "Hub yêu cầu bạn đăng nhập lại trước khi mở terminal.",
+          "forbidden": "Hub từ chối mở terminal này.",
+          "timeout": "Terminal đã đóng: không hoạt động 15 phút, hoặc đã mở đủ 4 giờ.",
+          "busy": "Terminal của run này đang mở ở một trình duyệt hoặc tab khác. Đóng nó ở đó rồi kết nối lại.",
+          "upgrade": "{worker} dùng một phiên bản khác của worker protocol: hãy nâng cấp evo-agents trên máy đó."
+        },
+        "hubSays": "Hub báo: {reason}",
+        "notOpen": "Run #{id} đang ở trạng thái {state}: terminal chỉ mở khi run ở trạng thái {open}.",
+        "tooOld": "Bạn đăng nhập cách đây {hours} giờ. Terminal chỉ mở với lần đăng nhập chưa quá 12 giờ: hãy đăng nhập lại rồi quay về run này.",
+        "loadFailed": "Không tải được terminal trong trình duyệt này.",
+        "hint": "Phím bạn gõ đi tới TUI của agent trên {worker}. Nhấn Esc rồi Tab để rời terminal.",
+        "size": "{cols} × {rows}",
+        "sizeLabel": "Kích thước terminal: {cols} cột, {rows} dòng"
+      },
       "composer": {
         "label": "Nhắn cho agent",
         "placeholder": "Ví dụ: phủ thêm trường hợp token đã bị thu hồi",

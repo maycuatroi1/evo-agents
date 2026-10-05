@@ -1574,6 +1574,57 @@
           "reaper": "the hub"
         }
       },
+      "terminal": {
+        "tabs": {
+          "label": "Session view",
+          "heading": "Live session of run #{id}",
+          "log": "Log",
+          "terminal": "Terminal"
+        },
+        "where": "The agent's TUI on {worker}, relayed through the hub.",
+        "connect": "Connect terminal",
+        "connectAgain": "Connect again",
+        "disconnect": "Disconnect",
+        "signIn": "Sign in again",
+        "label": "Terminal of run #{id} on {worker}",
+        "status": {
+          "idle": "Not connected",
+          "loading": "Loading terminal",
+          "connecting": "Connecting",
+          "waiting": "Waiting for {worker}",
+          "live": "Connected",
+          "closed": "Closed"
+        },
+        "intro": {
+          "headless": "Run #{id} is headless. Connecting takes it over: the agent stops at the end of its current turn, and this terminal resumes the same session in tmux on {worker}.",
+          "interactive": "The agent's TUI runs in tmux on {worker}. Connecting attaches this page to it; it keeps running when you disconnect.",
+          "limits": "A session closes after 15 idle minutes or 4 hours. One browser at a time."
+        },
+        "waiting": {
+          "takeover": "The hub asked {worker} to hand the session over. The agent stops at the end of its turn, then the terminal opens; the worker checks every 15 seconds.",
+          "interactive": "Waiting for {worker} to connect its end of the terminal; the worker checks every 15 seconds."
+        },
+        "end": {
+          "closed": "You disconnected. The agent's TUI keeps running in tmux on {worker}.",
+          "ended": "The terminal session ended.",
+          "shutdown": "The hub restarted and closed the terminal. Connect again.",
+          "protocol": "The hub closed the terminal over a message it does not accept.",
+          "lost": "The connection to the hub was lost. Connect again.",
+          "unavailable": "The hub could not check the request: its database did not answer. Try again shortly.",
+          "signIn": "The hub asks you to sign in again before it opens the terminal.",
+          "forbidden": "The hub refused to open this terminal.",
+          "timeout": "The terminal closed: it was idle for 15 minutes, or open for 4 hours.",
+          "busy": "This run's terminal is open in another browser or tab. Close it there, then connect again.",
+          "upgrade": "{worker} speaks another version of the worker protocol: upgrade evo-agents on it."
+        },
+        "hubSays": "The hub says: {reason}",
+        "notOpen": "Run #{id} is {state}: a terminal opens while a run is {open}.",
+        "tooOld": "You signed in {hours} hours ago. The terminal opens only for a sign-in less than 12 hours old: sign in again, then come back to this run.",
+        "loadFailed": "The terminal could not load in this browser.",
+        "hint": "Keys go to the agent's TUI on {worker}. Press Esc, then Tab, to leave the terminal.",
+        "size": "{cols} × {rows}",
+        "sizeLabel": "Terminal size: {cols} columns, {rows} rows"
+      },
       "composer": {
         "label": "Message the agent",
         "placeholder": "For example: also cover the revoked-token case",
