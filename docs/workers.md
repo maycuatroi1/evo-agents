@@ -14,9 +14,10 @@ direct registration, list, drain, undrain, revoke). `evo_agents/hub/server/runs.
 dispatch, claim, heartbeat, state reports, the list of runs, and the owner's cancel, approve, rerun, takeover and
 handback; `evo_agents/hub/server/run_state.py` moves runs, records each move in the plan, and holds the reaper and the
 pruning of events; `evo_agents/hub/server/run_events.py` holds a run's events, their stream, the owner's messages and
-the log and diff the worker uploads. The terminal and the `evo-agents worker` daemon come in later releases, and this
-page changes with them. The daemon has its own command group because `evo-agents hub worker` is already the server's
-job worker (see `docs/hub.md`).
+the log and diff the worker uploads; `evo_agents/hub/server/terminal.py` relays the web terminal, whose frames and
+close codes `evo_agents/hub/terminal.py` holds for the api and the daemon alike. The `evo-agents worker` daemon comes
+in a later release, and this page changes with it. The daemon has its own command group because `evo-agents hub
+worker` is already the server's job worker (see `docs/hub.md`).
 
 ## Entities
 
@@ -285,8 +286,8 @@ For each run: whether to `cancel` (the owner asked for it), `takeover`, `handbac
 (`terminal_open`), and how many `inbox` messages wait; for the worker, whether to `drain`. A run the worker reports
 but no longer holds (lost, cancelled, or another worker's now) comes back with `held: false`, `state: null` and
 `cancel: true`. `takeover` stays true from the owner's ask until the worker reports `interactive`, and `handback`
-until it reports `running` (see [Takeover and handback](#takeover-and-handback)); `terminal_open` stays false until
-the terminal relay exists.
+until it reports `running` (see [Takeover and handback](#takeover-and-handback)); `terminal_open` is true while a
+browser waits for the worker's end of the run's terminal (see [Terminal](#terminal)).
 
 ### State
 
@@ -396,7 +397,7 @@ For members, with a web session or a machine token. `{p}` is a project, and run 
 | `POST .../runs/{id}/messages` | owner | a message for the agent, at most 8 KiB |
 | `POST .../runs/{id}/takeover`, `/handback` | owner | switch between headless and interactive |
 | `POST .../runs/{id}/cancel`, `/approve`, `/rerun` | owner | stop, approve a run in review, run the step again |
-| websocket `/v1/projects/{p}/runs/{id}/terminal` | owner of the worker | the browser's end of the terminal |
+| websocket `/v1/projects/{p}/runs/{id}/terminal` | owner, on a worker of theirs | the browser's end of the terminal |
 
 ### Dispatching and the owner's controls
 
@@ -486,17 +487,77 @@ The hub refuses `user_message` and `state` from a worker.
 
 ## Terminal
 
-The web terminal joins two websockets in the api's memory: the browser's and the worker's. The browser's end checks
-the session cookie itself (the HTTP middleware does not see websockets), requires an `Origin` equal to the hub's
-public URL, a CSRF token in the first message and a web session created within the last 12 hours; the caller must
-own the worker, and the worker must allow the web terminal. The worker's end needs the token of the worker that
-holds the run. Opening the terminal on a headless run goes through takeover first.
+The web terminal joins two websockets in the api's memory, the browser's and the worker's
+(`evo_agents/hub/server/terminal.py`). `evo_agents/hub/terminal.py` holds the frames and the close codes, with the
+standard library only, so the daemon uses them too.
 
-Frames are binary, at most 64 KiB, and their first byte is their type, as in ttyd: 0 input from the browser, 1 output
-from the worker, 2 resize with the new columns and rows. A missing session closes the socket with 4401, anything not
-allowed with 4403. A session closes after 15 idle minutes and after 4 hours at most, and a run has one browser at a
-time. On the worker, the daemon attaches a PTY to the run's tmux session and keeps the last 256 KiB of output, which
-it replays when the browser connects again.
+The HTTP middleware reads no credential of a websocket. It closes every websocket under `/v1` during the handshake,
+which the client sees as a 403, except these two routes, which check their own credential; a websocket route added
+later is refused until it does the same and is listed in `SELF_CHECKED_WEBSOCKETS` of
+`evo_agents/hub/server/security.py`. Both ends accept the socket before they check anything, so the client gets the
+close code: a page sees a websocket refused during its handshake only as 1006.
+
+**The browser's end**, `/v1/projects/{p}/runs/{id}/terminal`, closes at the first check that fails, in this order:
+
+1. an `Origin` equal to the origin of `EVO_HUB_PUBLIC_URL` (4403). It comes before anything about the session, so a
+   page of another site learns nothing from the answer.
+2. the session cookie (4401 without one).
+3. the hello, a text message within 10 seconds (4408 otherwise): `{"csrf": "...", "cols": 120, "rows": 40}`, where
+   `csrf` is the session's `X-Evo-CSRF` value from `GET /v1/auth/web/csrf` (4403 otherwise) and the size is optional,
+   both or neither, each from 1 to 1000 (1003 otherwise).
+4. a live web session (4401) created within the last 12 hours (4403).
+5. a run the caller may read, which it dispatched, held by a worker it owns that allows the web terminal, and
+   `leased`, `running` or `interactive` (4403 for each).
+6. no other browser on the run's terminal (4409).
+
+Opening the terminal of a `leased` or `running` run asks for a takeover as `POST .../takeover` does, with its
+`run.takeover` audit row when it is a new ask, since a person drives the agent only while the run is `interactive`. The
+session is audited as `terminal.open` in the same transaction.
+
+**The worker's end**, `/v1/worker/runs/{id}/terminal`. While a browser waits, the heartbeat says `terminal_open: true`
+for the run, so the daemon learns of it within 15 seconds. The daemon connects with the version header (4426 without)
+and its `evw_` token as `Authorization: Bearer` (4401 without one, or for a token that is not live; 4403 for a machine
+token or a web session). The worker must hold the run, the run must be `interactive`, so after a takeover the daemon
+connects once it has reported `interactive`, and a browser must wait on the run (4403 for each); a second connection of
+the worker's end gets 4409.
+
+**Frames.** Every message after the hello is binary, at most 64 KiB with its type byte, and its first byte is its type,
+as in ttyd:
+
+| Byte | Type | From | Payload |
+| --- | --- | --- | --- |
+| 0 | input | browser | bytes typed or pasted |
+| 1 | output | worker | bytes the terminal printed |
+| 2 | resize | browser | columns, then rows: two unsigned 16-bit big-endian integers, each from 1 to 1000 |
+
+When the worker's end connects, the hub first sends it the browser's size, from the hello or the last resize since,
+then relays the frames as they come. Input the browser sends before that is dropped, so the web takes input once the
+first output arrives; a resize before that only sets the size the worker gets first. A text message after the hello,
+an empty frame or a type its end may not send closes the session with 1003, and a frame over 64 KiB with 1009.
+
+**Ending.** A session ends when either end leaves (the other gets 1000), after 15 minutes without a frame either way,
+or 4 hours after it opened (both get 4408). A run has one browser at a time; once the session ended, the next browser
+may open it, and the daemon gets `terminal_open` again. The end is audited as `terminal.close` with the bytes the hub
+sent each end and how the session ended, as in `<project>/<plan>#<step> run:12 to_worker=1520 to_browser=88211
+end=idle`; no audit row holds a byte of what was typed or printed. On the worker, the daemon attaches a PTY to the
+run's tmux session and keeps the last 256 KiB of output, which it replays when a browser connects again.
+
+| Close code | When |
+| --- | --- |
+| 1000 | the other end left |
+| 1003 | a malformed hello, a text message after it, an empty frame, or a type the end may not send |
+| 1009 | a frame over 64 KiB |
+| 1011 | the hub's database did not answer |
+| 4401 | no session or worker token, or one that is revoked, expired or unknown |
+| 4403 | an Origin of another site, or a credential that may not open this terminal |
+| 4408 | no hello within 10 seconds, 15 idle minutes, or 4 hours |
+| 4409 | the run's terminal is open in another browser, or its worker's end is connected already |
+| 4426 | the worker sent another version of the worker protocol, or none |
+
+**Routing.** Both websockets sit under `/v1`, so they reach the api through the reverse proxy's `/v1` rule like every
+other route (`docs/hub.md`). The web's own `/v1` rewrite, which a stack without a proxy uses
+(`deploy/hub/docker-compose.dev.yml`, Playwright), does not carry them: Next.js standalone does not forward a websocket
+upgrade. There the browser opens the terminal on the api's own address, whose port the dev stack publishes.
 
 ## Limits
 
@@ -523,7 +584,7 @@ it replays when the browser connects again.
 | inbox per read | 100 messages |
 | run log, diff | 64 MiB, 8 MiB in the blob store |
 | events kept | 30 days after the run ends (`EVO_HUB_RUN_LOG_DAYS`) |
-| terminal | 64 KiB frames, 15 minutes idle, 4 hours, one browser per run, sessions under 12 hours old |
+| terminal | hello within 10 s, 64 KiB frames, 15 minutes idle, 4 hours, one browser per run, sessions under 12 hours old |
 | daemon spool | 256 MiB |
 | daemon worktrees | removed 7 days after their run ends |
 

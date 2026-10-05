@@ -20,6 +20,11 @@ worker daemon, where machine tokens and web sessions get 403: neither side can s
 check happens before the database is asked. Every request under WORKER_PREFIX, the public /v1/worker/join included,
 carries ``X-Evo-Worker-Protocol: 1`` (``evo_agents.hub.runs``); any other value, or none, gets 426 so an old daemon
 learns it must be upgraded. A worker's principal is never a hub admin, whoever owns the worker.
+
+The middleware reads credentials of HTTP requests only. A websocket under /v1 reaches the app only when its path is
+one of SELF_CHECKED_WEBSOCKETS, whose routes check their own credential (the web terminal's two ends, see
+``evo_agents.hub.server.terminal``); any other is closed during its handshake, which the client sees as a 403, so a
+websocket route added later is refused until it checks a credential and is listed there.
 """
 
 from __future__ import annotations
@@ -39,6 +44,7 @@ from typing import Annotated
 import psycopg
 from fastapi import Depends, HTTPException, Request
 from starlette.responses import Response
+from starlette.websockets import WebSocketClose
 
 from evo_agents.hub.runs import PROTOCOL_HEADER, PROTOCOL_VERSION
 from evo_agents.hub.server.errors import error_response
@@ -69,6 +75,12 @@ PUBLIC_PATHS = frozenset(
         "/v1/worker/join",  # a pairing code is the credential
     }
 )
+# Websockets under /v1 whose routes check their own credential; every other one is closed before the app sees it.
+SELF_CHECKED_WEBSOCKETS = (
+    re.compile(r"/v1/projects/[^/]+/runs/[^/]+/terminal"),  # the browser's end: the session cookie, Origin, CSRF
+    re.compile(r"/v1/worker/runs/[^/]+/terminal"),  # the worker's end: its evw_ token and the protocol header
+)
+WEBSOCKET_REFUSED = 4403  # the close code of a websocket under /v1 that no route checks a credential of
 LOGIN_HINT = "run `evo-agents hub login`"
 JOIN_HINT = "join the machine with `evo-agents worker join`"
 WWW_AUTHENTICATE = {"WWW-Authenticate": 'Bearer realm="evo-agents hub"'}
@@ -232,13 +244,21 @@ def unauthorized(request: Request, message: str, *, clear_cookie: bool = False) 
 class Authenticate:
     """Pure ASGI middleware: every request under /v1 outside PUBLIC_PATHS needs a live credential of a kind the path
     takes, a write made with the session cookie needs its CSRF header, and a request under WORKER_PREFIX needs the
-    worker protocol header. The principal goes to ``request.state.principal``."""
+    worker protocol header. The principal goes to ``request.state.principal``. A websocket under /v1 passes only to
+    the routes of SELF_CHECKED_WEBSOCKETS, which check their own credential."""
 
     def __init__(self, app):
         self.app = app
 
     async def __call__(self, scope, receive, send):
         path = scope.get("path", "")
+        if scope["type"] == "websocket" and path.startswith(PROTECTED_PREFIX):
+            if any(pattern.fullmatch(path) for pattern in SELF_CHECKED_WEBSOCKETS):
+                await self.app(scope, receive, send)
+            else:  # fail closed: nothing here read a credential of it
+                reason = "no websocket here checks a credential"
+                await WebSocketClose(code=WEBSOCKET_REFUSED, reason=reason)(scope, receive, send)
+            return
         worker_route = path.startswith(WORKER_PREFIX)
         if (
             scope["type"] != "http"
