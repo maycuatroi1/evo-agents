@@ -12,7 +12,7 @@ import { makeQueryClient } from "@/lib/query-client";
 import { renderVi } from "@/test/render";
 
 import { BuildStatusBadge } from "./badges";
-import { LatestBuild } from "./build-status";
+import { BuildHistory, LatestBuild, latestSucceeded } from "./build-status";
 import { KgNodePage } from "./kg-node-page";
 import { KgOverview } from "./kg-overview";
 import { NeighbourhoodSection } from "./neighbourhood";
@@ -105,6 +105,8 @@ describe("build status", () => {
       runs: 2,
       artifact_sha256: null,
       artifact_size: null,
+      artifact_reused_from: null,
+      artifact_pruned_at: null,
       content_hash: null,
       nodes: null,
       edges: null,
@@ -119,6 +121,59 @@ describe("build status", () => {
     expect(screen.getByTestId("build-wait")).toHaveTextContent("3 giây");
     expect(screen.getByTestId("build-run")).toHaveTextContent("10 giây");
     expect(screen.getByText("Chưa có: build chưa thành công")).toBeInTheDocument();
+    expect(screen.getByTestId("build-artifact")).toHaveAttribute("data-state", "none");
+  });
+
+  const succeeded = (id: number, overrides: Partial<KgBuild> = {}): KgBuild => ({
+    id,
+    status: "succeeded",
+    job_id: id,
+    requested_by: null,
+    config_digest: null,
+    runs: 2,
+    artifact_sha256: "cd".repeat(32),
+    artifact_size: 20480,
+    artifact_reused_from: null,
+    artifact_pruned_at: null,
+    content_hash: "sha256:" + "ab".repeat(32),
+    nodes: 12,
+    edges: 30,
+    error: null,
+    queued_at: "2026-10-04T10:00:00Z",
+    started_at: "2026-10-04T10:00:03Z",
+    finished_at: "2026-10-04T10:00:13Z",
+    ...overrides,
+  });
+
+  it("says whose artifact a build points at, and when the retention deleted it", () => {
+    const { unmount } = renderVi(<LatestBuild build={succeeded(12, { artifact_reused_from: 10 })} now={null} />);
+    const reused = screen.getByTestId("build-artifact");
+    expect(reused).toHaveAttribute("data-state", "reused");
+    expect(reused).toHaveTextContent("Dùng lại tệp của build #10");
+    expect(screen.getByTitle("cd".repeat(32))).toHaveTextContent("cdcdcdcdcdcd…");
+    unmount();
+
+    const pruned = succeeded(9, { artifact_sha256: null, artifact_pruned_at: "2026-10-05T03:31:00Z" });
+    renderVi(<LatestBuild build={pruned} now={null} />);
+    const note = screen.getByTestId("build-artifact");
+    expect(note).toHaveAttribute("data-state", "pruned");
+    expect(note).toHaveTextContent("Đã xoá");
+    expect(note.querySelector("time")).toHaveAttribute("dateTime", "2026-10-05T03:31:00Z");
+    expect(screen.getByTestId("latest-content-hash")).toHaveTextContent("sha256:" + "ab".repeat(32)); // still described
+  });
+
+  it("reads the newest build that still holds an artifact, and the history shows every artifact's state", () => {
+    const builds = [
+      succeeded(13, { artifact_reused_from: 11 }),
+      succeeded(12, { artifact_sha256: null, artifact_pruned_at: "2026-10-05T03:31:00Z" }),
+      succeeded(11),
+      { ...succeeded(10), status: "failed" as const, artifact_sha256: null, error: "boom" },
+    ];
+    expect(latestSucceeded(builds)?.id).toBe(13);
+    expect(latestSucceeded(builds.slice(1))?.id).toBe(11); // a pruned build is never the graph in use
+    renderVi(<BuildHistory builds={builds} now={null} />);
+    const states = screen.getAllByTestId("build-artifact").map((cell) => cell.getAttribute("data-state"));
+    expect(states).toEqual(["reused", "pruned", "own", "none"]);
   });
 });
 

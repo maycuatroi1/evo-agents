@@ -287,6 +287,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/kg/prune": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Prune Kg
+         * @description Delete the artifacts of graphs older than each project's ``keep`` newest; the builds keep their records.
+         */
+        post: operations["prune_kg_v1_admin_kg_prune_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects": {
         parameters: {
             query?: never;
@@ -1171,10 +1191,23 @@ export interface components {
             config_digest: string | null;
             /** Runs */
             runs: number | null;
-            /** Artifact Sha256 */
+            /**
+             * Artifact Sha256
+             * @description the graph file in the blob store; null until the build succeeded, and once it was pruned
+             */
             artifact_sha256: string | null;
             /** Artifact Size */
             artifact_size: number | null;
+            /**
+             * Artifact Reused From
+             * @description the build whose artifact this one points at, uploading nothing, because their content is the same
+             */
+            artifact_reused_from: number | null;
+            /**
+             * Artifact Pruned At
+             * @description when the retention deleted the artifact; the build's content hash and counts still describe it
+             */
+            artifact_pruned_at: string | null;
             /** Content Hash */
             content_hash: string | null;
             /** Nodes */
@@ -1592,6 +1625,27 @@ export interface components {
             };
             /** Aliases */
             aliases: string[];
+        };
+        /** KgPruned */
+        KgPruned: {
+            /** Dry Run */
+            dry_run: boolean;
+            /** Keep */
+            keep: number;
+            /** Projects */
+            projects: components["schemas"]["ProjectPruned"][];
+            /**
+             * Deleted
+             * @description objects deleted from the bucket; for a dry run, those that would be
+             */
+            deleted: number;
+            /** Deleted Bytes */
+            deleted_bytes: number;
+            /**
+             * Pending
+             * @description blobs whose object still waits to be deleted; the next prune tries again
+             */
+            pending: number;
         };
         /** KindCount */
         KindCount: {
@@ -2060,6 +2114,49 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+        };
+        /** ProjectPruned */
+        ProjectPruned: {
+            /** Project */
+            project: string;
+            /**
+             * Artifacts
+             * @description distinct artifacts the project's builds pointed at, and kg-graph blobs no build did
+             */
+            artifacts: number;
+            /** Kept */
+            kept: number;
+            /**
+             * Pruned
+             * @description artifacts dropped
+             */
+            pruned: number;
+            /** Pruned Bytes */
+            pruned_bytes: number;
+            /**
+             * Builds
+             * @description builds whose artifact was dropped: they keep their content hash and counts
+             */
+            builds: number;
+        };
+        /** PruneRequest */
+        PruneRequest: {
+            /**
+             * Project
+             * @description left out for every project
+             */
+            project?: string | null;
+            /**
+             * Keep
+             * @description the newest graphs of each project whose artifact stays; default EVO_HUB_KG_KEEP_ARTIFACTS
+             */
+            keep?: number | null;
+            /**
+             * Dry Run
+             * @description answer what would be deleted, and change nothing
+             * @default false
+             */
+            dry_run: boolean;
         };
         /** PublishRequest */
         PublishRequest: {
@@ -3446,6 +3543,75 @@ export interface operations {
             };
             /** @description Forbidden */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    prune_kg_v1_admin_kg_prune_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PruneRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KgPruned"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

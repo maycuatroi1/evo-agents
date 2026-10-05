@@ -91,4 +91,10 @@ export class HubAdmin {
       }),
     );
   }
+
+  /** The retention of built graphs on one project, keeping the artifacts of its `keep` newest graphs. */
+  async pruneKg(project: string, keep: number) {
+    const api = await this.api();
+    return call(api.POST("/v1/admin/kg/prune", { body: { project, keep, dry_run: false } }));
+  }
 }

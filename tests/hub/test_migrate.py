@@ -1,4 +1,4 @@
-"""Migrations: a fresh database gets the twenty-three hub tables, a second run changes nothing, processes that start
+"""Migrations: a fresh database gets the twenty-four hub tables, a second run changes nothing, processes that start
 together apply each revision once, a database at 0001 with rows in it moves to 0002, and a database the code
 cannot read is refused. Then the constraints schemas 0001 and 0002 promise."""
 
@@ -41,6 +41,7 @@ TABLES = {
 }
 TABLES |= pg.BLOB_TABLES | pg.QUEUE_TABLES  # migration 0004
 TABLES |= pg.KG_TABLES  # migration 0006
+TABLES |= pg.RETENTION_TABLES  # migration 0008
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 SNAPSHOT = """
@@ -71,8 +72,8 @@ def tables(db) -> set[str]:
     }
 
 
-def test_a_fresh_database_gets_the_twenty_three_tables(hub_db):
-    assert len(TABLES) == 23  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_twenty_four_tables(hub_db):
+    assert len(TABLES) == 24  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
@@ -240,6 +241,40 @@ def test_0002_adds_the_harness_paths_to_a_database_holding_projects(hub_db):
     # From 0001 with rows in it, migrate runs 0002 and every later revision, and says so.
     result = migrate(hub_db.dsn)
     assert (result.before, result.applied, result.after) == (("0001",), ALL[ALL.index("0002") :], (HEAD,))
+
+
+BUILD = (
+    "INSERT INTO kg_builds (project_id, status, artifact_sha256, artifact_size, content_hash, nodes, edges, "
+    "started_at, finished_at) VALUES (%s, 'succeeded', %s, 10, %s, 1, 0, now(), now()) RETURNING id"
+)
+
+
+def test_0008_keeps_the_builds_and_going_back_fails_the_pruned_ones(hub_db):
+    move_to(hub_db, "0007")
+    with pg.admin(hub_db.admin_dsn) as conn:
+        ids = seed(conn)
+        first = one(conn, BUILD, ids["project"], "a" * 64, "sha256:" + "c" * 64)
+        second = one(conn, BUILD, ids["project"], "b" * 64, "sha256:" + "c" * 64)
+    move_to(hub_db, "0008")
+    assert {"artifact_reused_from", "artifact_pruned_at"} <= columns(hub_db, "kg_builds")
+    with pg.admin(hub_db.admin_dsn) as conn:
+        conn.execute("UPDATE kg_builds SET artifact_reused_from = %s WHERE id = %s", (first, second))
+        conn.execute("UPDATE kg_builds SET artifact_sha256 = NULL, artifact_pruned_at = now() WHERE id = %s", (first,))
+        for bad in (
+            "UPDATE kg_builds SET artifact_pruned_at = NULL WHERE id = {first}",  # succeeded without any artifact
+            "UPDATE kg_builds SET artifact_pruned_at = now() WHERE id = {second}",  # pruned yet holding one
+            "UPDATE kg_builds SET artifact_reused_from = id WHERE id = {second}",
+            "INSERT INTO blob_deletions (sha256, size, kind) VALUES ('not-a-hash', 1, 'kg-graph')",
+        ):
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(bad.format(first=first, second=second))
+        conn.execute("INSERT INTO blob_deletions (sha256, size, kind) VALUES (%s, 10, 'kg-graph')", ("a" * 64,))
+
+    move_to(hub_db, "0007", down=True)
+    assert "blob_deletions" not in tables(hub_db)
+    builds = query(hub_db, "SELECT id, status, artifact_sha256, error IS NOT NULL FROM kg_builds ORDER BY id")
+    assert builds == [(first, "failed", None, True), (second, "succeeded", "b" * 64, False)]
+    assert migrate(hub_db.dsn).applied == ("0008",)
 
 
 def test_downgrade_to_base_removes_everything_and_upgrade_restores_it(hub_db):

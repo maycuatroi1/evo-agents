@@ -124,11 +124,14 @@ class Harness:
 
         return load_project_at(self.harness, self.home)
 
-    def sync(self) -> list[str]:
-        """One run of each source; their run ids."""
+    def sync(self, extra: str | None = None) -> list[str]:
+        """One run of each source; their run ids. ``extra`` adds a short note of that key to docs, which changes the
+        graph's content."""
         from evo_agents.kg.sync import sync_project
 
-        self.files["docs"].write_text(json.dumps({"items": DOCS}), encoding="utf-8")
+        note = {"key": extra, "rev": "1", "text": f"# {extra}\n\nThêm một ghi chú, KB-01.\n"}
+        docs = DOCS + ([note] if extra else [])
+        self.files["docs"].write_text(json.dumps({"items": docs}), encoding="utf-8")
         self.files["deals"].write_text(json.dumps({"items": DEALS}), encoding="utf-8")
         results = sync_project(self.project(), ["docs", "deals"])
         problems = [r.issues for r in results if not r.ok]

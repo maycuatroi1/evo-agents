@@ -44,6 +44,7 @@ HUB_TABLES = {
 }
 HUB_TABLES |= pg.BLOB_TABLES | pg.QUEUE_TABLES  # migration 0004
 HUB_TABLES |= pg.KG_TABLES  # migration 0006
+HUB_TABLES |= pg.RETENTION_TABLES  # migration 0008
 
 
 @pytest.fixture

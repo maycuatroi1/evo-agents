@@ -16,6 +16,8 @@ Jobs (names in ``evo_agents.hub.jobs``):
   under the project's kg lock.
 - ``hub.recover_kg_builds``, every 5 minutes: kg builds whose worker stopped sending heartbeats are failed, which
   frees their project's lock, and their projects get a new build.
+- ``hub.prune_kg_artifacts``, hourly: the artifacts of each project's graphs beyond its EVO_HUB_KG_KEEP_ARTIFACTS
+  newest leave the bucket (``evo_agents.hub.kg_prune``).
 
 procrastinate allows one App per process; ``queue`` is that App here. ``run`` gives it a connector of its own for
 the time it runs, and the jobs reach the hub's tables and the blob store through ``HubContext``. The worker handles
@@ -110,6 +112,16 @@ async def recover_kg_builds(context: JobContext, timestamp: int | None = None) -
     from evo_agents.hub.kg_build import recover_stalled
 
     return await recover_stalled(hub(context), context.app.job_manager)
+
+
+@queue.periodic(cron="31 * * * *")
+@queue.task(name=jobs.PRUNE_KG_ARTIFACTS, pass_context=True, queueing_lock=jobs.PRUNE_KG_ARTIFACTS)
+async def prune_kg_artifacts(context: JobContext, timestamp: int | None = None) -> dict:
+    from evo_agents.hub.kg_prune import prune
+
+    found = hub(context)
+    report = await prune(found.pool, found.blobs, found.config.kg_keep_artifacts)
+    return report.summary()
 
 
 @queue.periodic(cron="43 3 * * *")

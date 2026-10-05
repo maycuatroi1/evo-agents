@@ -24,6 +24,7 @@ BLOB_COMMIT = "blob.commit"  # the target is the project, never the hashes
 KG_CONFIG = "kg.config"  # the knowledge config a project's graph is built with changed; the target is the project
 KG_INGEST = "kg.ingest"  # a pushed run became part of the project's corpus; the target is the project, never the run
 KG_BUILD = "kg.build"  # a member queued a build; the target is the project
+KG_PRUNE = "kg.prune"  # the retention deleted artifacts of a project's older graphs; the target is "<project> keep=<n>"
 
 NAMED_FAMILIES = frozenset({"grant", "project", "plan", "kg", "blob"})  # targets that start with the project's name
 _FIRST_NAME = re.compile(r"([a-z0-9][a-z0-9-]{0,99})(?:[/ @]|$)")
@@ -56,7 +57,7 @@ def subject(action: str, target: str) -> tuple[str | None, int | None]:
 
 
 async def record(
-    conn, *, actor_id: int, token_id: int | None, action: str, target: str, project_id: int | None = None
+    conn, *, actor_id: int | None, token_id: int | None, action: str, target: str, project_id: int | None = None
 ) -> None:
     project, memory_id = (None, None) if project_id is not None else subject(action, target)
     params = {

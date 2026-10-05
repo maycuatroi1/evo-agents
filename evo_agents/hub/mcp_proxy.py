@@ -9,13 +9,14 @@ handshake is done, every message carries the negotiated MCP-Protocol-Version. A 
 which has no handshake and carries its version in ``params._meta``, gets the headers that revision's HTTP binding
 asks for instead: MCP-Protocol-Version, Mcp-Method and Mcp-Name.
 
-The endpoint is stateless, so there is nothing to reconnect: each message is a request of its own, and a hub that
-restarted answers the next one. A refused connection, as while the hub restarts, is tried RETRIES more times. When the
-hub gives no MCP answer (it cannot be reached, it refuses the token, or it answers something else), the proxy answers
-in its place: initialize, ping and tools/list from the tool list it carries (``evo_agents.hub.mcp_tools``), so the
-session still starts and sees its tools; every tool call with a short error naming the hub's URL; any other request
-with a JSON-RPC error saying the same. Credentials are read again for every message, so an ``evo-agents hub login``
-made meanwhile counts at once.
+The endpoint is stateless: each message is a request of its own. The requests go over kept-alive connections
+(``evo_agents.hub.client.Connections``), so a tool call pays for no TCP or TLS handshake once one was made, and a hub
+that restarted is reached on a new connection by the next message. A refused connection, as while the hub restarts, is
+tried RETRIES more times. When the hub gives no MCP answer (it cannot be reached, it refuses the token, or it answers
+something else), the proxy answers in its place: initialize, ping and tools/list from the tool list it carries
+(``evo_agents.hub.mcp_tools``), so the session still starts and sees its tools; every tool call with a short error
+naming the hub's URL; any other request with a JSON-RPC error saying the same. Credentials are read again for every
+message, so an ``evo-agents hub login`` made meanwhile counts at once.
 
 Messages are answered concurrently, WORKERS at a time, the handshake first. The proxy writes nothing on this machine,
 and never prints the token or what a message holds: stderr gets one line when the hub stops answering and one when it
@@ -36,7 +37,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 
 from evo_agents import __version__
-from evo_agents.hub.client import HubError, Unreachable, _send, check_url, load_credentials
+from evo_agents.hub.client import CONNECTIONS, HubError, Unreachable, check_url, load_credentials
 from evo_agents.hub.mcp_tools import (
     HANDSHAKE_VERSIONS,
     INSTRUCTIONS,
@@ -87,10 +88,19 @@ def routing_headers(message) -> dict:
 
 
 class McpClient:
-    """JSON-RPC messages to the /mcp of the hub at ``url``, one POST each, as the holder of ``token``."""
+    """JSON-RPC messages to the /mcp of the hub at ``url``, one POST each, as the holder of ``token``, over the
+    process's kept-alive connections (``connections``)."""
 
     def __init__(
-        self, url: str, token: str, project: str | None, sink: str, *, timeout: float = TIMEOUT, sleep=time.sleep
+        self,
+        url: str,
+        token: str,
+        project: str | None,
+        sink: str,
+        *,
+        timeout: float = TIMEOUT,
+        sleep=time.sleep,
+        connections=CONNECTIONS,
     ):
         self.url = check_url(url)
         self.token = token
@@ -98,6 +108,7 @@ class McpClient:
         self.sink = sink
         self.timeout = timeout
         self.sleep = sleep
+        self.connections = connections
 
     def __repr__(self) -> str:  # the token stays out of tracebacks
         return f"McpClient({self.url!r}, project={self.project!r}, sink={self.sink!r})"
@@ -120,7 +131,7 @@ class McpClient:
         data = json.dumps(message, ensure_ascii=False).encode()
         for attempt in range(RETRIES + 1):
             try:
-                status, raw = _send("POST", self.url + MCP_PATH, headers, data, self.timeout)
+                status, raw = self.connections.send("POST", self.url + MCP_PATH, headers, data, self.timeout)
                 break
             except Unreachable as exc:
                 if not exc.refused or attempt == RETRIES:  # a request that may have been sent is never sent twice
@@ -181,12 +192,14 @@ class Proxy:
         workers: int = WORKERS,
         err=None,
         sleep=time.sleep,
+        connections=CONNECTIONS,
     ):
         self.project = project
         self.sink = sink
         self.credentials = credentials
         self.timeout = timeout
         self.sleep = sleep
+        self.connections = connections
         self.workers = workers
         self.err = err or sys.stderr
         self.protocol: str | None = None  # negotiated by the handshake
@@ -225,7 +238,13 @@ class Proxy:
         try:
             credentials = self.credentials()
             client = McpClient(
-                credentials.url, credentials.token, self.project, self.sink, timeout=self.timeout, sleep=self.sleep
+                credentials.url,
+                credentials.token,
+                self.project,
+                self.sink,
+                timeout=self.timeout,
+                sleep=self.sleep,
+                connections=self.connections,
             )
             reply = client.post(message, self.protocol)
         except HubError as exc:

@@ -1,9 +1,10 @@
 """Knowledge graphs for the Playwright stack: a member's push of the synthetic fixture of ``tests.hub.kg_fixture``,
 and the worker's build of it, run inside ``hub_stack.py`` so a test sees a built graph without a worker running.
 
-- POST /kg/seed {project, login, id}: as that member (a writer the test granted on the project, which it registered
-  with ``kg_fixture.registration``), push the fixture through the API (``evo_agents.hub.kg_push``, the blob uploads
-  going to the stack's fake S3), then run the build the push queued.
+- POST /kg/seed {project, login, id, extra}: as that member (a writer the test granted on the project, which it
+  registered with ``kg_fixture.registration``), push the fixture through the API (``evo_agents.hub.kg_push``, the blob
+  uploads going to the stack's fake S3), then run the build the push queued. ``extra``, a note key, adds a note to the
+  fixture, so seeding the same project again with another key pushes a run that changes the graph.
 - POST /kg/build {project, login, id, run}: queue a build as that member (POST /v1/kg/{project}/builds); with
   ``run``, run it now. A project whose knowledge config was never pushed fails with the worker's own error.
 
@@ -47,7 +48,7 @@ class KgSeeder:
         hub = self._hub(body)
         if path == "/kg/seed":
             harness = Harness(self.work_dir / "machines", project)
-            harness.sync()
+            harness.sync(body.get("extra"))
             build = harness.push(hub).build
         elif path == "/kg/build":
             build = hub.call("POST", f"/v1/kg/{project}/builds")["build"]

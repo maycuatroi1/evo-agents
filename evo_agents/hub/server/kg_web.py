@@ -27,7 +27,7 @@ from typing import Annotated
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
-from evo_agents.hub.kg_graph import ArtifactMismatch, BuiltGraph, GraphUnavailable
+from evo_agents.hub.kg_graph import GRAPHS, ArtifactMismatch, BuiltGraph, GraphUnavailable
 from evo_agents.hub.kg_web import MAX_HOPS, MAX_NODES, SEARCH_LIMIT, GraphProblem, NotVisible, WebSession, read
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
@@ -36,7 +36,7 @@ from evo_agents.hub.server.security import CurrentUser
 
 log = logging.getLogger(__name__)
 
-GRAPHS_TRIED = 10  # successful builds tried, newest first, when the newest cannot be fetched
+GRAPHS_TRIED = 10  # successful builds holding an artifact tried, newest first, when the newest cannot be fetched
 
 router = APIRouter(
     prefix="/v1/kg",
@@ -167,11 +167,7 @@ async def _read(request: Request, user, project: str, reader):
     async with state.pool.connection() as conn:
         access = await project_access(conn, user, project)
         _reader(access)
-        cursor = await conn.execute(
-            "SELECT id, artifact_sha256, artifact_size, content_hash, nodes, edges, finished_at FROM kg_builds "
-            "WHERE project_id = %s AND status = 'succeeded' ORDER BY id DESC LIMIT %s",
-            (access.project_id, GRAPHS_TRIED),
-        )
+        cursor = await conn.execute(GRAPHS, (access.project_id, GRAPHS_TRIED))
         graphs = [BuiltGraph(*row) for row in await cursor.fetchall()]
     if not graphs:
         return None, None
