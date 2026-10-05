@@ -6,12 +6,13 @@ import { grantOn, kgPath, nodePath, SHARED_NODE, sharedKg } from "./support/kg";
 import { apiOf, memoryFile, putMemory } from "./support/memories";
 import { ACTIVE_PLAN, open, seedPlans } from "./support/plans";
 import { packSkill, publishSkill } from "./support/skills";
+import { heartbeat, registerWorker, RUNTIMES } from "./support/workers";
 
 /**
  * A table wider than the page scrolls inside its own region; the document itself never scrolls sideways. Step 25
  * found a wide table widening the shell's <main> at 768 and 1024 px, where the open sidebar leaves the content its
  * narrowest for the breakpoint; the shell's inset is min-w-0 since. The pages with the widest tables of each area
- * (admin, plans, memories, skills, knowledge graph), seeded with long unbroken names, at 375, 768 and 1024 px.
+ * (admin, plans, memories, skills, knowledge graph, workers), seeded with long unbroken names, at 375, 768 and 1024 px.
  */
 const WIDTHS = [375, 768, 1024];
 const LONG = "a-rather-long-unbroken-name-that-never-wraps-in-a-table-cell";
@@ -85,5 +86,18 @@ test("admin pages never scroll sideways at 375, 768 and 1024 px", async ({ page,
     { path: "/admin/tokens", ready: shown("tokens-table") },
     { path: "/admin/members", ready: shown("members-table") },
     { path: `/admin/members/${ADMIN_ACCOUNT.login}`, ready: shown("member-tokens") },
+  ]);
+});
+
+test("workers pages never scroll sideways at 375, 768 and 1024 px", async ({ page, member }) => {
+  const me = await member([{ role: "writer", maxLevel: "internal" }]);
+  const worker = await registerWorker(me, { name: `${LONG}-worker`, projects: [me.projects[0]], slots: 8, labels: [LONG.slice(0, 40)] });
+  await heartbeat(worker.id, {
+    runtimes: { ...RUNTIMES, [`${LONG}-runtime`]: { available: true, version: LONG } },
+    checkouts: { [LONG]: { path: `~/github/${LONG}/${LONG}`, branch: LONG } },
+  });
+  await noSidewaysScroll(page, [
+    { path: "/workers", ready: shown("workers-table") },
+    { path: `/workers/${worker.id}`, ready: shown("heartbeat-strip") },
   ]);
 });

@@ -28,7 +28,8 @@
     "memories": "Memories",
     "skills": "Skills",
     "myMemories": "My memories",
-    "globalSkills": "Shared skills"
+    "globalSkills": "Shared skills",
+    "workers": "Workers"
   },
   "projectSwitcher": {
     "label": "Projects",
@@ -302,7 +303,8 @@
       "kind": "Kind",
       "kinds": {
         "machine": "Machine token",
-        "web": "Web session"
+        "web": "Web session",
+        "worker": "Worker token"
       },
       "state": "State",
       "states": {
@@ -334,6 +336,7 @@
       "title": "Revoke token {id} of {login}?",
       "machine": "Machine {host} gets a 401 on its next request and has to run evo-agents hub login again.",
       "web": "This web session is signed out on its next request.",
+      "worker": "Worker {host} stops at once: revoking its token revokes the worker too, and the runs it holds go back to the queue.",
       "current": "This is the session you are using: revoking it signs you out at once.",
       "audit": "This cannot be undone, and it is audited.",
       "cancel": "Cancel",
@@ -1028,6 +1031,252 @@
       "truncatedDescription": "{leftOut, plural, one {# more node within reach is not drawn.} other {# more nodes within reach are not drawn.}} This node has {neighbours} direct neighbours: see them all under <link>Relations by edge type</link>, or open a neighbour to see its own area.",
       "smallScreen": "Narrow screen: the graph is replaced by the table of neighbours.",
       "selected": "Selected {name} ({kind}), {count} edges"
+    }
+  },
+  "workers": {
+    "title": "Workers",
+    "eyebrow": "Hub",
+    "description": "Laptops and desktops registered to run plan steps for their owner. A worker sends a heartbeat every 15 seconds; after 5 minutes without one it is offline, and the runs it held go back to the queue.",
+    "registerButton": "Register worker",
+    "register": {
+      "title": "Register a worker",
+      "description": "The worker makes outbound HTTPS calls only and pulls its own work. No port is opened on the machine.",
+      "close": "Close",
+      "tabs": {
+        "label": "How to register",
+        "pairing": "Pairing code",
+        "cli": "CLI only"
+      },
+      "name": "Worker name",
+      "namePlaceholder": "for example my-laptop",
+      "nameHint": "Unique among your workers: letters, digits, dots, dashes and underscores. The machine's hostname works well.",
+      "nameRequired": "Enter a name for the worker.",
+      "nameInvalid": "Start with a letter or digit, then use letters, digits, dots, dashes or underscores, at most 100 in all.",
+      "projects": "Projects it takes runs from",
+      "projectsHint": "Only projects where you hold the writer role are listed. The worker never gets a run from a project outside this list.",
+      "projectsRequired": "Pick at least one project.",
+      "projectsFailed": "The project list could not be loaded. Close the dialog and try again.",
+      "noProjects": "You hold the writer role on no project yet, so a worker would have nothing to run. Ask a project admin for the writer role.",
+      "slots": "Slots",
+      "slotsHint": "Runs it holds at the same time, {min} to {max}.",
+      "slotsInvalid": "Enter a whole number from {min} to {max}.",
+      "labels": "Labels",
+      "labelsPlaceholder": "macos, gpu",
+      "labelsHint": "Optional. Separate them with commas or spaces.",
+      "labelsInvalid": "Not a valid label: {labels}. A label starts with a letter or digit and holds letters, digits, dots, dashes or underscores, at most 40 in all.",
+      "labelsTooMany": "At most {max} labels.",
+      "terminal": "Allow the web terminal",
+      "terminalHint": "Lets you open a shell on this machine from a run's page on the hub. Leave it off unless you need it.",
+      "warning": "Agents on a worker run with your full permissions on that machine, not in a sandbox. Register only machines where that is acceptable. Only you can dispatch runs to it.",
+      "cancel": "Cancel",
+      "create": "Create pairing code",
+      "creating": "Creating…",
+      "errors": {
+        "forbidden": "The hub refused: you need the writer role on every project you pick.",
+        "conflict": "The hub refused the pairing code: you have a worker with this name already, or 5 codes still waiting.",
+        "unavailable": "The hub cannot make pairing codes right now."
+      },
+      "codeHeading": "Pairing code for {name}",
+      "code": "Pairing code, single use",
+      "expiresIn": "Expires in {time}",
+      "expiresAt": "Expires at {time}",
+      "triesLeft": "{count, plural, =0 {No wrong try left.} one {# wrong try left before the code locks.} other {# wrong tries left before the code locks.}}",
+      "stepInstall": "Install the daemon on the machine",
+      "stepJoin": "Pair the machine with the hub",
+      "stepJoinHint": "The machine gets a worker token of its own. It can only claim your runs and send back their logs, heartbeats and state.",
+      "stepService": "Run it in the background at login",
+      "stepServiceHint": "A LaunchAgent on macOS, a systemd user unit on Linux.",
+      "waiting": "Waiting for the machine to join. This dialog updates when it does.",
+      "pollFailed": "The hub did not answer the last check. The dialog keeps asking.",
+      "closeHint": "Closing this dialog does not cancel the code. It works until {time}.",
+      "expiredTitle": "The code expired",
+      "expiredBody": "No machine joined within 10 minutes. Create a new code when the machine is ready.",
+      "lockedTitle": "The code is locked",
+      "lockedBody": "A wrong code was typed 5 times, so this one no longer works. Create a new code.",
+      "newCode": "Create a new code",
+      "openWorker": "Open worker",
+      "joinedTitle": "<strong>{name}</strong> joined at {time}.",
+      "joinedNotice": "Worker {name} joined the hub.",
+      "hostValue": "{hostname}, {os} {arch}",
+      "firstHeartbeat": "Reported with its first heartbeat",
+      "cliIntro": "A machine already signed in with <code>evo-agents hub login</code> registers with your own token. No pairing code is needed.",
+      "cliStepRegister": "Register the machine",
+      "cliStepRegisterHint": "Built from the name, projects, slots and labels on the Pairing code tab. The daemon reports the runtimes and checkouts it finds.",
+      "commands": {
+        "install": "install command",
+        "join": "join command",
+        "register": "register command",
+        "service": "service command"
+      }
+    },
+    "count": "{count, plural, one {# worker} other {# workers}}",
+    "caption": "Workers",
+    "hostLine": "{hostname}, {os} {arch}",
+    "slotsLabel": "{held} of {slots} slots in use",
+    "notReported": "Not reported",
+    "never": "Never",
+    "status": {
+      "idle": "Idle",
+      "busy": "Busy",
+      "draining": "Draining",
+      "offline": "Offline",
+      "revoked": "Revoked"
+    },
+    "summary": {
+      "label": "Summary",
+      "idle": "Idle",
+      "idleHint": "can claim a run now",
+      "busy": "Busy",
+      "busyHint": "{runs, plural, =0 {no run held} one {# run held} other {# runs held}}",
+      "freeSlots": "Free slots",
+      "freeSlotsHint": "{total, plural, =0 {no worker online} one {of # slot online} other {of # slots online}}",
+      "offline": "Offline",
+      "offlineSince": "oldest heartbeat {time}",
+      "offlineNever": "{count, plural, one {# never connected} other {# never connected}}",
+      "offlineNone": "none right now"
+    },
+    "facets": {
+      "label": "Status",
+      "all": "All"
+    },
+    "search": {
+      "label": "Search workers",
+      "placeholder": "Name, host, owner or label",
+      "clear": "Clear search"
+    },
+    "listSummary": {
+      "all": "{count, plural, =0 {No worker.} one {# worker.} other {# workers.}}",
+      "filtered": "{count, plural, =0 {No worker matches.} one {# worker matches.} other {# workers match.}}",
+      "revokedHidden": "{count, plural, one {# revoked worker is hidden; pick Revoked to see it.} other {# revoked workers are hidden; pick Revoked to see them.}}"
+    },
+    "columns": {
+      "worker": "Worker",
+      "status": "Status",
+      "slots": "Slots",
+      "runtimes": "Runtimes",
+      "projects": "Projects",
+      "owner": "Owner",
+      "heartbeat": "Last heartbeat"
+    },
+    "empty": {
+      "title": "No worker yet",
+      "description": "Register a laptop or desktop to run plan steps for you. The worker calls the hub over HTTPS and opens no port on the machine.",
+      "showRevoked": "Show revoked workers"
+    },
+    "noResults": {
+      "title": "No worker matches",
+      "description": "Change the search or pick another status.",
+      "clear": "Show all workers"
+    },
+    "copy": {
+      "copy": "Copy",
+      "copied": "Copied",
+      "label": "Copy the {what}",
+      "copiedLong": "Command copied to the clipboard",
+      "selected": "The command is selected: press Ctrl+C or Cmd+C to copy it"
+    },
+    "confirm": {
+      "typeName": "Type <code>{name}</code> to confirm",
+      "mismatch": "That is not the worker's name. Type {name} exactly.",
+      "cancel": "Cancel"
+    },
+    "errors": {
+      "forbidden": "The hub refused: only the worker's owner can do this. A hub admin may drain or revoke a worker but not resume it.",
+      "notFound": "The hub no longer has this worker, or it is not yours. The page was reloaded.",
+      "conflict": "The worker changed before your action reached the hub, for example it was revoked. The page was reloaded.",
+      "unavailable": "The hub cannot do this right now.",
+      "apiMessage": "API message: {message}"
+    },
+    "heartbeat": {
+      "states": {
+        "received": "Heartbeat received",
+        "missed": "No heartbeat",
+        "unknown": "Not recorded",
+        "before": "Before registration"
+      },
+      "summary": "Of the last {minutes} minutes: {received} with a heartbeat, {missed} without, {unknown} not recorded.",
+      "lastMissed": "Latest gap: {minutes, plural, one {# minute} other {# minutes}} from {time}.",
+      "axisStart": "{minutes} min ago",
+      "axisEnd": "Now",
+      "legend": "Legend",
+      "note": "The hub keeps only the latest heartbeat, so the strip shows what this browser tab has seen since you opened the workers pages."
+    },
+    "detail": {
+      "title": "Worker",
+      "eyebrow": "Worker",
+      "facts": "{os} {arch} on {hostname}. Owner {owner}. Daemon evo-agents {version}, registered {date}.",
+      "notFoundTitle": "Worker not found",
+      "notFoundDescription": "This worker does not exist, or it belongs to another member.",
+      "actionsHelp": "Drain: the worker finishes the runs it holds, then claims no new ones. Revoke: its token stops working at once, and the runs it holds go back to the queue.",
+      "asAdmin": "You see this worker as a hub admin. You may drain or revoke it; only {owner} can resume it or dispatch runs to it.",
+      "revoked": "Revoked {time}. Its token no longer works, and its name is free for a new worker.",
+      "draining": "Draining since {time}. It finishes the runs it holds and claims no new ones until you resume it.",
+      "drainingNotOwner": "Draining since {time}. It finishes the runs it holds and claims no new ones until {owner} resumes it.",
+      "offline": "No heartbeat since {time}. Runs it held go back to the queue once their 5-minute leases run out.",
+      "neverSeen": "No heartbeat yet. Start the daemon on {hostname} with <code>evo-agents worker run</code>, or install it as a service.",
+      "runtimes": {
+        "title": "Detected runtimes",
+        "description": "What its last heartbeat found on the machine.",
+        "empty": "Shown after its first heartbeat.",
+        "none": "Its last heartbeat reported no runtime.",
+        "version": "version {version}",
+        "available": "Available",
+        "missing": "Missing",
+        "unknown": "Unknown"
+      },
+      "scope": {
+        "title": "Scope",
+        "description": "What it may run, set when it was registered.",
+        "projects": "Projects",
+        "slots": "Slots",
+        "slotsValue": "{held} of {slots} in use",
+        "labels": "Labels",
+        "noLabels": "None",
+        "permissions": "Permissions",
+        "permissionsValue": "Full, as {owner}",
+        "dispatch": "Who dispatches",
+        "dispatchValue": "{owner} only",
+        "terminal": "Web terminal",
+        "terminalOn": "Allowed",
+        "terminalOff": "Not allowed",
+        "host": "Host"
+      },
+      "checkouts": {
+        "title": "Checkouts",
+        "description": "Repositories its last heartbeat found; a run works in a worktree of one of them.",
+        "empty": "Shown after its first heartbeat.",
+        "none": "Its last heartbeat reported no checkout."
+      },
+      "heartbeat": {
+        "title": "Heartbeat, last 60 minutes",
+        "last": "Last heartbeat",
+        "never": "No heartbeat yet"
+      },
+      "runs": {
+        "title": "Runs",
+        "held": "{held, plural, =0 {Holds no run now} one {Holds # run now} other {Holds # runs now}}, {free, plural, =0 {no slot free} one {# slot free} other {# slots free}}.",
+        "history": "This hub does not list a worker's past runs yet."
+      }
+    },
+    "actions": {
+      "drain": "Drain",
+      "undrain": "Resume",
+      "undrainPending": "Resuming…",
+      "revoke": "Revoke",
+      "drainTitle": "Drain worker {name}?",
+      "drainBody": "It finishes the runs it holds, then claims no new ones until its owner resumes it.",
+      "drainNotOwner": "Only {owner} can resume it afterwards.",
+      "drainConfirm": "Drain worker",
+      "drainPending": "Draining…",
+      "drainSuccess": "{name} is draining: it finishes the runs it holds, then claims no new ones.",
+      "undrainSuccess": "{name} claims runs again.",
+      "revokeTitle": "Revoke worker {name}?",
+      "revokeBody": "Its token stops working at once and its name becomes free. Runs it holds go back to the queue, or fail if they were pinned to it or on their last attempt.",
+      "revokeHeld": "{count, plural, one {It holds # run now.} other {It holds # runs now.}}",
+      "audit": "This cannot be undone, and it is audited.",
+      "revokeConfirm": "Revoke worker",
+      "revokePending": "Revoking…",
+      "revokeSuccess": "Revoked {name}. Its token no longer works."
     }
   }
 }

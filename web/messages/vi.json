@@ -28,7 +28,8 @@
     "memories": "Memory",
     "skills": "Skill",
     "myMemories": "Memory cá nhân",
-    "globalSkills": "Skill dùng chung"
+    "globalSkills": "Skill dùng chung",
+    "workers": "Worker"
   },
   "projectSwitcher": {
     "label": "Dự án",
@@ -302,7 +303,8 @@
       "kind": "Loại",
       "kinds": {
         "machine": "Token máy",
-        "web": "Phiên web"
+        "web": "Phiên web",
+        "worker": "Token worker"
       },
       "state": "Trạng thái",
       "states": {
@@ -334,6 +336,7 @@
       "title": "Thu hồi token {id} của {login}?",
       "machine": "Máy {host} sẽ nhận 401 ở yêu cầu kế tiếp và phải chạy lại evo-agents hub login.",
       "web": "Phiên web này sẽ bị đăng xuất ở yêu cầu kế tiếp.",
+      "worker": "Worker {host} dừng ngay: thu hồi token này cũng thu hồi worker, và các run nó đang giữ quay lại queue.",
       "current": "Đây là phiên bạn đang dùng: thu hồi sẽ đăng xuất bạn ngay.",
       "audit": "Thao tác không hoàn tác được và được ghi vào audit.",
       "cancel": "Huỷ",
@@ -1028,6 +1031,252 @@
       "truncatedDescription": "{leftOut, plural, other {Còn # node trong tầm với không được vẽ.}} Node này có {neighbours} hàng xóm trực tiếp: xem đủ ở mục <link>Quan hệ theo loại cạnh</link>, hoặc mở một hàng xóm để xem vùng của nó.",
       "smallScreen": "Màn hình hẹp: đồ thị được thay bằng bảng hàng xóm.",
       "selected": "Đang chọn {name} ({kind}), {count} cạnh"
+    }
+  },
+  "workers": {
+    "title": "Worker",
+    "eyebrow": "Hub",
+    "description": "Laptop và máy bàn đã đăng ký để chạy các bước plan cho chủ máy. Worker gửi heartbeat mỗi 15 giây; quá 5 phút không có heartbeat thì worker offline, và các run nó đang giữ quay lại queue.",
+    "registerButton": "Đăng ký worker",
+    "register": {
+      "title": "Đăng ký worker",
+      "description": "Worker chỉ gọi ra ngoài qua HTTPS và tự kéo việc về. Không cổng nào được mở trên máy.",
+      "close": "Đóng",
+      "tabs": {
+        "label": "Cách đăng ký",
+        "pairing": "Pairing code",
+        "cli": "Chỉ dùng CLI"
+      },
+      "name": "Tên worker",
+      "namePlaceholder": "ví dụ my-laptop",
+      "nameHint": "Không trùng với worker khác của bạn: chữ, số, dấu chấm, gạch ngang và gạch dưới. Dùng hostname của máy là hợp.",
+      "nameRequired": "Nhập tên cho worker.",
+      "nameInvalid": "Bắt đầu bằng chữ hoặc số, sau đó dùng chữ, số, dấu chấm, gạch ngang hoặc gạch dưới, tổng cộng tối đa 100 ký tự.",
+      "projects": "Dự án worker nhận run",
+      "projectsHint": "Chỉ liệt kê dự án bạn có vai trò writer. Worker không bao giờ nhận run của dự án ngoài danh sách này.",
+      "projectsRequired": "Chọn ít nhất một dự án.",
+      "projectsFailed": "Không tải được danh sách dự án. Đóng hộp thoại rồi thử lại.",
+      "noProjects": "Bạn chưa có vai trò writer ở dự án nào, nên worker sẽ không có gì để chạy. Hãy xin quản trị dự án cấp vai trò writer.",
+      "slots": "Slot",
+      "slotsHint": "Số run worker giữ cùng lúc, từ {min} tới {max}.",
+      "slotsInvalid": "Nhập một số nguyên từ {min} tới {max}.",
+      "labels": "Label",
+      "labelsPlaceholder": "macos, gpu",
+      "labelsHint": "Không bắt buộc. Ngăn cách bằng dấu phẩy hoặc khoảng trắng.",
+      "labelsInvalid": "Label không hợp lệ: {labels}. Label bắt đầu bằng chữ hoặc số và chỉ gồm chữ, số, dấu chấm, gạch ngang hoặc gạch dưới, tổng cộng tối đa 40 ký tự.",
+      "labelsTooMany": "Tối đa {max} label.",
+      "terminal": "Cho phép terminal trên web",
+      "terminalHint": "Cho bạn mở shell trên máy này từ trang run trên hub. Chỉ bật khi cần.",
+      "warning": "Agent trên worker chạy với toàn quyền của bạn trên máy đó, không nằm trong sandbox. Chỉ đăng ký máy mà bạn chấp nhận điều này. Chỉ bạn dispatch được run tới worker.",
+      "cancel": "Huỷ",
+      "create": "Tạo pairing code",
+      "creating": "Đang tạo…",
+      "errors": {
+        "forbidden": "Hub từ chối: bạn cần vai trò writer ở mọi dự án đã chọn.",
+        "conflict": "Hub từ chối tạo pairing code: bạn đã có worker trùng tên này, hoặc còn 5 code đang chờ.",
+        "unavailable": "Hub hiện không tạo được pairing code."
+      },
+      "codeHeading": "Pairing code cho {name}",
+      "code": "Pairing code, dùng một lần",
+      "expiresIn": "Hết hạn sau {time}",
+      "expiresAt": "Hết hạn lúc {time}",
+      "triesLeft": "{count, plural, =0 {Không còn lượt nhập sai nào.} other {Còn # lượt nhập sai trước khi code bị khoá.}}",
+      "stepInstall": "Cài daemon trên máy",
+      "stepJoin": "Ghép máy với hub",
+      "stepJoinHint": "Máy nhận một token worker riêng. Với token đó, máy chỉ claim được run của bạn và gửi về log, heartbeat và trạng thái của run.",
+      "stepService": "Chạy nền khi đăng nhập",
+      "stepServiceHint": "LaunchAgent trên macOS, systemd user unit trên Linux.",
+      "waiting": "Đang chờ máy kết nối. Hộp thoại sẽ tự cập nhật khi máy vào.",
+      "pollFailed": "Hub không trả lời lần hỏi vừa rồi. Hộp thoại vẫn tiếp tục hỏi.",
+      "closeHint": "Đóng hộp thoại không huỷ code. Code dùng được tới {time}.",
+      "expiredTitle": "Code đã hết hạn",
+      "expiredBody": "Không có máy nào kết nối trong 10 phút. Tạo code mới khi máy đã sẵn sàng.",
+      "lockedTitle": "Code đã bị khoá",
+      "lockedBody": "Đã có 5 lần nhập sai code, nên code này không dùng được nữa. Tạo code mới.",
+      "newCode": "Tạo code mới",
+      "openWorker": "Mở worker",
+      "joinedTitle": "<strong>{name}</strong> đã kết nối lúc {time}.",
+      "joinedNotice": "Worker {name} đã kết nối với hub.",
+      "hostValue": "{hostname}, {os} {arch}",
+      "firstHeartbeat": "Có sau heartbeat đầu tiên",
+      "cliIntro": "Máy đã đăng nhập bằng <code>evo-agents hub login</code> đăng ký bằng chính token của bạn. Không cần pairing code.",
+      "cliStepRegister": "Đăng ký máy",
+      "cliStepRegisterHint": "Lấy từ tên, dự án, slot và label ở tab Pairing code. Daemon tự báo runtime và checkout nó tìm thấy.",
+      "commands": {
+        "install": "lệnh cài đặt",
+        "join": "lệnh ghép máy",
+        "register": "lệnh đăng ký",
+        "service": "lệnh chạy nền"
+      }
+    },
+    "count": "{count, plural, other {# worker}}",
+    "caption": "Worker",
+    "hostLine": "{hostname}, {os} {arch}",
+    "slotsLabel": "Đang dùng {held} trên {slots} slot",
+    "notReported": "Chưa báo",
+    "never": "Chưa có",
+    "status": {
+      "idle": "Rảnh",
+      "busy": "Đang chạy",
+      "draining": "Ngừng nhận việc",
+      "offline": "Offline",
+      "revoked": "Đã thu hồi"
+    },
+    "summary": {
+      "label": "Tóm tắt",
+      "idle": "Rảnh",
+      "idleHint": "nhận được run ngay",
+      "busy": "Đang chạy",
+      "busyHint": "{runs, plural, =0 {không giữ run nào} other {đang giữ # run}}",
+      "freeSlots": "Slot trống",
+      "freeSlotsHint": "{total, plural, =0 {không có worker nào online} other {trên # slot đang online}}",
+      "offline": "Offline",
+      "offlineSince": "heartbeat cũ nhất {time}",
+      "offlineNever": "{count, plural, other {# worker chưa từng kết nối}}",
+      "offlineNone": "hiện không có"
+    },
+    "facets": {
+      "label": "Trạng thái",
+      "all": "Tất cả"
+    },
+    "search": {
+      "label": "Tìm worker",
+      "placeholder": "Tên, máy, chủ hoặc label",
+      "clear": "Xoá ô tìm"
+    },
+    "listSummary": {
+      "all": "{count, plural, =0 {Không có worker nào.} other {# worker.}}",
+      "filtered": "{count, plural, =0 {Không có worker nào khớp.} other {# worker khớp.}}",
+      "revokedHidden": "{count, plural, other {Đang ẩn # worker đã thu hồi; chọn Đã thu hồi để xem.}}"
+    },
+    "columns": {
+      "worker": "Worker",
+      "status": "Trạng thái",
+      "slots": "Slot",
+      "runtimes": "Runtime",
+      "projects": "Dự án",
+      "owner": "Chủ",
+      "heartbeat": "Heartbeat gần nhất"
+    },
+    "empty": {
+      "title": "Chưa có worker nào",
+      "description": "Đăng ký một laptop hoặc máy bàn để chạy các bước plan cho bạn. Worker gọi hub qua HTTPS và không mở cổng nào trên máy.",
+      "showRevoked": "Xem worker đã thu hồi"
+    },
+    "noResults": {
+      "title": "Không có worker nào khớp",
+      "description": "Đổi từ khoá tìm hoặc chọn trạng thái khác.",
+      "clear": "Xem mọi worker"
+    },
+    "copy": {
+      "copy": "Sao chép",
+      "copied": "Đã chép",
+      "label": "Sao chép {what}",
+      "copiedLong": "Đã chép lệnh vào clipboard",
+      "selected": "Lệnh đã được chọn: bấm Ctrl+C hoặc Cmd+C để chép"
+    },
+    "confirm": {
+      "typeName": "Gõ <code>{name}</code> để xác nhận",
+      "mismatch": "Đây không phải tên worker. Gõ đúng {name}.",
+      "cancel": "Huỷ"
+    },
+    "errors": {
+      "forbidden": "Hub từ chối: chỉ chủ worker được làm việc này. Quản trị viên hub chỉ được ngừng nhận việc hoặc thu hồi worker, không được cho nhận việc lại.",
+      "notFound": "Hub không còn worker này, hoặc worker không phải của bạn. Trang vừa được tải lại.",
+      "conflict": "Worker đã thay đổi trước khi thao tác của bạn tới hub, ví dụ đã bị thu hồi. Trang vừa được tải lại.",
+      "unavailable": "Hub hiện không làm được việc này.",
+      "apiMessage": "Thông báo từ API: {message}"
+    },
+    "heartbeat": {
+      "states": {
+        "received": "Có heartbeat",
+        "missed": "Không có heartbeat",
+        "unknown": "Chưa ghi nhận",
+        "before": "Trước khi đăng ký"
+      },
+      "summary": "Trong {minutes} phút gần nhất: {received} phút có heartbeat, {missed} phút không có, {unknown} phút chưa ghi nhận.",
+      "lastMissed": "Khoảng trống gần nhất: {minutes, plural, other {# phút}} từ {time}.",
+      "axisStart": "{minutes} phút trước",
+      "axisEnd": "Bây giờ",
+      "legend": "Chú thích",
+      "note": "Hub chỉ giữ heartbeat gần nhất, nên dải này cho thấy những gì tab trình duyệt này thấy được từ lúc bạn mở các trang worker."
+    },
+    "detail": {
+      "title": "Worker",
+      "eyebrow": "Worker",
+      "facts": "{os} {arch} trên {hostname}. Chủ {owner}. Daemon evo-agents {version}, đăng ký {date}.",
+      "notFoundTitle": "Không tìm thấy worker",
+      "notFoundDescription": "Worker này không tồn tại, hoặc thuộc về thành viên khác.",
+      "actionsHelp": "Ngừng nhận việc: worker chạy xong các run đang giữ rồi không nhận run mới. Thu hồi: token của worker hết hiệu lực ngay, và các run nó đang giữ quay lại queue.",
+      "asAdmin": "Bạn đang xem worker này với tư cách quản trị viên hub. Bạn được cho ngừng nhận việc hoặc thu hồi; chỉ {owner} cho nó nhận việc lại hoặc dispatch run tới nó.",
+      "revoked": "Đã thu hồi {time}. Token của worker không còn hiệu lực, và tên này dùng được cho worker mới.",
+      "draining": "Ngừng nhận việc từ {time}. Worker chạy xong các run đang giữ và không nhận run mới cho tới khi bạn cho nhận việc lại.",
+      "drainingNotOwner": "Ngừng nhận việc từ {time}. Worker chạy xong các run đang giữ và không nhận run mới cho tới khi {owner} cho nhận việc lại.",
+      "offline": "Không có heartbeat từ {time}. Các run nó giữ quay lại queue khi lease 5 phút của chúng hết hạn.",
+      "neverSeen": "Chưa có heartbeat. Chạy daemon trên {hostname} bằng <code>evo-agents worker run</code>, hoặc cài nó thành service.",
+      "runtimes": {
+        "title": "Runtime tìm thấy",
+        "description": "Những gì heartbeat gần nhất tìm thấy trên máy.",
+        "empty": "Hiện sau heartbeat đầu tiên.",
+        "none": "Heartbeat gần nhất không báo runtime nào.",
+        "version": "phiên bản {version}",
+        "available": "Có sẵn",
+        "missing": "Không có",
+        "unknown": "Chưa rõ"
+      },
+      "scope": {
+        "title": "Phạm vi",
+        "description": "Những gì worker được chạy, đặt lúc đăng ký.",
+        "projects": "Dự án",
+        "slots": "Slot",
+        "slotsValue": "Đang dùng {held} trên {slots}",
+        "labels": "Label",
+        "noLabels": "Không có",
+        "permissions": "Quyền",
+        "permissionsValue": "Toàn quyền, như {owner}",
+        "dispatch": "Ai dispatch",
+        "dispatchValue": "Chỉ {owner}",
+        "terminal": "Terminal trên web",
+        "terminalOn": "Cho phép",
+        "terminalOff": "Không cho phép",
+        "host": "Máy"
+      },
+      "checkouts": {
+        "title": "Checkout",
+        "description": "Các repo heartbeat gần nhất tìm thấy; mỗi run làm việc trong một worktree của một repo.",
+        "empty": "Hiện sau heartbeat đầu tiên.",
+        "none": "Heartbeat gần nhất không báo checkout nào."
+      },
+      "heartbeat": {
+        "title": "Heartbeat, 60 phút gần nhất",
+        "last": "Heartbeat gần nhất",
+        "never": "Chưa có heartbeat"
+      },
+      "runs": {
+        "title": "Run",
+        "held": "{held, plural, =0 {Hiện không giữ run nào} other {Đang giữ # run}}, {free, plural, =0 {không còn slot trống} other {còn # slot trống}}.",
+        "history": "Hub này chưa liệt kê các run đã chạy của một worker."
+      }
+    },
+    "actions": {
+      "drain": "Ngừng nhận việc",
+      "undrain": "Nhận việc lại",
+      "undrainPending": "Đang bật lại…",
+      "revoke": "Thu hồi",
+      "drainTitle": "Cho worker {name} ngừng nhận việc?",
+      "drainBody": "Worker chạy xong các run đang giữ, rồi không nhận run mới cho tới khi chủ worker cho nhận việc lại.",
+      "drainNotOwner": "Sau đó chỉ {owner} cho nó nhận việc lại được.",
+      "drainConfirm": "Ngừng nhận việc",
+      "drainPending": "Đang dừng…",
+      "drainSuccess": "{name} đã ngừng nhận việc: chạy xong các run đang giữ rồi không nhận run mới.",
+      "undrainSuccess": "{name} nhận run trở lại.",
+      "revokeTitle": "Thu hồi worker {name}?",
+      "revokeBody": "Token của worker hết hiệu lực ngay và tên của nó được giải phóng. Các run nó đang giữ quay lại queue, hoặc thất bại nếu được gắn cố định với worker này hay đã ở lần thử cuối.",
+      "revokeHeld": "{count, plural, other {Worker đang giữ # run.}}",
+      "audit": "Thao tác không hoàn tác được và được ghi vào audit.",
+      "revokeConfirm": "Thu hồi worker",
+      "revokePending": "Đang thu hồi…",
+      "revokeSuccess": "Đã thu hồi {name}. Token của worker không còn hiệu lực."
     }
   }
 }
