@@ -1,3 +1,4 @@
+import { cspSources } from "./support/csp";
 import { expect, test } from "./support/fixtures";
 import { newAccount } from "./support/hub";
 import {
@@ -91,7 +92,7 @@ test.describe("knowledge graph", () => {
     });
     const csp = (await page.request.get(nodePath(kg.project, SHARED_NODE))).headers()["content-security-policy"];
     expect(csp).toMatch(/script-src 'self' 'nonce-[^']+' 'strict-dynamic'/);
-    expect(csp).not.toContain("unsafe-eval");
+    expect(cspSources(csp)).not.toContain("'unsafe-eval'"); // 'wasm-unsafe-eval' is a source of its own
 
     for (const hops of [1, 2] as const) {
       await open(page, nodePath(kg.project, SHARED_NODE, hops));

@@ -12,6 +12,7 @@ Both ends are websocket clients of one TestClient, so the app serves them on one
 
 import json
 import queue
+import threading
 import time
 from contextlib import contextmanager
 
@@ -129,14 +130,27 @@ def worker_end(client, worker: dict, run_id: int, headers: dict | None = None):
 
 
 def message(ws, timeout: float = WAIT) -> dict:
-    """The next message the hub sent on ``ws``. The session's own receive() waits forever; this fails instead."""
+    """The next message the hub sent on ``ws``. The session's own receive() waits forever; this fails instead.
+
+    Only the public ``receive()`` of the test session is used, from a daemon thread, since how the session queues
+    messages changes between Starlette releases. A receive that times out is left waiting: the test fails anyway,
+    and the thread ends with the session or with the interpreter."""
+    got: queue.Queue = queue.Queue(maxsize=1)
+
+    def receive() -> None:
+        try:
+            got.put(ws.receive())
+        except BaseException as error:  # handed over to the test's thread, which raises it
+            got.put(error)
+
+    threading.Thread(target=receive, name="hub-ws-receive", daemon=True).start()
     try:
-        got = ws._send_queue.get(timeout=timeout)
+        answer = got.get(timeout=timeout)
     except queue.Empty:
         pytest.fail(f"no message from the hub within {timeout}s")
-    if isinstance(got, BaseException):
-        raise got
-    return got
+    if isinstance(answer, BaseException):
+        raise answer
+    return answer
 
 
 def received(ws) -> bytes:
