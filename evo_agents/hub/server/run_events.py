@@ -17,9 +17,11 @@ Readers of the project read a run's events (GET .../runs/{id}/events?after=SEQ) 
 .../runs/{id}/stream), for the runs of plans they may read (``runs.readable_run``). The stream is server-sent events
 through FastAPI's EventSourceResponse: each event has the hub's seq as its id, a reconnecting client's Last-Event-ID
 (or ``after`` on the first connection) says where to go on, FastAPI sends a ``: ping`` comment after 15 idle seconds,
-and an ``end`` event closes the stream once the run is final and every event of it was sent. A stream holds no
-database connection while it waits: ``RunStreams`` wakes it when EVENTS_CHANNEL is notified with its run's id, on the
-api process's one LISTEN connection (``listen``), and it looks again every STREAM_POLL_SECONDS besides.
+and an ``end`` event closes the stream once the run is final and every event of it was sent. The answer carries
+``Cache-Control: no-cache, no-transform``, so a proxy between the hub and the browser neither caches nor compresses
+it: a compressing one holds the events back until its buffer fills. A stream holds no database connection while it
+waits: ``RunStreams`` wakes it when EVENTS_CHANNEL is notified with its run's id, on the api process's one LISTEN
+connection (``listen``), and it looks again every STREAM_POLL_SECONDS besides.
 
 The owner sends the run's agent a message (POST .../runs/{id}/messages, at most MAX_MESSAGE_BYTES of UTF-8) while the
 run is queued or held: it waits in run_inbox, the log gets a ``user_message`` event, and the heartbeat counts it
@@ -84,6 +86,24 @@ RUN_FULL = (
 )
 
 
+STREAM_CACHE_CONTROL = "no-cache, no-transform"  # FastAPI's own is no-cache
+
+
+class StreamRoute(APIRoute):
+    """Answers a stream of server-sent events with STREAM_CACHE_CONTROL in place of FastAPI's Cache-Control."""
+
+    def get_route_handler(self):
+        handler = super().get_route_handler()
+
+        async def streamed(request: Request):
+            response = await handler(request)
+            if response.headers.get("content-type", "").startswith("text/event-stream"):
+                response.headers["Cache-Control"] = STREAM_CACHE_CONTROL
+            return response
+
+        return streamed
+
+
 class BatchRoute(APIRoute):
     """Reads at most MAX_BATCH_BYTES of a request before FastAPI parses it: a larger one gets 413, whether it says its
     length or not, and is never held in memory whole."""
@@ -114,6 +134,7 @@ JSON_ERROR = {"content": {"application/json": {"schema": {"$ref": "#/components/
 stream_router = APIRouter(
     prefix="/v1/projects",
     tags=["runs"],
+    route_class=StreamRoute,
     responses={401: {"description": "Unauthorized", **JSON_ERROR}},
 )
 worker_router = APIRouter(

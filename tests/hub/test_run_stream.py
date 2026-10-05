@@ -4,11 +4,15 @@ takeover, the run list, and the log and diff the worker uploads.
 The checks step 6 of the worker-fleet plan names: the stream gets a new event within 2 seconds; a stream resumed
 with Last-Event-ID misses nothing and repeats nothing; a batch sent again is stored once and ack_seq stops at a gap
 in the seq; a body over 64 KiB is cut; someone without a grant gets 404; a reader sending a message gets 403; a
-takeover shows in the next heartbeat; the worker commits a run-log blob, and a kind it does not take is refused.
+takeover shows in the next heartbeat; the worker commits a run-log blob, and a kind it does not take is refused. And
+from step 18, a claim whose worker hung up leases nothing, whether it hung up while the claim waited or while it
+leased a run.
 
 The hub runs under uvicorn in a thread of this process, as ``hub serve`` runs it: the stream needs a server that
-sends a response while it is still being written, and the module's constants can be patched."""
+sends a response while it is still being written, a claim needs one that sees its client go, and the module's
+constants can be patched."""
 
+import asyncio
 import json
 import threading
 import time
@@ -30,6 +34,7 @@ import uvicorn
 
 from evo_agents.hub import runs
 from evo_agents.hub.server import listen, run_events
+from evo_agents.hub.server import runs as run_routes
 from evo_agents.hub.server.app import create_app
 from tests.hub.live import ADMIN, bearer, sql
 from tests.hub.s3 import get_url, put_presigned
@@ -221,6 +226,9 @@ def test_the_stream_gets_a_new_event_within_two_seconds(hub, monkeypatch):
     try:
         assert stream.response.status_code == 200
         assert stream.response.headers["content-type"].startswith("text/event-stream")
+        # a proxy in between neither caches nor compresses it, which would hold the events back
+        assert stream.response.headers.get_list("cache-control") == ["no-cache, no-transform"]
+        assert stream.response.headers["x-accel-buffering"] == "no"
         first = stream.events(2)
         assert seqs(first) == [1, 2]
         assert [(m["data"]["kind"], m["data"]["body"]["to"]) for m in first] == [
@@ -325,6 +333,56 @@ def test_an_idle_stream_gets_a_ping_and_one_listen_connection_serves_claims_and_
         claimer.join(10)
         stream.close()
     assert waiting == {"run": None}
+
+
+# A claim whose worker hung up
+
+
+def hang_up_claim(hub, worker: dict, wait: float, after: float) -> None:
+    """A claim that waits up to ``wait`` seconds, whose client hangs up after ``after`` seconds, as a daemon that
+    stops drops the claim it waits on."""
+    with httpx.Client(base_url=str(hub.client.base_url), timeout=after) as client:
+        with pytest.raises(httpx.ReadTimeout):
+            client.post("/v1/worker/claim", json={"wait_s": wait}, headers=worker["headers"])
+
+
+def claims_waiting(hub) -> dict:
+    return dict(hub.app.state.run_wakeups._tickets)  # worker id: its claim waiting in this process
+
+
+def test_a_claim_whose_worker_hung_up_while_it_waited_leaves_the_next_run_queued(hub, monkeypatch):
+    monkeypatch.setattr(run_routes, "CLAIM_POLL_SECONDS", 60.0)  # only the notification wakes the claim
+    worker = add_worker(hub.client, hub.headers["owner"], "mac-mini")
+    hang_up_claim(hub, worker, wait=20, after=1)
+    assert worker["id"] in claims_waiting(hub), "the hub's side of the claim waits on"
+    run_id = dispatched(hub.client, hub.headers["owner"], [2])[0]["id"]
+    wait_for(lambda: worker["id"] not in claims_waiting(hub), what="the abandoned claim to end")
+    assert sql(hub.db, "SELECT state, worker_id, lease_expires_at FROM runs WHERE id = %s", (run_id,)) == [
+        ("queued", None, None)
+    ]
+    assert claim(hub.client, worker)["id"] == run_id, "the next claim takes it at once"
+
+
+def test_a_claim_whose_worker_hangs_up_while_it_leases_a_run_rolls_the_lease_back(hub, monkeypatch):
+    worker = add_worker(hub.client, hub.headers["owner"], "mac-mini")
+    run_id = dispatched(hub.client, hub.headers["owner"], [2])[0]["id"]
+    spec_of = run_routes._run_spec
+
+    async def slow_spec(conn, leased_id):
+        await asyncio.sleep(1.5)  # the run is leased in the claim's transaction; the worker hangs up meanwhile
+        return await spec_of(conn, leased_id)
+
+    monkeypatch.setattr(run_routes, "_run_spec", slow_spec)
+    hang_up_claim(hub, worker, wait=0, after=0.5)
+    wait_for(lambda: worker["id"] not in claims_waiting(hub), what="the abandoned claim to end")
+    assert sql(hub.db, "SELECT state, worker_id, event_seq FROM runs WHERE id = %s", (run_id,)) == [
+        ("queued", None, 0)
+    ], "the lease, its state event and its seq were rolled back"
+    assert sql(hub.db, "SELECT count(*) FROM run_events WHERE run_id = %s", (run_id,)) == [(0,)]
+
+    monkeypatch.setattr(run_routes, "_run_spec", spec_of)
+    assert claim(hub.client, worker)["id"] == run_id
+    assert [(e["seq"], e["body"]["to"]) for e in read_events(hub, run_id)["events"]] == [(1, "leased")]
 
 
 # The worker's batches

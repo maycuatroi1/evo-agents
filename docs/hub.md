@@ -395,15 +395,17 @@ the variables in the platform's environment, never in a committed file. `deploy/
 | `EVO_HUB_PLATFORM_NETWORK` | compose | the external network the database is on |
 
 The server also reads `EVO_HUB_POOL_MIN_SIZE`, `EVO_HUB_POOL_MAX_SIZE` and `EVO_HUB_POOL_TIMEOUT` (the connection
-pool, defaults 1, 10 and 10 seconds); add them to the environment block of the compose file to change them. A missing
-or malformed variable stops the process with a log line naming it.
+pool, defaults 1, 10 and 10 seconds), and the api `EVO_HUB_RUN_LEASE_SECONDS`, how long a claim and each heartbeat of
+a worker daemon lease a run for before the reaper finds it lost (default 300, from 5 to 3600; the end-to-end tests
+shorten it, and it must stay well above the daemon's heartbeat of 15 seconds); add them to the environment block of
+the compose file to change them. A missing or malformed variable stops the process with a log line naming it.
 
 The reverse proxy routes the public domain: `/v1` and `/mcp` to the api on port 8080, everything else to the web on
 port 3000. `EVO_HUB_PUBLIC_URL` must be that domain, because the web sign-in callback, the `/mcp` host check and the
 web terminal's Origin check all use it. The `/v1` rule also carries the web terminal's two websockets, so the proxy
-must pass a websocket upgrade there (Traefik does without more configuration). They cannot go through the web: its
-`/v1` rewrite, which serves a stack without a proxy, runs in Next.js standalone, which does not forward a websocket
-upgrade.
+must pass a websocket upgrade there (Traefik does without more configuration). A stack without a proxy serves them
+through the web's `/v1` rewrite instead, since Next.js standalone forwards the upgrade to the api
+(`web/e2e/terminal.spec.ts` checks it).
 
 The api sees the proxy's address as the client's unless `EVO_HUB_FORWARDED_ALLOW_IPS` lists the proxy. The limit on
 refused pairing codes counts per client address, so behind a proxy that is not listed, 10 wrong codes from anyone hold

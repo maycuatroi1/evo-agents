@@ -21,14 +21,17 @@ it. A claim takes the oldest queued run, ``FOR UPDATE SKIP LOCKED``, that its ow
 worker serves and on which the owner still holds writer, asking for a runtime the worker reported (``any`` takes the
 first of runs.RUNTIMES it has), of a repo it has a checkout of, pinned to no other worker, while the worker is
 neither draining nor revoked and holds fewer runs than its slots. A worker has one claim waiting at a time: a newer
-claim answers the older one with no run. The claimed run is leased for LEASE_SECONDS and comes with its prompt
-(``runs.build_prompt`` over the plan revision it was dispatched from).
+claim answers the older one with no run. The claimed run is leased for EVO_HUB_RUN_LEASE_SECONDS (LEASE_SECONDS by
+default) and comes with its prompt (``runs.build_prompt`` over the plan revision it was dispatched from). A claim
+whose worker hung up (a daemon stopping drops the claim it waits on) takes nothing: it ends before it looks at the
+queue again, and a run it leased in the meantime is rolled back before the transaction commits, so the run stays
+queued for the next claim instead of waiting out a lease nobody holds.
 
 POST /v1/worker/heartbeat records the machine (runtimes, checkouts keyed ``<project>/<repo>``, free slots), extends
-the lease of every run the worker names and still holds, and answers with control: per run, whether to cancel (asked
-by the owner, or a run the worker no longer holds), takeover, handback, terminal_open (a browser waits for the
-worker's end of the run's terminal, ``terminal.Terminals.waiting``) and how many inbox messages wait; for the worker,
-whether to drain.
+the lease of every run the worker names and still holds by the same time, and answers with control: per run, whether
+to cancel (asked by the owner, or a run the worker no longer holds), takeover, handback, terminal_open (a browser
+waits for the worker's end of the run's terminal, ``terminal.Terminals.waiting``) and how many inbox messages wait;
+for the worker, whether to drain.
 
 POST /v1/worker/runs/{id}/state reports a move of a run the worker holds (404 otherwise), checked against
 ``runs.TRANSITIONS`` with the worker as actor (409 otherwise): ``done`` only for approval auto with every verify
@@ -51,8 +54,9 @@ import asyncio
 import json
 import logging
 import re
+from collections.abc import Awaitable, Callable
 from dataclasses import replace
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Annotated, Literal
 
 import psycopg
@@ -70,7 +74,6 @@ from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.listen import Listener
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.run_state import (
-    LEASE,
     RUNS_CHANNEL,
     evidence,
     move_run,
@@ -958,8 +961,25 @@ HELD_COUNT = "SELECT count(*) FROM runs WHERE worker_id = %s AND state = ANY(%s)
 REVISION_BODY = "SELECT body FROM plan_revisions WHERE project_id = %s AND plan_id = %s AND revision = %s"
 
 
-async def _try_claim(pool, user: Principal) -> RunSpec | None:
-    """Lease the run the worker of ``user`` may take now, if any (see the module's docstring)."""
+class ClaimAbandoned(Exception):
+    """The worker hung up before its claim was answered; the lease the claim took is rolled back."""
+
+    def __init__(self, run_id: int):
+        super().__init__(f"the worker hung up before run {run_id} was handed to it")
+        self.run_id = run_id
+
+
+def lease_of(request: Request) -> timedelta:
+    """How long a claim and each heartbeat lease a run for: EVO_HUB_RUN_LEASE_SECONDS."""
+    return timedelta(seconds=request.app.state.config.run_lease_seconds)
+
+
+async def _try_claim(
+    pool, user: Principal, lease: timedelta, gone: Callable[[], Awaitable[bool]] | None = None
+) -> RunSpec | None:
+    """Lease the run the worker of ``user`` may take now, if any, for ``lease`` (see the module's docstring). When
+    ``gone`` says the worker hung up once the run is leased, raise ClaimAbandoned before the transaction commits,
+    which rolls the lease back."""
     async with pool.connection() as conn:
         worker_id, owner_id, name, slots, reported, checkouts, drained_at, _ = await _worker_of(conn, user)
         if drained_at is not None:
@@ -1000,8 +1020,11 @@ async def _try_claim(pool, user: Principal) -> RunSpec | None:
             reason=f"worker {name} claimed it",
             columns={"worker_id": worker_id, "runtime": runtime},
             token_id=user.token_id,
+            lease=lease,
         )
         spec = await _run_spec(conn, run_id)
+        if gone is not None and await gone():
+            raise ClaimAbandoned(run_id)  # leaving the block rolls the transaction back
     log.info("run claimed", extra={"run_id": run_id, "worker_id": worker_id, "runtime": runtime})
     return spec
 
@@ -1046,6 +1069,7 @@ async def claim(request: Request, user: CurrentUser, body: ClaimRequest | None =
     wakeups: RunWakeups = request.app.state.run_wakeups
     wakeups.start()
     pool = request.app.state.pool
+    lease = lease_of(request)
     async with pool.connection() as conn:
         worker_id = (await _worker_of(conn, user))[0]
     loop = asyncio.get_running_loop()
@@ -1053,12 +1077,20 @@ async def claim(request: Request, user: CurrentUser, body: ClaimRequest | None =
     number = await wakeups.ticket(worker_id)
     try:
         while True:
+            # Hung up already: a run leased now would wait out its lease with nobody to run it.
+            if await request.is_disconnected():
+                return Claim(run=None)
             seen = wakeups.generation
-            spec = await _try_claim(pool, user)
+            try:
+                spec = await _try_claim(pool, user, lease, request.is_disconnected)
+            except ClaimAbandoned as exc:
+                log.info("claim abandoned; the run stays queued", extra={"run_id": exc.run_id, "worker_id": worker_id})
+                wakeups.wake()  # the run is queued again: the other claims waiting here look at it
+                return Claim(run=None)
             if spec is not None:
                 return Claim(run=spec)
             remaining = deadline - loop.time()
-            if remaining <= 0 or not wakeups.current(worker_id, number) or await request.is_disconnected():
+            if remaining <= 0 or not wakeups.current(worker_id, number):
                 return Claim(run=None)
             await wakeups.wait(seen, min(remaining, CLAIM_POLL_SECONDS))
     finally:
@@ -1098,7 +1130,7 @@ async def heartbeat(request: Request, body: HeartbeatRequest, user: CurrentUser)
                 "version": body.agent_version,
             },
         )
-        params = {"lease": LEASE, "worker": worker_id, "ids": reported, "held": list(runs.HELD_STATES)}
+        params = {"lease": lease_of(request), "worker": worker_id, "ids": reported, "held": list(runs.HELD_STATES)}
         extended = {row[0]: row[1:] for row in await (await conn.execute(EXTEND, params)).fetchall()}
         waiting = dict(await (await conn.execute(INBOX, (list(extended),))).fetchall()) if extended else {}
     terminals = request.app.state.terminals

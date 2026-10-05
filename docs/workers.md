@@ -240,11 +240,15 @@ seconds, so a missed notification delays a claim but never loses one. It picks a
 dispatched it, the project is one of the worker's and the owner still holds writer on it, the worker reported the
 runtime as available (a run asking for `any` takes the first of `claude-code`, `opencode`, `codex` it has) and a
 checkout of the repo, the run is pinned to no other worker, the worker holds fewer runs than its slots, and it is
-neither draining nor revoked. The oldest such run is leased for 300 seconds. The answer is `{"run": {...}}` with the
+neither draining nor revoked. The oldest such run is leased for 300 seconds (`EVO_HUB_RUN_LEASE_SECONDS`, which
+tests shorten). The answer is `{"run": {...}}` with the
 id, project, plan, step key and title, plan revision, attempt, max attempts, parent run, runtime, mode, approval,
 timeout in minutes, repo, branch, lease expiry and the prompt (built from the plan revision the run was dispatched
 from), or `{"run": null}` when the wait ends empty, and the daemon claims again at once. A worker has at most one
-claim waiting: a newer claim ends the older one, which answers no run.
+claim waiting: a newer claim ends the older one, which answers no run. A claim whose worker hung up, as a daemon that
+stops drops the claim it waits on, takes no run: it ends before it looks at the queue again, and when the worker hangs
+up while the claim leases a run, the lease is rolled back before it commits, so the run stays queued for the next
+claim instead of waiting out a lease nobody holds.
 
 ### Heartbeat
 
@@ -272,8 +276,8 @@ shows them in that shape. `free_slots` is what the daemon counts free, at most t
 and counts the runs a worker holds against its slots itself. `agent_version` is optional and replaces the version
 the worker registered with.
 
-The hub records the heartbeat, extends the lease of each run named that the worker still holds by 300 seconds, and
-answers with control:
+The hub records the heartbeat, extends the lease of each run named that the worker still holds by 300 seconds (the
+same `EVO_HUB_RUN_LEASE_SECONDS`), and answers with control:
 
 ```json
 {
@@ -440,7 +444,9 @@ follow. `GET .../runs/{id}/stream` sends the same events as server-sent events (
 own `EventSourceResponse`): each one's `id` is its seq and its `data` the event as `events` answers it. A first
 connection starts after `after` (0 by default), and a reconnecting browser's `Last-Event-ID` wins over it, so an
 `EventSource` resumes where it stopped without a gap or a repeat. FastAPI sends a `: ping` comment after 15 idle
-seconds, which keeps proxies from closing the stream. Once the run is final and every event of it was sent, the stream
+seconds, which keeps proxies from closing the stream, and the answer carries `Cache-Control: no-cache, no-transform`
+and `X-Accel-Buffering: no`, so a proxy neither caches nor compresses it (a compressing proxy would hold the events
+back until its buffer fills). Once the run is final and every event of it was sent, the stream
 sends `event: end` with `{"state": ..., "last_seq": ...}` and closes; a client should stop there instead of
 reconnecting. A stream holds no database connection while it waits: a notification on the Postgres channel
 `evo_run_events`, which each write of a run's events sends with the run's id, wakes it, and it also looks again every
@@ -555,10 +561,12 @@ run's tmux session and keeps the last 256 KiB of output, which it replays when a
 | 4409 | the run's terminal is open in another browser, or its worker's end is connected already |
 | 4426 | the worker sent another version of the worker protocol, or none |
 
-**Routing.** Both websockets sit under `/v1`, so they reach the api through the reverse proxy's `/v1` rule like every
-other route (`docs/hub.md`). The web's own `/v1` rewrite, which a stack without a proxy uses
-(`deploy/hub/docker-compose.dev.yml`, Playwright), does not carry them: Next.js standalone does not forward a websocket
-upgrade. There the browser opens the terminal on the api's own address, whose port the dev stack publishes.
+**Routing.** Both websockets sit under `/v1`, so they reach the api the way every other route does (`docs/hub.md`).
+In production the reverse proxy's path rule sends `/v1` to the api, and Traefik passes the websocket upgrade there
+without more configuration. A stack without a proxy (`deploy/hub/docker-compose.dev.yml`, Playwright) goes through the
+web's own `/v1` rewrite, and that carries them too: Next.js standalone forwards the upgrade to the api, which
+`web/e2e/terminal.spec.ts` checks in Chromium and Firefox. The browser therefore always opens the terminal on the
+page's own origin, under the CSP's `connect-src 'self'`.
 
 ## Limits
 
@@ -568,7 +576,7 @@ upgrade. There the browser opens the terminal on the api's own address, whose po
 | steps per dispatch | 50 |
 | heartbeat | every 15 s |
 | offline after | 300 s without a heartbeat |
-| lease | 300 s, extended by each heartbeat |
+| lease | 300 s (`EVO_HUB_RUN_LEASE_SECONDS`, 5 to 3600), extended by each heartbeat |
 | attempts per dispatch | 3 |
 | slots per worker | 1 to 8 |
 | run timeout | 5 to 240 minutes |
@@ -606,7 +614,7 @@ upgrade. There the browser opens the terminal on the api's own address, whose po
 | `evo-agents worker attach N` | puts this terminal on the tmux session `evo-run-N` of an interactive run (`tmux attach`, or `switch-client` from inside tmux on the same server) |
 | `evo-agents worker selftest --runtime NAME [--model M] [--effort E] [--keep]` | runs the runtime's adapter for real on a tiny prompt in a scratch git repository, prints each event and how many of each kind came, and exits 0 when the turn completed and the agent wrote the file it was asked for (it spends a little of the owner's quota; Claude Code and Codex run at effort `low` unless `--effort` says otherwise) |
 | `evo-agents worker drain [--resume]` | stops claims (or resumes them) through `POST /v1/workers/{id}/drain` or `/undrain`, with the machine token |
-| `evo-agents worker revoke [--force]` | revokes the worker on the hub and deletes its token here; `--force` deletes it even when the hub cannot be reached |
+| `evo-agents worker revoke [--force]` | revokes the worker on the hub and deletes its token here; `--force` deletes it even when the hub cannot be reached; a background service stays installed, does not start the daemon again, and is named with the command that removes it |
 
 `join` and `register` refuse a machine that is a worker already, unless `--replace` is given. When the machine is
 signed in to the same hub, they keep the repos of the worker's projects as the hub lists them, and `run` reads them
@@ -758,7 +766,11 @@ it left unfinished as ended.
 
 SIGTERM (or SIGINT) stops the claims, including one waiting; the runs held go on, with heartbeats, until they end or
 reach their timeout, and the daemon exits 0. A second signal interrupts the agents and fails their runs. A 401 or
-403 (the worker or its token was revoked) or a 426 stops the daemon with exit status 1.
+403 (the worker or its token was revoked) stops the daemon with exit status 3, and so does `evo-agents worker run` on
+a machine that is not a worker, such as one `evo-agents worker revoke` left: starting the daemon again changes
+nothing, so a service does not (see [In the background](#in-the-background)). `EVO_WORKER_REVOKED_EXIT` names
+another status for both. A 426 (a protocol the hub no longer speaks) stops the daemon with exit status 1, which an
+upgrade of evo-agents mends.
 
 ### In the background
 
@@ -770,7 +782,9 @@ command says so, and `evo-agents worker run` can go under a supervisor of your o
 
 - The daemon starts at once and at each login. One that exits with an error is started again 10 seconds later
   (launchd `KeepAlive` with `SuccessfulExit` false, systemd `Restart=on-failure`); one that stopped cleanly, exit 0
-  after SIGTERM, stays stopped.
+  after SIGTERM, stays stopped, and so does one that is no longer a worker: the systemd unit lists its exit status 3
+  in `RestartPreventExitStatus`, and since launchd tells exits apart only as 0 or not, the LaunchAgent sets
+  `EVO_WORKER_REVOKED_EXIT=0`.
 - A service manager starts a job with almost no environment, so the service keeps PATH as it was at the install,
   without relative entries and with `/usr/local/bin`, `/usr/bin`, `/bin`, `/usr/sbin` and `/sbin` added when
   missing, and pins `EVO_WORKER_HOME` to the state directory. The install prints where it found `claude`,
@@ -785,9 +799,11 @@ command says so, and `evo-agents worker run` can go under a supervisor of your o
 The install refuses a machine that is not a worker yet, a Python without the worker extra, and a machine where a
 daemon already runs outside the service. It waits up to 10 seconds for the daemon to run and fails, leaving the
 service installed, when the daemon is not running then. Installing again replaces the service in place.
-`uninstall` leaves the token, the configuration and the runs alone. A worker revoked on the web exits 1 at its next
-heartbeat, and so does a daemon started after `evo-agents worker revoke` deleted the token here: the service starts
-it again every 10 seconds until `evo-agents worker service uninstall`.
+`uninstall` leaves the token, the configuration and the runs alone. A worker revoked on the web stops at its next
+heartbeat, and a daemon started after `evo-agents worker revoke` deleted the token here stops at once. The service
+does not start either again; at each login it starts the daemon once more, which stops the same way, until the
+machine is a worker again. `evo-agents worker revoke` leaves the service installed and says so; `evo-agents worker
+service uninstall` removes it.
 
 ## What version 1 does not do
 

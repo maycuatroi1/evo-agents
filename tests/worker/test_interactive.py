@@ -16,6 +16,7 @@ Remote Control is started (step 21 checks those by hand).
 from __future__ import annotations
 
 import asyncio
+import importlib.util
 import json
 import os
 import shutil
@@ -31,18 +32,20 @@ import pytest
 from evo_agents.hub import terminal as frames
 from evo_agents.worker import interactive
 from evo_agents.worker.adapter import RunContext
-from evo_agents.worker.run import HANDBACK_PROMPT
 from evo_agents.worker.runtimes import opencode
 from tests.hub import pg
 
 TMUX = shutil.which("tmux")
+WORKER_EXTRA = importlib.util.find_spec("aiohttp") is not None  # the daemon (run, hubapi) needs it to load
+HUB_SKIP = pg.SKIP_REASON if not pg.DSN else "the daemon needs the worker extra, evo-ak[worker]"
 needs_tmux = pytest.mark.skipif(TMUX is None, reason="tmux is not on PATH")
-needs_hub = pytest.mark.skipif(not pg.DSN, reason=pg.SKIP_REASON)
+needs_hub = pytest.mark.skipif(not (pg.DSN and WORKER_EXTRA), reason=HUB_SKIP)
 HUB = "https://hub.test"  # the hub's public URL: the browser's Origin
 WS_WAIT = 30.0
 
-if pg.DSN:
+if pg.DSN and WORKER_EXTRA:
     from evo_agents.hub.server.security import SESSION_COOKIE, WEB, csrf_token, hash_token
+    from evo_agents.worker.run import HANDBACK_PROMPT
     from tests.hub import live
     from tests.hub.test_runs import OWNER, PROJECT
     from tests.worker.test_daemon import WORKER, finished_cleanly, make_stack, wait_until  # noqa: F401 (a fixture)
@@ -522,8 +525,8 @@ def test_tmux_runs_the_ui_through_a_script_that_sets_the_agents_environment(tmp_
 def interactive_stack(request, tmux_socket):
     """``make_stack`` of the daemon's tests with web sign-in on the hub, tmux on the daemon's PATH and a tmux server
     of the test's own, and the worker registered (allowing the web terminal unless told otherwise)."""
-    if not pg.DSN:
-        pytest.skip(pg.SKIP_REASON)
+    if not (pg.DSN and WORKER_EXTRA):
+        pytest.skip(HUB_SKIP)
     make = request.getfixturevalue("make_stack")
     github = request.getfixturevalue("github")
 

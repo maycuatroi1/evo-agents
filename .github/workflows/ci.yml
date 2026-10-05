@@ -6,7 +6,8 @@ on:
   pull_request:
 
 jobs:
-  # Linux runs everything, the hub tests included, against a Postgres service container.
+  # Linux runs everything, the hub tests included, against a Postgres service container: with the worker extra and
+  # tmux, tests/worker runs the daemon against a hub end to end, takeover and handback in tmux included.
   test:
     name: test (ubuntu-latest, ${{ matrix.python }})
     strategy:
@@ -33,13 +34,17 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
-      - run: python -m pip install -e '.[test,graphify,hub-server]'
+      - run: python -m pip install -e '.[test,graphify,hub-server,worker]'
+      - name: Install tmux, for the interactive runs of the worker
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends tmux
       - run: ruff check .
       - run: ruff format --check .
-      - run: pytest -q
+      - run: pytest -q --ignore=tests/worker
+      - name: The worker daemon against a hub (tests/worker)
+        run: pytest -q tests/worker
 
-  # Service containers run on Linux only. macOS installs the core package without the hub-server extra,
-  # and with EVO_HUB_TEST_DSN unset the hub tests skip.
+  # Service containers run on Linux only. macOS installs the core package without the hub-server and worker extras,
+  # and with EVO_HUB_TEST_DSN unset the hub tests skip, and so do the worker tests that need a hub or the worker's SDKs.
   test-macos:
     name: test (macos-latest, ${{ matrix.python }})
     strategy:

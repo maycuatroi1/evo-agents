@@ -7,10 +7,13 @@
 
 Either way the service runs ``evo-agents worker run --quiet``, naming this evo-agents by absolute path, right away and
 at each login. A daemon that exits with an error is started again 10 seconds later; one that stops cleanly (exit 0,
-after SIGTERM) stays stopped. A service manager starts a job with almost no environment, so the service keeps PATH as
-it was when ``install`` ran, which is where the daemon looks for claude, opencode, codex, tmux and git, and pins
-EVO_WORKER_HOME to the state directory. Install again after a runtime moves to another directory. Stopping the
-service sends the daemon SIGTERM and kills what is left 60 seconds later.
+after SIGTERM) stays stopped, and so does one that is no longer a worker (revoked on the hub or with ``worker
+revoke``), which exits ``home.EXIT_REVOKED``: the systemd unit lists that status in ``RestartPreventExitStatus``, and
+since launchd tells exits apart only as 0 or not, the LaunchAgent sets EVO_WORKER_REVOKED_EXIT to 0. A service
+manager starts a job with almost no environment, so the service keeps PATH as it was when ``install`` ran, which is
+where the daemon looks for claude, opencode, codex, tmux and git, and pins EVO_WORKER_HOME to the state directory.
+Install again after a runtime moves to another directory. Stopping the service sends the daemon SIGTERM and kills
+what is left 60 seconds later.
 
 The daemon writes ``worker.log`` itself (``logs``: rotated at 10 MiB, five old files kept). What it prints before that
 log is open, such as a missing extra or a machine that is not a worker, goes to ``service.log`` in the state directory
@@ -36,7 +39,7 @@ from pathlib import Path
 
 from evo_agents.hub.client import write_atomic
 from evo_agents.kg.schedule import executable
-from evo_agents.worker.home import HOME_VARIABLE, WorkerHome, WorkerStateError
+from evo_agents.worker.home import EXIT_REVOKED, HOME_VARIABLE, REVOKED_EXIT_VARIABLE, WorkerHome, WorkerStateError
 
 LABEL = "io.github.maycuatroi1.evo-agents.worker"
 UNIT = "evo-agents-worker.service"
@@ -127,10 +130,12 @@ def runtimes_on(path: str) -> dict[str, str | None]:
 
 
 def build_plist(spec: Spec) -> dict:
+    # KeepAlive starts again any job that exits other than 0, so a daemon that is no longer a worker exits 0 here.
+    environment = {**spec.environment, REVOKED_EXIT_VARIABLE: "0"}
     return {
         "Label": LABEL,
         "ProgramArguments": list(spec.program),
-        "EnvironmentVariables": spec.environment,
+        "EnvironmentVariables": environment,
         "WorkingDirectory": str(spec.home),
         "RunAtLoad": True,
         "KeepAlive": {"SuccessfulExit": False},
@@ -183,6 +188,8 @@ def build_unit(spec: Spec) -> str:
         f"Environment={environment}",
         "Restart=on-failure",
         f"RestartSec={RESTART_SECONDS}",
+        # A daemon that is no longer a worker: starting it again changes nothing.
+        f"RestartPreventExitStatus={EXIT_REVOKED}",
         # SIGTERM to the daemon alone, which lets its agents end; SIGKILL to all that is left after the timeout.
         "KillMode=mixed",
         f"TimeoutStopSec={STOP_SECONDS}",
