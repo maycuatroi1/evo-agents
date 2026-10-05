@@ -26,8 +26,9 @@ claim answers the older one with no run. The claimed run is leased for LEASE_SEC
 
 POST /v1/worker/heartbeat records the machine (runtimes, checkouts keyed ``<project>/<repo>``, free slots), extends
 the lease of every run the worker names and still holds, and answers with control: per run, whether to cancel (asked
-by the owner, or a run the worker no longer holds), takeover, handback, terminal_open and how many inbox messages
-wait; for the worker, whether to drain. terminal_open stays false until the terminal relay exists.
+by the owner, or a run the worker no longer holds), takeover, handback, terminal_open (a browser waits for the
+worker's end of the run's terminal, ``terminal.Terminals.waiting``) and how many inbox messages wait; for the worker,
+whether to drain.
 
 POST /v1/worker/runs/{id}/state reports a move of a run the worker holds (404 otherwise), checked against
 ``runs.TRANSITIONS`` with the worker as actor (409 otherwise): ``done`` only for approval auto with every verify
@@ -277,7 +278,11 @@ class RunControl(BaseModel):
     cancel: bool
     takeover: bool = Field(False, description="the owner asked to drive the agent in a terminal: report interactive")
     handback: bool = Field(False, description="the owner asked to let the agent go on headless: report running")
-    terminal_open: bool = Field(False, description="open the web terminal; false until the terminal relay exists")
+    terminal_open: bool = Field(
+        False,
+        description="a browser waits for the run's terminal: connect WS /v1/worker/runs/{id}/terminal once the run "
+        "is interactive",
+    )
     inbox: int = Field(0, description="messages from the owner waiting for the agent: POST .../runs/{id}/inbox")
 
 
@@ -1096,6 +1101,7 @@ async def heartbeat(request: Request, body: HeartbeatRequest, user: CurrentUser)
         params = {"lease": LEASE, "worker": worker_id, "ids": reported, "held": list(runs.HELD_STATES)}
         extended = {row[0]: row[1:] for row in await (await conn.execute(EXTEND, params)).fetchall()}
         waiting = dict(await (await conn.execute(INBOX, (list(extended),))).fetchall()) if extended else {}
+    terminals = request.app.state.terminals
     controls = []
     for run_id in reported:
         if run_id in extended:
@@ -1109,6 +1115,7 @@ async def heartbeat(request: Request, body: HeartbeatRequest, user: CurrentUser)
                     cancel=cancel,
                     takeover=takeover,
                     handback=handback,
+                    terminal_open=terminals.waiting(run_id),
                     inbox=waiting.get(run_id, 0),
                 )
             )

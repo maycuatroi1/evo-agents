@@ -7,7 +7,8 @@ reports it and the blob routes answer 503. Every request gets an id and one acce
 string, which can carry OAuth codes. Every path under /v1 needs a credential except the few
 ``security.PUBLIC_PATHS`` lists. The OpenAPI document is served at /v1/openapi.json for the web client's generated
 types. /mcp is the MCP endpoint (``evo_agents.hub.server.mcp``): its SDK app is mounted, so the lifespan runs its
-session manager.
+session manager. The only websockets are the two ends of a run's web terminal (``evo_agents.hub.server.terminal``),
+which check their own credential.
 """
 
 from __future__ import annotations
@@ -129,6 +130,7 @@ def create_app(config: HubConfig) -> FastAPI:
             async with app.state.mcp.session_manager.run():  # a mounted app's own lifespan does not run
                 yield
         finally:
+            await app.state.terminals.close_all()
             await app.state.listener.close()
             await app.state.github.aclose()
             if app.state.blobs is not None:
@@ -199,6 +201,12 @@ def create_app(config: HubConfig) -> FastAPI:
     app.state.listener = listen.Listener(config.dsn)  # the process's one LISTEN, opened by the first claim or stream
     app.state.run_wakeups = runs.RunWakeups(app.state.listener)  # the claims waiting for a queued run
     app.state.run_streams = run_events.RunStreams(app.state.listener)  # the event streams of runs
+
+    from evo_agents.hub.server import terminal
+
+    app.include_router(terminal.router)
+    app.include_router(terminal.worker_router)
+    app.state.terminals = terminal.Terminals()  # the web terminals open in this process, one per run
     return app
 
 
