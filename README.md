@@ -150,13 +150,38 @@ Hooks (`evo-agents hub hook session-start|stop`, same pins and `|| true` as evo-
 Both exit 0 whatever happens, give up after a few seconds, print at most one line without tokens or memory text, and
 send nothing when the machine is not signed in.
 
+### Workers
+
+A worker is your own laptop or desktop running plan steps for you. You dispatch a ready step, the hub queues a run,
+and your worker claims it, runs the step with Claude Code, opencode or Codex CLI, and sends its log, state and
+evidence back, so the hub can record the step in the plan. The daemon needs the `worker` extra:
+
+```sh
+uv tool install 'evo-ak[worker]'    # or: pip install 'evo-ak[worker]'; with graphify: 'evo-ak[graphify,worker]'
+evo-agents worker join --url https://hub.example.org --code K7QM-4XPD   # the code from the hub's Workers page
+evo-agents worker register --name mac-mini --project demo --slots 1    # or this, once signed in with hub login
+evo-agents worker service install   # keep the daemon running in the background
+```
+
+Then, from any machine signed in to the hub:
+
+```sh
+evo-agents hub run dispatch rollout 2 --project demo
+evo-agents hub run logs 41 --follow --project demo
+evo-agents hub run approve 41 --project demo
+```
+
+The agent on a worker runs with the full rights of the machine's owner, and only that owner dispatches runs to it.
+[docs/workers.md](docs/workers.md) describes the protocol and [docs/hub.md](docs/hub.md) every `hub run` command.
+
 ### Running a hub
 
-The hub is an API server, a worker and a web interface, published as two images on GHCR for each release and run
+The hub is an API server, a job worker and a web interface, published as two images on GHCR for each release and run
 with `deploy/hub/docker-compose.yml` next to a Postgres database and a Cloudflare R2 bucket. `evo-agents hub serve`
 and `evo-agents hub worker` need the server extra: `pip install 'evo-ak[hub-server]'`. [docs/hub.md](docs/hub.md)
 covers the API and its OpenAPI document, sign-in from the CLI and the web, who sees what, the plan copies in git,
-blobs on R2, the worker and its queue, and operations: migrations, backup, restore and health checks.
+workers and runs, blobs on R2, the job worker and its queue, and operations: migrations, backup, restore and
+health checks.
 
 ## Writing a connector
 
