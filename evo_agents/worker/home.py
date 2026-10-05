@@ -1,10 +1,11 @@
-"""The worker's state on this machine, under ``~/.evo/worker``.
+"""The worker's state on this machine, under ``~/.evo/worker`` (or ``$EVO_WORKER_HOME``).
 
 ```
 ~/.evo/worker/            0700
   config.json             0600  the hub, the worker as the hub registered it, the repos of its projects
   token                   0600  the worker token (evw_...), shown by the hub once
   worker.log              0600  JSON lines, tokens removed
+  service.log                   what the daemon prints before worker.log opens, under launchd (``service``)
   daemon.pid                    the pid of the running daemon, locked while it runs
   spool/<run>.jsonl, .ack       a run's events until the hub acknowledges them
   runs/<run>/run.json           what the daemon knows of a run: its worktree, branch, base, when it ended
@@ -29,6 +30,7 @@ from evo_agents.hub.client import write_atomic
 
 DIR_MODE = 0o700
 FILE_MODE = 0o600
+HOME_VARIABLE = "EVO_WORKER_HOME"
 JOIN_HINT = "join this machine first: `evo-agents worker join --url URL --code CODE` or `evo-agents worker register`"
 
 
@@ -74,7 +76,9 @@ class WorkerConfig:
 
 
 def default_root() -> Path:
-    return Path.home() / ".evo" / "worker"
+    """``$EVO_WORKER_HOME``, else ``~/.evo/worker``; the background service pins the variable to the directory it was
+    installed with."""
+    return Path(os.environ.get(HOME_VARIABLE) or "~/.evo/worker").expanduser()
 
 
 class WorkerHome:

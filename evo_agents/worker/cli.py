@@ -417,6 +417,10 @@ def register(sub) -> None:
     run.add_argument("--quiet", action="store_true", help="log to ~/.evo/worker/worker.log only, not to stderr")
     run.set_defaults(func=cmd_run)
 
+    from evo_agents.worker import service
+
+    service.register(wsub)
+
     status = wsub.add_parser("status", help="this worker as the hub and this machine see it")
     status.add_argument("--json", action="store_true", help="machine-readable output")
     status.set_defaults(func=cmd_status)

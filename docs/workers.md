@@ -599,6 +599,9 @@ upgrade. There the browser opens the terminal on the api's own address, whose po
 | `evo-agents worker join --url URL --code CODE` | trades a pairing code from the web for a worker token |
 | `evo-agents worker register --name NAME --project P [--project P ...] --slots N [--label L ...]` | registers the machine with the machine token of `evo-agents hub login`, without a code; `--allow-web-terminal` lets the owner open the terminal |
 | `evo-agents worker run` | the daemon in the foreground |
+| `evo-agents worker service install` | keeps the daemon running in the background, now and at each login (see [In the background](#in-the-background)) |
+| `evo-agents worker service uninstall` | stops the daemon and removes the service; the worker stays registered |
+| `evo-agents worker service status [--json]` | whether the service is installed and the daemon runs, its pid and last exit |
 | `evo-agents worker status [--json]` | the worker as this machine and the hub see it: runtimes, checkouts, the daemon's pid, runs kept, the spool |
 | `evo-agents worker selftest --runtime NAME [--model M] [--effort E] [--keep]` | runs the runtime's adapter for real on a tiny prompt in a scratch git repository, prints each event and how many of each kind came, and exits 0 when the turn completed and the agent wrote the file it was asked for (it spends a little of the owner's quota; Claude Code and Codex run at effort `low` unless `--effort` says otherwise) |
 | `evo-agents worker drain [--resume]` | stops claims (or resumes them) through `POST /v1/workers/{id}/drain` or `/undrain`, with the machine token |
@@ -610,10 +613,11 @@ again at its start.
 
 ### State on the machine
 
-Everything lives under `~/.evo/worker`, mode 0700: `token` (0600) holds the `evw_` token, which no command prints;
-`config.json` (0600) the hub, the worker as the hub registered it and the repos of its projects; `worker.log` (0600)
-the daemon's JSON log lines, rotated at 10 MiB with three old files kept, with tokens, pairing codes and presigned
-signatures masked; `daemon.pid`, locked while a daemon runs, so a second one refuses to start; `spool/` the events not
+Everything lives under `~/.evo/worker` (or `$EVO_WORKER_HOME`), mode 0700: `token` (0600) holds the `evw_` token,
+which no command prints; `config.json` (0600) the hub, the worker as the hub registered it and the repos of its
+projects; `worker.log` (0600) the daemon's JSON log lines, rotated at 10 MiB with five old files kept, with tokens,
+pairing codes and presigned signatures masked; `service.log` what the daemon printed under launchd before its log
+was open; `daemon.pid`, locked while a daemon runs, so a second one refuses to start; `spool/` the events not
 acknowledged yet; `runs/<id>/` what the daemon knows of each run and its whole event log; `worktrees/` the runs'
 worktrees.
 
@@ -709,6 +713,35 @@ it left unfinished as ended.
 SIGTERM (or SIGINT) stops the claims, including one waiting; the runs held go on, with heartbeats, until they end or
 reach their timeout, and the daemon exits 0. A second signal interrupts the agents and fails their runs. A 401 or
 403 (the worker or its token was revoked) or a 426 stops the daemon with exit status 1.
+
+### In the background
+
+`evo-agents worker service install` keeps `evo-agents worker run --quiet` running, naming the evo-agents that ran
+the install by absolute path. On macOS it is the LaunchAgent `io.github.maycuatroi1.evo-agents.worker` in
+`~/Library/LaunchAgents`, loaded into `gui/<uid>` with `launchctl bootstrap`; on Linux the systemd user unit
+`evo-agents-worker.service` in `~/.config/systemd/user`, enabled and started with `systemctl --user`. Elsewhere the
+command says so, and `evo-agents worker run` can go under a supervisor of your own.
+
+- The daemon starts at once and at each login. One that exits with an error is started again 10 seconds later
+  (launchd `KeepAlive` with `SuccessfulExit` false, systemd `Restart=on-failure`); one that stopped cleanly, exit 0
+  after SIGTERM, stays stopped.
+- A service manager starts a job with almost no environment, so the service keeps PATH as it was at the install,
+  without relative entries and with `/usr/local/bin`, `/usr/bin`, `/bin`, `/usr/sbin` and `/sbin` added when
+  missing, and pins `EVO_WORKER_HOME` to the state directory. The install prints where it found `claude`,
+  `opencode`, `codex`, `tmux` and `git` on that PATH; install again after one of them moves.
+- Stopping the service, by `uninstall` or at logout, sends the daemon SIGTERM and kills what is left 60 seconds later
+  (launchd `ExitTimeOut`, systemd `KillMode=mixed` and `TimeoutStopSec=60`).
+- The daemon writes `worker.log` itself. What it prints before that log is open goes to `service.log` in the state
+  directory on macOS, and to `journalctl --user -u evo-agents-worker` on Linux.
+- systemd stops a user's services when the user logs out; `loginctl enable-linger` keeps them running, and the
+  install says so when lingering is off.
+
+The install refuses a machine that is not a worker yet, a Python without the worker extra, and a machine where a
+daemon already runs outside the service. It waits up to 10 seconds for the daemon to run and fails, leaving the
+service installed, when the daemon is not running then. Installing again replaces the service in place.
+`uninstall` leaves the token, the configuration and the runs alone. A worker revoked on the web exits 1 at its next
+heartbeat, and so does a daemon started after `evo-agents worker revoke` deleted the token here: the service starts
+it again every 10 seconds until `evo-agents worker service uninstall`.
 
 ## What version 1 does not do
 

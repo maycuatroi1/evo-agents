@@ -1,4 +1,4 @@
-"""The daemon's log: one JSON object per line in ``~/.evo/worker/worker.log`` (mode 0600, rotated at 10 MiB, three
+"""The daemon's log: one JSON object per line in ``~/.evo/worker/worker.log`` (mode 0600, rotated at 10 MiB, five
 old files kept), and on stderr while it runs in the foreground.
 
 Lines go through the hub's ``JsonFormatter``, which removes worker tokens (``evw_...``), machine tokens, bearer
@@ -19,7 +19,7 @@ from evo_agents.hub.log import QUIET_LOGGERS, JsonFormatter, register_secret
 
 FILE_MODE = 0o600
 MAX_BYTES = 10 * 1024 * 1024
-BACKUPS = 3
+BACKUPS = 5
 QUIET = {**QUIET_LOGGERS, "aiohttp.access": logging.WARNING, "asyncio": logging.WARNING}
 
 
