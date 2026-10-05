@@ -186,16 +186,27 @@ def create_app(config: HubConfig) -> FastAPI:
 
     app.include_router(workers.router)
     app.include_router(workers.worker_router)
+    app.state.join_refusals = workers.RefusalLimit()  # refused pairing codes per client address, this process only
     return app
 
 
+# What a Sentry event's request may not carry: the body (a pairing code, a GitHub token) and the query string (the
+# OAuth code and state of a web sign-in, whose first parameter has no "?" before it for the log filter to see).
+REQUEST_LEFT_OUT = ("data", "query_string")
+
+
 def _scrub_event(event, hint):
+    request = event.get("request") if isinstance(event, dict) else None
+    if isinstance(request, dict):
+        for key in REQUEST_LEFT_OUT:
+            request.pop(key, None)
     return scrub_data(event)
 
 
 def init_sentry(config: HubConfig) -> bool:
-    """Report errors to Sentry when EVO_HUB_SENTRY_DSN is set; otherwise do nothing. Events carry no PII,
-    no local variables (a frame can hold the DSN) and pass through the same secret filter as the logs."""
+    """Report errors to Sentry when EVO_HUB_SENTRY_DSN is set; otherwise do nothing. Events carry no PII, no
+    local variables (a frame can hold the DSN), no request body or query string, and pass through the same secret
+    filter as the logs."""
     if not config.sentry_dsn:
         return False
     import sentry_sdk
@@ -205,6 +216,7 @@ def init_sentry(config: HubConfig) -> bool:
         release=f"evo-agents@{__version__}",
         send_default_pii=False,
         include_local_variables=False,
+        max_request_body_size="never",
         before_send=_scrub_event,
         before_breadcrumb=_scrub_event,
     )

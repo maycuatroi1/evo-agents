@@ -6,7 +6,9 @@ session secret, the S3 key pair) becomes ``***``, and so do the password of any 
 (``evh_...``) and web sessions (``evs_...``), GitHub tokens (``gho_...``, ``github_pat_...``), bearer credentials,
 the signature, access key id and session token of an S3 request or presigned URL, which is a bearer credential
 until it expires, and the value of every query parameter in ``QUERY_SECRETS`` (the OAuth code and state of a web
-sign-in callback among them), whichever logger wrote the URL. Worker tokens (``evw_...``) are masked as hub tokens are.
+sign-in callback among them), whichever logger wrote the URL. Worker tokens (``evw_...``) are masked as hub tokens are,
+and a worker pairing code as the hub shows it (``XXXX-XXXX``, upper case Crockford base32) becomes ``***`` whole; the
+parts of a UUID are left alone.
 Standard library only: the CLI configures logging before it knows whether the hub-server extra is there.
 """
 
@@ -46,6 +48,8 @@ _PATTERNS = (
     # password=... in a libpq key=value DSN or a query string, quoted or bare
     (re.compile(r"(?P<head>\bpassword\s*=\s*)(?:'(?:[^'\\]|\\.)*'|[^\s&]+)", re.IGNORECASE), r"\g<head>" + MASK),
     (re.compile(r"\b(?P<head>ev[hsw]_)[A-Za-z0-9_-]{8,}"), r"\g<head>" + MASK),
+    # a pairing code, XXXX-XXXX of Crockford base32 (no I, L, O or U), standing on its own
+    (re.compile(r"(?<![A-Za-z0-9_-])[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}(?![A-Za-z0-9_-])"), MASK),
     (re.compile(r"\b(?P<head>gh[opsur]_|github_pat_)[A-Za-z0-9_]{16,}"), r"\g<head>" + MASK),
     (re.compile(r"(?P<head>\bBearer\s+)[A-Za-z0-9._~+/=-]{8,}", re.IGNORECASE), r"\g<head>" + MASK),
     # SigV4: X-Amz-Signature= and X-Amz-Credential= of a presigned URL, Signature= and Credential= of a header,

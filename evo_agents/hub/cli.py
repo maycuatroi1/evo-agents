@@ -83,6 +83,7 @@ def cmd_serve(args) -> int:
         lifespan="on",
         log_config=None,  # uvicorn's loggers propagate to the JSON handler
         access_log=False,  # replaced by the app's own access line, which leaves out query strings
+        forwarded_allow_ips=config.forwarded_allow_ips,  # None keeps uvicorn's default: the loopback addresses
         server_header=False,
         timeout_graceful_shutdown=10,
     )

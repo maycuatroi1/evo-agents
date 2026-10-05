@@ -12,24 +12,28 @@ names no content.
 DELETE /v1/admin/tokens/{id} revokes one token of anyone. The next request made with it gets 401, from any
 process. It answers 404 for an id the hub never issued and 409 for a token revoked already, and adds an audit row
 naming the token and its owner, never the token itself. An admin revoking the web session they are using is
-signed out, as with DELETE /v1/tokens/{id}.
+signed out, as with DELETE /v1/tokens/{id}. A worker's token takes its worker with it, as DELETE /v1/tokens/{id}
+does: the worker is revoked in the same transaction, its runs released, with a worker.revoke audit row.
 """
 
 from __future__ import annotations
 
 import base64
 import binascii
+import logging
 from datetime import datetime
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, Response
 from pydantic import AwareDatetime, BaseModel, Field
 
-from evo_agents.hub.server import audit
+from evo_agents.hub.server import audit, workers
 from evo_agents.hub.server.admin import LOGIN_NAME, PROJECT_NAME
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.security import WEB, AdminUser, admin, delete_session_cookie
 from evo_agents.isotime import parse_iso
+
+log = logging.getLogger(__name__)
 
 MAX_ID = 2**63 - 1  # bigint
 MAX_LIMIT = 200
@@ -227,8 +231,9 @@ async def all_tokens(
 async def revoke_any_token(
     request: Request, user: AdminUser, token_id: Annotated[int, Path(ge=1, le=MAX_ID)]
 ) -> Response:
-    """Revoke a token or web session of any user."""
+    """Revoke a token or web session of any user; a worker token's worker is revoked with it."""
     async with request.app.state.pool.connection() as conn:
+        worker = await workers.lock_worker_of_token(conn, token_id)  # before the token's row
         row = await (await conn.execute(REVOKE, (token_id,))).fetchone()
         if row is None:
             found = await (await conn.execute("SELECT revoked_at FROM tokens WHERE id = %s", (token_id,))).fetchone()
@@ -238,6 +243,9 @@ async def revoke_any_token(
         target = f"{audit.token_target(token_id)} login={row[0]}"
         action = audit.TOKEN_REVOKE
         await audit.record(conn, actor_id=user.user_id, token_id=user.token_id, action=action, target=target)
+        released = await workers.end_worker(conn, user, *worker, token_id) if worker else 0
+    if worker:
+        log.info("worker revoked", extra={"worker_id": worker[0], "by": user.login, "runs_released": released})
     response = Response(status_code=204)
     if token_id == user.token_id and user.kind == WEB:
         delete_session_cookie(response)

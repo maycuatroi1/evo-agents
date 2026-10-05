@@ -1,10 +1,11 @@
 """Hub credentials and the check every /v1 request goes through.
 
 A machine token is ``evh_``, a web session ``evs_`` and the token of one worker ``evw_``, each followed by 32 random
-bytes in base64url. Postgres keeps only the hex SHA-256 of any of them, in ``tokens`` with its kind; the plaintext
-exists only in the response that issues it and on the holder's side. A token expires after TOKEN_TTL without use:
-using it pushes the expiry TOKEN_TTL past now, but the row is written at most once per TOUCH_EVERY, so a busy token
-does not write on every request. Revoked, expired and unknown credentials all get the same 401, which names
+bytes in base64url. Postgres keeps only the hex SHA-256 of any of them, in ``tokens`` with its kind; 32 random bytes
+need no key, while a pairing code, which is short, is kept as a ``keyed_digest`` under the session secret. The
+plaintext exists only in the response that issues it and on the holder's side. A token expires after TOKEN_TTL
+without use: using it pushes the expiry TOKEN_TTL past now, but the row is written at most once per TOUCH_EVERY, so a
+busy token does not write on every request. Revoked, expired and unknown credentials all get the same 401, which names
 ``evo-agents hub login`` (``evo-agents worker join`` on the worker's routes).
 
 ``Authenticate`` guards every path under /v1 except PUBLIC_PATHS and fails closed: a route added later needs a
@@ -143,6 +144,12 @@ def _unb64(text: str) -> bytes:
 def _mac(secret: str, purpose: str, message: bytes) -> bytes:
     # The purpose keeps a value signed for one use from being accepted for another.
     return hmac.new(secret.encode(), purpose.encode() + b"\0" + message, hashlib.sha256).digest()
+
+
+def keyed_digest(secret: str, purpose: str, text: str) -> str:
+    """The hex HMAC-SHA256 of ``text`` under ``secret`` for ``purpose``: unlike a plain hash, nobody who reads it
+    without the secret can test guesses of a short ``text`` against it."""
+    return _mac(secret, purpose, text.encode()).hex()
 
 
 def sign(secret: str, purpose: str, payload: dict, ttl: int) -> str:

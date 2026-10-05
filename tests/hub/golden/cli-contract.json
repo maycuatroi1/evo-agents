@@ -2028,6 +2028,7 @@
             "tokens"
           ],
           "summary": "Revoke",
+          "description": "Revoke one of the caller's tokens; a worker token's worker is revoked with it.",
           "operationId": "revoke_v1_tokens__token_id__delete",
           "parameters": [
             {
@@ -6913,7 +6914,7 @@
             "admin"
           ],
           "summary": "Revoke Any Token",
-          "description": "Revoke a token or web session of any user.",
+          "description": "Revoke a token or web session of any user; a worker token's worker is revoked with it.",
           "operationId": "revoke_any_token_v1_admin_tokens__token_id__delete",
           "parameters": [
             {
@@ -7056,6 +7057,16 @@
             },
             "422": {
               "description": "Unprocessable Entity",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "503": {
+              "description": "Service Unavailable",
               "content": {
                 "application/json": {
                   "schema": {
@@ -7427,7 +7438,7 @@
             "workers"
           ],
           "summary": "Undrain",
-          "description": "Let a drained worker claim runs again.",
+          "description": "Let a drained worker claim runs again; its owner only.",
           "operationId": "undrain_v1_workers__worker_id__undrain_post",
           "parameters": [
             {
@@ -7642,6 +7653,26 @@
             },
             "422": {
               "description": "Unprocessable Entity",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "429": {
+              "description": "too many refused codes from this address; see Retry-After",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "503": {
+              "description": "Service Unavailable",
               "content": {
                 "application/json": {
                   "schema": {

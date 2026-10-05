@@ -36,7 +36,8 @@ and at the end the commit, diffstat, verify results, evidence, usage and error.
 - **A worker belongs to the member who registered it, and only that member dispatches to it.** A claim takes only
   runs whose dispatcher owns the worker, and a dispatch that names a worker must name one of the caller's own (403
   otherwise). Another writer of the same project never gets a run onto your worker. A hub admin sees every worker
-  and may drain, undrain or revoke one, but cannot dispatch to it.
+  and may drain or revoke one, but cannot dispatch to it or undrain it: only the owner sets a drained worker going
+  again (403 for anyone else).
 - **Roles on the project still apply.** Dispatching needs the writer role; reading runs, events and diffs needs
   reader. Messages, takeover, handback, cancel, approve, rerun and the terminal belong to the run's owner, the member
   who dispatched it. A worker takes runs only of the projects it was registered for, and only while its owner still
@@ -48,7 +49,9 @@ and at the end the commit, diffstat, verify results, evidence, usage and error.
   daemon refuses to push the default branch or a detached HEAD and never merges.
 - **A worker token (`evw_...`) works only on `/v1/worker/*`**, and machine tokens and web sessions get 403 there. The
   hub shows the token once, when the machine joins or registers, and keeps only its SHA-256. With it a worker reads
-  nothing beyond the runs it holds. Revoking the worker ends the token at once.
+  nothing beyond the runs it holds. Revoking the worker ends the token at once, and revoking the token
+  (`DELETE /v1/tokens/{id}`, or `DELETE /v1/admin/tokens/{id}` for a hub admin) revokes the worker with it, in the
+  same transaction: its runs are released and its name is free again, as with `POST /v1/workers/{id}/revoke`.
 
 What stays a risk: a plan's text, or anything the agent reads while it works, can carry instructions, and the agent
 acts on them with the owner's permissions. Whoever controls the hub server itself, rather than an admin account
@@ -181,10 +184,13 @@ members do not use the header.
 The owner creates a pairing on the web (`POST /v1/workers/pairings`, with the session's CSRF header, or with a
 machine token), naming the worker, its projects (each one the owner holds writer on; 403 otherwise), slots, labels
 and whether it allows the web terminal. The code is 8 characters of Crockford base32 written `XXXX-XXXX`; it lasts 10
-minutes, and a member has at most 5 codes that are neither used, expired nor locked (409 for a sixth). The hub keeps
-the SHA-256 of the whole code and, in clear, its first four characters, the selector, which no two unused pairings
-share: a join finds the pairing by its selector, so a wrong rest of the code counts as a wrong try against that
-pairing. An unused pairing is deleted a day after it expired.
+minutes, and a member has at most 5 codes that are neither used nor expired (409 for a sixth); a locked code counts
+until it expires, so locking codes does not free a place. The hub keeps the HMAC-SHA256 of the whole code under
+`EVO_HUB_SESSION_SECRET` and, in clear, its first four characters, the selector, which no two unused pairings share: a
+join finds the pairing by its selector, so a wrong rest of the code counts as a wrong try against that pairing.
+Whoever reads the table without the secret cannot test guesses of the rest against it. A hub without the session
+secret answers 503 to pairing and joining, and changing the secret makes the codes waiting at that moment useless. An
+unused pairing is deleted a day after it expired.
 
 The web polls `GET /v1/workers/pairings/{id}` until the machine joins; the answer says `waiting`, `joined`, `expired`
 or `locked` and how many wrong tries are left. On the machine, the daemon sends the code (any case, with or without
@@ -192,8 +198,12 @@ the hyphen; O reads as 0, I and L as 1) and its host facts (`hostname`, `os`, `a
 `POST /v1/worker/join`, the one public worker route, and gets its `evw_` token once. Five wrong tries lock the code,
 and the right code is refused after them. An unknown, wrong, expired, used or locked code gets the same 403, so the
 answer tells nothing about which codes exist; a code that is not 8 characters of the alphabet gets 422 and counts
-against nothing. When the owner has lost the writer role on one of the pairing's projects since, or has a live worker
-of that name by then, the join gets 409 and the code is not used up. A machine already signed in with
+against nothing. After 10 refused codes (403) from one client address within 10 minutes, every join from that
+address gets 429 with `Retry-After` until the oldest refusal is 10 minutes old. The count lives in the api process's
+memory, and the address is the one the reverse proxy forwards only when `EVO_HUB_FORWARDED_ALLOW_IPS` lists that
+proxy (`docs/hub.md`); otherwise every join through the proxy shares the proxy's address and its count. When the
+owner has lost the writer role on one of the pairing's projects since, or has a live worker of that name by then,
+the join gets 409 and the code is not used up. A machine already signed in with
 `evo-agents hub login` can register directly instead (`POST /v1/workers` with its machine token; a web session gets
 403 there).
 
@@ -262,7 +272,8 @@ For members, with a web session or a machine token. `{p}` is a project, and run 
 | `POST /v1/workers/pairings`, `GET /v1/workers/pairings/{id}` | member | create a pairing code, follow it |
 | `POST /v1/workers` | member (machine token) | register this machine directly |
 | `GET /v1/workers`, `GET /v1/workers/{id}` | owner; a hub admin sees all | list and show workers |
-| `POST /v1/workers/{id}/drain`, `/undrain`, `/revoke` | owner or hub admin | stop new claims, resume them, end the worker |
+| `POST /v1/workers/{id}/drain`, `/revoke` | owner or hub admin | stop new claims, end the worker |
+| `POST /v1/workers/{id}/undrain` | owner | resume claims |
 | `GET /v1/projects/{p}/plans/{plan}/ready-steps` | reader | the steps that may be dispatched |
 | `POST /v1/projects/{p}/runs` | writer | dispatch steps |
 | `GET /v1/projects/{p}/runs`, `GET .../runs/{id}` | reader | list and show runs |
@@ -319,7 +330,8 @@ it replays when the browser connects again.
 | attempts per dispatch | 3 |
 | slots per worker | 1 to 8 |
 | run timeout | 5 to 240 minutes |
-| pairing code | 10 minutes, 5 unused per member, locked after 5 wrong tries |
+| pairing code | 10 minutes, 5 unused per member (locked ones included until they expire), locked after 5 wrong tries |
+| refused joins | 10 per client address in 10 minutes, then 429 |
 | prompt | 32 KiB |
 | event batch | 500 events and 1 MiB |
 | event body | 64 KiB, longer ones cut and marked `truncated` |
