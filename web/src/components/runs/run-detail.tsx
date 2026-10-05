@@ -1,17 +1,19 @@
 "use client";
 
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { NoticeArea, useNotice } from "@/components/admin/notice";
 import { planHref, stepHref } from "@/components/plans/links";
 import { PageHeader } from "@/components/shell/page-header";
 import { QueryView, useHubQuery } from "@/components/states/query-view";
 import { NotFoundState, PageSkeleton } from "@/components/states/states";
+import { workerQuery } from "@/components/workers/queries";
 import { browserApi } from "@/lib/api/browser";
 import type { ApiErrorInfo } from "@/lib/api/errors";
+import { whoamiQuery } from "@/lib/queries";
 
 import { RunStateBadge } from "./badges";
 import { useRunViewer } from "./hooks";
@@ -23,6 +25,8 @@ import { RunDetails, RunResult } from "./run-facts";
 import { RunLogCard } from "./run-log";
 import { runControls, stepperModel } from "./run-model";
 import { RunStepper } from "./run-stepper";
+import { RunTerminalPanel } from "./run-terminal";
+import { terminalAccess } from "./terminal-model";
 import { useRunLog } from "./use-run-log";
 
 /** A move between states as the log says it: "Running to Verifying, by the worker: ..." */
@@ -41,11 +45,32 @@ function useDescribeMove() {
   );
 }
 
+/**
+ * The Terminal tab, for the run's owner on a worker of theirs that allows the web terminal; null for anyone else. The
+ * worker is read only for the run's owner (the API answers its owner and hub admins). Once offered, the tab stays while
+ * the page is open, so a session that ended with the run still shows why.
+ */
+function useRunTerminalTab(run: Run, viewer: ReturnType<typeof useRunViewer>) {
+  const ownsRun = viewer !== null && viewer.login === run.dispatched_by;
+  const { data: worker } = useQuery({
+    ...workerQuery(browserApi, run.worker_id ?? 0),
+    enabled: ownsRun && run.worker_id !== null,
+    refetchInterval: false, // its owner and whether it allows the terminal are fixed when it registers
+  });
+  const { data: me } = useQuery(whoamiQuery(browserApi));
+  const access = terminalAccess(run, viewer, worker);
+  const [offered, setOffered] = useState(false);
+  if (access?.open && !offered) setOffered(true);
+  if (access === null || !(access.open || offered)) return null;
+  return { open: access.open, sessionCreatedAt: me?.token.kind === "web" ? me.token.created_at : null };
+}
+
 function RunPage({ run }: { run: Run }) {
   const t = useTranslations("runs.detail");
   const queryClient = useQueryClient();
   const viewer = useRunViewer(run.project);
   const controls = runControls(run, viewer);
+  const terminal = useRunTerminalTab(run, viewer);
   const describe = useDescribeMove();
   const { notice, show, clear } = useNotice();
   const log = useRunLog({ project: run.project, runId: run.id, knownLastSeq: run.last_seq, describe });
@@ -103,6 +128,13 @@ function RunPage({ run }: { run: Run }) {
           log={log}
           active={isActiveState(run.state)}
           composer={controls.message ? <RunComposer run={run} /> : null}
+          terminal={
+            terminal
+              ? (shown) => (
+                  <RunTerminalPanel run={run} open={terminal.open} active={shown} sessionCreatedAt={terminal.sessionCreatedAt} />
+                )
+              : null
+          }
         />
         <div className="flex min-w-0 flex-col gap-4">
           <RunDetails run={run} viewer={viewer} />

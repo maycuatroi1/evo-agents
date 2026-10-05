@@ -74,9 +74,16 @@ export type LiveWorker = { worker: Worker; token: string; project: string };
 
 /**
  * A worker of `account` serving `project`, registered from a signed-in machine, after a first heartbeat that reports
- * Claude Code and a checkout of the plan's repo: a dispatch to `account` matches it.
+ * Claude Code and a checkout of the plan's repo: a dispatch to `account` matches it. `terminal` registers it with
+ * `--allow-web-terminal`.
  */
-export async function liveWorker(account: Account, project: string, name: string, slots = 1): Promise<LiveWorker> {
+export async function liveWorker(
+  account: Account,
+  project: string,
+  name: string,
+  slots = 1,
+  { terminal = false }: { terminal?: boolean } = {},
+): Promise<LiveWorker> {
   const api = bearerClient(await machineToken(account));
   const credential = await call(
     api.POST("/v1/workers", {
@@ -87,7 +94,7 @@ export async function liveWorker(account: Account, project: string, name: string
         projects: [project],
         slots,
         labels: [],
-        allow_web_terminal: false,
+        allow_web_terminal: terminal,
       },
     }),
   );

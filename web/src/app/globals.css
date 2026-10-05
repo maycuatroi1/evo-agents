@@ -217,3 +217,46 @@
     }
   }
 }
+
+/* The web terminal of a run (wterm, components/runs/terminal-view.tsx): the log's terminal surface in both themes,
+   JetBrains Mono, and 16 ANSI colours that keep at least 4.5:1 on it. TUIs set their own colours past these. */
+.hub-terminal {
+  height: 100%;
+  background: var(--log);
+}
+.wterm.hub-terminal {
+  --term-bg: var(--log);
+  --term-fg: var(--log-foreground);
+  --term-cursor: var(--log-foreground);
+  --term-font-family: var(--font-jetbrains-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+  --term-font-size: 13px;
+  --term-row-height: 18px;
+  --term-selection-bg: rgb(96 165 250 / 35%);
+  --term-color-0: #1e293b;
+  --term-color-1: #f87171;
+  --term-color-2: #4ade80;
+  --term-color-3: #facc15;
+  --term-color-4: #60a5fa;
+  --term-color-5: #c084fc;
+  --term-color-6: #22d3ee;
+  --term-color-7: #cbd5e1;
+  --term-color-8: #94a3b8;
+  --term-color-9: #fca5a5;
+  --term-color-10: #86efac;
+  --term-color-11: #fde047;
+  --term-color-12: #93c5fd;
+  --term-color-13: #d8b4fe;
+  --term-color-14: #67e8f9;
+  --term-color-15: #f8fafc;
+  padding: 8px 12px;
+  border-radius: 0;
+  box-shadow: none;
+}
+/* Focus sits on wterm's hidden input; the surface shows it, inside its own edge. */
+.wterm.hub-terminal:focus-within {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
+.wterm.hub-terminal ::selection {
+  background: rgb(96 165 250 / 35%);
+}

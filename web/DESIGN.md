@@ -119,6 +119,22 @@ Shared pieces built on them:
   `role="log"` region (polite), with filters by group, a search that highlights, Follow (scrolling up turns it off) and
   Pause; past 2,000 lines shown only the rows in view render (`@tanstack/react-virtual`). Where the web forwards `/v1`
   itself, `proxy.ts` asks for the stream unencoded: Next.js would gzip it and hold the events back.
+- The Terminal tab (`run-terminal.tsx`, `use-run-terminal.ts`, `terminal-model.ts`) shows beside the Log tab in the log
+  card only for the run's owner on a worker of theirs registered with `--allow-web-terminal` (`terminalAccess`), while
+  the run is leased, running or interactive, and stays for the rest of the visit once shown. Both tabs stay mounted
+  (Radix tabs with `forceMount`), so switching keeps the terminal's session and the log's place. Connect loads the
+  terminal (wterm's DOM renderer over libghostty's VT core, WebAssembly from the web's own origin, `terminal-view.tsx`
+  through `next/dynamic`, so the page carries none of it until then), then opens a websocket on the page's own origin:
+  a text hello with the session's CSRF value and the terminal's size, then binary frames (input, output, resize as in
+  ttyd). Keys go out only once the worker's end has printed something, since the hub drops earlier input. The status
+  badge reads Not connected, Loading terminal, Connecting, Waiting for the worker, Connected or Closed; every close of
+  the hub (4401, 4403, 4408, 4409, 4426, 1011, a lost connection) says what happened and what to do, with the hub's own
+  reason under it, and a sign-in older than 12 hours (whoami's `token.created_at`) asks to sign in again before
+  anything is tried. On a headless run the intro and the waiting message say that connecting takes the run over. The
+  surface is the log's (`hub-terminal` in `globals.css`): JetBrains Mono 13 px, 16 ANSI colours readable on it, a 2 px
+  `ring` outline inside its edge while focused; Esc then Tab leaves it, as the footer says. The CSP allows
+  `'wasm-unsafe-eval'` (WebAssembly only, no JavaScript eval) and keeps connect-src `'self'`, which covers a websocket
+  to the page's own host in Chromium and Firefox (`e2e/terminal.spec.ts` runs in both).
 - The diff page (`/p/{project}/runs/{id}/diff`) reads the run's diff on the web's server through the presigned GET
   the API signs (`diff-blob.ts`), so the blob store needs no CORS rule and connect-src stays `'self'`; the download is
   a navigation to the presigned URL, as for skill bundles. It renders up to 20,000 lines, file by file.
