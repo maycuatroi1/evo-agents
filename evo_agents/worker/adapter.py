@@ -60,8 +60,12 @@ log = logging.getLogger(__name__)
 
 ADAPTERS_VARIABLE = "EVO_WORKER_ADAPTERS"
 ENTRY_POINT_GROUP = "evo_agents.worker.adapters"
-# runtime -> "module:Class"; the adapters of the three runtimes land here
-BUILTIN: dict[str, str] = {}
+# runtime -> "module:Class": the adapters of evo_agents.worker.runtimes, which import their SDKs only when they run
+BUILTIN: dict[str, str] = {
+    "claude-code": "evo_agents.worker.runtimes.claude_code:ClaudeCodeAdapter",
+    "opencode": "evo_agents.worker.runtimes.opencode:OpencodeAdapter",
+    "codex": "evo_agents.worker.runtimes.codex:CodexAdapter",
+}
 BINARIES = {"claude-code": "claude", "opencode": "opencode", "codex": "codex"}
 VERSION_TIMEOUT = 15.0  # seconds for `<binary> --version`
 _VERSION = re.compile(r"\d+(?:\.\d+)+(?:-[0-9A-Za-z.]+)?")

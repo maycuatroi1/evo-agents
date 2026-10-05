@@ -211,7 +211,9 @@ def test_adapters_load_from_the_environment_and_a_bad_one_is_left_out(caplog):
     env = {adapter_module.ADAPTERS_VARIABLE: f"codex={__name__}:_Fake, opencode=no.such.module:X, nope=a:b"}
     with caplog.at_level(logging.WARNING):
         loaded = adapter_module.load_adapters(env)
-    assert loaded == {"codex": _Fake}
+    assert loaded["codex"] is _Fake, "the environment wins over the package's adapter"
+    assert "opencode" not in loaded, "a spec that does not load leaves its runtime without an adapter"
+    assert loaded["claude-code"].__name__ == "ClaudeCodeAdapter", "the package's own adapter"
     assert "adapter not loaded" in caplog.text
 
 
