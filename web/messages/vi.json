@@ -881,7 +881,14 @@
       "contentHash": "Content hash",
       "copyHash": "Chép content hash của build",
       "noHash": "Chưa có: build chưa thành công",
+      "artifact": "Tệp đồ thị",
+      "artifactSize": "{size, number} byte",
       "config": "Cấu hình"
+    },
+    "artifact": {
+      "own": "Do build này tải lên",
+      "reused": "Dùng lại tệp của build #{id}",
+      "pruned": "Đã xoá"
     },
     "queue": {
       "title": "Hàng đợi",
@@ -904,6 +911,7 @@
       "nodes": "Node",
       "edges": "Cạnh",
       "hash": "Content hash",
+      "artifact": "Tệp đồ thị",
       "error": "Lỗi"
     },
     "builds": {

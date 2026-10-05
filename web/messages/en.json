@@ -881,7 +881,14 @@
       "contentHash": "Content hash",
       "copyHash": "Copy the build's content hash",
       "noHash": "None: the build has not succeeded",
+      "artifact": "Artifact",
+      "artifactSize": "{size, number} bytes",
       "config": "Config"
+    },
+    "artifact": {
+      "own": "Uploaded by this build",
+      "reused": "Reused from build #{id}",
+      "pruned": "Deleted"
     },
     "queue": {
       "title": "Queue",
@@ -904,6 +911,7 @@
       "nodes": "Nodes",
       "edges": "Edges",
       "hash": "Content hash",
+      "artifact": "Artifact",
       "error": "Error"
     },
     "builds": {

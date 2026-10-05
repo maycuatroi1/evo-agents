@@ -227,6 +227,55 @@
         "schema": "Builds"
       }
     },
+    "hub kg prune": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--keep"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--dry-run"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "dry_run",
+          "keep",
+          "projects",
+          "deleted",
+          "deleted_bytes",
+          "pending"
+        ],
+        "schema": "KgPruned"
+      }
+    },
     "hub kg push": {
       "positionals": [],
       "options": [
@@ -1520,7 +1569,7 @@
     "openapi": "3.1.0",
     "info": {
       "title": "evo-agents hub",
-      "version": "0.2.2"
+      "version": "0.2.3"
     },
     "paths": {
       "/v1/health": {
@@ -2283,6 +2332,88 @@
                 "application/json": {
                   "schema": {
                     "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/admin/kg/prune": {
+        "post": {
+          "tags": [
+            "admin"
+          ],
+          "summary": "Prune Kg",
+          "description": "Delete the artifacts of graphs older than each project's ``keep`` newest; the builds keep their records.",
+          "operationId": "prune_kg_v1_admin_kg_prune_post",
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PruneRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/KgPruned"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "403": {
+              "description": "Forbidden",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "404": {
+              "description": "Not Found",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "503": {
+              "description": "Service Unavailable",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
                   }
                 }
               }
@@ -7182,7 +7313,8 @@
                   "type": "null"
                 }
               ],
-              "title": "Artifact Sha256"
+              "title": "Artifact Sha256",
+              "description": "the graph file in the blob store; null until the build succeeded, and once it was pruned"
             },
             "artifact_size": {
               "anyOf": [
@@ -7194,6 +7326,31 @@
                 }
               ],
               "title": "Artifact Size"
+            },
+            "artifact_reused_from": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Artifact Reused From",
+              "description": "the build whose artifact this one points at, uploading nothing, because their content is the same"
+            },
+            "artifact_pruned_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Artifact Pruned At",
+              "description": "when the retention deleted the artifact; the build's content hash and counts still describe it"
             },
             "content_hash": {
               "anyOf": [
@@ -7279,6 +7436,8 @@
             "runs",
             "artifact_sha256",
             "artifact_size",
+            "artifact_reused_from",
+            "artifact_pruned_at",
             "content_hash",
             "nodes",
             "edges",
@@ -8234,6 +8393,49 @@
             "aliases"
           ],
           "title": "KgNode"
+        },
+        "KgPruned": {
+          "properties": {
+            "dry_run": {
+              "type": "boolean",
+              "title": "Dry Run"
+            },
+            "keep": {
+              "type": "integer",
+              "title": "Keep"
+            },
+            "projects": {
+              "items": {
+                "$ref": "#/components/schemas/ProjectPruned"
+              },
+              "type": "array",
+              "title": "Projects"
+            },
+            "deleted": {
+              "type": "integer",
+              "title": "Deleted",
+              "description": "objects deleted from the bucket; for a dry run, those that would be"
+            },
+            "deleted_bytes": {
+              "type": "integer",
+              "title": "Deleted Bytes"
+            },
+            "pending": {
+              "type": "integer",
+              "title": "Pending",
+              "description": "blobs whose object still waits to be deleted; the next prune tries again"
+            }
+          },
+          "type": "object",
+          "required": [
+            "dry_run",
+            "keep",
+            "projects",
+            "deleted",
+            "deleted_bytes",
+            "pending"
+          ],
+          "title": "KgPruned"
         },
         "KindCount": {
           "properties": {
@@ -9279,6 +9481,86 @@
             "updated_at"
           ],
           "title": "Project"
+        },
+        "ProjectPruned": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "artifacts": {
+              "type": "integer",
+              "title": "Artifacts",
+              "description": "distinct artifacts the project's builds pointed at, and kg-graph blobs no build did"
+            },
+            "kept": {
+              "type": "integer",
+              "title": "Kept"
+            },
+            "pruned": {
+              "type": "integer",
+              "title": "Pruned",
+              "description": "artifacts dropped"
+            },
+            "pruned_bytes": {
+              "type": "integer",
+              "title": "Pruned Bytes"
+            },
+            "builds": {
+              "type": "integer",
+              "title": "Builds",
+              "description": "builds whose artifact was dropped: they keep their content hash and counts"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "artifacts",
+            "kept",
+            "pruned",
+            "pruned_bytes",
+            "builds"
+          ],
+          "title": "ProjectPruned"
+        },
+        "PruneRequest": {
+          "properties": {
+            "project": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[a-z0-9][a-z0-9-]{0,99}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project",
+              "description": "left out for every project"
+            },
+            "keep": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 1000.0,
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Keep",
+              "description": "the newest graphs of each project whose artifact stays; default EVO_HUB_KG_KEEP_ARTIFACTS"
+            },
+            "dry_run": {
+              "type": "boolean",
+              "title": "Dry Run",
+              "description": "answer what would be deleted, and change nothing",
+              "default": false
+            }
+          },
+          "type": "object",
+          "title": "PruneRequest"
         },
         "PublishRequest": {
           "properties": {

@@ -1,10 +1,11 @@
-"""``evo-agents hub kg push|builds|build``, and the hub backend of ``kg serve`` and ``kg query``.
+"""``evo-agents hub kg push|builds|build|prune``, and the hub backend of ``kg serve`` and ``kg query``.
 
 ``push`` sends the runs a project's corpus holds and the hub lacks (``evo_agents.hub.kg_push``): ``--project P`` one
 project of this machine, ``--all`` every project of projects.json the hub takes a push for. It reports its progress on
 stderr, a line per run and per batch of blobs, and its outcome on stdout. ``builds`` lists a project's builds and the
 jobs still queued; ``build`` (the writer role) queues one and with ``--wait`` waits until it has finished, exiting 1
-when it failed.
+when it failed. ``prune`` (a hub admin) runs the retention of built graphs now (``evo_agents.hub.kg_prune``): the
+artifacts of graphs older than each project's ``--keep`` newest leave the bucket, and ``--dry-run`` only says which.
 
 ``open_session`` picks where kg_* are answered. ``local`` reads the store on this machine, as before the hub.
 ``hub`` sends every call to the hub's /mcp as a tools/call (``RemoteSession``), the seven tools with the same names and
@@ -29,6 +30,7 @@ PROBE_TIMEOUT = 5.0  # seconds auto waits for the hub before answering locally
 WAIT_INTERVAL = 2.0
 DEFAULT_WAIT = 1800.0
 FINISHED = ("succeeded", "failed")
+PRUNE_TIMEOUT = 600.0  # seconds a prune may take: it deletes objects in the blob store
 
 
 def _base(project: str) -> str:
@@ -102,9 +104,19 @@ def cmd_push(args) -> int:
 # Builds
 
 
+def _artifact_note(build: dict) -> str:
+    """What became of a succeeded build's artifact, when it is not simply its own."""
+    if build.get("artifact_pruned_at"):
+        return ", artifact pruned"
+    if build.get("artifact_reused_from"):
+        return f", artifact of build {build['artifact_reused_from']}"
+    return ""
+
+
 def _build_row(build: dict) -> tuple:
+    succeeded = build["status"] == "succeeded"
     outcome = build.get("error") or (
-        f"{build['nodes']} nodes, {build['edges']} edges" if build["status"] == "succeeded" else ""
+        f"{build['nodes']} nodes, {build['edges']} edges{_artifact_note(build)}" if succeeded else ""
     )
     return (
         build["id"],
@@ -161,14 +173,50 @@ def cmd_build(args) -> int:
         verb = "Queued" if queued["queued"] else "A build was waiting already:"
         print(f"{verb} build {build['id']} of project {args.project}: {build['status']}.")
         if build["status"] == "succeeded":
-            print(f"{build['nodes']} nodes, {build['edges']} edges, content {build['content_hash']}")
+            counts = f"{build['nodes']} nodes, {build['edges']} edges"
+            print(f"{counts}, content {build['content_hash']}{_artifact_note(build)}")
         elif build["status"] == "failed":
             print(f"error: {build['error']}", file=sys.stderr)
     return 1 if build["status"] == "failed" else 0
 
 
+def _bytes(size: int) -> str:
+    for unit, scale in (("GiB", 1024**3), ("MiB", 1024**2), ("KiB", 1024)):
+        if size >= scale:
+            return f"{size / scale:.1f} {unit}"
+    return f"{size} B"
+
+
+@_client_command
+def cmd_prune(args) -> int:
+    hub, _ = _signed_in()
+    body = {"project": args.project, "keep": args.keep, "dry_run": args.dry_run}
+    report = hub.call("POST", "/v1/admin/kg/prune", body, timeout=PRUNE_TIMEOUT)
+    if args.json:
+        _print_json(report)
+        return 0
+    rows = [
+        (p["project"], p["artifacts"], p["kept"], p["pruned"], _bytes(p["pruned_bytes"]), p["builds"])
+        for p in report["projects"]
+    ]
+    if rows:
+        _table(("PROJECT", "ARTIFACTS", "KEPT", "PRUNED", "PRUNED SIZE", "BUILDS"), rows)
+    else:
+        print("no project has a built graph on the hub")
+    verb = "would delete" if report["dry_run"] else "deleted"
+    print(
+        f"{'Dry run, keeping' if report['dry_run'] else 'Kept'} the artifacts of the {report['keep']} newest graph(s) "
+        f"of each project: {verb} {report['deleted']} object(s), {_bytes(report['deleted_bytes'])}."
+    )
+    if report["pending"]:
+        print(f"{report['pending']} object(s) still wait to be deleted; the next prune tries again.", file=sys.stderr)
+    return 0
+
+
 def register_kg(hsub) -> None:
-    kg = hsub.add_parser("kg", help="knowledge graphs on the hub: push runs, list and queue builds")
+    from evo_agents.hub.cli import _positive
+
+    kg = hsub.add_parser("kg", help="knowledge graphs on the hub: push runs, list and queue builds, prune old graphs")
     ksub = kg.add_subparsers(dest="kg_command", required=True)
 
     push_parser = ksub.add_parser("push", help="send the runs of a project's corpus that the hub does not have")
@@ -193,6 +241,22 @@ def register_kg(hsub) -> None:
     )
     json_option(build, returns_object("queued", "build", schema="Queued"))
     build.set_defaults(func=cmd_build)
+
+    prune = ksub.add_parser(
+        "prune", help="delete the artifacts of graphs older than each project's newest few (needs a hub admin)"
+    )
+    prune.add_argument("--project", help="project name on the hub (default: every project)")
+    prune.add_argument(
+        "--keep",
+        type=_positive,
+        help="newest graphs of each project whose artifact stays (default: the hub's EVO_HUB_KG_KEEP_ARTIFACTS, 3)",
+    )
+    prune.add_argument("--dry-run", action="store_true", help="say what would be deleted, and delete nothing")
+    json_option(
+        prune,
+        returns_object("dry_run", "keep", "projects", "deleted", "deleted_bytes", "pending", schema="KgPruned"),
+    )
+    prune.set_defaults(func=cmd_prune)
 
 
 # The hub backend of kg serve and kg query

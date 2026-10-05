@@ -24,6 +24,7 @@ CLEANUP_UPLOADS = "hub.cleanup_uploads"  # hourly: uploads never committed, afte
 PRUNE_JOBS = "hub.prune_jobs"  # daily: finished jobs, after 14 days
 KG_BUILD = "hub.kg_build"  # one build of a project's knowledge graph, under the project's kg lock
 RECOVER_KG_BUILDS = "hub.recover_kg_builds"  # every 5 minutes: kg builds whose worker died, failed and queued again
+PRUNE_KG_ARTIFACTS = "hub.prune_kg_artifacts"  # hourly: artifacts of graphs older than each project's newest few
 
 
 def kg_lock(project: str) -> str:

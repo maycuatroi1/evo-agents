@@ -52,6 +52,9 @@ def test_missing_dsn_stops_the_command_and_names_the_variable(command):
         ("EVO_HUB_BLOB_CONCURRENCY", "0"),
         ("EVO_HUB_BLOB_CONCURRENCY", "257"),
         ("EVO_HUB_BLOB_CONCURRENCY", "many"),
+        ("EVO_HUB_KG_KEEP_ARTIFACTS", "0"),
+        ("EVO_HUB_KG_KEEP_ARTIFACTS", "1001"),
+        ("EVO_HUB_KG_KEEP_ARTIFACTS", "all"),
     ],
 )
 def test_a_malformed_value_names_its_variable(variable, value):
@@ -83,6 +86,8 @@ def test_flags_win_over_variables_and_defaults_fill_the_rest(tmp_path):
     )
     assert (config.pool_min_size, config.pool_max_size, config.pool_timeout) == (1, 10, 10.0)
     assert config.sentry_dsn is None
+    assert config.kg_keep_artifacts == 3  # the retention of built graphs keeps each project's 3 newest
+    assert load_config({**env, "EVO_HUB_KG_KEEP_ARTIFACTS": "1"}).kg_keep_artifacts == 1
     assert load_config({"EVO_HUB_DSN": "host=db dbname=hub"}).data_dir == Path("~/.evo/hub-server/cache").expanduser()
 
 

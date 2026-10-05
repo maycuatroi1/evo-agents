@@ -1,6 +1,7 @@
 import { expect, test } from "./support/fixtures";
 import { newAccount } from "./support/hub";
 import {
+  changeKg,
   CONTRACT,
   graphReady,
   grantOn,
@@ -14,6 +15,7 @@ import {
   queueBuild,
   RUNBOOK,
   SHARED_NODE,
+  seededKg,
   sharedKg,
   open,
 } from "./support/kg";
@@ -39,6 +41,7 @@ test.describe("knowledge graph", () => {
     await expect(latest.getByTestId("build-status")).toHaveText("Thành công");
     await expect(latest.getByTestId("build-status")).toHaveAttribute("data-status", "succeeded");
     await expect(latest.getByTestId("latest-content-hash")).toHaveText(kg.build.content_hash!);
+    await expect(latest.getByTestId("build-artifact")).toHaveAttribute("data-state", "own");
     await expect(page.getByTestId("tile-hash").locator("[title]").first()).toHaveAttribute("title", kg.build.content_hash!);
     await expect(page.getByTestId("tile-size")).toContainText(`${kg.build.nodes} node`);
     await expect(page.getByTestId("queue-empty")).toBeVisible();
@@ -210,6 +213,39 @@ test.describe("knowledge graph", () => {
     await expect(page.getByTestId("tile-graph")).toContainText("Chưa có");
     // No graph yet: search says so instead of failing.
     await expect(page.getByTestId("kg-search")).toContainText("Dự án chưa có đồ thị");
+  });
+
+  test("a rebuild of the same content reuses the artifact, and a pruned build says so", async ({ page, admin, signInAs }) => {
+    const { project, writer, build: first } = await seededKg(admin);
+    const same = await queueBuild(project, writer, true);
+    expect(same.content_hash).toBe(first.content_hash);
+    expect(same.artifact_sha256).toBe(first.artifact_sha256); // nothing uploaded
+    expect(same.artifact_reused_from).toBe(first.id);
+    const changed = await changeKg(project, writer, "note-extra");
+    expect(changed.content_hash).not.toBe(first.content_hash);
+    const pruned = await admin.pruneKg(project, 1);
+    expect(pruned.projects).toEqual([expect.objectContaining({ project, artifacts: 2, kept: 1, pruned: 1, builds: 2 })]);
+    expect(pruned.deleted).toBe(1);
+
+    const reader = newAccount("kg-reader");
+    await admin.grant(project, reader.login, "reader", "internal");
+    await signInAs(reader);
+    await open(page, kgPath(project));
+    const latest = page.getByTestId("kg-latest-build");
+    await expect(latest).toHaveAttribute("data-build-id", String(changed.id));
+    await expect(latest.getByTestId("build-artifact")).toHaveAttribute("data-state", "own");
+    await expect(page.getByTestId("tile-graph")).toContainText(`#${changed.id}`);
+    const history = page.getByTestId("kg-build-history");
+    for (const id of [first.id, same.id]) {
+      const row = history.getByRole("row").filter({ has: page.getByText(`#${id}`, { exact: true }) });
+      await expect(row.getByTestId("build-artifact")).toHaveAttribute("data-state", "pruned");
+      await expect(row.getByTestId("build-status")).toHaveText("Thành công");
+    }
+    // The pages read the build that kept its artifact.
+    await page.getByLabel("Từ khoá").fill("note-extra");
+    await page.getByRole("button", { name: "Tìm" }).click();
+    await page.waitForURL((url) => url.searchParams.get("q") === "note-extra");
+    await expect(page.getByTestId("kg-result-link").first()).toHaveAttribute("data-node-id", "docs:doc:note-extra");
   });
 
   test.describe("on a 375 px screen", () => {

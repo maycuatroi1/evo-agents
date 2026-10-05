@@ -1,10 +1,15 @@
-"""Hub administration, for the logins listed in EVO_HUB_ADMINS only: users, grants and row counts.
+"""Hub administration, for the logins listed in EVO_HUB_ADMINS only: users, grants, row counts, and the retention of
+built graphs.
 
 A grant gives a login a role on a project (reader, writer or admin) and the highest level of that project's label
 ladder it may see. The ladder is the project's own, as ``evo_agents.kg.policy.Policy`` reads it from the levels
 registered with the project, so a max level outside it is refused. A login that has not signed in yet can be
 granted: its users row waits for the first sign-in, which claims it. Granting and revoking add an audit row
 naming the project, the login and the role, never anything the grant gives access to.
+
+POST /v1/admin/kg/prune runs the retention of built graphs now (``evo_agents.hub.kg_prune``), as the worker does every
+hour: for one project or every one, keeping the artifacts of the ``keep`` newest graphs of each (default
+EVO_HUB_KG_KEEP_ARTIFACTS). With ``dry_run`` it answers what it would delete and changes nothing.
 """
 
 from __future__ import annotations
@@ -16,7 +21,8 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Request, Response
 from psycopg import sql
 from pydantic import BaseModel, Field
 
-from evo_agents.hub.config import HubConfig
+from evo_agents.hub.blobs import BlobStoreUnavailable
+from evo_agents.hub.config import MAX_KG_KEEP_ARTIFACTS, HubConfig
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.auth import GrantInfo
 from evo_agents.hub.server.errors import ErrorBody
@@ -60,6 +66,37 @@ class Grant(BaseModel):
     role: str
     max_level: str
     created: bool = Field(description="false when an existing grant was changed")
+
+
+class PruneRequest(BaseModel):
+    project: str | None = Field(None, pattern=PROJECT_NAME, description="left out for every project")
+    keep: int | None = Field(
+        None,
+        ge=1,
+        le=MAX_KG_KEEP_ARTIFACTS,
+        description="the newest graphs of each project whose artifact stays; default EVO_HUB_KG_KEEP_ARTIFACTS",
+    )
+    dry_run: bool = Field(False, description="answer what would be deleted, and change nothing")
+
+
+class ProjectPruned(BaseModel):
+    project: str
+    artifacts: int = Field(
+        description="distinct artifacts the project's builds pointed at, and kg-graph blobs no build did"
+    )
+    kept: int
+    pruned: int = Field(description="artifacts dropped")
+    pruned_bytes: int
+    builds: int = Field(description="builds whose artifact was dropped: they keep their content hash and counts")
+
+
+class KgPruned(BaseModel):
+    dry_run: bool
+    keep: int
+    projects: list[ProjectPruned]
+    deleted: int = Field(description="objects deleted from the bucket; for a dry run, those that would be")
+    deleted_bytes: int
+    pending: int = Field(description="blobs whose object still waits to be deleted; the next prune tries again")
 
 
 USERS = """
@@ -167,3 +204,34 @@ async def stats(request: Request) -> dict[str, int]:
         )
         counts = await (await conn.execute(query)).fetchall() if tables else []
     return {table: count for table, count in counts}
+
+
+@router.post("/kg/prune", response_model=KgPruned, responses={**MISSING, 503: {"model": ErrorBody}})
+async def prune_kg(request: Request, body: PruneRequest, user: AdminUser) -> KgPruned:
+    """Delete the artifacts of graphs older than each project's ``keep`` newest; the builds keep their records."""
+    from evo_agents.hub.kg_prune import UnknownProject, prune
+
+    state = request.app.state
+    if state.blobs is None:
+        missing = ", ".join(state.config.blob_store_missing())
+        raise HTTPException(503, f"the blob store is not configured on this hub: set {missing}")
+    keep = body.keep or state.config.kg_keep_artifacts
+    try:
+        report = await prune(
+            state.pool,
+            state.blobs,
+            keep,
+            body.project,
+            dry_run=body.dry_run,
+            actor_id=user.user_id,
+            token_id=user.token_id,
+        )
+    except UnknownProject as exc:
+        raise HTTPException(404, f"{exc}: run `evo-agents hub project register`") from None
+    except BlobStoreUnavailable:
+        raise HTTPException(
+            503,
+            "the blob store did not answer: the builds were marked and their artifacts wait to be deleted by the next "
+            "prune",
+        ) from None
+    return KgPruned(**report.to_json())
