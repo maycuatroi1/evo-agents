@@ -421,6 +421,10 @@ def register(sub) -> None:
     status.add_argument("--json", action="store_true", help="machine-readable output")
     status.set_defaults(func=cmd_status)
 
+    from evo_agents.worker.selftest import add_parser as add_selftest  # `selftest --runtime NAME`
+
+    add_selftest(wsub)
+
     drain = wsub.add_parser("drain", help="stop claiming new runs; the runs held finish (needs `hub login`)")
     drain.add_argument("--resume", action="store_true", help="claim runs again")
     drain.set_defaults(func=cmd_drain)

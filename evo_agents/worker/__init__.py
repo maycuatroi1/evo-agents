@@ -15,8 +15,11 @@ Modules, each with one concern:
 - ``gitops``: the git commands of a run: fetch, worktree, commit, push.
 - ``run``: one run from claim to its last report.
 - ``daemon``: the claim loop, the heartbeat, signals and the cleanup of old worktrees.
+- ``runtimes``: the adapters of Claude Code, opencode and Codex, through each runtime's SDK or API.
+- ``selftest``: ``evo-agents worker selftest``, one real run of an adapter in a scratch repository.
 - ``cli``: the commands.
 
-Only ``hubapi``, ``daemon`` and ``run`` need the worker extra (``evo-ak[worker]``); the others need the core package,
-so ``evo-agents`` starts on a core install and the commands name the extra when it is missing.
+Only ``hubapi``, ``daemon`` and ``run`` need the worker extra (``evo-ak[worker]``) to load, and the adapters of
+``runtimes`` need it once an agent starts; the others need the core package, so ``evo-agents`` starts on a core
+install and the commands name the extra when it is missing.
 """

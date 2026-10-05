@@ -318,7 +318,7 @@ after the hub's clock is stored as the hub's now), `kind` (one of the worker's k
 get 422) and `body`, a JSON object:
 
 ```json
-{"events": [{"seq": 41, "at": "2026-10-05T09:12:03.120Z", "kind": "agent_message_chunk", "body": {"text": "..."}}]}
+{"events": [{"seq": 41, "at": "2026-10-05T09:12:03.120Z", "kind": "agent_message_chunk", "body": {"content": {"type": "text", "text": "..."}}}]}
 ```
 
 `seq` is the worker's own count for the run: 1 for the first event and one more for each next. The hub remembers the
@@ -600,6 +600,7 @@ upgrade. There the browser opens the terminal on the api's own address, whose po
 | `evo-agents worker register --name NAME --project P [--project P ...] --slots N [--label L ...]` | registers the machine with the machine token of `evo-agents hub login`, without a code; `--allow-web-terminal` lets the owner open the terminal |
 | `evo-agents worker run` | the daemon in the foreground |
 | `evo-agents worker status [--json]` | the worker as this machine and the hub see it: runtimes, checkouts, the daemon's pid, runs kept, the spool |
+| `evo-agents worker selftest --runtime NAME [--model M] [--effort E] [--keep]` | runs the runtime's adapter for real on a tiny prompt in a scratch git repository, prints each event and how many of each kind came, and exits 0 when the turn completed and the agent wrote the file it was asked for (it spends a little of the owner's quota; Claude Code and Codex run at effort `low` unless `--effort` says otherwise) |
 | `evo-agents worker drain [--resume]` | stops claims (or resumes them) through `POST /v1/workers/{id}/drain` or `/undrain`, with the machine token |
 | `evo-agents worker revoke [--force]` | revokes the worker on the hub and deletes its token here; `--force` deletes it even when the hub cannot be reached |
 
@@ -630,6 +631,44 @@ hand), in the project's repos as the hub lists them, placed in the workspace of 
 registry (else the workspace the project was registered with), and in the registry's cluster of the project
 (`hub.project`, on the same hub), keyed by directory name. The registry is `~/.evo/harness/registry.json`, then
 `~/.claude/harness/registry.json`, as `evo-agents hub registry pull` writes it. Only a git work tree counts.
+
+### Runtime adapters
+
+`evo_agents/worker/runtimes` holds an adapter for each runtime. Each one drives its runtime through the runtime's
+official SDK or API, never by parsing what its CLI prints, and takes the state of a turn from the runtime's events,
+never from an exit code. Each starts its runtime in a session of its own, through a small launcher that calls
+`setsid`, so a Ctrl-C at the daemon's terminal does not reach the agent, and its process group, tools included, is
+killed once the agent has ended, or 20 seconds after an interrupt it did not end on.
+
+| Runtime | Through | Full permissions | A message of the owner | Interrupt | The turn ends |
+| --- | --- | --- | --- | --- | --- |
+| `claude-code` | `claude-agent-sdk`: `ClaudeSDKClient` over `claude` on PATH, session id made by the daemon (`--session-id`, or `--resume` for a run that goes on with a session) | `permission_mode="bypassPermissions"` (`--dangerously-skip-permissions`) | `query()`; Claude Code takes it at the next tool boundary and may fold it into the same `result` | the SDK's `interrupt()`, then the input stream ends | at its `result`: the input stream ends and the CLI exits once it has done what it was given; `stop_at_turn_boundary` ends the input stream at once, and the turn in progress still finishes |
+| `codex` | `openai-codex` over `codex app-server --listen stdio://`, with `codex` on PATH | sandbox `danger-full-access` and approval policy `never` (`--dangerously-bypass-approvals-and-sandbox`) | `turn/steer` during the turn; a new turn on the same thread when the turn no longer takes it | `turn/interrupt` | at `turn/completed`, with its status |
+| `opencode` | HTTP and the event stream of `opencode serve`, started per run on 127.0.0.1 at a free port, with a random `OPENCODE_SERVER_PASSWORD` and stdin `/dev/null` | each `permission.asked` of the session answered `once`, as `opencode run --auto` does, so the owner's explicit denials still hold; sessions get `opencode run`'s rules (no question, no plan mode) | `POST /session/:id/prompt_async`, taken at the next step boundary | `POST /session/:id/abort` | when the session goes idle with every prompt it was sent |
+
+The agent gets, on top of its runtime's own system prompt, a note that it runs unattended and that the owner may send
+messages. The model and the reasoning effort are the run's `model` and `effort` when the hub sends them, else
+`EVO_WORKER_<RUNTIME>_MODEL` and `EVO_WORKER_<RUNTIME>_EFFORT` in the daemon's environment (`CLAUDE_CODE`,
+`OPENCODE`, `CODEX`), else the runtime's default. opencode is always told the model: the run's, the variable's, or the
+`model` of the owner's opencode config, and a model `opencode serve` does not list fails the start with that reason.
+A message that comes once the agent takes no more input (its last turn is over) is refused by `send`, and stays in the
+inbox.
+
+The events take the shapes of ACP's `session/update`: `agent_message_chunk` and `agent_thought_chunk` carry
+`{"content": {"type": "text", "text": ...}}`; `tool_call` carries `toolCallId`, `title`, `kind` (ACP's: `read`,
+`edit`, `execute`, `search`, `fetch`, `think`, `other`, ...), `status` and `rawInput`; `tool_call_update` carries
+`toolCallId`, `status` (`completed` or `failed`), and the tool's output as `content`
+`[{"type": "content", "content": {"type": "text", "text": ...}}]`; `plan` carries `entries` of `content`, `status` and
+`priority` (Claude Code's todo list, Codex's plan, opencode's todos); `usage_update` carries the runtime's `usage`, and
+`cost` `{"amount", "currency": "USD"}` when the runtime counts one. An event a runtime sends that has none of these
+meanings goes as `output` `{"raw": ...}`, except the ones that only repeat others: text deltas, the start of a hook,
+Claude Code's list of slash commands.
+
+A runtime is available when its binary answers `--version` with at least the version the adapter was checked with,
+and the package the adapter needs is installed at least at the version checked: Claude Code 2.1.289 with
+claude-agent-sdk 0.2.163, codex-cli 0.153.4 as the app-server with openai-codex 0.160.0 (whose bundled codex is not
+used), opencode 1.18.34 with aiohttp. Otherwise the heartbeat reports it unavailable with the reason, and the hub
+hands it no run.
 
 ### A run on the machine
 

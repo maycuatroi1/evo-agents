@@ -163,6 +163,9 @@ def event_text(event: dict) -> str:
         return text + (f": {body['reason']}" if body.get("reason") else "")
     if isinstance(body.get("text"), str):
         return f"{body.get('from', '?')}: {body['text']}" if kind == "user_message" else body["text"]
+    content = body.get("content")
+    if isinstance(content, dict) and isinstance(content.get("text"), str):  # the adapters' ACP-shaped chunks
+        return content["text"]
     if kind in ("tool_call", "tool_call_update"):
         name = next((body[key] for key in ("title", "name", "kind") if isinstance(body.get(key), str)), None)
         if name:
