@@ -101,6 +101,8 @@ def test_an_event_is_one_line_with_seq_time_kind_and_text():
     assert format_event(reason).endswith("leased -> failed by worker: ruff found 3 problems")
     chunk = {"seq": 41, "at": AT, "kind": "agent_message_chunk", "body": {"text": "Two lines\nof text"}}
     assert format_event(chunk) == "   41 02:12:03 agent   Two lines\n                       of text"
+    acp = {**chunk, "body": {"content": {"type": "text", "text": "DONE"}}}  # as the runtime adapters send it
+    assert format_event(acp) == "   41 02:12:03 agent   DONE"
     message = {"seq": 5, "at": AT, "kind": "user_message", "body": {"text": "also run ruff", "from": "owner"}}
     assert format_event(message).endswith("message owner: also run ruff")
     tool = {"seq": 6, "at": AT, "kind": "tool_call", "body": {"title": "Bash: pytest -q", "status": "pending"}}

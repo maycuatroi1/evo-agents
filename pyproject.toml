@@ -44,8 +44,9 @@ hub-server = [
 # and the SDKs of the runtimes its adapters drive.
 worker = [
     "aiohttp>=3.9",
-    "claude-agent-sdk>=0.2",
-    "openai-codex>=0.154",
+    # The versions the runtime adapters were checked with (evo_agents/worker/runtimes); an older one is refused.
+    "claude-agent-sdk>=0.2.163",
+    "openai-codex>=0.160",
 ]
 
 [project.urls]
