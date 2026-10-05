@@ -30,6 +30,7 @@ function worker(overrides: Partial<Worker> = {}): Worker {
     projects: ["evo-agents"],
     runtimes: {},
     checkouts: {},
+    free_slots: null,
     allow_web_terminal: false,
     held_runs: 0,
     created_at: "2026-10-05T07:00:00Z",

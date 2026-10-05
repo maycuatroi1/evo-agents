@@ -5,6 +5,7 @@ import { ADMIN_ACCOUNT, machineToken } from "./support/hub";
 import { grantOn, kgPath, nodePath, SHARED_NODE, sharedKg } from "./support/kg";
 import { apiOf, memoryFile, putMemory } from "./support/memories";
 import { ACTIVE_PLAN, open, seedPlans } from "./support/plans";
+import { claimRun, dispatch, liveWorker, RUN_PLAN, seedRunPlan } from "./support/runs";
 import { packSkill, publishSkill } from "./support/skills";
 import { heartbeat, registerWorker, RUNTIMES } from "./support/workers";
 
@@ -12,7 +13,8 @@ import { heartbeat, registerWorker, RUNTIMES } from "./support/workers";
  * A table wider than the page scrolls inside its own region; the document itself never scrolls sideways. Step 25
  * found a wide table widening the shell's <main> at 768 and 1024 px, where the open sidebar leaves the content its
  * narrowest for the breakpoint; the shell's inset is min-w-0 since. The pages with the widest tables of each area
- * (admin, plans, memories, skills, knowledge graph, workers), seeded with long unbroken names, at 375, 768 and 1024 px.
+ * (admin, plans, memories, skills, knowledge graph, workers, runs), seeded with long unbroken names, at 375, 768 and 1024
+ * px.
  */
 const WIDTHS = [375, 768, 1024];
 const LONG = "a-rather-long-unbroken-name-that-never-wraps-in-a-table-cell";
@@ -99,5 +101,19 @@ test("workers pages never scroll sideways at 375, 768 and 1024 px", async ({ pag
   await noSidewaysScroll(page, [
     { path: "/workers", ready: shown("workers-table") },
     { path: `/workers/${worker.id}`, ready: shown("heartbeat-strip") },
+  ]);
+});
+
+test("runs pages never scroll sideways at 375, 768 and 1024 px", async ({ page, member }) => {
+  const me = await member([{ role: "writer", maxLevel: "internal" }]);
+  const project = me.projects[0];
+  await seedRunPlan(me, project);
+  const live = await liveWorker(me, project, `${LONG}-worker`);
+  await dispatch(me, project, ["2", "4"]);
+  await claimRun(live);
+  await noSidewaysScroll(page, [
+    { path: `/p/${project}/runs`, ready: shown("runs-table") },
+    { path: `/p/${project}/plans/${RUN_PLAN}/steps/2`, ready: shown("step-runs-table") },
+    { path: `/workers/${live.worker.id}`, ready: shown("worker-runs-table") },
   ]);
 });

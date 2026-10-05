@@ -21,6 +21,7 @@
     "project": "Dự án",
     "overview": "Tổng quan",
     "plans": "Plans",
+    "runs": "Run",
     "kg": "Đồ thị tri thức",
     "admin": "Quản trị",
     "toggleSidebar": "Ẩn hoặc hiện thanh bên",
@@ -1253,9 +1254,11 @@
         "never": "Chưa có heartbeat"
       },
       "runs": {
-        "title": "Run",
+        "title": "Run gần đây",
         "held": "{held, plural, =0 {Hiện không giữ run nào} other {Đang giữ # run}}, {free, plural, =0 {không còn slot trống} other {còn # slot trống}}.",
-        "history": "Hub này chưa liệt kê các run đã chạy của một worker."
+        "empty": "Worker này chưa nhận run nào.",
+        "caption": "Run gần đây của worker {name}",
+        "hidden": "{count, plural, =1 {Không hiện run của dự án {projects}: bạn không có quyền trên dự án đó.} other {Không hiện run của các dự án {projects}: bạn không có quyền trên các dự án đó.}}"
       }
     },
     "actions": {
@@ -1277,6 +1280,212 @@
       "revokeConfirm": "Thu hồi worker",
       "revokePending": "Đang thu hồi…",
       "revokeSuccess": "Đã thu hồi {name}. Token của worker không còn hiệu lực."
+    }
+  },
+  "runs": {
+    "title": "Run",
+    "metaTitle": "Run của {project}",
+    "description": "Mỗi run là một bước plan được dispatch tới một worker của bạn. Trạng thái, log và bằng chứng của run gửi về hub trong lúc chạy.",
+    "dispatchButton": "Dispatch",
+    "liveBadge": "Trực tiếp",
+    "live": "Cập nhật mỗi 5 giây khi còn run đang hoạt động.",
+    "count": "{count, plural, other {# run}}",
+    "caption": "Run của dự án {project}",
+    "pagerLabel": "run",
+    "dispatched": "{count, plural, =1 {Đã xếp run {ids} vào queue.} other {Đã xếp # run vào queue: {ids}.}}",
+    "state": {
+      "queued": "Đang chờ",
+      "leased": "Đã nhận",
+      "running": "Đang chạy",
+      "interactive": "Tương tác",
+      "verifying": "Đang kiểm",
+      "review": "Chờ duyệt",
+      "done": "Xong",
+      "failed": "Thất bại",
+      "lost": "Mất lease",
+      "cancelled": "Đã huỷ"
+    },
+    "runtime": {
+      "any": "Bất kỳ",
+      "claude-code": "Claude Code",
+      "opencode": "opencode",
+      "codex": "Codex CLI"
+    },
+    "summary": {
+      "label": "Tóm tắt",
+      "running": "Đang chạy",
+      "runningHint": "{workers, plural, =0 {không worker nào đang giữ run} other {trên # worker}}",
+      "queued": "Đang chờ",
+      "queuedSince": "run chờ lâu nhất từ {time}",
+      "queuedMany": "{count, plural, other {# run đang chờ worker}}",
+      "queuedNone": "không có run nào chờ",
+      "review": "Chờ duyệt",
+      "reviewOne": "bước {step} của {plan}",
+      "reviewMany": "đang chờ bạn duyệt",
+      "reviewNone": "không có gì cần duyệt",
+      "failed": "Thất bại",
+      "failedHint": "{lost, plural, =0 {không mất lease nào} other {thêm # lần mất lease}}, {cancelled, plural, =0 {không run nào bị huỷ} other {# run đã huỷ}}"
+    },
+    "facets": {
+      "label": "Trạng thái",
+      "all": "Tất cả",
+      "active": "Đang hoạt động",
+      "review": "Chờ duyệt",
+      "done": "Xong",
+      "ended": "Thất bại hoặc đã huỷ"
+    },
+    "search": {
+      "label": "Tìm run",
+      "placeholder": "Bước, plan, worker hoặc #run",
+      "clear": "Xoá ô tìm"
+    },
+    "listSummary": {
+      "all": "{count, plural, =0 {Không có run nào.} other {# run.}}",
+      "filtered": "{count, plural, =0 {Không có run nào khớp.} other {# run khớp.}}"
+    },
+    "columns": {
+      "run": "Run",
+      "step": "Bước plan",
+      "state": "Trạng thái",
+      "worker": "Worker",
+      "dispatcher": "Người dispatch",
+      "runtime": "Runtime",
+      "started": "Bắt đầu",
+      "duration": "Thời lượng",
+      "attempt": "Lần chạy"
+    },
+    "stepLine": "{plan}, bước {step}",
+    "stepLineProject": "{project}, {plan}, bước {step}",
+    "untitled": "Bước chưa có tiêu đề",
+    "noWorkerYet": "chưa có",
+    "pinnedWaiting": "đang chờ worker đã ghim",
+    "queuedAt": "Vào queue lúc",
+    "waiting": "đã chờ {duration}",
+    "attemptLabel": "Lần {attempt} trên {max}",
+    "duration": {
+      "lessThanMinute": "dưới 1 phút",
+      "minutes": "{minutes} phút",
+      "hours": "{hours} giờ {minutes} phút"
+    },
+    "empty": {
+      "title": "Chưa có run nào",
+      "description": "Một run là một bước plan đã sẵn sàng, được dispatch tới một worker của bạn. Dispatch một run để bắt đầu.",
+      "readerDescription": "Người có quyền ghi trên dự án này dispatch run tới worker của họ; mỗi run hiện ở đây kèm trạng thái."
+    },
+    "noResults": {
+      "title": "Không có run nào khớp",
+      "description": "Đổi từ khoá tìm, hoặc xem run ở mọi trạng thái.",
+      "clear": "Xem mọi run"
+    },
+    "step": {
+      "title": "Run của bước này",
+      "run": "Chạy bước này",
+      "ready": "Sẵn sàng để chạy.",
+      "notReady": "Chưa sẵn sàng để chạy: {reason}.",
+      "readerHint": "Người có quyền ghi trên dự án này dispatch được bước này tới worker của họ.",
+      "empty": "Bước này chưa có run nào.",
+      "failed": "Không tải được các run của bước này.",
+      "caption": "Run của bước {step}",
+      "live": "Cập nhật mỗi 5 giây khi còn run đang hoạt động.",
+      "more": "{shown} run mới nhất trên tổng {total}.",
+      "all": "Mọi run của dự án"
+    },
+    "dispatch": {
+      "title": "Dispatch run",
+      "description": "Chọn các bước đã sẵn sàng của một plan. Hub xếp mỗi bước thành một run trong queue, và một worker phù hợp của bạn sẽ nhận từng run.",
+      "close": "Đóng",
+      "plan": "Plan",
+      "noPlans": "Dự án này không có plan đang chạy nào để dispatch.",
+      "plansFailed": "Không tải được danh sách plan. Đóng hộp thoại rồi thử lại.",
+      "timeout": "Thời gian tối đa mỗi run",
+      "timeoutValue": "{minutes} phút",
+      "timeoutHint": "Hub dừng run chạy lâu hơn mức này.",
+      "steps": "Các bước",
+      "stepsHint": "Chọn được một bước khi nó đang chưa làm, mọi bước nó phụ thuộc đã xong, và nó không có run đang hoạt động.",
+      "stepsFailed": "Không tải được các bước của plan này. Đóng hộp thoại rồi thử lại.",
+      "picked": "Đã chọn {count} trên {ready} bước sẵn sàng",
+      "pickAll": "Chọn cả {count} bước sẵn sàng",
+      "pickNone": "Bỏ chọn tất cả",
+      "ready": "Sẵn sàng",
+      "notReady": "Chưa sẵn sàng",
+      "untitled": "Bước chưa có tiêu đề",
+      "repo": "Chạy trong repo {repo}",
+      "noOpen": "Plan này không còn bước nào chưa làm.",
+      "noReady": "Chưa có bước nào sẵn sàng: mỗi bước chưa làm đều đang chờ một bước nó phụ thuộc, hoặc đã có run đang hoạt động.",
+      "settled": "{count, plural, other {# bước đã xong, đang làm hoặc bị chặn}}",
+      "tooMany": "Mỗi lần dispatch tối đa {max} bước.",
+      "reason": {
+        "activeRun": "Run #{id} đang ở trạng thái {state}, do {login} dispatch",
+        "status": "Trạng thái là {status}, không phải chưa làm",
+        "unknown": "Hub không nêu lý do"
+      },
+      "runtime": "Runtime",
+      "runtimeAny": "Runtime bất kỳ mà worker có",
+      "runtimeAnyHint": "Ưu tiên Claude Code, rồi opencode, rồi Codex CLI",
+      "runtimeCommand": {
+        "claude-code": "claude -p, headless",
+        "opencode": "opencode run",
+        "codex": "codex exec"
+      },
+      "runtimeWorkers": {
+        "none": "Chưa worker nào của bạn ở dự án này báo có runtime này.",
+        "all": "{total, plural, =1 {Worker của bạn ở dự án này có runtime này.} other {Cả # worker của bạn ở dự án này đều có.}}",
+        "some": "{count} trên {total} worker của bạn ở dự án này có runtime này."
+      },
+      "mode": "Chế độ",
+      "modes": {
+        "headless": "Headless",
+        "headlessHint": "Log gửi về hub; bạn nhắn cho agent hoặc tiếp quản bất cứ lúc nào.",
+        "interactive": "Tương tác ngay từ đầu",
+        "interactiveHint": "TUI trong một phiên tmux trên worker; Claude Code mở thêm Remote Control."
+      },
+      "worker": "Worker",
+      "workerAuto": "Tự ghép worker",
+      "workerAutoHint": "Một worker của bạn đang online, còn slot trống, có runtime và có checkout của repo của bước.",
+      "workerPin": "Ghim vào một worker",
+      "workerPinHint": "Run nằm trong queue tới khi worker này có slot trống.",
+      "workerSelect": "Worker được ghim",
+      "workerOption": "{name} ({status})",
+      "noWorkers": "Bạn chưa đăng ký worker nào cho dự án {project}.",
+      "registerWorker": "Đăng ký worker",
+      "approval": "Khi các lệnh verify của bước chạy qua",
+      "approvals": {
+        "review": "Giữ lại chờ duyệt",
+        "reviewHint": "Bạn đọc diff và log, rồi duyệt trên trang run.",
+        "auto": "Đánh dấu bước xong kèm bằng chứng",
+        "autoHint": "Hub ghi trạng thái, thời điểm xong và bằng chứng của bước vào plan."
+      },
+      "cancel": "Huỷ",
+      "submit": "{count, plural, =0 {Dispatch} other {Dispatch # run}}",
+      "submitting": "Đang dispatch…",
+      "outlook": {
+        "nothing": "Chọn ít nhất một bước đã sẵn sàng.",
+        "noWorker": "Bạn chưa có worker nào cho dự án {project}. Run nằm trong queue tới khi bạn đăng ký một worker.",
+        "now": "Phù hợp ngay: {workers}.",
+        "later": "Hiện không worker nào của bạn rảnh; {workers} nhận được sau. Run nằm trong queue.",
+        "none": "Chưa worker nào của bạn nhận được các run này ({reasons}). Run nằm trong queue.",
+        "pinnedNow": "{name} nhận được các run này ngay.",
+        "pinnedBusy": "Run nằm trong queue tới khi {name} có slot trống.",
+        "pinnedOffline": "{name} đang offline; run nằm trong queue tới khi worker quay lại.",
+        "pinnedNo": "{name} chưa nhận được các run này ({problem}). Run nằm trong queue.",
+        "free": "{name} ({count, plural, other {còn # slot trống}})",
+        "busy": "{name} (hết slot)",
+        "offline": "{name} (offline)",
+        "reason": "{name}: {problem}",
+        "more": "{count, plural, other {thêm # worker}}"
+      },
+      "problem": {
+        "draining": "đang ngừng nhận việc",
+        "runtime": "không có {runtime}",
+        "runtimeAny": "chưa báo runtime nào",
+        "checkout": "không có checkout của {repo}"
+      },
+      "errors": {
+        "forbidden": "Hub từ chối: dispatch cần quyền ghi trên dự án này, và worker được ghim phải là worker của bạn.",
+        "notFound": "Plan không còn trên hub, hoặc bạn không còn quyền đọc nó.",
+        "conflict": "Một bước không còn sẵn sàng, hoặc một lần dispatch khác đã nhận nó trước. Danh sách bước đã được cập nhật; kiểm tra lại rồi thử lần nữa.",
+        "invalid": "Hub không chấp nhận lần dispatch này."
+      }
     }
   }
 }
