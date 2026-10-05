@@ -3545,7 +3545,7 @@ export interface components {
             handback: boolean;
             /**
              * Terminal Open
-             * @description open the web terminal; false until the terminal relay exists
+             * @description a browser waits for the run's terminal: connect WS /v1/worker/runs/{id}/terminal once the run is interactive
              * @default false
              */
             terminal_open: boolean;

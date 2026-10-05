@@ -30,7 +30,8 @@
     "skills": "Skill",
     "myMemories": "Memory cá nhân",
     "globalSkills": "Skill dùng chung",
-    "workers": "Worker"
+    "workers": "Worker",
+    "runDiff": "Diff"
   },
   "projectSwitcher": {
     "label": "Dự án",
@@ -1485,6 +1486,256 @@
         "notFound": "Plan không còn trên hub, hoặc bạn không còn quyền đọc nó.",
         "conflict": "Một bước không còn sẵn sàng, hoặc một lần dispatch khác đã nhận nó trước. Danh sách bước đã được cập nhật; kiểm tra lại rồi thử lần nữa.",
         "invalid": "Hub không chấp nhận lần dispatch này."
+      }
+    },
+    "openRun": "Mở run #{id}",
+    "detail": {
+      "metaTitle": "Run #{id} của {project}",
+      "title": "Run",
+      "untitled": "Bước chưa có tên",
+      "description": "Plan <planLink>{plan}</planLink>, <stepLink>bước {step}: {title}</stepLink>",
+      "notFoundTitle": "Không tìm thấy run #{id}",
+      "notFoundDescription": "Run này không có trong dự án, hoặc thuộc một plan bạn không được đọc.",
+      "stepper": {
+        "label": "Tiến trình của run",
+        "phase": {
+          "queued": "Đang chờ",
+          "leased": "Đã nhận",
+          "running": "Đang chạy",
+          "verifying": "Đang kiểm",
+          "review": "Chờ duyệt",
+          "done": "Xong"
+        },
+        "status": {
+          "done": "đã qua",
+          "current": "trạng thái hiện tại",
+          "stopped": "kết thúc ở đây",
+          "todo": "chưa tới"
+        },
+        "during": "kết thúc khi đang ở {phase}"
+      },
+      "log": {
+        "title": "Log",
+        "label": "Log của run #{id}",
+        "count": "{total, plural, other {# dòng}}",
+        "countFiltered": "{shown} trên {total, plural, other {# dòng}}",
+        "lines": "{count, plural, other {# dòng}}",
+        "filter": "Hiện",
+        "groups": {
+          "all": "Tất cả",
+          "agent": "Agent",
+          "tools": "Tool",
+          "output": "Output",
+          "system": "Hệ thống"
+        },
+        "search": {
+          "label": "Tìm trong log",
+          "placeholder": "Tìm trong log",
+          "clear": "Xoá ô tìm"
+        },
+        "follow": "Cuộn theo",
+        "pause": "Tạm dừng",
+        "resume": "Tiếp tục",
+        "paused": "{count, plural, =0 {Đang tạm dừng hiển thị.} other {Đang tạm dừng hiển thị: # dòng mới đang chờ.}}",
+        "pollingHint": "Luồng trực tiếp không dùng được: trang đọc dòng mới mỗi 1,5 giây.",
+        "kept": "Hub giữ sự kiện của run 30 ngày sau khi run kết thúc, trừ khi được cấu hình khác.",
+        "waiting": "Đang chờ sự kiện đầu tiên của run…",
+        "none": "Run này không có sự kiện nào.",
+        "noMatch": "Không dòng nào khớp bộ lọc hoặc ô tìm.",
+        "truncated": "hub đã cắt ở 64 KiB",
+        "shortened": "rút gọn ở đây; sự kiện dài hơn",
+        "status": {
+          "connecting": "Đang kết nối",
+          "live": "Trực tiếp",
+          "reconnecting": "Đang nối lại",
+          "polling": "Đang đọc định kỳ",
+          "ended": "Đã xong",
+          "failed": "Không đọc được log"
+        },
+        "kind": {
+          "agent_message_chunk": "Agent",
+          "agent_thought_chunk": "Suy nghĩ",
+          "tool_call": "Tool",
+          "tool_call_update": "Kết quả tool",
+          "plan": "Kế hoạch",
+          "usage_update": "Mức dùng",
+          "user_message": "Tin nhắn",
+          "state": "Trạng thái",
+          "system": "Hệ thống",
+          "output": "Output"
+        },
+        "move": "{from} sang {to}",
+        "moveBy": "{from} sang {to}, do {actor}",
+        "moveTo": "Giờ là {to}",
+        "moveReason": "{move}: {reason}",
+        "actor": {
+          "worker": "worker",
+          "owner": "chủ run",
+          "reaper": "hub"
+        }
+      },
+      "composer": {
+        "label": "Nhắn cho agent",
+        "placeholder": "Ví dụ: phủ thêm trường hợp token đã bị thu hồi",
+        "send": "Gửi",
+        "sending": "Đang gửi…",
+        "hint": "Worker chuyển tin nhắn cho agent ở lượt kế tiếp; Ctrl hoặc Cmd + Enter để gửi. Chỉ bạn thấy ô này vì bạn đã dispatch run.",
+        "sent": "Đã gửi. Tin nhắn nằm trong inbox của run chờ lượt kế tiếp của agent.",
+        "blank": "Hãy gõ tin nhắn trước.",
+        "long": "Một tin nhắn tối đa {max} byte UTF-8. Hãy rút ngắn lại.",
+        "bytes": "{count} trên {max} byte",
+        "conflict": "Run không nhận tin nhắn nữa: run đã kết thúc hoặc đang chờ duyệt."
+      },
+      "facts": {
+        "title": "Chi tiết",
+        "worker": "Worker",
+        "runtime": "Runtime",
+        "runtimeAny": "Bất kỳ, chọn khi worker nhận run; {mode}",
+        "runtimePicked": "{runtime}, do worker chọn; {mode}",
+        "runtimeMode": "{runtime}, {mode}",
+        "mode": {
+          "headless": "headless",
+          "interactive": "tương tác"
+        },
+        "repo": "Repo",
+        "on": "trên nhánh",
+        "session": "Session",
+        "none": "chưa có",
+        "lease": "Lease",
+        "leaseLeft": "hết hạn sau {minutes} phút {seconds} giây",
+        "leaseExpired": "đã hết hạn; hub xếp lại hoặc kết thúc run trong vòng một phút",
+        "leaseNone": "chưa có cho tới khi worker nhận run",
+        "leaseReleased": "đã trả",
+        "attempt": "Lần chạy",
+        "attemptValue": "{attempt} trên {max}",
+        "parent": "chạy lại run #{id}",
+        "approval": "Duyệt",
+        "approvals": {
+          "review": "Giữ lại chờ duyệt",
+          "auto": "Đánh dấu bước xong khi kiểm đạt"
+        },
+        "timeout": "Thời gian tối đa",
+        "timeoutValue": "{minutes} phút",
+        "dispatched": "Người dispatch",
+        "started": "Bắt đầu",
+        "finished": "Kết thúc",
+        "duration": "Thời lượng",
+        "waited": "Đã chờ",
+        "revision": "Revision của plan",
+        "revisionValue": "r{revision}"
+      },
+      "result": {
+        "title": "Kết quả",
+        "pending": "Hiện khi agent làm xong và worker đã chạy lại các lệnh verify.",
+        "empty": "Run kết thúc mà không có kết quả.",
+        "verify": "Verify",
+        "exit": "mã thoát {code}",
+        "exitUnknown": "không rõ mã thoát",
+        "seconds": "{seconds} giây",
+        "commit": "Commit",
+        "onBranch": "trên {branch}",
+        "changes": "Thay đổi",
+        "diffstat": "{files, plural, other {# file}}, +{insertions} -{deletions}",
+        "viewDiff": "Xem diff",
+        "usage": "Mức dùng",
+        "evidence": "Bằng chứng"
+      },
+      "actions": {
+        "diff": "Xem diff",
+        "rerun": "Chạy lại",
+        "cancel": "Huỷ run",
+        "takeover": "Tiếp quản",
+        "handback": "Trả lại cho agent",
+        "approve": "Duyệt và đánh dấu bước xong",
+        "confirmCancel": {
+          "title": "Huỷ run #{id}?",
+          "now": "Run dừng ngay, và bước của nó quay về pending trong plan.",
+          "held": "Worker dừng agent ở heartbeat kế tiếp, trong khoảng 15 giây, rồi báo run đã huỷ. Bước quay về pending trong plan; những gì agent đã sửa vẫn nằm trong worktree trên worker.",
+          "confirm": "Huỷ run",
+          "pending": "Đang huỷ…",
+          "keep": "Giữ lại"
+        },
+        "notice": {
+          "cancelled": "Đã huỷ run #{id}.",
+          "cancelAsked": "Đã yêu cầu huỷ run #{id}: worker dừng agent ở heartbeat kế tiếp.",
+          "approved": "Đã duyệt run #{id}: bước {step} của {plan} đã xong.",
+          "takeover": "Đã yêu cầu tiếp quản run #{id}: worker dừng agent ở cuối lượt rồi mở {name}.",
+          "handback": "Đã yêu cầu trả run #{id} cho agent: agent chạy headless tiếp trong cùng session."
+        }
+      },
+      "takeover": {
+        "title": "Tiếp quản run #{id}",
+        "description": "Agent headless dừng ở cuối lượt hiện tại. Sau đó session của nó mở trong một terminal trên worker, đủ lịch sử, và bạn điều khiển.",
+        "attachTitle": "Trên {worker}, attach vào session",
+        "attachLabel": "lệnh attach",
+        "attachHint": "Mở phiên tmux {name}, phiên này resume session {session} của agent.",
+        "attachHintNoSession": "Mở phiên tmux {name}, phiên này resume session của agent.",
+        "remoteTitle": "Hoặc làm tiếp trong ứng dụng Claude",
+        "remoteHint": "Session Claude Code được resume có bật Remote Control, tên <code>{name}</code>. Mở nó từ Claude desktop hoặc ứng dụng di động.",
+        "warning": "Khi bạn giữ run, run ở trạng thái Tương tác: lease vẫn được gia hạn, và các lệnh verify chỉ chạy sau khi bạn trả lại cho agent hoặc thoát terminal.",
+        "cancel": "Thôi",
+        "confirm": "Tiếp quản",
+        "pending": "Đang yêu cầu…"
+      },
+      "notes": {
+        "cancelAsked": "Bạn đã yêu cầu huỷ run này lúc {time}. Worker dừng agent ở heartbeat kế tiếp, trong khoảng 15 giây.",
+        "takeoverAsked": "Bạn đã yêu cầu tiếp quản lúc {time}. {worker} dừng agent ở cuối lượt, rồi run chuyển sang Tương tác.",
+        "handbackAsked": "Bạn đã yêu cầu trả lại cho agent lúc {time}. Worker để agent chạy headless tiếp trong cùng session.",
+        "interactive": "Bạn đang giữ run này. Trên {worker}, attach bằng <code>{command}</code>, xong thì bấm Trả lại cho agent.",
+        "notOwner": "Chỉ {login}, người đã dispatch run này, mới nhắn được cho agent, tiếp quản hoặc dừng run.",
+        "review": "Worker đã kiểm run này. Đọc log và diff, rồi duyệt để đánh dấu bước xong, hoặc huỷ run.",
+        "reviewNoWriter": "Worker đã kiểm run này. Muốn duyệt cần quyền ghi trên dự án."
+      },
+      "errors": {
+        "forbidden": "Hub từ chối: chỉ người dispatch run mới điều khiển được run, và duyệt hay chạy lại cần quyền ghi.",
+        "notFound": "Không đọc được run nữa: plan của nó đã rời hub, hoặc bạn mất quyền truy cập.",
+        "conflict": "Run đã đổi trạng thái trong lúc đó. Trang đang hiện trạng thái mới; hãy xem lại rồi thử lại.",
+        "full": "Log của run đã đầy (20.000 sự kiện), nên run không nhận thêm tin nhắn.",
+        "apiMessage": "Hub báo: {message}"
+      }
+    },
+    "diff": {
+      "metaTitle": "Diff của run #{id} thuộc {project}",
+      "title": "Diff của run",
+      "description": "{title}: {files, plural, other {# file}}, {size} KiB.",
+      "back": "Quay lại run",
+      "download": "Tải .diff",
+      "downloadStarted": "Đang tải {file}.",
+      "filesLabel": "Các file trong diff",
+      "filesTitle": "{count, plural, other {# file thay đổi}}",
+      "fileCounts": "thêm {additions} dòng, xoá {deletions} dòng",
+      "status": {
+        "added": "Thêm mới",
+        "deleted": "Đã xoá",
+        "renamed": "Đổi tên",
+        "copied": "Sao chép",
+        "modified": "Sửa"
+      },
+      "renamedTo": "đổi tên thành",
+      "show": "Hiện",
+      "hide": "Ẩn",
+      "binary": "File nhị phân, không hiển thị. Tải diff về để áp dụng.",
+      "modeOnly": "Chỉ đổi quyền của file.",
+      "noText": "Không có thay đổi nội dung.",
+      "hunkCaption": "Chỗ sửa {index} trong {path}, từ dòng {from}",
+      "oldLine": "Dòng trước",
+      "newLine": "Dòng sau",
+      "text": "Nội dung",
+      "added": "Thêm:",
+      "removed": "Xoá:",
+      "cut": "Diff dài hơn phần trang này hiển thị: trang dừng sau {lines} dòng. Tải diff về để xem phần còn lại.",
+      "empty": "Diff không có file nào.",
+      "none": {
+        "title": "Run này không có diff",
+        "description": "Worker tải diff các commit của run lên khi run kết thúc, nếu hub có blob store và diff không quá 8 MiB."
+      },
+      "unavailable": {
+        "title": "Hub không lưu diff",
+        "description": "Hub này chưa cấu hình blob store, nên worker không tải được diff của run lên."
+      },
+      "unreadable": {
+        "title": "Không đọc được diff",
+        "description": "Blob store không trả lời yêu cầu của web. Hãy tải diff về, hoặc tải lại trang sau."
       }
     }
   }

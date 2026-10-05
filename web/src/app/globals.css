@@ -49,6 +49,19 @@
   --color-success-foreground: var(--success-foreground);
   --color-warning: var(--warning);
   --color-warning-foreground: var(--warning-foreground);
+  --color-log: var(--log);
+  --color-log-foreground: var(--log-foreground);
+  --color-log-muted: var(--log-muted);
+  --color-log-border: var(--log-border);
+  --color-log-row: var(--log-row);
+  --color-log-agent: var(--log-agent);
+  --color-log-tool: var(--log-tool);
+  --color-log-system: var(--log-system);
+  --color-log-user: var(--log-user);
+  --color-log-ok: var(--log-ok);
+  --color-log-error: var(--log-error);
+  --color-log-mark: var(--log-mark);
+  --color-log-mark-foreground: var(--log-mark-foreground);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -99,6 +112,20 @@
   --sidebar-accent-foreground: #1e40af;
   --sidebar-border: #e2e8f0;
   --sidebar-ring: #2563eb;
+  /* The run log: a dark terminal surface in both themes; every colour is at least 6.9:1 on it. */
+  --log: #0f172a;
+  --log-foreground: #e2e8f0;
+  --log-muted: #94a3b8;
+  --log-border: #1e293b;
+  --log-row: #1e293b;
+  --log-agent: #93c5fd;
+  --log-tool: #fcd34d;
+  --log-system: #c4b5fd;
+  --log-user: #f9a8d4;
+  --log-ok: #86efac;
+  --log-error: #fca5a5;
+  --log-mark: #fcd34d;
+  --log-mark-foreground: #0f172a;
   color-scheme: light;
 }
 
@@ -142,6 +169,19 @@
   --sidebar-accent-foreground: #f8fafc;
   --sidebar-border: #1e293b;
   --sidebar-ring: #60a5fa;
+  --log: #020617;
+  --log-foreground: #e2e8f0;
+  --log-muted: #94a3b8;
+  --log-border: #1e293b;
+  --log-row: #0f172a;
+  --log-agent: #93c5fd;
+  --log-tool: #fcd34d;
+  --log-system: #c4b5fd;
+  --log-user: #f9a8d4;
+  --log-ok: #86efac;
+  --log-error: #fca5a5;
+  --log-mark: #fcd34d;
+  --log-mark-foreground: #0f172a;
   color-scheme: dark;
 }
 

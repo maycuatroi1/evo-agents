@@ -1,0 +1,93 @@
+"use client";
+
+import { Ban, Circle, CircleCheck, CircleX, Clock, Eye, Loader2, type LucideIcon, SquareTerminal, TimerOff } from "lucide-react";
+import { useFormatter, useTranslations } from "next-intl";
+
+import { cn } from "@/lib/utils";
+
+import type { RunState } from "./queries";
+import type { Phase, PhaseItem, Stepper } from "./run-model";
+
+const ENDED_ICON: Record<NonNullable<Stepper["ended"]>, LucideIcon> = { failed: CircleX, lost: TimerOff, cancelled: Ban };
+const WAITING_ICON: Partial<Record<Phase, LucideIcon>> = { queued: Clock, review: Eye };
+
+const BAR: Record<PhaseItem["status"], string> = {
+  done: "bg-chart-3",
+  current: "bg-primary",
+  stopped: "bg-destructive",
+  todo: "bg-border",
+};
+
+function Item({ item, ended, state }: { item: PhaseItem; ended: Stepper["ended"]; state: RunState }) {
+  const t = useTranslations("runs.detail.stepper");
+  const tState = useTranslations("runs.state");
+  const format = useFormatter();
+  const interactive = item.phase === "running" && state === "interactive" && item.status === "current";
+  const label = item.status === "stopped" && ended ? tState(ended) : interactive ? tState("interactive") : t(`phase.${item.phase}`);
+  let Icon: LucideIcon = Circle;
+  let spin = false;
+  if (item.status === "done") Icon = CircleCheck;
+  else if (item.status === "stopped" && ended) Icon = ENDED_ICON[ended];
+  else if (item.status === "current") {
+    Icon = interactive ? SquareTerminal : (WAITING_ICON[item.phase] ?? Loader2);
+    spin = Icon === Loader2;
+  }
+  return (
+    <li
+      className="flex min-w-0 flex-col gap-1.5"
+      aria-current={item.status === "current" ? "step" : undefined}
+      data-phase={item.phase}
+      data-status={item.status}
+      data-testid="run-phase"
+    >
+      <span className={cn("h-1 rounded-full", BAR[item.status])} aria-hidden="true" />
+      <span
+        className={cn(
+          "flex min-w-0 items-center gap-1.5 text-sm",
+          item.status === "todo" ? "text-muted-foreground" : "font-medium",
+          item.status === "stopped" && "text-destructive",
+        )}
+      >
+        <Icon
+          className={cn(
+            "size-4 shrink-0",
+            item.status === "done" && "text-chart-3",
+            item.status === "current" && "text-primary",
+            spin && "animate-spin motion-reduce:animate-none",
+          )}
+          aria-hidden="true"
+        />
+        <span className="truncate">{label}</span>
+        <span className="sr-only">, {t(`status.${item.status}`)}</span>
+      </span>
+      <span className="min-h-4 font-mono text-xs text-muted-foreground tabular-nums">
+        {item.status === "stopped" ? (
+          <span className="sr-only">{t("during", { phase: t(`phase.${item.phase}`) })} </span>
+        ) : null}
+        {item.at ? (
+          <time dateTime={item.at} title={format.dateTime(new Date(item.at), { dateStyle: "medium", timeStyle: "medium" })}>
+            {format.dateTime(new Date(item.at), { timeStyle: "medium" })}
+          </time>
+        ) : null}
+      </span>
+    </li>
+  );
+}
+
+/**
+ * The states a run goes through, left to right, with the time it entered each one. The current state carries
+ * aria-current="step" and an icon; a run that ended badly says how on the state it ended in. Colour is never the only
+ * cue: each item has an icon and its status in words for screen readers.
+ */
+export function RunStepper({ stepper, state }: { stepper: Stepper; state: RunState }) {
+  const t = useTranslations("runs.detail.stepper");
+  return (
+    <section aria-label={t("label")} className="rounded-xl border bg-card px-4 py-4" data-testid="run-stepper">
+      <ol className="grid grid-cols-3 gap-x-3 gap-y-4 md:grid-flow-col md:auto-cols-fr md:grid-cols-none">
+        {stepper.items.map((item) => (
+          <Item key={item.phase} item={item} ended={stepper.ended} state={state} />
+        ))}
+      </ol>
+    </section>
+  );
+}
