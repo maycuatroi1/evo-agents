@@ -127,9 +127,9 @@ counts as pending. A step whose status is `blocked`, `in_progress` or `done` is 
 depends on a blocked step or on an id the plan does not have. `unready_reason` says why a step is not ready, in words
 the web can show next to it.
 
-The `blocking` flag is not read. It is execute-plan's gate for a session that works through a whole frontier: a
-blocking step that is not done holds back every step after it. A run is one step its owner chose to dispatch, and
-in a plan where every step is blocking, honouring the flag would hold back steps that `depends_on` lets run.
+The `blocking` flag is not read. execute-plan does not read it for its frontier either, from its 0.4.0 on: the flag
+marks a step the plan cannot finish without, not a gate on the steps after it. A plan where every step is blocking
+still runs every step that `depends_on` lets run.
 
 Dispatch also refuses, with 409, a step that already has an active run; that check needs the database, so it is not
 part of `ready_steps`.

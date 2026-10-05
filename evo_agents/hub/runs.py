@@ -14,10 +14,9 @@ the ``reaper``, the hub itself acting on an expired lease, a revoked worker or a
 A step is ready when its status is ``pending`` and every id in its ``depends_on`` names a step whose status is
 ``done``, the rule execute-plan uses for its frontier. A step without a status counts as pending, as the knowledge
 graph reads plans; ``blocked`` is not pending, so a blocked step is never ready, and neither is a step that depends
-on one. ``blocking`` is not read: it is execute-plan's gate for a session that works through a whole frontier,
-while a run is one step its owner chose to dispatch, and honouring it would hold back steps whose ``depends_on``
-lets them run (in a plan where every step is blocking, all of them but the next). Whether a ready step already has
-an active run is a question for the database, not for this module.
+on one. ``blocking`` holds no step back, here or in execute-plan from its 0.4.0: it marks a step the plan cannot
+finish without, not a gate on the steps after it. Whether a ready step already has an active run is a question for
+the database, not for this module.
 """
 
 from __future__ import annotations
