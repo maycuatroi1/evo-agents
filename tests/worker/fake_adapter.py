@@ -15,10 +15,16 @@ EVO_FAKE_SCENARIOS names a JSON file ``{"<step key>": [action, ...]}``; a run fo
 - ``{"sleep": seconds}``.
 - ``{"result": {...}}``: write .evo-run/result.json.
 - ``{"fail": "why"}``: end the turn as failed.
+- ``{"cli": [args]}``: run ``evo-agents worker ARGS`` as the agent would, in its directory and environment.
+- ``{"sh": "command"}``: run a shell command there.
 
-A run that goes on with a session (after a handback) follows ``"<step key>/resume"`` when the scenarios have it.
+A plan run (no step key) follows ``"plan:<plan id>"``. The n-th start of the same run in this process follows
+``"<key>/<n>"`` when the scenarios have it (a plan run's turn after its owner answered); otherwise a run that goes on
+with a session (after a handback, or a plan run resumed after it was parked) follows ``"<key>/resume"`` when the
+scenarios have it. Each ``cli`` and ``sh`` action is written as a JSON line ``{"run", "turn", "cmd", "exit",
+"stdout", "stderr"}`` to the file EVO_FAKE_CLI names.
 ``stop_at_turn_boundary`` ends a ``wait_for`` or ``sleep`` as a completed turn, as a takeover would. Each start is
-written as a JSON line ``{"session", "resume", "prompt"}`` to the file EVO_FAKE_STARTS names.
+written as a JSON line ``{"run", "session", "resume", "prompt", "cwd"}`` to the file EVO_FAKE_STARTS names.
 
 The messages ``send`` hands the agent are written, one per line, to the file EVO_FAKE_MESSAGES names.
 
@@ -214,6 +220,7 @@ class FakeAdapter(Adapter):
     runtime = "claude-code"
     binary = "claude"
     interactive = True
+    starts: dict[int, int] = {}  # run id -> the starts of its agent in this process
 
     @classmethod
     def detect(cls) -> Detection:
@@ -233,15 +240,26 @@ class FakeAdapter(Adapter):
         self._outcome = Outcome(False, "the fake agent did not run")
         path = context.env.get("EVO_FAKE_SCENARIOS")
         scenarios = json.loads(Path(path).read_text(encoding="utf-8")) if path else {}
-        key = str(context.run.get("step_key"))
-        if context.resume_session and f"{key}/resume" in scenarios:
+        run = context.run
+        key = str(run.get("step_key")) if run.get("step_key") is not None else f"plan:{run.get('plan_id')}"
+        self.turn = FakeAdapter.starts[context.run_id] = FakeAdapter.starts.get(context.run_id, 0) + 1
+        if self.turn > 1 and f"{key}/{self.turn}" in scenarios:
+            key = f"{key}/{self.turn}"
+        elif context.resume_session and f"{key}/resume" in scenarios:
             key = f"{key}/resume"
         self.actions = scenarios.get(key, [])
+        self.cli_path = context.env.get("EVO_FAKE_CLI")
         self.messages_path = context.env.get("EVO_FAKE_MESSAGES")
         starts = context.env.get("EVO_FAKE_STARTS")
         if starts:
             with open(starts, "a", encoding="utf-8") as handle:
-                start = {"session": self._session, "resume": context.resume_session, "prompt": context.prompt}
+                start = {
+                    "run": context.run_id,
+                    "session": self._session,
+                    "resume": context.resume_session,
+                    "prompt": context.prompt,
+                    "cwd": str(context.worktree),
+                }
                 handle.write(json.dumps(start) + "\n")
 
     @property
@@ -288,6 +306,33 @@ class FakeAdapter(Adapter):
         if self._interrupted.is_set():
             return Outcome(False, "interrupted")
         return Outcome(True, None, None, "stopped at the end of the turn")
+
+    async def _command(self, argv: list[str], shown) -> None:
+        """Run a command as the agent does, in its directory and environment, and note what it did."""
+        proc = await asyncio.create_subprocess_exec(
+            *argv,
+            cwd=str(self.context.worktree),
+            env=dict(self.context.env),
+            stdin=asyncio.subprocess.DEVNULL,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        out, err = await proc.communicate()
+        done = {
+            "run": self.context.run_id,
+            "turn": self.turn,
+            "cmd": shown,
+            "exit": proc.returncode,
+            "stdout": out.decode(errors="replace"),
+            "stderr": err.decode(errors="replace"),
+        }
+        if self.cli_path:
+            with open(self.cli_path, "a", encoding="utf-8") as handle:
+                handle.write(json.dumps(done) + "\n")
+        text = f"{shown} exited {proc.returncode}"
+        await self._queue.put(
+            AgentEvent("tool_call_update", {"toolCallId": "fake", "status": "completed", "text": text})
+        )
 
     def _git(self, *args: str) -> None:
         subprocess.run(["git", "-C", str(self.context.worktree), *args], check=True, capture_output=True)
@@ -342,6 +387,10 @@ class FakeAdapter(Adapter):
                 elif "fail" in action:
                     self._outcome = Outcome(False, action["fail"])
                     return
+                elif "cli" in action:
+                    await self._command([sys.executable, "-m", "evo_agents", "worker", *action["cli"]], action["cli"])
+                elif "sh" in action:
+                    await self._command(["/bin/sh", "-c", action["sh"]], action["sh"])
             self._outcome = Outcome(True, None, usage, summary)
         except Exception as exc:  # the test sees it as a failed turn
             self._outcome = Outcome(False, f"the fake agent failed: {type(exc).__name__}: {exc}")
@@ -349,7 +398,9 @@ class FakeAdapter(Adapter):
             await self._queue.put(None)
 
 
-def environment(scenarios: Path, messages: Path | None = None, starts: Path | None = None) -> dict[str, str]:
+def environment(
+    scenarios: Path, messages: Path | None = None, starts: Path | None = None, cli: Path | None = None
+) -> dict[str, str]:
     """What the daemon's environment needs for this adapter."""
     env = {
         "EVO_WORKER_ADAPTERS": "claude-code=tests.worker.fake_adapter:FakeAdapter",
@@ -359,4 +410,6 @@ def environment(scenarios: Path, messages: Path | None = None, starts: Path | No
         env["EVO_FAKE_MESSAGES"] = str(messages)
     if starts is not None:
         env["EVO_FAKE_STARTS"] = str(starts)
+    if cli is not None:
+        env["EVO_FAKE_CLI"] = str(cli)
     return env

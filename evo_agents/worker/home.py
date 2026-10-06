@@ -10,7 +10,9 @@
   spool/<run>.jsonl, .ack       a run's events until the hub acknowledges them
   runs/<run>/run.json           what the daemon knows of a run: its worktree, branch, base, when it ended
   runs/<run>/events.jsonl       every event of the run, uploaded as its log when it ends
-  worktrees/<project>-<run>/    the run's git worktree, removed 7 days after the run ended
+  runs/<run>/decisions.jsonl    the decisions a plan run's agent asked (``evo-agents worker ask``), one id a line
+  worktrees/<project>-<run>/    the run's git worktree, removed 7 days after the run ended; for a plan run, the
+                                agent's directory: a worktree of each repo and .evo-run/ (plan.yaml, result.json)
 ```
 
 Every file is replaced atomically (``evo_agents.hub.client.write_atomic``), so a crash leaves the old file or the new
@@ -180,6 +182,18 @@ class WorkerHome:
                 if isinstance(record, dict) and isinstance(record.get("id"), int):
                     records.append(record)
         return records
+
+    def load_run(self, run_id: int) -> dict | None:
+        """The record of run ``run_id`` on this machine, or None."""
+        with contextlib.suppress(OSError, ValueError):
+            record = json.loads((self.run_dir(run_id) / "run.json").read_text(encoding="utf-8"))
+            if isinstance(record, dict) and record.get("id") == int(run_id):
+                return record
+        return None
+
+    def decisions_path(self, run_id: int) -> Path:
+        """Where ``evo-agents worker ask`` notes each decision a plan run's agent asked, for the daemon to wait on."""
+        return self.run_dir(run_id) / "decisions.jsonl"
 
     def remove_run(self, run_id: int) -> None:
         shutil.rmtree(self.run_dir(run_id), ignore_errors=True)
