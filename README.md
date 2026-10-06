@@ -189,6 +189,16 @@ The agent on a worker runs with the full rights of the machine's owner, and only
 [docs/workers.md](docs/workers.md) describes the protocol and plan runs, [docs/hub.md](docs/hub.md) every `hub run`
 and `hub decision` command, and [docs/notifications.md](docs/notifications.md) decisions, notices and notifications.
 
+On a machine others also administer, keep your credentials on the hub as secrets instead: each run gets a lease of
+just what it needs, and the hub takes it back when the run ends ([docs/credentials.md](docs/credentials.md)). The
+value goes in on stdin, or at a prompt that does not echo it, and never comes back out:
+
+```sh
+pbpaste | evo-agents hub secret set claude-oauth --kind env --env-var CLAUDE_CODE_OAUTH_TOKEN --project demo
+evo-agents hub secret list
+evo-agents hub run credentials 41 --project demo   # the leases run 41 got, given back or not; never their values
+```
+
 ### Running a hub
 
 The hub is an API server, a job worker and a web interface, published as two images on GHCR for each release and run

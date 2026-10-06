@@ -31,6 +31,12 @@ DELETE on the same route gives back every lease this worker holds of the run, wh
 leases are marked revoked, each GitHub token is revoked with itself (DELETE /installation/token) and its sealed value
 dropped, and one audit row credential.revoke names the run and what it gave back. A run of another worker is 404.
 
+GET /v1/projects/{p}/runs/{id}/credentials lists every lease the run got, given back or not, for the member who
+dispatched it: the secret's name or ``github-app:<account>``, provider, kind, target (the variable, or the origins it
+answered for), the worker, and when it was issued, ends and was revoked; never a value, sealed or not. The run must be
+one the caller may read (``runs.readable_run``: 404 otherwise); another member, a hub admin included, gets 403, since
+the leases name the owner's secrets as GET /v1/secrets does to the owner alone.
+
 The hub gives leases back itself (``end_leases``) when a run leaves the held states (``run_state.move_run``: it ends,
 waits in review, or is parked) and when a worker is revoked (``workers.end_worker``, every lease of the worker). Those
 rows are marked revoked in the transaction of the move, and their GitHub tokens revoked at GitHub by ``revoke_tokens``
@@ -46,9 +52,9 @@ import logging
 from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Literal
+from typing import Annotated, Literal
 
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, Header, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
 from evo_agents.hub import runs
@@ -63,11 +69,13 @@ from evo_agents.hub.credentials import (
     normalize_origin,
 )
 from evo_agents.hub.server import audit
+from evo_agents.hub.server import plans as plan_routes
+from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.auth import NO_STORE
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.github import GitHubUnavailable
 from evo_agents.hub.server.github_app import GitHubApp, InstallationToken
-from evo_agents.hub.server.runs import NOT_HELD, RunId, _run_target, _worker_of
+from evo_agents.hub.server.runs import NOT_HELD, RunId, _run_target, _worker_of, readable_run
 from evo_agents.hub.server.sealing import Sealed, Sealer, Unsealable, lease_aad, secret_aad
 from evo_agents.hub.server.security import CurrentUser, Principal
 
@@ -81,6 +89,7 @@ NO_KEY = "this hub keeps no secrets and leases nothing: it needs {missing} (docs
 NO_APP = "no git secret covers it, and this hub has no GitHub App: {missing} not set (docs/credentials.md)"
 
 worker_router = APIRouter(prefix="/v1/worker", tags=["worker protocol"], responses={401: {"model": ErrorBody}})
+router = APIRouter(prefix="/v1/projects", tags=["runs"], responses={401: {"model": ErrorBody}})
 REFUSALS = {403: {"model": ErrorBody}, 404: {"model": ErrorBody}}
 
 
@@ -116,6 +125,23 @@ class Credentials(BaseModel):
 
 class GivenBack(BaseModel):
     revoked: int = Field(description="leases of the run this worker gave back now; 0 when none was out any more")
+
+
+class RunLease(BaseModel):
+    """A lease a run got, as its owner sees it: everything but the value."""
+
+    id: int
+    name: str = Field(description="the secret's name, or github-app:<account>")
+    provider: Literal[PROVIDERS] = Field(description="secret: the owner's; github-app: a token the hub's App made")
+    kind: Literal[SECRET_KINDS] = Field(description="env: a variable of the agent; git: what git's helper answered")
+    target: str = Field(
+        description="kind env: the variable it set; kind git: the origins of the run's repos it answered for, "
+        "space-separated, in the form of normalize_origin"
+    )
+    worker: str = Field(description="the worker it was leased to")
+    issued_at: datetime
+    expires_at: datetime | None = Field(description="when it stops working: a GitHub token's hour, a secret's end")
+    revoked_at: datetime | None = Field(description="when the run gave it back or the hub took it; null while out")
 
 
 # What a run may get
@@ -521,6 +547,55 @@ async def give_back_credentials(request: Request, run_id: RunId, user: CurrentUs
     await revoke_tokens(state.pool, state.sealer, state.github_app, run_id=run_id)
     log.info("credentials given back", extra={"run_id": run_id, "worker_id": worker_id, "revoked": revoked})
     return GivenBack(revoked=revoked)
+
+
+# The owner's view
+
+RUN_OWNER = "SELECT r.dispatched_by, u.login FROM runs r JOIN users u ON u.id = r.dispatched_by WHERE r.id = %s"
+RUN_LEASES = """
+SELECT l.id, s.name, l.provider, s.kind, l.target, w.name, l.issued_at, l.expires_at, l.revoked_at
+  FROM credential_leases l JOIN workers w ON w.id = l.worker_id LEFT JOIN secrets s ON s.id = l.secret_id
+ WHERE l.run_id = %s
+ ORDER BY l.id
+"""
+
+
+def _token_name(target: str) -> str:
+    """The name a GitHub token's lease was handed out with, github-app:<owner>, from the origins it answered for."""
+    origins = target.split()
+    found = github_repo(origins[0]) if origins else None
+    return f"github-app:{found[0]}" if found else "github-app"
+
+
+@router.get("/{project}/runs/{run_id}/credentials", response_model=list[RunLease], responses=REFUSALS)
+async def run_credentials(
+    request: Request,
+    project: ProjectName,
+    run_id: RunId,
+    user: CurrentUser,
+    sink: Annotated[str | None, Header(alias=plan_routes.SINK_HEADER)] = None,
+) -> list[RunLease]:
+    """Every lease the run got, given back or not, without a value; for the member who dispatched it."""
+    async with request.app.state.pool.connection() as conn:
+        await readable_run(conn, user, project, run_id, sink)
+        owner_id, owner = await (await conn.execute(RUN_OWNER, (run_id,))).fetchone()
+        if owner_id != user.user_id:
+            raise HTTPException(403, f"only {owner}, who dispatched run {run_id}, sees the credentials it got")
+        rows = await (await conn.execute(RUN_LEASES, (run_id,))).fetchall()
+    return [
+        RunLease(
+            id=lease_id,
+            name=name if provider == "secret" else _token_name(target),
+            provider=provider,
+            kind=kind if provider == "secret" else "git",
+            target=target,
+            worker=worker,
+            issued_at=issued_at,
+            expires_at=expires_at,
+            revoked_at=revoked_at,
+        )
+        for lease_id, name, provider, kind, target, worker, issued_at, expires_at, revoked_at in rows
+    ]
 
 
 END_LEASES = """
