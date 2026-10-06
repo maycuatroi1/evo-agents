@@ -12,6 +12,8 @@ import {
 } from "./log-model";
 import type { RunEvent } from "./queries";
 
+import realRun from "@/test/fixtures/plan-run-waiting.json" with { type: "json" };
+
 const describe_ = (move: { from: string | null; to: string; actor: string | null; reason: string | null }) =>
   `${move.from ?? "?"}>${move.to}${move.actor ? ` by ${move.actor}` : ""}${move.reason ? `: ${move.reason}` : ""}`;
 
@@ -119,5 +121,33 @@ describe("moves, filters and matches", () => {
     expect(contentText({ type: "diff", path: "a.ts" })).toBe("diff a.ts");
     expect(contentText([{ type: "content", content: { type: "text", text: "x" } }, { type: "image" }])).toBe("x");
     expect(contentText(42)).toBeNull();
+  });
+});
+
+describe("the events of a real Claude Code plan run", () => {
+  // Run #8 of the production hub up to its wait for decision #1 (src/test/fixtures/plan-run-waiting.json).
+  const events = realRun.events.events as RunEvent[];
+  const lines = events.map((item) => toLogLine(item, describe_));
+  const line = (seq: number) => lines.find((item) => item.seq === seq);
+
+  it("gives every event one line, in each group the filters use", () => {
+    expect(lines).toHaveLength(42);
+    expect(groupCounts(lines)).toEqual({ agent: 3, tools: 16, output: 8, system: 15 });
+    expect(lines.every((item) => item.text.trim() !== "")).toBe(true);
+  });
+
+  it("reads the hub's step reports and decision, the worker's moves and the agent's tools", () => {
+    expect(line(19)?.text).toBe("step 1: in_progress");
+    expect(line(37)?.text).toBe("decision #1 asked (scope): Bước 5 của plan thử nên viết tóm tắt dạng nào?");
+    expect(line(41)).toMatchObject({ kind: "state", text: "running>waiting by worker: worker binhna-macbook-m4 reported waiting", tone: null });
+    expect(line(13)?.text).toMatch(/^Bash: echo /);
+    expect(line(16)).toMatchObject({ tone: "error" });
+    expect(line(16)?.text).toMatch(/^\[failed\] Exit code 1/);
+  });
+
+  it("flattens the numbers of a usage update, its list of iterations left out", () => {
+    expect(line(40)?.text).toMatch(/^cost\.amount 0\.49/);
+    expect(line(40)?.text).toContain("usage.cache_read_input_tokens 384744");
+    expect(line(40)?.text).not.toContain("iterations");
   });
 });
