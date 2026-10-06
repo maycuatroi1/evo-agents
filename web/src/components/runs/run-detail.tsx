@@ -24,7 +24,8 @@ import { RunComposer } from "./run-composer";
 import { RunDetails, RunResult } from "./run-facts";
 import { RunLogCard } from "./run-log";
 import { runControls, stepperModel } from "./run-model";
-import { RunDecisionNote, RunPlanSteps } from "./run-plan-steps";
+import { RunDecisions } from "./run-decisions";
+import { RunPlanSteps } from "./run-plan-steps";
 import { RunStepper } from "./run-stepper";
 import { RunTerminalPanel } from "./run-terminal";
 import { terminalAccess } from "./terminal-model";
@@ -128,7 +129,7 @@ function RunPage({ run }: { run: Run }) {
         metaBelow
       />
       <NoticeArea notice={notice} onDismiss={clear} />
-      {plan ? <RunDecisionNote run={run} owner={controls.owner} /> : null}
+      {plan ? <RunDecisions run={run} owner={controls.owner} /> : null}
       <RunNotes run={run} controls={controls} />
       <RunStepper stepper={stepper} state={run.state} />
       <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]">
@@ -158,7 +159,7 @@ function RunPage({ run }: { run: Run }) {
 /**
  * One run: its state as a stepper, its live log, the owner's controls (cancel, take over, hand back, approve, rerun,
  * a message to the agent), its details and its result. A plan run also lists its plan's steps with their status, and
- * links to the decision it waits on. A run of a plan the visitor may not read, or of another
+ * shows the decisions it waits on with the owner's answer form. A run of a plan the visitor may not read, or of another
  * project, is not found.
  */
 export function RunDetail({ project, runId, initialError }: { project: string; runId: number; initialError: ApiErrorInfo | null }) {
