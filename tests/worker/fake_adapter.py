@@ -11,6 +11,8 @@ EVO_FAKE_SCENARIOS names a JSON file ``{"<step key>": [action, ...]}``; a run fo
 - ``{"commit": "message"}``: commit every change, as an agent that commits its work.
 - ``{"git": [args]}``: run any git command in the worktree, such as ``["checkout", "--detach"]``.
 - ``{"touch": "/abs/path"}``: create a file outside the worktree, for the test to see how far the run got.
+- ``{"env": "/abs/path"}``: write the environment the agent was given, as a JSON object, to a file outside the
+  worktree, for the test to see what the run handed its agent.
 - ``{"wait_for": "/abs/path"}``: wait until that file exists (an interrupt ends the wait).
 - ``{"sleep": seconds}``.
 - ``{"result": {...}}``: write .evo-run/result.json.
@@ -389,6 +391,8 @@ class FakeAdapter(Adapter):
                     self._git(*action["git"])
                 elif "touch" in action:
                     Path(action["touch"]).write_text(str(self.context.run_id), encoding="utf-8")
+                elif "env" in action:
+                    Path(action["env"]).write_text(json.dumps(dict(self.context.env)), encoding="utf-8")
                 elif "wait_for" in action:
                     target = Path(action["wait_for"])
                     while not target.exists():
