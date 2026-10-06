@@ -1491,7 +1491,8 @@
       "errors": {
         "forbidden": "The hub refused: dispatching needs the writer role on this project, and a pinned worker must be one of yours.",
         "notFound": "The plan is no longer on the hub, or you can no longer read it.",
-        "conflict": "A step is no longer ready, or another dispatch took it first. The steps are updated; check them and try again.",
+        "conflict": "A step is no longer ready, another dispatch took it first, or the chosen worker cannot take it. The steps are updated; check them and try again.",
+        "hubSays": "The hub says: {message}",
         "invalid": "The hub did not accept the dispatch."
       }
     },
@@ -1568,7 +1569,7 @@
       "errors": {
         "forbidden": "The hub refused: running a plan needs the writer role on this project, and a pinned worker must be one of yours.",
         "notFound": "The plan is no longer on the hub, or you can no longer read it.",
-        "conflict": "The hub did not queue the plan run: the plan has an active run, or no pending step. The plan is read again; check it and try again.",
+        "conflict": "The hub did not queue the plan run: the plan has an active run or no pending step, or the chosen worker cannot take it. The plan is read again; check it and try again.",
         "invalid": "The hub did not accept the plan run.",
         "hubSays": "The hub says: {message}"
       },
