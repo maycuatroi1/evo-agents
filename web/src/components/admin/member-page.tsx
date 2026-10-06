@@ -8,6 +8,7 @@ import { type ReactNode, useCallback, useMemo, useState } from "react";
 
 import { DataTable, dataTableColumns } from "@/components/data/data-table";
 import { NAME_LINK } from "@/components/data/identifier";
+import { VisibilityLevel } from "@/components/data/visibility";
 import { projectHref } from "@/components/shell/nav";
 import { PageHeader } from "@/components/shell/page-header";
 import { RoleBadge } from "@/components/shell/role-badge";
@@ -111,15 +112,15 @@ function GrantsTable({
         cell: (info) => (
           <span className="flex flex-col items-start gap-1">
             <RoleBadge role={info.getValue()} />
-            {/* The level column is hidden on a phone: show the level here instead. */}
-            <span className="font-mono text-xs text-muted-foreground sm:hidden">{info.row.original.max_level}</span>
+            {/* The visibility column is hidden on a phone: show the visibility here instead. */}
+            <VisibilityLevel level={info.row.original.max_level} className="text-xs text-muted-foreground sm:hidden" />
           </span>
         ),
       }),
       helper.accessor("max_level", {
-        header: () => t("columns.maxLevel"),
+        header: () => t("columns.visibility"),
         enableSorting: false,
-        cell: (info) => <span className="font-mono text-xs">{info.getValue()}</span>,
+        cell: (info) => <VisibilityLevel level={info.getValue()} />,
       }),
       helper.accessor("granted_by", {
         header: () => t("columns.grantedBy"),
@@ -278,23 +279,26 @@ function MemberView({ user, projects }: { user: AdminUser; projects: Project[] }
   return (
     <>
       <PageHeader
-        eyebrow={t("eyebrow")}
-        title={<span className="font-mono">{user.login}</span>}
-        description={t("summary", {
+        title={user.login}
+        tags={
+          user.admin || !user.signed_in ? (
+            <>
+              {user.admin ? <HubAdminBadge /> : null}
+              {!user.signed_in ? <NotSignedInBadge /> : null}
+            </>
+          ) : null
+        }
+        sub={t("summary", {
           created: format.dateTime(new Date(user.created_at), { dateStyle: "medium" }),
           lastSeen: user.last_seen_at
             ? format.dateTime(new Date(user.last_seen_at), { dateStyle: "medium", timeStyle: "short" })
             : tMembers("never"),
         })}
-        meta={
-          <>
-            {user.admin ? <HubAdminBadge /> : null}
-            {!user.signed_in ? <NotSignedInBadge /> : null}
-            <Button type="button" onClick={grantNew} data-testid="grant-open">
-              <ShieldPlus aria-hidden="true" />
-              {tMembers("grant")}
-            </Button>
-          </>
+        actions={
+          <Button type="button" onClick={grantNew} data-testid="grant-open">
+            <ShieldPlus aria-hidden="true" />
+            {tMembers("grant")}
+          </Button>
         }
       />
       <NoticeArea notice={notice} onDismiss={clear} />

@@ -1,9 +1,10 @@
 "use client";
 
-import { ArrowLeft, FileQuestion } from "lucide-react";
+import { FileQuestion } from "lucide-react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 
+import { Tag } from "@/components/data/identifier";
 import { PageHeader } from "@/components/shell/page-header";
 import { QueryView, useHubQuery } from "@/components/states/query-view";
 import { PageSkeleton, StatePanel } from "@/components/states/states";
@@ -19,20 +20,6 @@ import type { Hops, NodeDetail } from "@/lib/kg/types";
 import { KindShape, LabelBadge } from "./badges";
 import { NeighbourhoodSection } from "./neighbourhood";
 import { NodeEvidence, NodeFacts, NodeRelations } from "./node-details";
-
-function BackLink({ project }: { project: string }) {
-  const t = useTranslations("kg.node");
-  return (
-    <Link
-      href={kgHref(project)}
-      className="inline-flex w-fit items-center gap-1.5 rounded-sm text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
-      data-testid="kg-back"
-    >
-      <ArrowLeft className="size-4" aria-hidden="true" />
-      {t("back")}
-    </Link>
-  );
-}
 
 /** A node the member cannot see: missing and hidden alike, as the API answers. */
 function NodeNotFound({ project, id }: { project: string; id: string }) {
@@ -62,16 +49,13 @@ function Node({ project, detail, hops, neighbourhoodError }: { project: string; 
   return (
     <>
       <PageHeader
-        eyebrow={
-          <span className="inline-flex items-center gap-1.5 normal-case">
-            <KindShape kind={node.kind} />
-            {node.kind}
-          </span>
-        }
         title={<span data-testid="kg-node-title">{displayName(node)}</span>}
-        description={<span className="font-mono text-xs break-all">{node.id}</span>}
-        meta={
+        tags={
           <>
+            <Tag data-testid="kg-node-kind">
+              <KindShape kind={node.kind} className="size-3" />
+              {node.kind}
+            </Tag>
             <LabelBadge label={node.label} />
             <span className="rounded-full border px-2 py-0.5 font-mono text-xs" title={t("status")}>
               <span className="sr-only">{t("status")}: </span>
@@ -79,6 +63,7 @@ function Node({ project, detail, hops, neighbourhoodError }: { project: string; 
             </span>
           </>
         }
+        sub={<span className="font-mono text-xs break-all">{node.id}</span>}
       />
       {!detail.graph.latest ? (
         <Alert>
@@ -113,19 +98,11 @@ export function KgNodePage({
 }) {
   const state = useHubQuery({ ...kgNodeQuery(browserApi, project, id), enabled: id !== "" }, errors.node);
   if (!id || (state.status === "error" && state.error.status === 404)) {
-    return (
-      <>
-        <BackLink project={project} />
-        <NodeNotFound project={project} id={id} />
-      </>
-    );
+    return <NodeNotFound project={project} id={id} />;
   }
   return (
-    <>
-      <BackLink project={project} />
-      <QueryView state={state} loading={<PageSkeleton />}>
-        {(detail) => <Node project={project} detail={detail} hops={hops} neighbourhoodError={errors.neighbourhood} />}
-      </QueryView>
-    </>
+    <QueryView state={state} loading={<PageSkeleton />}>
+      {(detail) => <Node project={project} detail={detail} hops={hops} neighbourhoodError={errors.neighbourhood} />}
+    </QueryView>
   );
 }

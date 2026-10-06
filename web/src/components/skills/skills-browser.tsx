@@ -127,10 +127,8 @@ export function SkillsBrowser({ place, initialError }: { place: SkillPlace; init
   return (
     <>
       <PageHeader
-        eyebrow={place.kind === "project" ? t("projectEyebrow", { project: place.project }) : t("globalEyebrow")}
         title={place.kind === "project" ? t("projectTitle") : t("globalTitle")}
-        description={place.kind === "project" ? t("projectDescription") : t("globalDescription")}
-        meta={count !== null ? <Badge variant="secondary">{t("count", { count })}</Badge> : null}
+        tags={count !== null ? <Badge variant="secondary">{t("count", { count })}</Badge> : null}
       />
       <QueryView state={state} loading={<TableSkeleton rows={5} />}>
         {(skills) => {

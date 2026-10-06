@@ -20,11 +20,13 @@ export const NAME_LINK = "font-medium text-foreground transition-colors hover:te
 const CHIP =
   "inline-flex h-5 max-w-full min-w-0 items-center rounded-xs bg-surface-sunken px-1.5 align-middle font-mono text-xs leading-4 whitespace-nowrap";
 
-type CopyState = "idle" | "copied" | "selected";
+export type CopyState = "idle" | "copied" | "selected";
 
-/** Copies `value`, or selects the chip's text where the clipboard is refused, and says which in a live region. */
-function CopyButton({ value, label, target }: { value: string; label: string; target: RefObject<HTMLElement | null> }) {
-  const t = useTranslations("identifier");
+/**
+ * Copies `value` to the clipboard, or selects the text of `target` where the clipboard is refused (an insecure origin,
+ * a denied permission), so Ctrl+C or Cmd+C still works. The state goes back to idle after 2 seconds.
+ */
+export function useClipboard(value: string, target: RefObject<HTMLElement | null>) {
   const [state, setState] = useState<CopyState>("idle");
   useEffect(() => {
     if (state === "idle") return;
@@ -51,7 +53,22 @@ function CopyButton({ value, label, target }: { value: string; label: string; ta
       select();
     }
   };
+  return { state, copy };
+}
 
+/** What a copy did, said in a polite live region: "<value> copied to the clipboard", or how to copy the selection. */
+export function CopyAnnouncement({ state, value }: { state: CopyState; value: string }) {
+  const t = useTranslations("identifier");
+  return (
+    <span className="sr-only" aria-live="polite">
+      {state === "copied" ? t("copied", { value }) : state === "selected" ? t("selected") : ""}
+    </span>
+  );
+}
+
+/** Copies `value`, or selects the chip's text where the clipboard is refused, and says which in a live region. */
+function CopyButton({ value, label, target }: { value: string; label: string; target: RefObject<HTMLElement | null> }) {
+  const { state, copy } = useClipboard(value, target);
   return (
     <>
       <button
@@ -64,9 +81,7 @@ function CopyButton({ value, label, target }: { value: string; label: string; ta
       >
         {state === "copied" ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
       </button>
-      <span className="sr-only" aria-live="polite">
-        {state === "copied" ? t("copied", { value }) : state === "selected" ? t("selected") : ""}
-      </span>
+      <CopyAnnouncement state={state} value={value} />
     </>
   );
 }

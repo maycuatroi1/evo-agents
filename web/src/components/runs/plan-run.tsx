@@ -64,7 +64,7 @@ export function RunPlanButton({
   runs,
   loaded,
   onDispatched,
-  size = "lg",
+  size = "default",
   variant = "default",
   layout = "stack",
   testId = "run-plan",
@@ -75,7 +75,8 @@ export function RunPlanButton({
   runs: readonly Pick<Run, "id" | "kind" | "plan_id" | "state" | "step_key">[];
   loaded: boolean;
   onDispatched: (run: Run) => void;
-  size?: "sm" | "lg";
+  /** 32 px in a page's head, `sm` on a table's rows. */
+  size?: "sm" | "default";
   /** outline where a button repeats on every row of a table. */
   variant?: "default" | "outline";
   layout?: "stack" | "row";

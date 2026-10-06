@@ -53,8 +53,8 @@ test.describe("plans", () => {
     await page.getByRole("navigation", { name: "Điều hướng chính" }).getByRole("link", { name: "Plans" }).click();
     await expect(page).toHaveURL(`/p/${project}/plans`);
     await expect(page.getByRole("heading", { level: 1, name: "Plans" })).toBeVisible();
-    await expect(page.getByTestId("plans-read-only")).toContainText("evo harness step");
-    await expect(page.getByTestId("plans-read-only")).toContainText("evo-agents hub plan");
+    await expect(page.getByTestId("plans-read-only")).toContainText("Plan được sửa từ CLI bằng evo harness step");
+    await expect(page.getByTestId("plans-read-only").getByRole("button", { name: "Sao chép lệnh evo harness step" })).toBeVisible();
 
     const active = page.getByTestId("plans-table-active");
     const activeRow = active.getByRole("row").filter({ has: page.getByRole("link", { name: ACTIVE_PLAN }) });
@@ -228,9 +228,10 @@ test.describe("plans", () => {
       await open(page, path);
       await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
       await expect(page.getByTestId("plans-read-only")).toBeVisible();
-      await expect(page.getByTestId("plans-read-only")).toContainText("Chạy plan");
+      await expect(page.getByTestId("plans-read-only")).toContainText("evo harness step");
       // No control on the page edits, deletes or completes a plan; the writer's Chạy plan (Run plan) and Chạy bước này
-      // (Run this step) only open a dialog. ("Sửa lần cuối", last changed, is a column header of the list.)
+      // (Run this step) only open a dialog, and the banner's Sao chép (Copy) only copies the command. ("Sửa lần cuối",
+      // last changed, is a column header of the list.)
       await expect(page.getByRole("button", { name: /^(Sửa(?! lần cuối)|Xoá|Lưu|Hoàn tất|Đánh dấu)/ })).toHaveCount(0);
     }
 
@@ -240,7 +241,7 @@ test.describe("plans", () => {
     await page.getByTestId("steps-search").fill("hook");
     await page.getByTestId("plan-tab-revisions").click();
     await page.getByTestId("diff-mode-split").click();
-    await page.getByRole("link", { name: "Tất cả plan của dự án" }).click();
+    await page.getByRole("navigation", { name: "Vị trí hiện tại" }).getByRole("link", { name: "Plans", exact: true }).click();
     await expect(page.getByTestId("plans-table-active")).toBeVisible();
 
     expect(writes.map((r) => `${r.method()} ${r.url()}`)).toEqual([]);

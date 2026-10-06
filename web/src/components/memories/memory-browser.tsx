@@ -11,6 +11,7 @@ import { DataTable, dataTableColumns } from "@/components/data/data-table";
 import { FacetGroup, type FacetOption } from "@/components/data/facet-group";
 import { NAME_LINK } from "@/components/data/identifier";
 import { SearchField } from "@/components/data/search-field";
+import { VisibilityLevel } from "@/components/data/visibility";
 import { projectHref } from "@/components/shell/nav";
 import { PageHeader } from "@/components/shell/page-header";
 import { type HubQueryState, QueryView, useHubQuery } from "@/components/states/query-view";
@@ -240,10 +241,8 @@ function Memories({
   return (
     <>
       <PageHeader
-        eyebrow={isProject ? t("projectEyebrow", { project: scope.project }) : t("personalEyebrow")}
         title={isProject ? t("projectTitle") : t("personalTitle")}
-        description={isProject ? t("projectDescription") : t("personalDescription")}
-        meta={
+        tags={
           total !== null && !searching && !noGrant ? (
             <Badge variant="secondary">{t("count", { count: total })}</Badge>
           ) : null
@@ -327,8 +326,7 @@ function Visibility({ project }: { project: Project }) {
       <ShieldCheck className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
       <span>
         {t.rich("projectVisibility", {
-          level: project.max_level ?? "-",
-          code: (chunks) => <code className="rounded bg-muted px-1 font-mono text-xs text-foreground">{chunks}</code>,
+          level: () => <VisibilityLevel level={project.max_level} className="font-medium text-foreground" />,
         })}
       </span>
     </p>

@@ -139,7 +139,8 @@ reach Tailwind as `--font-plex-sans` and `--font-plex-mono` behind `font-sans`, 
 - A number that lines up in a column, a count or a duration uses `tabular-nums`.
 - Inputs use 16 px below 768 px (`text-base md:text-sm`), so phones do not zoom. The kit also steps body text up to
   15 px under 640 px; the app does not do that yet.
-- `PageHeader` still sets the h1 at 24 px (`text-2xl`); it moves to `page-title` with the one-row page head.
+- Every h1 is `page-title` in Plex Sans, set by `PageHeader`; a plan's, a project's, a worker's or a member's name is
+  the title in the interface face, and the id it goes by sits in a chip beside it.
 
 ## Shape
 
@@ -288,8 +289,26 @@ Shared pieces built on them:
   `Tag` is a kind or a role (Admin, Plan run, Deploy, Blocking): an icon and a word on `surface-sunken` with 4 px
   corners, never round. `NAME_LINK` is the name in a table's first column or a list's primary cell: text colour,
   `brand` on hover.
-- `components/shell`: sidebar, project picker, user menu (login, hub role, role in the current project,
-  theme, language, sign out), header with breadcrumbs, page header.
+- `components/shell`: sidebar, project picker, user menu (login, hub role, role and visibility in the current
+  project, theme, language, sign out), header with breadcrumbs, page header.
+- `components/shell/page-header.tsx`: the page head of the kit, one row. `title` is the one h1 (`page-title`, Plex
+  Sans, wrapping anywhere for a long unbroken name), `status` the state of what it names (a `StatusBadge` at `lg`),
+  `tags` its kind, role, counts and identifier chips, `actions` the page's buttons on the right (`ml-auto`), and `sub`
+  one optional line under the row (`small`, `fg-muted`) that links the parent objects: a run's plan and step, a step's
+  plan, or where the object stands (who changed a plan last, a worker's machine, a member's first and last visit).
+  There is no eyebrow, no description paragraph and no rule under the head; what a page is for is said once, in its
+  `EmptyState`, and parent pages are reached from the breadcrumb. The row wraps instead of squeezing: actions that do
+  not fit beside the title move to their own line, still on the right, so a run's five controls never push the page
+  sideways at 375 px. A plan's pages add their tabs under the head (`PlanHeader`).
+- `components/data/visibility.tsx`: Visibility is the web's word for a label level, the reach of a grant (`max_level`)
+  or of a memory's label. `VisibilityLevel` shows the default ladder's levels as Public, Internal, Customer and Secret
+  (the same words in both languages, as the CLI's terms are English) with the code in the tooltip and in `data-level`;
+  a level a project named itself shows as written. `VisibilityTag` is "Visibility: Internal" beside a project's title.
+  API fields, URL parameters, form values (the grant dialog's options) and test ids keep the codes.
+- `plans/plan-header.tsx`, `ReadOnlyNotice`: every plan page carries the kit's info banner on `surface-sunken`, a lock,
+  the one sentence "Read-only. Plans change from the CLI with `evo harness step`; each change adds a revision." and a
+  ghost Copy button that copies the command (`useClipboard` of `identifier.tsx`: it selects the command where the
+  clipboard is refused, and says which in a polite live region). It is a `note` named "Read-only".
 - `components/data/search-field.tsx` and `facet-group.tsx`: a search box in a search landmark (committed after a
   300 ms pause or on Enter) and a facet as a labelled group of `aria-pressed` toggles with counts. Filters live in
   the URL and change it through `window.history.replaceState`, which Next.js syncs with `useSearchParams` without
@@ -360,7 +379,8 @@ Shared pieces built on them:
   `runControls`): Cancel (confirmed in a dialog), Take over (a dialog with `evo-agents worker attach N` and, for Claude
   Code, the Remote Control session `evo-run-N`), Hand back, Approve and Rerun, plus the message box under the log. Anyone
   but the run's owner reads only. The header puts these actions under the title until the xl breakpoint
-  (`PageHeader`'s `metaBelow`), so they wrap instead of pushing the page sideways.
+  (`PageHeader`'s `actions`, which take a line of their own when the title leaves no room), so they wrap instead of
+  pushing the page sideways.
 - The log (`use-run-log.ts`, `run-log.tsx`) follows the run's server-sent events with an EventSource; the browser
   reconnects by itself with `Last-Event-ID`, every event is kept once by its seq, and the stream's `end` closes it for
   good. When the stream fails (closed by the browser, three errors without opening, or 10 seconds behind the run's

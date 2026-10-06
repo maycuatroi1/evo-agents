@@ -275,17 +275,15 @@ export function PlansList({ project, initialError }: { project: string; initialE
   return (
     <>
       <PageHeader
-        eyebrow={<span className="font-mono normal-case">{project}</span>}
         title={t("list.title")}
-        description={t("list.description")}
-        meta={
+        tags={
           counts ? (
             <>
-              <Badge variant="info">
+              <Badge variant="secondary" data-testid="plans-active-count">
                 <Rocket aria-hidden="true" />
                 {t("list.activeCount", { count: counts.active })}
               </Badge>
-              <Badge variant="success">
+              <Badge variant="secondary" data-testid="plans-completed-count">
                 <Archive aria-hidden="true" />
                 {t("list.completedCount", { count: counts.completed })}
               </Badge>

@@ -20,7 +20,7 @@ type Props = { params: Promise<{ login: string }> };
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const t = await getTranslations("admin.member");
-  return { title: `${decodeURIComponent((await params).login)} | ${t("eyebrow")}` };
+  return { title: `${decodeURIComponent((await params).login)} | ${t("metaTitle")}` };
 }
 
 export default async function MemberPage({ params }: Props) {

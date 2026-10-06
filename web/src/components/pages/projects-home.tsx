@@ -8,6 +8,7 @@ import { useMemo } from "react";
 
 import { DataTable, dataTableColumns } from "@/components/data/data-table";
 import { NAME_LINK } from "@/components/data/identifier";
+import { VisibilityLevel } from "@/components/data/visibility";
 import { projectHref } from "@/components/shell/nav";
 import { PageHeader } from "@/components/shell/page-header";
 import { RoleBadge } from "@/components/shell/role-badge";
@@ -48,9 +49,9 @@ function ProjectsTable({ projects }: { projects: Project[] }) {
       }),
       helper.accessor((row) => row.max_level ?? "", {
         id: "max_level",
-        header: () => t("columns.maxLevel"),
+        header: () => t("columns.visibility"),
         enableSorting: false,
-        cell: (info) => <span className="font-mono text-xs">{info.getValue() || "-"}</span>,
+        cell: (info) => <VisibilityLevel level={info.getValue()} />,
       }),
       helper.accessor((row) => row.repos.length, {
         id: "repos",
@@ -92,11 +93,7 @@ export function ProjectsHome({ initialError }: { initialError: ApiErrorInfo | nu
 
   return (
     <>
-      <PageHeader
-        title={t("title")}
-        description={t("description")}
-        meta={count !== null ? <Badge variant="secondary">{t("count", { count })}</Badge> : null}
-      />
+      <PageHeader title={t("title")} tags={count !== null ? <Badge variant="secondary">{t("count", { count })}</Badge> : null} />
       <QueryView state={state} loading={<TableSkeleton rows={4} />}>
         {(projects) =>
           projects.length === 0 ? (

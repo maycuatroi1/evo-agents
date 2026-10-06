@@ -8,6 +8,7 @@ import { useCallback, useId, useMemo, useState } from "react";
 
 import { DataTable, dataTableColumns } from "@/components/data/data-table";
 import { NAME_LINK } from "@/components/data/identifier";
+import { VisibilityLevel } from "@/components/data/visibility";
 import { PageHeader } from "@/components/shell/page-header";
 import { RoleBadge } from "@/components/shell/role-badge";
 import { QueryView, useHubQuery } from "@/components/states/query-view";
@@ -46,7 +47,7 @@ function Grants({ user }: { user: AdminUser }) {
         <li key={grant.project} className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <span className="font-mono text-xs font-medium">{grant.project}</span>
           <RoleBadge role={grant.role} />
-          <span className="font-mono text-xs text-muted-foreground">{grant.max_level}</span>
+          <VisibilityLevel level={grant.max_level} className="text-xs text-muted-foreground" />
         </li>
       ))}
     </ul>
@@ -173,17 +174,14 @@ export function AdminMembers({ initialError }: { initialError: ApiErrorInfo | nu
     <>
       <PageHeader
         title={t("title")}
-        description={t("description")}
-        meta={
-          <>
-            {state.status === "success" ? <Badge variant="secondary">{t("count", { count: users.length })}</Badge> : null}
-            {state.status === "success" && projects ? (
-              <Button type="button" onClick={() => openGrant()} data-testid="grant-open">
-                <ShieldPlus aria-hidden="true" />
-                {t("grant")}
-              </Button>
-            ) : null}
-          </>
+        tags={state.status === "success" ? <Badge variant="secondary">{t("count", { count: users.length })}</Badge> : null}
+        actions={
+          state.status === "success" && projects ? (
+            <Button type="button" onClick={() => openGrant()} data-testid="grant-open">
+              <ShieldPlus aria-hidden="true" />
+              {t("grant")}
+            </Button>
+          ) : null
         }
       />
       <NoticeArea notice={notice} onDismiss={clear} />

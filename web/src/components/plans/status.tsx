@@ -34,11 +34,26 @@ export function useStepStatusText() {
     group === "other" ? t("other", { status: raw ?? "?" }) : text(group);
 }
 
-export function StepStatusBadge({ group, raw = null, className }: { group: StepGroup; raw?: string | null; className?: string }) {
+export function StepStatusBadge({
+  group,
+  raw = null,
+  className,
+  size,
+  testId,
+}: {
+  group: StepGroup;
+  raw?: string | null;
+  className?: string;
+  /** `lg` beside a page's h1. */
+  size?: "default" | "lg";
+  /** In place of the kind's own test id, where a page shows the same step's pill twice. */
+  testId?: string;
+}) {
+  const id = testId ? { "data-testid": testId } : {};
   return group === "other" ? (
-    <OtherStatusBadge raw={raw} className={className} />
+    <OtherStatusBadge raw={raw} className={className} size={size} {...id} />
   ) : (
-    <StatusBadge kind="step" status={group} className={className} />
+    <StatusBadge kind="step" status={group} className={className} size={size} {...id} />
   );
 }
 

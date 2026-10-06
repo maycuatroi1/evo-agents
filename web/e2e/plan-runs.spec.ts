@@ -54,7 +54,7 @@ test("a reader follows a plan run but is offered no Run plan", async ({ page, me
   await expect(main(page).getByRole("heading", { level: 1 })).toBeVisible();
   await expect(main(page).getByTestId("plan-actions")).toHaveCount(0);
   await expect(main(page).getByRole("button", { name: "Run plan" })).toHaveCount(0);
-  await expect(main(page).getByTestId("plans-read-only")).toContainText("a writer uses Run plan");
+  await expect(main(page).getByTestId("plans-read-only")).toContainText("Plans change from the CLI with evo harness step");
 
   // The writer's plan run shows to the reader as it goes, still without a way to start another.
   const { run } = await planRunUnderway(writer, project, uniqueName("writer-box"));

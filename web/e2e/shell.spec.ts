@@ -100,7 +100,7 @@ test.describe("shell", () => {
     await expect(page.getByTestId("label-ladder").getByRole("listitem")).toHaveCount(4);
     await expect(page.getByTestId("project-switcher")).toHaveAccessibleName(`Chọn dự án, đang chọn ${first}`);
     await page.getByTestId("user-menu").click();
-    await expect(page.getByTestId("user-project-role")).toHaveText(`${first}: Đọc, mức tối đa internal`);
+    await expect(page.getByTestId("user-project-role")).toHaveText(`${first}: Đọc, mức hiển thị Internal`);
   });
 
   test("a user without grants sees an empty picker and an empty state", async ({ page, signInAs }) => {

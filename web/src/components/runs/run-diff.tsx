@@ -265,25 +265,22 @@ export function RunDiff({ project, runId, initialError, diff }: { project: strin
       {(run) => (
         <div className="flex flex-col gap-6" data-testid="run-diff" data-run-id={run.id}>
           <PageHeader
-            eyebrow={<span className="font-mono normal-case">{run.project}</span>}
             title={
-              <span className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-                <span>
-                  {t("title")} <span className="font-mono tabular-nums">#{run.id}</span>
-                </span>
-                <StatusBadge kind="run" status={run.state} size="lg" />
-              </span>
+              <>
+                {t("title")} <span className="tabular-nums">#{run.id}</span>
+              </>
             }
-            description={
+            status={<StatusBadge kind="run" status={run.state} size="lg" />}
+            sub={
               diff.status === "ok"
-                ? t("description", {
+                ? t("sub", {
                     title: run.title ?? tDetail("untitled"),
                     files: diff.diff.files.length,
                     size: format.number(diff.bytes / 1024, { maximumFractionDigits: 1 }),
                   })
                 : (run.title ?? tDetail("untitled"))
             }
-            meta={
+            actions={
               <>
                 <Button asChild variant="ghost">
                   <Link href={runHref(run.project, run.id)} data-testid="diff-back">
