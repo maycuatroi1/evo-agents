@@ -43,7 +43,8 @@ Rules every adapter keeps, from what the runtimes do (research_notes/worker-runt
 - The state of a turn comes from the events, never from the exit code: a runtime may exit 0 when interrupted.
 - The agent runs with the full permissions of the machine's owner, in its own process group
   (``start_new_session=True``), so a Ctrl-C at the daemon's terminal does not reach it and ``interrupt`` can stop
-  its tools too.
+  its tools too. ``group_pid()`` names the leader of that group once the agent runs, so a daemon that starts after
+  this one died can stop an agent it left (``evo_agents.worker.orphans``).
 - stdin is the message channel or ``/dev/null``, never a pipe left open by accident: some runtimes wait for its EOF.
 - ``context.env`` is the environment of the agent; it has no hub token.
 
@@ -249,6 +250,11 @@ class Adapter(abc.ABC):
     @abc.abstractmethod
     async def wait(self) -> Outcome:
         """How the agent ended; called once the events have ended."""
+
+    def group_pid(self) -> int | None:
+        """The pid of the leader of the agent's process group, once the agent runs; None when the adapter cannot
+        tell. The adapters of ``evo_agents.worker.runtimes`` read it from the file their launcher writes."""
+        return None
 
 
 def probe_binary(binary: str, *, path: str | None = None, timeout: float = VERSION_TIMEOUT) -> Detection:
