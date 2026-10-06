@@ -30,7 +30,9 @@ backoff until the hub answers, or says the run is no longer this worker's.
 
 The leases stay in the daemon's memory (``credentials.RunCredentials``): the run's git gets them through
 ``git_env``, its agent through ``agent_env``, each event goes through ``credentials.scrub`` before the spool, and
-they are given back once the run ends here, whether it ended, was parked, or the daemon stops.
+they are given back once the run ends here, whether it ended, was parked, or the daemon stops. A push of the daemon
+that fails to authenticate on a leased origin takes the leases again once and pushes once more
+(``RunCredentials.with_renewal``).
 
 Each time an agent starts, headless or in its terminal UI, the daemon notes its process group in
 ``runs/<run>/agent.json`` (``orphans``), and removes the file just before the run counts as ended here, so a daemon
@@ -1255,8 +1257,12 @@ class Run:
         commit_sha = await gitops.rev(wt, "HEAD")
         diffstat = await gitops.diffstat(wt, self.base)
         self._check()
+
+        async def push() -> gitops.Pushed:
+            return await gitops.push(wt, self.branch, protected=self.protected, kind="step", env=self.git_env())
+
         try:  # a default branch was refused before the agent started; gitops refuses it again before every push
-            pushed = await gitops.push(wt, self.branch, protected=self.protected, kind="step", env=self.git_env())
+            pushed = await self.credentials.with_renewal(self.repo, push)
         except gitops.PushRefused as exc:
             raise RunFailed(str(exc), verify=self.verify) from None
         except gitops.GitError as exc:
@@ -1752,8 +1758,9 @@ class PlanRun(Run):
                     "branches, and the worker does not push it"
                 )
             self._check()
-            try:
-                pushed = await gitops.push(
+
+            async def push(path=path, workspace=workspace, name=name) -> gitops.Pushed:
+                return await gitops.push(
                     path,
                     workspace.branch,
                     protected=workspace.protected,
@@ -1761,6 +1768,9 @@ class PlanRun(Run):
                     plan_branch=named.get(name),
                     env=self.git_env(),
                 )
+
+            try:
+                pushed = await self.credentials.with_renewal(name, push)
             except gitops.PushRefused as exc:
                 raise RunFailed(f"{name}: {exc}") from None
             except gitops.GitError as exc:
