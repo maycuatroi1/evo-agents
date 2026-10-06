@@ -15,6 +15,10 @@ here.
 - Whether the turn completed comes from the last ``result`` (``subtype`` ``success``, not ``is_error``), never from
   the exit code: Claude Code exits 0 when it is interrupted.
 - The CLI is ``claude`` on PATH, started through the launcher of ``common`` (a session of its own).
+- The model is the run's ``model`` (``options.model``, the CLI's ``--model``), else ``EVO_WORKER_CLAUDE_CODE_MODEL``,
+  else Claude Code's own choice. Claude Code has no command that lists its models; for the heartbeat, ``models``
+  gives the aliases its ``--model`` help names (``'opus'``, ``'sonnet'`` and the like), and a run may name any model
+  the CLI takes.
 
 Checked with Claude Code 2.1.289 and claude-agent-sdk 0.2.163 (``evo-agents worker selftest --runtime claude-code``).
 """
@@ -25,12 +29,13 @@ import asyncio
 import collections
 import contextlib
 import dataclasses
+import re
 import shutil
 import tempfile
 import uuid
 from pathlib import Path
 
-from evo_agents.worker.adapter import AgentEvent, Detection, Outcome, RunContext
+from evo_agents.worker.adapter import AgentEvent, Detection, Outcome, RunContext, command_output
 from evo_agents.worker.runtimes.common import (
     HEADLESS_NOTE,
     INTERRUPT_TIMEOUT,
@@ -58,6 +63,9 @@ DROPPED_ENV = ("CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT")
 # System messages left out of the log: the CLI's list of slash commands (tens of KiB, twice a session), the start of
 # a hook (its response says the same and how it ended), and running estimates of thinking tokens.
 SKIPPED_SYSTEM = frozenset({"commands_changed", "hook_started", "thinking_tokens"})
+# The --model option of `claude --help`, up to the next option, and the aliases its text quotes.
+MODEL_HELP = re.compile(r"^\s*--model[ =<].*?(?=^\s*-|\Z)", re.M | re.S)
+MODEL_ALIAS = re.compile(r"'([A-Za-z][A-Za-z0-9._\[\]-]*)'")
 TOOL_KINDS = {
     "Read": "read",
     "Edit": "edit",
@@ -74,6 +82,14 @@ TOOL_KINDS = {
     "Task": "think",
     "TodoWrite": "think",
 }
+
+
+def help_models(text: str | None) -> list[str] | None:
+    """The aliases the ``--model`` option of ``claude --help`` quotes, in order; None when it quotes none."""
+    found = MODEL_HELP.search(text or "")
+    if found is None:
+        return None
+    return MODEL_ALIAS.findall(found.group(0)) or None
 
 
 def _text_of(content) -> str | None:
@@ -161,6 +177,11 @@ class ClaudeCodeAdapter(QueueAdapter):
     @classmethod
     def detect(cls) -> Detection:
         return detect_runtime(cls.runtime, cls.binary, MIN_VERSION, packages=(SDK,))
+
+    @classmethod
+    def models(cls) -> list[str] | None:
+        """The aliases ``claude --help`` names for ``--model``."""
+        return help_models(command_output(cls.binary, "--help"))
 
     @classmethod
     def tui(cls, context: RunContext, session_id: str | None):

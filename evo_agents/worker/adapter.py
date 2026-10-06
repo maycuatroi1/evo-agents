@@ -5,7 +5,9 @@ a worktree, hand it a message, stop it, and turn what it prints into the hub's e
 adapter in this order:
 
 1. ``Adapter.detect()`` (a class method) before any run, for the heartbeat: whether the runtime is there, which
-   version, and why it cannot take runs when it cannot.
+   version, and why it cannot take runs when it cannot. For a runtime that is available, ``Adapter.models()`` (a
+   class method too) lists the models it offers on this machine, when the runtime lets that be read, so the hub can
+   suggest them for a dispatch; a run's ``model`` is not checked against it.
 2. ``adapter = Cls(context)`` for one run, then ``await adapter.start()``, which starts the agent on
    ``context.prompt`` in ``context.worktree`` and returns once it runs.
 3. ``async for event in adapter.events()``: the agent's events as ``AgentEvent``, in order, until the agent process
@@ -46,13 +48,14 @@ from __future__ import annotations
 
 import abc
 import importlib
+import json
 import logging
 import os
 import re
 import shutil
 import subprocess
 from collections.abc import AsyncIterator, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from importlib.metadata import entry_points
 from pathlib import Path
@@ -79,24 +82,56 @@ VERSION_TIMEOUT = 15.0  # seconds for `<binary> --version`
 _VERSION = re.compile(r"\d+(?:\.\d+)+(?:-[0-9A-Za-z.]+)?")
 MAX_VERSION_CHARS = 100
 MAX_REASON_CHARS = 500
+MODELS_TIMEOUT = 30.0  # seconds for a runtime's command that lists its models
+# The models of one runtime as JSON: the three stay well within the hub's bound on a heartbeat's runtimes and
+# checkouts (64 KiB), which refuses the whole heartbeat when it is over.
+MAX_MODELS_BYTES = 8 * 1024
 
 
 def _line(text: str, limit: int) -> str:
     return " ".join("".join(ch if ch.isprintable() else " " for ch in text).split())[:limit]
 
 
+def clean_models(names) -> list[str] | None:
+    """``names`` as the hub takes them: one line of at most MAX_MODEL_CHARS each, in order, each once, at most
+    MAX_RUNTIME_MODELS of them and MAX_MODELS_BYTES as JSON; None when none is left. A name that does not fit is left
+    out, never cut."""
+    if not names:
+        return None
+    found: list[str] = []
+    size = 2  # []
+    for name in names:
+        if not isinstance(name, str):
+            continue
+        name = name.strip()
+        if not name or len(name) > runs.MAX_MODEL_CHARS or not name.isprintable() or name in found:
+            continue
+        size += len(json.dumps(name, ensure_ascii=False).encode()) + 1
+        if size > MAX_MODELS_BYTES:
+            break
+        found.append(name)
+        if len(found) == runs.MAX_RUNTIME_MODELS:
+            break
+    return found or None
+
+
 @dataclass(frozen=True)
 class Detection:
-    """A runtime as the heartbeat reports it: ``{available, version, reason}``."""
+    """A runtime as the heartbeat reports it: ``{available, version, reason}``, and ``models`` when it lists any."""
 
     available: bool
     version: str | None = None
     reason: str | None = None
+    models: tuple[str, ...] | None = None
 
     def report(self) -> dict:
         version = _line(self.version, MAX_VERSION_CHARS) if self.version else None
         reason = _line(self.reason, MAX_REASON_CHARS) if self.reason else None
-        return {"available": self.available, "version": version or None, "reason": reason or None}
+        found = {"available": self.available, "version": version or None, "reason": reason or None}
+        models = clean_models(self.models)
+        if models:
+            found["models"] = models
+        return found
 
 
 def _now() -> datetime:
@@ -160,6 +195,12 @@ class Adapter(abc.ABC):
     def detect(cls) -> Detection:
         """The runtime on this machine: ``binary`` on PATH and its ``--version``."""
         return probe_binary(cls.binary)
+
+    @classmethod
+    def models(cls) -> list[str] | None:
+        """The models the runtime offers on this machine, as a run's ``model`` would name them, when the runtime lets
+        them be read; None when it does not. Called only for a runtime ``detect`` found available."""
+        return None
 
     @classmethod
     def tui(cls, context: RunContext, session_id: str | None) -> Tui:
@@ -265,9 +306,39 @@ def load_adapters(env: Mapping[str, str] | None = None) -> dict[str, type[Adapte
     return loaded
 
 
+def command_output(binary: str, *args: str, timeout: float = MODELS_TIMEOUT) -> str | None:
+    """What ``binary args`` prints on stdout, with stdin ``/dev/null``, when it exits 0 within ``timeout``; None when
+    it is not on PATH, fails or takes longer."""
+    found = shutil.which(binary)
+    if found is None:
+        return None
+    try:
+        done = subprocess.run(
+            [found, *args],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            stdin=subprocess.DEVNULL,
+            errors="replace",
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        return None
+    return done.stdout if done.returncode == 0 else None
+
+
+def _models_of(cls: type[Adapter], runtime: str) -> tuple[str, ...] | None:
+    try:
+        models = clean_models(cls.models())
+    except Exception:  # a runtime that lists its models in a way the adapter does not read: the heartbeat goes on
+        log.warning("listing the runtime's models failed", extra={"runtime": runtime}, exc_info=True)
+        return None
+    return tuple(models) if models else None
+
+
 def detect_runtimes(adapters: Mapping[str, type[Adapter]], *, path: str | None = None) -> dict[str, dict]:
-    """The heartbeat's ``runtimes``: each of the three, from its adapter's ``detect`` when it has one; a runtime
-    without an adapter is unavailable even when its binary is there."""
+    """The heartbeat's ``runtimes``: each of the three, from its adapter's ``detect`` when it has one, with the models
+    its ``models`` lists when the runtime is available; a runtime without an adapter is unavailable even when its
+    binary is there."""
     found: dict[str, dict] = {}
     for runtime in runs.RUNTIMES:
         cls = adapters.get(runtime)
@@ -277,6 +348,8 @@ def detect_runtimes(adapters: Mapping[str, type[Adapter]], *, path: str | None =
             except Exception as exc:  # an adapter's bug must not stop the heartbeat
                 log.warning("runtime detection failed", extra={"runtime": runtime}, exc_info=True)
                 detection = Detection(False, None, f"detecting it failed: {type(exc).__name__}")
+            if detection.available:
+                detection = replace(detection, models=_models_of(cls, runtime))
         else:
             binary = BINARIES[runtime]
             probe = probe_binary(binary, path=path)

@@ -57,6 +57,8 @@ MAX_PROMPT_BYTES = 32 * 1024  # the prompt build_prompt or build_plan_prompt ret
 
 RUN_KINDS = ("step", "plan")  # a run of one step, or of every step of a plan not done yet, in one session
 RUNTIMES = ("claude-code", "opencode", "codex")
+MAX_MODEL_CHARS = 200  # a run's model, one line (runs.model, as schema 0010 bounds it), and each model a runtime lists
+MAX_RUNTIME_MODELS = 200  # the models a heartbeat lists for one runtime
 MODES = ("headless", "interactive")
 APPROVALS = ("auto", "review")
 # What a heartbeat answer carries: per run, whether to cancel, take over, hand back, open the terminal or park, how
