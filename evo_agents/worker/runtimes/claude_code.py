@@ -4,14 +4,41 @@ here.
 - The session id is the daemon's: a new UUID for a new run (``session_id``), the run's session when it goes on with
   one (``resume``), so the daemon reports it from the start and a takeover resumes it with ``claude --resume``.
 - The agent works in the worktree (``cwd``) with ``permission_mode="bypassPermissions"``, the SDK's form of
-  ``--dangerously-skip-permissions``, and the preset system prompt of Claude Code with HEADLESS_NOTE appended
-  (``--append-system-prompt``). The owner's settings, hooks, plugins and CLAUDE.md load as for ``claude`` itself.
+  ``--dangerously-skip-permissions``, and the preset system prompt of Claude Code with HEADLESS_NOTE and
+  BACKGROUND_NOTE appended (``--append-system-prompt``). The owner's settings, hooks, plugins and CLAUDE.md load as
+  for ``claude`` itself.
 - The input stream the client is connected with stays open while the agent may take input: the prompt and each of
   the owner's messages go in with ``query()``. Claude Code takes a message that arrives mid-turn at the next tool
   boundary, and may fold it into the same ``result`` (research_notes/worker-runtimes.md of the harness).
-- A ``result`` ends the turn: the adapter then closes the input stream, and the CLI exits once it has done what it
-  was given. ``stop_at_turn_boundary`` closes it at once, so the turn in progress finishes and the CLI exits;
-  ``interrupt`` sends the SDK's interrupt, which stops the turn and its tools, then closes it.
+- Background commands, as Claude Code 2.1.291 with claude-agent-sdk 0.2.163 reports them (tried with
+  ``sleep 20 && date -u`` and ``run_in_background: true`` in streaming input, the agent told to end its turn once the
+  command started): the Bash ``tool_use`` carries ``run_in_background: true``; the CLI answers at once with
+  ``system/background_tasks_changed`` (the background tasks running, ``task_id`` and ``description`` each),
+  ``system/task_started`` (``is_backgrounded: true``, ``task_id``, ``tool_use_id``) and the tool's result
+  (``tool_use_result.backgroundTaskId``, "Command running in background with ID: ..."), and the turn goes on to its
+  ``result``. When the command ends, 20 seconds later, the CLI sends ``background_tasks_changed`` without it,
+  ``task_updated`` (``patch.status`` ``completed``) and ``task_notification`` (``status``, ``summary``,
+  ``output_file``, ``tool_use_id``), then opens a turn by itself while its input is open: a new ``system/init``, the
+  agent reads the output file, and a second ``result`` whose ``origin`` is ``{"kind": "task-notification"}``. Nobody
+  has to write to it. When its input ends before that, as it did at the first ``result`` before this adapter waited,
+  the CLI kills the command within 5 seconds (``task_updated`` ``killed``, ``task_notification`` ``stopped``) and
+  exits, so the agent never learns how the command ended. A command in the foreground also has ``task_started``
+  (``is_backgrounded: false``) and ``task_notification``, but no ``background_tasks_changed`` and no
+  ``backgroundTaskId``.
+- At a ``result``, the adapter ends the input stream (and the CLI exits once it has done what it was given) unless the
+  agent may go on in this session: when a command it started in the background still runs (``Background`` follows the
+  Bash calls with ``run_in_background``, their results, and the tasks the CLI reports running in the background until
+  it reports their end), the input stays open and the CLI's own turn after the command ends goes on with the agent.
+  Should no turn open within ``follow_up_after`` seconds of that end, the adapter writes to the agent itself
+  (FOLLOW_UP, with the CLI's summary and output file of each command). After a turn in which a background command
+  ended, the CLI has ``turn_grace`` seconds to open a turn for its notification. A command that still runs
+  ``background_wait`` seconds after the turn ended is left: the input ends, and the CLI stops it and exits. Once the
+  agent has written ``.evo-run/result.json`` it has finished, and its ``result`` ends the input whatever still runs.
+  A decision of a plan run left open is the daemon's, not the adapter's: the turn ends, and the daemon waits for the
+  answer and hands it to a new adapter in the same session (``evo_agents.worker.adapter``).
+- ``stop_at_turn_boundary`` ends the input stream at once, so the turn in progress finishes and the CLI exits, a
+  background command or not; ``interrupt`` sends the SDK's interrupt, which stops the turn and its tools, then ends
+  it.
 - Whether the turn completed comes from the last ``result`` (``subtype`` ``success``, not ``is_error``), never from
   the exit code: Claude Code exits 0 when it is interrupted.
 - The CLI is ``claude`` on PATH, started through the launcher of ``common`` (a session of its own).
@@ -20,7 +47,9 @@ here.
   gives the aliases its ``--model`` help names (``'opus'``, ``'sonnet'`` and the like), and a run may name any model
   the CLI takes.
 
-Checked with Claude Code 2.1.289 and claude-agent-sdk 0.2.163 (``evo-agents worker selftest --runtime claude-code``).
+Checked with Claude Code 2.1.289 and claude-agent-sdk 0.2.163 (``evo-agents worker selftest --runtime claude-code``);
+the background commands with Claude Code 2.1.291 and the same SDK (``evo-agents worker selftest --runtime claude-code
+--background``).
 """
 
 from __future__ import annotations
@@ -29,12 +58,14 @@ import asyncio
 import collections
 import contextlib
 import dataclasses
+import logging
 import re
 import shutil
 import tempfile
 import uuid
 from pathlib import Path
 
+from evo_agents.hub import runs
 from evo_agents.worker.adapter import AgentEvent, Detection, Outcome, RunContext, command_output
 from evo_agents.worker.runtimes.common import (
     HEADLESS_NOTE,
@@ -56,6 +87,8 @@ from evo_agents.worker.runtimes.common import (
     write_launcher,
 )
 
+log = logging.getLogger("evo_agents.worker")
+
 MIN_VERSION = "2.1.289"  # Claude Code
 SDK = ("claude-agent-sdk", "0.2.163")
 # Variables of a parent Claude Code session that must not reach the agent, which is no child of it.
@@ -66,6 +99,31 @@ SKIPPED_SYSTEM = frozenset({"commands_changed", "hook_started", "thinking_tokens
 # The --model option of `claude --help`, up to the next option, and the aliases its text quotes.
 MODEL_HELP = re.compile(r"^\s*--model[ =<].*?(?=^\s*-|\Z)", re.M | re.S)
 MODEL_ALIAS = re.compile(r"'([A-Za-z][A-Za-z0-9._\[\]-]*)'")
+# Seconds the session stays open, once a turn has ended, while a command the agent started in the background still
+# runs; then the input ends, and the CLI stops the command and exits.
+BACKGROUND_WAIT = 30 * 60.0
+# Seconds the CLI has to open a turn by itself once a background command ended while no turn ran, before the adapter
+# writes to the agent (FOLLOW_UP). Claude Code 2.1.291 opens it at once.
+FOLLOW_UP_AFTER = 15.0
+# Seconds the CLI has to open a turn after one in which a background command ended: its notification may have reached
+# the agent in that turn, or wait for the next.
+TURN_GRACE = 5.0
+# The statuses of a task that has ended: task_notification says stopped, task_updated killed, for the same end.
+TERMINAL_TASK = frozenset({"completed", "failed", "stopped", "killed"})
+# The id of a background command in the text of its Bash result.
+BACKGROUND_ID = re.compile(r"running in background with ID: ([A-Za-z0-9_-]+)")
+# Appended to the system prompt after HEADLESS_NOTE.
+BACKGROUND_NOTE = (
+    "A command you start with run_in_background keeps this session open after your turn ends: you are told when it "
+    "ends, in a new turn, and go on from there. Stop a server or watcher you started in the background once you no "
+    "longer need it, or the session waits for it."
+)
+SYSTEM_NOTE = f"{HEADLESS_NOTE}\n\n{BACKGROUND_NOTE}"
+# What the agent is told when its background commands ended and the CLI opened no turn for them.
+FOLLOW_UP = (
+    "The command(s) you started in the background have ended:\n{ended}\nRead their output and go on with the task "
+    "from where you stopped."
+)
 TOOL_KINDS = {
     "Read": "read",
     "Edit": "edit",
@@ -103,6 +161,131 @@ def _text_of(content) -> str | None:
         if parts:
             return "\n".join(parts)
     return str(content)
+
+
+def _true(value) -> bool:
+    return value is True or (isinstance(value, str) and value.strip().lower() == "true")
+
+
+class Background:
+    """The commands the agent runs in the background, from what Claude Code reports of them (the module's docstring):
+    each Bash call with ``run_in_background`` until its result names its task or says it did not start, and each task
+    the CLI reports running in the background until it reports its end."""
+
+    def __init__(self) -> None:
+        self.calls: dict[str, str | None] = {}  # tool_use_id -> task id; None until the CLI names the task
+        self.running: dict[str, str] = {}  # task id -> description, of the tasks running in the background
+        self.ended: dict[str, dict] = {}  # task id -> {description, status, summary, output_file} as the CLI told
+
+    @property
+    def pending(self) -> bool:
+        """Whether a command the agent started in the background may still run."""
+        return bool(self.calls) or bool(self.running)
+
+    def see(self, message) -> list[str]:
+        """Follow ``message`` of the SDK; the ids of the background tasks whose end it reports first."""
+        from claude_agent_sdk import types as sdk
+
+        if isinstance(message, sdk.AssistantMessage):
+            if message.parent_tool_use_id is None:  # a subagent's commands are the subagent's
+                for block in message.content:
+                    if (
+                        isinstance(block, sdk.ToolUseBlock)
+                        and block.name == "Bash"
+                        and isinstance(block.input, dict)
+                        and _true(block.input.get("run_in_background"))
+                    ):
+                        self.calls[block.id] = None
+        elif isinstance(message, sdk.UserMessage):
+            self._tool_results(message)
+        elif isinstance(message, sdk.SystemMessage) and isinstance(message.data, dict):
+            return self._system(message.subtype, message.data)
+        return []
+
+    def _tool_results(self, message) -> None:
+        from claude_agent_sdk import types as sdk
+
+        if not isinstance(message.content, list):
+            return
+        blocks = [block for block in message.content if isinstance(block, sdk.ToolResultBlock)]
+        extra = message.tool_use_result if isinstance(message.tool_use_result, dict) else {}
+        for block in blocks:
+            task = extra.get("backgroundTaskId") if len(blocks) == 1 else None
+            task = task if isinstance(task, str) and task else None
+            if block.tool_use_id in self.calls:
+                if task is None:
+                    found = BACKGROUND_ID.search(_text_of(block.content) or "")
+                    task = found.group(1) if found else None
+                if block.is_error or task is None:  # it did not start, or ran in the foreground after all
+                    del self.calls[block.tool_use_id]
+                    continue
+                self.calls[block.tool_use_id] = task
+            if task is not None and not block.is_error:  # a command the CLI moved to the background, too
+                self._start(task, None)
+
+    def _system(self, subtype: str, data: dict) -> list[str]:
+        task = data.get("task_id")
+        task = task if isinstance(task, str) and task else None
+        if subtype == "task_started":
+            if task is not None and data.get("is_backgrounded") is True:
+                if data.get("tool_use_id") in self.calls:
+                    self.calls[data["tool_use_id"]] = task
+                self._start(task, data.get("description"))
+            return []
+        if subtype == "background_tasks_changed":
+            listed: dict[str, str | None] = {}
+            for item in data.get("tasks") or []:
+                if isinstance(item, dict) and isinstance(item.get("task_id"), str) and item["task_id"]:
+                    listed[item["task_id"]] = item.get("description")
+            for name, description in listed.items():
+                self._start(name, description)
+            return [name for name in list(self.running) if name not in listed and self._end(name, {})]
+        if subtype == "task_notification" and task is not None and data.get("status") in TERMINAL_TASK:
+            info = {key: data[key] for key in ("status", "summary", "output_file") if data.get(key)}
+            return [task] if self._end(task, info, data.get("tool_use_id")) else []
+        if subtype == "task_updated" and task is not None:
+            patch = data.get("patch") if isinstance(data.get("patch"), dict) else {}
+            if patch.get("status") in TERMINAL_TASK:
+                return [task] if self._end(task, {"status": patch["status"]}) else []
+        return []
+
+    def _start(self, task: str, description) -> None:
+        if task in self.ended:
+            return
+        known = self.running.get(task)
+        self.running[task] = description if isinstance(description, str) and description else known or ""
+
+    def _end(self, task: str, info: dict, tool_use_id=None) -> bool:
+        """Note the end of ``task``; whether it is the first news of the end of a background command."""
+        tracked = task in self.running or task in self.calls.values() or tool_use_id in self.calls
+        description = self.running.pop(task, None)
+        for call, known in list(self.calls.items()):
+            if known == task or call == tool_use_id:
+                del self.calls[call]
+        if task in self.ended:
+            self.ended[task].update(info)
+            return False
+        if not tracked:  # a command of the foreground, whose task ends with it
+            return False
+        self.ended[task] = {"description": description or "", **info}
+        return True
+
+    def describe(self, task: str) -> str:
+        """One line on a background task that ended, for FOLLOW_UP."""
+        info = self.ended.get(task, {})
+        line = f"- {info.get('summary') or info.get('description') or task} ({info.get('status') or 'ended'})"
+        if info.get("output_file"):
+            line += f"; its output is in {info['output_file']}"
+        return line
+
+
+def _opens_turn(message) -> bool:
+    """Whether ``message`` comes from a turn: the CLI's init at the start of one, or the agent's own message."""
+    from claude_agent_sdk import types as sdk
+
+    if isinstance(message, (sdk.AssistantMessage, sdk.StreamEvent)):
+        return True
+    return isinstance(message, sdk.SystemMessage) and message.subtype == "init"
 
 
 def _raw_of(message) -> dict:
@@ -173,6 +356,9 @@ class ClaudeCodeAdapter(QueueAdapter):
     runtime = "claude-code"
     binary = "claude"
     interactive = True
+    background_wait = BACKGROUND_WAIT
+    follow_up_after = FOLLOW_UP_AFTER
+    turn_grace = TURN_GRACE
 
     @classmethod
     def detect(cls) -> Detection:
@@ -200,6 +386,11 @@ class ClaudeCodeAdapter(QueueAdapter):
         self._stderr: collections.deque[str] = collections.deque(maxlen=20)
         self._dir: Path | None = None
         self.options = None
+        self.background = Background()
+        self._turn_open = False  # a turn of the agent runs, or a message is on its way to start one
+        self._ended_in_turn = False  # a background command ended during the turn that runs
+        self._unseen: list[str] = []  # background tasks that ended while no turn ran
+        self._timer: asyncio.Task | None = None
 
     @property
     def session_id(self) -> str | None:
@@ -218,7 +409,7 @@ class ClaudeCodeAdapter(QueueAdapter):
             "cwd": str(self.context.worktree),
             "cli_path": cli_path,
             "permission_mode": "bypassPermissions",
-            "system_prompt": {"type": "preset", "preset": "claude_code", "append": HEADLESS_NOTE},
+            "system_prompt": {"type": "preset", "preset": "claude_code", "append": SYSTEM_NOTE},
             "env": {key: value for key, value in self.context.env.items() if key not in DROPPED_ENV},
             "stderr": self._stderr.append,
         }
@@ -247,6 +438,7 @@ class ClaudeCodeAdapter(QueueAdapter):
         self._client = self.make_client(self.options)
         self._input_open = True
         await self._client.connect(prompt=self._input())
+        self._turn_open = True
         await self._client.query(self.context.prompt)
 
     async def _drive(self) -> None:
@@ -259,9 +451,15 @@ class ClaudeCodeAdapter(QueueAdapter):
                     if isinstance(session, str) and session:
                         self._session = session
                 self.emit(events_of(message))
+                ended = self.background.see(message)
                 if isinstance(message, sdk.ResultMessage):
                     self._results.append(message)
-                    await self._close_input()  # the turn is over: the CLI ends once it has done what it was given
+                    await self._turn_ended()
+                    continue
+                if not self._turn_open and _opens_turn(message):  # the CLI opened a turn by itself
+                    self._turn_starts()
+                if ended:
+                    self._background_ended(ended)
         except Exception as exc:  # the CLI died, or wrote what the SDK cannot read
             self._error = f"{type(exc).__name__}: {exc}"
         self.outcome = self._outcome()
@@ -288,7 +486,78 @@ class ClaudeCodeAdapter(QueueAdapter):
             return Outcome(False, cut(f"claude-code ended its turn with {last.subtype}: {detail}"), usage, summary)
         return Outcome(True, None, usage, summary)
 
+    # The end of a turn, and what the session waits for after it
+
+    def _turn_starts(self) -> None:
+        self._turn_open = True
+        self._ended_in_turn = False
+        self._unseen.clear()
+        self._disarm()
+
+    async def _turn_ended(self) -> None:
+        """A ``result``: end the input, unless the agent may go on in this session (the module's docstring)."""
+        self._turn_open = False
+        ended_in_turn, self._ended_in_turn = self._ended_in_turn, False
+        if self.stopping or self.interrupted or self._result_written():
+            await self._close_input()
+        elif self.background.pending:
+            self._arm(self.background_wait, self._leave_background)
+        elif ended_in_turn:
+            self._arm(self.turn_grace, self._close_input)
+        else:
+            await self._close_input()  # the CLI ends once it has done what it was given
+
+    def _result_written(self) -> bool:
+        path = Path(self.context.worktree) / runs.RESULT_FILE
+        return path.is_file() and not path.is_symlink()
+
+    def _background_ended(self, tasks: list[str]) -> None:
+        if self._turn_open:
+            self._ended_in_turn = True
+            return
+        if not self._input_open:
+            return
+        self._unseen.extend(tasks)
+        self._arm(self.follow_up_after, self._follow_up)
+
+    async def _follow_up(self) -> None:
+        """Background commands ended while no turn ran, and the CLI opened none for them: tell the agent."""
+        ended = "\n".join(self.background.describe(task) for task in self._unseen)
+        async with self._lock:
+            if not self._input_open or self._client is None or self._turn_open:
+                return
+            self._turn_starts()
+            await self._client.query(FOLLOW_UP.format(ended=ended))
+
+    async def _leave_background(self) -> None:
+        running = ", ".join(repr(description or task) for task, description in self.background.running.items())
+        log.warning(
+            "background commands still run after the agent's turn ended; ending the session",
+            extra={"runtime": self.runtime, "waited_s": self.background_wait, "running": running or None},
+        )
+        await self._close_input()
+
+    def _arm(self, seconds: float, action) -> None:
+        """Run ``action`` in ``seconds``, instead of what was armed before."""
+        self._disarm()
+        self._timer = asyncio.create_task(self._after(seconds, action))
+
+    def _disarm(self) -> None:
+        if self._timer is not None and self._timer is not asyncio.current_task():
+            self._timer.cancel()
+        self._timer = None
+
+    async def _after(self, seconds: float, action) -> None:
+        await asyncio.sleep(seconds)
+        self._timer = None
+        try:
+            await action()
+        except Exception:  # the CLI is gone, or took no message: end the input, so the session ends
+            log.warning("the agent's session did not go on", extra={"runtime": self.runtime}, exc_info=True)
+            await self._close_input()
+
     async def _close_input(self) -> None:
+        self._disarm()
         async with self._lock:
             if self._input_open:
                 self._input_open = False
@@ -298,6 +567,8 @@ class ClaudeCodeAdapter(QueueAdapter):
         async with self._lock:
             if not self._input_open or self._client is None:
                 raise AgentFinished("claude-code has finished its turn and takes no more messages")
+            if not self._turn_open:  # the message opens a turn: what waited for the CLI does no longer
+                self._turn_starts()
             await self._client.query(text)
 
     async def _interrupt(self) -> None:
@@ -310,6 +581,7 @@ class ClaudeCodeAdapter(QueueAdapter):
         await self._close_input()
 
     async def _close(self) -> None:
+        self._disarm()
         self._input_open = False
         self._end_input.set()
         if self._client is not None:

@@ -12,7 +12,9 @@
 The checks step 9 of the worker-fleet plan names: each runtime gets the settings of full permissions; its events come
 out in the hub's kinds; a message reaches the agent when it should (in the turn, or in the next one); a runtime that
 is missing or too old is reported unsupported. Around them: interrupt and stop at the turn boundary, the launcher's
-own session, ``opencode serve`` on a free port with stdin /dev/null, and ``evo-agents worker selftest``.
+own session, ``opencode serve`` on a free port with stdin /dev/null, and ``evo-agents worker selftest``. Step 7 of the
+plan-runs-and-decisions plan adds Claude Code's commands in the background: the session stays open for them, as
+Claude Code 2.1.291 reports them, and ``selftest --background`` (``-k background``).
 """
 
 from __future__ import annotations
@@ -30,8 +32,11 @@ from pathlib import Path
 
 import pytest
 
+from evo_agents.hub import runs
 from evo_agents.worker import adapter as adapter_module
+from evo_agents.worker import selftest as selftest_module
 from evo_agents.worker.adapter import Adapter, AgentEvent, Detection, Outcome, RunContext
+from evo_agents.worker.runtimes import claude_code as claude_module
 from evo_agents.worker.runtimes import codex as codex_module
 from evo_agents.worker.runtimes import common
 from evo_agents.worker.runtimes import opencode as opencode_module
@@ -274,6 +279,7 @@ class FakeCLI:
         self.input_closed = asyncio.Event()
         self.interrupted = asyncio.Event()
         self.busy = asyncio.Event()
+        self.go = asyncio.Event()  # the test lets the script go on
         self.task = None
 
     async def connect(self) -> None:
@@ -326,9 +332,11 @@ class UnderTest(ClaudeCodeAdapter):
         return claude_agent_sdk.ClaudeSDKClient(options, transport=self.cli)
 
 
-def _claude(tmp_path, behaviour, **kwargs) -> UnderTest:
+def _claude(tmp_path, behaviour, *, timers: dict | None = None, **kwargs) -> UnderTest:
+    """The adapter over a FakeCLI scripted by ``behaviour``; ``timers`` sets its waits (``background_wait`` and the
+    like) in seconds."""
     needs("claude_agent_sdk")
-    cls = type("Claude", (UnderTest,), {"behaviour": staticmethod(behaviour)})
+    cls = type("Claude", (UnderTest,), {"behaviour": staticmethod(behaviour), **(timers or {})})
     return cls(_context(tmp_path, "claude-code", **kwargs))
 
 
@@ -349,7 +357,8 @@ def test_claude_code_runs_with_full_permissions_in_the_worktree_under_the_daemon
     assert options.permission_mode == "bypassPermissions"
     assert options.session_id == session and options.resume is None
     assert options.cwd == str(tmp_path / "worktree")
-    assert options.system_prompt == {"type": "preset", "preset": "claude_code", "append": common.HEADLESS_NOTE}
+    append = f"{common.HEADLESS_NOTE}\n\n{claude_module.BACKGROUND_NOTE}"
+    assert options.system_prompt == {"type": "preset", "preset": "claude_code", "append": append}
     assert "CLAUDECODE" not in options.env, "the agent is no child of a Claude Code session the daemon runs in"
     # The flags the SDK gives the CLI with these options (its own transport builds them; the fake took its place).
     from claude_agent_sdk._internal.transport.subprocess_cli import SubprocessCLITransport
@@ -516,6 +525,291 @@ def test_claude_code_runs_on_the_model_of_the_run_else_the_environments(tmp_path
     assert model_flag(_claude(tmp_path, _samples, model=None, env=variable)) == ("sonnet", "sonnet")
     none = {"EVO_WORKER_CLAUDE_CODE_MODEL": ""}
     assert model_flag(_claude(tmp_path, _samples, env=none)) == (None, None), "Claude Code chooses, as it would"
+
+
+# Claude Code's commands in the background, as 2.1.291 reports them (claude_code's docstring)
+
+BG_TOOL = "toolu_01KKk8DSDUxjYSQacRmPUgZh"
+BG_TASK = "bwuto26y4"
+BG_COMMAND = "sleep 20 && date -u"
+BG_OUTPUT = f"/private/tmp/claude-501/scratch/{SESSION}/tasks/{BG_TASK}.output"
+BG_SUMMARY = f'Background command "{BG_COMMAND}" completed (exit code 0)'
+# No timer of the adapter fires within a test unless the test shortens it.
+SLOW = {"background_wait": 60.0, "follow_up_after": 60.0, "turn_grace": 60.0}
+
+
+def _system(subtype: str, **fields) -> dict:
+    return {"type": "system", "subtype": subtype, "uuid": f"u-{subtype}", "session_id": SESSION, **fields}
+
+
+def _text(text: str) -> dict:
+    return _assistant({"type": "text", "text": text})
+
+
+def background_start(tool_id: str = BG_TOOL, task: str = BG_TASK) -> list[dict]:
+    """What Claude Code prints when the agent starts BG_COMMAND in the background."""
+    use = {"type": "tool_use", "id": tool_id, "name": "Bash"}
+    use["input"] = {"command": BG_COMMAND, "description": "Sleep, then print the date", "run_in_background": True}
+    result = _tool_result(
+        tool_id,
+        f"Command running in background with ID: {task}. Output is being written to: {BG_OUTPUT}. You will be "
+        "notified when it completes.",
+    )
+    result["tool_use_result"] = {"stdout": "", "stderr": "", "interrupted": False, "backgroundTaskId": task}
+    listed = [{"task_id": task, "task_type": "local_bash", "description": BG_COMMAND}]
+    started = {"task_id": task, "tool_use_id": tool_id, "description": BG_COMMAND, "task_type": "local_bash"}
+    return [
+        _assistant(use),
+        _system("background_tasks_changed", tasks=listed),
+        _system("task_started", is_backgrounded=True, **started),
+        result,
+    ]
+
+
+def background_end(tool_id: str = BG_TOOL, task: str = BG_TASK, status: str = "completed") -> list[dict]:
+    """What Claude Code prints when that command ends; ``killed`` when it stops it."""
+    told = "stopped" if status == "killed" else status
+    return [
+        _system("background_tasks_changed", tasks=[]),
+        _system("task_updated", task_id=task, patch={"status": status, "end_time": 1791283664767}),
+        _system(
+            "task_notification",
+            task_id=task,
+            tool_use_id=tool_id,
+            status=told,
+            output_file=BG_OUTPUT,
+            summary=BG_SUMMARY,
+        ),
+    ]
+
+
+def _print(cli: FakeCLI, messages: list[dict]) -> None:
+    for message in messages:
+        cli.print(message)
+
+
+async def _started_in_background(cli: FakeCLI) -> None:
+    """The first turn: the prompt, the command started in the background, and the turn's result."""
+    await cli.users.get()
+    cli.print(INIT)
+    _print(cli, background_start())
+    cli.print(_text("STARTED"))
+    cli.print(_result("STARTED"))
+
+
+async def _turn_ended(adapter, events, results: int = 1) -> None:
+    """Wait until the adapter has taken ``results`` results (a usage_update each)."""
+    await _until(lambda: _kinds(events).count("usage_update") >= results)
+    await asyncio.sleep(0.05)
+
+
+def test_claude_keeps_the_session_open_for_a_background_command_and_goes_on_in_the_turn_the_cli_opens(tmp_path):
+    async def behaviour(cli: FakeCLI) -> None:
+        await _started_in_background(cli)
+        await cli.users.get()  # the owner's message, while the command runs, has a turn of its own
+        cli.print(INIT)
+        cli.print(_text("SECOND"))
+        cli.print(_result("SECOND"))
+        await cli.go.wait()
+        _print(cli, background_end())
+        cli.print(INIT)  # Claude Code opens a turn by itself, for the notification
+        cli.print(_text("Tue Oct  6 10:47:44 UTC 2026 DONE"))
+        cli.print(_result("DONE"))
+        await cli.input_closed.wait()
+        cli.exit()
+
+    async def during(adapter, events) -> None:
+        await _turn_ended(adapter, events)
+        await asyncio.sleep(0.2)
+        assert ("end_input",) not in adapter.cli.log, "the input stays open while the command runs"
+        assert adapter.background.pending and adapter.background.running == {BG_TASK: BG_COMMAND}
+        await adapter.send(MESSAGE)  # the owner can still write: the input is open
+        await _turn_ended(adapter, events, 2)
+        await asyncio.sleep(0.2)
+        assert ("end_input",) not in adapter.cli.log, "the command still runs after the owner's turn"
+        adapter.cli.go.set()
+
+    adapter = _claude(tmp_path, behaviour, timers=SLOW)
+    events, outcome = asyncio.run(_collect(adapter, during))
+    assert adapter.cli.log == [
+        ("control", "initialize"),
+        ("user", PROMPT),
+        ("result", "STARTED"),
+        ("user", MESSAGE),
+        ("result", "SECOND"),
+        ("result", "DONE"),
+        ("end_input",),
+    ], "the adapter writes nothing of its own when the CLI opens the turn"
+    assert not adapter.background.pending
+    assert adapter.background.ended[BG_TASK] == {
+        "description": BG_COMMAND,
+        "status": "completed",
+        "summary": BG_SUMMARY,
+        "output_file": BG_OUTPUT,
+    }
+    assert outcome.completed and outcome.error is None and outcome.summary == "DONE"
+    assert outcome.usage["output_tokens"] == 9, "every turn counts"
+    notified = [
+        e.body["raw"] for e in events if e.kind == "output" and e.body["raw"].get("subtype") == "task_notification"
+    ]
+    assert [raw["status"] for raw in notified] == ["completed"], "the CLI's own report of the end is in the log"
+
+
+def test_claude_writes_to_the_agent_when_a_background_command_ends_and_the_cli_opens_no_turn(tmp_path):
+    async def behaviour(cli: FakeCLI) -> None:
+        await _started_in_background(cli)
+        await asyncio.sleep(0.1)
+        _print(cli, background_end())
+        await cli.users.get()  # no turn of its own: the adapter's message opens one
+        cli.print(INIT)
+        cli.print(_text("DONE"))
+        cli.print(_result("DONE"))
+        await cli.input_closed.wait()
+        cli.exit()
+
+    adapter = _claude(tmp_path, behaviour, timers={**SLOW, "follow_up_after": 0.1})
+    events, outcome = asyncio.run(_collect(adapter))
+    follow_up = claude_module.FOLLOW_UP.format(ended=f"- {BG_SUMMARY} (completed); its output is in {BG_OUTPUT}")
+    assert adapter.cli.log == [
+        ("control", "initialize"),
+        ("user", PROMPT),
+        ("result", "STARTED"),
+        ("user", follow_up),
+        ("result", "DONE"),
+        ("end_input",),
+    ]
+    assert outcome.completed and outcome.summary == "DONE"
+
+
+def test_claude_ends_at_a_result_once_result_json_is_written_whatever_runs_in_the_background(tmp_path):
+    result_file = tmp_path / "worktree" / runs.RESULT_FILE
+
+    async def behaviour(cli: FakeCLI) -> None:
+        await cli.users.get()
+        cli.print(INIT)
+        _print(cli, background_start())
+        result_file.parent.mkdir(parents=True, exist_ok=True)
+        result_file.write_text('{"verify_commands": ["true"], "summary": "done"}', encoding="utf-8")
+        cli.print(_text("DONE"))
+        cli.print(_result("DONE"))
+        await cli.input_closed.wait()
+        _print(cli, background_end(status="killed"))  # Claude Code stops the command once its input ends
+        cli.exit()
+
+    adapter = _claude(tmp_path, behaviour, timers=SLOW)
+    events, outcome = asyncio.run(_collect(adapter))
+    assert adapter.cli.log[-2:] == [("result", "DONE"), ("end_input",)]
+    assert adapter.background.ended[BG_TASK]["status"] == "stopped"
+    assert outcome.completed and outcome.summary == "DONE"
+
+
+def test_claude_leaves_a_background_command_that_runs_past_the_wait_and_ends_its_input(tmp_path):
+    async def behaviour(cli: FakeCLI) -> None:
+        await _started_in_background(cli)
+        await cli.input_closed.wait()  # a server, say: it never ends by itself
+        _print(cli, background_end(status="killed"))
+        cli.exit()
+
+    adapter = _claude(tmp_path, behaviour, timers={**SLOW, "background_wait": 0.2})
+    began = time.monotonic()
+    events, outcome = asyncio.run(_collect(adapter))
+    assert time.monotonic() - began >= 0.2, "the session waited for the command first"
+    assert adapter.cli.log[-2:] == [("result", "STARTED"), ("end_input",)]
+    assert outcome.completed and outcome.summary == "STARTED", "the agent's turn completed; the command was left"
+
+
+def test_claude_gives_the_cli_a_moment_after_a_turn_in_which_a_background_command_ended(tmp_path):
+    def script(opens_a_turn: bool):
+        async def behaviour(cli: FakeCLI) -> None:
+            await cli.users.get()
+            cli.print(INIT)
+            _print(cli, background_start())
+            _print(cli, background_end())  # ends while the turn still runs
+            cli.print(_text("STARTED"))
+            cli.print(_result("STARTED"))
+            if opens_a_turn:  # the notification came too late for the turn: the CLI opens one for it
+                cli.print(INIT)
+                cli.print(_text("DONE"))
+                cli.print(_result("DONE"))
+            await cli.input_closed.wait()
+            cli.exit()
+
+        return behaviour
+
+    adapter = _claude(tmp_path, script(True), timers={**SLOW, "turn_grace": 0.5})
+    events, outcome = asyncio.run(_collect(adapter))
+    assert [entry for entry in adapter.cli.log if entry[0] != "control"] == [
+        ("user", PROMPT),
+        ("result", "STARTED"),
+        ("result", "DONE"),
+        ("end_input",),
+    ]
+    assert outcome.summary == "DONE"
+
+    adapter = _claude(tmp_path, script(False), timers={**SLOW, "turn_grace": 0.1})
+    events, outcome = asyncio.run(_collect(adapter))
+    assert adapter.cli.log[-2:] == [("result", "STARTED"), ("end_input",)], "no turn came: the input ends"
+    assert outcome.completed and outcome.summary == "STARTED"
+
+
+def test_stopping_claude_while_it_waits_for_a_background_command_ends_its_input_at_once(tmp_path):
+    async def behaviour(cli: FakeCLI) -> None:
+        await _started_in_background(cli)
+        await cli.input_closed.wait()
+        _print(cli, background_end(status="killed"))
+        cli.exit()
+
+    async def during(adapter, events) -> None:
+        await _turn_ended(adapter, events)
+        assert ("end_input",) not in adapter.cli.log
+        await adapter.stop_at_turn_boundary()  # a park, say
+
+    adapter = _claude(tmp_path, behaviour, timers=SLOW)
+    events, outcome = asyncio.run(_collect(adapter, during))
+    assert adapter.cli.log[-2:] == [("result", "STARTED"), ("end_input",)]
+    assert outcome.completed and outcome.summary == "STARTED"
+
+
+def test_the_background_tracker_follows_background_bash_calls_and_their_tasks_only():
+    needs("claude_agent_sdk")
+    from claude_agent_sdk._internal.message_parser import parse_message
+
+    def run(messages: list[dict]) -> tuple[claude_module.Background, list[str]]:
+        background, ended = claude_module.Background(), []
+        for raw in messages:
+            ended += background.see(parse_message(raw))
+        return background, ended
+
+    # A command in the foreground has a task too, which is no background command.
+    background, ended = run(claude_samples())
+    assert not background.pending and ended == [] and background.ended == {}
+
+    # Started, then ended: the first report of the end counts, the later ones add what they say.
+    background, ended = run(background_start())
+    assert background.calls == {BG_TOOL: BG_TASK} and background.running == {BG_TASK: BG_COMMAND}
+    for raw in background_end():
+        ended += background.see(parse_message(raw))
+    assert ended == [BG_TASK] and not background.pending
+    assert background.ended[BG_TASK]["summary"] == BG_SUMMARY
+
+    # A call that failed, or whose result names no background task, started nothing.
+    use = _assistant(
+        {"type": "tool_use", "id": "t-2", "name": "Bash", "input": {"command": "x", "run_in_background": True}}
+    )
+    failed = _tool_result("t-2", "Error: no such file")
+    failed["message"]["content"][0]["is_error"] = True
+    assert not run([use, failed])[0].pending
+    assert not run([use, _tool_result("t-2", "x ran")])[0].pending
+    assert run([use])[0].pending, "until its result comes, the call may have started a command"
+
+    # A subagent's call is the subagent's; a task the CLI lists in the background is waited for, whatever started it,
+    # and a task_updated alone may end it.
+    subagent = copy.deepcopy(use)
+    subagent["parent_tool_use_id"] = "toolu_task"
+    assert not run([subagent])[0].pending
+    listed = _system("background_tasks_changed", tasks=[{"task_id": "b-auto", "description": "npm test"}])
+    background, ended = run([listed, _system("task_updated", task_id="b-auto", patch={"status": "killed"})])
+    assert ended == ["b-auto"] and background.ended["b-auto"] == {"description": "npm test", "status": "killed"}
 
 
 def test_claude_thinking_and_its_todo_list_come_out_as_thoughts_and_a_plan():
@@ -1490,6 +1784,71 @@ def test_selftest_runs_the_adapter_in_a_scratch_repository_and_prints_the_events
     assert "Self-test of claude-code passed" in out
     scratch = Path(out.split(" in ", 1)[1].split(",", 1)[0])
     assert not scratch.exists(), "the scratch repository is removed"
+
+
+class BackgroundSelftestAdapter(SelftestAdapter):
+    """An agent that does what ``selftest --background`` asks, its events as the Claude Code adapter emits them; with
+    ``early``, one that writes the file before the command ended."""
+
+    early = False
+
+    async def start(self):
+        self.player = asyncio.create_task(self._play())
+
+    async def _play(self):
+        given = {"command": selftest_module.BACKGROUND_COMMAND, "run_in_background": True}
+        notified = {"type": "system", "subtype": "task_notification", "tool_use_id": "t-bg", "status": "completed"}
+        result_file = self.context.worktree / "selftest.txt"
+        if self.early:
+            result_file.write_text("ok\n", encoding="utf-8")
+        for event in (
+            common.tool_call("t-bg", "Bash", "execute", "pending", given),
+            common.message_chunk("STARTED"),
+            common.usage_update({"output_tokens": 1}),
+        ):
+            self.queue.put_nowait(event)
+        await asyncio.sleep(1.5 if self.early else 0.05)
+        self.queue.put_nowait(common.raw(notified))
+        await asyncio.sleep(0.05)
+        if not self.early:
+            result_file.write_text("ok\n", encoding="utf-8")
+        for event in (common.message_chunk("DONE"), common.usage_update({"output_tokens": 1}), None):
+            self.queue.put_nowait(event)
+
+
+class EarlyBackgroundSelftestAdapter(BackgroundSelftestAdapter):
+    early = True
+
+
+def test_selftest_background_passes_when_the_agent_finishes_after_its_background_command(monkeypatch, capsys):
+    from evo_agents.cli import main
+
+    monkeypatch.setenv(adapter_module.ADAPTERS_VARIABLE, f"claude-code={__name__}:BackgroundSelftestAdapter")
+    assert main(["worker", "selftest", "--runtime", "claude-code", "--background"]) == 0
+    out = capsys.readouterr().out
+    assert ", with `sleep 20 && date -u` in the background" in out
+    assert "The agent started `sleep 20 && date -u` in the background." in out
+    assert "The agent's turn ended while the command runs: the session waits for it." in out
+    assert "The background command ended (completed)" in out
+    assert "Run done: the session waited for `sleep 20 && date -u`" in out
+    assert "Self-test of claude-code passed" in out
+
+
+def test_selftest_background_fails_when_the_file_came_before_the_command_ended(monkeypatch, capsys):
+    from evo_agents.cli import main
+
+    monkeypatch.setenv(adapter_module.ADAPTERS_VARIABLE, f"claude-code={__name__}:EarlyBackgroundSelftestAdapter")
+    assert main(["worker", "selftest", "--runtime", "claude-code", "--background"]) == 1
+    captured = capsys.readouterr()
+    assert "the agent wrote selftest.txt before the background command ended" in captured.err
+    assert "Run done" not in captured.out
+
+
+def test_selftest_background_is_for_claude_code_only(monkeypatch, capsys):
+    from evo_agents.cli import main
+
+    assert main(["worker", "selftest", "--runtime", "opencode", "--background"]) == 2
+    assert "--background checks the background commands of claude-code; opencode runs none" in capsys.readouterr().err
 
 
 def test_selftest_of_an_unavailable_runtime_says_why(monkeypatch, capsys, tmp_path):
