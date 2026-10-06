@@ -33,8 +33,9 @@ first of runs.RUNTIMES it has), of a repo it has a checkout of, pinned to no oth
 neither draining nor revoked and holds fewer runs than its slots. A worker has one claim waiting at a time: a newer
 claim answers the older one with no run. The claimed run is leased for EVO_HUB_RUN_LEASE_SECONDS (LEASE_SECONDS by
 default) and comes with its prompt (``runs.build_prompt`` over the plan revision it was dispatched from). A plan run
-needs a checkout of every repo in its repos, and comes with ``runs.build_plan_prompt`` and the plan at the hub's
-current revision, which the daemon writes to ``runs.PLAN_FILE``. A claim
+needs a checkout of every repo in its repos and a daemon of runs.PLAN_RUN_AGENT or later, and comes with
+``runs.build_plan_prompt`` and the plan at the hub's current revision, which the daemon writes to ``runs.PLAN_FILE``.
+A dispatch pinned to a worker whose last heartbeat says it could never claim the run gets 409 (``_fits``). A claim
 whose worker hung up (a daemon stopping drops the claim it waits on) takes nothing: it ends before it looks at the
 queue again, and a run it leased in the meantime is rolled back before the transaction commits, so the run stays
 queued for the next claim instead of waiting out a lease nobody holds.
@@ -746,23 +747,73 @@ def _dispatcher(access: ProjectAccess) -> None:
 
 PINNABLE = """
 SELECT w.owner_id, w.name, w.revoked_at,
-       EXISTS (SELECT 1 FROM worker_projects wp WHERE wp.worker_id = w.id AND wp.project_id = %s)
+       EXISTS (SELECT 1 FROM worker_projects wp WHERE wp.worker_id = w.id AND wp.project_id = %s),
+       w.runtimes, w.checkouts, w.agent_version
   FROM workers w WHERE w.id = %s
 """
 
 
-async def _pinnable(conn, user: Principal, access: ProjectAccess, worker_id: int) -> None:
+@dataclass(frozen=True)
+class Pinned:
+    """The worker a dispatch pins its runs to, as its last heartbeat reported it."""
+
+    id: int
+    name: str
+    runtimes: dict
+    checkouts: dict
+    agent_version: str | None
+
+
+async def _pinnable(conn, user: Principal, access: ProjectAccess, worker_id: int) -> Pinned:
     """403 unless worker ``worker_id`` is ``user``'s own; 409 when it is revoked or does not serve the project."""
     row = await (await conn.execute(PINNABLE, (access.project_id, worker_id))).fetchone()
     if row is None or row[0] != user.user_id:  # the same answer for another member's worker and for no worker
         raise HTTPException(
             403, f"a run goes only to a worker of the member who dispatches it, and you have no worker {worker_id}"
         )
-    _, name, revoked_at, serves = row
+    _, name, revoked_at, serves, reported, checkouts, agent_version = row
     if revoked_at is not None:
         raise HTTPException(409, f"worker {name} was revoked at {revoked_at.isoformat()}; it takes no runs")
     if not serves:
         raise HTTPException(409, f"worker {name} does not take runs of project {access.name}: register it for it")
+    return Pinned(worker_id, name, reported or {}, checkouts or {}, agent_version)
+
+
+def _unfit(worker: Pinned, project: str, kind: str, repos: list[str], runtime: str) -> list[str]:
+    """What keeps ``worker`` from ever claiming a run of ``kind`` over ``repos`` asking for ``runtime``, as its last
+    heartbeat reported it and the claim checks it; empty when nothing does."""
+    problems = []
+    if kind == "plan" and not runs.takes_plan_runs(worker.agent_version):
+        problems.append(
+            f"it runs evo-agents {worker.agent_version or 'of an unknown version'}, and a plan run needs "
+            f"{runs.version_text(runs.PLAN_RUN_AGENT)} or later: upgrade it and restart its daemon"
+        )
+    usable = [name for name in runs.RUNTIMES if available(worker.runtimes.get(name))]
+    if runtime == "any" and not usable:
+        problems.append("it reports no runtime available")
+    elif runtime != "any" and runtime not in usable:
+        problems.append(f"it does not report {runtime} available")
+    missing = [f"{project}/{repo}" for repo in repos if f"{project}/{repo}" not in worker.checkouts]
+    if missing:
+        problems.append(
+            f"it has no checkout of {', '.join(missing)}: clone each one where the harness registry or the "
+            "project's workspace places it, or name its path in checkouts of the worker's config.json, then restart "
+            "its daemon"
+        )
+    return problems
+
+
+def _fits(worker: Pinned | None, access: ProjectAccess, kind: str, repos: list[str], runtime: str) -> None:
+    """409 when the run is pinned to a worker that cannot claim it, rather than a run that stays queued for good."""
+    if worker is None:
+        return
+    problems = _unfit(worker, access.name, kind, repos, runtime)
+    if problems:
+        raise HTTPException(
+            409,
+            f"worker {worker.name} cannot take this run: {'; '.join(problems)}. Dispatch it again once the worker's "
+            "heartbeat reports that, or dispatch it to another worker; nothing was dispatched",
+        )
 
 
 INSERT_RUN = """
@@ -791,7 +842,7 @@ async def _queue_run(
     mode: str,
     approval: str,
     timeout_s: int,
-    pinned: int | None,
+    pinned: Pinned | None,
     parent: int | None = None,
 ) -> int:
     """Queue a run of step ``key`` of the plan ``held``, in the caller's transaction; HTTPException when the step
@@ -812,6 +863,7 @@ async def _queue_run(
         raise HTTPException(
             422, f"step {key} names no repo and the plan does not list exactly one: give the step a repo"
         )
+    _fits(pinned, access, "step", [name], runtime)
     params = {
         "project": access.project_id,
         "plan": held.plan_id,
@@ -819,7 +871,7 @@ async def _queue_run(
         "title": runs.step_title(step),
         "revision": held.revision,
         "user": user.user_id,
-        "pinned": pinned,
+        "pinned": None if pinned is None else pinned.id,
         "runtime": runtime,
         "model": model,
         "mode": mode,
@@ -868,8 +920,7 @@ async def dispatch(request: Request, project: ProjectName, body: Dispatch, user:
         access = await project_access(conn, user, project)
         _dispatcher(access)
         held = await plan_routes._visible(conn, access, body.plan_id, None)
-        if body.worker_id is not None:
-            await _pinnable(conn, user, access, body.worker_id)
+        pinned = None if body.worker_id is None else await _pinnable(conn, user, access, body.worker_id)
         await _lock_plan(conn, access.project_id, body.plan_id)
         activity = await _activity(conn, access.project_id, body.plan_id)
         _no_plan_run(activity, body.plan_id)
@@ -887,7 +938,7 @@ async def dispatch(request: Request, project: ProjectName, body: Dispatch, user:
                 mode=body.mode,
                 approval=body.approval,
                 timeout_s=body.timeout_min * 60,
-                pinned=body.worker_id,
+                pinned=pinned,
             )
             target = _run_target(project, body.plan_id, key, run_id)
             await audit.record(
@@ -962,8 +1013,7 @@ async def dispatch_plan(request: Request, project: ProjectName, body: PlanRunDis
         access = await project_access(conn, user, project)
         _dispatcher(access)
         held = await plan_routes._visible(conn, access, body.plan_id, None)
-        if body.worker_id is not None:
-            await _pinnable(conn, user, access, body.worker_id)
+        pinned = None if body.worker_id is None else await _pinnable(conn, user, access, body.worker_id)
         await _lock_plan(conn, access.project_id, body.plan_id)
         activity = await _activity(conn, access.project_id, body.plan_id)
         if activity.plan_run is not None:
@@ -976,6 +1026,8 @@ async def dispatch_plan(request: Request, project: ProjectName, body: PlanRunDis
                 f"step {key} of plan {body.plan_id} {busy}: a plan run waits until no run of the plan's steps is "
                 "active; nothing was dispatched",
             )
+        repos = _plan_run_repos(held)
+        _fits(pinned, access, "plan", [entry["repo"] for entry in repos], body.runtime)
         params = {
             "project": access.project_id,
             "plan": held.plan_id,
@@ -987,7 +1039,7 @@ async def dispatch_plan(request: Request, project: ProjectName, body: PlanRunDis
             "model": body.model,
             "mode": body.mode,
             "timeout": body.timeout_h * 3600,
-            "repos": Jsonb(_plan_run_repos(held)),
+            "repos": Jsonb(repos),
         }
         try:
             async with conn.transaction():
@@ -1137,8 +1189,7 @@ async def rerun(request: Request, project: ProjectName, run_id: RunId, user: Cur
         if state not in runs.TERMINAL_STATES:
             raise HTTPException(409, f"run {run_id} is still {state}: a run is rerun once it has ended")
         held = await plan_routes._visible(conn, access, plan_id, None)
-        if pinned is not None:
-            await _pinnable(conn, user, access, pinned)
+        worker = None if pinned is None else await _pinnable(conn, user, access, pinned)
         await _lock_plan(conn, access.project_id, plan_id)
         activity = await _activity(conn, access.project_id, plan_id)
         _no_plan_run(activity, plan_id)
@@ -1154,7 +1205,7 @@ async def rerun(request: Request, project: ProjectName, run_id: RunId, user: Cur
             mode=mode,
             approval=approval,
             timeout_s=timeout_s,
-            pinned=pinned,
+            pinned=worker,
             parent=run_id,
         )
         target = f"{_run_target(project, plan_id, key, new_id)} rerun of run:{run_id}"
@@ -1213,7 +1264,7 @@ class RunWakeups:
 
 
 WORKER_OF_TOKEN = """
-SELECT id, owner_id, name, slots, runtimes, checkouts, drained_at, revoked_at
+SELECT id, owner_id, name, slots, runtimes, checkouts, drained_at, revoked_at, agent_version
   FROM workers WHERE token_id = %s
    FOR UPDATE
 """
@@ -1234,7 +1285,8 @@ SELECT wp.project_id, p.name
    AND EXISTS (SELECT 1 FROM grants g
                 WHERE g.user_id = %(owner)s AND g.project_id = wp.project_id AND g.role = ANY(%(writers)s))
 """
-# A run of one step needs a checkout of its repo, and a plan run one of every repo in its repos.
+# A run of one step needs a checkout of its repo, and a plan run one of every repo in its repos and a daemon of
+# runs.PLAN_RUN_AGENT or later.
 CLAIMABLE = """
 WITH checkouts (project_id, repo) AS (SELECT * FROM unnest(%(pids)s::bigint[], %(repos)s::text[]))
 SELECT r.id, r.runtime
@@ -1242,6 +1294,7 @@ SELECT r.id, r.runtime
  WHERE r.state = 'queued' AND r.project_id = ANY(%(projects)s) AND r.dispatched_by = %(owner)s
    AND (r.pinned_worker_id IS NULL OR r.pinned_worker_id = %(worker)s)
    AND (r.runtime = 'any' OR r.runtime = ANY(%(runtimes)s))
+   AND (r.kind <> 'plan' OR %(plan_runs)s)
    AND CASE WHEN r.kind = 'plan'
             THEN NOT EXISTS (SELECT 1 FROM jsonb_array_elements(r.repos) AS needed (entry)
                               WHERE NOT EXISTS (SELECT 1 FROM checkouts c WHERE c.project_id = r.project_id
@@ -1277,7 +1330,7 @@ async def _try_claim(
     ``gone`` says the worker hung up once the run is leased, raise ClaimAbandoned before the transaction commits,
     which rolls the lease back."""
     async with pool.connection() as conn:
-        worker_id, owner_id, name, slots, reported, checkouts, drained_at, _ = await _worker_of(conn, user)
+        worker_id, owner_id, name, slots, reported, checkouts, drained_at, _, version = await _worker_of(conn, user)
         if drained_at is not None:
             return None
         held = (await (await conn.execute(HELD_COUNT, (worker_id, list(runs.HELD_STATES)))).fetchone())[0]
@@ -1301,6 +1354,7 @@ async def _try_claim(
             "runtimes": runtimes,
             "pids": [pid for pid, _ in pairs],
             "repos": [repo for _, repo in pairs],
+            "plan_runs": runs.takes_plan_runs(version),
         }
         row = await (await conn.execute(CLAIMABLE, params)).fetchone()
         if row is None:
@@ -1439,7 +1493,7 @@ async def heartbeat(request: Request, body: HeartbeatRequest, user: CurrentUser)
     reported = list(dict.fromkeys(body.runs))
     runtimes, checkouts = body.stored()
     async with request.app.state.pool.connection() as conn:
-        worker_id, _, _, _, _, _, drained_at, _ = await _worker_of(conn, user)
+        worker_id, _, _, _, _, _, drained_at, *_ = await _worker_of(conn, user)
         await conn.execute(
             RECORD_HEARTBEAT,
             {

@@ -1491,7 +1491,8 @@
       "errors": {
         "forbidden": "Hub từ chối: dispatch cần quyền ghi trên dự án này, và worker được ghim phải là worker của bạn.",
         "notFound": "Plan không còn trên hub, hoặc bạn không còn quyền đọc nó.",
-        "conflict": "Một bước không còn sẵn sàng, hoặc một lần dispatch khác đã nhận nó trước. Danh sách bước đã được cập nhật; kiểm tra lại rồi thử lần nữa.",
+        "conflict": "Một bước không còn sẵn sàng, một lần dispatch khác đã nhận nó trước, hoặc worker được chọn không nhận được run này. Danh sách bước đã được cập nhật; kiểm tra lại rồi thử lần nữa.",
+        "hubSays": "Hub báo: {message}",
         "invalid": "Hub không chấp nhận lần dispatch này."
       }
     },
@@ -1568,7 +1569,7 @@
       "errors": {
         "forbidden": "Hub từ chối: chạy plan cần quyền ghi trên dự án này, và worker được ghim phải là của bạn.",
         "notFound": "Plan không còn trên hub, hoặc bạn không còn quyền đọc plan.",
-        "conflict": "Hub không đưa plan run vào queue: plan đang có run hoạt động, hoặc không còn bước nào đang chờ làm. Plan đã được tải lại; kiểm tra rồi thử lại.",
+        "conflict": "Hub không đưa plan run vào queue: plan đang có run hoạt động hoặc không còn bước nào đang chờ làm, hoặc worker được chọn không nhận được run này. Plan đã được tải lại; kiểm tra rồi thử lại.",
         "invalid": "Hub không nhận plan run này.",
         "hubSays": "Hub báo: {message}"
       },

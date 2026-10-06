@@ -188,7 +188,9 @@ describe("DispatchDialog", () => {
     const dialog = screen.getByRole("dialog", { name: "Dispatch run" });
     await waitFor(() => expect(within(dialog).getByRole("checkbox", { name: /Docs/ })).toBeChecked());
     await user.click(within(dialog).getByRole("button", { name: "Dispatch 1 run" }));
-    expect(await within(dialog).findByRole("alert")).toHaveTextContent("Một bước không còn sẵn sàng");
+    const alert = await within(dialog).findByRole("alert");
+    expect(alert).toHaveTextContent("Một bước không còn sẵn sàng");
+    expect(alert).toHaveTextContent("Hub báo: step 4 of plan rollout is not ready");
     expect(screen.getByTestId("open-state")).toHaveTextContent("open");
     expect(dispatched).not.toHaveBeenCalled();
     expect((await api.seen.find((request) => request.method === "POST")?.clone().json())?.worker_id).toBeNull();
