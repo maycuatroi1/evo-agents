@@ -59,6 +59,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 
 from tests.hub import live
+from tests.hub.fake_github import Account
 from tests.hub.live import ADMIN, bearer
 from tests.hub.test_plans import registration as plans_registration
 from tests.hub.test_runs import OWNER, PROJECT, WRITER
@@ -72,6 +73,7 @@ PLAN = "leased-credentials"
 REPO = "evo-agents"  # its origin is the git http-backend, which a git secret of the owner covers
 APP_REPO = "evo-cli"  # its origin on the hub is on github.com, where the fake GitHub's App is installed
 GITHUB_OWNER = "maycuatroi1"
+OWNER_GITHUB_ID = 902
 BRANCHES = {REPO: "feat/leased", APP_REPO: "feat/app-token"}
 STEPS = {REPO: 1, APP_REPO: 2}
 OTHER_PROJECT = "evo-lms"  # a project the owner writes in too; the agent of a run of PROJECT reaches none of it
@@ -486,6 +488,7 @@ def world(hub_db, tmp_path, github, s3, monkeypatch):
     private, public = app_key()
     github.app_public_key = public
     github.install(GITHUB_OWNER, APP_REPO)
+    github.collaborate(GITHUB_OWNER, APP_REPO, Account(OWNER, OWNER_GITHUB_ID), "write")  # the owner may push there
     with ExitStack() as stack:
         hub = Hub(hub_db, tmp_path, github, s3)
         hub.env.update(
@@ -501,7 +504,7 @@ def world(hub_db, tmp_path, github, s3, monkeypatch):
         client = stack.enter_context(httpx.Client(base_url=hub.url, timeout=30))
         tokens = {
             "admin": live.sign_in(client, github, ADMIN, 901)["token"],
-            "owner": live.sign_in(client, github, OWNER, 902)["token"],
+            "owner": live.sign_in(client, github, OWNER, OWNER_GITHUB_ID)["token"],
         }
         made = World(tmp_path, hub, client, github, git_http, tokens)
         stack.callback(made.kill_daemons)  # before the hub stops

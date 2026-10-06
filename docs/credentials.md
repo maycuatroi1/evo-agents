@@ -31,7 +31,8 @@ Neither can be stopped from reading what a run is using while it runs: root read
 must have its credentials to work. What the design limits is **how much** they get and **for how long**:
 
 - a run gets only credentials for its own project, its own repos and its own worker;
-- the GitHub token covers only the run's repos, with `contents: write` and `metadata: read`, and lives an hour;
+- the GitHub token covers only the run's repos that its owner may push to on GitHub, with `contents: write` and
+  `metadata: read`, and lives an hour;
 - nothing is written to disk, so nothing outlives the run on the machine;
 - the hub revokes the GitHub token when the run ends, and the owner can cut every credential at once by revoking the
   worker or deleting the secret.
@@ -53,7 +54,20 @@ The **GitHub App** is the hub's own (`EVO_HUB_GITHUB_APP_ID`, `EVO_HUB_GITHUB_AP
 run's github.com repos the hub finds the installation (`GET /repos/{owner}/{repo}/installation`) and asks for a token
 for those repos only (`POST /app/installations/{id}/access_tokens`). A run over repos of two GitHub owners gets two
 tokens. A repo the App is not installed on gets none, and the run is told why: "the GitHub App is not installed on
-owner/repo". The hub signs each of these calls with a JWT of the App (RS256, issued 60 seconds back, ending 9 minutes
+owner/repo".
+
+The App is installed on GitHub accounts, not given to members, and a project's admin may register any origin for a
+repo of the project. So before a token goes out the hub asks GitHub whether the run's owner may push to each of its
+repos: `GET /repos/{owner}/{repo}/collaborators/{login}/permission`, with the installation token just made, which
+opens the repo, where `login` is the owner's login on the hub, their GitHub login. Only `write`, `maintain` or `admin`,
+for the GitHub account that signed in to the hub (its id is compared, so a login renamed and taken by someone else
+since does not pass), keeps the repo in the token. A repo the owner may not push to gets no token, and the run is told
+why: "LOGIN cannot push to owner/repo on GitHub: their role there is read, and pushing needs write". The token that
+asked opened it too, so it is revoked and a token is made again for the other repos of the installation. An answer
+that allows is kept 5 minutes per login and repo (`PERMISSION_CACHE_SECONDS`); a refusal is not kept, so push access
+granted on GitHub counts at the run's next ask.
+
+The hub signs each of these calls with a JWT of the App (RS256, issued 60 seconds back, ending 9 minutes
 ahead, inside the 10 minutes GitHub allows), keeps an installation it found for 10 minutes per repo, and looks again
 every time for a repo the App is not installed on, so installing the App counts at the run's next ask. A token is
 revoked with itself (`DELETE /installation/token`).
@@ -131,13 +145,15 @@ bound to the run's project, bound to no worker or to this one, and not past its 
 - each `env` secret, one per variable: a secret bound to this worker wins over one bound to any worker, then the
   first by name;
 - each `git` secret whose `url_prefix` covers one of those origins, the longest prefix for each origin;
-- a GitHub App token for the origins on github.com that no `git` secret covers, one per installation: a lease of kind
-  `git` named `github-app:<owner>` for `https://github.com/<owner>`, with the username `x-access-token`.
+- a GitHub App token for the origins on github.com that no `git` secret covers and that the run's owner may push to
+  on GitHub, one per installation: a lease of kind `git` named `github-app:<owner>` for `https://github.com/<owner>`,
+  with the username `x-access-token`.
 
 The answer is `{leases, missing}`. Each lease carries `id`, `kind`, `provider`, `name`, `env_var`, `url_prefix`,
 `username`, `value` and `expires_at`, as `Lease.from_json` reads them. `missing` names each repo whose origin nothing
 covers, with its origin (null when the project registered none) and the reason: no origin, no `git` secret covering
-it, "the GitHub App is not installed on owner/repo", no GitHub App configured, GitHub failing. Without
+it, "the GitHub App is not installed on owner/repo", "LOGIN cannot push to owner/repo on GitHub: ...", no GitHub
+App configured, GitHub failing. Without
 `EVO_HUB_SECRETS_KEY` nothing is leased and every repo is missing with that reason.
 
 Each call records its leases in `credential_leases` and adds one audit row `credential.lease` naming the run, the

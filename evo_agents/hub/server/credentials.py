@@ -12,20 +12,20 @@ project, on any of their workers or on this one, and that has not expired:
 - each secret of kind git whose url_prefix covers one of the origins, the longest prefix for each origin, so a
   secret for ``https://gitlab.example.org/group`` answers for ``git@gitlab.example.org:group/repo.git`` too;
 - a token of the hub's GitHub App for the origins on github.com that no git secret covers, one per installation
-  (``GitHubApp.tokens``): a lease named ``github-app:<account>`` of kind git for ``https://github.com/<owner>``, with
-  GITHUB_GIT_USERNAME.
+  (``GitHubApp.tokens``), for the repos the run's owner may push to on GitHub alone (``GitHubApp.push_refusal``): a
+  lease named ``github-app:<account>`` of kind git for ``https://github.com/<owner>``, with GITHUB_GIT_USERNAME.
 
 The answer is {leases, missing}: each lease as ``evo_agents.hub.credentials.Lease.to_json`` writes it, value included,
 and for each of the run's repos whose origin nothing covers, the repo, its origin and why: no origin registered, no
-secret covering it, the App not installed on it or not configured, GitHub failing. Without EVO_HUB_SECRETS_KEY nothing
-is leased and every repo is missing, with that variable as the reason. A secret is leased once per run and worker:
-asked again, the same lease comes back with the secret's value as it is now. A GitHub token is kept sealed in its lease
-(``sealing.lease_aad``) until it expires, so the hub can still revoke it. Asked again, the run gets the same tokens
-while each has GITHUB_TOKEN_REFRESH_SECONDS or more left, and new ones, in new leases, after that; the tokens they
-replace go on working until they expire, so a push that took one is not cut off. GitHub is asked between two
-transactions, never while the run's row is locked; the second one checks the run is still held, and when it is not,
-the tokens just made are revoked and the answer is 404. Every ask adds one audit row credential.lease naming the run,
-the secrets, the App's accounts and the repos, never a value.
+secret covering it, the App not installed on it or not configured, the owner not allowed to push to it on GitHub,
+GitHub failing. Without EVO_HUB_SECRETS_KEY nothing is leased and every repo is missing, with that variable as the
+reason. A secret is leased once per run and worker: asked again, the same lease comes back with the secret's value as
+it is now. A GitHub token is kept sealed in its lease (``sealing.lease_aad``) until it expires, so the hub can still
+revoke it. Asked again, the run gets the same tokens while each has GITHUB_TOKEN_REFRESH_SECONDS or more left, and new
+ones, in new leases, after that; the tokens they replace go on working until they expire, so a push that took one is
+not cut off. GitHub is asked between two transactions, never while the run's row is locked; the second one checks the
+run is still held, and when it is not, the tokens just made are revoked and the answer is 404. Every ask adds one audit
+row credential.lease naming the run, the secrets, the App's accounts and the repos, never a value.
 
 DELETE on the same route gives back every lease this worker holds of the run, whatever state the run is in now: the
 leases are marked revoked, each GitHub token is revoked with itself (DELETE /installation/token) and its sealed value
@@ -74,7 +74,7 @@ from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.auth import NO_STORE
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.github import GitHubUnavailable
-from evo_agents.hub.server.github_app import GitHubApp, InstallationToken
+from evo_agents.hub.server.github_app import GitHubApp, InstallationToken, Pusher
 from evo_agents.hub.server.runs import NOT_HELD, RunId, _run_target, _worker_of, readable_run
 from evo_agents.hub.server.sealing import Sealed, Sealer, Unsealable, lease_aad, secret_aad
 from evo_agents.hub.server.security import CurrentUser, Principal
@@ -160,6 +160,7 @@ class _Run:
     owner_id: int
     owner: str
     repos: tuple[str, ...]
+    owner_github_id: int | None
 
     @property
     def target(self) -> str:
@@ -208,7 +209,7 @@ class _Survey:
 
 RUN = """
 SELECT r.state, r.worker_id, r.kind, r.project_id, p.name, r.plan_id, r.step_key, r.dispatched_by, u.login, r.repo,
-       r.repos
+       r.repos, u.github_id
   FROM runs r JOIN projects p ON p.id = r.project_id JOIN users u ON u.id = r.dispatched_by
  WHERE r.id = %s
 """
@@ -257,9 +258,9 @@ async def _held_run(conn, worker_id: int, run_id: int, *, lock: bool) -> _Run:
     row = await (await conn.execute(RUN + ("   FOR UPDATE OF r" if lock else ""), (run_id,))).fetchone()
     if row is None or row[1] != worker_id or row[0] not in runs.HELD_STATES:
         raise HTTPException(404, NOT_HELD.format(id=run_id))
-    state, worker, kind, project_id, project, plan_id, step_key, owner_id, owner, repo, repos = row
+    state, worker, kind, project_id, project, plan_id, step_key, owner_id, owner, repo, repos, github_id = row
     names = _run_repos(kind, repo, repos)
-    return _Run(run_id, state, worker, kind, project_id, project, plan_id, step_key, owner_id, owner, names)
+    return _Run(run_id, state, worker, kind, project_id, project, plan_id, step_key, owner_id, owner, names, github_id)
 
 
 def _origins_text(origins) -> str:
@@ -466,7 +467,8 @@ async def lease_credentials(request: Request, run_id: RunId, user: CurrentUser, 
             unset = ", ".join(state.config.github_app_missing())
             reasons = {repo: NO_APP.format(missing=unset) for repo in survey.github}
         else:
-            found = await app.tokens(survey.github.values())
+            pusher = Pusher(survey.run.owner, survey.run.owner_github_id)
+            found = await app.tokens(survey.github.values(), pusher)
             made = found.tokens
             for repo, (owner, name) in survey.github.items():
                 if f"{owner}/{name}" in found.missing:
