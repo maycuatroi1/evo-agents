@@ -89,9 +89,9 @@ transaction is open, and a hub that stops between the two loses nothing.
 
 | Table | Columns |
 | --- | --- |
-| `notifications` | user, kind (`decision` or `notice`), project, run, decision, title, body, link, `created_at`, `read_at` |
-| `notification_channels` | user, kind, `config` (JSON the channel's class reads), `enabled`, `created_at` |
-| `notification_deliveries` | notification, channel, state (`pending`, `delivered`, `failed`), attempts, `next_at`, `last_error` |
+| `notifications` | user, kind (`decision` or `notice`), the decision, or the notice's kind and details (repo, branch, commits), project, run, title, body, link (a path of the hub's site), `created_at`, `read_at` |
+| `notification_channels` | user, kind (not `web`, at most one of a kind per member), `config` (JSON the channel's class reads), `enabled`, `created_at` |
+| `notification_deliveries` | notification, channel (none for the web), state (`pending`, `delivered`, `failed`), attempts, `next_at`, `last_error`, `delivered_at` |
 
 Every member has the web channel without a row of `notification_channels`: a delivery without a channel is the
 web's. A channel of another kind is a row, with what it needs in `config` (for Telegram, the chat it sends to).
@@ -172,8 +172,8 @@ takes at most 5 updates per 10 seconds from one chat and drops the rest, answeri
 
 ### Unlinking
 
-A member unlinks on the web, which deletes the channel and fails its pending deliveries with the reason. Sending
-`/stop` to the bot does the same. When Telegram answers 403 because the member blocked the bot, the hub turns the
+A member unlinks on the web, which deletes the channel and the deliveries waiting for it. Sending `/stop` to the bot
+does the same. When Telegram answers 403 because the member blocked the bot, the hub turns the
 channel off and says so on the web. Losing the grant on a project stops that project's notifications, not the
 channel; deleting the member deletes their channels.
 

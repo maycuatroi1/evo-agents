@@ -11,7 +11,7 @@ A deployment has five parts:
 | api | `evo-agents hub serve`: the HTTP API under `/v1` and the MCP endpoint `/mcp` | none; `/cache` is a cache |
 | worker | `evo-agents hub worker`: background jobs from a queue in Postgres | none; `/cache` is a cache |
 | web | the Next.js server of `web/` | none |
-| Postgres | users, tokens, projects, grants, memories, plans, skills, graph builds, the job queue, the audit trail | all of it |
+| Postgres | users, tokens, projects, grants, memories, plans, skills, graph builds, workers and runs, the decisions of plan runs and the notifications of members, the job queue, the audit trail | all of it |
 | blob store | Cloudflare R2 (any S3 API works): skill bundles, run logs, source files and built graphs | content-addressed bytes |
 
 A reverse proxy in front sends `/v1` and `/mcp` to `api:8080` and every other path to `web:3000`, on one domain.
@@ -224,6 +224,12 @@ and the hub queues a run; a worker of that member claims it, runs the step with 
 and sends its log, state and evidence back over HTTPS, and the hub records the step's progress in the plan. Only the
 owner of a worker dispatches runs to it, and dispatching needs the writer role. `docs/workers.md` describes the
 protocol, the run states and who may move a run between them.
+
+Schema 0009 holds the workers and runs: `workers`, `worker_projects`, `worker_pairings`, `runs`, `run_events` and
+`run_inbox`. Schema 0010 adds plan runs (`runs.kind` is `step` or `plan`, a plan run has `repos` instead of a step key
+and a repo, and the states `waiting` and `parked`), the decisions their agents ask (`decisions`) and what reaches the
+members (`notifications`, `notification_channels`, `notification_deliveries`), which `docs/notifications.md`
+describes. Going back to 0009 deletes the plan runs with their decisions and notifications.
 
 The daemon on the member's machine is the `evo-agents worker` command group, which needs the `worker` extra
 (`uv tool install 'evo-ak[worker]'`). It is not `evo-agents hub worker`, the hub's own job worker (see Worker and
