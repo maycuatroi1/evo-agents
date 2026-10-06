@@ -17,7 +17,9 @@ artifact in the bucket (``evo_agents.hub.kg_prune``); at least 1, since the api 
 EVO_HUB_RUN_LOG_DAYS is how many days the events of a finished run are kept before the daily hub.prune_run_events
 deletes them (``evo_agents.hub.server.run_state``). EVO_HUB_RUN_LEASE_SECONDS is how long a claim and each heartbeat
 lease a run for (``runs.LEASE_SECONDS`` by default); the reaper finds a run lost once its lease ran out, so tests
-shorten it, and it must stay well above the daemon's heartbeat of 15 seconds.
+shorten it, and it must stay well above the daemon's heartbeat of 15 seconds. EVO_HUB_DECISION_WAIT_SECONDS is how
+long a plan run waits for its owner's answer before the reaper (the job hub.recover_runs of ``hub worker``) parks it
+(``runs.DECISION_WAIT_SECONDS``, a day, by default); the end-to-end tests shorten it to see a run parked and resumed.
 
 EVO_HUB_FORWARDED_ALLOW_IPS lists the addresses or networks of the reverse proxies whose X-Forwarded-For uvicorn
 believes, comma-separated, or ``*``; the client address it yields keys the limit on refused pairing codes. Unset, it
@@ -36,7 +38,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from evo_agents.hub.log import dsn_password, register_secret
-from evo_agents.hub.runs import LEASE_SECONDS
+from evo_agents.hub.runs import DECISION_WAIT_SECONDS, LEASE_SECONDS
 
 # The blob store's bound (evo_agents.hub.blobs takes it from here: that module needs boto3, this one only the stdlib).
 DEFAULT_BLOB_CONCURRENCY = 32
@@ -50,6 +52,9 @@ MAX_RUN_LOG_DAYS = 3650
 # Seconds a claim and each heartbeat lease a run for (evo_agents.hub.server.runs).
 MIN_RUN_LEASE_SECONDS = 5
 MAX_RUN_LEASE_SECONDS = 3600
+# Seconds a plan run waits for its owner's answer before the reaper parks it (evo_agents.hub.server.run_state).
+MIN_DECISION_WAIT_SECONDS = 1
+MAX_DECISION_WAIT_SECONDS = 7 * 86400
 
 DEFAULT_DATA_DIR = "~/.evo/hub-server/cache"
 DEFAULT_HOST = "127.0.0.1"
@@ -96,6 +101,7 @@ class HubConfig:
     kg_keep_artifacts: int = DEFAULT_KG_KEEP_ARTIFACTS  # newest graphs per project whose artifact the retention keeps
     run_log_days: int = DEFAULT_RUN_LOG_DAYS  # days a finished run's events are kept
     run_lease_seconds: int = LEASE_SECONDS  # how long a claim and each heartbeat lease a run for
+    decision_wait_seconds: int = DECISION_WAIT_SECONDS  # how long a plan run waits for an answer before it parks
     forwarded_allow_ips: str | None = None  # proxies whose X-Forwarded-For uvicorn believes; None: uvicorn's default
 
     def __repr__(self) -> str:  # the DSNs and secrets are credentials; keep them out of tracebacks and debug output
@@ -168,6 +174,14 @@ def _run_lease_seconds(env: Mapping[str, str]) -> int:
     value = _number(env, name, LEASE_SECONDS, minimum=MIN_RUN_LEASE_SECONDS)
     if value > MAX_RUN_LEASE_SECONDS:
         raise ConfigError(name, f"{name} must be at most {MAX_RUN_LEASE_SECONDS}, got {value}")
+    return value
+
+
+def _decision_wait_seconds(env: Mapping[str, str]) -> int:
+    name = "EVO_HUB_DECISION_WAIT_SECONDS"
+    value = _number(env, name, DECISION_WAIT_SECONDS, minimum=MIN_DECISION_WAIT_SECONDS)
+    if value > MAX_DECISION_WAIT_SECONDS:
+        raise ConfigError(name, f"{name} must be at most {MAX_DECISION_WAIT_SECONDS}, got {value}")
     return value
 
 
@@ -311,6 +325,7 @@ def load_config(
         kg_keep_artifacts=_kg_keep_artifacts(env),
         run_log_days=_run_log_days(env),
         run_lease_seconds=_run_lease_seconds(env),
+        decision_wait_seconds=_decision_wait_seconds(env),
         forwarded_allow_ips=_forwarded_allow_ips(env),
         **_blob_store(env),
     )

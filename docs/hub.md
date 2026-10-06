@@ -220,7 +220,9 @@ block, and multi-line text a literal block, so two machines exporting the same r
 `evo-agents harness validate` reports a copy whose digest no longer matches its content, and says both ways out:
 push the edit with `plan put` or restore the hub's copy with `plan export`. The evo-hub plugin's SessionStart hook
 exports the copies of the session's harness without committing, and leaves a file edited by hand as it is and names
-it, so it never overwrites someone's work.
+it, so it never overwrites someone's work. In the session of a run's agent on a worker (`EVO_RUN_ID` set by the
+daemon) it exports no copy, since the worker commits what the run leaves in its worktree and a run's commits hold only
+its own work; its line says so.
 
 ## Workers and runs
 
@@ -321,7 +323,8 @@ kg bind --project <name> <dir>` bound it to, among those listing it; else the on
 projects with one harness root among it, is refused rather than guessed, and a memory synced with one project never
 moves to another by itself. When both sides changed a file, the hub's version keeps the name and this machine's lands
 next to it as `<name>.conflict-<host>.md`. Deletions cross only with `--prune`. `evo-agents hub memory search "a
-phrase"` searches what you see. The plugin pulls at SessionStart and pushes at Stop.
+phrase"` searches what you see. The plugin pulls at SessionStart and pushes at Stop; in the session of a run's
+agent on a worker (`EVO_RUN_ID` set) Stop pushes nothing, since nobody reviews that unattended session.
 
 **Skills.** `evo-agents hub skills publish skills/house-style --scope global` packs a skill directory (10 MiB at
 most) and publishes a new version; `--scope project:demo` publishes it to a project. `evo-agents hub skills sync`
@@ -447,8 +450,10 @@ the variables in the platform's environment, never in a committed file. `deploy/
 The server also reads `EVO_HUB_POOL_MIN_SIZE`, `EVO_HUB_POOL_MAX_SIZE` and `EVO_HUB_POOL_TIMEOUT` (the connection
 pool, defaults 1, 10 and 10 seconds), and the api `EVO_HUB_RUN_LEASE_SECONDS`, how long a claim and each heartbeat of
 a worker daemon lease a run for before the reaper finds it lost (default 300, from 5 to 3600; the end-to-end tests
-shorten it, and it must stay well above the daemon's heartbeat of 15 seconds); add them to the environment block of
-the compose file to change them. A missing or malformed variable stops the process with a log line naming it.
+shorten it, and it must stay well above the daemon's heartbeat of 15 seconds), and the worker
+`EVO_HUB_DECISION_WAIT_SECONDS`, how long a plan run waits for its owner's answer before the reaper parks it (default
+86400, a day, from 1 to 604800; the end-to-end tests shorten it); add them to the environment block of the compose
+file to change them. A missing or malformed variable stops the process with a log line naming it.
 
 The reverse proxy routes the public domain: `/v1` and `/mcp` to the api on port 8080, everything else to the web on
 port 3000. `EVO_HUB_PUBLIC_URL` must be that domain, because the web sign-in callback, the `/mcp` host check and the
