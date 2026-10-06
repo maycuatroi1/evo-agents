@@ -109,6 +109,17 @@
   --default-transition-duration: 120ms;
   --default-transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
 
+  /* A skeleton shows 300 ms after loading starts, so a quick answer never flashes one. */
+  --animate-appear-late: appear var(--transition-duration-fast) var(--ease-standard) 300ms both;
+  @keyframes appear {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
   /* The live dot: a ring that grows and fades once per pulse period, over a solid dot. */
   --animate-live-ping: live-ping var(--pulse-period) cubic-bezier(0, 0, 0.2, 1) infinite;
   @keyframes live-ping {
@@ -297,6 +308,23 @@
     }
     .animate-live-ping {
       animation: none !important;
+    }
+  }
+}
+
+/* The actions of a table row (DataTable, meta.actions) show while the row is hovered or holds focus, or while a menu
+   they opened is open. Where nothing can hover (touch) and under 768 px they always show. Hidden ones still take
+   their room, so showing them never moves the row. */
+@layer components {
+  @media (hover: hover) and (min-width: 48rem) {
+    .row-actions {
+      opacity: 0;
+      transition: opacity var(--transition-duration-fast) var(--ease-standard);
+    }
+    tr:hover .row-actions,
+    tr:focus-within .row-actions,
+    .row-actions:has([aria-expanded="true"]) {
+      opacity: 1;
     }
   }
 }

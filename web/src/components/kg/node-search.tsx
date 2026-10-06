@@ -4,10 +4,11 @@ import { Network, Search, SearchX } from "lucide-react";
 import Link from "next/link";
 import Form from "next/form";
 import { useTranslations } from "next-intl";
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 
 import { DataTable, dataTableColumns } from "@/components/data/data-table";
 import { NAME_LINK } from "@/components/data/identifier";
+import { useSearchShortcut } from "@/components/data/search-shortcut";
 import { projectHref } from "@/components/shell/nav";
 import { QueryView, useHubQuery } from "@/components/states/query-view";
 import { EmptyState, TableSkeleton } from "@/components/states/states";
@@ -23,8 +24,9 @@ import { cn } from "@/lib/utils";
 
 import { KindBadge, KindShape, LabelBadge } from "./badges";
 
+/** The kind select, drawn as the kit's input: 32 px, and 44 px with 16 px text under 768 px. */
 const FIELD =
-  "h-8 w-full min-w-0 rounded-md border border-input bg-transparent px-2.5 text-sm transition-colors outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30";
+  "h-8 w-full min-w-0 rounded-sm border border-input bg-card px-2.5 text-sm transition-colors outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 max-md:h-11 max-md:text-base";
 
 /**
  * A GET form: the query lives in the URL (`?q=&kind=`), so a search can be shared, reloaded and walked back, and it
@@ -42,6 +44,8 @@ export function SearchForm({
   kinds: KindCount[];
 }) {
   const t = useTranslations("kg.search");
+  const input = useRef<HTMLInputElement>(null);
+  useSearchShortcut(input);
   const options = kind && !kinds.some((k) => k.kind === kind) ? [{ kind, count: 0 }, ...kinds] : kinds;
   return (
     <Form
@@ -56,9 +60,12 @@ export function SearchForm({
           {t("query")}
         </label>
         <Input
+          ref={input}
           id="kg-q"
           name="q"
           type="search"
+          className="max-md:h-11"
+          aria-keyshortcuts="/"
           defaultValue={query}
           required
           maxLength={MAX_QUERY}

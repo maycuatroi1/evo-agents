@@ -1,24 +1,26 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { Archive, ClipboardList, Rocket, Search } from "lucide-react";
+import { Archive, ClipboardList, Rocket } from "lucide-react";
 import Link from "next/link";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useFormatter, useTranslations } from "next-intl";
 import { useMemo, useState } from "react";
 
 import { NoticeArea, useNotice } from "@/components/admin/notice";
-import { DataTable, dataTableColumns } from "@/components/data/data-table";
+import { DataCard, DataToolbar } from "@/components/data/data-card";
+import { CellMain, DataTable, dataTableColumns } from "@/components/data/data-table";
 import { NAME_LINK } from "@/components/data/identifier";
+import { SearchField } from "@/components/data/search-field";
 import { useCanDispatch, usePlanRunNotice } from "@/components/runs/hooks";
 import { activePlanRun, planRunPhase } from "@/components/runs/model";
 import { RunPlanButton } from "@/components/runs/plan-run";
 import { type Run, runHref, runsSummaryQuery } from "@/components/runs/queries";
 import { PageHeader } from "@/components/shell/page-header";
 import { QueryView, useHubQuery } from "@/components/states/query-view";
-import { EmptyState, NotFoundState, TableSkeleton } from "@/components/states/states";
+import { EmptyState, NoResults, NotFoundState, TableSkeleton } from "@/components/states/states";
 import { StatusBadge } from "@/components/status/status-badge";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
 import { browserApi } from "@/lib/api/browser";
 import type { ApiErrorInfo } from "@/lib/api/errors";
 import { plansQuery } from "@/lib/plan-queries";
@@ -41,7 +43,7 @@ function PlanRunLink({ project, run }: { project: string; run: Run }) {
   return (
     <Link
       href={runHref(project, run.id)}
-      className="w-fit rounded-full transition-[filter] hover:brightness-95 dark:hover:brightness-125"
+      className="shrink-0 rounded-full transition-[filter] hover:brightness-95 dark:hover:brightness-125"
       aria-label={t("listLink", { id: run.id, state: t(`phase.${phase}Long`) })}
       data-testid="plan-run-link"
       data-run-id={run.id}
@@ -78,6 +80,7 @@ function PlansTable({
     const actions = helper.display({
       id: "actions",
       header: () => <span className="sr-only">{t("columns.actions")}</span>,
+      meta: { actions: true },
       cell: (info) => {
         const plan = info.row.original;
         return (
@@ -101,21 +104,23 @@ function PlansTable({
         id: "plan",
         header: () => t("columns.plan"),
         sortFn: "text",
+        meta: { primary: true },
         cell: (info) => {
           const plan = info.row.original;
           const planRun = activePlanRun(activity.runs, plan.plan_id);
+          const title = plan.title ?? plan.plan_id;
           return (
-            <div className="flex min-w-0 flex-col items-start gap-0.5">
+            <CellMain sub={plan.title ? <span className="font-mono">{plan.plan_id}</span> : null} subTitle={plan.plan_id}>
               <Link
                 href={planHref(project, plan.plan_id)}
-                className={cn(NAME_LINK, "text-pretty")}
+                className={cn(NAME_LINK, "truncate")}
+                title={title}
                 data-testid="plan-link"
               >
-                {plan.title ?? plan.plan_id}
+                {title}
               </Link>
-              {plan.title ? <span className="font-mono text-xs text-muted-foreground">{plan.plan_id}</span> : null}
               {planRun ? <PlanRunLink project={project} run={planRun} /> : null}
-            </div>
+            </CellMain>
           );
         },
       }),
@@ -128,18 +133,20 @@ function PlansTable({
       helper.accessor("revision", {
         header: () => t("columns.revision"),
         sortFn: "basic",
-        cell: (info) => <span className="font-mono text-xs tabular-nums">{info.getValue()}</span>,
+        meta: { numeric: true },
+        cell: (info) => <span className="font-mono text-xs">{info.getValue()}</span>,
       }),
       helper.accessor((row) => new Date(row.updated_at), {
         id: "updated",
         header: () => t("columns.updated"),
         sortFn: "datetime",
+        meta: { numeric: true },
         cell: (info) => (
-          <div className="flex flex-col gap-0.5 text-xs">
-            <time dateTime={info.row.original.updated_at} className="tabular-nums">
+          <div className="flex flex-col items-end gap-px">
+            <time dateTime={info.row.original.updated_at} className="whitespace-nowrap">
               {format.dateTime(info.getValue(), { dateStyle: "medium", timeStyle: "short" })}
             </time>
-            <span className="font-mono text-muted-foreground">{info.row.original.updated_by}</span>
+            <span className="font-mono text-xs leading-4 text-fg-subtle">{info.row.original.updated_by}</span>
           </div>
         ),
       }),
@@ -161,6 +168,7 @@ function PlansTable({
   );
 }
 
+/** One area of the plans card: its heading with the number of plans, then its table. */
 function AreaSection({
   project,
   area,
@@ -180,16 +188,16 @@ function AreaSection({
   const Icon = area === "active" ? Rocket : Archive;
   const id = `plans-${area}-title`;
   return (
-    <section aria-labelledby={id} className="flex flex-col gap-3" data-testid={`plans-${area}`}>
-      <h2 id={id} className="flex items-center gap-2 text-base font-medium">
+    <section aria-labelledby={id} className="border-b last:border-b-0" data-testid={`plans-${area}`}>
+      <h2 id={id} className="flex min-h-12 items-center gap-2 border-b px-4 py-2 text-[15px] leading-[22px] font-semibold">
         <Icon className="size-4 text-muted-foreground" aria-hidden="true" />
         {t(area === "active" ? "active" : "completed")}
-        <Badge variant="secondary" className="font-mono tabular-nums">
+        <Badge variant="secondary" className="tabular-nums">
           {plans.length}
         </Badge>
       </h2>
       {plans.length === 0 ? (
-        <p className="rounded-md border border-dashed bg-card px-4 py-6 text-center text-sm text-muted-foreground">
+        <p className="px-4 py-6 text-center text-[13px] text-muted-foreground">
           {t(area === "active" ? "noActive" : "noCompleted")}
         </p>
       ) : (
@@ -199,55 +207,79 @@ function AreaSection({
   );
 }
 
+/**
+ * The search, read from the URL (`?q=`) when the page opens and written back to it through the History API, so a
+ * reload or a shared link shows the same plans. Only this field changes it, so the page keeps it in its own state.
+ */
+function useSearch(): [string, (q: string) => void] {
+  const params = useSearchParams();
+  const pathname = usePathname();
+  const [q, setQ] = useState(() => (params.get("q") ?? "").trim().slice(0, 200));
+  const set = (next: string) => {
+    setQ(next);
+    window.history.replaceState(null, "", `${pathname}${next ? `?${new URLSearchParams({ q: next })}` : ""}`);
+  };
+  return [q, set];
+}
+
 function Plans({ project, plans }: { project: string; plans: PlanSummary[] }) {
   const t = useTranslations("plans.list");
-  const [query, setQuery] = useState("");
+  const tStates = useTranslations("states.noResults");
+  const [query, setQuery] = useSearch();
   const summary = useQuery(runsSummaryQuery(browserApi, project));
   const runs = summary.data?.runs;
   const activity = useMemo<Activity>(() => ({ runs: runs ?? [], loaded: !summary.isPending }), [runs, summary.isPending]);
   const { notice, show, clear } = useNotice();
   const dispatched = usePlanRunNotice();
   const onDispatched = useMemo(() => (run: Run) => show(dispatched(run)), [show, dispatched]);
-  const needle = query.trim().toLocaleLowerCase("vi");
+  const needle = query.toLocaleLowerCase("vi");
   if (plans.length === 0) {
     return <EmptyState icon={ClipboardList} title={t("emptyTitle")} description={t("emptyDescription")} />;
   }
   const byArea = (area: PlanArea) => plans.filter((plan) => plan.area === area);
   const shown = plans.filter((plan) => matches(plan, needle));
+  const toolbar = (
+    <DataToolbar
+      label={t("title")}
+      count={needle ? t("shown", { shown: shown.length, total: plans.length }) : t("total", { count: plans.length })}
+    >
+      <SearchField
+        value={query}
+        onCommit={setQuery}
+        label={t("search")}
+        placeholder={t("searchPlaceholder")}
+        clearLabel={t("clearSearch")}
+        debounce={150}
+        maxLength={200}
+        className="sm:w-64"
+        testId="plans-search"
+      />
+    </DataToolbar>
+  );
   return (
     <>
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div className="relative w-full sm:max-w-xs">
-          <Search
-            className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground"
-            aria-hidden="true"
-          />
-          <Input
-            type="search"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder={t("searchPlaceholder")}
-            aria-label={t("search")}
-            className="h-10 pl-8"
-            data-testid="plans-search"
-          />
-        </div>
-        <p className="text-sm text-muted-foreground" aria-live="polite">
-          {needle ? t("shown", { shown: shown.length, total: plans.length }) : null}
-        </p>
-      </div>
       <NoticeArea notice={notice} onDismiss={clear} />
-      {(["active", "completed"] as const).map((area) => (
-        <AreaSection
-          key={area}
-          project={project}
-          area={area}
-          plans={byArea(area)}
-          filtered={shown.filter((plan) => plan.area === area)}
-          activity={activity}
-          onDispatched={onDispatched}
-        />
-      ))}
+      <DataCard toolbar={toolbar}>
+        {shown.length === 0 ? (
+          <NoResults
+            title={t("noMatchTitle")}
+            filters={[{ label: tStates("search"), value: query }]}
+            onClear={() => setQuery("")}
+          />
+        ) : (
+          (["active", "completed"] as const).map((area) => (
+            <AreaSection
+              key={area}
+              project={project}
+              area={area}
+              plans={byArea(area)}
+              filtered={shown.filter((plan) => plan.area === area)}
+              activity={activity}
+              onDispatched={onDispatched}
+            />
+          ))
+        )}
+      </DataCard>
     </>
   );
 }
@@ -292,7 +324,7 @@ export function PlansList({ project, initialError }: { project: string; initialE
         }
       />
       <ReadOnlyNotice />
-      <QueryView state={state} loading={<TableSkeleton rows={4} />}>
+      <QueryView state={state} loading={<TableSkeleton rows={4} toolbar />}>
         {(plans) => <Plans project={project} plans={plans} />}
       </QueryView>
     </>

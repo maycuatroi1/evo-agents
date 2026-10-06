@@ -1,6 +1,6 @@
 "use client";
 
-import { CircleX, Clock, Eye, Loader2, type LucideIcon, Play, SearchX, Send } from "lucide-react";
+import { CircleX, Clock, Eye, Loader2, type LucideIcon, Play, Send } from "lucide-react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useFormatter, useTranslations } from "next-intl";
 import { useState } from "react";
@@ -8,12 +8,13 @@ import { useState } from "react";
 import { NoticeArea, useNotice } from "@/components/admin/notice";
 import { Pager } from "@/components/admin/pager";
 import { usePagedQuery } from "@/components/admin/use-paged-query";
+import { DataCard, DataToolbar } from "@/components/data/data-card";
 import { FacetGroup, type FacetOption } from "@/components/data/facet-group";
 import { SearchField } from "@/components/data/search-field";
 import { useNow } from "@/components/kg/use-now";
 import { PageHeader } from "@/components/shell/page-header";
 import { QueryView, useHubQuery } from "@/components/states/query-view";
-import { EmptyState, PageSkeleton, TableSkeleton } from "@/components/states/states";
+import { type ActiveFilter, EmptyState, ListSkeleton, NoResults, TableSkeleton } from "@/components/states/states";
 import { STATUS_LOOKS } from "@/components/status/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -115,79 +116,94 @@ const FACET_ICONS: Record<RunFacet, LucideIcon> = {
 
 function RunList({ project }: { project: string }) {
   const t = useTranslations("runs");
+  const tStates = useTranslations("states.noResults");
   const viewer = useViewer();
   const [filters, setFilters] = useFilters();
   const { state, stale } = usePagedQuery(runsQuery(browserApi, project, listQuery(filters)));
+  const caption = t("caption", { project });
+  const inUse: ActiveFilter[] = [
+    ...(filters.facet ? [{ label: t("facets.label"), value: t(`facets.${filters.facet}`) }] : []),
+    ...(filters.q ? [{ label: tStates("search"), value: filters.q }] : []),
+  ];
+
+  const toolbar = (
+    <DataToolbar
+      label={caption}
+      count={
+        state.status === "success"
+          ? isFiltered(filters)
+            ? t("listSummary.filtered", { count: state.data.total })
+            : t("listSummary.all", { count: state.data.total })
+          : undefined
+      }
+      countTestId="runs-list-summary"
+    >
+      <SearchField
+        value={filters.q}
+        onCommit={(q) => setFilters({ ...filters, q, page: 1 })}
+        label={t("search.label")}
+        placeholder={t("search.placeholder")}
+        clearLabel={t("search.clear")}
+        maxLength={MAX_QUERY}
+        className="sm:w-64"
+        testId="runs-search"
+      />
+      <FacetGroup
+        label={t("facets.label")}
+        options={[
+          { value: null, label: t("facets.all"), count: state.status === "success" ? facetCount(state.data.counts, null) : undefined },
+          ...RUN_FACETS.map(
+            (facet): FacetOption => ({
+              value: facet,
+              label: t(`facets.${facet}`),
+              icon: FACET_ICONS[facet],
+              count: state.status === "success" ? facetCount(state.data.counts, facet) : undefined,
+            }),
+          ),
+        ]}
+        selected={filters.facet}
+        onSelect={(facet) => setFilters({ ...filters, facet: facet as RunFacet | null, page: 1 })}
+        countLabel={(count) => t("count", { count })}
+        testId="runs-facets"
+      />
+    </DataToolbar>
+  );
 
   return (
     <section aria-labelledby="runs-list-title" className="flex flex-col gap-4">
       <h2 id="runs-list-title" className="sr-only">
-        {t("caption", { project })}
+        {caption}
       </h2>
-      <div className="flex flex-col gap-3 rounded-md border bg-card shadow-raised p-4">
-        <SearchField
-          value={filters.q}
-          onCommit={(q) => setFilters({ ...filters, q, page: 1 })}
-          label={t("search.label")}
-          placeholder={t("search.placeholder")}
-          clearLabel={t("search.clear")}
-          maxLength={MAX_QUERY}
-          className="sm:max-w-sm"
-          testId="runs-search"
-        />
-        <FacetGroup
-          label={t("facets.label")}
-          options={[
-            { value: null, label: t("facets.all"), count: state.status === "success" ? facetCount(state.data.counts, null) : undefined },
-            ...RUN_FACETS.map(
-              (facet): FacetOption => ({
-                value: facet,
-                label: t(`facets.${facet}`),
-                icon: FACET_ICONS[facet],
-                count: state.status === "success" ? facetCount(state.data.counts, facet) : undefined,
-              }),
-            ),
-          ]}
-          selected={filters.facet}
-          onSelect={(facet) => setFilters({ ...filters, facet: facet as RunFacet | null, page: 1 })}
-          countLabel={(count) => t("count", { count })}
-          testId="runs-facets"
-        />
-      </div>
-      <QueryView state={state} loading={<TableSkeleton rows={6} />}>
-        {(list) => {
-          const live = hasActiveRuns(list);
-          return (
-            <div className="flex flex-col gap-3" aria-busy={stale || undefined}>
-              <p aria-live="polite" className="text-sm text-muted-foreground" data-testid="runs-list-summary">
-                {isFiltered(filters) ? t("listSummary.filtered", { count: list.total }) : t("listSummary.all", { count: list.total })}
-                {live ? <> {t("live")}</> : null}
-              </p>
-              {list.runs.length === 0 ? (
-                <EmptyState icon={SearchX} title={t("noResults.title")} description={t("noResults.description")}>
-                  <Button variant="outline" onClick={() => setFilters(NO_FILTERS)}>
-                    {t("noResults.clear")}
-                  </Button>
-                </EmptyState>
-              ) : (
-                <RunsTable runs={list.runs} caption={t("caption", { project })} viewer={viewer} />
-              )}
-              <Pager
-                label={t("pagerLabel")}
-                page={filters.page}
-                count={list.runs.length}
-                hasNext={list.offset + list.limit < list.total}
-                canGoBack={filters.page > 1}
-                atStart={filters.page === 1}
-                busy={stale}
-                onNext={() => setFilters({ ...filters, page: filters.page + 1 })}
-                onPrevious={() => setFilters({ ...filters, page: Math.max(1, filters.page - 1) })}
-                onFirst={() => setFilters({ ...filters, page: 1 })}
-              />
-            </div>
-          );
-        }}
-      </QueryView>
+      <DataCard
+        toolbar={toolbar}
+        busy={stale}
+        footer={
+          state.status === "success" ? (
+            <Pager
+              label={t("pagerLabel")}
+              page={filters.page}
+              count={state.data.runs.length}
+              hasNext={state.data.offset + state.data.limit < state.data.total}
+              canGoBack={filters.page > 1}
+              atStart={filters.page === 1}
+              busy={stale}
+              onNext={() => setFilters({ ...filters, page: filters.page + 1 })}
+              onPrevious={() => setFilters({ ...filters, page: Math.max(1, filters.page - 1) })}
+              onFirst={() => setFilters({ ...filters, page: 1 })}
+            />
+          ) : null
+        }
+      >
+        <QueryView state={state} loading={<TableSkeleton rows={6} />}>
+          {(list) =>
+            list.runs.length === 0 ? (
+              <NoResults title={t("noResults.title")} filters={inUse} onClear={() => setFilters(NO_FILTERS)} />
+            ) : (
+              <RunsTable runs={list.runs} caption={caption} viewer={viewer} />
+            )
+          }
+        </QueryView>
+      </DataCard>
     </section>
   );
 }
@@ -211,7 +227,7 @@ export function RunsPage({ project, initialError }: { project: string; initialEr
         title={t("title")}
         tags={
           live ? (
-            <Badge variant="info" data-testid="runs-live">
+            <Badge variant="info" title={t("live")} data-testid="runs-live">
               <Loader2 className="animate-spin motion-reduce:animate-none" aria-hidden="true" />
               {t("liveBadge")}
             </Badge>
@@ -227,7 +243,7 @@ export function RunsPage({ project, initialError }: { project: string; initialEr
         }
       />
       <NoticeArea notice={notice} onDismiss={clear} />
-      <QueryView state={summary} loading={<PageSkeleton />}>
+      <QueryView state={summary} loading={<ListSkeleton metrics={4} />}>
         {(active) =>
           facetCount(active.counts, null) === 0 ? (
             // No run in the project yet, in any state: what a run is, and how to start one.

@@ -1,17 +1,18 @@
 "use client";
 
-import { Blocks, Globe, Puzzle, SearchX } from "lucide-react";
+import { Blocks, Globe, Puzzle } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useFormatter, useTranslations } from "next-intl";
 import { useMemo } from "react";
 
-import { DataTable, dataTableColumns } from "@/components/data/data-table";
+import { DataCard, DataToolbar } from "@/components/data/data-card";
+import { CellMain, DataTable, dataTableColumns } from "@/components/data/data-table";
 import { NAME_LINK } from "@/components/data/identifier";
 import { SearchField } from "@/components/data/search-field";
 import { PageHeader } from "@/components/shell/page-header";
 import { QueryView, useHubQuery } from "@/components/states/query-view";
-import { EmptyState, TableSkeleton } from "@/components/states/states";
+import { EmptyState, NoResults, TableSkeleton } from "@/components/states/states";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { browserApi } from "@/lib/api/browser";
@@ -44,29 +45,30 @@ function SkillsTable({ skills, place, repos }: { skills: Skill[]; place: SkillPl
       helper.accessor("name", {
         header: () => t("columns.name"),
         sortFn: "alphanumeric",
+        meta: { primary: true },
         cell: (info) => (
-          <div className="flex min-w-0 flex-col gap-0.5 py-0.5">
+          <CellMain sub={info.row.original.description} subTitle={info.row.original.description}>
             <Link
               href={skillHref(place, info.getValue())}
-              className={cn(NAME_LINK, "w-fit font-mono text-sm [overflow-wrap:anywhere]")}
+              className={cn(NAME_LINK, "truncate font-mono text-[13px]")}
+              title={info.getValue()}
               data-skill-name={info.getValue()}
             >
               {info.getValue()}
             </Link>
-            <span className="line-clamp-2 max-w-prose text-xs text-pretty text-muted-foreground">
-              {info.row.original.description}
-            </span>
-          </div>
+          </CellMain>
         ),
       }),
       helper.accessor("version", {
         header: () => t("columns.version"),
         sortFn: "basic",
-        cell: (info) => <span className="font-mono text-xs tabular-nums">v{info.getValue()}</span>,
+        meta: { numeric: true },
+        cell: (info) => <span className="font-mono text-xs">v{info.getValue()}</span>,
       }),
       helper.accessor("size", {
         header: () => t("columns.size"),
         sortFn: "basic",
+        meta: { numeric: true },
         cell: (info) => <ByteSize bytes={info.getValue()} />,
       }),
       helper.accessor((row) => row.source_repo ?? "", {
@@ -81,12 +83,15 @@ function SkillsTable({ skills, place, repos }: { skills: Skill[]; place: SkillPl
         id: "published",
         header: () => t("columns.published"),
         sortFn: "datetime",
+        meta: { numeric: true },
         cell: (info) => (
-          <div className="flex flex-col text-xs">
-            <time dateTime={info.row.original.published_at} className="tabular-nums">
+          <div className="flex flex-col items-end gap-px">
+            <time dateTime={info.row.original.published_at} className="whitespace-nowrap">
               {format.dateTime(info.getValue(), { dateStyle: "medium" })}
             </time>
-            <span className="text-muted-foreground">{t("by", { login: info.row.original.published_by })}</span>
+            <span className="text-xs leading-4 whitespace-nowrap text-fg-subtle">
+              {t("by", { login: info.row.original.published_by })}
+            </span>
           </div>
         ),
       }),
@@ -109,6 +114,7 @@ function SkillsTable({ skills, place, repos }: { skills: Skill[]; place: SkillPl
 /** The skills of a project, or the hub's global ones, with their latest version. */
 export function SkillsBrowser({ place, initialError }: { place: SkillPlace; initialError: ApiErrorInfo | null }) {
   const t = useTranslations("skills");
+  const tStates = useTranslations("states.noResults");
   const params = useSearchParams();
   const pathname = usePathname();
   const filter = (params.get("q") ?? "").trim().slice(0, 200);
@@ -130,7 +136,7 @@ export function SkillsBrowser({ place, initialError }: { place: SkillPlace; init
         title={place.kind === "project" ? t("projectTitle") : t("globalTitle")}
         tags={count !== null ? <Badge variant="secondary">{t("count", { count })}</Badge> : null}
       />
-      <QueryView state={state} loading={<TableSkeleton rows={5} />}>
+      <QueryView state={state} loading={<TableSkeleton rows={5} toolbar />}>
         {(skills) => {
           if (skills.length === 0) {
             return place.kind === "project" ? (
@@ -160,37 +166,43 @@ export function SkillsBrowser({ place, initialError }: { place: SkillPlace; init
             );
           }
           const shown = filter ? skills.filter((skill) => matchesSkill(skill, filter)) : skills;
+          const caption = place.kind === "project" ? t("projectTitle") : t("globalTitle");
           return (
-            <div className="flex flex-col gap-4">
-              <SearchField
-                value={filter}
-                onCommit={setFilter}
-                label={t("filter.label")}
-                placeholder={t("filter.placeholder")}
-                clearLabel={t("filter.clear")}
-                debounce={150}
-                maxLength={200}
-                testId="skills-filter"
-              />
-              <p aria-live="polite" className="text-sm text-muted-foreground" data-testid="skills-summary">
-                {filter
-                  ? t("summary.filtered", { shown: shown.length, count: skills.length })
-                  : t("summary.all", { count: skills.length })}
-              </p>
-              {shown.length === 0 ? (
-                <EmptyState
-                  icon={SearchX}
-                  title={t("noResults.title", { q: filter })}
-                  description={t("noResults.description")}
+            <DataCard
+              toolbar={
+                <DataToolbar
+                  label={caption}
+                  count={
+                    filter
+                      ? t("summary.filtered", { shown: shown.length, count: skills.length })
+                      : t("summary.all", { count: skills.length })
+                  }
+                  countTestId="skills-summary"
                 >
-                  <Button variant="outline" onClick={() => setFilter("")}>
-                    {t("filter.clear")}
-                  </Button>
-                </EmptyState>
+                  <SearchField
+                    value={filter}
+                    onCommit={setFilter}
+                    label={t("filter.label")}
+                    placeholder={t("filter.placeholder")}
+                    clearLabel={t("filter.clear")}
+                    debounce={150}
+                    maxLength={200}
+                    className="sm:w-64"
+                    testId="skills-filter"
+                  />
+                </DataToolbar>
+              }
+            >
+              {shown.length === 0 ? (
+                <NoResults
+                  title={t("noResults.title", { q: filter })}
+                  filters={[{ label: tStates("search"), value: filter }]}
+                  onClear={() => setFilter("")}
+                />
               ) : (
                 <SkillsTable skills={shown} place={place} repos={repos} />
               )}
-            </div>
+            </DataCard>
           );
         }}
       </QueryView>

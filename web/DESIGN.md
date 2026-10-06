@@ -245,7 +245,10 @@ changed where the defaults fell short:
   opacity default fails AA in dark). A menu button is the kit's nav item: 32 px (44 px in the sheet), 13 px `fg-muted`
   text, `accent` (surface-hover) under the pointer, `sidebar-accent` (surface-selected) with a `brand` icon when it is
   the page shown, and the global focus outline instead of the default inset ring.
-- `table.tsx`: `scrollLabel` makes a table's scroll container a named, focusable region.
+- `table.tsx`: `scrollLabel` makes a table's scroll container a named, focusable region, its focus outline drawn
+  inside its edge; a row is `accent` (surface-hover) under the pointer and `surface-selected` when selected.
+- `kbd.tsx`: a key of the kit (`data-slot="kbd"`), mono 11 px on `card` inside a `border-strong` edge whose bottom
+  is doubled, with the key-chip radius; it stands beside the action a shortcut triggers.
 - `badge.tsx`: `info`, `success` and `warning` variants on the kit's tones (`brand-soft` with `brand`, `success-soft`
   with `success`, `attention-soft` with `attention`); `destructive` is `danger-soft` with `danger`; the shape is
   `rounded-full`, a state or a count. A state of a run, worker, plan, step, repo or decision is a `StatusBadge`, not a
@@ -271,12 +274,34 @@ changed where the defaults fell short:
 
 Shared pieces built on them:
 
-- `components/states`: every data view goes through `useHubQuery` and `QueryView`. Loading shows a skeleton
-  inside `role="status"`. A 401 sends the visitor to `/login`; 403 shows the no-access state, 404 the
-  not-found state, 5xx or no answer the error state with the request id and a retry button. Empty lists show
-  `EmptyState` with what to do next.
-- `components/data/data-table.tsx`: TanStack Table v9 with sorting, `aria-sort`, a caption, and columns that
-  hide on narrow screens.
+- `components/states`: every data view goes through `useHubQuery` and `QueryView`. Loading shows a skeleton in the
+  shape of the content inside `role="status"`, faded in 300 ms after loading starts (`animate-appear-late`) so a quick
+  answer never flashes it: `TableSkeleton` is the header on `surface-sunken` and 44 px rows of a short reference, a
+  title over its secondary line, a pill and a figure (`toolbar` adds the toolbar's search and chips),
+  `ListSkeleton` puts the row of counts above it. A 401 sends the visitor to `/login`; 403 shows the no-access
+  state, 404 the not-found state, 5xx or no answer the error state with the request id and a retry button. Every
+  state is the kit's EmptyState: the icon in a 40 px `surface-sunken` square (`danger-soft` or `attention-soft` for
+  errors and no access), a one-line title in 15 px 600, one sentence in `fg-muted` and the actions, the primary one
+  first, centred with 48 px above and below; alone it is a card, inside a `DataCard` it draws no frame. First use
+  (`EmptyState`) says what the page is for, the explanation its head no longer carries, and offers the one thing
+  to do next; no results (`NoResults`) lists the filters in use as tags ("State: Done", "Search: deploy") and
+  offers Clear filters.
+- `components/data/data-card.tsx` and `data-table.tsx`: a list is one card (`DataCard`, `border`, `shadow-raised`):
+  the toolbar on top, then the table, or the no-results, empty or loading state in its place, then the pager as its
+  footer. `DataToolbar` is the list's search landmark, named after the list: the search field (256 px, the full
+  width on phones), the filter chips with their counts, then the number of results on the right in 12 px
+  `fg-subtle` tabular figures, said again in a polite live region. The table (TanStack Table v9, sorting with
+  `aria-sort`, a caption) has its header on `surface-sunken` in 12 px `fg-muted`, 36 px, and rows of 44 px, 36 px
+  with `density="compact"` (the audit trail), cells in `fg-muted`. A column's `meta` says what it holds: `primary`
+  is the row's title (`CellMain`: the name in `body-strong` and at most one line under it in `caption`, `fg-subtle`,
+  or `danger` for a failure; both end in an ellipsis and the column takes the width the others leave, so a row never
+  grows past two lines), `numeric` sets a number, size, duration or time on the right in tabular figures, header
+  too, and `actions` holds the row's buttons, which show while the row is hovered or holds focus (`.row-actions` in
+  `globals.css`; always shown where nothing can hover and under 768 px). Sortable headers show their direction with
+  a chevron, and the up-down chevron only under the pointer or focus. Columns listed in `columnClassNames` hide on
+  narrow screens. The admin lists paged by the API keep their filters as a form (`FilterBar`, submitted with Filter
+  so a screen reader moving through a select does not reload the list), drawn as the toolbar: labels in `caption`
+  over 32 px fields.
 - `components/status/status-badge.tsx`: one `StatusBadge` (`kind` and `status`) and one map per kind, run, worker,
   plan, step, repo and decision; each state has a tone, a Lucide icon and its words under `status.<kind>` in
   `messages/en.json` and `vi.json`. The maps are `satisfies Record<...>` on the API's own types in
@@ -327,10 +352,15 @@ Shared pieces built on them:
   the one sentence "Read-only. Plans change from the CLI with `evo harness step`; each change adds a revision." and a
   ghost Copy button that copies the command (`useClipboard` of `identifier.tsx`: it selects the command where the
   clipboard is refused, and says which in a polite live region). It is a `note` named "Read-only".
-- `components/data/search-field.tsx` and `facet-group.tsx`: a search box in a search landmark (committed after a
-  300 ms pause or on Enter) and a facet as a labelled group of `aria-pressed` toggles with counts. Filters live in
-  the URL and change it through `window.history.replaceState`, which Next.js syncs with `useSearchParams` without
-  rendering the page on the server again.
+- `components/data/search-field.tsx` and `facet-group.tsx`: the kit's search input, a magnifier, the field and the
+  `/` key while it is empty, a clear button once it holds text, committed after a pause or on Enter; and a facet as
+  the kit's filter chips, a labelled group of `aria-pressed` toggles, 28 px with 6 px corners, the count after the
+  label in `fg-subtle` tabular figures and in words for screen readers, the pressed one on `surface-selected` inside
+  a `brand` edge in a heavier weight. Under 768 px the field, the chips and the admin filters are 44 px, with 16 px
+  text in fields so phones do not zoom. `/` focuses the page's search field (`search-shortcut.ts`, the first
+  registered one in document order; the knowledge graph's query field too) unless focus is in a field that takes
+  text or a dialog is open. Filters live in the URL and change it through `window.history.replaceState`, which
+  Next.js syncs with `useSearchParams` without rendering the page on the server again.
 - `components/workers`: the workers pages poll the hub every 10 seconds (`refetchInterval`), the Register dialog
   every 2 seconds while its pairing code waits. Draining or revoking a worker asks for its name, typed out
   (`confirm-by-name.tsx`). The hub keeps only a worker's latest heartbeat, so the 60-minute heartbeat strip is built

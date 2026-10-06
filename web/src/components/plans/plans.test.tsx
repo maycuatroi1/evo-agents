@@ -18,6 +18,7 @@ import { StepDetail } from "./step-detail";
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/p/demo/plans",
+  useSearchParams: () => new URLSearchParams(),
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), prefetch: vi.fn() }),
 }));
 
@@ -104,9 +105,11 @@ describe("PlansList", () => {
       client.setQueryData(planKeys.all("demo"), summaries),
     );
     await userEvent.type(screen.getByRole("searchbox", { name: "Tìm plan theo tên hoặc mã" }), "kg-");
+    // The query is committed after a 150 ms pause in typing.
+    expect(await screen.findByText("Hiện 1 trên 2 plan")).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Hub cho agent" })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "kg-prototype" })).toBeInTheDocument();
-    expect(screen.getByText("Hiện 1 trên 2 plan")).toBeInTheDocument();
+    expect(window.location.search).toBe("?q=kg-");
   });
 
   it("shows the no-access state on a 403", () => {

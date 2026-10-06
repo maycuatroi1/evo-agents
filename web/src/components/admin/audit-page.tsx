@@ -5,9 +5,10 @@ import { ScrollText } from "lucide-react";
 import { useTimeZone, useTranslations } from "next-intl";
 import { useId, useState } from "react";
 
+import { DataCard } from "@/components/data/data-card";
 import { PageHeader } from "@/components/shell/page-header";
 import { QueryView } from "@/components/states/query-view";
-import { EmptyState, TableSkeleton } from "@/components/states/states";
+import { type ActiveFilter, EmptyState, NoResults, TableSkeleton } from "@/components/states/states";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { browserApi } from "@/lib/api/browser";
@@ -27,7 +28,7 @@ import {
   PAGE_SIZES,
   parseAuditFilters,
 } from "./data";
-import { describedBy, field, FilterBar, FilterField, PageSizeField } from "./filter-bar";
+import { describedBy, field, FILTER_INPUT, FILTER_SELECT, FilterBar, FilterField, PageSizeField } from "./filter-bar";
 import { Pager } from "./pager";
 import { useCursorTrail, useUrlView } from "./url-state";
 import { usePagedQuery } from "./use-paged-query";
@@ -88,120 +89,149 @@ export function AdminAudit({ initialError }: { initialError: ApiErrorInfo | null
   if (view.action) knownActions.add(view.action);
   const hasFilters = Boolean(view.actor || view.action || view.project || view.from || view.to);
 
+  const fields = (
+    <>
+      <FilterField id={`${ids}-actor`} label={t("actor")} error={errors.actor}>
+        <Input
+          id={`${ids}-actor`}
+          name="actor"
+          defaultValue={view.actor}
+          placeholder={t("actorPlaceholder")}
+          list={`${ids}-actors`}
+          autoComplete="off"
+          autoCapitalize="none"
+          spellCheck={false}
+          maxLength={100}
+          className={`${FILTER_INPUT} font-mono placeholder:font-sans`}
+          aria-invalid={errors.actor ? true : undefined}
+          aria-describedby={describedBy(`${ids}-actor`, false, errors.actor)}
+        />
+        <datalist id={`${ids}-actors`}>
+          {(users ?? []).map((user) => (
+            <option key={user.login} value={user.login} />
+          ))}
+        </datalist>
+      </FilterField>
+      <FilterField id={`${ids}-action`} label={t("action")}>
+        <NativeSelect id={`${ids}-action`} name="action" defaultValue={view.action} className={FILTER_SELECT}>
+          <NativeSelectOption value="">{tFilters("all")}</NativeSelectOption>
+          {[...knownActions].sort().map((action) => (
+            <NativeSelectOption key={action} value={action}>
+              {actionName(action) ? `${actionName(action)} (${action})` : action}
+            </NativeSelectOption>
+          ))}
+        </NativeSelect>
+      </FilterField>
+      <FilterField id={`${ids}-project`} label={t("project")}>
+        <NativeSelect id={`${ids}-project`} name="project" defaultValue={view.project} className={FILTER_SELECT}>
+          <NativeSelectOption value="">{tFilters("all")}</NativeSelectOption>
+          {view.project && !projects?.some((p) => p.name === view.project) ? (
+            <NativeSelectOption value={view.project}>{view.project}</NativeSelectOption>
+          ) : null}
+          {(projects ?? []).map((project) => (
+            <NativeSelectOption key={project.name} value={project.name}>
+              {project.name}
+            </NativeSelectOption>
+          ))}
+        </NativeSelect>
+      </FilterField>
+      <FilterField id={`${ids}-from`} label={t("from")}>
+        <Input
+          id={`${ids}-from`}
+          name="from"
+          type="date"
+          defaultValue={view.from}
+          className={FILTER_INPUT}
+          aria-describedby={`${ids}-zone`}
+        />
+      </FilterField>
+      <FilterField id={`${ids}-to`} label={t("to")} error={errors.to}>
+        <Input
+          id={`${ids}-to`}
+          name="to"
+          type="date"
+          defaultValue={view.to}
+          className={FILTER_INPUT}
+          aria-invalid={errors.to ? true : undefined}
+          aria-describedby={[`${ids}-zone`, describedBy(`${ids}-to`, false, errors.to)].filter(Boolean).join(" ")}
+        />
+      </FilterField>
+    </>
+  );
+
+  const inUse: ActiveFilter[] = [
+    ...(view.actor ? [{ label: t("actor"), value: view.actor }] : []),
+    ...(view.action ? [{ label: t("action"), value: actionName(view.action) ?? view.action }] : []),
+    ...(view.project ? [{ label: t("project"), value: view.project }] : []),
+    ...(view.from ? [{ label: t("from"), value: view.from }] : []),
+    ...(view.to ? [{ label: t("to"), value: view.to }] : []),
+  ];
+  // The number of results, while they fit on one page; otherwise the pager under the list says which page this is.
+  const count =
+    state.status === "success" && view.cursor === "" && state.data.next_cursor === null
+      ? t("count", { count: state.data.items.length })
+      : null;
+
   return (
     <>
       <PageHeader title={t("title")} />
-      {/* Keyed by the URL's filters, so Back and Clear put the fields back to what the list shows. */}
-      <FilterBar
-        key={filterKey(view)}
-        label={t("title")}
-        onApply={apply}
-        onClear={clear}
-        canClear={hasFilters}
-        testId="audit-filters"
-        note={<p id={`${ids}-zone`}>{t("timeZone", { zone: timeZone })}</p>}
-        footer={<PageSizeField id={`${ids}-limit`} value={view.limit} />}
-      >
-        <FilterField id={`${ids}-actor`} label={t("actor")} error={errors.actor}>
-          <Input
-            id={`${ids}-actor`}
-            name="actor"
-            defaultValue={view.actor}
-            placeholder={t("actorPlaceholder")}
-            list={`${ids}-actors`}
-            autoComplete="off"
-            autoCapitalize="none"
-            spellCheck={false}
-            maxLength={100}
-            className="h-9 font-mono placeholder:font-sans"
-            aria-invalid={errors.actor ? true : undefined}
-            aria-describedby={describedBy(`${ids}-actor`, false, errors.actor)}
-          />
-          <datalist id={`${ids}-actors`}>
-            {(users ?? []).map((user) => (
-              <option key={user.login} value={user.login} />
-            ))}
-          </datalist>
-        </FilterField>
-        <FilterField id={`${ids}-action`} label={t("action")}>
-          <NativeSelect id={`${ids}-action`} name="action" defaultValue={view.action} className="w-full [&_select]:h-9">
-            <NativeSelectOption value="">{tFilters("all")}</NativeSelectOption>
-            {[...knownActions].sort().map((action) => (
-              <NativeSelectOption key={action} value={action}>
-                {actionName(action) ? `${actionName(action)} (${action})` : action}
-              </NativeSelectOption>
-            ))}
-          </NativeSelect>
-        </FilterField>
-        <FilterField id={`${ids}-project`} label={t("project")}>
-          <NativeSelect id={`${ids}-project`} name="project" defaultValue={view.project} className="w-full [&_select]:h-9">
-            <NativeSelectOption value="">{tFilters("all")}</NativeSelectOption>
-            {view.project && !projects?.some((p) => p.name === view.project) ? (
-              <NativeSelectOption value={view.project}>{view.project}</NativeSelectOption>
-            ) : null}
-            {(projects ?? []).map((project) => (
-              <NativeSelectOption key={project.name} value={project.name}>
-                {project.name}
-              </NativeSelectOption>
-            ))}
-          </NativeSelect>
-        </FilterField>
-        <FilterField id={`${ids}-from`} label={t("from")}>
-          <Input
-            id={`${ids}-from`}
-            name="from"
-            type="date"
-            defaultValue={view.from}
-            className="h-9"
-            aria-describedby={`${ids}-zone`}
-          />
-        </FilterField>
-        <FilterField id={`${ids}-to`} label={t("to")} error={errors.to}>
-          <Input
-            id={`${ids}-to`}
-            name="to"
-            type="date"
-            defaultValue={view.to}
-            className="h-9"
-            aria-invalid={errors.to ? true : undefined}
-            aria-describedby={[`${ids}-zone`, describedBy(`${ids}-to`, false, errors.to)].filter(Boolean).join(" ")}
-          />
-        </FilterField>
-      </FilterBar>
-
-      <section id={`${ids}-results`} aria-labelledby={`${ids}-results-title`} className="flex scroll-mt-20 flex-col gap-4">
+      <section id={`${ids}-results`} aria-labelledby={`${ids}-results-title`} className="scroll-mt-20">
         <h2 id={`${ids}-results-title`} className="sr-only">
           {t("caption")}
         </h2>
-        <QueryView state={state} loading={<TableSkeleton rows={8} />}>
-          {(data) =>
-            data.items.length === 0 && view.cursor === "" ? (
-              <EmptyState icon={ScrollText} title={t("emptyTitle")} description={t("emptyDescription")} />
-            ) : (
-              <>
-                <div aria-busy={busy || undefined} className={busy ? "opacity-60 transition-opacity" : "transition-opacity"}>
-                  <AuditTable rows={data.items} caption={t("caption")} />
-                </div>
-                <Pager
-                  label={t("title")}
-                  page={trail.page}
-                  count={data.items.length}
-                  hasNext={data.next_cursor !== null}
-                  canGoBack={trail.canGoBack}
-                  atStart={view.cursor === ""}
-                  busy={busy}
-                  onNext={() => {
-                    if (!data.next_cursor) return;
-                    trail.forward();
-                    page(data.next_cursor);
-                  }}
-                  onPrevious={() => page(trail.back())}
-                  onFirst={() => page("")}
-                />
-              </>
-            )
+        <DataCard
+          busy={busy}
+          toolbar={
+            // Keyed by the URL's filters, so Back and Clear put the fields back to what the list shows.
+            <FilterBar
+              key={filterKey(view)}
+              label={t("title")}
+              onApply={apply}
+              onClear={clear}
+              canClear={hasFilters}
+              testId="audit-filters"
+              note={<p id={`${ids}-zone`}>{t("timeZone", { zone: timeZone })}</p>}
+              footer={<PageSizeField id={`${ids}-limit`} value={view.limit} />}
+              count={count}
+            >
+              {fields}
+            </FilterBar>
           }
-        </QueryView>
+          footer={
+            state.status === "success" ? (
+              <Pager
+                label={t("title")}
+                page={trail.page}
+                count={state.data.items.length}
+                hasNext={state.data.next_cursor !== null}
+                canGoBack={trail.canGoBack}
+                atStart={view.cursor === ""}
+                busy={busy}
+                onNext={() => {
+                  if (!state.data.next_cursor) return;
+                  trail.forward();
+                  page(state.data.next_cursor);
+                }}
+                onPrevious={() => page(trail.back())}
+                onFirst={() => page("")}
+              />
+            ) : null
+          }
+        >
+          <QueryView state={state} loading={<TableSkeleton rows={8} />}>
+            {(data) =>
+              data.items.length === 0 && view.cursor === "" ? (
+                hasFilters ? (
+                  <NoResults title={t("noMatchTitle")} filters={inUse} onClear={clear} />
+                ) : (
+                  <EmptyState icon={ScrollText} title={t("emptyTitle")} description={t("emptyDescription")} />
+                )
+              ) : (
+                <AuditTable rows={data.items} caption={t("caption")} />
+              )
+            }
+          </QueryView>
+        </DataCard>
       </section>
     </>
   );

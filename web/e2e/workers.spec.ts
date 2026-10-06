@@ -73,7 +73,8 @@ test("the list shows each worker's status, filters by status and search, and ref
   await expect(page).toHaveURL(/\?q=gpu$/);
   await main.getByTestId("workers-search").fill("no-such-worker");
   await expect(main.getByTestId("state-empty")).toContainText("No worker matches");
-  await main.getByRole("button", { name: "Show all workers" }).click();
+  await expect(main.getByTestId("filters-in-use")).toHaveText("Search:no-such-worker");
+  await main.getByRole("button", { name: "Clear filters" }).click();
   await expect(main.getByTestId("workers-table").locator("tbody tr")).toHaveCount(3);
 
   // The machine comes back: the list shows it within one refresh, without a reload.

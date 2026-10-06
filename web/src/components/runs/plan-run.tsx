@@ -10,6 +10,7 @@ import { useNow } from "@/components/kg/use-now";
 import { stepHref } from "@/components/plans/links";
 import { StatusBadge, useStatusText } from "@/components/status/status-badge";
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { browserApi } from "@/lib/api/browser";
 import { type PlanStep, percent } from "@/lib/plans";
 import { cn } from "@/lib/utils";
@@ -55,7 +56,8 @@ function useLockText() {
 /**
  * Run plan, for a writer of the project (whoami's grants; the API decides again). It is offered but locked, with the
  * reason beside it, while the plan has an active run or no step left to run; `pending` is how many steps are pending
- * (on the list, how many are not done). `layout` row puts the reason beside the button, stack under it.
+ * (on the list, how many are not done). `layout` stack puts the reason under the button; row, on a table's row
+ * that holds two lines at most, puts it in a tooltip on the button and in its description for screen readers.
  */
 export function RunPlanButton({
   project,
@@ -90,30 +92,56 @@ export function RunPlanButton({
   if (!canDispatch) return null;
   const lock = loaded ? planRunLock(runs, planId, pending) : "loading";
   const locked = lock !== null;
+  const button = (
+    <Button
+      type="button"
+      size={size}
+      variant={variant}
+      className="shrink-0 aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
+      aria-disabled={locked || undefined}
+      aria-describedby={locked ? `${ids}-lock` : undefined}
+      onClick={() => {
+        if (!locked) setOpen(true);
+      }}
+      data-testid={testId}
+      data-locked={lock === null ? undefined : lock === "loading" ? "loading" : lock.kind}
+    >
+      <Play aria-hidden="true" />
+      {t("button")}
+    </Button>
+  );
+  const dialog = (
+    <PlanRunDialog project={project} planId={planId} open={open} onOpenChange={setOpen} onDispatched={onDispatched} />
+  );
+  if (layout === "row") {
+    return (
+      <>
+        {locked ? (
+          <Tooltip>
+            <TooltipTrigger asChild>{button}</TooltipTrigger>
+            <TooltipContent side="left">{lockText(lock)}</TooltipContent>
+          </Tooltip>
+        ) : (
+          button
+        )}
+        {locked ? (
+          <span id={`${ids}-lock`} className="sr-only" data-testid={`${testId}-lock`}>
+            {lockText(lock)}
+          </span>
+        ) : null}
+        {dialog}
+      </>
+    );
+  }
   return (
-    <div className={cn("flex min-w-0 gap-1", layout === "stack" ? "flex-col items-start sm:items-end" : "flex-col items-start")}>
-      <Button
-        type="button"
-        size={size}
-        variant={variant}
-        className="shrink-0 aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
-        aria-disabled={locked || undefined}
-        aria-describedby={locked ? `${ids}-lock` : undefined}
-        onClick={() => {
-          if (!locked) setOpen(true);
-        }}
-        data-testid={testId}
-        data-locked={lock === null ? undefined : lock === "loading" ? "loading" : lock.kind}
-      >
-        <Play aria-hidden="true" />
-        {t("button")}
-      </Button>
+    <div className="flex min-w-0 flex-col items-start gap-1 sm:items-end">
+      {button}
       {locked ? (
         <p id={`${ids}-lock`} className="max-w-56 text-xs text-pretty text-muted-foreground sm:text-right" data-testid={`${testId}-lock`}>
           {lockText(lock)}
         </p>
       ) : null}
-      <PlanRunDialog project={project} planId={planId} open={open} onOpenChange={setOpen} onDispatched={onDispatched} />
+      {dialog}
     </div>
   );
 }

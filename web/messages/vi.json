@@ -264,6 +264,7 @@
       "shown": "Hiển thị {shown} trên {total} người dùng",
       "search": "Tìm theo tên đăng nhập",
       "searchPlaceholder": "Ví dụ: octocat",
+      "clearSearch": "Xoá ô tìm",
       "project": "Dự án",
       "allProjects": "Tất cả dự án",
       "grant": "Cấp quyền",
@@ -273,7 +274,6 @@
       "emptyTitle": "Chưa có người dùng nào",
       "emptyDescription": "Người dùng xuất hiện ở đây sau lần đăng nhập đầu tiên, hoặc khi bạn cấp quyền cho tên đăng nhập GitHub của họ.",
       "noMatchTitle": "Không có người dùng khớp bộ lọc",
-      "noMatchDescription": "Thử tên đăng nhập khác hoặc chọn tất cả dự án.",
       "columns": {
         "login": "Người dùng",
         "grants": "Quyền theo dự án",
@@ -282,6 +282,7 @@
         "actions": "Thao tác"
       },
       "noGrants": "Chưa có quyền ở dự án nào",
+      "moreGrants": "và {count} dự án khác: {projects}",
       "grantSummary": "{project}: {role}, mức hiển thị {level}",
       "hubAdmin": "Quản trị viên hub",
       "notSignedIn": "Chưa đăng nhập",
@@ -369,6 +370,7 @@
     "tokens": {
       "title": "Token và phiên đăng nhập",
       "caption": "Token và phiên đăng nhập",
+      "count": "{count, plural, other {# token}}",
       "login": "Người dùng",
       "loginPlaceholder": "Tất cả người dùng",
       "kind": "Loại",
@@ -400,8 +402,9 @@
       "noHost": "Không có",
       "revoke": "Thu hồi",
       "revokeLabel": "Thu hồi token {id} của {login}",
-      "emptyTitle": "Không có token nào khớp bộ lọc",
-      "emptyDescription": "Đổi người dùng, loại hoặc trạng thái để xem token khác."
+      "emptyTitle": "Không có token nào đang hoạt động",
+      "emptyDescription": "Token hiện ở đây khi có người đăng nhập hub từ trình duyệt, CLI hoặc worker.",
+      "noMatchTitle": "Không có token nào khớp bộ lọc"
     },
     "revokeToken": {
       "title": "Thu hồi token {id} của {login}?",
@@ -420,6 +423,7 @@
     "audit": {
       "title": "Nhật ký audit",
       "caption": "Nhật ký audit, mới nhất trước",
+      "count": "{count, plural, other {# dòng}}",
       "actor": "Người thực hiện",
       "actorPlaceholder": "Tất cả người dùng",
       "action": "Hành động",
@@ -438,8 +442,9 @@
       },
       "hub": "Hub",
       "noProject": "Không thuộc dự án",
-      "emptyTitle": "Không có dòng audit nào khớp bộ lọc",
-      "emptyDescription": "Nới bộ lọc, chẳng hạn bỏ người thực hiện hay mở rộng khoảng ngày.",
+      "emptyTitle": "Chưa có dòng audit nào",
+      "emptyDescription": "Mỗi lần đăng nhập, cấp quyền, hay thay đổi dự án, plan, memory và skill thêm một dòng ở đây.",
+      "noMatchTitle": "Không có dòng audit nào khớp bộ lọc",
       "actions": {
         "auth_login": "Đăng nhập",
         "auth_logout": "Đăng xuất",
@@ -502,8 +507,11 @@
       "emptyDescription": "Plan hiện ở đây khi một thành viên đẩy các plan trong harness lên bằng evo-agents hub plan import; plan có nhãn cao hơn mức hiển thị của bạn không hiện.",
       "search": "Tìm plan theo tên hoặc mã",
       "searchPlaceholder": "Tìm plan…",
+      "clearSearch": "Xoá ô tìm",
       "shown": "Hiện {shown} trên {total} plan",
+      "total": "{count, plural, other {# plan}}",
       "noMatch": "Không có plan nào khớp với từ khoá.",
+      "noMatchTitle": "Không có plan nào khớp",
       "activeCaption": "Plan đang chạy",
       "completedCaption": "Plan đã hoàn tất",
       "columns": {
@@ -671,7 +679,13 @@
     "status": "Mã HTTP {status}",
     "apiMessage": "Thông báo từ API",
     "retry": "Thử lại",
-    "backHome": "Về danh sách dự án"
+    "backHome": "Về danh sách dự án",
+    "noResults": {
+      "inUse": "Bộ lọc đang dùng",
+      "filter": "{label}:",
+      "search": "Tìm",
+      "clear": "Xoá bộ lọc"
+    }
   },
   "table": {
     "sortAscending": "Đang xếp tăng dần",
@@ -737,9 +751,7 @@
     },
     "noResults": {
       "searchTitle": "Không tìm thấy memory nào cho “{q}”",
-      "searchDescription": "Thử từ khác, bỏ bớt bộ lọc, hoặc đặt cụm từ trong dấu ngoặc kép. Memory có nhãn cao hơn grant của bạn không bao giờ hiện ở đây.",
-      "filterTitle": "Không có memory nào khớp bộ lọc",
-      "filterDescription": "Bỏ bớt bộ lọc vị trí hoặc loại để thấy thêm."
+      "filterTitle": "Không có memory nào khớp bộ lọc"
     },
     "deleted": "Đã xoá",
     "markdown": {
@@ -829,15 +841,14 @@
     "filter": {
       "label": "Lọc skill",
       "placeholder": "Lọc theo tên hoặc mô tả",
-      "clear": "Xoá bộ lọc"
+      "clear": "Xoá ô tìm"
     },
     "summary": {
       "all": "{count, plural, =0 {Không có skill nào} other {# skill}}",
       "filtered": "Hiện {shown} trên {count} skill"
     },
     "noResults": {
-      "title": "Không có skill nào khớp “{q}”",
-      "description": "Thử từ khác, hoặc xoá bộ lọc để xem toàn bộ."
+      "title": "Không có skill nào khớp “{q}”"
     },
     "blobStore": {
       "unconfiguredTitle": "Hub chưa cấu hình kho blob",
@@ -1175,9 +1186,9 @@
       "clear": "Xoá ô tìm"
     },
     "listSummary": {
-      "all": "{count, plural, =0 {Không có worker nào.} other {# worker.}}",
-      "filtered": "{count, plural, =0 {Không có worker nào khớp.} other {# worker khớp.}}",
-      "revokedHidden": "{count, plural, other {Đang ẩn # worker đã thu hồi; chọn Đã thu hồi để xem.}}"
+      "all": "{count, plural, =0 {Không có worker nào} other {# worker}}",
+      "filtered": "{count, plural, =0 {Không có worker nào khớp} other {# worker khớp}}",
+      "revokedHidden": "{count, plural, other {đang ẩn # worker đã thu hồi}}"
     },
     "columns": {
       "worker": "Worker",
@@ -1190,13 +1201,11 @@
     },
     "empty": {
       "title": "Chưa có worker nào",
-      "description": "Đăng ký một laptop hoặc máy bàn để chạy các bước plan cho bạn. Worker gọi hub qua HTTPS và không mở cổng nào trên máy.",
+      "description": "Đăng ký một laptop hoặc máy bàn để chạy các bước plan cho bạn; worker gọi hub qua HTTPS và không mở cổng nào.",
       "showRevoked": "Xem worker đã thu hồi"
     },
     "noResults": {
-      "title": "Không có worker nào khớp",
-      "description": "Đổi từ khoá tìm hoặc chọn trạng thái khác.",
-      "clear": "Xem mọi worker"
+      "title": "Không có worker nào khớp"
     },
     "copy": {
       "copy": "Sao chép",
@@ -1356,8 +1365,8 @@
       "clear": "Xoá ô tìm"
     },
     "listSummary": {
-      "all": "{count, plural, =0 {Không có run nào.} other {# run.}}",
-      "filtered": "{count, plural, =0 {Không có run nào khớp.} other {# run khớp.}}"
+      "all": "{count, plural, =0 {Không có run nào} other {# run}}",
+      "filtered": "{count, plural, =0 {Không có run nào khớp} other {# run khớp}}"
     },
     "columns": {
       "run": "Run",
@@ -1391,9 +1400,7 @@
       "readerDescription": "Người có quyền ghi trên dự án này dispatch run tới worker của họ; mỗi run hiện ở đây kèm trạng thái."
     },
     "noResults": {
-      "title": "Không có run nào khớp",
-      "description": "Đổi từ khoá tìm, hoặc xem run ở mọi trạng thái.",
-      "clear": "Xem mọi run"
+      "title": "Không có run nào khớp"
     },
     "step": {
       "title": "Run của bước này",

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useFormatter, useTranslations } from "next-intl";
 import { useMemo } from "react";
 
-import { DataTable, dataTableColumns } from "@/components/data/data-table";
+import { CellMain, DataTable, dataTableColumns } from "@/components/data/data-table";
 import { Identifier, NAME_LINK, RunRef } from "@/components/data/identifier";
 import { useNow } from "@/components/kg/use-now";
 import { planHref, stepHref } from "@/components/plans/links";
@@ -75,61 +75,56 @@ function Timing({ run, part }: { run: Run; part: "started" | "duration" }) {
       <time
         dateTime={at}
         title={format.dateTime(date, { dateStyle: "medium", timeStyle: "medium" })}
-        className={cn("text-xs whitespace-nowrap tabular-nums", !timing.startedAt && "text-muted-foreground")}
+        className={cn("whitespace-nowrap", !timing.startedAt && "text-fg-subtle")}
       >
         {timing.startedAt ? null : <span className="sr-only">{t("queuedAt")} </span>}
         {format.dateTime(date, { dateStyle: "short", timeStyle: "short" })}
       </time>
     );
   }
-  if (timing.durationMs === null) return <span className="text-xs text-muted-foreground">-</span>;
+  if (timing.durationMs === null) return <span className="text-fg-subtle">-</span>;
   return (
-    <span className={cn("text-xs whitespace-nowrap tabular-nums", timing.waiting && "text-muted-foreground")} data-testid="run-duration">
+    <span className={cn("whitespace-nowrap", timing.waiting && "text-fg-subtle")} data-testid="run-duration">
       {timing.waiting ? t("waiting", { duration: duration(timing.durationMs) }) : duration(timing.durationMs)}
     </span>
   );
 }
 
+/**
+ * The run's title and one line under it: its plan and step (and project on a worker's page), or, once it failed, was
+ * lost or cancelled, the reason in danger. A plan run carries the Plan run tag after its title.
+ */
 function StepCell({ run, showProject }: { run: Run; showProject: boolean }) {
   const t = useTranslations("runs");
   const ended = run.state === "failed" || run.state === "lost" || run.state === "cancelled";
   const plan = run.kind === "plan" || run.step_key === null;
   const repos = run.repos?.length ?? 0;
+  const where = plan
+    ? showProject
+      ? t("planLineProject", { project: run.project, plan: run.plan_id, repos })
+      : t("planLine", { plan: run.plan_id, repos })
+    : showProject
+      ? t("stepLineProject", { project: run.project, plan: run.plan_id, step: run.step_key ?? "" })
+      : t("stepLine", { plan: run.plan_id, step: run.step_key ?? "" });
+  const failure = ended && run.error ? run.error : null;
+  const title = plan ? (run.title ?? run.plan_id) : (run.title ?? t("untitled"));
   return (
-    <div className="flex min-w-36 flex-col items-start gap-0.5 py-0.5 break-words whitespace-normal">
-      {plan ? (
-        <Link
-          href={planHref(run.project, run.plan_id)}
-          className={cn(NAME_LINK, "w-fit text-sm")}
-          data-testid="run-plan-link"
-        >
-          {run.title ?? run.plan_id}
-        </Link>
-      ) : (
-        <Link
-          href={stepHref(run.project, run.plan_id, run.step_key ?? "")}
-          className={cn(NAME_LINK, "w-fit text-sm")}
-          data-testid="run-step-link"
-        >
-          {run.title ?? t("untitled")}
-        </Link>
-      )}
-      <span className="font-mono text-xs text-muted-foreground">
-        {plan
-          ? showProject
-            ? t("planLineProject", { project: run.project, plan: run.plan_id, repos })
-            : t("planLine", { plan: run.plan_id, repos })
-          : showProject
-            ? t("stepLineProject", { project: run.project, plan: run.plan_id, step: run.step_key ?? "" })
-            : t("stepLine", { plan: run.plan_id, step: run.step_key ?? "" })}
-      </span>
-      {plan ? <PlanRunKindBadge className="mt-0.5" /> : null}
-      {ended && run.error ? (
-        <span className="line-clamp-2 text-xs text-muted-foreground" title={run.error} data-testid="run-error">
-          {run.error}
-        </span>
-      ) : null}
-    </div>
+    <CellMain
+      sub={failure ?? where}
+      subTitle={failure ? `${where}: ${failure}` : where}
+      danger={failure !== null}
+      subTestId={failure ? "run-error" : "run-where"}
+    >
+      <Link
+        href={plan ? planHref(run.project, run.plan_id) : stepHref(run.project, run.plan_id, run.step_key ?? "")}
+        className={cn(NAME_LINK, "truncate")}
+        title={title}
+        data-testid={plan ? "run-plan-link" : "run-step-link"}
+      >
+        {title}
+      </Link>
+      {plan ? <PlanRunKindBadge /> : null}
+    </CellMain>
   );
 }
 
@@ -137,9 +132,7 @@ function WorkerCell({ run, viewer }: { run: Run; viewer: Viewer | null }) {
   const t = useTranslations("runs");
   if (run.worker_id === null || !run.worker) {
     return (
-      <span className="text-xs text-muted-foreground">
-        {run.pinned_worker_id !== null ? t("pinnedWaiting") : t("noWorkerYet")}
-      </span>
+      <span className="text-fg-subtle">{run.pinned_worker_id !== null ? t("pinnedWaiting") : t("noWorkerYet")}</span>
     );
   }
   const mayOpen = viewer !== null && (viewer.admin || viewer.login === run.dispatched_by);
@@ -180,6 +173,7 @@ export function RunsTable({
     const step = helper.display({
       id: "step",
       header: () => t("columns.step"),
+      meta: { primary: true },
       cell: (info) => <StepCell run={info.row.original} showProject={variant === "worker"} />,
     });
     const state = helper.display({
@@ -195,30 +189,33 @@ export function RunsTable({
     const dispatcher = helper.display({
       id: "dispatcher",
       header: () => t("columns.dispatcher"),
-      cell: (info) => <span className="font-mono text-xs">{info.row.original.dispatched_by}</span>,
+      cell: (info) => <span className="font-mono text-xs text-foreground">{info.row.original.dispatched_by}</span>,
     });
     const runtime = helper.display({
       id: "runtime",
       header: () => t("columns.runtime"),
-      cell: (info) => <span className="text-xs whitespace-nowrap">{tRuntime(info.row.original.runtime)}</span>,
+      cell: (info) => <span className="whitespace-nowrap">{tRuntime(info.row.original.runtime)}</span>,
     });
     const started = helper.display({
       id: "started",
       header: () => t("columns.started"),
+      meta: { numeric: true },
       cell: (info) => <Timing run={info.row.original} part="started" />,
     });
     const duration = helper.display({
       id: "duration",
       header: () => t("columns.duration"),
+      meta: { numeric: true },
       cell: (info) => <Timing run={info.row.original} part="duration" />,
     });
     const attempt = helper.display({
       id: "attempt",
       header: () => t("columns.attempt"),
+      meta: { numeric: true },
       cell: (info) => {
         const { attempt: number, max_attempts: max } = info.row.original;
         return (
-          <span className="font-mono text-xs tabular-nums">
+          <span className="font-mono text-xs">
             <span aria-hidden="true">
               {number}/{max}
             </span>

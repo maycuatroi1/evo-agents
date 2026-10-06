@@ -1,13 +1,14 @@
 "use client";
 
-import { CircleCheck, Layers, Loader2, type LucideIcon, Plus, SearchX, Server, WifiOff } from "lucide-react";
+import { CircleCheck, Layers, Loader2, type LucideIcon, Plus, Server, WifiOff } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useFormatter, useTranslations } from "next-intl";
 import { useMemo, useState } from "react";
 
 import { NoticeArea, useNotice } from "@/components/admin/notice";
-import { DataTable, dataTableColumns } from "@/components/data/data-table";
+import { DataCard, DataToolbar } from "@/components/data/data-card";
+import { CellMain, DataTable, dataTableColumns } from "@/components/data/data-table";
 import { FacetGroup, type FacetOption } from "@/components/data/facet-group";
 import { NAME_LINK } from "@/components/data/identifier";
 import { SearchField } from "@/components/data/search-field";
@@ -15,7 +16,7 @@ import { useNow } from "@/components/kg/use-now";
 import { PageHeader } from "@/components/shell/page-header";
 import { STATUS_LOOKS, StatusBadge, useStatusText } from "@/components/status/status-badge";
 import { QueryView, useHubQuery } from "@/components/states/query-view";
-import { EmptyState, PageSkeleton } from "@/components/states/states";
+import { type ActiveFilter, EmptyState, ListSkeleton, NoResults } from "@/components/states/states";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { browserApi } from "@/lib/api/browser";
@@ -113,21 +114,21 @@ function WorkersTable({ workers, caption }: { workers: Worker[]; caption: string
       helper.accessor("name", {
         header: () => t("columns.worker"),
         sortFn: "alphanumeric",
+        meta: { primary: true },
         cell: (info) => {
           const worker = info.row.original;
+          const host = t("hostLine", { hostname: worker.hostname, os: worker.os, arch: worker.arch });
           return (
-            <div className="flex min-w-0 flex-col gap-0.5 py-0.5 whitespace-normal">
+            <CellMain sub={host} subTitle={host}>
               <Link
                 href={workerHref(worker.id)}
-                className={cn(NAME_LINK, "w-fit font-mono text-sm [overflow-wrap:anywhere]")}
+                className={cn(NAME_LINK, "truncate font-mono text-[13px]")}
+                title={worker.name}
                 data-worker-name={worker.name}
               >
                 {worker.name}
               </Link>
-              <span className="text-xs text-muted-foreground [overflow-wrap:anywhere]">
-                {t("hostLine", { hostname: worker.hostname, os: worker.os, arch: worker.arch })}
-              </span>
-            </div>
+            </CellMain>
           );
         },
       }),
@@ -141,10 +142,11 @@ function WorkersTable({ workers, caption }: { workers: Worker[]; caption: string
         id: "slots",
         header: () => t("columns.slots"),
         sortFn: "basic",
+        meta: { numeric: true },
         cell: (info) => {
           const worker = info.row.original;
           return (
-            <span className="font-mono text-xs tabular-nums">
+            <span className="font-mono text-xs">
               <span aria-hidden="true">
                 {worker.held_runs}/{worker.slots}
               </span>
@@ -174,12 +176,13 @@ function WorkersTable({ workers, caption }: { workers: Worker[]; caption: string
       helper.accessor("owner", {
         header: () => t("columns.owner"),
         sortFn: "alphanumeric",
-        cell: (info) => <span className="font-mono text-xs">{info.getValue()}</span>,
+        cell: (info) => <span className="font-mono text-xs text-foreground">{info.getValue()}</span>,
       }),
       helper.accessor((row) => (row.last_heartbeat_at ? new Date(row.last_heartbeat_at) : new Date(0)), {
         id: "heartbeat",
         header: () => t("columns.heartbeat"),
         sortFn: "datetime",
+        meta: { numeric: true },
         cell: (info) => <Ago value={info.row.original.last_heartbeat_at} never={t("never")} />,
       }),
     ]);
@@ -199,6 +202,7 @@ function WorkersTable({ workers, caption }: { workers: Worker[]; caption: string
 
 function WorkerList({ workers, onRegister }: { workers: Worker[]; onRegister: () => void }) {
   const t = useTranslations("workers");
+  const tStates = useTranslations("states.noResults");
   const statusText = useStatusText("worker");
   const [filters, setFilters] = useFilters();
   const revoked = countByView(workers).revoked;
@@ -228,47 +232,54 @@ function WorkerList({ workers, onRegister }: { workers: Worker[]; onRegister: ()
     ...WORKER_VIEWS.map((view) => ({ value: view, label: statusText(view), icon: STATUS_LOOKS.worker[view].icon, count: counts[view] })),
   ];
 
+  const inUse: ActiveFilter[] = [
+    ...(filters.status ? [{ label: t("facets.label"), value: statusText(filters.status) }] : []),
+    ...(filters.q ? [{ label: tStates("search"), value: filters.q }] : []),
+  ];
+  const filtered = filters.status !== null || Boolean(filters.q);
+  const count = (
+    <>
+      {filtered ? t("listSummary.filtered", { count: shown.length }) : t("listSummary.all", { count: shown.length })}
+      {hiddenRevoked > 0 ? <>, {t("listSummary.revokedHidden", { count: hiddenRevoked })}</> : null}
+    </>
+  );
+
   return (
     <section aria-labelledby="workers-list-title" className="flex flex-col gap-4">
       <h2 id="workers-list-title" className="sr-only">
         {t("caption")}
       </h2>
-      <div className="flex flex-col gap-3 rounded-md border bg-card shadow-raised p-4">
-        <SearchField
-          value={filters.q}
-          onCommit={(q) => setFilters({ ...filters, q })}
-          label={t("search.label")}
-          placeholder={t("search.placeholder")}
-          clearLabel={t("search.clear")}
-          debounce={150}
-          maxLength={100}
-          className="sm:max-w-sm"
-          testId="workers-search"
-        />
-        <FacetGroup
-          label={t("facets.label")}
-          options={options}
-          selected={filters.status}
-          onSelect={(status) => setFilters({ ...filters, status: status === null ? null : (status as WorkerFilters["status"]) })}
-          countLabel={(count) => t("count", { count })}
-          testId="workers-facets"
-        />
-      </div>
-      <p aria-live="polite" className="text-sm text-muted-foreground" data-testid="workers-list-summary">
-        {filters.status === null && !filters.q
-          ? t("listSummary.all", { count: shown.length })
-          : t("listSummary.filtered", { count: shown.length })}
-        {hiddenRevoked > 0 ? <> {t("listSummary.revokedHidden", { count: hiddenRevoked })}</> : null}
-      </p>
-      {shown.length === 0 ? (
-        <EmptyState icon={SearchX} title={t("noResults.title")} description={t("noResults.description")}>
-          <Button variant="outline" onClick={() => setFilters({ status: null, q: "" })}>
-            {t("noResults.clear")}
-          </Button>
-        </EmptyState>
-      ) : (
-        <WorkersTable workers={shown} caption={t("caption")} />
-      )}
+      <DataCard
+        toolbar={
+          <DataToolbar label={t("caption")} count={count} countTestId="workers-list-summary">
+            <SearchField
+              value={filters.q}
+              onCommit={(q) => setFilters({ ...filters, q })}
+              label={t("search.label")}
+              placeholder={t("search.placeholder")}
+              clearLabel={t("search.clear")}
+              debounce={150}
+              maxLength={100}
+              className="sm:w-64"
+              testId="workers-search"
+            />
+            <FacetGroup
+              label={t("facets.label")}
+              options={options}
+              selected={filters.status}
+              onSelect={(status) => setFilters({ ...filters, status: status === null ? null : (status as WorkerFilters["status"]) })}
+              countLabel={(n) => t("count", { count: n })}
+              testId="workers-facets"
+            />
+          </DataToolbar>
+        }
+      >
+        {shown.length === 0 ? (
+          <NoResults title={t("noResults.title")} filters={inUse} onClear={() => setFilters({ status: null, q: "" })} />
+        ) : (
+          <WorkersTable workers={shown} caption={t("caption")} />
+        )}
+      </DataCard>
     </section>
   );
 }
@@ -295,7 +306,7 @@ export function WorkersPage({ initialError }: { initialError: ApiErrorInfo | nul
         }
       />
       <NoticeArea notice={notice} onDismiss={clear} />
-      <QueryView state={state} loading={<PageSkeleton />}>
+      <QueryView state={state} loading={<ListSkeleton metrics={4} />}>
         {(workers) => (
           <div className="flex flex-col gap-6">
             {workers.length > 0 ? <Summary summary={summarize(workers)} /> : null}
