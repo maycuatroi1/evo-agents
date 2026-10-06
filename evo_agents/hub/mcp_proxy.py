@@ -4,7 +4,11 @@ Every runtime attaches the hub the same way, by starting this command, and the t
 configuration file of a runtime holds an Authorization header. Each line on stdin is one JSON-RPC message. It goes to
 the hub as one POST /mcp with the token, the session's project (X-Evo-Project: --project, else the project
 ``resolve_project`` finds for the working directory) and its sink (X-Evo-Sink: --sink, default claude-code@anthropic),
-and the hub's answer comes back as one line on stdout, as the hub wrote it. A notification gets no line. Once the
+and the hub's answer comes back as one line on stdout, as the hub wrote it. Inside a run of this machine's worker
+(EVO_RUN_ID, which the daemon sets for a run's agent, and the worker's token and configuration in its state directory,
+``$EVO_WORKER_HOME`` or ~/.evo/worker), the message goes with the worker token and X-Evo-Run instead, whether or not
+~/.evo/hub/token exists, and without X-Evo-Project: the hub binds the session to the run's project and scopes what it
+reads and writes to it (``evo_agents.hub.server.mcp``). A notification gets no line. Once the
 handshake is done, every message carries the negotiated MCP-Protocol-Version. A message of the 2026-07-28 revision,
 which has no handshake and carries its version in ``params._meta``, gets the headers that revision's HTTP binding
 asks for instead: MCP-Protocol-Version, Mcp-Method and Mcp-Name.
@@ -30,6 +34,7 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 import re
 import sys
 import threading
@@ -37,18 +42,20 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 
 from evo_agents import __version__
-from evo_agents.hub.client import CONNECTIONS, HubError, Unreachable, check_url, load_credentials
+from evo_agents.hub.client import CONNECTIONS, Credentials, HubError, Unreachable, check_url, load_credentials
 from evo_agents.hub.mcp_tools import (
     HANDSHAKE_VERSIONS,
     INSTRUCTIONS,
     PROJECT_HEADER,
     PROTOCOL_HEADER,
     PROTOCOL_VERSION,
+    RUN_HEADER,
     SERVER_NAME,
     SINK_HEADER,
     TOOLS,
 )
 from evo_agents.hub.memory import AGENT_SINK
+from evo_agents.worker.home import WorkerHome, WorkerStateError
 
 MCP_PATH = "/mcp"
 TIMEOUT = 120.0  # seconds for one message: a tool call may first fetch the project's graph into the hub's cache
@@ -59,6 +66,7 @@ PARSE_FAILED = {"code": -32700, "message": "parse error"}  # what kg serve answe
 HUB_ERROR = -32000  # JSON-RPC's range for server errors: the hub gave no answer
 ENVELOPE_VERSION = "io.modelcontextprotocol/protocolVersion"  # params._meta key of a 2026-07-28 message
 NAMED_BY = {"tools/call": "name", "prompts/get": "name", "resources/read": "uri"}  # the param Mcp-Name mirrors
+RUN_VARIABLE = "EVO_RUN_ID"  # set by the worker daemon for the agent of a run (evo_agents.worker.run)
 _HEADER_SAFE = re.compile(r"[\x20-\x7e]*")
 _SENTINEL = re.compile(r"=\?base64\?.*\?=")
 
@@ -89,7 +97,8 @@ def routing_headers(message) -> dict:
 
 class McpClient:
     """JSON-RPC messages to the /mcp of the hub at ``url``, one POST each, as the holder of ``token``, over the
-    process's kept-alive connections (``connections``)."""
+    process's kept-alive connections (``connections``). With ``run``, ``token`` is a worker's, for the agent of that
+    run: the messages carry X-Evo-Run and no X-Evo-Project, since the hub binds the session to the run's project."""
 
     def __init__(
         self,
@@ -98,6 +107,7 @@ class McpClient:
         project: str | None,
         sink: str,
         *,
+        run: int | None = None,
         timeout: float = TIMEOUT,
         sleep=time.sleep,
         connections=CONNECTIONS,
@@ -106,12 +116,14 @@ class McpClient:
         self.token = token
         self.project = project
         self.sink = sink
+        self.run = run
         self.timeout = timeout
         self.sleep = sleep
         self.connections = connections
 
     def __repr__(self) -> str:  # the token stays out of tracebacks
-        return f"McpClient({self.url!r}, project={self.project!r}, sink={self.sink!r})"
+        run = "" if self.run is None else f", run={self.run}"
+        return f"McpClient({self.url!r}, project={self.project!r}, sink={self.sink!r}{run})"
 
     def post(self, message, protocol: str | None = None):
         """The hub's answer to ``message``: a JSON-RPC response, or None when it has none (a notification). Raises
@@ -123,7 +135,9 @@ class McpClient:
             "Authorization": f"Bearer {self.token}",
             SINK_HEADER: self.sink,
         }
-        if self.project:
+        if self.run is not None:
+            headers[RUN_HEADER] = str(self.run)
+        elif self.project:
             headers[PROJECT_HEADER] = self.project
         if protocol:
             headers[PROTOCOL_HEADER] = protocol
@@ -167,6 +181,28 @@ class McpClient:
         return result
 
 
+def current_run() -> int | None:
+    """The run whose agent this process serves (EVO_RUN_ID, a positive integer), or None."""
+    value = os.environ.get(RUN_VARIABLE, "").strip()
+    return int(value) if value.isascii() and value.isdigit() and int(value) >= 1 else None
+
+
+def session_credentials() -> Credentials:
+    """What a message goes with: inside a run (``current_run``) of this machine's worker, the worker's token for that
+    run and the hub the worker joined; else, and when the worker's state holds no token, the machine token of
+    ``evo-agents hub login``. Read again for every message, never kept."""
+    run = current_run()
+    if run is not None:
+        home = WorkerHome()
+        try:
+            config, token = home.load_config(), home.load_token()
+        except WorkerStateError:
+            pass  # not a worker here: the machine's own credentials
+        else:
+            return Credentials(config.url, config.owner or config.name, token, run)
+    return load_credentials()
+
+
 def hub_project(project: str | None) -> str | None:
     """The hub project of the session: ``project`` (a name or a harness path) as ``resolve_project`` reads it, else
     the one the working directory belongs to; a name no project here has is taken as the hub's. None when there is
@@ -187,7 +223,7 @@ class Proxy:
         project: str | None,
         sink: str = AGENT_SINK,
         *,
-        credentials=load_credentials,
+        credentials=session_credentials,
         timeout: float = TIMEOUT,
         workers: int = WORKERS,
         err=None,
@@ -242,6 +278,7 @@ class Proxy:
                 credentials.token,
                 self.project,
                 self.sink,
+                run=credentials.run,
                 timeout=self.timeout,
                 sleep=self.sleep,
                 connections=self.connections,
@@ -310,7 +347,7 @@ class Proxy:
 
 def cmd_mcp(args) -> int:
     project = hub_project(args.project)
-    if project is None:
+    if project is None and current_run() is None:  # a run's agent gets the run's project from the hub
         print(
             "evo-agents hub mcp: no project for this directory: the kg_* tools need --project, the other tools "
             "a project argument",

@@ -29,9 +29,10 @@ A request carries one of three credentials:
 - a web session (`evs_...`) in the `evo_hub_session` cookie. A write made with the cookie (POST, PUT, PATCH,
   DELETE) also needs the `X-Evo-CSRF` header, whose value `GET /v1/auth/web/csrf` hands out;
 - a worker token (`evw_...`) as `Authorization: Bearer`, which a worker gets once when it joins or registers. It
-  works only on `/v1/worker/*`, where machine tokens and web sessions get 403, and gets 403 everywhere else
-  (`docs/workers.md`). Revoking it (`DELETE /v1/tokens/{id}`, or `DELETE /v1/admin/tokens/{id}`) revokes its worker
-  too and releases the runs the worker holds.
+  works only on `/v1/worker/*`, where machine tokens and web sessions get 403, and gets 403 everywhere else under
+  `/v1` (`docs/workers.md`); outside `/v1` it opens `/mcp` for the agent of a run its worker holds (below). Revoking
+  it (`DELETE /v1/tokens/{id}`, or `DELETE /v1/admin/tokens/{id}`) revokes its worker too and releases the runs the
+  worker holds.
 
 Only the health checks, the OpenAPI document, the first steps of sign-in (`/v1/auth/config`, `/v1/auth/github`,
 `/v1/auth/web/login`, `/v1/auth/web/callback`) and a worker's join with a pairing code (`/v1/worker/join`) answer
@@ -66,11 +67,31 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | worker protocol | `/v1/worker/{claim,heartbeat}`, `/v1/worker/runs/{id}/{state,events,inbox,uploads,blobs,plan,decisions,notices,credentials}`, `/v1/worker/runs/{id}/steps/{key}` |
 
 `/mcp` speaks MCP's Streamable HTTP transport, statelessly: each POST carries one JSON-RPC message and gets one JSON
-answer. It takes machine tokens only, and the `Host` header must be the host of `EVO_HUB_PUBLIC_URL` or a loopback
-name. Runtimes reach it through `evo-agents hub mcp`, a stdio proxy that adds the token, the session's project
-(`X-Evo-Project`) and its sink (`X-Evo-Sink`, `claude-code@anthropic` by default). Its 15 tools are the seven
-`kg_*` tools of `evo-agents kg serve` plus `memory_search`, `memory_get`, `memory_write`, `plan_list`, `plan_show`,
-`plan_step`, `skill_list` and `hub_projects`, and they follow the same rules as the REST routes.
+answer. It takes a machine token, or the worker token of the agent of a run (below), never a web session, and the
+`Host` header must be the host of `EVO_HUB_PUBLIC_URL` or a loopback name. Runtimes reach it through
+`evo-agents hub mcp`, a stdio proxy that adds the token, the session's project (`X-Evo-Project`) and its sink
+(`X-Evo-Sink`, `claude-code@anthropic` by default). Its 15 tools are the seven `kg_*` tools of `evo-agents kg serve`
+plus `memory_search`, `memory_get`, `memory_write`, `plan_list`, `plan_show`, `plan_step`, `skill_list` and
+`hub_projects`, and they follow the same rules as the REST routes.
+
+The agent of a run on a worker reaches `/mcp` with its worker's token. Inside a run (`EVO_RUN_ID`, which the daemon
+sets, and a token in the worker's state, `$EVO_WORKER_HOME` or `~/.evo/worker`) `evo-agents hub mcp` sends that
+token with `X-Evo-Run: <run id>` instead of the machine token of `~/.evo/hub/token`, and no `X-Evo-Project`; a
+worker machine needs no machine token at all. The hub opens the session only while the worker holds the run (leased,
+running, interactive, verifying or waiting) and the run's owner still holds a grant on its project; any other run,
+another worker's, one that ended or one in review, gets 403, and so does a worker token without `X-Evo-Run`. A
+machine token with `X-Evo-Run` gets 400. The agent then acts as the run's owner, scoped to the run:
+
+- the session's project is the run's, and an `X-Evo-Project` naming another one gets 403;
+- every tool reaches the run's project alone: any other project answers as one that does not exist, `hub_projects`
+  lists that one, and `skill_list` the global skills and that project's;
+- the owner's role there counts as writer at most, and the level as the owner's grant allows, through the session's
+  sink as for anyone;
+- the agent is never a hub admin, whoever owns the run, and it neither reads nor writes its owner's personal
+  memories;
+- every write is audited with the worker's token, and the log line of each tool call names the run.
+
+Once the run leaves those states, its id opens nothing, and revoking the worker ends its token.
 
 ### OpenAPI
 

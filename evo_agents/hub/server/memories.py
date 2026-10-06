@@ -11,7 +11,10 @@ sink the caller names, and user and feedback memories to their owner alone, unde
 to their owner alone. A memory one cannot see answers exactly as one that does not exist. The sink a read goes through
 is the one the caller names; left out, a machine token reads through the Claude Code session's (claude-code@anthropic),
 since a pull writes files that sessions read, and a web session through none: the web shows members their own view,
-so the label must pass ``ProjectRules.visible_by_grant`` (the grant's max level alone).
+so the label must pass ``ProjectRules.visible_by_grant`` (the grant's max level alone). The agent of a run, on the
+hub's /mcp with its worker's token (``Principal.scope``), reads and writes the memories of the run's project alone,
+under its owner's grant as the scope caps it (``projects.project_access``): never a personal memory of its owner,
+nor one of another project.
 
 PUT /v1/memories writes a memory by its key: scope, project, location and name, plus the owner for the types only the
 owner sees. ``if_revision`` is the revision the writer last saw: none to create (a tombstone counts as nothing), the
@@ -232,10 +235,10 @@ FROM = """
   FROM memories m LEFT JOIN projects p ON p.id = m.project_id
   JOIN users o ON o.id = m.owner_id JOIN users u ON u.id = m.updated_by
 """
-# What may be visible before labels count: one's personal memories and, in the projects one holds a grant on, the
-# shared memories and one's own.
+# What may be visible before labels count: one's personal memories (not for the agent of a run) and, in the projects
+# one holds a grant on, the shared memories and one's own.
 CANDIDATE = """
-(m.scope = 'personal' AND m.owner_id = %(user)s
+(%(personal)s AND m.scope = 'personal' AND m.owner_id = %(user)s
  OR m.scope = 'project' AND m.project_id = ANY(%(projects)s)
     AND (m.type IN ('project', 'reference') OR m.owner_id = %(user)s))
 """
@@ -302,12 +305,12 @@ def _through(user: Principal, sink: str | None) -> str | None:
 
 
 def _visible(row: Row, user: Principal, accesses: dict[str, ProjectAccess], sink: str | None) -> bool:
-    """The read rule of memories: personal ones and user and feedback ones are their owner's; in a project the
-    label must pass the rule of ``evo_agents.hub.access`` for the caller's grant and ``sink``, or for the grant
-    alone when ``sink`` is None."""
+    """The read rule of memories: personal ones and user and feedback ones are their owner's, and a personal one is
+    never the agent of a run's; in a project the label must pass the rule of ``evo_agents.hub.access`` for the
+    caller's grant and ``sink``, or for the grant alone when ``sink`` is None."""
     memory = row.memory
     if memory.scope == "personal":
-        return row.owner_id == user.user_id
+        return row.owner_id == user.user_id and user.scope is None
     if memory.type not in SHARED_TYPES and row.owner_id != user.user_id:
         return False
     access = accesses.get(memory.project)
@@ -319,7 +322,7 @@ def _visible(row: Row, user: Principal, accesses: dict[str, ProjectAccess], sink
 
 
 async def _access(conn, user: Principal, project: str) -> ProjectAccess | None:
-    """``user``'s access to ``project``, None without one."""
+    """``user``'s access to ``project``, None without one, or outside the scope of a run's agent."""
     try:
         return await project_access(conn, user, project)
     except HTTPException as exc:
@@ -330,18 +333,20 @@ async def _access(conn, user: Principal, project: str) -> ProjectAccess | None:
 
 async def _accesses(conn, user: Principal, project: str | None) -> dict[str, ProjectAccess]:
     """The projects whose memories ``user`` may read, by name: ``project`` alone when given (404 when the caller
-    cannot see it), else every project the caller holds a grant on. A hub admin without a grant reads nothing."""
+    cannot see it), else every project the caller holds a grant on, the run's alone for the agent of a run. A hub
+    admin without a grant reads nothing."""
     if project is not None:
         access = await project_access(conn, user, project)
         return {project: access} if access.role else {}
     names = [row[0] for row in await (await conn.execute(GRANTED, (user.user_id,))).fetchall()]
-    found = {name: await _access(conn, user, name) for name in names}
+    found = {name: await _access(conn, user, name) for name in names if user.reaches(name)}
     return {name: access for name, access in found.items() if access is not None and access.role}
 
 
 def _params(user: Principal, accesses: dict[str, ProjectAccess], scope, project, location) -> dict:
     project_id = accesses[project].project_id if project is not None and project in accesses else None
     return {
+        "personal": user.scope is None,  # the agent of a run reads no personal memory
         "user": user.user_id,
         "projects": [access.project_id for access in accesses.values()],
         "scope": scope,
@@ -517,6 +522,12 @@ async def _has_repo(conn, project_id: int, name: str) -> bool:
 @router.put("", response_model=Written, responses={**REFUSALS, 409: {"model": Conflict}})
 async def put(request: Request, body: MemoryIn, user: CurrentUser, sink: Sink = AGENT_SINK) -> Written | JSONResponse:
     """Create or change the memory at the key ``body`` names."""
+    if body.scope == "personal" and user.scope is not None:
+        raise HTTPException(
+            403,
+            f"the agent of run {user.scope.run_id} writes memories of project {user.scope.project} only; a personal "
+            "memory is its owner's",
+        )
     async with request.app.state.pool.connection() as conn:
         access = None
         if body.scope == "project":
