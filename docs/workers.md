@@ -781,7 +781,9 @@ projects; `worker.log` (0600) the daemon's JSON log lines, rotated at 10 MiB wit
 pairing codes and presigned signatures masked; `service.log` what the daemon printed under launchd before its log
 was open; `daemon.pid`, locked while a daemon runs, so a second one refuses to start; `spool/` the events not
 acknowledged yet; `runs/<id>/` what the daemon knows of each run and its whole event log (and, for a plan run, the
-decisions its agent asked, `decisions.jsonl`); `worktrees/` the runs' worktrees, and each plan run's directory.
+decisions its agent asked, `decisions.jsonl`; and, until the run ends on this machine, `agent.json`: the pid and the
+process group of the agent the run started last, and when its leader started as `ps` prints it); `worktrees/` the
+runs' worktrees, and each plan run's directory.
 
 ### Runtimes and checkouts
 
@@ -855,9 +857,12 @@ hands it no run.
    branch. A plan that names no branch for the repo, or names its default branch (the remote's HEAD, the hub's
    `default_branch`, `main` or `master`), fails the run before the agent starts.
 2. The run's adapter starts the agent on the prompt in the worktree, and the daemon reports `running` with the
-   session id. The owner's messages are handed to the agent when the heartbeat counts them, then acknowledged. A
-   cancel, the run's timeout counted from the agent's start, or a heartbeat answering `held: false` interrupt the
-   agent; a cancelled run is reported `cancelled`, a timed-out one `failed`, and a run no longer held gets no report.
+   session id and notes the agent's process group in `runs/<id>/agent.json`. The agent's environment has
+   `EVO_RUN_ID`, so the hooks of the evo-hub plugin export no plan copy at SessionStart and push no memory at Stop,
+   and say so in the session's first line. The owner's messages are handed to the agent when the heartbeat counts
+   them, then acknowledged. A cancel, the run's timeout counted from the agent's start, or a heartbeat answering
+   `held: false` interrupt the agent; a cancelled run is reported `cancelled`, a timed-out one `failed`, and a run no
+   longer held gets no report.
    A takeover hands the agent to a person and a handback gives it back (see [Interactive runs](#interactive-runs));
    one the worker cannot do (no tmux, or an adapter without a terminal UI) is noted once in the run's log, and the
    run goes on headless.
@@ -865,9 +870,15 @@ hands it no run.
    its `verify_commands` (1 to 50 shell commands) in the worktree with `/bin/sh`, within the time the run has left,
    and records each exit code and the end of its output as a `system` event. A missing or malformed result file, or
    a command that exits other than 0, fails the run; nothing is pushed and the work stays in the worktree.
-4. The daemon commits what the agent left uncommitted as `run #N: <title>`, without `.evo-run/`; refuses to push a
-   detached HEAD, a branch the agent switched to, or a default branch; and pushes `HEAD` to the plan's branch on
-   origin, never forced and never merged. A push the remote refuses (not a fast-forward, say) fails the run.
+4. The daemon commits what the agent left uncommitted as `run #N: <title>`, and leaves out of the commit what the
+   agent did not write: the paths under `RUN_COMMIT_EXCLUDES` at any depth (`.claude/skills/.learned/`, where a
+   Stop hook of Claude Code puts the skills it learned, and `.evo-run/`), and every copy of a hub plan exactly as the
+   hub wrote it (a first line in the format `hub-plan-mirror-v1` writes and a hub key whose digest is the digest of
+   what the file holds). Those paths go back in the index as `HEAD` has them, even when the agent staged them, stay
+   in the worktree, and are named in a `system` event of the run (`left_out`); a copy the agent edited is its work
+   and is committed. The daemon then refuses to push a detached HEAD, a branch the agent switched to, or a default
+   branch; and pushes `HEAD` to the plan's branch on origin, never forced and never merged. A push the remote refuses
+   (not a fast-forward, say) fails the run.
 5. Once every event of the run is acknowledged, it reports `done` (approval `auto`) or `review`, with the commit,
    the diffstat, the verify results, the agent's summary and its usage. It then uploads the run's log and diff
    when the hub has a blob store, and moves the worktree off the plan's branch, so the owner can check the branch
@@ -890,7 +901,8 @@ hands it no run.
    - `evo-agents worker step KEY done --repo R --evidence TEXT --verify CMD` runs each verify command again with
      `/bin/sh` in R's worktree, all of them, and refuses the step when one exits other than 0: nothing is committed,
      pushed or reported, and it exits 1. Otherwise it commits what R's worktree has left as `run #N step KEY: title`,
-     refuses a detached HEAD or a branch the agent switched to, pushes R's branch to the plan's branch on origin
+     leaving out what a run's commit leaves out (see [A run on the machine](#a-run-on-the-machine)), refuses a
+     detached HEAD or a branch the agent switched to, pushes R's branch to the plan's branch on origin
      (never forced; a branch at HEAD already is left alone), and reports the step with the commit and the verify
      results. Without `--repo` the step's repo is the one the plan gives it. `in_progress` and `pending` only report.
    - `evo-agents worker ask` posts the decision, notes its id in `runs/<run>/decisions.jsonl`, prints the id, and
@@ -912,13 +924,13 @@ hands it no run.
    run's directory, it makes new worktrees from the branches on origin; without a session, it starts a new one.
 5. A turn that ends with nothing to wait for ends the agent. The daemon reports `verifying`, reads the agent's summary
    from `.evo-run/result.json` (a missing file is noted, not a failure), and in each repo commits what is left as
-   `run #N: <plan title>` and pushes the plan's branch when origin lacks its commits; it runs no verify command, since
-   `evo-agents worker step` ran each step's. A push into a default branch happens only while the plan, as the hub
-   holds it at that moment, names that branch for the repo, and sends the notice `push_default_branch` with its
-   commits, as `evo-agents worker step` does for its own pushes. The run ends `done` with the summary and the diffstat
-   of every repo; the log and the diffs of every repo (each under `a/<repo>/`) are uploaded as one `run-log` and one
-   `run-diff`, and each worktree on the plan's branch leaves it. A failed run pushes nothing at its end; what the steps
-   pushed stays.
+   `run #N: <plan title>`, leaving out and naming what a run's commit leaves out, and pushes the plan's branch when
+   origin lacks its commits; it runs no verify command, since `evo-agents worker step` ran each step's. A push into a
+   default branch happens only while the plan, as the hub holds it at that moment, names that branch for the repo, and
+   sends the notice `push_default_branch` with its commits, as `evo-agents worker step` does for its own pushes. The
+   run ends `done` with the summary and the diffstat of every repo; the log and the diffs of every repo (each under
+   `a/<repo>/`) are uploaded as one `run-log` and one `run-diff`, and each worktree on the plan's branch leaves it. A
+   failed run pushes nothing at its end; what the steps pushed stays.
 
 ### Interactive runs
 
@@ -980,6 +992,22 @@ a machine that is not a worker, such as one `evo-agents worker revoke` left: sta
 nothing, so a service does not (see [In the background](#in-the-background)). `EVO_WORKER_REVOKED_EXIT` names
 another status for both. A 426 (a protocol the hub no longer speaks) stops the daemon with exit status 1, which an
 upgrade of evo-agents mends.
+
+A daemon that dies without ending its runs (SIGKILL, or a service manager whose 60 seconds ran out, which can happen
+while a plan run waits up to a day for its owner's answer) leaves each run's `agent.json`, and may leave the agents
+running, since each has a process group of its own. The next daemon, before it claims anything, names those runs in
+its first heartbeat that gets an answer and stops each one's agent: SIGTERM to the process group, and to the groups of
+its leader's descendants, then SIGKILL to what is left 10 seconds later; nothing is sent when the leader's pid now
+belongs to a process that started at another time. Then, by what the hub answered:
+
+- the hub no longer holds the run for this worker (it ended, was cancelled, or was found lost): the run's worktree,
+  or each worktree and the directory of a plan run, is removed with its `evo-run/` branch;
+- the hub parked the run, or a new run resumes it (`park`): the worktree stays for that run, and the run's record says
+  `parked`;
+- the hub still holds the run: this daemon cannot go on with it, so the worktree stays and no later heartbeat names
+  the run, whose lease runs out; the hub then tries the step again or fails it.
+
+`agent.json` goes once that is done, and worker.log says what became of each agent and worktree.
 
 ### In the background
 

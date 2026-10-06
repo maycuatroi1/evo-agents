@@ -17,6 +17,9 @@ EVO_FAKE_SCENARIOS names a JSON file ``{"<step key>": [action, ...]}``; a run fo
 - ``{"fail": "why"}``: end the turn as failed.
 - ``{"cli": [args]}``: run ``evo-agents worker ARGS`` as the agent would, in its directory and environment.
 - ``{"sh": "command"}``: run a shell command there.
+- ``{"spawn": [argv]}``: start a process in a session of its own, as a runtime is started, and name it as the leader
+  of the agent's process group (``group_pid``); the adapter kills its group once the turn is over, so only a daemon
+  that dies first leaves it running.
 
 A plan run (no step key) follows ``"plan:<plan id>"``. The n-th start of the same run in this process follows
 ``"<key>/<n>"`` when the scenarios have it (a plan run's turn after its owner answered); otherwise a run that goes on
@@ -36,7 +39,10 @@ the first line of its prompt, echoes each line typed (``echo: <line>``), clears 
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
+import os
+import signal
 import subprocess
 import sys
 import uuid
@@ -238,6 +244,7 @@ class FakeAdapter(Adapter):
         self._boundary = asyncio.Event()
         self._task: asyncio.Task | None = None
         self._outcome = Outcome(False, "the fake agent did not run")
+        self._group: subprocess.Popen | None = None  # what a spawn action started
         path = context.env.get("EVO_FAKE_SCENARIOS")
         scenarios = json.loads(Path(path).read_text(encoding="utf-8")) if path else {}
         run = context.run
@@ -265,6 +272,9 @@ class FakeAdapter(Adapter):
     @property
     def session_id(self) -> str | None:
         return self._session
+
+    def group_pid(self) -> int | None:
+        return self._group.pid if self._group is not None else None
 
     async def start(self) -> None:
         self._task = asyncio.create_task(self._work())
@@ -391,10 +401,23 @@ class FakeAdapter(Adapter):
                     await self._command([sys.executable, "-m", "evo_agents", "worker", *action["cli"]], action["cli"])
                 elif "sh" in action:
                     await self._command(["/bin/sh", "-c", action["sh"]], action["sh"])
+                elif "spawn" in action:
+                    self._group = subprocess.Popen(
+                        action["spawn"],
+                        cwd=str(worktree),
+                        stdin=subprocess.DEVNULL,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        start_new_session=True,
+                    )
             self._outcome = Outcome(True, None, usage, summary)
         except Exception as exc:  # the test sees it as a failed turn
             self._outcome = Outcome(False, f"the fake agent failed: {type(exc).__name__}: {exc}")
         finally:
+            if self._group is not None:  # as a runtime adapter kills its group once the agent ended
+                with contextlib.suppress(OSError):
+                    os.killpg(self._group.pid, signal.SIGKILL)
+                await asyncio.to_thread(self._group.wait)
             await self._queue.put(None)
 
 
