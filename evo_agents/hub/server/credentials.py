@@ -37,6 +37,10 @@ answered for), the worker, and when it was issued, ends and was revoked; never a
 one the caller may read (``runs.readable_run``: 404 otherwise); another member, a hub admin included, gets 403, since
 the leases name the owner's secrets as GET /v1/secrets does to the owner alone.
 
+The owner must still hold writer on the run's project when the worker asks: once the grant is gone or lowered to
+reader, the ask is 403, and the admin route that took it gave back the leases still out of every run the member
+dispatched in the project (``end_member_leases``, from ``admin.grant`` and ``admin.revoke``).
+
 The hub gives leases back itself (``end_leases``) when a run leaves the held states (``run_state.move_run``: it ends,
 waits in review, or is parked) and when a worker is revoked (``workers.end_worker``, every lease of the worker). Those
 rows are marked revoked in the transaction of the move, and their GitHub tokens revoked at GitHub by ``revoke_tokens``
@@ -58,6 +62,7 @@ from fastapi import APIRouter, Header, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
 from evo_agents.hub import runs
+from evo_agents.hub.access import has_role
 from evo_agents.hub.credentials import (
     GITHUB_HOST,
     GITHUB_TOKEN_REFRESH_SECONDS,
@@ -213,6 +218,7 @@ SELECT r.state, r.worker_id, r.kind, r.project_id, p.name, r.plan_id, r.step_key
   FROM runs r JOIN projects p ON p.id = r.project_id JOIN users u ON u.id = r.dispatched_by
  WHERE r.id = %s
 """
+OWNER_ROLE = "SELECT role FROM grants WHERE user_id = %s AND project_id = %s"
 ORIGINS = "SELECT name, origin FROM project_repos WHERE project_id = %s AND name = ANY(%s)"
 # The owner's secrets bound to the run's project, on any of their workers or on this one, live and not past their end.
 SECRETS = """
@@ -254,11 +260,20 @@ def _run_repos(kind: str, repo: str | None, repos) -> tuple[str, ...]:
 
 
 async def _held_run(conn, worker_id: int, run_id: int, *, lock: bool) -> _Run:
-    """The run ``run_id`` that worker ``worker_id`` holds, its row locked with ``lock``; 404 for any other."""
+    """The run ``run_id`` that worker ``worker_id`` holds, its row locked with ``lock``; 404 for any other. 403 when
+    the member who dispatched it no longer holds writer on its project; with ``lock`` their grant's row is held too,
+    so a grant taken away meanwhile waits for the leases of this ask, and takes them back (``end_member_leases``)."""
     row = await (await conn.execute(RUN + ("   FOR UPDATE OF r" if lock else ""), (run_id,))).fetchone()
     if row is None or row[1] != worker_id or row[0] not in runs.HELD_STATES:
         raise HTTPException(404, NOT_HELD.format(id=run_id))
     state, worker, kind, project_id, project, plan_id, step_key, owner_id, owner, repo, repos, github_id = row
+    grant = await (await conn.execute(OWNER_ROLE + (" FOR SHARE" if lock else ""), (owner_id, project_id))).fetchone()
+    if not has_role(grant[0] if grant else None, "writer"):
+        raise HTTPException(
+            403,
+            f"{owner}, who dispatched run {run_id}, no longer holds the writer role on project {project}: the run "
+            "gets no credentials",
+        )
     names = _run_repos(kind, repo, repos)
     return _Run(run_id, state, worker, kind, project_id, project, plan_id, step_key, owner_id, owner, names, github_id)
 
@@ -646,6 +661,25 @@ async def end_leases(
             project_id=project_id,
         )
     return sum(row[5] for row in rows)
+
+
+MEMBER_RUNS_LEASED = """
+SELECT DISTINCT l.run_id FROM credential_leases l JOIN runs r ON r.id = l.run_id
+ WHERE l.revoked_at IS NULL AND r.project_id = %s AND r.dispatched_by = %s
+ ORDER BY l.run_id
+"""
+
+
+async def end_member_leases(
+    conn, *, user_id: int, project_id: int, actor_id: int | None, token_id: int | None, by: str
+) -> list[int]:
+    """Mark revoked, in the caller's transaction, every lease still out of the runs member ``user_id`` dispatched in
+    project ``project_id``, as ``end_leases`` does for each run: the member no longer holds writer there. Returns the
+    runs, whose GitHub tokens the caller revokes once the transaction commits (``revoke_tokens``)."""
+    run_ids = [row[0] for row in await (await conn.execute(MEMBER_RUNS_LEASED, (project_id, user_id))).fetchall()]
+    for run_id in run_ids:
+        await end_leases(conn, run_id=run_id, actor_id=actor_id, token_id=token_id, by=by)
+    return run_ids
 
 
 PENDING_TOKENS = """
