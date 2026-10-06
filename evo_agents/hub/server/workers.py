@@ -23,9 +23,10 @@ token at once. Each of them answers 404 for another member's worker, so an id te
 own; a hub admin may see, drain and revoke any worker, but only its owner undrains one (403 for an admin). Revoking
 releases the runs the worker holds as the reaper would (``run_state.release_runs``): a run whose cancel was asked
 for is cancelled, a run pinned to this worker or on its last attempt fails, and any other becomes lost with a new
-attempt queued for the same step; the steps of the runs that ended go back to pending in their plans. Revoking a
-worker's token (DELETE /v1/tokens/{id}, DELETE /v1/admin/tokens/{id}) revokes its worker the same way, in the same
-transaction (``lock_worker_of_token``, then ``end_worker``).
+attempt queued for the same step; the steps of the runs that ended go back to pending in their plans. Every lease
+of the worker's runs is given back with them, and their GitHub tokens are revoked once the revocation commits
+(``credentials``). Revoking a worker's token (DELETE /v1/tokens/{id}, DELETE /v1/admin/tokens/{id}) revokes its worker
+the same way, in the same transaction (``lock_worker_of_token``, then ``end_worker``).
 
 Every pairing, join, registration, drain, undrain and revocation adds an audit row naming the pairing or worker, never
 the code or the token, and neither ever reaches a log line.
@@ -47,7 +48,7 @@ from pydantic import BaseModel, Field
 
 from evo_agents.hub import runs
 from evo_agents.hub.access import ROLES, has_role
-from evo_agents.hub.server import audit
+from evo_agents.hub.server import audit, credentials
 from evo_agents.hub.server.admin import PROJECT_NAME
 from evo_agents.hub.server.auth import NO_STORE
 from evo_agents.hub.server.errors import ErrorBody
@@ -738,6 +739,7 @@ async def revoke(request: Request, worker_id: WorkerId, user: CurrentUser) -> Wo
         released = await end_worker(conn, user, worker_id, name, owner, token_id)
         worker = await _one_worker(conn, worker_id)
     log.info("worker revoked", extra={"worker_id": worker_id, "by": user.login, "runs_released": released})
+    await revoke_leased_tokens(request.app.state, worker_id)
     return worker
 
 
@@ -759,11 +761,22 @@ async def lock_worker_of_token(conn, token_id: int, owner_id: int | None = None)
 
 
 async def end_worker(conn, actor: Principal, worker_id: int, name: str, owner: str, token_id: int) -> int:
-    """Revoke a live worker whose row the caller holds locked, and its token, release the runs it holds and add the
-    worker.revoke audit row, all in the caller's transaction. Returns how many runs were released."""
+    """Revoke a live worker whose row the caller holds locked, and its token, release the runs it holds, give back
+    every lease it still has and add the worker.revoke audit row, all in the caller's transaction; the caller revokes
+    their GitHub tokens once it commits (``revoke_leased_tokens``). Returns how many runs were released."""
     await conn.execute("UPDATE workers SET revoked_at = now() WHERE id = %s", (worker_id,))
     await conn.execute("UPDATE tokens SET revoked_at = now() WHERE id = %s AND revoked_at IS NULL", (token_id,))
     released = await release_runs(conn, worker_id, f"its worker {name} was revoked")
+    # The runs it released gave theirs back as they moved; this takes the rest, of runs that left it otherwise.
+    await credentials.end_leases(
+        conn, worker_id=worker_id, actor_id=actor.user_id, token_id=actor.token_id, by="worker-revoked"
+    )
     target, action = _target(worker_id, name, owner), audit.WORKER_REVOKE
     await audit.record(conn, actor_id=actor.user_id, token_id=actor.token_id, action=action, target=target)
     return released
+
+
+async def revoke_leased_tokens(app_state, worker_id: int) -> None:
+    """Once ``end_worker`` committed: revoke at GitHub the tokens the worker's leases held. GitHub failing leaves them
+    to the reaper's next pass."""
+    await credentials.revoke_tokens(app_state.pool, app_state.sealer, app_state.github_app, worker_id=worker_id)

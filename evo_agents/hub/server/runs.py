@@ -56,7 +56,8 @@ its steps was verified when it was reported, and never in review. Reporting the 
 nothing but the session id, commit, diffstat, verify results and usage given, so a resend is safe. A plan run reports
 ``waiting`` when its agent's turn ended with a decision open, which needs a decision of the run that is open or whose
 answer the worker has not taken yet (409 otherwise: waiting does not count toward the timeout), and ``running`` once
-the answer reached the agent.
+the answer reached the agent. A move out of the held states gives back the run's leases (``credentials``), and their
+GitHub tokens are revoked once the move commits, before the answer.
 
 The worker holding a plan run reads the plan as the hub holds it now with GET /v1/worker/runs/{id}/plan, and reports
 each step with POST /v1/worker/runs/{id}/steps/{key}: ``in_progress``, ``done`` (with at least one verify result,
@@ -1641,6 +1642,11 @@ async def report_state(request: Request, run_id: RunId, body: StateReport, user:
         )
         view = await run_view(conn, run_id)
     log.info("run moved", extra={"run_id": run_id, "from": state, "to": body.state, "worker_id": worker_id})
+    if body.state not in runs.HELD_STATES:  # the move gave back the run's leases: revoke its GitHub tokens now
+        from evo_agents.hub.server import credentials
+
+        app_state = request.app.state
+        await credentials.revoke_tokens(app_state.pool, app_state.sealer, app_state.github_app, run_id=run_id)
     return view
 
 

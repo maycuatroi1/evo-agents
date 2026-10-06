@@ -46,7 +46,12 @@ when its cancel was asked for): the worker's next heartbeat says park, and the s
 PARKED_FOR is cancelled and its open decisions expire. A revoked worker also fails the runs pinned to it, held or
 queued, since no other worker may claim them, and cancels the runs parked on it, since only it has their session; an
 expired lease does not, since the worker may come back. ``prune_run_events`` (hub.prune_run_events, daily)
-deletes the events of runs that ended more than EVO_HUB_RUN_LOG_DAYS ago.
+deletes the events of runs that ended more than EVO_HUB_RUN_LOG_DAYS ago, and the sealed GitHub tokens past their end.
+
+A run that leaves the held states (it ends, waits in review, or is parked) gives back its credentials: ``move_run``
+marks its leases revoked in the same transaction (``credentials.end_leases``), and the GitHub tokens among them are
+revoked at GitHub once it commits, by the route that moved it and by every pass of the reaper
+(``credentials.revoke_tokens``).
 """
 
 from __future__ import annotations
@@ -55,6 +60,7 @@ import logging
 from collections import Counter
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
+from typing import TYPE_CHECKING
 
 import psycopg
 from fastapi import HTTPException
@@ -67,6 +73,10 @@ from evo_agents.hub.plans import PlanProblem, step_index
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.security import MACHINE, Principal
+
+if TYPE_CHECKING:
+    from evo_agents.hub.server.github_app import GitHubApp
+    from evo_agents.hub.server.sealing import Sealer
 
 log = logging.getLogger(__name__)
 
@@ -272,6 +282,10 @@ async def move_run(
     )
     if new in runs.TERMINAL_STATES and decisions is not None:
         await conn.execute(END_DECISIONS, (decisions, run_id))
+    if new not in runs.HELD_STATES:  # no worker holds it now: the hub takes back what it leased the run
+        from evo_agents.hub.server import credentials  # its routes read runs through the routes that import this module
+
+        await credentials.end_leases(conn, run_id=run_id, by=f"run-{new}")
     await notify_events(conn, run_id)
     return await record_move(conn, run_id, old, new, reason=reason, token_id=token_id)
 
@@ -691,12 +705,20 @@ def _hours(span: timedelta) -> str:
 
 
 async def recover_runs(
-    pool, batch: int = RECOVER_BATCH, *, decision_wait: timedelta = DECISION_WAIT, parked_for: timedelta = PARKED_FOR
+    pool,
+    batch: int = RECOVER_BATCH,
+    *,
+    decision_wait: timedelta = DECISION_WAIT,
+    parked_for: timedelta = PARKED_FOR,
+    sealer: Sealer | None = None,
+    github_app: GitHubApp | None = None,
 ) -> dict:
     """One pass of the reaper: every held run past its timeout ends as ``end_timed_out`` says, then every held run
     whose lease ran out ends as ``end_held`` says, a run that waited ``decision_wait`` for an answer is parked and one
     parked for ``parked_for`` cancelled, each in a transaction of its own, and a queued run pinned to a revoked worker
-    fails. Returns how many runs ended in each state, and how many were parked."""
+    fails. Last, the GitHub tokens of the leases given back, by these runs or earlier, are revoked at GitHub with
+    ``github_app`` (``credentials.revoke_tokens``; nothing without the App or ``sealer``). Returns how many runs
+    ended in each state, and how many were parked."""
     ended: Counter[str] = Counter()
     await end_timed_out(pool, batch, ended)
     async with pool.connection() as conn:
@@ -731,12 +753,19 @@ async def recover_runs(
     report = {state: ended.get(state, 0) for state in ("lost", "failed", "cancelled", "parked")}
     if expired or ended:
         log.warning("runs recovered", extra=report)
+    from evo_agents.hub.server import credentials
+
+    await credentials.revoke_tokens(pool, sealer, github_app)
     return report
 
 
 async def prune_run_events(pool, days: int) -> dict:
-    """Delete the events of runs that ended more than ``days`` days ago."""
+    """Delete the events of runs that ended more than ``days`` days ago, and drop the sealed values of the GitHub
+    tokens leased to runs that are past their end (``credentials.drop_expired``)."""
+    from evo_agents.hub.server import credentials
+
     async with pool.connection() as conn:
         deleted = (await conn.execute(PRUNE_EVENTS, (days,))).rowcount
-    log.info("run events pruned", extra={"deleted": deleted, "days": days})
-    return {"deleted": deleted, "days": days}
+        dropped = await credentials.drop_expired(conn)
+    log.info("run events pruned", extra={"deleted": deleted, "days": days, "tokens_dropped": dropped})
+    return {"deleted": deleted, "days": days, "tokens_dropped": dropped}

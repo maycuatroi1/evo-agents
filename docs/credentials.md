@@ -98,30 +98,49 @@ a value, and a 422 never repeats the input.
 
 ## Which leases a run gets
 
-`POST /v1/worker/runs/{id}/credentials`, with the worker's token, for a run the worker holds (a held state, or
-`waiting` for a plan run). The hub takes the run's repos (the run's repo for a step run, every repo of the plan for
-a plan run) and their origins from `project_repos`, normalized to `https://host/path` (`git@host:path` and
-`ssh://git@host/path` included). It then leases:
+`evo_agents/hub/server/credentials.py`. `POST /v1/worker/runs/{id}/credentials`, with the worker's token and the
+protocol header, for a run the worker holds: one of the held states, `waiting` of a plan run among them. Any other run,
+another worker's or one that ended, is 404, as for a state report; a machine token or a web session gets 403, as on
+every worker route. The hub takes the run's repos (the run's repo for a step run, the repos of the plan run, those of
+the plan's steps not done when it was dispatched) and their origins from `project_repos`, compared in the form of
+`normalize_origin` (`git@host:path` and `ssh://git@host[:port]/path` included). It then leases what the run's owner
+bound to the run's project, bound to no worker or to this one, and not past its `expires_at`:
 
-- every `env` secret of the run's owner bound to the run's project, and either bound to no worker or to this one;
-- every `git` secret chosen the same way whose `url_prefix` covers one of those origins;
-- a GitHub App token for the origins on github.com that no `git` secret already covers.
+- each `env` secret, one per variable: a secret bound to this worker wins over one bound to any worker, then the
+  first by name;
+- each `git` secret whose `url_prefix` covers one of those origins, the longest prefix for each origin;
+- a GitHub App token for the origins on github.com that no `git` secret covers, one per installation: a lease of kind
+  `git` named `github-app:<owner>` for `https://github.com/<owner>`, with the username `x-access-token`.
 
-The answer is `{leases, missing: [{origin, reason}]}`: each origin nothing covers is named with the reason. Each call
-records the leases in `credential_leases` and one audit line `credential.lease` with the secrets' names and the
-repos, never a value.
+The answer is `{leases, missing}`. Each lease carries `id`, `kind`, `provider`, `name`, `env_var`, `url_prefix`,
+`username`, `value` and `expires_at`, as `Lease.from_json` reads them. `missing` names each repo whose origin nothing
+covers, with its origin (null when the project registered none) and the reason: no origin, no `git` secret covering
+it, "the GitHub App is not installed on owner/repo", no GitHub App configured, GitHub failing. Without
+`EVO_HUB_SECRETS_KEY` nothing is leased and every repo is missing with that reason.
+
+Each call records its leases in `credential_leases` and adds one audit row `credential.lease` naming the run, the
+secrets, the App's accounts and the repos, never a value. A secret is leased once per run and worker: asked again,
+the same lease comes back with the secret's value as it is now. A GitHub token stays sealed in its lease, bound to the
+lease's id, until it expires, so the hub can revoke it. Asked again, a run gets the same tokens while each has
+`GITHUB_TOKEN_REFRESH_SECONDS` or more left, and new ones in new leases after that; the tokens they replace go on
+working until they expire, so a push that took one is not cut off. GitHub is asked between two transactions, never
+while the run's row is locked; when the run ended in between, the tokens just made are revoked and the answer is 404.
 
 ## Life of a lease
 
 1. **Ask.** The daemon asks right after its claim, before it prepares worktrees, so fetch already uses the lease.
 2. **Refresh.** A GitHub token with less than `GITHUB_TOKEN_REFRESH_SECONDS` (10 minutes) left is asked for again; a
    push that fails to authenticate asks once more and retries. Runs of a plan may last 24 hours.
-3. **Give back.** When the run ends, is parked, or the daemon stops, the daemon calls `DELETE` on the same route.
-   The hub revokes each GitHub token (`DELETE /installation/token`), marks the leases revoked and audits
-   `credential.revoke`.
-4. **Revoked anyway.** The hub does the same itself when a run reaches a terminal state, when the reaper ends a run
-   whose worker stopped extending its lease, and when the owner revokes the worker. The job that prunes run events
-   also drops the sealed GitHub tokens of leases past their end.
+3. **Give back.** When the run ends, is parked, or the daemon stops, the daemon calls `DELETE` on the same route,
+   whatever state the run is in by then (404 only for a run this worker never held). The hub marks the leases
+   revoked, revokes each GitHub token (`DELETE /installation/token`), drops its sealed value, audits
+   `credential.revoke` and answers `{revoked}`, how many leases were still out.
+4. **Revoked anyway.** The hub does the same itself, as its own audited action, when a run leaves the held states (it
+   ends, waits in review, or is parked; `run_state.move_run`), when the reaper ends a run whose worker stopped
+   extending its lease, and when the owner revokes the worker or its token, which takes every lease of the worker
+   still out. The leases are marked in the transaction of the move; the GitHub tokens are revoked once it commits, by
+   the route that made the move and by every pass of the reaper, which also takes the tokens GitHub failed to answer
+   for. The daily job that prunes run events drops the sealed GitHub tokens of leases past their end.
 
 ## How the daemon hands leases over
 

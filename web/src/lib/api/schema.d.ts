@@ -1866,6 +1866,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/worker/runs/{run_id}/credentials": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Lease Credentials
+         * @description The leases of a run this worker holds: the owner's secrets for its project and a GitHub token for its repos on
+         *     github.com, with the reason of each repo nothing covers.
+         */
+        post: operations["lease_credentials_v1_worker_runs__run_id__credentials_post"];
+        /**
+         * Give Back Credentials
+         * @description Give back every lease this worker holds of the run, in whatever state the run is; GitHub tokens are revoked.
+         */
+        delete: operations["give_back_credentials_v1_worker_runs__run_id__credentials_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2167,6 +2192,66 @@ export interface components {
              * @description false when the hub held exactly this config
              */
             changed: boolean;
+        };
+        /**
+         * CredentialLease
+         * @description One credential a run holds, as ``evo_agents.hub.credentials.Lease`` reads it.
+         */
+        CredentialLease: {
+            /**
+             * Id
+             * @description the lease; the same id when it is asked for again
+             */
+            id: number;
+            /**
+             * Kind
+             * @description env: a variable of the agent; git: what git's helper answers
+             * @enum {string}
+             */
+            kind: "env" | "git";
+            /**
+             * Provider
+             * @description secret: the owner's; github-app: a token the hub's App made
+             * @enum {string}
+             */
+            provider: "secret" | "github-app";
+            /**
+             * Name
+             * @description the secret's name, or github-app:<account>
+             */
+            name: string;
+            /**
+             * Env Var
+             * @description kind env: the variable it sets
+             */
+            env_var: string | null;
+            /**
+             * Url Prefix
+             * @description kind git: the https prefix of the origins it answers for
+             */
+            url_prefix: string | null;
+            /**
+             * Username
+             * @description kind git: the user git sends with the value
+             */
+            username: string | null;
+            /**
+             * Value
+             * @description the credential itself: for memory only, never a file, a log line or an event
+             */
+            value: string;
+            /**
+             * Expires At
+             * @description when it stops working; ask again before, for a GitHub token
+             */
+            expires_at: string | null;
+        };
+        /** Credentials */
+        Credentials: {
+            /** Leases */
+            leases: components["schemas"]["CredentialLease"][];
+            /** Missing */
+            missing: components["schemas"]["MissingOrigin"][];
         };
         /** Csrf */
         Csrf: {
@@ -2513,6 +2598,14 @@ export interface components {
              * @description host name of the machine
              */
             host: string;
+        };
+        /** GivenBack */
+        GivenBack: {
+            /**
+             * Revoked
+             * @description leases of the run this worker gave back now; 0 when none was out any more
+             */
+            revoked: number;
         };
         /** Grant */
         Grant: {
@@ -3044,6 +3137,21 @@ export interface components {
              * @description the hashes of the request the project does not hold
              */
             missing: string[];
+        };
+        /**
+         * MissingOrigin
+         * @description A repo of the run whose origin no lease covers: git uses the machine's own credentials for it.
+         */
+        MissingOrigin: {
+            /** Repo */
+            repo: string;
+            /**
+             * Origin
+             * @description as the project registered it; null when it registered none
+             */
+            origin: string | null;
+            /** Reason */
+            reason: string;
         };
         /** Neighbourhood */
         Neighbourhood: {
@@ -11684,6 +11792,122 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    lease_credentials_v1_worker_runs__run_id__credentials_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Credentials"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    give_back_credentials_v1_worker_runs__run_id__credentials_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GivenBack"];
+                };
             };
             /** @description Unauthorized */
             401: {

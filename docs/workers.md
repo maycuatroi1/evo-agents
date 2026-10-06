@@ -530,6 +530,8 @@ For the worker, with an `evw_` token and the version header:
 | `POST /v1/worker/runs/{id}/events` | sends a batch of events |
 | `POST /v1/worker/runs/{id}/inbox` | acknowledges messages handed to the agent, takes the waiting ones |
 | `POST /v1/worker/runs/{id}/uploads`, `/blobs` | uploads the run's log and diff, records them on the run |
+| `POST /v1/worker/runs/{id}/credentials` | takes the leases of a run it holds: the owner's secrets, a GitHub token ([credentials.md](credentials.md)) |
+| `DELETE /v1/worker/runs/{id}/credentials` | gives back every lease it holds of the run; the hub revokes the GitHub tokens |
 | websocket `/v1/worker/runs/{id}/terminal` | the worker's end of the terminal |
 
 For members, with a web session or a machine token. `{p}` is a project, and run routes sit under
