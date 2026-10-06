@@ -71,7 +71,10 @@ and at the end the commit, diffstat, verify results, evidence, usage and error.
 - **A worker token (`evw_...`) works only on `/v1/worker/*`**, and machine tokens and web sessions get 403 there. The
   hub shows the token once, when the machine joins or registers, and keeps only its SHA-256. With it a worker reads
   nothing beyond the runs it holds. Outside `/v1` it also opens the hub's `/mcp` for the agent of a run the worker
-  holds, with `X-Evo-Run`, scoped to the run's project, at most writer and never a hub admin (`docs/hub.md`). Revoking the worker ends the token at once, and revoking the token
+  holds, with `X-Evo-Run`, scoped to the run's project, at most writer and never a hub admin (`docs/hub.md`). The
+  agent runs as the daemon's user and can read the token, so the scope holds for a request naming its own run only:
+  an agent can lease the credentials of the worker's other runs, reach `/mcp` as one of them, and claim a queued run
+  of another project the worker serves ([credentials.md](credentials.md#what-is-still-a-risk) says what limits it). Revoking the worker ends the token at once, and revoking the token
   (`DELETE /v1/tokens/{id}`, or `DELETE /v1/admin/tokens/{id}` for a hub admin) revokes the worker with it, in the
   same transaction: its runs are released and its name is free again, as with `POST /v1/workers/{id}/revoke`.
 
@@ -1098,8 +1101,10 @@ uses that is the owner; on a shared Mac mini or a lab server it is someone else 
 keep no long-lived credential of its owner: the hub keeps the owner's secrets sealed and leases each run only what
 it needs (a GitHub App token for the run's repos that lives an hour, a static GitLab token of the project, the
 runtime's environment such as `CLAUDE_CODE_OAUTH_TOKEN`), the daemon keeps leases in memory, and the agent reaches
-the hub's MCP with the worker token, scoped to the run's project. `evo-agents worker doctor` says what the machine
-still holds. [docs/credentials.md](credentials.md) describes the design, what stays a risk, and how to cut a
+the hub's MCP with the worker token, scoped to the run's project. The agent runs as the daemon's user, though, and
+reads that token too: on a worker that serves several projects, or holds several runs at once, one run's agent
+reaches the others. Register such a worker for one project with one slot, or run a worker per project under a user of
+its own. `evo-agents worker doctor` says what the machine still holds. [docs/credentials.md](credentials.md) describes the design, what stays a risk, and how to cut a
 credential off.
 
 ## What version 1 does not do

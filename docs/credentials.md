@@ -30,7 +30,8 @@ Two attackers shape this design.
 Neither can be stopped from reading what a run is using while it runs: root reads the daemon's memory, and the agent
 must have its credentials to work. What the design limits is **how much** they get and **for how long**:
 
-- a run gets only credentials for its own project, its own repos and its own worker;
+- a run gets only credentials for its own project, its own repos and its own worker (its agent can still reach what
+  the other runs of the same worker hold, as "What is still a risk" says);
 - the GitHub token covers only the run's repos that its owner may push to on GitHub, with `contents: write` and
   `metadata: read`, and lives an hour;
 - nothing is written to disk, so nothing outlives the run on the machine;
@@ -242,7 +243,9 @@ the token in that order, and are left as they are.
 The agent reaches the hub's MCP through `evo-agents hub mcp`. Inside a run (`EVO_RUN_ID` set and a worker token on
 the machine) it sends the worker token with `X-Evo-Run`, and the hub gives it a principal scoped to the run's
 project, at most writer, never admin, at most the level its owner's grant allows. Once the run ends the worker token
-no longer opens `/mcp` for it. A worker machine needs no machine token at all.
+no longer opens `/mcp` for it. A worker machine needs no machine token at all. The scope is the run the request
+names, not a token of the agent's own: the agent holds the worker's token as its daemon does (see "The agent can act
+as its worker" below).
 
 ## Who may hand a worker its work
 
@@ -306,6 +309,24 @@ medium findings as `warning:` lines; they never stop the install.
 
 - Root on the worker reads the leases a run is using: the agent's environment, the daemon's memory, the run's
   socket. A GitHub token so read lasts at most an hour and covers only the run's repos.
+- **The agent can act as its worker.** A run's agent runs as the daemon's user, with no sandbox, so it can read
+  `~/.evo/worker/token`, and the socket of every run (`runs/<id>/cred.sock`) answers any process of that user. With
+  them an agent, or an instruction injected into it, can:
+  - get the leases of every other run the worker holds at the time, of any of its projects: `evo-agents worker env
+    --run N` and `worker git-credential --run N` ask that run's socket, and `POST /v1/worker/runs/{N}/credentials`
+    asks the hub;
+  - reach the hub's MCP as another run the worker holds (`EVO_RUN_ID=N evo-agents hub mcp`), in that run's project;
+  - report, end or give back the runs of the worker, and claim a queued run of any project the worker serves (`POST
+    /v1/worker/claim`) while a slot is free, then lease that run's credentials and read its prompt and plan.
+
+  The hub cannot tell the agent from its daemon: both hold the same token. A token of the run's own, which the daemon
+  would keep from the agent, was weighed and left out, since the agent runs as the daemon's user and reads what the
+  daemon reads. What limits it: register a worker for one project only (one `--project` at `evo-agents worker
+  register`, or one project in the pairing), so whatever its agent reaches is of the project it works in already;
+  give it `--slots 1`, so no other run is held, and no other run's socket open, while one runs (the agent may still
+  end its own run and claim the next queued one); and run a worker for each project of a different sensitivity
+  under a user of its own (its own uid, home, `~/.evo/worker` and service), whose files and sockets the others cannot
+  read.
 - A static secret (a GitLab project access token, a `claude setup-token` token) read during a run works until it
   expires on its own service: 90 days, a year. Keep one per project, with the least role (Developer), with an end
   date, bound to the workers that need it.
