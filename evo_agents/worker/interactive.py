@@ -9,8 +9,11 @@
 - ``Tui`` is a runtime's terminal UI. Claude Code: ``claude --resume ID --dangerously-skip-permissions
   --remote-control evo-run-N`` (``--session-id`` and the prompt for a new session), after the worktree is marked
   trusted in Claude Code's ``.claude.json`` (``trust_folder``), since its folder trust dialog comes in every new folder,
-  the bypass flag notwithstanding. opencode: ``opencode attach URL --session ID --dir WORKTREE`` on an ``opencode
-  serve`` of its own, which also creates a new session and hands it the prompt. Codex: ``codex resume ID
+  the bypass flag notwithstanding. A run whose lease sets CLAUDE_CODE_OAUTH_TOKEN starts it without
+  ``--remote-control``, which a token of ``claude setup-token`` cannot open, and says so in the run's log; its pane
+  unsets the daemon's ANTHROPIC_API_KEY then, as the headless agent's launcher does (``claude_code.dropped_env``).
+  opencode: ``opencode attach URL --session ID --dir WORKTREE`` on an ``opencode serve`` of its own, which also
+  creates a new session and hands it the prompt. Codex: ``codex resume ID
   --dangerously-bypass-approvals-and-sandbox`` (``codex`` with the prompt for a new session), with
   ``--dangerously-bypass-hook-trust`` when its help lists the flag, so it does not stop at "Hooks need review".
 - While the person drives, the run's log follows the runtime's own record of the session: Claude Code's transcript
@@ -673,14 +676,15 @@ class Tui:
     """A runtime's terminal UI on a run's session, for a person to drive in tmux.
 
     ``prepare`` readies what the UI needs and returns what it did, as lines for the run's log; ``command`` is the
-    UI's argv for tmux session ``name`` and ``environment`` its variables (``drop_env`` unset); ``logs`` follows the
-    session while the person drives it, until ``logs_done`` is set, or is None when the runtime keeps no record this
-    daemon reads (the terminal is logged then); ``close`` releases what ``prepare`` took. ``session_id`` is the
-    session's id once it is known; it may become known only once the UI has started a new session."""
+    UI's argv for tmux session ``name`` and ``environment`` its variables (``drop_env``, the class's or the UI's own,
+    unset); ``logs`` follows the session while the person drives it, until ``logs_done`` is set, or is None when the
+    runtime keeps no record this daemon reads (the terminal is logged then); ``close`` releases what ``prepare`` took.
+    ``session_id`` is the session's id once it is known; it may become known only once the UI has started a new
+    session."""
 
     runtime: ClassVar[str] = ""
     program: ClassVar[str] = ""
-    drop_env: ClassVar[tuple[str, ...]] = ()
+    drop_env: tuple[str, ...] = ()
 
     def __init__(self, context: RunContext, session_id: str | None):
         self.context = context
@@ -721,7 +725,8 @@ class Tui:
 class ClaudeCodeTui(Tui):
     """``claude --resume ID --dangerously-skip-permissions --remote-control evo-run-N``, so the session also shows in
     the Claude apps; a new session gets ``--session-id`` and the run's prompt. The run's model and effort go with
-    it when the run names them."""
+    it when the run names them. A run whose lease sets CLAUDE_CODE_OAUTH_TOKEN gets no ``--remote-control``, and
+    no ANTHROPIC_API_KEY of the daemon's (``claude_code.dropped_env``)."""
 
     runtime = "claude-code"
     program = "claude"
@@ -732,6 +737,8 @@ class ClaudeCodeTui(Tui):
         if self.session_id is None:
             self.session_id = str(uuid.uuid4())
         self.state_path = claude_state_path(context.env)
+        self.drop_env = claude_code.dropped_env(context)
+        self.remote_control = not claude_code.leased_oauth(context)
         self._transcript: tuple[Path, int] | None = None
 
     def transcript(self) -> Path | None:
@@ -752,6 +759,8 @@ class ClaudeCodeTui(Tui):
                 f"{done} {self.context.worktree} as trusted in {self.state_path}, so Claude Code opens the session "
                 "without its folder trust dialog."
             ]
+        if not self.remote_control:
+            notes.append(claude_code.REMOTE_CONTROL_NOTE)
         if self.resumed:
             path = await asyncio.to_thread(self.transcript)
             if path is not None:
@@ -762,7 +771,9 @@ class ClaudeCodeTui(Tui):
     def command(self, name: str) -> list[str]:
         argv = [self.binary]
         argv += ["--resume", self.session_id] if self.resumed else ["--session-id", self.session_id]
-        argv += ["--dangerously-skip-permissions", "--remote-control", name]
+        argv.append("--dangerously-skip-permissions")
+        if self.remote_control:
+            argv += ["--remote-control", name]
         for key, flag in (("model", "--model"), ("effort", "--effort")):
             value = self.setting(key)
             if value:
