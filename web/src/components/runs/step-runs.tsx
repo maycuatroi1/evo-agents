@@ -48,7 +48,7 @@ export function StepRuns({ project, planId, stepKey }: { project: string; planId
     <section className="flex flex-col gap-3 rounded-md border bg-card shadow-raised p-4" aria-labelledby={`${ids}-title`} data-testid="step-runs">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex min-w-0 flex-col gap-1">
-          <h2 id={`${ids}-title`} className="text-base font-medium">
+          <h2 id={`${ids}-title`} className="text-[15px] leading-[22px] font-semibold">
             {t("title")}
           </h2>
           {ready.isPending ? (

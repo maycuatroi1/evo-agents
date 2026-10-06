@@ -67,7 +67,7 @@ export function PlanProgress({ counts }: { counts: StepCounts }) {
   return (
     <section aria-labelledby="plan-progress-title" className="flex flex-col gap-3 rounded-md border bg-card shadow-raised p-4">
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-        <h2 id="plan-progress-title" className="text-base font-medium">
+        <h2 id="plan-progress-title" className="text-[15px] leading-[22px] font-semibold">
           {t("title")}
         </h2>
         <p className="text-sm tabular-nums" data-testid="plan-progress">

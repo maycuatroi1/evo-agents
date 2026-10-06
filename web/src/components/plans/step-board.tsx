@@ -1,15 +1,17 @@
 "use client";
 
-import { Columns3, CornerDownRight, FolderGit2, LayoutList, Search } from "lucide-react";
+import { Columns3, CornerDownRight, FolderGit2, LayoutList } from "lucide-react";
 import Link from "next/link";
 import { useFormatter, useTranslations } from "next-intl";
 import { useId, useMemo, useState } from "react";
 
 import { DataTable, dataTableColumns } from "@/components/data/data-table";
 import { NAME_LINK } from "@/components/data/identifier";
+import { SearchField } from "@/components/data/search-field";
+import { Segmented } from "@/components/data/segmented";
 import { TONE_TEXT } from "@/components/status/status-badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { useIsMobile } from "@/hooks/use-mobile";
 import {
   filterSteps,
@@ -263,69 +265,50 @@ export function StepBoard({ project, planId, steps }: { project: string; planId:
   return (
     <section aria-labelledby="plan-steps-title" className="flex flex-col gap-3">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-        <h2 id="plan-steps-title" className="text-base font-medium">
+        <h2 id="plan-steps-title" className="text-[15px] leading-[22px] font-semibold">
           {t("title")}
         </h2>
         <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-          <div className="relative sm:w-60">
-            <Search
-              className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground"
-              aria-hidden="true"
-            />
-            <Input
-              type="search"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder={t("searchPlaceholder")}
-              aria-label={t("search")}
-              className="h-10 pl-8"
-              data-testid="steps-search"
-            />
-          </div>
+          <SearchField
+            value={query}
+            onCommit={setQuery}
+            label={t("search")}
+            placeholder={t("searchPlaceholder")}
+            clearLabel={t("clearSearch")}
+            debounce={150}
+            className="sm:w-60"
+            testId="steps-search"
+          />
           {repos.length > 1 ? (
             <div className="flex items-center gap-2">
-              <label htmlFor={repoId} className="text-sm text-muted-foreground">
+              <label htmlFor={repoId} className="text-[13px] text-muted-foreground">
                 {t("repo")}
               </label>
-              <select
+              <NativeSelect
                 id={repoId}
                 value={repo}
                 onChange={(event) => setRepo(event.target.value)}
-                className="h-10 min-w-0 flex-1 rounded-md border border-input bg-background px-2.5 font-mono text-sm sm:flex-none"
+                className="min-w-0 flex-1 sm:flex-none [&>select]:max-md:h-11"
                 data-testid="steps-repo"
               >
-                <option value="">{t("allRepos")}</option>
+                <NativeSelectOption value="">{t("allRepos")}</NativeSelectOption>
                 {repos.map((name) => (
-                  <option key={name} value={name}>
+                  <NativeSelectOption key={name} value={name}>
                     {name}
-                  </option>
+                  </NativeSelectOption>
                 ))}
-              </select>
+              </NativeSelect>
             </div>
           ) : null}
-          <div role="group" aria-label={t("view")} className="inline-flex w-fit rounded-md border bg-muted/40 p-0.5">
-            {(
-              [
-                ["board", Columns3],
-                ["list", LayoutList],
-              ] as const
-            ).map(([id, Icon]) => (
-              <button
-                key={id}
-                type="button"
-                aria-pressed={view === id}
-                onClick={() => setView(id)}
-                className={cn(
-                  "inline-flex min-h-9 items-center gap-1.5 rounded-sm px-3 text-sm font-medium transition-colors",
-                  view === id ? "bg-card text-foreground shadow-raised" : "text-muted-foreground hover:text-foreground",
-                )}
-                data-testid={`steps-view-${id}`}
-              >
-                <Icon className="size-4" aria-hidden="true" />
-                {t(id === "board" ? "viewBoard" : "viewList")}
-              </button>
-            ))}
-          </div>
+          <Segmented
+            label={t("view")}
+            value={view}
+            onChange={setView}
+            options={[
+              { value: "board", label: t("viewBoard"), icon: Columns3, testId: "steps-view-board" },
+              { value: "list", label: t("viewList"), icon: LayoutList, testId: "steps-view-list" },
+            ]}
+          />
         </div>
       </div>
       <p className="sr-only" aria-live="polite">

@@ -77,7 +77,8 @@ test.describe("knowledge graph", () => {
     await expect(page.getByTestId("kg-node-title")).toHaveText("runbook");
     await expect(page.getByTestId("node-source")).toHaveText("docs");
     await expect(page.getByTestId("node-uri").first()).toHaveAttribute("href", "https://example.test/runbook");
-    await expect(page.getByTestId("label-badge").first()).toContainText("internal");
+    await expect(page.getByTestId("label-badge").first()).toHaveAttribute("data-level", "internal");
+    await expect(page.getByTestId("label-badge").first()).toContainText("Internal");
   });
 
   test("the neighbour table matches kg_context on the same store and follows the canvas", async ({ page, signInAs }) => {

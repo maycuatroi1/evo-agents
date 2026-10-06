@@ -21,7 +21,7 @@ function Card({ title, children, testId }: { title: string; children: ReactNode;
   const id = useId();
   return (
     <section className="flex min-w-0 flex-col rounded-md border bg-card shadow-raised" aria-labelledby={id} data-testid={testId}>
-      <h2 id={id} className="border-b px-4 py-3 text-base font-medium">
+      <h2 id={id} className="border-b px-4 py-3 text-[15px] leading-[22px] font-semibold">
         {title}
       </h2>
       <div className="min-w-0 px-4 py-3">{children}</div>

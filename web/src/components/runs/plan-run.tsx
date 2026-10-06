@@ -192,7 +192,7 @@ export function PlanRunBanner({ project, run, steps }: { project: string; run: R
     >
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div className="flex min-w-0 flex-col gap-1.5">
-          <h2 id={`${ids}-title`} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-base font-medium">
+          <h2 id={`${ids}-title`} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[15px] leading-[22px] font-semibold">
             <Workflow className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
             <span>{t("title", { id: run.id })}</span>
             <StatusBadge kind="run" status={phase} label={tPhase(`${phase}Long`)} data-testid="plan-run-phase" />

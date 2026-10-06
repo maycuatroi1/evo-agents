@@ -13,6 +13,8 @@ import {
 import { useFormatter, useTranslations } from "next-intl";
 import { useEffect, useState } from "react";
 
+import { Tag as TagChip } from "@/components/data/identifier";
+import { useVisibilityName } from "@/components/data/visibility";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { type DurationParts, durationParts } from "@/lib/kg/format";
@@ -54,21 +56,25 @@ export function JobStatusBadge({ status }: { status: KgJob["status"] }) {
   );
 }
 
-/** A node's label by names: the level, and the location when it says more than "any". */
+/**
+ * A node's label as a tag: its visibility in words (Internal, the code in the tooltip with the location and the
+ * integrity), and the location when it says more than "any".
+ */
 export function LabelBadge({ label }: { label: NodeLabel }) {
   const t = useTranslations("kg.node");
-  const text = label.location && label.location !== "any" ? `${label.level} / ${label.location}` : label.level;
+  const visibility = useVisibilityName();
+  const level = visibility(label.level);
+  const text = label.location && label.location !== "any" ? `${level} / ${label.location}` : level;
   return (
-    <Badge
-      variant="outline"
-      className="font-mono"
+    <TagChip
       title={t("labelTitle", { level: label.level, location: label.location, integrity: label.integrity })}
+      data-level={label.level}
       data-testid="label-badge"
     >
       <Tag aria-hidden="true" />
       <span className="sr-only">{t("label")}: </span>
       {text}
-    </Badge>
+    </TagChip>
   );
 }
 

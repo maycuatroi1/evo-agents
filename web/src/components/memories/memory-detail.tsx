@@ -7,12 +7,12 @@ import { useFormatter, useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
 
 import { Identifier } from "@/components/data/identifier";
+import { Segmented } from "@/components/data/segmented";
 import { VisibilityLevel } from "@/components/data/visibility";
 import { PageHeader } from "@/components/shell/page-header";
 import { QueryView, useHubQuery } from "@/components/states/query-view";
 import { ApiErrorState, LoadingState, NotFoundState, PageSkeleton } from "@/components/states/states";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { browserApi } from "@/lib/api/browser";
@@ -246,29 +246,15 @@ function Content({ body }: { body: string }) {
         <CardTitle>
           <h2>{t("content")}</h2>
         </CardTitle>
-        <div role="group" aria-label={t("view")} className="flex gap-1 rounded-md border p-0.5">
-          <Button
-            type="button"
-            size="sm"
-            variant={raw ? "ghost" : "secondary"}
-            aria-pressed={!raw}
-            onClick={() => setRaw(false)}
-          >
-            <Eye aria-hidden="true" />
-            {t("rendered")}
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant={raw ? "secondary" : "ghost"}
-            aria-pressed={raw}
-            onClick={() => setRaw(true)}
-            data-testid="view-raw"
-          >
-            <Code aria-hidden="true" />
-            {t("raw")}
-          </Button>
-        </div>
+        <Segmented
+          label={t("view")}
+          value={raw ? "raw" : "rendered"}
+          onChange={(view) => setRaw(view === "raw")}
+          options={[
+            { value: "rendered", label: t("rendered"), icon: Eye },
+            { value: "raw", label: t("raw"), icon: Code, testId: "view-raw" },
+          ]}
+        />
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         {raw ? (

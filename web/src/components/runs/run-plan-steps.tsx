@@ -31,7 +31,7 @@ export function RunPlanSteps({ run }: { run: Run }) {
   return (
     <section className="flex min-w-0 flex-col rounded-md border bg-card shadow-raised" aria-labelledby={`${ids}-title`} data-testid="run-plan-steps">
       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 border-b px-4 py-3">
-        <h2 id={`${ids}-title`} className="text-base font-medium">
+        <h2 id={`${ids}-title`} className="text-[15px] leading-[22px] font-semibold">
           {t("title")}
         </h2>
         {counts ? (

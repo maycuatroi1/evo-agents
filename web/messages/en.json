@@ -506,7 +506,7 @@
       "emptyTitle": "The project has no plan on the hub yet",
       "emptyDescription": "Plans show here once a member pushes the harness's plans with evo-agents hub plan import; plans labelled above your visibility stay hidden.",
       "search": "Search plans by title or id",
-      "searchPlaceholder": "Search plans…",
+      "searchPlaceholder": "Search plans",
       "clearSearch": "Clear search",
       "shown": "Showing {shown} of {total} plans",
       "total": "{count, plural, one {# plan} other {# plans}}",
@@ -514,6 +514,7 @@
       "noMatchTitle": "No plan matches",
       "activeCaption": "Active plans",
       "completedCaption": "Completed plans",
+      "revisionValue": "r{revision}",
       "columns": {
         "plan": "Plan",
         "progress": "Progress",
@@ -533,7 +534,8 @@
     "board": {
       "title": "Steps",
       "search": "Search steps by id, title, repo or content",
-      "searchPlaceholder": "Search steps…",
+      "searchPlaceholder": "Search steps",
+      "clearSearch": "Clear search",
       "repo": "Repo",
       "allRepos": "All repos",
       "view": "How to show the steps",

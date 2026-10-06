@@ -4,13 +4,13 @@ import { Check, Info, Lock } from "lucide-react";
 import { useFormatter, useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 
+import { Identifier } from "@/components/data/identifier";
 import { VisibilityLevel, VisibilityTag } from "@/components/data/visibility";
 import { PageHeader } from "@/components/shell/page-header";
 import { RoleBadge } from "@/components/shell/role-badge";
 import { QueryView, useHubQuery } from "@/components/states/query-view";
 import { NotFoundState, PageSkeleton } from "@/components/states/states";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { browserApi } from "@/lib/api/browser";
@@ -67,9 +67,7 @@ function Ladder({ project }: { project: Project }) {
           <dt className="text-muted-foreground">{t("locations")}</dt>
           <dd className="flex flex-wrap gap-1">
             {project.locations.map((location) => (
-              <Badge key={location} variant="outline" className="font-mono">
-                {location}
-              </Badge>
+              <Identifier key={location} value={location} />
             ))}
           </dd>
         </dl>
@@ -171,9 +169,7 @@ function Sinks({ project }: { project: Project }) {
             <span key="id" className="font-medium">
               {sink.id}
             </span>,
-            <Badge key="kind" variant="outline" className="font-mono">
-              {sink.kind}
-            </Badge>,
+            <Identifier key="kind" value={sink.kind} />,
             <Mono key="clearance">
               {[sink.clearance.level, sink.clearance.location].filter(Boolean).join(" / ")}
             </Mono>,
