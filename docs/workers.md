@@ -251,7 +251,8 @@ The agent talks to the hub through four commands that use the worker's token and
 token of the owner's: `evo-agents worker step`, `ask`, `notify` and `plan`. Outside a run they refuse to run.
 
 `POST /v1/projects/{p}/plan-runs` (writer) takes `plan_id`, `worker_id` (optional, one of the caller's own workers:
-403 for any other id, 409 for a revoked worker or one that does not serve the project), `runtime` (`any` by
+403 for any other id, 409 for a revoked worker, one that does not serve the project, or one that could never claim
+the run, as below), `runtime` (`any` by
 default), `model` (optional, one line of at most 200 characters; null leaves the choice to the runtime), `mode`
 (`headless` by default) and `timeout_h` (2, 4, 8 or 24; 4 by default), and answers 201 with the run. It answers 409,
 and queues nothing, when the plan has no pending step, when the plan has an active run of either kind, or when a step
@@ -370,7 +371,8 @@ seconds, so a missed notification delays a claim but never loses one. It picks a
 dispatched it, the project is one of the worker's and the owner still holds writer on it, the worker reported the
 runtime as available (a run asking for `any` takes the first of `claude-code`, `opencode`, `codex` it has) and a
 checkout of the repo, the run is pinned to no other worker, the worker holds fewer runs than its slots, and it is
-neither draining nor revoked. The oldest such run is leased for 300 seconds (`EVO_HUB_RUN_LEASE_SECONDS`, which
+neither draining nor revoked. A plan run also needs a daemon of 0.4.0 or later, as the worker's `agent_version` says:
+an older daemon would read it as a run of one step without a repo and fail it. The oldest such run is leased for 300 seconds (`EVO_HUB_RUN_LEASE_SECONDS`, which
 tests shorten). The answer is `{"run": {...}}` with the
 id, project, plan, step key and title, plan revision, attempt, max attempts, parent run, runtime, mode, approval,
 timeout in minutes, repo, branch, lease expiry and the prompt (built from the plan revision the run was dispatched
@@ -561,6 +563,13 @@ to the runtime as before). It queues one run per step, at the plan's current rev
 409, a step the plan does not have or one without a repo is 422, a worker that is not the caller's (or no worker) is
 403, and a revoked worker or one that does not serve the project is 409. `ready-steps` answers every step of the plan
 in plan order with `ready`, `reason` (as `unready_reason` says it, or the active run) and the active run.
+
+A dispatch, a plan run or a rerun pinned to a worker is checked against what that worker's last heartbeat reported,
+as the claim checks it: the runtime asked for available (any one for `any`), a checkout of each repo the run needs
+(the step's repo, or every repo in a plan run's `repos`), and, for a plan run, a daemon of 0.4.0 or later
+(`runs.PLAN_RUN_AGENT`). When one fails the answer is 409 naming each one, for example `worker mac-mini cannot take
+this run: it has no checkout of evo-agents/evo-agents-harness: ...`, and nothing is queued, rather than a run that
+stays queued for good. A dispatch without a worker is not checked: a worker that can take it may join later.
 
 The owner of a run is the member who dispatched it; another member gets 403 and someone without a grant 404.
 `.../cancel` moves a queued run, or one in review, to `cancelled` at once; for a held run it sets
@@ -796,10 +805,14 @@ hub hands it no run. Adapters are found by runtime name in the package, in the e
 source winning; `evo_agents/worker/adapter.py` holds the interface an adapter implements.
 
 A checkout is keyed `<project>/<repo>` and found, the first source winning, in `checkouts` of `config.json` (set by
-hand), in the project's repos as the hub lists them, placed in the workspace of the project's cluster in the harness
-registry (else the workspace the project was registered with), and in the registry's cluster of the project
-(`hub.project`, on the same hub), keyed by directory name. The registry is `~/.evo/harness/registry.json`, then
-`~/.claude/harness/registry.json`, as `evo-agents hub registry pull` writes it. Only a git work tree counts.
+hand), in the project's repos as the hub lists them and then its harness, keyed by directory name, placed in the
+workspace of the project's cluster in the harness registry (else the workspace the project was registered with), and
+in the registry's cluster of the project (`hub.project`, on the same hub): its repos and its `root`, keyed by
+directory name. The registry is `~/.evo/harness/registry.json`, then `~/.claude/harness/registry.json`, as
+`evo-agents hub registry pull` writes it. Only a git work tree counts. The hub lists a project's harness apart from
+its repos, but a plan names the harness as one of its repos, since its plans live there, so a plan run needs a
+checkout of it too. The daemon reads the project's repos and harness from the hub each time it starts, while the
+machine is signed in with `evo-agents hub login`.
 
 ### Runtime adapters
 

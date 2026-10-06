@@ -64,7 +64,8 @@ class WorkerConfig:
     owner: str | None = None
     token_id: int | None = None
     joined_at: str | None = None
-    # project -> {"workspace": str | None, "repos": [{"name", "path", "default_branch"}]}, as the hub lists them
+    # project -> {"workspace": str | None, "repos": [{"name", "path", "default_branch"}], "harness": str | None},
+    # as the hub lists them
     repos: dict[str, dict] = field(default_factory=dict)
     # "<project>/<repo>" -> a path, set by hand; wins over what the registry and the hub say
     checkouts: dict[str, str] = field(default_factory=dict)
