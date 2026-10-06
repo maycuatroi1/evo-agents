@@ -1,44 +1,50 @@
 import {
-  Blocks,
+  Activity,
+  BookOpen,
   Brain,
-  FolderGit2,
+  FolderKanban,
   Inbox,
   LayoutDashboard,
   ListChecks,
   type LucideIcon,
   Network,
-  NotebookPen,
-  Play,
-  Puzzle,
   Server,
-  ShieldCheck,
+  Shield,
+  Sparkles,
 } from "lucide-react";
 import type { Route } from "next";
 
 /**
- * The sidebar's links. Steps that add a project area (plans, runs, memories, skills, knowledge graph) add one entry to
- * PROJECT_NAV, a hub-wide area (the inbox, workers) one entry to HUB_NAV, and one label under `nav` in messages/vi.json
- * and messages/en.json.
+ * The sidebar's links, in the kit's AppShell order: Home and Inbox; the current project's areas; the hub-wide areas.
+ * A step that adds a project area adds one entry to PROJECT_NAV, a hub-wide area one entry to HUB_NAV, and one label
+ * under `nav` in messages/vi.json and messages/en.json. Icons follow the Iconography table of web/DESIGN.md.
  */
 export type NavLabel =
+  | "home"
+  | "inbox"
   | "overview"
-  | "projects"
-  | "admin"
   | "plans"
   | "runs"
   | "memories"
   | "skills"
   | "kg"
+  | "workers"
   | "myMemories"
   | "globalSkills"
-  | "workers"
-  | "inbox";
+  | "admin";
+
+/**
+ * A number at the end of a nav item, in its tone: the decisions waiting for the visitor's answer (attention), the
+ * project's active runs (running). Hidden while it is zero or unknown.
+ */
+export type NavCount = "openDecisions" | "activeRuns";
 
 export type ProjectNavItem = {
   label: NavLabel;
   icon: LucideIcon;
   /** Path below /p/{project}; "" is the project's overview. */
   segment: string;
+  count?: NavCount;
 };
 
 export type HubNavItem = {
@@ -46,24 +52,29 @@ export type HubNavItem = {
   icon: LucideIcon;
   href: Route;
   adminOnly?: boolean;
+  count?: NavCount;
 };
 
+/** The first group, without a label: where the visitor starts, and what waits for them. */
+export const HOME_NAV: readonly HubNavItem[] = [
+  { label: "home", icon: LayoutDashboard, href: "/" },
+  { label: "inbox", icon: Inbox, href: "/inbox", count: "openDecisions" },
+];
+
 export const PROJECT_NAV: readonly ProjectNavItem[] = [
-  { label: "overview", icon: LayoutDashboard, segment: "" },
+  { label: "overview", icon: FolderKanban, segment: "" },
   { label: "plans", icon: ListChecks, segment: "plans" },
-  { label: "runs", icon: Play, segment: "runs" },
-  { label: "memories", icon: Brain, segment: "memories" },
-  { label: "skills", icon: Puzzle, segment: "skills" },
+  { label: "runs", icon: Activity, segment: "runs", count: "activeRuns" },
+  { label: "memories", icon: BookOpen, segment: "memories" },
+  { label: "skills", icon: Sparkles, segment: "skills" },
   { label: "kg", icon: Network, segment: "kg" },
 ];
 
 export const HUB_NAV: readonly HubNavItem[] = [
-  { label: "projects", icon: FolderGit2, href: "/" },
-  { label: "inbox", icon: Inbox, href: "/inbox" },
   { label: "workers", icon: Server, href: "/workers" },
-  { label: "myMemories", icon: NotebookPen, href: "/memories" },
-  { label: "globalSkills", icon: Blocks, href: "/skills" },
-  { label: "admin", icon: ShieldCheck, href: "/admin", adminOnly: true },
+  { label: "myMemories", icon: Brain, href: "/memories" },
+  { label: "globalSkills", icon: Sparkles, href: "/skills" },
+  { label: "admin", icon: Shield, href: "/admin", adminOnly: true },
 ];
 
 export function projectHref(project: string, segment = ""): Route {
@@ -75,4 +86,9 @@ export function projectHref(project: string, segment = ""): Route {
 export function isActive(pathname: string, href: string, exact: boolean): boolean {
   if (exact || href === "/") return pathname === href;
   return pathname === href || pathname.startsWith(`${href}/`);
+}
+
+/** A count as a nav item shows it: up to 99, then 99+. */
+export function countText(count: number): string {
+  return count > 99 ? "99+" : String(count);
 }

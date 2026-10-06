@@ -32,7 +32,7 @@ import { LOCALE_COOKIE, LOGIN_PATH } from "@/lib/config";
 import { projectsQuery, whoamiQuery } from "@/lib/queries";
 import { initials } from "@/lib/utils";
 
-import { useCurrentProject } from "./project-switcher";
+import { SWITCH_CLASS, useCurrentProject } from "./project-switcher";
 import { roleLabelKey } from "./role-badge";
 
 const YEAR = 60 * 60 * 24 * 365;
@@ -94,20 +94,18 @@ export function UserMenu() {
               size="lg"
               data-testid="user-menu"
               aria-label={t("trigger", { login: me.login })}
-              className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+              className={SWITCH_CLASS}
             >
-              <Avatar className="size-8 rounded-md">
-                <AvatarFallback className="rounded-md bg-secondary font-mono text-xs font-medium">
-                  {initials(me.login)}
-                </AvatarFallback>
+              <Avatar className="size-7">
+                <AvatarFallback className="text-[11px] font-semibold">{initials(me.login)}</AvatarFallback>
               </Avatar>
-              <span className="grid flex-1 text-left text-sm leading-tight">
-                <span className="truncate font-semibold">{me.login}</span>
-                <span className="truncate text-xs text-muted-foreground">
+              <span className="grid min-w-0 flex-1 text-left group-data-[collapsible=icon]:hidden">
+                <span className="truncate text-[13px] leading-[18px] font-semibold text-foreground">{me.login}</span>
+                <span className="truncate text-xs leading-4 font-normal text-fg-subtle">
                   {me.admin ? t("hubAdmin") : t("member")}
                 </span>
               </span>
-              <ChevronsUpDown className="ml-auto size-4" aria-hidden="true" />
+              <ChevronsUpDown className="ml-auto text-fg-subtle group-data-[collapsible=icon]:hidden" aria-hidden="true" />
             </SidebarMenuButton>
           </DropdownMenuTrigger>
           <DropdownMenuContent

@@ -16,8 +16,8 @@
   },
   "nav": {
     "label": "Điều hướng chính",
+    "home": "Trang chủ",
     "hub": "Hub",
-    "projects": "Dự án của tôi",
     "project": "Dự án",
     "overview": "Tổng quan",
     "plans": "Plans",
@@ -32,7 +32,18 @@
     "globalSkills": "Skill dùng chung",
     "workers": "Worker",
     "runDiff": "Diff",
-    "inbox": "Inbox"
+    "inbox": "Inbox",
+    "counts": {
+      "openDecisions": "{count, plural, other {# quyết định chờ bạn trả lời}}",
+      "activeRuns": "{count, plural, other {# run đang hoạt động}}"
+    },
+    "fleet": {
+      "onlineBusy": "<b>{online, plural, other {# worker online}}</b>, {busy} đang chạy",
+      "onlineIdle": "<b>{online, plural, other {# worker online}}</b>, không worker nào đang chạy",
+      "offline": "<b>Không có worker nào online</b>, {registered} đã đăng ký",
+      "none": "Chưa có worker nào",
+      "error": "Không đọc được danh sách worker"
+    }
   },
   "projectSwitcher": {
     "label": "Dự án",
