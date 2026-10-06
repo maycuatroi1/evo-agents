@@ -31,7 +31,8 @@
     "myMemories": "My memories",
     "globalSkills": "Shared skills",
     "workers": "Workers",
-    "runDiff": "Diff"
+    "runDiff": "Diff",
+    "inbox": "Inbox"
   },
   "projectSwitcher": {
     "label": "Projects",
@@ -1645,8 +1646,13 @@
         "parkedYou": "Parked{since, select, none {} other { since {since}}}: the decision went unanswered for 24 hours. Your answer resumes the run on the same worker.",
         "open": "The agent asked {login} a decision and goes on with other work meanwhile.",
         "openYou": "The agent asked you a decision and goes on with other work meanwhile.",
-        "answer": "Answer the decision",
-        "openLink": "Open the decision"
+        "titleYou": "Waiting for your decision",
+        "titleOther": "Waiting for {login}'s decision",
+        "titleAnswered": "Answer sent",
+        "count": "{count} open",
+        "inInbox": "Open in the Inbox",
+        "loading": "Reading the decision…",
+        "failed": "The decision could not be read here. It is in the Inbox too."
       },
       "log": {
         "title": "Log",
@@ -1931,6 +1937,152 @@
         "title": "The diff could not be read",
         "description": "The blob store did not answer the web's request. Download the diff instead, or reload the page later."
       }
+    }
+  },
+  "inbox": {
+    "title": "Inbox",
+    "description": "Decisions the agents of your plan runs ask you, and what they tell you: pushes and merges into a default branch, plans finished, runs failed. Decisions that wait for your answer come first.",
+    "listTitle": "Notifications",
+    "unreadCount": "{count, plural, =0 {Nothing unread} other {# unread}}",
+    "openCount": "{count, plural, one {# decision waits for you} other {# decisions wait for you}}",
+    "markAll": "Mark all as read",
+    "markShown": "Mark these as read",
+    "markedAll": "{count, plural, =0 {Nothing was left to mark read.} one {Marked # notification read.} other {Marked # notifications read.}}",
+    "count": "{count, plural, one {# notification} other {# notifications}}",
+    "waitingTitle": "Waiting for your answer",
+    "restTitle": "Notices and past decisions",
+    "allTitle": "Notifications",
+    "pagerLabel": "notifications",
+    "summary": {
+      "all": "{count, plural, =0 {No notification yet.} one {# notification.} other {# notifications.}}",
+      "filtered": "{count, plural, =0 {No notification matches.} one {# notification matches.} other {# notifications match.}}"
+    },
+    "filters": {
+      "label": "Filter notifications",
+      "show": "Show",
+      "everything": "All",
+      "unread": "Unread",
+      "kind": "Kind",
+      "allKinds": "All kinds",
+      "decisions": "Decisions",
+      "notices": "Notices",
+      "project": "Project",
+      "allProjects": "All projects"
+    },
+    "empty": {
+      "title": "Your inbox is empty",
+      "description": "When the agent of a plan run you dispatched asks you a decision, or pushes or merges into a default branch, it shows up here and on the bell in the top bar."
+    },
+    "noResults": {
+      "title": "No notification matches",
+      "description": "Try another kind or project, or show the notifications you have read too.",
+      "clear": "Clear the filters"
+    },
+    "bell": {
+      "label": "Inbox: {unread, plural, =0 {no unread notification} one {# unread notification} other {# unread notifications}}{decisions, plural, =0 {} one {, # decision waits for your answer} other {, # decisions wait for your answer}}",
+      "labelUnknown": "Inbox",
+      "arrived": "{count, plural, one {# new notification in your inbox.} other {# new notifications in your inbox.}}"
+    },
+    "kind": {
+      "decision": "Decision",
+      "notice": "Notice"
+    },
+    "decisionState": {
+      "open": "Open",
+      "answered": "Answered",
+      "expired": "Expired",
+      "cancelled": "Cancelled"
+    },
+    "category": {
+      "deploy": "Deploy",
+      "delete_data": "Delete data",
+      "live_migration": "Live migration",
+      "external_send": "External send",
+      "spend_money": "Spend money",
+      "architecture": "Architecture",
+      "scope": "Scope"
+    },
+    "noticeKind": {
+      "push_default_branch": "Pushed to a default branch",
+      "merge_default_branch": "Merged into a default branch",
+      "plan_finished": "Plan finished",
+      "run_failed": "Run failed"
+    },
+    "item": {
+      "unread": "Unread",
+      "answer": "Answer",
+      "answerLabel": "Answer decision #{id}",
+      "view": "View",
+      "viewLabel": "View decision #{id}",
+      "openRun": "Open run #{id}",
+      "markRead": "Mark as read",
+      "markReadLabel": "Mark as read: {title}",
+      "showMore": "Show all",
+      "showLess": "Show less",
+      "repo": "Repo",
+      "branch": "Branch",
+      "commits": "{count, plural, one {# commit} other {# commits}}",
+      "commitFull": "commit {sha}",
+      "moreCommits": "and {count} more",
+      "fewerCommits": "Show fewer"
+    },
+    "panel": {
+      "back": "All notifications",
+      "close": "Close",
+      "notFoundTitle": "Decision #{id} was not found",
+      "notFoundDescription": "It belongs to a project or plan you cannot read, or the link is wrong."
+    },
+    "decision": {
+      "number": "Decision #{id}",
+      "project": "Project",
+      "run": "Run",
+      "runLink": "#{id}",
+      "plan": "Plan",
+      "step": "Step",
+      "stepLink": "Step {key}",
+      "asked": "Asked",
+      "owner": "Asked of",
+      "context": "Context from the agent",
+      "options": "Options",
+      "chosen": "Chosen",
+      "recommended": "Recommended",
+      "answerTitle": "Answer",
+      "answeredBy": "Answered by <who>{login}</who>",
+      "answerOption": "Option:",
+      "answerText": "In their words:",
+      "delivered": "The agent got the answer",
+      "notDelivered": "Waiting for the worker to hand the answer to the agent at its next turn.",
+      "resumed": "Run #{run} was parked: the answer resumed it as <link>run #{next}</link>.",
+      "onlyOwner": "Only {owner}, who dispatched run #{run}, can answer this decision.",
+      "runGone": "Run #{run} is {state}: no agent can take an answer any more.",
+      "expired": "Nobody answered while run #{run} was parked for 7 days, so the run was cancelled and the decision expired.",
+      "cancelled": "Run #{run} ended before anyone answered, so the decision was cancelled."
+    },
+    "answer": {
+      "title": "Answer decision #{id}",
+      "options": "Pick an option",
+      "optionsHint": "The agent recommends one of them; nothing is picked for you.",
+      "clearOption": "Clear the choice",
+      "text": "Your answer",
+      "textHint": "Optional when you pick an option: anything the agent should know with it. Without an option, your words are the answer.",
+      "placeholder": "Example: deploy after 18:00, once the backup has finished",
+      "bytes": "{count} of {max} bytes",
+      "empty": "Pick an option or write an answer first.",
+      "long": "The words of an answer are at most {max} bytes of UTF-8. Shorten them.",
+      "hint": "The answer goes to the agent of run #{run} through its inbox. It cannot be changed once sent.",
+      "hintParked": "Run #{run} is parked: your answer resumes it as a new run on the same worker, in the same session. It cannot be changed once sent.",
+      "send": "Send answer",
+      "sending": "Sending…",
+      "sent": "Answer sent to run #{run}. The worker hands it to the agent at its next turn.",
+      "sentResumed": "Answer sent. Run #{run} was parked; it resumes as run #{next} on the same worker."
+    },
+    "errors": {
+      "forbidden": "The hub refused: only {owner}, who dispatched run #{run}, can answer, and only while they hold the writer role on {project}.",
+      "notFound": "The decision can no longer be read: its plan left the hub, or you lost access to the project.",
+      "conflict": "The decision was answered or closed meanwhile, or its run ended. It now shows as the hub holds it.",
+      "apiMessage": "The hub says: {message}",
+      "readForbidden": "The hub refused to mark these notifications read. Reload the page and try again.",
+      "readGone": "These notifications changed meanwhile. The list was read again."
     }
   }
 }

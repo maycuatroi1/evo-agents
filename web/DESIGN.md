@@ -125,7 +125,33 @@ Shared pieces built on them:
   as often while its plan run is. The plans list badges a plan whose plan run is active, linked to the run. While a
   plan run holds a plan, Run this step on its steps is locked and names the run. A plan run's page is titled Plan run,
   carries a Plan run badge, lists the plan's steps with their status (the one in progress `aria-current="step"`), its
-  repos and branches, its model and the agent time used, and the open decision it waits on; it offers no Rerun.
+  repos and branches, its model and the agent time used, and the open decisions it waits on (below); it offers no Rerun.
+- `components/inbox`, notifications and decisions (docs/notifications.md): a bell in the top bar (`inbox-bell.tsx`) links
+  to the Inbox with the number of unread notifications (99+ past 99), read from `GET /v1/me/notifications/count` every
+  10 seconds; its accessible name says that number and the decisions waiting for the visitor's answer, and a polite live
+  region says how many arrived when the number grows. The Inbox (`/inbox`, also in the sidebar's hub section) lists the
+  member's notifications 50 a page, refreshed every 10 seconds: the decisions still open first under "Waiting for your
+  answer", then the notices and the decisions answered, expired or cancelled, newest first. Facets for unread, kind and
+  project live in the URL like the runs page's; Mark as read on each unread one, and Mark all as read in the header (Mark
+  these as read, by id, while a filter is on). An unread notification says Unread in words beside a dot and has a
+  heavier title. A notice of a push or merge into a default branch names its repo, branch and commits (seven digits,
+  the full name for screen readers, five shown and the rest a click away); its body folds to three lines. A decision
+  opens beside the list at `/inbox?decision=ID`, the link every decision notification carries (the History API pushes
+  it, so Back closes it; opened from the list, the question's heading takes focus, and Close gives it back to the
+  list); below the lg breakpoint it replaces the list, with a way back. A link that names only the decision asks each project of the visitor's grants for it at once. Opening it
+  marks its notification read. The decision (`decision-view.tsx`) shows its number, state and category (badges with an
+  icon and a word), the question, where it comes from (project, run with its state, plan, step, when, of whom), the
+  agent's context as Markdown through the memories' `SafeMarkdown` (no raw HTML, no images loaded), then for the run's
+  owner while it is open the answer form: the options as radio cards with the recommended one badged Recommended (a
+  thumbs-up icon and the word) and none picked for them, a box for their own words (4 KiB of UTF-8, counted past 75%),
+  and Send answer. Nothing chosen or written, or too many bytes, is refused beside the field; the hub's answer shows
+  above the form (403, 404 and 409 in the decision's own words through `useWriteFailure`, the hub's message as a
+  detail). Once answered the form gives way to who answered, when, the option and words, whether the worker has handed
+  it to the agent yet (read every 10 seconds until it has), and the run that resumed a parked one; the options list
+  marks the one chosen. Anyone else reads the options and why they cannot answer. A plan run's page shows its open
+  decisions in a "Waiting for your decision" banner above the stepper (`runs/run-decisions.tsx`) with the same view and
+  form, read every 5 seconds while the run is active; a decision answered there stays with its answer until the visitor
+  leaves.
 - `components/runs`, a run's page (`/p/{project}/runs/{id}`): a stepper of its states (the current one
   `aria-current="step"`, a run that ended badly marked where it stopped), the log, the details and the result, and the
   owner's controls in the header, each shown only when the state and the visitor's rights allow it (`run-model.ts`,
