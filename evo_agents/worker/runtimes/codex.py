@@ -14,6 +14,11 @@ the CLI prints is parsed here.
   other.
 - Whether the turn completed comes from ``turn/completed`` and its status (``completed``, ``interrupted``,
   ``failed``), never from an exit code.
+- The thread's model is the run's ``model``, else ``EVO_WORKER_CODEX_MODEL``, else codex's own choice. For the
+  heartbeat, ``models`` reads the owner's codex home (``$CODEX_HOME``, ``~/.codex`` by default): the ``model`` of
+  ``config.toml`` and of each of its profiles, then the models codex offers in its picker, from the cache it keeps
+  there (``models_cache.json``: each entry's ``slug`` whose ``visibility`` is ``list``). A file that is missing or not
+  in that shape adds nothing.
 
 Checked with openai-codex 0.160.0 and codex-cli 0.153.4 as the app-server (``evo-agents worker selftest --runtime
 codex``); the SDK bundles a codex binary of its own version, which the adapter does not use.
@@ -23,11 +28,19 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 import logging
+import os
 import re
 import shutil
 import tempfile
+from collections.abc import Mapping
 from pathlib import Path
+
+try:  # Python 3.11 and later; on 3.10 the config's model lines are read with CONFIG_MODEL
+    import tomllib
+except ImportError:  # pragma: no cover - Python 3.10
+    tomllib = None
 
 from evo_agents.worker.adapter import AgentEvent, Detection, Outcome, RunContext
 from evo_agents.worker.runtimes.common import (
@@ -75,6 +88,57 @@ SKIPPED = frozenset(
     }
 )
 _CAMEL = re.compile(r"(?<!^)(?=[A-Z])")
+CONFIG_MODEL = re.compile(r"""^[ \t]*model[ \t]*=[ \t]*(?:"([^"\n]*)"|'([^'\n]*)')""", re.M)
+MODELS_CACHE = "models_cache.json"
+
+
+def codex_home(env: Mapping[str, str]) -> Path:
+    """``$CODEX_HOME``, else ``~/.codex``."""
+    value = env.get("CODEX_HOME")
+    if value:
+        return Path(value).expanduser()
+    return Path(env.get("HOME") or Path.home()) / ".codex"
+
+
+def config_models(text: str) -> list[str]:
+    """The ``model`` of a codex ``config.toml``, then the ``model`` of each of its profiles."""
+    if tomllib is None:
+        return [first or second for first, second in CONFIG_MODEL.findall(text)]
+    try:
+        data = tomllib.loads(text)
+    except ValueError:
+        return []
+    found = [data.get("model")]
+    profiles = data.get("profiles")
+    if isinstance(profiles, dict):
+        found += [profile.get("model") for profile in profiles.values() if isinstance(profile, dict)]
+    return [name for name in found if isinstance(name, str)]
+
+
+def cached_models(text: str) -> list[str]:
+    """The slugs codex offers in its model picker, from its ``models_cache.json``."""
+    try:
+        data = json.loads(text)
+    except ValueError:
+        return []
+    entries = data.get("models") if isinstance(data, dict) else None
+    return [
+        entry["slug"]
+        for entry in entries or []
+        if isinstance(entry, dict) and entry.get("visibility") == "list" and isinstance(entry.get("slug"), str)
+    ]
+
+
+def home_models(home: Path) -> list[str]:
+    """What ``models`` reports, from the codex home ``home``: each model once, the config's first."""
+    found: list[str] = []
+    for name, read in (("config.toml", config_models), (MODELS_CACHE, cached_models)):
+        try:
+            text = (home / name).read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        found += read(text)
+    return list(dict.fromkeys(found))
 
 
 def wire(payload) -> dict:
@@ -172,6 +236,11 @@ class CodexAdapter(QueueAdapter):
     @classmethod
     def detect(cls) -> Detection:
         return detect_runtime(cls.runtime, cls.binary, MIN_VERSION, packages=(SDK,))
+
+    @classmethod
+    def models(cls) -> list[str] | None:
+        """The models of the owner's codex config and of codex's model picker; None when it names none."""
+        return home_models(codex_home(os.environ)) or None
 
     @classmethod
     def tui(cls, context: RunContext, session_id: str | None):

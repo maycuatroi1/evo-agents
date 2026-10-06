@@ -390,7 +390,7 @@ it holds:
 ```json
 {
   "runtimes": {
-    "claude-code": {"available": true, "version": "2.1.289"},
+    "claude-code": {"available": true, "version": "2.1.289", "models": ["fable", "opus", "sonnet"]},
     "codex": {"available": false, "version": "0.153.4", "reason": "not signed in"}
   },
   "checkouts": {"evo-agents/evo-agents": {"path": "/Users/me/github/evo-agents", "branch": "main"}},
@@ -400,8 +400,11 @@ it holds:
 }
 ```
 
-`runtimes` is keyed `claude-code`, `opencode` or `codex`, each `{available, version, reason}`: `available` is
-required, `reason` says why a runtime that is there cannot take runs, and only an available runtime is claimed for.
+`runtimes` is keyed `claude-code`, `opencode` or `codex`, each `{available, version, reason, models}`: `available`
+is required, `reason` says why a runtime that is there cannot take runs, and only an available runtime is claimed
+for. `models` lists the models an available runtime offers on the machine, when the runtime lets them be read (see
+[Runtime adapters](#runtime-adapters)): at most 200, each one line of at most 200 characters, so the web can suggest
+them for a dispatch; it is left out (null) otherwise, and a run's `model` is never checked against it.
 `checkouts` is keyed `<project>/<repo>`, as the project and its repo are named on the hub, each `{path, branch}` with
 the path required. The hub keeps both as sent, every key present (a missing one is null), and `GET /v1/workers/{id}`
 shows them in that shape. `free_slots` is what the daemon counts free, at most the worker's slots; the hub shows it,
@@ -551,8 +554,9 @@ For members, with a web session or a machine token. `{p}` is a project, and run 
 
 `POST /v1/projects/{p}/runs` takes `plan_id`, `steps` (1 to 50 step ids or orders), `runtime` (`any` by default,
 or `claude-code`, `opencode`, `codex`), `mode` (`headless` by default), `worker_id` (optional: pin the runs to a
-worker of the caller's), `approval` (`review` by default, or `auto`) and `timeout_min` (5 to 240, 60 by default). It
-queues one run per step, at the plan's current revision, or nothing: a step that is not ready or has an active run is
+worker of the caller's), `approval` (`review` by default, or `auto`), `timeout_min` (5 to 240, 60 by default) and
+`model` (optional, one line of at most 200 characters, as the runtime names it; null, the default, leaves the choice
+to the runtime as before). It queues one run per step, at the plan's current revision, or nothing: a step that is not ready or has an active run is
 409, a step the plan does not have or one without a repo is 422, a worker that is not the caller's (or no worker) is
 403, and a revoked worker or one that does not serve the project is 409. `ready-steps` answers every step of the plan
 in plan order with `ready`, `reason` (as `unready_reason` says it, or the active run) and the active run.
@@ -562,7 +566,7 @@ The owner of a run is the member who dispatched it; another member gets 403 and 
 `cancel_requested_at`, the next heartbeat says `cancel`, and the worker reports `cancelled` (an expired lease after
 that ends the run `cancelled` too). `.../approve` moves a run in review to `done` and writes the step done with the
 evidence the run got when it went to review. `.../rerun` queues the step of a run that ended again, at the plan's
-current revision, with the same requested runtime, mode, approval, timeout and pinned worker, attempt 1 and
+current revision, with the same requested runtime, model, mode, approval, timeout and pinned worker, attempt 1 and
 `parent_run_id` naming the old run; the step must be ready again. Approve and rerun need the writer role.
 
 ### Reading runs
@@ -811,8 +815,18 @@ killed once the agent has ended, or 20 seconds after an interrupt it did not end
 The agent gets, on top of its runtime's own system prompt, a note that it runs unattended and that the owner may send
 messages. The model and the reasoning effort are the run's `model` and `effort` when the hub sends them, else
 `EVO_WORKER_<RUNTIME>_MODEL` and `EVO_WORKER_<RUNTIME>_EFFORT` in the daemon's environment (`CLAUDE_CODE`,
-`OPENCODE`, `CODEX`), else the runtime's default. opencode is always told the model: the run's, the variable's, or the
-`model` of the owner's opencode config, and a model `opencode serve` does not list fails the start with that reason.
+`OPENCODE`, `CODEX`), else the runtime's default. Claude Code gets it as `options.model` (the CLI's `--model`), codex
+as the model of the thread it starts or resumes. opencode is always told the model: the run's, the variable's, or the
+`model` of the owner's opencode config, as `provider/model`, split at its first `/` into the `providerID` and `modelID`
+of each prompt, and a model `opencode serve` does not list fails the start with that reason.
+
+For the heartbeat, each adapter lists the models its runtime offers on the machine, looked at with the runtime itself
+every 5 minutes: Claude Code, which has no command that lists them, gives the aliases its `--model` help names
+(`fable`, `opus`, `sonnet` with Claude Code 2.1.291); opencode what `opencode models` prints, `provider/model` for
+each provider the owner set up; codex reads the owner's codex home (`$CODEX_HOME`, `~/.codex` by default): the
+`model` of `config.toml` and of each of its profiles, then the slugs its model picker shows, from the cache codex keeps
+there (`models_cache.json`, entries whose `visibility` is `list`). A command that fails or a file not in that shape
+adds nothing. The list goes to the hub for the web to suggest; a dispatch may still name any model the runtime takes.
 A message that comes once the agent takes no more input (its last turn is over) is refused by `send`, and stays in the
 inbox.
 
@@ -984,6 +998,10 @@ command says so, and `evo-agents worker run` can go under a supervisor of your o
   without relative entries and with `/usr/local/bin`, `/usr/bin`, `/bin`, `/usr/sbin` and `/sbin` added when
   missing, and pins `EVO_WORKER_HOME` to the state directory. The install prints where it found `claude`,
   `opencode`, `codex`, `tmux` and `git` on that PATH; install again after one of them moves.
+- Installing again reads the plist or unit installed before and keeps every `EVO_WORKER_*` variable it sets, such as
+  `EVO_WORKER_OPENCODE_MODEL` or `EVO_WORKER_CLAUDE_CODE_EFFORT` added by hand, and prints their names (never their
+  values). PATH, `EVO_WORKER_HOME` and `EVO_WORKER_REVOKED_EXIT` are written as a first install writes them, whatever
+  the old file said; other variables are not kept.
 - Stopping the service, by `uninstall` or at logout, sends the daemon SIGTERM and kills what is left 60 seconds later
   (launchd `ExitTimeOut`, systemd `KillMode=mixed` and `TimeoutStopSec=60`).
 - The daemon writes `worker.log` itself. What it prints before that log is open goes to `service.log` in the state

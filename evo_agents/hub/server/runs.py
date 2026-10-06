@@ -7,7 +7,8 @@ GET /v1/projects/{p}/plans/{plan}/ready-steps (reader) lists every step of the p
 (``runs.unready_reason``, or the active run it has). POST /v1/projects/{p}/runs (writer) queues one run per step
 named: every step must be ready and without an active run (409 otherwise, and nothing is queued), and a worker named
 must be one of the caller's own (403 for any other id, a hub admin's included), live and serving the project (409).
-Each run is notified on RUNS_CHANNEL and audited (run.dispatch), and keeps the step's title.
+Each run is notified on RUNS_CHANNEL and audited (run.dispatch), and keeps the step's title. ``model`` is optional,
+one line of at most ``runs.MAX_MODEL_CHARS``, as the runtime names it; without one the runtime chooses as it would.
 
 POST /v1/projects/{p}/plan-runs (writer) queues a plan run (``runs.RUN_KINDS``): one run, on one worker of the
 caller's, that does every step of the plan not done yet. It is refused with 409 when the plan has no pending step,
@@ -38,14 +39,14 @@ whose worker hung up (a daemon stopping drops the claim it waits on) takes nothi
 queue again, and a run it leased in the meantime is rolled back before the transaction commits, so the run stays
 queued for the next claim instead of waiting out a lease nobody holds.
 
-POST /v1/worker/heartbeat records the machine (runtimes, checkouts keyed ``<project>/<repo>``, free slots), extends
-the lease of every run the worker names and still holds by the same time, settles their agent time
-(``run_state.SETTLE``), and answers with control: per run, whether to cancel (asked by the owner, or a run the worker
-no longer holds), takeover, handback, terminal_open (a browser waits for the worker's end of the run's terminal,
-``terminal.Terminals.waiting``), how many inbox messages wait and how many decisions of the run are open; for the
-worker, whether to drain. A run the reaper parked, or one done because a new run resumes it, comes back with held
-false, cancel false and park true: the worker stops its agent at the end of the turn, keeps the session and the
-worktrees, and frees the slot.
+POST /v1/worker/heartbeat records the machine (runtimes, each with the models it lists when it lists any, checkouts
+keyed ``<project>/<repo>``, free slots), extends the lease of every run the worker names and still holds by the same
+time, settles their agent time (``run_state.SETTLE``), and answers with control: per run, whether to cancel (asked by
+the owner, or a run the worker no longer holds), takeover, handback, terminal_open (a browser waits for the worker's
+end of the run's terminal, ``terminal.Terminals.waiting``), how many inbox messages wait and how many decisions of the
+run are open; for the worker, whether to drain. A run the reaper parked, or one done because a new run resumes it,
+comes back with held false, cancel false and park true: the worker stops its agent at the end of the turn, keeps the
+session and the worktrees, and frees the slot.
 
 POST /v1/worker/runs/{id}/state reports a move of a run the worker holds (404 otherwise), checked against
 ``runs.TRANSITIONS`` with the worker as actor (409 otherwise): ``done`` only for approval auto with every verify
@@ -67,12 +68,12 @@ audits it (run.step_report). A step the plan does not have, a run of one step, o
 
 The owner of a run is the member who dispatched it. Cancel moves a queued run or one in review to ``cancelled`` and
 asks the worker holding a held run to stop it (the next heartbeat says cancel); approve moves a run in review to
-``done``; rerun queues the step again, at the plan's current revision, after a run that ended. Takeover asks the
-worker holding a leased or running run to let a person drive the agent in a terminal, and handback asks it to let
-an interactive run's agent go on headless: the next heartbeat says takeover or handback until the worker reports
-interactive or running, and any other move drops the ask. Each one is audited (run.cancel, run.approve, run.rerun,
-run.takeover, run.handback; an ask repeated is not); another member gets 403, someone without a grant on the
-project 404.
+``done``; rerun queues the step again, at the plan's current revision, with the run's model, after a run that ended.
+Takeover asks the worker holding a leased or running run to let a person drive the agent in a terminal, and handback
+asks it to let an interactive run's agent go on headless: the next heartbeat says takeover or handback until the
+worker reports interactive or running, and any other move drops the ask. Each one is audited (run.cancel,
+run.approve, run.rerun, run.takeover, run.handback; an ask repeated is not); another member gets 403, someone without
+a grant on the project 404.
 """
 
 from __future__ import annotations
@@ -129,7 +130,6 @@ STEP_KEY_CHARS = 200
 REQUESTED_RUNTIMES = ("any", *runs.RUNTIMES)
 WRITER_ROLES = [role for role in ("reader", "writer", "admin") if has_role(role, "writer")]
 NOT_HELD = "this worker does not hold run {id}: it may have been lost, cancelled or taken by another attempt"
-MODEL_CHARS = 200  # runs.model, as schema 0010 bounds it
 STEP_REPORT_STATUSES = ("in_progress", "done", "pending")  # what a plan run's worker reports of a step
 MAX_STEP_EVIDENCE_CHARS = MAX_EVIDENCE_BYTES  # the agent's evidence of one step; the hub's adds to it, within the bytes
 PLAN_LOCK = "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))"
@@ -139,6 +139,7 @@ worker_router = APIRouter(prefix="/v1/worker", tags=["worker protocol"], respons
 
 RunId = Annotated[int, Path(ge=1, le=MAX_ID)]
 RuntimeName = Literal[runs.RUNTIMES]  # an alias: a model with a field named runs cannot say runs.RUNTIMES
+ModelName = Annotated[str, Field(min_length=1, max_length=runs.MAX_MODEL_CHARS, pattern=LINE)]
 REFUSALS = {403: {"model": ErrorBody}, 404: {"model": ErrorBody}, 409: {"model": ErrorBody}}
 
 
@@ -181,14 +182,19 @@ class Dispatch(BaseModel):
     worker_id: int | None = Field(None, ge=1, le=MAX_ID, description="pin the runs to this worker of yours")
     approval: Literal[runs.APPROVALS] = Field("review", description="auto: verified runs mark the step done")
     timeout_min: int = Field(60, ge=5, le=240)
+    model: ModelName | None = Field(
+        None,
+        description="the model each run uses, as its runtime names it (opencode: provider/model); null: the "
+        "runtime's own choice",
+    )
 
 
 class PlanRunDispatch(BaseModel):
     plan_id: str = Field(pattern=plan_routes.PLAN_ID)
     worker_id: int | None = Field(None, ge=1, le=MAX_ID, description="pin the run to this worker of yours")
     runtime: Literal[REQUESTED_RUNTIMES] = Field("any", description="any: the claiming worker picks one it has")
-    model: str | None = Field(
-        None, min_length=1, max_length=MODEL_CHARS, pattern=LINE, description="the model to use; null: the runtime's"
+    model: ModelName | None = Field(
+        None, description="the model to use, as its runtime names it (opencode: provider/model); null: the runtime's"
     )
     mode: Literal[runs.MODES] = "headless"
     timeout_h: Literal[runs.PLAN_TIMEOUT_CHOICES] = Field(
@@ -311,6 +317,11 @@ class RuntimeReport(BaseModel):
     available: bool = Field(description="whether runs may use it; false with a reason when it is installed but not")
     version: str | None = Field(None, min_length=1, max_length=100, pattern=LINE)
     reason: str | None = Field(None, min_length=1, max_length=500, pattern=LINE, description="why it is unavailable")
+    models: list[ModelName] | None = Field(
+        None,
+        max_length=runs.MAX_RUNTIME_MODELS,
+        description="the models the runtime lists on the machine, for a dispatch to suggest; null when it lists none",
+    )
 
 
 class CheckoutReport(BaseModel):
@@ -756,9 +767,9 @@ async def _pinnable(conn, user: Principal, access: ProjectAccess, worker_id: int
 
 INSERT_RUN = """
 INSERT INTO runs (project_id, plan_id, step_key, title, plan_revision, dispatched_by, pinned_worker_id,
-                  requested_runtime, runtime, mode, approval, timeout_s, parent_run_id, repo, branch)
+                  requested_runtime, runtime, model, mode, approval, timeout_s, parent_run_id, repo, branch)
 VALUES (%(project)s, %(plan)s, %(step)s, %(title)s, %(revision)s, %(user)s, %(pinned)s, %(runtime)s, %(runtime)s,
-        %(mode)s, %(approval)s, %(timeout)s, %(parent)s, %(repo)s, %(branch)s)
+        %(model)s, %(mode)s, %(approval)s, %(timeout)s, %(parent)s, %(repo)s, %(branch)s)
 RETURNING id
 """
 
@@ -776,6 +787,7 @@ async def _queue_run(
     active: dict[str, ActiveRun],
     *,
     runtime: str,
+    model: str | None,
     mode: str,
     approval: str,
     timeout_s: int,
@@ -809,6 +821,7 @@ async def _queue_run(
         "user": user.user_id,
         "pinned": pinned,
         "runtime": runtime,
+        "model": model,
         "mode": mode,
         "approval": approval,
         "timeout": timeout_s,
@@ -870,6 +883,7 @@ async def dispatch(request: Request, project: ProjectName, body: Dispatch, user:
                 key,
                 activity.steps,
                 runtime=body.runtime,
+                model=body.model,
                 mode=body.mode,
                 approval=body.approval,
                 timeout_s=body.timeout_min * 60,
@@ -1000,7 +1014,7 @@ async def dispatch_plan(request: Request, project: ProjectName, body: PlanRunDis
 
 OWNED_RUN = """
 SELECT r.dispatched_by, u.login, r.state, r.plan_id, r.step_key, r.cancel_requested_at, r.requested_runtime, r.mode,
-       r.approval, r.timeout_s, r.pinned_worker_id, r.kind
+       r.approval, r.timeout_s, r.pinned_worker_id, r.kind, r.model
   FROM runs r JOIN users u ON u.id = r.dispatched_by
  WHERE r.id = %s AND r.project_id = %s
    FOR UPDATE OF r
@@ -1110,12 +1124,12 @@ async def approve(request: Request, project: ProjectName, run_id: RunId, user: C
 
 @router.post("/{project}/runs/{run_id}/rerun", status_code=201, response_model=Run, responses=REFUSALS)
 async def rerun(request: Request, project: ProjectName, run_id: RunId, user: CurrentUser) -> Run:
-    """Queue the step of a run that ended again, with the same runtime, mode, approval, timeout and worker, at the
-    plan's current revision."""
+    """Queue the step of a run that ended again, with the same runtime, model, mode, approval, timeout and worker, at
+    the plan's current revision."""
     async with request.app.state.pool.connection() as conn:
         access, row = await _owned_run(conn, user, project, run_id, "rerun")
         _dispatcher(access)
-        _, _, state, plan_id, key, _, runtime, mode, approval, timeout_s, pinned, kind = row
+        _, _, state, plan_id, key, _, runtime, mode, approval, timeout_s, pinned, kind, model = row
         if kind == "plan":
             raise HTTPException(
                 409, f"run {run_id} is a plan run: dispatch the plan again with POST /v1/projects/{project}/plan-runs"
@@ -1136,6 +1150,7 @@ async def rerun(request: Request, project: ProjectName, run_id: RunId, user: Cur
             key,
             activity.steps,
             runtime=runtime,
+            model=model,
             mode=mode,
             approval=approval,
             timeout_s=timeout_s,
