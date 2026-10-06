@@ -1028,6 +1028,317 @@ def test_no_log_line_carries_a_token_arguments_or_results(hub, caplog):
             assert headers["Authorization"].removeprefix("Bearer ") not in line
 
 
+# The agent of a run: its worker's token and X-Evo-Run
+
+WORKER_PROTOCOL = {"X-Evo-Worker-Protocol": "1"}
+LISTING = request(1, "tools/list")
+
+
+def grant(hub, login: str, role: str, max_level: str, project: str = PROJECT) -> None:
+    body = {"role": role, "max_level": max_level}
+    response = hub.client.put(f"/v1/admin/projects/{project}/grants/{login}", json=body, headers=hub.admin)
+    assert response.status_code == 200, response.text
+
+
+def register_beta(hub) -> None:
+    """Project beta, alpha's twin, which no member holds a grant on yet."""
+    beta = {**REGISTRATION, "harness": {"name": "beta", "workspace": "~/ws", "path": "beta-harness"}}
+    assert hub.client.put("/v1/projects/beta", json=beta, headers=hub.admin).status_code == 200
+
+
+def push_plan(hub) -> None:
+    pushed = hub.client.put(f"/v1/projects/{PROJECT}/plans/rollout", json={"body": plan_body()}, headers=hub.alice)
+    assert pushed.status_code in (200, 201), pushed.text
+
+
+def worker_of(hub, member: str, name: str) -> SimpleNamespace:
+    """A worker of ``member`` serving alpha, registered with the member's machine token, after a first heartbeat that
+    reports Claude Code and a checkout of app."""
+    host = {"hostname": f"{name}.local", "os": "darwin", "arch": "arm64", "agent_version": "0.4.0"}
+    body = {"name": name, "projects": [PROJECT], "slots": 4, **host}
+    response = hub.client.post("/v1/workers", json=body, headers=getattr(hub, member))
+    assert response.status_code == 201, response.text
+    token = response.json()["token"]
+    worker = SimpleNamespace(
+        id=response.json()["worker"]["id"], token=token, headers={**live.bearer(token), **WORKER_PROTOCOL}
+    )
+    beat = {
+        "runtimes": {"claude-code": {"available": True, "version": "2.1.289"}},
+        "checkouts": {f"{PROJECT}/app": {"path": "/src/app", "branch": "main"}},
+        "free_slots": 4,
+    }
+    assert hub.client.post("/v1/worker/heartbeat", json=beat, headers=worker.headers).status_code == 200
+    return worker
+
+
+def run_on(hub, member: str, worker, step: int) -> int:
+    """The run of ``step`` of rollout that ``member`` dispatched, approval auto, and ``worker`` claimed."""
+    body = {"plan_id": "rollout", "steps": [step], "approval": "auto"}
+    response = hub.client.post(f"/v1/projects/{PROJECT}/runs", json=body, headers=getattr(hub, member))
+    assert response.status_code == 201, response.text
+    run_id = response.json()[0]["id"]
+    claimed = hub.client.post("/v1/worker/claim", json={"wait_s": 0}, headers=worker.headers)
+    assert claimed.status_code == 200 and claimed.json()["run"]["id"] == run_id, claimed.text
+    return run_id
+
+
+def report(hub, worker, run_id: int, state: str, **body):
+    sent = {"state": state, **body}
+    return hub.client.post(f"/v1/worker/runs/{run_id}/state", json=sent, headers=worker.headers)
+
+
+def agent(hub, worker, run_id, message: dict, *, project=None, headers=None):
+    """``message`` from the agent of run ``run_id`` on ``worker``, as `evo-agents hub mcp` sends it inside a run: the
+    worker's token and X-Evo-Run (none when ``run_id`` is None), and no X-Evo-Project unless ``project``."""
+    sent = {**live.bearer(worker.token), **MCP_HEADERS, **(headers or {})}
+    if run_id is not None:
+        sent["X-Evo-Run"] = str(run_id)
+    if project is not None:
+        sent["X-Evo-Project"] = project
+    return hub.client.post("/mcp", json=message, headers=sent, follow_redirects=False)
+
+
+def agent_tool(hub, worker, run_id: int, name: str, arguments: dict | None = None) -> dict:
+    response = agent(hub, worker, run_id, call(7, name, arguments))
+    assert response.status_code == 200, response.text
+    return response.json()["result"]
+
+
+def agent_principal(hub, worker, run_id: int):
+    """The principal the gate gives the agent of run ``run_id`` on ``worker``."""
+    from dataclasses import replace
+
+    from evo_agents.hub.server.mcp import run_scope
+    from evo_agents.hub.server.security import WORKER, authenticate
+
+    async def find():
+        pool = hub.app.state.pool
+        user = await authenticate(pool, worker.token, WORKER, hub.app.state.config)
+        async with pool.connection() as conn:
+            return replace(user, scope=await run_scope(conn, user, run_id))
+
+    return hub.client.portal.call(find)
+
+
+@needs_pg
+def test_a_worker_token_opens_mcp_only_with_x_evo_run_naming_a_run_its_worker_holds(hub):
+    from evo_agents.hub.server.mcp import NOT_HELD
+
+    push_plan(hub)
+    grant(hub, "eve", "writer", "internal")
+    mine, spare = worker_of(hub, "alice", "mac-mini"), worker_of(hub, "alice", "laptop")
+    theirs = worker_of(hub, "eve", "eve-box")
+    run_id = run_on(hub, "alice", mine, 1)
+
+    opened = agent(hub, mine, run_id, LISTING)
+    assert opened.status_code == 200 and len(opened.json()["result"]["tools"]) == 15
+
+    bare = agent(hub, mine, None, LISTING)  # a worker token without X-Evo-Run
+    assert bare.status_code == 403 and bare.json()["error"] == "forbidden" and "X-Evo-Run" in bare.json()["message"]
+    for value in ("abc", "0", "-3", "1" * 19):
+        malformed = agent(hub, mine, None, LISTING, headers={"X-Evo-Run": value})
+        assert malformed.status_code == 400, (value, malformed.text)
+    machine = rpc(hub, "alice", LISTING, headers={"X-Evo-Run": str(run_id)})
+    assert machine.status_code == 400 and "worker token" in machine.json()["message"]
+
+    # The run of another worker, of the same owner or another member's, and a run that does not exist: one 403.
+    for worker in (spare, theirs):
+        refused = agent(hub, worker, run_id, LISTING)
+        assert refused.status_code == 403 and refused.json()["message"] == NOT_HELD.format(run=run_id), refused.text
+    assert agent(hub, mine, 999_999, LISTING).json()["message"] == NOT_HELD.format(run=999_999)
+    unknown = agent(hub, SimpleNamespace(token="evw_" + "x" * 43), run_id, LISTING)
+    assert unknown.status_code == 401 and "evo-agents worker join" in unknown.json()["message"]
+    # /v1 outside the worker's routes still refuses the worker token, with or without the header.
+    assert (
+        hub.client.get("/v1/projects", headers={**live.bearer(mine.token), "X-Evo-Run": str(run_id)}).status_code == 403
+    )
+    assert agent(hub, mine, run_id, LISTING).status_code == 200
+
+
+@needs_pg
+def test_a_run_scope_binds_the_session_to_the_run_s_project_and_every_tool_to_it(hub, caplog):
+    push_plan(hub)
+    register_beta(hub)
+    grant(hub, "alice", "writer", "internal", project="beta")
+    worker = worker_of(hub, "alice", "mac-mini")
+    run_id = run_on(hub, "alice", worker, 1)
+
+    other = agent(hub, worker, run_id, LISTING, project="beta")
+    assert other.status_code == 403 and other.json()["error"] == "forbidden", other.text
+    assert f"run {run_id} is of project {PROJECT}" in other.json()["message"]
+    assert agent(hub, worker, run_id, LISTING, project=PROJECT).status_code == 200
+    projects = agent_tool(hub, worker, run_id, "hub_projects")  # without X-Evo-Project: the run's project
+    assert projects["structuredContent"]["session_project"] == PROJECT
+    assert [p["name"] for p in projects["structuredContent"]["projects"]] == [PROJECT]
+    assert [p["name"] for p in ok(hub, "alice", "hub_projects")["structuredContent"]["projects"]] == [PROJECT, "beta"]
+
+    # alice herself writes into beta and keeps a personal memory; her run's agent reaches neither.
+    body = f"---\nname: n\n---\n{SECRET}\n"
+    ok(hub, "alice", "memory_write", {"project": "beta", "name": "beta.md", "body": body})
+    diary = ok(hub, "alice", "memory_write", {"scope": "personal", "location": "notes", "name": "d.md", "body": body})
+    for name, arguments in (
+        ("plan_list", {"project": "beta"}),
+        ("plan_show", {"project": "beta", "plan_id": "rollout"}),
+        ("memory_search", {"project": "beta", "query": SECRET}),
+        ("memory_write", {"project": "beta", "name": "agent.md", "body": body}),
+    ):
+        result = agent_tool(hub, worker, run_id, name, arguments)
+        assert result["isError"] and "no project beta that you can see" in result["content"][0]["text"], name
+    assert "for its members" in agent_tool(hub, worker, run_id, "skill_list", {"project": "beta"})["content"][0]["text"]
+    personal = {"scope": "personal", "location": "notes", "name": "agent-diary.md", "body": body}
+    refused = agent_tool(hub, worker, run_id, "memory_write", personal)
+    assert refused["isError"] and "a personal memory is its owner's" in refused["content"][0]["text"]
+    mine = agent_tool(hub, worker, run_id, "memory_search", {"query": SECRET, "scope": "personal"})
+    assert mine["structuredContent"]["results"] == []
+    hidden = agent_tool(hub, worker, run_id, "memory_get", {"id": diary["structuredContent"]["memory"]["id"]})
+    assert hidden["isError"] and "no memory" in hidden["content"][0]["text"]
+
+    # In alpha it reads and writes as alice would, and the audit trail names the worker's token.
+    caplog.set_level(logging.INFO)
+    caplog.clear()
+    written = agent_tool(hub, worker, run_id, "memory_write", {"name": "agent.md", "body": body})
+    assert not written.get("isError"), written
+    found = agent_tool(hub, worker, run_id, "memory_search", {"query": SECRET})["structuredContent"]["results"]
+    assert [m["name"] for m in found] == ["agent.md"]
+    marked = agent_tool(hub, worker, run_id, "plan_step", {"plan_id": "rollout", "step": 3, "status": "in_progress"})
+    assert not marked.get("isError"), marked
+    assert not agent_tool(hub, worker, run_id, "kg_search", {"query": "guide"}).get("isError")
+    kinds = live.sql(
+        hub.db,
+        "SELECT a.action, t.kind FROM audit a JOIN tokens t ON t.id = a.token_id "
+        "WHERE a.action IN ('memory.put', 'plan.patch') ORDER BY a.id",
+    )
+    assert kinds[-2:] == [("memory.put", "worker"), ("plan.patch", "worker")]
+    calls = [(r.tool, r.login, r.run_id) for r in caplog.records if r.getMessage() == "mcp tool"]
+    assert calls[0] == ("memory_write", "alice", run_id)
+
+
+@needs_pg
+def test_a_run_scope_is_never_a_hub_admin_and_at_most_a_writer(hub):
+    """The run's owner is a hub admin with the admin role on alpha; its agent is neither, and whatever needs either is
+    refused to it."""
+    from fastapi import HTTPException
+    from starlette.requests import Request
+
+    from evo_agents.hub.server import projects, skills
+
+    push_plan(hub)
+    register_beta(hub)  # where the hub admin holds no grant
+    grant(hub, live.ADMIN, "admin", "internal")
+    worker = worker_of(hub, "admin", "admin-box")
+    run_id = run_on(hub, "admin", worker, 2)
+
+    own = ok(hub, "admin", "hub_projects")["content"][0]["text"].splitlines()
+    assert own[0].startswith("alpha (this session): role admin, max level internal;")
+    assert own[1].startswith("beta: no grant (hub admin);")
+    shown = agent_tool(hub, worker, run_id, "hub_projects")
+    assert shown["content"][0]["text"].startswith("alpha (this session): role writer, max level internal;")
+    assert [p["role"] for p in shown["structuredContent"]["projects"]] == ["writer"]
+    # What a hub admin reaches without a grant answers its agent as a project that does not exist.
+    assert "needs a grant on it" in failed(hub, "admin", "plan_list", {"project": "beta"})
+    beta = agent_tool(hub, worker, run_id, "plan_list", {"project": "beta"})
+    assert beta["isError"] and "no project beta that you can see" in beta["content"][0]["text"]
+
+    # The hub's own checks of the admin role and of a hub admin refuse the agent's principal.
+    principal = agent_principal(hub, worker, run_id)
+    assert (principal.admin, principal.scope.role, principal.scope.max_level) == (False, "writer", "internal")
+    request = Request(
+        {"type": "http", "app": hub.app, "method": "PUT", "path": "/", "headers": [], "query_string": b""}
+    )
+    body = projects.Registration(**REGISTRATION)
+    with pytest.raises(HTTPException) as caught:
+        hub.client.portal.call(projects.register, request, body, PROJECT, principal)
+    assert caught.value.status_code == 403 and "admin role on project alpha" in caught.value.detail
+
+    async def publish_global():
+        async with hub.app.state.pool.connection() as conn:
+            return await skills._writable(conn, principal, None)
+
+    with pytest.raises(HTTPException) as caught:
+        hub.client.portal.call(publish_global)
+    assert caught.value.status_code == 403 and "hub admin" in caught.value.detail
+    assert hub.client.put(f"/v1/projects/{PROJECT}", json=REGISTRATION, headers=hub.admin).status_code == 200
+
+
+@needs_pg
+def test_a_run_scope_holds_while_the_run_is_held_and_ends_with_it(hub):
+    from evo_agents.hub.server.mcp import NOT_HELD
+
+    push_plan(hub)
+    worker = worker_of(hub, "alice", "mac-mini")
+    run_id = run_on(hub, "alice", worker, 1)
+
+    def status() -> int:
+        return agent(hub, worker, run_id, LISTING).status_code
+
+    assert status() == 200  # leased
+    for state in ("running", "verifying"):
+        assert report(hub, worker, run_id, state).status_code == 200, state
+        assert status() == 200, state
+    # waiting is a held state; review and parked are not. A run of one step reaches neither so: set in place.
+    for state, opens in (("waiting", True), ("review", False), ("parked", False), ("verifying", True)):
+        live.sql(
+            hub.db,
+            "UPDATE runs SET state = %(state)s, "
+            "waiting_since = CASE WHEN %(state)s = 'waiting' THEN now() END, "
+            "parked_at = CASE WHEN %(state)s = 'parked' THEN now() END WHERE id = %(run)s",
+            {"state": state, "run": run_id},
+        )
+        assert (status() == 200) is opens, state
+
+    passed = [{"command": "pytest -q", "exit_code": 0}]
+    done = report(hub, worker, run_id, "done", verify=passed, commit_sha="a" * 40)
+    assert done.status_code == 200, done.text
+    after = agent(hub, worker, run_id, LISTING)
+    assert after.status_code == 403 and after.json()["message"] == NOT_HELD.format(run=run_id)
+
+    failing = run_on(hub, "alice", worker, 2)
+    assert agent(hub, worker, failing, LISTING).status_code == 200
+    assert report(hub, worker, failing, "failed", error="the agent gave up").status_code == 200
+    assert agent(hub, worker, failing, LISTING).status_code == 403
+
+    revoked = run_on(hub, "alice", worker, 3)
+    assert agent(hub, worker, revoked, LISTING).status_code == 200
+    assert hub.client.post(f"/v1/workers/{worker.id}/revoke", headers=hub.alice).status_code == 200
+    assert agent(hub, worker, revoked, LISTING).status_code == 401  # the worker's token went with it
+
+
+def test_inside_a_run_the_proxy_sends_the_worker_token_and_x_evo_run_instead_of_the_machine_one(tmp_path, monkeypatch):
+    from evo_agents.worker.home import WorkerConfig, WorkerHome
+
+    fake = FakeHub(mcp_reply)
+    worker_token = "evw_" + "W" * 43
+    try:
+        monkeypatch.setenv("HOME", str(sign_in(tmp_path / "home", fake.url, "alice", TOKEN)))
+        state = WorkerHome(tmp_path / "worker")
+        config = WorkerConfig(url=fake.url, worker_id=3, name="mac-mini", projects=["alpha"], owner="alice")
+        state.save(config, worker_token)
+        monkeypatch.setenv("EVO_WORKER_HOME", str(state.root))
+
+        def sent(run: str | None) -> dict:
+            if run is None:
+                monkeypatch.delenv("EVO_RUN_ID", raising=False)
+            else:
+                monkeypatch.setenv("EVO_RUN_ID", run)
+            fake.requests.clear()
+            (reply,) = run_proxy(Proxy("alpha", err=io.StringIO()), call(1, "plan_list"))
+            assert reply["result"]["content"][0]["text"] == "called plan_list"
+            ((headers, _),) = fake.requests
+            return headers
+
+        inside = sent("42")
+        assert inside["authorization"] == f"Bearer {worker_token}" and inside["x-evo-run"] == "42"
+        assert "x-evo-project" not in inside  # the hub binds the session to the run's project
+        for outside in (sent(None), sent("0"), sent("not-a-run")):
+            assert outside["authorization"] == f"Bearer {TOKEN}" and "x-evo-run" not in outside
+            assert outside["x-evo-project"] == "alpha"
+        state.token_path.unlink()  # a run's variables on a machine that is no worker: its own machine token
+        fallback = sent("42")
+        assert fallback["authorization"] == f"Bearer {TOKEN}" and "x-evo-run" not in fallback
+    finally:
+        fake.stop()
+
+
 # The CLI against `hub serve`
 
 

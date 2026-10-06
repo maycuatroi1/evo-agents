@@ -64,7 +64,8 @@ and at the end the commit, diffstat, verify results, evidence, usage and error.
   forced, and each such push or merge sends the owner a notice.
 - **A worker token (`evw_...`) works only on `/v1/worker/*`**, and machine tokens and web sessions get 403 there. The
   hub shows the token once, when the machine joins or registers, and keeps only its SHA-256. With it a worker reads
-  nothing beyond the runs it holds. Revoking the worker ends the token at once, and revoking the token
+  nothing beyond the runs it holds. Outside `/v1` it also opens the hub's `/mcp` for the agent of a run the worker
+  holds, with `X-Evo-Run`, scoped to the run's project, at most writer and never a hub admin (`docs/hub.md`). Revoking the worker ends the token at once, and revoking the token
   (`DELETE /v1/tokens/{id}`, or `DELETE /v1/admin/tokens/{id}` for a hub admin) revokes the worker with it, in the
   same transaction: its runs are released and its name is free again, as with `POST /v1/workers/{id}/revoke`.
 
