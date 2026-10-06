@@ -1,6 +1,7 @@
-"""Migrations: a fresh database gets the thirty-four hub tables, a second run changes nothing, processes that start
+"""Migrations: a fresh database gets the thirty-seven hub tables, a second run changes nothing, processes that start
 together apply each revision once, a database at 0001 with rows in it moves to 0002, and a database the code
-cannot read is refused. Then the constraints schemas 0001 and 0002 promise."""
+cannot read is refused. Then the constraints schemas 0001 and 0002 promise. Schemas 0009 and 0010 have their checks in
+``tests.hub.test_run_tables``, 0011 in ``tests.hub.test_sealing``."""
 
 import re
 import subprocess
@@ -44,6 +45,7 @@ TABLES |= pg.KG_TABLES  # migration 0006
 TABLES |= pg.RETENTION_TABLES  # migration 0008
 TABLES |= pg.RUN_TABLES  # migration 0009
 TABLES |= pg.NOTIFICATION_TABLES  # migration 0010
+TABLES |= pg.CREDENTIAL_TABLES  # migration 0011
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 SNAPSHOT = """
@@ -74,16 +76,22 @@ def tables(db) -> set[str]:
     }
 
 
-def test_a_fresh_database_gets_the_thirty_four_tables(hub_db):
-    assert len(TABLES) == 34  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_thirty_seven_tables(hub_db):
+    assert len(TABLES) == 37  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
     assert tables(hub_db) == TABLES | {"alembic_version"}
     assert query(hub_db, "SELECT version_num FROM alembic_version") == [(HEAD,)]
-    # skills and skill_versions keep metadata and the blob key, never the bundle's bytes
+    # skills and skill_versions keep metadata and the blob key, never the bundle's bytes: the only bytes the hub keeps
+    # are the sealed values of credentials (0011) and their nonces
     sql = "SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = 'public' AND {}"
-    assert query(hub_db, sql.format("data_type = 'bytea'")) == []
+    assert sorted(query(hub_db, sql.format("data_type = 'bytea'"))) == [
+        ("credential_leases", "nonce"),
+        ("credential_leases", "sealed_value"),
+        ("secrets", "nonce"),
+        ("secrets", "sealed"),
+    ]
     assert {row[1] for row in query(hub_db, sql.format("table_name = 'skill_versions'"))} >= {
         "sha256",
         "size",

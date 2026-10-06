@@ -33,6 +33,7 @@ SERVER_STACK = (
     "boto3",
     "procrastinate",
     "moto",
+    "cryptography",
 )
 # Tables of migration 0004: the blob store's and procrastinate's job queue
 BLOB_TABLES = frozenset({"blobs", "blob_uploads"})
@@ -47,6 +48,8 @@ RETENTION_TABLES = frozenset({"blob_deletions"})
 RUN_TABLES = frozenset({"workers", "worker_projects", "worker_pairings", "runs", "run_events", "run_inbox"})
 # Tables of migration 0010: the decisions of plan runs, and the notifications, channels and deliveries
 NOTIFICATION_TABLES = frozenset({"decisions", "notifications", "notification_channels", "notification_deliveries"})
+# Tables of migration 0011: the secrets members keep, where they are bound, and the leases runs get of them
+CREDENTIAL_TABLES = frozenset({"secrets", "secret_bindings", "credential_leases"})
 HUB_ENV = ("EVO_HUB_",)  # variables a test environment must not inherit from the shell running pytest
 
 

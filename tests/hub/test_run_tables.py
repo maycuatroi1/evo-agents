@@ -712,8 +712,7 @@ def test_0010_goes_up_with_runs_down_to_the_schema_of_0009_and_up_again(hub_db):
     assert query(hub_db, "SELECT run_id FROM run_inbox") == [(ids["done_run"],)]
     assert query(hub_db, "SELECT plan_id FROM plans ORDER BY plan_id") == [("rollout",), (PLAN,)]
 
-    result = migrate(hub_db.dsn)
-    assert (result.before, result.applied, result.after) == (("0009",), ("0010",), ("0010",))
+    move_to(hub_db, "0010")  # not to the head, which later revisions move on
     assert query(hub_db, SNAPSHOT) == at_0010
     with pg.admin(hub_db.admin_dsn) as conn:  # the plan stayed, and takes a plan run again
         add_run(conn, ids, "running", kind="plan", plan_id="rollout")

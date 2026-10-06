@@ -47,6 +47,7 @@ HUB_TABLES |= pg.KG_TABLES  # migration 0006
 HUB_TABLES |= pg.RETENTION_TABLES  # migration 0008
 HUB_TABLES |= pg.RUN_TABLES  # migration 0009
 HUB_TABLES |= pg.NOTIFICATION_TABLES  # migration 0010
+HUB_TABLES |= pg.CREDENTIAL_TABLES  # migration 0011
 
 
 @pytest.fixture
