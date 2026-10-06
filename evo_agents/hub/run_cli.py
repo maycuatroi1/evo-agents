@@ -1,11 +1,17 @@
 """``evo-agents hub run``: dispatch plan steps to your own workers, and follow, steer and end their runs.
 
-``dispatch`` queues one run per step named (POST /v1/projects/{p}/runs), all of them or none. ``list`` and ``show``
-read runs. ``logs`` prints a run's events page by page (GET .../runs/{id}/events?after=SEQ), or with ``--follow``
-reads the run's server-sent events (GET .../runs/{id}/stream) until the hub sends ``end``. ``send`` leaves a message
-for the run's agent, and ``cancel``, ``approve``, ``takeover``, ``handback`` and ``rerun`` are the owner's controls.
-Every command after ``dispatch`` and ``list`` takes the id of a run, as ``list`` shows it. ``docs/workers.md``
-describes the protocol behind them; ``--json`` prints what the hub answered, with the keys declared next to the flag.
+``dispatch`` queues one run per step named (POST /v1/projects/{p}/runs), all of them or none, and ``plan`` queues a
+plan run, one run that does every step of the plan not done yet (POST /v1/projects/{p}/plan-runs). ``list`` and
+``show`` read runs of both kinds. ``logs`` prints a run's events page by page (GET .../runs/{id}/events?after=SEQ), or
+with ``--follow`` reads the run's server-sent events (GET .../runs/{id}/stream) until the hub sends ``end``. ``send``
+leaves a message for the run's agent, and ``cancel``, ``approve``, ``takeover``, ``handback`` and ``rerun`` are the
+owner's controls. Every command after ``dispatch``, ``plan`` and ``list`` takes the id of a run, as ``list`` shows it.
+``docs/workers.md`` describes the protocol behind them; ``--json`` prints what the hub answered, with the keys declared
+next to the flag.
+
+``--model`` names a model as one runtime names it (opencode: provider/model), so ``dispatch`` and ``plan`` take it
+only with ``--runtime`` naming that runtime: with ``any`` the claiming worker picks the runtime, and the model might
+not be one it knows. The hub itself takes a model with any runtime; this check is the command line's.
 
 A followed stream that stops before ``end`` (a proxy closed it, the hub restarted, or nothing came for
 STREAM_TIMEOUT seconds although the hub pings every 15) is opened again with ``Last-Event-ID`` set to the last event
@@ -34,7 +40,16 @@ from evo_agents.hub.cli_client import _client_command, _print_json, _project_pat
 from evo_agents.hub.client import _OPENER, HubError, Unreachable, _json, _origin
 from evo_agents.hub.contract import json_option, returns_array, returns_object
 from evo_agents.hub.plan_cli import _plan_id, _project
-from evo_agents.hub.runs import APPROVALS, EVENT_KINDS, MODES, RUN_STATES, RUNTIMES, TERMINAL_STATES
+from evo_agents.hub.runs import (
+    APPROVALS,
+    EVENT_KINDS,
+    MAX_MODEL_CHARS,
+    MODES,
+    PLAN_TIMEOUT_CHOICES,
+    RUN_STATES,
+    RUNTIMES,
+    TERMINAL_STATES,
+)
 from evo_agents.isotime import parse_iso
 
 EXIT_USAGE = 2
@@ -138,8 +153,42 @@ def _worker_id(hub, login: str, worker: str) -> int:
 
 
 def _step(run: dict) -> str:
+    """What a run works on: ``step 2 (Title) of plan P``, or ``plan P (Title)`` for a plan run."""
     title = f" ({run['title']})" if run.get("title") else ""
+    if run.get("kind") == "plan":
+        return f"plan {run['plan_id']}{title}"
     return f"step {run['step_key']}{title} of plan {run['plan_id']}"
+
+
+def _repos(run: dict) -> str:
+    """A plan run's repos, each with the branch the plan names for it."""
+    return ", ".join(
+        entry["repo"] + (f" ({entry['branch']})" if entry.get("branch") else "") for entry in run.get("repos") or ()
+    )
+
+
+def _timeout(run: dict) -> str:
+    minutes = run["timeout_min"]
+    return f"{minutes // 60} h" if run.get("kind") == "plan" and minutes % 60 == 0 else f"{minutes} min"
+
+
+def _model_check(args) -> str | None:
+    """Why ``--model`` cannot go with the ``--runtime`` given, or None."""
+    if args.model is None:
+        return None
+    if args.runtime in (None, "any"):
+        return (
+            "--model names a model as one runtime names it, so it needs --runtime with that runtime "
+            f"({', '.join(RUNTIMES)}): with any, the claiming worker picks the runtime"
+        )
+    if not args.model.strip() or len(args.model) > MAX_MODEL_CHARS or not args.model.isprintable():
+        return f"--model takes one line of 1 to {MAX_MODEL_CHARS} characters"
+    return None
+
+
+def _usage_error(text: str) -> int:
+    print(f"error: {text}", file=sys.stderr)
+    return EXIT_USAGE
 
 
 def _with_project(args, project: str) -> str:
@@ -344,12 +393,26 @@ def follow(
 # Commands
 
 
+def _runtime(run: dict) -> str:
+    """The runtime a run asked for, with its model when it named one."""
+    return run["requested_runtime"] + (f" (model {run['model']})" if run.get("model") else "")
+
+
 @_client_command
 def cmd_dispatch(args) -> int:
+    refused = _model_check(args)
+    if refused:
+        return _usage_error(refused)
     hub, credentials = _signed_in()
     project = _project(args)
     body = {"plan_id": _plan_id(args.plan), "steps": args.steps}
-    chosen = {"runtime": args.runtime, "mode": args.mode, "approval": args.approval, "timeout_min": args.timeout}
+    chosen = {
+        "runtime": args.runtime,
+        "model": args.model,
+        "mode": args.mode,
+        "approval": args.approval,
+        "timeout_min": args.timeout,
+    }
     body.update({key: value for key, value in chosen.items() if value is not None})
     if args.worker is not None:
         body["worker_id"] = _worker_id(hub, credentials.login, args.worker)
@@ -360,10 +423,39 @@ def cmd_dispatch(args) -> int:
     for run in queued:
         pinned = f", on worker #{run['pinned_worker_id']} only" if run["pinned_worker_id"] else ""
         print(
-            f"Queued run #{run['id']}: {_step(run)}, repo {run['repo']}; runtime {run['requested_runtime']}, "
+            f"Queued run #{run['id']}: {_step(run)}, repo {run['repo']}; runtime {_runtime(run)}, "
             f"{run['mode']}, approval {run['approval']}, timeout {run['timeout_min']} min{pinned}."
         )
     print(f"Follow it with `evo-agents hub run logs {queued[0]['id']} --follow{_with_project(args, project)}`.")
+    return 0
+
+
+@_client_command
+def cmd_plan(args) -> int:
+    refused = _model_check(args)
+    if refused:
+        return _usage_error(refused)
+    hub, credentials = _signed_in()
+    project = _project(args)
+    body = {"plan_id": _plan_id(args.plan)}
+    chosen = {"runtime": args.runtime, "model": args.model, "mode": args.mode, "timeout_h": args.timeout_h}
+    body.update({key: value for key, value in chosen.items() if value is not None})
+    if args.worker is not None:
+        body["worker_id"] = _worker_id(hub, credentials.login, args.worker)
+    run = hub.call("POST", f"{_project_path(project)}/plan-runs", body)
+    if args.json:
+        _print_json(run)
+        return 0
+    pinned = f", on worker #{run['pinned_worker_id']} only" if run["pinned_worker_id"] else ""
+    print(
+        f"Queued plan run #{run['id']}: {_step(run)}, every step not done yet, in {_repos(run)}; runtime "
+        f"{_runtime(run)}, {run['mode']}, timeout {_timeout(run)} of agent time{pinned}."
+    )
+    where = _with_project(args, project)
+    print(
+        f"Follow it with `evo-agents hub run logs {run['id']} --follow{where}`; the decisions its agent asks you: "
+        f"`evo-agents hub decision list --run {run['id']}{where}`."
+    )
     return 0
 
 
@@ -385,9 +477,10 @@ def cmd_list(args) -> int:
     rows = [
         (
             f"#{run['id']}",
+            run["kind"],
             run["state"],
             run["plan_id"],
-            run["step_key"],
+            run["step_key"] or "-",
             _clip(run["title"] or "-", TITLE_CHARS),
             run["runtime"],
             run["worker"] or "-",
@@ -397,7 +490,7 @@ def cmd_list(args) -> int:
         for run in listed["runs"]
     ]
     if rows:
-        _table(("RUN", "STATE", "PLAN", "STEP", "TITLE", "RUNTIME", "WORKER", "BY", "QUEUED (UTC)"), rows)
+        _table(("RUN", "KIND", "STATE", "PLAN", "STEP", "TITLE", "RUNTIME", "WORKER", "BY", "QUEUED (UTC)"), rows)
     counts = ", ".join(f"{count} {state}" for state, count in listed["counts"].items() if count)
     shown = len(rows)
     print(f"{shown} of {listed['total']} run(s) of project {project}" + (f"; by state: {counts}" if counts else ""))
@@ -408,31 +501,44 @@ def cmd_list(args) -> int:
 
 def _describe(run: dict) -> list[tuple[str, str]]:
     """The fields of a run that say something, as (label, text) pairs."""
-    lines = [
-        ("state", f"{run['state']}, attempt {run['attempt']} of {run['max_attempts']}"),
-        ("step", f"{run['step_key']}" + (f": {run['title']}" if run["title"] else "")),
-        ("plan", f"{run['plan_id']} of project {run['project']}, revision {run['plan_revision']}"),
-        (
-            "repo",
-            run["repo"]
-            + (f", branch {run['branch']}" if run["branch"] else "")
-            + (f", commit {run['commit_sha'][:12]}" if run["commit_sha"] else ""),
-        ),
-    ]
+    plan_run = run["kind"] == "plan"
+    lines = [("state", f"{run['state']}, attempt {run['attempt']} of {run['max_attempts']}")]
+    if plan_run:
+        lines.append(("kind", "plan run: every step of the plan not done yet, in one session"))
+        if run["title"]:
+            lines.append(("title", run["title"]))
+    else:
+        lines.append(("step", f"{run['step_key']}" + (f": {run['title']}" if run["title"] else "")))
+    lines.append(("plan", f"{run['plan_id']} of project {run['project']}, revision {run['plan_revision']}"))
+    commit = f", commit {run['commit_sha'][:12]}" if run["commit_sha"] else ""
+    if plan_run:
+        lines.append(("repos", (_repos(run) or "none") + commit))
+    else:
+        lines.append(("repo", run["repo"] + (f", branch {run['branch']}" if run["branch"] else "") + commit))
     worker = f"{run['worker']} (#{run['worker_id']})" if run["worker_id"] else "none yet"
     if run["pinned_worker_id"]:
         worker += f", pinned to worker #{run['pinned_worker_id']}"
     runtime = run["runtime"] + (
         f" (asked for {run['requested_runtime']})" if run["runtime"] != run["requested_runtime"] else ""
     )
+    runtime += f", model {run['model']}" if run["model"] else ""
+    approval = "" if plan_run else f", approval {run['approval']}"
     lines += [
         ("worker", worker),
-        ("runtime", f"{runtime}, {run['mode']}, approval {run['approval']}, timeout {run['timeout_min']} min"),
+        ("runtime", f"{runtime}, {run['mode']}{approval}, timeout {_timeout(run)}"),
         ("dispatched", f"by {run['dispatched_by']} at {_when(run['queued_at'])} UTC"),
     ]
+    if run["run_seconds"]:
+        lines.append(("agent time", f"{run['run_seconds'] // 60} min used of {_timeout(run)}"))
     times = [(name, run[f"{name}_at"]) for name in ("leased", "started", "finished") if run[f"{name}_at"]]
     if times:
         lines.append(("times (UTC)", ", ".join(f"{name} {_when(value)}" for name, value in times)))
+    if run["waiting_since"] and run["state"] == "waiting":
+        lines.append(("waiting", f"since {_when(run['waiting_since'])} UTC, for the answer to a decision"))
+    if run["parked_at"]:
+        lines.append(("parked", f"at {_when(run['parked_at'])} UTC, for want of an answer"))
+    if run["resume_of_run_id"]:
+        lines.append(("resumes", f"run #{run['resume_of_run_id']}, in its session and worktrees"))
     if run["lease_expires_at"] and run["state"] not in TERMINAL_STATES:
         lines.append(("lease until", f"{_when(run['lease_expires_at'])} UTC"))
     asks = [(name, run[f"{name}_requested_at"]) for name in ("cancel", "takeover", "handback")]
@@ -485,6 +591,8 @@ def cmd_show(args) -> int:
             print(f"  {'':<{width}}  {line}".rstrip())
     if run["last_seq"]:
         print(f"Its events: `evo-agents hub run logs {run['id']}{_with_project(args, project)}`.")
+    if run["kind"] == "plan":
+        print(f"Its decisions: `evo-agents hub decision list --run {run['id']}{_with_project(args, project)}`.")
     return 0
 
 
@@ -583,7 +691,9 @@ def _control(action: str, said: Callable[[dict], str]):
 
 
 def register_runs(hsub) -> None:
-    run = hsub.add_parser("run", help="dispatch plan steps to your workers, and follow, steer and end their runs")
+    run = hsub.add_parser(
+        "run", help="dispatch plan steps, or a whole plan, to your workers, and follow, steer and end their runs"
+    )
     rsub = run.add_subparsers(dest="run_command", required=True)
     project_help = "hub project (default: hub.project in the harness.yaml around the current directory)"
     run_help = "the run's id, as `hub run list` shows it"
@@ -593,6 +703,13 @@ def register_runs(hsub) -> None:
 
     def with_run(parser) -> None:
         parser.add_argument("run", metavar="RUN", type=int, help=run_help)
+
+    def with_model(parser) -> None:
+        parser.add_argument(
+            "--model",
+            help="the model, as the runtime names it (opencode: provider/model); needs --runtime with that runtime "
+            "(default: the runtime's own choice)",
+        )
 
     dispatch = rsub.add_parser(
         "dispatch", help="queue a run of each step named for a worker of yours, all of them or none (needs writer)"
@@ -616,8 +733,35 @@ def register_runs(hsub) -> None:
         "the worker runs again exits 0",
     )
     dispatch.add_argument("--timeout", type=int, choices=range(5, 241), metavar="MINUTES", help="5 to 240 (default 60)")
+    with_model(dispatch)
     json_option(dispatch, returns_array(*RUN_KEYS, schema="Run"))
     dispatch.set_defaults(func=cmd_dispatch)
+
+    plan = rsub.add_parser(
+        "plan",
+        help="queue a plan run: one run, on a worker of yours, that does every step of the plan not done yet "
+        "(needs writer)",
+    )
+    plan.add_argument("plan", metavar="PLAN", help="the plan's id")
+    with_project(plan)
+    plan.add_argument(
+        "--worker", help="pin the run to this worker of yours, by id or name (default: any of yours with every repo)"
+    )
+    plan.add_argument("--runtime", choices=REQUESTED_RUNTIMES, help="default: any, the first the claiming worker has")
+    with_model(plan)
+    plan.add_argument(
+        "--mode", choices=MODES, help="default: headless; interactive starts the agent in a terminal on the worker"
+    )
+    plan.add_argument(
+        "--timeout-h",
+        type=int,
+        choices=PLAN_TIMEOUT_CHOICES,
+        metavar="HOURS",
+        help=f"hours of agent time, one of {', '.join(map(str, PLAN_TIMEOUT_CHOICES))} (default 4); waiting for a "
+        "decision and parked do not count",
+    )
+    json_option(plan, RUN)
+    plan.set_defaults(func=cmd_plan)
 
     listed = rsub.add_parser("list", help="the runs of a project, newest first, with how many are in each state")
     with_project(listed)
