@@ -404,7 +404,7 @@
     "emptyList": "Empty list",
     "readOnly": {
       "label": "Read-only page",
-      "text": "This page is read-only. Plans are changed with <code>evo harness step</code> or <code>evo-agents hub plan</code>; every change adds a revision to the history."
+      "text": "The plan's content is read-only here: it changes with <code>evo harness step</code> or <code>evo-agents hub plan</code>, and every change adds a revision to the history. To have one of your workers carry the plan out, a writer uses Run plan."
     },
     "tabs": {
       "label": "Parts of the plan",
@@ -460,7 +460,8 @@
         "plan": "Plan",
         "progress": "Progress",
         "revision": "Revision",
-        "updated": "Last changed"
+        "updated": "Last changed",
+        "actions": "Actions"
       }
     },
     "overview": {
@@ -1286,7 +1287,7 @@
   "runs": {
     "title": "Runs",
     "metaTitle": "Runs of {project}",
-    "description": "Each run is one plan step dispatched to one of your workers. Its state, log and evidence come back to the hub while it runs.",
+    "description": "Each run is one plan step, or a whole plan (a plan run), dispatched to one of your workers. Its state, log and evidence come back to the hub while it runs.",
     "dispatchButton": "Dispatch",
     "liveBadge": "Live",
     "live": "Updates every 5 seconds while a run is active.",
@@ -1300,7 +1301,9 @@
       "running": "Running",
       "interactive": "Interactive",
       "verifying": "Verifying",
+      "waiting": "Waiting",
       "review": "Review",
+      "parked": "Parked",
       "done": "Done",
       "failed": "Failed",
       "lost": "Lost",
@@ -1357,6 +1360,8 @@
     },
     "stepLine": "{plan}, step {step}",
     "stepLineProject": "{project}, {plan}, step {step}",
+    "planLine": "{plan}, every step not done, {repos, plural, one {# repo} other {# repos}}",
+    "planLineProject": "{project}, {plan}, every step not done, {repos, plural, one {# repo} other {# repos}}",
     "untitled": "Untitled step",
     "noWorkerYet": "none yet",
     "pinnedWaiting": "waiting for its pinned worker",
@@ -1418,6 +1423,7 @@
       "reason": {
         "activeRun": "Run #{id} is {state}, dispatched by {login}",
         "status": "Its status is {status}, not pending",
+        "planRun": "Plan run #{id} is {state}, dispatched by {login}: it holds every step of the plan until it ends",
         "unknown": "The hub does not say why"
       },
       "runtime": "Runtime",
@@ -1442,9 +1448,9 @@
       },
       "worker": "Worker",
       "workerAuto": "Match a worker automatically",
-      "workerAutoHint": "One of yours that is online, with a free slot, the runtime and a checkout of the step's repo.",
+      "workerAutoHint": "One of yours that is online, with a free slot, the runtime and {subject, select, plan {a checkout of every repo the plan runs in} other {a checkout of the step's repo}}.",
       "workerPin": "Pin to one worker",
-      "workerPinHint": "The runs stay queued until this worker has a free slot.",
+      "workerPinHint": "{subject, select, plan {The plan run stays} other {The runs stay}} queued until this worker has a free slot.",
       "workerSelect": "Pinned worker",
       "workerOption": "{name} ({status})",
       "noWorkers": "You have no worker registered for project {project} yet.",
@@ -1460,15 +1466,15 @@
       "submit": "{count, plural, =0 {Dispatch} one {Dispatch # run} other {Dispatch # runs}}",
       "submitting": "Dispatching…",
       "outlook": {
-        "nothing": "Pick at least one ready step.",
-        "noWorker": "You have no worker for project {project}. The runs wait in the queue until you register one.",
+        "nothing": "{subject, select, plan {Nothing to run yet: see above.} other {Pick at least one ready step.}}",
+        "noWorker": "You have no worker for project {project}. {subject, select, plan {The plan run waits} other {The runs wait}} in the queue until you register one.",
         "now": "Matching now: {workers}.",
-        "later": "No worker of yours is free now; {workers} can take them later. The runs wait in the queue.",
-        "none": "None of your workers can take them as they are ({reasons}). The runs wait in the queue.",
-        "pinnedNow": "{name} can take them now.",
-        "pinnedBusy": "The runs wait in the queue until {name} has a free slot.",
-        "pinnedOffline": "{name} is offline; the runs wait in the queue until it comes back.",
-        "pinnedNo": "{name} cannot take them as it is ({problem}). The runs wait in the queue.",
+        "later": "No worker of yours is free now; {workers} can take {subject, select, plan {it later} other {them later}}. {subject, select, plan {The plan run waits} other {The runs wait}} in the queue.",
+        "none": "None of your workers can take {subject, select, plan {it as they are} other {them as they are}} ({reasons}). {subject, select, plan {The plan run waits} other {The runs wait}} in the queue.",
+        "pinnedNow": "{name} can take {subject, select, plan {it now} other {them now}}.",
+        "pinnedBusy": "{subject, select, plan {The plan run waits} other {The runs wait}} in the queue until {name} has a free slot.",
+        "pinnedOffline": "{name} is offline; {subject, select, plan {the plan run waits} other {the runs wait}} in the queue until it comes back.",
+        "pinnedNo": "{name} cannot take {subject, select, plan {it as it is} other {them as it is}} ({problem}). {subject, select, plan {The plan run waits} other {The runs wait}} in the queue.",
         "free": "{name} ({count, plural, one {# free slot} other {# free slots}})",
         "busy": "{name} (every slot in use)",
         "offline": "{name} (offline)",
@@ -1479,7 +1485,7 @@
         "draining": "draining",
         "runtime": "no {runtime}",
         "runtimeAny": "no runtime reported",
-        "checkout": "no checkout of {repo}"
+        "checkout": "no checkout of {repos}"
       },
       "errors": {
         "forbidden": "The hub refused: dispatching needs the writer role on this project, and a pinned worker must be one of yours.",
@@ -1488,12 +1494,122 @@
         "invalid": "The hub did not accept the dispatch."
       }
     },
+    "planRun": {
+      "kind": "Plan run",
+      "button": "Run plan",
+      "title": "Run plan",
+      "description": "One run on one of your workers does every step of <name>{plan}</name> not done yet, in depends_on order and in one session, and asks you only the decisions that matter.",
+      "loading": "Loading the plan's steps",
+      "loadFailed": "The plan's steps could not be loaded. Close the dialog and try again.",
+      "timeout": "Timeout",
+      "timeoutValue": "{hours} h",
+      "timeoutHint": "Agent time the run may take. Time spent waiting for your answer, or parked, does not count.",
+      "submit": "Run plan",
+      "submitting": "Queuing…",
+      "dispatched": "Queued plan run #{id} of {plan}.",
+      "holds": "<link>Plan run #{id}</link> ({state}, dispatched by {login}) holds every step of this plan until it ends.",
+      "listLink": "Plan run #{id}: {state}",
+      "phase": {
+        "queued": "Queued",
+        "queuedLong": "Queued",
+        "running": "Running",
+        "runningLong": "Running",
+        "waiting": "Waiting",
+        "waitingLong": "Waiting for your decision",
+        "parked": "Parked",
+        "parkedLong": "Parked",
+        "review": "Review",
+        "reviewLong": "Review"
+      },
+      "lock": {
+        "loading": "Checking the plan's runs…",
+        "planRun": "Plan run #{id} is {state}.",
+        "stepRun": "Run #{id} of step {step} is {state}; a plan run waits until it ends.",
+        "noPending": "No step is pending."
+      },
+      "model": {
+        "label": "Model",
+        "optional": "(optional)",
+        "placeholder": "The runtime's default",
+        "hintAny": "Pick a runtime to name a model: each runtime names its models its own way.",
+        "hintSuggested": "{count, plural, one {# model} other {# models}} your workers list for {runtime} are suggested; any other name works too. Empty keeps {runtime}'s default.",
+        "hintNone": "Your workers list no model for {runtime}. Type one as {runtime} names it (opencode: provider/model), or leave it empty for its default.",
+        "line": "A model is one line, without control characters.",
+        "long": "A model name is at most {max} characters.",
+        "runtime": "Pick a runtime for this model: a model name means something only to the runtime it is written for."
+      },
+      "summary": {
+        "title": "What this run does",
+        "steps": "Steps",
+        "stepsCount": "{count, plural, =0 {No step to run} one {# step to run} other {# steps to run}}",
+        "statusCount": "{count} {status}",
+        "order": "The agent takes them in depends_on order and records each one on the hub with its evidence; the worker runs each step's verify again before it counts as done.",
+        "repos": "Repos",
+        "noBranch": "no branch named",
+        "defaultBranch": "Default branch",
+        "noRepos": "No repo",
+        "checkpoints": "Checkpoints",
+        "noCheckpoints": "None",
+        "checkpointsHint": "The agent does these too, and asks you first when one deploys or does anything else on the list of decisions it must ask.",
+        "untitled": "Untitled step",
+        "push": "The agent commits on each repo's branch and pushes it, never forced; it never pushes or merges into a branch the plan does not name.",
+        "pushDefault": "The plan names the default branch of {repos}: the agent will push and merge into {count, plural, one {that branch} other {those branches}} there, and you get a notice each time.",
+        "pushNoDefault": "No branch here is main, master or the default branch registered for its repo.",
+        "repoBranch": "{repo} ({branch})"
+      },
+      "blocker": {
+        "planRun": "<link>Plan run #{id}</link> is {state}, dispatched by {login}: one plan run at a time.",
+        "stepRun": "<link>Run #{id}</link> of step {step} is {state}: a plan run waits until no run of the plan's steps is active.",
+        "noPending": "No step of this plan is pending: a plan run has nothing to do.",
+        "unplaced": "These steps name no repo, and the plan does not list exactly one: {steps}. Give each of them a repo in the plan.",
+        "noBranch": "The plan names no branch for {repos}: the run would fail before the agent starts. Add a branch for each in the plan's repos."
+      },
+      "errors": {
+        "forbidden": "The hub refused: running a plan needs the writer role on this project, and a pinned worker must be one of yours.",
+        "notFound": "The plan is no longer on the hub, or you can no longer read it.",
+        "conflict": "The hub did not queue the plan run: the plan has an active run, or no pending step. The plan is read again; check it and try again.",
+        "invalid": "The hub did not accept the plan run.",
+        "hubSays": "The hub says: {message}"
+      },
+      "banner": {
+        "title": "Plan run #{id}",
+        "onWorker": "On <name>{worker}</name>, dispatched by {login}",
+        "pinnedWaiting": "Waiting for its pinned worker; dispatched by {login}",
+        "noWorker": "Waiting for a worker of {login}",
+        "waitingOwner": "The agent asked you a decision{since, select, none {} other { {since}}} and waits for your answer. Time spent waiting does not count toward the run's timeout.",
+        "waitingOther": "The agent asked {login} a decision{since, select, none {} other { {since}}} and waits for the answer.",
+        "parkedOwner": "Parked{since, select, none {} other { {since}}}: the decision went unanswered for 24 hours, so the worker set the session aside. Your answer resumes it on the same worker.",
+        "parkedOther": "Parked{since, select, none {} other { {since}}}, waiting for {login}'s answer.",
+        "answer": "Answer the decision",
+        "openDecision": "Open the decision",
+        "openRun": "Open run #{id}",
+        "question": "Question:",
+        "progress": "{done} of {total} steps done",
+        "percent": "{percent}%",
+        "progressLabel": "Steps done",
+        "inProgress": "Steps in progress",
+        "now": "Now:",
+        "step": "step {key}: {title}",
+        "notStarted": "No worker has taken the run yet.",
+        "noStepInProgress": "No step is in progress at the moment.",
+        "live": "Plan run #{id}: {state}, {done} of {total} steps done.",
+        "state": {
+          "queued": "queued",
+          "running": "running",
+          "waiting": "waiting for a decision",
+          "parked": "parked",
+          "review": "in review"
+        }
+      }
+    },
     "openRun": "Open run #{id}",
     "detail": {
       "metaTitle": "Run #{id} of {project}",
       "title": "Run",
+      "planTitle": "Plan run",
       "untitled": "Untitled step",
       "description": "Plan <planLink>{plan}</planLink>, <stepLink>step {step}: {title}</stepLink>",
+      "planDescription": "Plan <planLink>{plan}</planLink>: {title}. Every step not done yet, in one session.",
       "notFoundTitle": "Run #{id} not found",
       "notFoundDescription": "The run does not exist in this project, or it belongs to a plan you cannot read.",
       "stepper": {
@@ -1513,6 +1629,24 @@
           "todo": "not reached"
         },
         "during": "ended while {phase}"
+      },
+      "planSteps": {
+        "title": "Steps of the plan",
+        "count": "{done} of {total} done ({percent}%)",
+        "failed": "The plan could not be loaded.",
+        "none": "The plan has no step.",
+        "untitled": "Untitled step",
+        "hint": "As the hub holds the plan now; the run reports each step as it goes."
+      },
+      "decision": {
+        "waiting": "Waiting{since, select, none {} other { since {since}}} for {login}'s answer to a decision.",
+        "waitingYou": "Waiting{since, select, none {} other { since {since}}} for your answer to a decision. Time spent waiting does not count toward the run's timeout.",
+        "parked": "Parked{since, select, none {} other { since {since}}}, waiting for {login}'s answer to a decision.",
+        "parkedYou": "Parked{since, select, none {} other { since {since}}}: the decision went unanswered for 24 hours. Your answer resumes the run on the same worker.",
+        "open": "The agent asked {login} a decision and goes on with other work meanwhile.",
+        "openYou": "The agent asked you a decision and goes on with other work meanwhile.",
+        "answer": "Answer the decision",
+        "openLink": "Open the decision"
       },
       "log": {
         "title": "Log",
@@ -1644,11 +1778,14 @@
         "runtimeAny": "Any, picked when a worker claims it; {mode}",
         "runtimePicked": "{runtime}, picked by the worker; {mode}",
         "runtimeMode": "{runtime}, {mode}",
+        "model": "Model",
+        "modelDefault": "the runtime's default",
         "mode": {
           "headless": "headless",
           "interactive": "interactive"
         },
         "repo": "Repo",
+        "repos": "Repos",
         "on": "on",
         "session": "Session",
         "none": "none yet",
@@ -1660,13 +1797,17 @@
         "attempt": "Attempt",
         "attemptValue": "{attempt} of {max}",
         "parent": "retries run #{id}",
+        "resumes": "resumes run #{id}",
         "approval": "Approval",
         "approvals": {
           "review": "Hold for review",
           "auto": "Mark the step done when verified"
         },
+        "approvalPlan": "Each step done once its verify passes again on the worker",
         "timeout": "Timeout",
         "timeoutValue": "{minutes} min",
+        "timeoutHours": "{hours} h of agent time",
+        "agentTime": "{used} used",
         "dispatched": "Dispatched by",
         "started": "Started",
         "finished": "Finished",
@@ -1702,6 +1843,8 @@
           "title": "Cancel run #{id}?",
           "now": "The run stops at once, and its step goes back to pending in the plan.",
           "held": "The worker stops the agent at its next heartbeat, within about 15 seconds, and reports the run cancelled. The step goes back to pending in the plan; what the agent changed stays in its worktree on the worker.",
+          "planHeld": "The worker stops the agent at its next heartbeat, within about 15 seconds, and reports the run cancelled. Steps in progress go back to pending in the plan; steps done stay done, and what the agent pushed stays pushed.",
+          "planNow": "The run stops at once. Steps in progress go back to pending in the plan; steps done stay done.",
           "confirm": "Cancel run",
           "pending": "Cancelling…",
           "keep": "Keep it"

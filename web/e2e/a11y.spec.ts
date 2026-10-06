@@ -10,11 +10,15 @@ import {
   claimRun,
   dispatch,
   liveWorker,
+  PLAN_RUN_PLAN,
+  planRunUnderway,
+  planRunWorker,
   reportState,
   RUN_PLAN,
   runPath,
   runToReview,
   say,
+  seedPlanRunPlan,
   seedRunPlan,
   sendEvents,
   startRun,
@@ -460,6 +464,71 @@ const PAGES: Entry[] = [
       await page.setViewportSize({ width: 375, height: 812 });
       await open(page, runPath(project, run.id));
       await expect(page.locator("#main").getByTestId("log-line").first()).toBeVisible();
+    },
+  },
+  {
+    name: "plans list with a plan run waiting and Run plan",
+    open: async ({ page, me }) => {
+      const project = me.projects[0];
+      await seedPlanRunPlan(me, project);
+      await planRunUnderway(me, project, uniqueName("a11y"), { waiting: true });
+      await seedRunPlan(me, project);
+      await open(page, `/p/${project}/plans`);
+      await expect(page.locator("#main").getByTestId("plan-run-link")).toBeVisible();
+      await expect(page.locator("#main").getByTestId("plans-run-plan")).toHaveCount(2);
+    },
+  },
+  {
+    name: "plan page with Run plan and its plan run waiting for a decision",
+    open: async ({ page, me }) => {
+      const project = me.projects[0];
+      await seedPlanRunPlan(me, project);
+      await planRunUnderway(me, project, uniqueName("a11y"), { waiting: true });
+      await open(page, `/p/${project}/plans/${PLAN_RUN_PLAN}`);
+      await expect(page.locator("#main").getByTestId("plan-run-banner")).toHaveAttribute("data-phase", "waiting");
+      await expect(page.locator("#main").getByTestId("plan-run-banner-decision")).toBeVisible();
+      await expect(page.locator("#main").getByTestId("run-plan-lock")).toBeVisible();
+    },
+  },
+  {
+    name: "Run plan dialog, and a model that needs a runtime",
+    open: async ({ page, me }) => {
+      const project = me.projects[0];
+      await seedPlanRunPlan(me, project);
+      await planRunWorker(me, project, uniqueName("a11y"));
+      await open(page, `/p/${project}/plans/${PLAN_RUN_PLAN}`);
+      await page.locator("#main").getByTestId("run-plan").click();
+      const dialog = page.getByTestId("plan-run-dialog");
+      await expect(dialog.getByTestId("plan-run-summary")).toBeVisible();
+      await expect(dialog.getByTestId("dispatch-outlook")).toHaveAttribute("data-kind", "now");
+      await expectNoSeriousViolations(page, "run plan dialog");
+      await dialog.getByTestId("plan-run-model-input").fill("sonnet");
+      await expect(dialog.getByTestId("plan-run-model-error")).toBeVisible();
+    },
+  },
+  {
+    name: "plan run page with its plan's steps and the decision it waits on",
+    open: async ({ page, me }) => {
+      const project = me.projects[0];
+      await seedPlanRunPlan(me, project);
+      const { run } = await planRunUnderway(me, project, uniqueName("a11y"), { waiting: true });
+      await open(page, runPath(project, run.id));
+      await expect(page.locator("#main").getByTestId("run-plan-step")).toHaveCount(4);
+      await expect(page.locator("#main").getByTestId("run-decision-link")).toBeVisible();
+    },
+  },
+  {
+    name: "plan run pages on a small screen",
+    open: async ({ page, me }) => {
+      const project = me.projects[0];
+      await seedPlanRunPlan(me, project);
+      const { run } = await planRunUnderway(me, project, uniqueName("a11y"), { waiting: true });
+      await page.setViewportSize({ width: 375, height: 812 });
+      await open(page, `/p/${project}/plans/${PLAN_RUN_PLAN}`);
+      await expect(page.locator("#main").getByTestId("plan-run-banner")).toBeVisible();
+      await expectNoSeriousViolations(page, "plan page with a plan run at 375 px");
+      await open(page, runPath(project, run.id));
+      await expect(page.locator("#main").getByTestId("run-plan-steps")).toBeVisible();
     },
   },
   {

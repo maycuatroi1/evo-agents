@@ -1,6 +1,6 @@
 "use client";
 
-import { CircleCheck, CircleX, FileDiff, TriangleAlert } from "lucide-react";
+import { CircleCheck, CircleX, FileDiff, GitBranch, TriangleAlert } from "lucide-react";
 import Link from "next/link";
 import { useFormatter, useTranslations } from "next-intl";
 import { type ReactNode, useId } from "react";
@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { workerHref } from "@/components/workers/queries";
 
 import { runTiming } from "./model";
-import { isActiveState, type Run, runDiffHref, runHref } from "./queries";
+import { HELD_STATES, isActiveState, type Run, runDiffHref, runHref } from "./queries";
 import { leaseSecondsLeft, readDiffstat, readUsage, readVerify, type RunViewer, shortSha } from "./run-model";
 import { useDuration } from "./runs-table";
 
@@ -53,7 +53,7 @@ function Lease({ run }: { run: Run }) {
   const t = useTranslations("runs.detail.facts");
   const now = useNow(run.lease_expires_at !== null);
   const left = leaseSecondsLeft(run, now);
-  if (!run.lease_expires_at || !(["leased", "running", "interactive", "verifying"] as string[]).includes(run.state)) {
+  if (!run.lease_expires_at || !(HELD_STATES as readonly string[]).includes(run.state)) {
     return <span className="text-muted-foreground">{run.state === "queued" ? t("leaseNone") : t("leaseReleased")}</span>;
   }
   if (left === null) return <When at={run.lease_expires_at} />;
@@ -96,15 +96,38 @@ export function RunDetails({ run, viewer }: { run: Run; viewer: RunViewer | null
               ? t("runtimePicked", { runtime: tRuntime(run.runtime), mode: t(`mode.${run.mode}`) })
               : t("runtimeMode", { runtime: tRuntime(run.runtime), mode: t(`mode.${run.mode}`) })}
         </Fact>
-        <Fact label={t("repo")}>
-          <span className="font-mono text-xs">{run.repo}</span>
-          {run.branch ? (
-            <>
-              {" "}
-              <span className="text-muted-foreground">{t("on")}</span> <span className="font-mono text-xs">{run.branch}</span>
-            </>
-          ) : null}
+        <Fact label={t("model")} testId="run-model">
+          {run.model ? <span className="font-mono text-xs">{run.model}</span> : <span className="text-muted-foreground">{t("modelDefault")}</span>}
         </Fact>
+        {run.kind === "plan" ? (
+          <Fact label={t("repos")} testId="run-repos">
+            <ul className="flex flex-col gap-1">
+              {(run.repos ?? []).map((repo) => (
+                <li key={repo.repo} className="flex min-w-0 flex-wrap items-center gap-x-1.5">
+                  <span className="font-mono text-xs">{repo.repo}</span>
+                  {repo.branch ? (
+                    <span className="inline-flex min-w-0 items-center gap-1 font-mono text-xs text-muted-foreground [overflow-wrap:anywhere]">
+                      <GitBranch className="size-3 shrink-0" aria-hidden="true" />
+                      <span className="sr-only">{t("on")} </span>
+                      {repo.branch}
+                    </span>
+                  ) : null}
+                </li>
+              ))}
+              {(run.repos ?? []).length === 0 ? <li className="text-muted-foreground">{t("none")}</li> : null}
+            </ul>
+          </Fact>
+        ) : (
+          <Fact label={t("repo")}>
+            <span className="font-mono text-xs">{run.repo}</span>
+            {run.branch ? (
+              <>
+                {" "}
+                <span className="text-muted-foreground">{t("on")}</span> <span className="font-mono text-xs">{run.branch}</span>
+              </>
+            ) : null}
+          </Fact>
+        )}
         <Fact label={t("session")}>
           {run.session_id ? <span className="font-mono text-xs">{run.session_id}</span> : <span className="text-muted-foreground">{t("none")}</span>}
         </Fact>
@@ -121,9 +144,28 @@ export function RunDetails({ run, viewer }: { run: Run; viewer: RunViewer | null
               </Link>
             </>
           ) : null}
+          {run.resume_of_run_id !== null ? (
+            <>
+              {", "}
+              <Link href={runHref(run.project, run.resume_of_run_id)} className="text-primary underline-offset-4 hover:underline" data-testid="run-resumes">
+                {t("resumes", { id: run.resume_of_run_id })}
+              </Link>
+            </>
+          ) : null}
         </Fact>
-        <Fact label={t("approval")}>{t(`approvals.${run.approval}`)}</Fact>
-        <Fact label={t("timeout")}>{t("timeoutValue", { minutes: run.timeout_min })}</Fact>
+        <Fact label={t("approval")}>{run.kind === "plan" ? t("approvalPlan") : t(`approvals.${run.approval}`)}</Fact>
+        <Fact label={t("timeout")} testId="run-timeout">
+          {run.kind === "plan" ? (
+            <>
+              <span>{t("timeoutHours", { hours: Math.round(run.timeout_min / 60) })}</span>
+              <span className="block text-xs text-muted-foreground tabular-nums">
+                {t("agentTime", { used: duration(run.run_seconds * 1000) })}
+              </span>
+            </>
+          ) : (
+            t("timeoutValue", { minutes: run.timeout_min })
+          )}
+        </Fact>
         <Fact label={t("dispatched")}>
           <span className="font-mono text-xs">{run.dispatched_by}</span>
           <span className="block text-xs text-muted-foreground">

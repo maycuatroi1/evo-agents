@@ -12,7 +12,17 @@ import { LOGIN_PATH } from "@/lib/config";
 import { planKeys } from "@/lib/plan-queries";
 import { whoamiQuery } from "@/lib/queries";
 
-import { controlRun, dispatchRuns, type DispatchRequest, type Run, type RunControl, runKey, runKeys } from "./queries";
+import {
+  controlRun,
+  dispatchPlanRun,
+  dispatchRuns,
+  type DispatchRequest,
+  type PlanRunRequest,
+  type Run,
+  type RunControl,
+  runKey,
+  runKeys,
+} from "./queries";
 import type { RunViewer } from "./run-model";
 import type { Viewer } from "./runs-table";
 
@@ -25,6 +35,26 @@ export function useDispatch(project: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (body: DispatchRequest) => dispatchRuns(browserApi(), project, body),
+    onError: (error) => {
+      if (isApiError(error) && error.kind === "unauthorized") window.location.assign(LOGIN_PATH);
+    },
+    onSettled: (_data, _error, body) =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: runKeys.all(project) }),
+        queryClient.invalidateQueries({ queryKey: planKeys.one(project, body.plan_id) }),
+        queryClient.invalidateQueries({ queryKey: workerKeys.all }),
+      ]),
+  });
+}
+
+/**
+ * A plan run dispatched from the browser, as `useDispatch`: nothing changes on screen until the hub answers, and either
+ * way the project's runs, the plan and the workers are read again, so a 409 caused by another dispatch shows at once.
+ */
+export function useDispatchPlanRun(project: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: PlanRunRequest) => dispatchPlanRun(browserApi(), project, body),
     onError: (error) => {
       if (isApiError(error) && error.kind === "unauthorized") window.location.assign(LOGIN_PATH);
     },
@@ -62,6 +92,12 @@ export function useDispatchedNotice() {
     tone: "success",
     text: t("dispatched", { count: runs.length, ids: format.list(runs.map((run) => `#${run.id}`), { type: "conjunction" }) }),
   });
+}
+
+/** "Queued plan run #14 of rollout.", for the notice a page shows after Run plan. */
+export function usePlanRunNotice() {
+  const t = useTranslations("runs.planRun");
+  return useCallback((run: Run): Notice => ({ tone: "success", text: t("dispatched", { id: run.id, plan: run.plan_id }) }), [t]);
 }
 
 /**
