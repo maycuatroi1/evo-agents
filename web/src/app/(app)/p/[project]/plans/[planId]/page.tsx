@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
 
 import { PlanOverview } from "@/components/plans/plan-overview";
+import { planActiveRunsQuery, runsQuery } from "@/components/runs/queries";
 import { getQueryClient, prefetch } from "@/lib/api/prefetch";
 import { serverApi } from "@/lib/api/server";
 import { planQuery } from "@/lib/plan-queries";
@@ -21,7 +22,10 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   return { title: t("overview.metaTitle", await names(params)) };
 }
 
-/** One plan: its progress, its steps by status, its repos and the rest of what it holds. Read-only. */
+/**
+ * One plan: its progress, its steps by status, its repos and the rest of what it holds, read-only, with its active plan
+ * run (prefetched with the plan, so the banner renders with the page) and Run plan for a writer.
+ */
 export default async function PlanPage({ params }: Props) {
   const { project, planId } = await names(params);
   if (!PROJECT_NAME.test(project) || !PLAN_ID.test(planId)) {
@@ -29,7 +33,10 @@ export default async function PlanPage({ params }: Props) {
   }
   const api = await serverApi();
   const client = getQueryClient();
-  const error = await prefetch(client, planQuery(() => api, project, planId));
+  const [error] = await Promise.all([
+    prefetch(client, planQuery(() => api, project, planId)),
+    prefetch(client, runsQuery(() => api, project, planActiveRunsQuery(planId))),
+  ]);
   return (
     <HydrationBoundary state={dehydrate(client)}>
       <PlanOverview project={project} planId={planId} initialError={error} />

@@ -1,6 +1,19 @@
 "use client";
 
-import { Ban, Circle, CircleCheck, CircleX, Clock, Eye, Loader2, type LucideIcon, SquareTerminal, TimerOff } from "lucide-react";
+import {
+  Ban,
+  Circle,
+  CircleCheck,
+  CirclePause,
+  CircleX,
+  Clock,
+  Eye,
+  Loader2,
+  type LucideIcon,
+  MessageCircleQuestionMark,
+  SquareTerminal,
+  TimerOff,
+} from "lucide-react";
 import { useFormatter, useTranslations } from "next-intl";
 
 import { cn } from "@/lib/utils";
@@ -10,6 +23,12 @@ import type { Phase, PhaseItem, Stepper } from "./run-model";
 
 const ENDED_ICON: Record<NonNullable<Stepper["ended"]>, LucideIcon> = { failed: CircleX, lost: TimerOff, cancelled: Ban };
 const WAITING_ICON: Partial<Record<Phase, LucideIcon>> = { queued: Clock, review: Eye };
+/** States the running phase shows under their own name and icon: a person drives it, or a plan run waits or is parked. */
+const RUNNING_AS: Partial<Record<RunState, LucideIcon>> = {
+  interactive: SquareTerminal,
+  waiting: MessageCircleQuestionMark,
+  parked: CirclePause,
+};
 
 const BAR: Record<PhaseItem["status"], string> = {
   done: "bg-chart-3",
@@ -22,14 +41,14 @@ function Item({ item, ended, state }: { item: PhaseItem; ended: Stepper["ended"]
   const t = useTranslations("runs.detail.stepper");
   const tState = useTranslations("runs.state");
   const format = useFormatter();
-  const interactive = item.phase === "running" && state === "interactive" && item.status === "current";
-  const label = item.status === "stopped" && ended ? tState(ended) : interactive ? tState("interactive") : t(`phase.${item.phase}`);
+  const own = item.phase === "running" && item.status === "current" ? (RUNNING_AS[state] ?? null) : null;
+  const label = item.status === "stopped" && ended ? tState(ended) : own ? tState(state) : t(`phase.${item.phase}`);
   let Icon: LucideIcon = Circle;
   let spin = false;
   if (item.status === "done") Icon = CircleCheck;
   else if (item.status === "stopped" && ended) Icon = ENDED_ICON[ended];
   else if (item.status === "current") {
-    Icon = interactive ? SquareTerminal : (WAITING_ICON[item.phase] ?? Loader2);
+    Icon = own ?? WAITING_ICON[item.phase] ?? Loader2;
     spin = Icon === Loader2;
   }
   return (

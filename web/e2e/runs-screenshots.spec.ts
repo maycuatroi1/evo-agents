@@ -7,12 +7,15 @@ import {
   claimRun,
   dispatch,
   liveWorker,
+  PLAN_RUN_PLAN,
+  planRunUnderway,
   reportState,
   RUN_PLAN,
   runPath,
   runToReview,
   say,
   seedRunPlan,
+  seedPlanRunPlan,
   sendEvents,
   startRun,
   tool,
@@ -24,8 +27,9 @@ import { startFakeTerminal } from "./support/terminal";
 
 /**
  * Review screenshots of the runs pages, the Dispatch dialog and a run's page (live, in review, its diff, the Take
- * over dialog and the Terminal tab), light and dark, desktop and 375 px, written to E2E_SCREENSHOT_DIR. Skipped unless
- * it is set; like screenshots.spec.ts it asserts nothing beyond the page being ready.
+ * over dialog and the Terminal tab), and of plan runs (the Run plan dialog, the plan page's banner, the plans list and
+ * a plan run's page), light and dark, desktop and 375 px, written to E2E_SCREENSHOT_DIR. Skipped unless it is set; like
+ * screenshots.spec.ts it asserts nothing beyond the page being ready.
  */
 const dir = process.env.E2E_SCREENSHOT_DIR;
 
@@ -81,6 +85,57 @@ test.describe("runs screenshots", () => {
         await open(page, `/workers/${live.worker.id}`);
         await expect(page.locator("#main").getByTestId("worker-runs-table")).toBeVisible();
         await shot("worker-runs");
+      }
+    });
+  }
+
+  for (const scheme of ["light", "dark"] as const) {
+    test(`plan runs in ${scheme}`, async ({ page, member }) => {
+      await page.emulateMedia({ colorScheme: scheme });
+      const me = await member([{ role: "writer", maxLevel: "internal" }]);
+      const project = me.projects[0];
+      await seedPlanRunPlan(me, project);
+      const { run } = await planRunUnderway(me, project, uniqueName("studio"), { waiting: true });
+      await seedPlanRunPlan(me, project, "fresh-plan");
+      const main = page.locator("#main");
+
+      // The dialog on a plan nobody runs yet, the whole form on a tall window.
+      await page.setViewportSize({ width: 1440, height: 1700 });
+      await open(page, `/p/${project}/plans/fresh-plan`);
+      await main.getByTestId("run-plan").click();
+      const dialog = page.getByTestId("plan-run-dialog");
+      await expect(dialog.getByTestId("plan-run-summary")).toBeVisible();
+      // The worker's one slot holds the other plan's run: the footer says the new one waits for it.
+      await expect(dialog.getByTestId("dispatch-outlook")).toHaveAttribute("data-kind", "later");
+      await page.screenshot({ path: path.join(dir!, `plan-run-dialog-${scheme}.png`) });
+      await dialog.getByTestId("plan-run-model-input").fill("sonnet");
+      await expect(dialog.getByTestId("plan-run-model-error")).toBeVisible();
+      await page.screenshot({ path: path.join(dir!, `plan-run-dialog-model-${scheme}.png`) });
+      await page.keyboard.press("Escape");
+
+      for (const [width, height, suffix] of [
+        [1440, 1000, ""],
+        [375, 812, "-375"],
+      ] as const) {
+        await page.setViewportSize({ width, height });
+        const shot = (name: string) => page.screenshot({ path: path.join(dir!, `${name}${suffix}-${scheme}.png`), fullPage: true });
+        await open(page, `/p/${project}/plans/${PLAN_RUN_PLAN}`);
+        await expect(main.getByTestId("plan-run-banner")).toHaveAttribute("data-phase", "waiting");
+        await expect(main.getByTestId("plan-run-banner-decision")).toBeVisible();
+        await shot("plan-run-banner");
+        await open(page, `/p/${project}/plans`);
+        await expect(main.getByTestId("plan-run-link")).toBeVisible();
+        await shot("plans-with-plan-run");
+        await open(page, runPath(project, run.id));
+        await expect(main.getByTestId("run-plan-step")).toHaveCount(4);
+        await shot("plan-run-page");
+        if (suffix) {
+          await open(page, `/p/${project}/plans/fresh-plan`);
+          await main.getByTestId("run-plan").click();
+          await expect(page.getByTestId("plan-run-dialog").getByTestId("plan-run-summary")).toBeVisible();
+          await page.screenshot({ path: path.join(dir!, `plan-run-dialog${suffix}-${scheme}.png`) });
+          await page.keyboard.press("Escape");
+        }
       }
     });
   }

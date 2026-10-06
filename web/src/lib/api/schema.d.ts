@@ -1280,6 +1280,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project}/plan-runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Dispatch Plan
+         * @description Queue a plan run: one run, on a worker of the caller's, that does every step of the plan not done yet.
+         */
+        post: operations["dispatch_plan_v1_projects__project__plan_runs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{project}/runs/{run_id}/cancel": {
         parameters: {
             query?: never;
@@ -1373,8 +1393,8 @@ export interface paths {
         put?: never;
         /**
          * Rerun
-         * @description Queue the step of a run that ended again, with the same runtime, mode, approval, timeout and worker, at the
-         *     plan's current revision.
+         * @description Queue the step of a run that ended again, with the same runtime, model, mode, approval, timeout and worker, at
+         *     the plan's current revision.
          */
         post: operations["rerun_v1_projects__project__runs__run_id__rerun_post"];
         delete?: never;
@@ -1437,6 +1457,46 @@ export interface paths {
          * @description Move a run this worker holds, as the transition table lets a worker.
          */
         post: operations["report_state_v1_worker_runs__run_id__state_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Run Plan
+         * @description The plan of a plan run this worker holds, as the hub holds it now, read as the member who dispatched the run.
+         */
+        get: operations["read_run_plan_v1_worker_runs__run_id__plan_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/steps/{key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Report Step
+         * @description Write a step of the plan of a plan run this worker holds, as the member who dispatched the run.
+         */
+        post: operations["report_step_v1_worker_runs__run_id__steps__key__post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1604,6 +1664,164 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project}/decisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Decisions
+         * @description The project's decisions, newest first, of the plans the caller may read.
+         */
+        get: operations["list_decisions_v1_projects__project__decisions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/decisions/{decision_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Show Decision */
+        get: operations["show_decision_v1_projects__project__decisions__decision_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/decisions/{decision_id}/answer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Answer
+         * @description Answer a decision of a run one dispatched: the answer goes to the agent through the run's inbox, and a parked
+         *     run is resumed on its worker in its session.
+         */
+        post: operations["answer_v1_projects__project__decisions__decision_id__answer_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/decisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ask
+         * @description Ask the owner of a plan run this worker holds a decision, and notify them.
+         */
+        post: operations["ask_v1_worker_runs__run_id__decisions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/notifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Notifications
+         * @description The caller's notifications, open decisions first, then newest first.
+         */
+        get: operations["list_notifications_v1_me_notifications_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/notifications/count": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Count Notifications
+         * @description How many of the caller's notifications are unread, and how many decisions wait for their answer.
+         */
+        get: operations["count_notifications_v1_me_notifications_count_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/notifications/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Read Notifications
+         * @description Mark the caller's notifications read: those named, or all of them.
+         */
+        post: operations["read_notifications_v1_me_notifications_read_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/notices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send Notice
+         * @description Notify the owner of a plan run this worker holds: a push or merge into a default branch, say.
+         */
+        post: operations["send_notice_v1_worker_runs__run_id__notices_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1616,7 +1834,7 @@ export interface components {
              * State
              * @enum {string}
              */
-            state: "queued" | "leased" | "running" | "interactive" | "verifying" | "review";
+            state: "queued" | "leased" | "running" | "interactive" | "verifying" | "waiting" | "review" | "parked";
             /** Dispatched By */
             dispatched_by: string;
         };
@@ -1663,6 +1881,19 @@ export interface components {
              * @description the token this request came with
              */
             current: boolean;
+        };
+        /** AnswerIn */
+        AnswerIn: {
+            /**
+             * Option
+             * @description the key of one of the decision's options
+             */
+            option?: string | null;
+            /**
+             * Text
+             * @description the owner's own words, at most 4 KiB
+             */
+            text?: string | null;
         };
         /** AuditPage */
         AuditPage: {
@@ -1903,6 +2134,138 @@ export interface components {
              */
             header: string;
         };
+        /** Decision */
+        Decision: {
+            /** Id */
+            id: number;
+            /** Project */
+            project: string;
+            /**
+             * Run Id
+             * @description the plan run the decision belongs to
+             */
+            run_id: number;
+            /**
+             * Run State
+             * @enum {string}
+             */
+            run_state: "queued" | "leased" | "running" | "interactive" | "verifying" | "waiting" | "review" | "parked" | "done" | "failed" | "lost" | "cancelled";
+            /** Plan Id */
+            plan_id: string;
+            /**
+             * Step Key
+             * @description the step it is about, when the agent named one
+             */
+            step_key: string | null;
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "deploy" | "delete_data" | "live_migration" | "external_send" | "spend_money" | "architecture" | "scope";
+            /** Question */
+            question: string;
+            /**
+             * Context
+             * @description markdown
+             */
+            context: string | null;
+            /** Options */
+            options: components["schemas"]["DecisionOption"][];
+            /**
+             * Recommended
+             * @description the key of the option the agent recommends
+             */
+            recommended: string | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "open" | "answered" | "expired" | "cancelled";
+            /**
+             * Owner
+             * @description the login of the run's owner, the one member who may answer
+             */
+            owner: string;
+            /** Answer Option */
+            answer_option: string | null;
+            /** Answer Text */
+            answer_text: string | null;
+            /** Answered By */
+            answered_by: string | null;
+            /**
+             * Answer Run Id
+             * @description the run whose inbox the answer went to: the decision's run, or the run that resumed it
+             */
+            answer_run_id: number | null;
+            /**
+             * Asked At
+             * Format: date-time
+             */
+            asked_at: string;
+            /** Answered At */
+            answered_at: string | null;
+            /**
+             * Delivered At
+             * @description when the worker handed the answer to the agent
+             */
+            delivered_at: string | null;
+        };
+        /** DecisionAsk */
+        DecisionAsk: {
+            /**
+             * Category
+             * @description the agent asks only about these
+             * @enum {string}
+             */
+            category: "deploy" | "delete_data" | "live_migration" | "external_send" | "spend_money" | "architecture" | "scope";
+            /** Question */
+            question: string;
+            /**
+             * Context
+             * @description markdown, at most 16 KiB of UTF-8
+             */
+            context?: string | null;
+            /** Options */
+            options: components["schemas"]["OptionIn"][];
+            /**
+             * Recommended
+             * @description the key of the option the agent recommends
+             */
+            recommended?: string | null;
+            /**
+             * Step Key
+             * @description the step of the plan it is about
+             */
+            step_key?: string | null;
+        };
+        /** DecisionList */
+        DecisionList: {
+            /**
+             * Decisions
+             * @description newest first
+             */
+            decisions: components["schemas"]["Decision"][];
+            /**
+             * Total
+             * @description decisions that match the filters
+             */
+            total: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+        };
+        /** DecisionOption */
+        DecisionOption: {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /** Description */
+            description: string | null;
+            /** Recommended */
+            recommended: boolean;
+        };
         /** DiffLink */
         DiffLink: {
             /** Sha256 */
@@ -1968,6 +2331,11 @@ export interface components {
              * @default 60
              */
             timeout_min: number;
+            /**
+             * Model
+             * @description the model each run uses, as its runtime names it (opencode: provider/model); null: the runtime's own choice
+             */
+            model?: string | null;
         };
         /** ErrorBody */
         ErrorBody: {
@@ -2339,6 +2707,11 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /**
+             * Decision Id
+             * @description the decision this message answers; null for any other message
+             */
+            decision_id?: number | null;
         };
         /** Job */
         Job: {
@@ -2696,6 +3069,127 @@ export interface components {
             /** Results */
             results: components["schemas"]["KgNode"][];
         };
+        /** NoticeIn */
+        NoticeIn: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed";
+            /** Title */
+            title: string;
+            /**
+             * Body
+             * @description at most 16 KiB of UTF-8
+             */
+            body?: string | null;
+            /**
+             * Repo
+             * @description one of the run's repos
+             */
+            repo?: string | null;
+            /** Branch */
+            branch?: string | null;
+            /**
+             * Commits
+             * @description the commits pushed or merged
+             */
+            commits?: string[];
+        };
+        /** Notification */
+        Notification: {
+            /** Id */
+            id: number;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "decision" | "notice";
+            /**
+             * Notice Kind
+             * @description a notice's kind; null for a decision
+             */
+            notice_kind: ("push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed") | null;
+            /** Project */
+            project: string | null;
+            /** Run Id */
+            run_id: number | null;
+            /** Decision Id */
+            decision_id: number | null;
+            /**
+             * Decision State
+             * @description the state of the decision now, for a notification of kind decision
+             */
+            decision_state: ("open" | "answered" | "expired" | "cancelled") | null;
+            /** Title */
+            title: string;
+            /** Body */
+            body: string | null;
+            /**
+             * Details
+             * @description a notice's facts, such as the repo, branch and commits of a push
+             */
+            details: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Link
+             * @description the hub web's page that shows it, a path of the hub's own site
+             */
+            link: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Read At */
+            read_at: string | null;
+        };
+        /** NotificationCount */
+        NotificationCount: {
+            /**
+             * Unread
+             * @description notifications not read yet: the bell's number
+             */
+            unread: number;
+            /**
+             * Open Decisions
+             * @description decisions that still wait for the member's answer, read or not
+             */
+            open_decisions: number;
+        };
+        /** NotificationList */
+        NotificationList: {
+            /**
+             * Notifications
+             * @description open decisions first, then newest first
+             */
+            notifications: components["schemas"]["Notification"][];
+            /**
+             * Total
+             * @description notifications that match the filters
+             */
+            total: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+        };
+        /** OptionIn */
+        OptionIn: {
+            /**
+             * Key
+             * @description letters, digits, _ and -, at most 32
+             */
+            key: string;
+            /**
+             * Label
+             * @description one line
+             */
+            label: string;
+            /** Description */
+            description?: string | null;
+        };
         /** Page */
         Page: {
             /** Items */
@@ -2844,6 +3338,18 @@ export interface components {
             /** If Revision */
             if_revision?: number | null;
         };
+        /**
+         * PlanCopy
+         * @description A plan as the hub holds it at one revision.
+         */
+        PlanCopy: {
+            /** Revision */
+            revision: number;
+            /** Body */
+            body: {
+                [key: string]: unknown;
+            };
+        };
         /** PlanDiff */
         PlanDiff: {
             /** Plan Id */
@@ -2957,6 +3463,41 @@ export interface components {
             label?: {
                 [key: string]: unknown;
             } | null;
+        };
+        /** PlanRunDispatch */
+        PlanRunDispatch: {
+            /** Plan Id */
+            plan_id: string;
+            /**
+             * Worker Id
+             * @description pin the run to this worker of yours
+             */
+            worker_id?: number | null;
+            /**
+             * Runtime
+             * @description any: the claiming worker picks one it has
+             * @default any
+             * @enum {string}
+             */
+            runtime: "any" | "claude-code" | "opencode" | "codex";
+            /**
+             * Model
+             * @description the model to use, as its runtime names it (opencode: provider/model); null: the runtime's
+             */
+            model?: string | null;
+            /**
+             * Mode
+             * @default headless
+             * @enum {string}
+             */
+            mode: "headless" | "interactive";
+            /**
+             * Timeout H
+             * @description hours of agent time the run may take; waiting for a decision and parked do not count
+             * @default 4
+             * @enum {integer}
+             */
+            timeout_h: 2 | 4 | 8 | 24;
         };
         /** PlanSummary */
         PlanSummary: {
@@ -3118,6 +3659,33 @@ export interface components {
              */
             queued: boolean;
         };
+        /** ReadRequest */
+        ReadRequest: {
+            /**
+             * Ids
+             * @description the notifications to mark read
+             */
+            ids?: number[] | null;
+            /**
+             * All
+             * @description mark every notification of the caller read
+             * @default false
+             */
+            all: boolean;
+        };
+        /** ReadResult */
+        ReadResult: {
+            /**
+             * Read
+             * @description notifications this request marked read
+             */
+            read: number;
+            /**
+             * Unread
+             * @description notifications left unread
+             */
+            unread: number;
+        };
         /** ReadySteps */
         ReadySteps: {
             /** Project */
@@ -3126,6 +3694,8 @@ export interface components {
             plan_id: string;
             /** Revision */
             revision: number;
+            /** @description the plan's active plan run: while there is one, no step of the plan is dispatched */
+            plan_run?: components["schemas"]["ActiveRun"] | null;
             /**
              * Steps
              * @description every step of the plan, in plan order
@@ -3329,15 +3899,24 @@ export interface components {
         Run: {
             /** Id */
             id: number;
+            /**
+             * Kind
+             * @description step: one step of the plan; plan: every step not done yet
+             * @enum {string}
+             */
+            kind: "step" | "plan";
             /** Project */
             project: string;
             /** Plan Id */
             plan_id: string;
-            /** Step Key */
-            step_key: string;
+            /**
+             * Step Key
+             * @description null for a plan run
+             */
+            step_key: string | null;
             /**
              * Title
-             * @description the step's title when the run was dispatched
+             * @description the step's title when the run was dispatched; the plan's for a plan run
              */
             title: string | null;
             /**
@@ -3374,6 +3953,11 @@ export interface components {
              */
             runtime: "any" | "claude-code" | "opencode" | "codex";
             /**
+             * Model
+             * @description the model the dispatch asked for; null: the runtime's own choice
+             */
+            model: string | null;
+            /**
              * Mode
              * @enum {string}
              */
@@ -3385,6 +3969,11 @@ export interface components {
             approval: "auto" | "review";
             /** Timeout Min */
             timeout_min: number;
+            /**
+             * Run Seconds
+             * @description the agent time the run has used of its timeout, as the hub last counted it
+             */
+            run_seconds: number;
             /** Attempt */
             attempt: number;
             /** Max Attempts */
@@ -3395,18 +3984,31 @@ export interface components {
              */
             parent_run_id: number | null;
             /**
+             * Resume Of Run Id
+             * @description the parked plan run this one goes on from, in its session
+             */
+            resume_of_run_id: number | null;
+            /**
              * State
              * @enum {string}
              */
-            state: "queued" | "leased" | "running" | "interactive" | "verifying" | "review" | "done" | "failed" | "lost" | "cancelled";
+            state: "queued" | "leased" | "running" | "interactive" | "verifying" | "waiting" | "review" | "parked" | "done" | "failed" | "lost" | "cancelled";
             /** Lease Expires At */
             lease_expires_at: string | null;
             /** Session Id */
             session_id: string | null;
-            /** Repo */
-            repo: string;
+            /**
+             * Repo
+             * @description null for a plan run, which has repos
+             */
+            repo: string | null;
             /** Branch */
             branch: string | null;
+            /**
+             * Repos
+             * @description a plan run's repos; null for a run of one step
+             */
+            repos: components["schemas"]["RunRepo"][] | null;
             /** Commit Sha */
             commit_sha: string | null;
             /** Diffstat */
@@ -3459,6 +4061,16 @@ export interface components {
             leased_at: string | null;
             /** Started At */
             started_at: string | null;
+            /**
+             * Waiting Since
+             * @description when the agent's turn ended with a decision open, while waiting
+             */
+            waiting_since: string | null;
+            /**
+             * Parked At
+             * @description when the run was parked, for want of an answer
+             */
+            parked_at: string | null;
             /** Finished At */
             finished_at: string | null;
         };
@@ -3526,7 +4138,7 @@ export interface components {
              * State
              * @description null for a run that is not this worker's
              */
-            state: ("queued" | "leased" | "running" | "interactive" | "verifying" | "review" | "done" | "failed" | "lost" | "cancelled") | null;
+            state: ("queued" | "leased" | "running" | "interactive" | "verifying" | "waiting" | "review" | "parked" | "done" | "failed" | "lost" | "cancelled") | null;
             /** Lease Expires At */
             lease_expires_at: string | null;
             /** Cancel */
@@ -3550,11 +4162,23 @@ export interface components {
              */
             terminal_open: boolean;
             /**
+             * Park
+             * @description the run is parked (it waited too long for an answer), or done because a new run resumes it: stop the agent at the end of its turn, keep the session and the worktrees, free the slot
+             * @default false
+             */
+            park: boolean;
+            /**
              * Inbox
              * @description messages from the owner waiting for the agent: POST .../runs/{id}/inbox
              * @default 0
              */
             inbox: number;
+            /**
+             * Decisions
+             * @description decisions of the run still open, waiting for the owner's answer
+             * @default 0
+             */
+            decisions: number;
         };
         /** RunEvent */
         RunEvent: {
@@ -3591,7 +4215,7 @@ export interface components {
              * State
              * @enum {string}
              */
-            state: "queued" | "leased" | "running" | "interactive" | "verifying" | "review" | "done" | "failed" | "lost" | "cancelled";
+            state: "queued" | "leased" | "running" | "interactive" | "verifying" | "waiting" | "review" | "parked" | "done" | "failed" | "lost" | "cancelled";
             /**
              * Last Seq
              * @description the seq of the run's latest event
@@ -3645,19 +4269,43 @@ export interface components {
              */
             log_sha256?: string | null;
         };
+        /**
+         * RunRepo
+         * @description A repo of a plan run, with the branch the plan names for it.
+         */
+        RunRepo: {
+            /** Repo */
+            repo: string;
+            /**
+             * Branch
+             * @description null when the plan names none: the branch checked out
+             */
+            branch?: string | null;
+        };
         /** RunSpec */
         RunSpec: {
             /** Id */
             id: number;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "step" | "plan";
             /** Project */
             project: string;
             /** Plan Id */
             plan_id: string;
-            /** Step Key */
-            step_key: string;
+            /**
+             * Step Key
+             * @description null for a plan run
+             */
+            step_key: string | null;
             /** Title */
             title: string | null;
-            /** Plan Revision */
+            /**
+             * Plan Revision
+             * @description the plan revision the run was dispatched from
+             */
             plan_revision: number;
             /** Attempt */
             attempt: number;
@@ -3666,10 +4314,25 @@ export interface components {
             /** Parent Run Id */
             parent_run_id: number | null;
             /**
+             * Resume Of Run Id
+             * @description the parked plan run this one goes on from: reuse its worktrees and resume its session
+             */
+            resume_of_run_id?: number | null;
+            /**
+             * Session Id
+             * @description the agent session to resume; null for a new one
+             */
+            session_id?: string | null;
+            /**
              * Runtime
              * @enum {string}
              */
             runtime: "claude-code" | "opencode" | "codex";
+            /**
+             * Model
+             * @description the model the dispatch asked for; null: the runtime's own choice
+             */
+            model: string | null;
             /**
              * Mode
              * @enum {string}
@@ -3682,10 +4345,18 @@ export interface components {
             approval: "auto" | "review";
             /** Timeout Min */
             timeout_min: number;
-            /** Repo */
-            repo: string;
+            /**
+             * Repo
+             * @description null for a plan run
+             */
+            repo: string | null;
             /** Branch */
             branch: string | null;
+            /**
+             * Repos
+             * @description a plan run's repos, each with a checkout on this worker
+             */
+            repos: components["schemas"]["RunRepo"][] | null;
             /**
              * Lease Expires At
              * Format: date-time
@@ -3693,6 +4364,8 @@ export interface components {
             lease_expires_at: string;
             /** Prompt */
             prompt: string;
+            /** @description a plan run's plan at the hub's current revision, for .evo-run/plan.yaml; null for a run of one step */
+            plan: components["schemas"]["PlanCopy"] | null;
         };
         /** RunState */
         RunState: {
@@ -3754,6 +4427,11 @@ export interface components {
              * @description why it is unavailable
              */
             reason?: string | null;
+            /**
+             * Models
+             * @description the models the runtime lists on the machine, for a dispatch to suggest; null when it lists none
+             */
+            models?: string[] | null;
         };
         /** SignedIn */
         SignedIn: {
@@ -3872,10 +4550,20 @@ export interface components {
              */
             verifying: number;
             /**
+             * Waiting
+             * @default 0
+             */
+            waiting: number;
+            /**
              * Review
              * @default 0
              */
             review: number;
+            /**
+             * Parked
+             * @default 0
+             */
+            parked: number;
             /**
              * Done
              * @default 0
@@ -3904,12 +4592,12 @@ export interface components {
              * @description the state the run moves to
              * @enum {string}
              */
-            state: "queued" | "leased" | "running" | "interactive" | "verifying" | "review" | "done" | "failed" | "lost" | "cancelled";
+            state: "queued" | "leased" | "running" | "interactive" | "verifying" | "waiting" | "review" | "parked" | "done" | "failed" | "lost" | "cancelled";
             /**
              * From
              * @description the state the worker believes the run is in; 409 when it is in another
              */
-            from?: ("queued" | "leased" | "running" | "interactive" | "verifying" | "review" | "done" | "failed" | "lost" | "cancelled") | null;
+            from?: ("queued" | "leased" | "running" | "interactive" | "verifying" | "waiting" | "review" | "parked" | "done" | "failed" | "lost" | "cancelled") | null;
             /** Session Id */
             session_id?: string | null;
             /** Commit Sha */
@@ -3962,6 +4650,62 @@ export interface components {
              */
             reason: string | null;
             active_run: components["schemas"]["ActiveRun"] | null;
+        };
+        /**
+         * StepReport
+         * @description What a plan run's worker reports of one step of the plan.
+         */
+        StepReport: {
+            /**
+             * Status
+             * @description in_progress when the agent starts the step, done once verified, pending to hand it back
+             * @enum {string}
+             */
+            status: "in_progress" | "done" | "pending";
+            /**
+             * Repo
+             * @description the run's repo the step was done in
+             */
+            repo?: string | null;
+            /**
+             * Evidence
+             * @description what the agent did and how it checked it
+             */
+            evidence?: string | null;
+            /**
+             * Verify
+             * @description each verify command the worker ran again; done needs one, every one exit 0
+             */
+            verify?: components["schemas"]["VerifyResult"][] | null;
+            /**
+             * Commit Sha
+             * @description the repo's commit the step ends on
+             */
+            commit_sha?: string | null;
+        };
+        /** StepWritten */
+        StepWritten: {
+            /** Run Id */
+            run_id: number;
+            /** Plan Id */
+            plan_id: string;
+            /** Step Key */
+            step_key: string;
+            /**
+             * Status
+             * @description the step's status as the plan holds it after the report
+             */
+            status: string | null;
+            /**
+             * Revision
+             * @description the plan's revision after the report
+             */
+            revision: number;
+            /**
+             * Written
+             * @description whether the report wrote a revision; false for a resend that changed nothing
+             */
+            written: boolean;
         };
         /** TokenInfo */
         TokenInfo: {
@@ -4239,7 +4983,7 @@ export interface components {
             projects: string[];
             /**
              * Runtimes
-             * @description the runtimes its last heartbeat reported, keyed claude-code, opencode or codex, each {available, version, reason}
+             * @description the runtimes its last heartbeat reported, keyed claude-code, opencode or codex, each {available, version, reason, models}; models lists what the runtime offers there, null when it lists none
              */
             runtimes: {
                 [key: string]: unknown;
@@ -8655,7 +9399,7 @@ export interface operations {
         parameters: {
             query?: {
                 /** @description any of these states; repeat it */
-                state?: ("queued" | "leased" | "running" | "interactive" | "verifying" | "review" | "done" | "failed" | "lost" | "cancelled")[];
+                state?: ("queued" | "leased" | "running" | "interactive" | "verifying" | "waiting" | "review" | "parked" | "done" | "failed" | "lost" | "cancelled")[];
                 plan_id?: string | null;
                 /** @description a step key */
                 step?: string | null;
@@ -8852,6 +9596,77 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    dispatch_plan_v1_projects__project__plan_runs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlanRunDispatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Run"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
         };
@@ -9365,6 +10180,146 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_run_plan_v1_worker_runs__run_id__plan_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Plan"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    report_step_v1_worker_runs__run_id__steps__key__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+                /** @description the step's id, or its order */
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StepReport"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StepWritten"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
         };
@@ -9940,6 +10895,465 @@ export interface operations {
             };
             /** @description Service Unavailable */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_decisions_v1_projects__project__decisions_get: {
+        parameters: {
+            query?: {
+                /** @description any of these states; repeat it */
+                state?: ("open" | "answered" | "expired" | "cancelled")[];
+                run_id?: number | null;
+                plan_id?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DecisionList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    show_decision_v1_projects__project__decisions__decision_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                decision_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Decision"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    answer_v1_projects__project__decisions__decision_id__answer_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                decision_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AnswerIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Decision"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    ask_v1_worker_runs__run_id__decisions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DecisionAsk"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Decision"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_notifications_v1_me_notifications_get: {
+        parameters: {
+            query?: {
+                /** @description only the notifications not read yet */
+                unread?: boolean;
+                kind?: ("decision" | "notice") | null;
+                /** @description only this project's */
+                project?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    count_notifications_v1_me_notifications_count_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationCount"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    read_notifications_v1_me_notifications_read_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReadRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReadResult"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    send_notice_v1_worker_runs__run_id__notices_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NoticeIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Notification"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -12,7 +12,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { browserApi } from "@/lib/api/browser";
 import { cn } from "@/lib/utils";
 
-import { DispatchDialog, useNotReadyReason } from "./dispatch-dialog";
+import { DispatchDialog, PlanRunHoldNote, useNotReadyReason } from "./dispatch-dialog";
 import { useCanDispatch, useDispatchedNotice, useViewer } from "./hooks";
 import { hasActiveRuns, LIVE_REFRESH_MS, readyStepsQuery, runsHref, runsQuery, stepRunsQuery } from "./queries";
 import { RunsTable } from "./runs-table";
@@ -29,14 +29,20 @@ export function StepRuns({ project, planId, stepKey }: { project: string; planId
   const viewer = useViewer();
   const runs = useQuery(runsQuery(browserApi, project, stepRunsQuery(planId, stepKey)));
   const live = hasActiveRuns(runs.data);
-  // While a run of the step is active, its end can make the step ready again: ask as often as the list does.
-  const ready = useQuery({ ...readyStepsQuery(browserApi, project, planId), refetchInterval: live ? LIVE_REFRESH_MS : false });
+  // While a run of the step, or the plan's plan run, is active, its end can make the step ready again: ask as often as
+  // the list does.
+  const ready = useQuery({
+    ...readyStepsQuery(browserApi, project, planId),
+    refetchInterval: (query) => (live || query.state.data?.plan_run ? LIVE_REFRESH_MS : false),
+  });
   const reason = useNotReadyReason();
   const [dispatching, setDispatching] = useState(false);
   const { notice, show, clear } = useNotice();
   const dispatched = useDispatchedNotice();
   const readiness = ready.data?.steps.find((step) => step.key === stepKey) ?? null;
   const isReady = readiness?.ready === true;
+  // While the plan has a plan run, every step is that run's: Run this step stays locked, and says which run holds it.
+  const planRun = ready.data?.plan_run ? { planId: ready.data.plan_id, run: ready.data.plan_run } : null;
 
   return (
     <section className="flex flex-col gap-3 rounded-xl border bg-card p-4" aria-labelledby={`${ids}-title`} data-testid="step-runs">
@@ -59,7 +65,7 @@ export function StepRuns({ project, planId, stepKey }: { project: string; planId
               ) : (
                 <CircleDashed className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
               )}
-              <span className="text-pretty">{isReady ? t("ready") : t("notReady", { reason: reason(readiness) })}</span>
+              <span className="text-pretty">{isReady ? t("ready") : t("notReady", { reason: reason(readiness, planRun) })}</span>
             </p>
           ) : null}
           {!canDispatch ? <p className="text-xs text-muted-foreground">{t("readerHint")}</p> : null}
@@ -75,12 +81,14 @@ export function StepRuns({ project, planId, stepKey }: { project: string; planId
               if (isReady) setDispatching(true);
             }}
             data-testid="step-run"
+            data-locked={planRun ? "planRun" : undefined}
           >
             <Play aria-hidden="true" />
             {t("run")}
           </Button>
         ) : null}
       </div>
+      {planRun ? <PlanRunHoldNote project={project} hold={planRun} testId="step-plan-run" /> : null}
       <NoticeArea notice={notice} onDismiss={clear} />
       {runs.isPending ? (
         <Skeleton className="h-24 w-full" />

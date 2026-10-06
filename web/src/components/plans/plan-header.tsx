@@ -12,7 +12,10 @@ import { cn } from "@/lib/utils";
 import { planHref, plansHref, revisionsHref } from "./links";
 import { AreaBadge } from "./status";
 
-/** Plans are read-only on the web (decision of 2026-10-04): every plan page says how a plan is changed. */
+/**
+ * A plan's content is read-only on the web (decision of 2026-10-04): every plan page says how a plan is changed, and
+ * that running it is Run plan's job (writers only).
+ */
 export function ReadOnlyNotice({ className }: { className?: string }) {
   const t = useTranslations("plans");
   return (
@@ -82,19 +85,22 @@ function PlanTabs({ project, planId, current }: { project: string; planId: strin
 
 /**
  * The header of every page of one plan: its title, id, area, revision and last change, then the plan's tabs. It
- * follows `PageHeader` (one h1, the same type scale); the tabs' rule takes the place of the header's own.
+ * follows `PageHeader` (one h1, the same type scale); the tabs' rule takes the place of the header's own. `actions`
+ * sit in the right-hand cluster under the badges (the plan page's Run plan).
  */
 export function PlanHeader({
   project,
   plan,
   current,
   title: pageTitle,
+  actions,
 }: {
   project: string;
   plan: Plan;
   current: PlanTab | null;
   /** The page's own h1 (a step's title); the plan's title becomes the line above it. */
   title?: ReactNode;
+  actions?: ReactNode;
 }) {
   const t = useTranslations("plans");
   const format = useFormatter();
@@ -128,11 +134,18 @@ export function PlanHeader({
             </span>
           </p>
         </div>
-        <div className="flex shrink-0 flex-wrap items-center gap-2">
-          <AreaBadge area={plan.area} />
-          <Badge variant="outline" className="font-mono" data-testid="plan-revision">
-            {t("revision", { revision: plan.revision })}
-          </Badge>
+        <div className="flex shrink-0 flex-col items-start gap-3 sm:items-end">
+          <div className="flex flex-wrap items-center gap-2">
+            <AreaBadge area={plan.area} />
+            <Badge variant="outline" className="font-mono" data-testid="plan-revision">
+              {t("revision", { revision: plan.revision })}
+            </Badge>
+          </div>
+          {actions ? (
+            <div className="flex flex-wrap items-start gap-2 sm:justify-end" data-testid="plan-actions">
+              {actions}
+            </div>
+          ) : null}
         </div>
       </div>
       {current ? <PlanTabs project={project} planId={plan.plan_id} current={current} /> : null}

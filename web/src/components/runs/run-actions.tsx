@@ -147,7 +147,7 @@ export function RunActions({ run, controls, onNotice }: { run: Run; controls: Ru
               ? t("notice.cancelAsked", { id: run.id })
               : t("notice.cancelled", { id: run.id })
             : action === "approve"
-              ? t("notice.approved", { id: run.id, step: run.step_key, plan: run.plan_id })
+              ? t("notice.approved", { id: run.id, step: run.step_key ?? "", plan: run.plan_id })
               : action === "takeover"
                 ? t("notice.takeover", { id: run.id, name: sessionName(run.id) })
                 : t("notice.handback", { id: run.id });
@@ -232,7 +232,13 @@ export function RunActions({ run, controls, onNotice }: { run: Run; controls: Ru
         title={t("confirmCancel.title", { id: run.id })}
         description={
           <p className="text-pretty">
-            {(HELD_STATES as readonly string[]).includes(run.state) ? t("confirmCancel.held") : t("confirmCancel.now")}
+            {run.kind === "plan"
+              ? (HELD_STATES as readonly string[]).includes(run.state)
+                ? t("confirmCancel.planHeld")
+                : t("confirmCancel.planNow")
+              : (HELD_STATES as readonly string[]).includes(run.state)
+                ? t("confirmCancel.held")
+                : t("confirmCancel.now")}
           </p>
         }
         confirmLabel={t("confirmCancel.confirm")}
