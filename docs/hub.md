@@ -61,7 +61,7 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | knowledge graphs | `/v1/kg/{project}/config`, `.../runs`, `.../blobs/check`, `.../builds`, `.../tools/{tool}`, and the web's `.../graph`, `.../nodes`, `.../node`, `.../neighbourhood` |
 | workers | `POST /v1/workers/pairings`, `GET /v1/workers/pairings/{id}`, `POST /v1/worker/join`, `GET` and `POST /v1/workers`, `GET /v1/workers/{id}`, `POST /v1/workers/{id}/{drain,undrain,dispatch-from,revoke}` |
 | secrets | `GET /v1/secrets`, `PUT` and `DELETE /v1/secrets/{name}`, the caller's own only (`docs/credentials.md`) |
-| runs | `/v1/projects/{project}/plans/{plan_id}/ready-steps`, `GET` and `POST /v1/projects/{project}/runs`, `POST /v1/projects/{project}/plan-runs`, `.../runs/{id}`, `.../events`, `.../stream`, `.../diff`, `.../messages`, `.../{cancel,approve,rerun,takeover,handback}` |
+| runs | `/v1/projects/{project}/plans/{plan_id}/ready-steps`, `GET` and `POST /v1/projects/{project}/runs`, `POST /v1/projects/{project}/plan-runs`, `.../runs/{id}`, `.../events`, `.../stream`, `.../diff`, `.../messages`, `.../credentials`, `.../{cancel,approve,rerun,takeover,handback}` |
 | decisions | `GET /v1/projects/{project}/decisions`, `.../decisions/{id}`, `POST .../decisions/{id}/answer` |
 | notifications | `GET /v1/me/notifications`, `GET /v1/me/notifications/count`, `POST /v1/me/notifications/read` |
 | worker protocol | `/v1/worker/{claim,heartbeat}`, `/v1/worker/runs/{id}/{state,events,inbox,uploads,blobs,plan,decisions,notices,credentials}`, `/v1/worker/runs/{id}/steps/{key}` |
@@ -281,6 +281,7 @@ evo-agents hub run handback 41                                # the agent goes o
 evo-agents hub run approve 41                                 # a run in review: the run and its step are done
 evo-agents hub run cancel 41
 evo-agents hub run rerun 41                                   # the step again, after a run that ended
+evo-agents hub run credentials 41                             # the leases the run got, never their values
 ```
 
 Every command after `dispatch`, `plan` and `list` takes the id of a run, as `list` shows it, and finds its project as
@@ -311,6 +312,34 @@ on that bring nothing, not even the hub's ping, the command gives up and names t
 since. `--json` prints what the hub answered, with the keys the command line contract declares; for `logs` that is
 every event read as one object, so it does not go with `--follow`. `send`, `cancel`, `approve`, `takeover`,
 `handback` and `rerun` belong to the member who dispatched the run: another member gets 403.
+
+`run credentials` lists the leases the run got (`GET /v1/projects/{project}/runs/{id}/credentials`): for each, the
+secret's name or `github-app:<account>`, its provider, its target (the variable it set, or the origins it answered
+for), the worker, when it was issued and when it ends, and whether it is still out, expired, or revoked and when. A
+lease given back stays in the list; no value is ever in it. It belongs to the member who dispatched the run too, since
+it names their secrets: another member gets 403, a hub admin included. Every refusal of the hub is printed as its
+message on stderr, so `run dispatch`, `run plan` or `run rerun` pinned to a worker whose owner set it to take runs
+dispatched from the web only says that a token cannot hand that worker work, and that nothing was dispatched
+(`docs/credentials.md`).
+
+The secrets those leases come from are the member's own, written once and never read back:
+
+```sh
+pbpaste | evo-agents hub secret set claude-oauth --kind env --env-var CLAUDE_CODE_OAUTH_TOKEN --project demo
+evo-agents hub secret set gitlab-kb --kind git --url-prefix https://gitlab.example.org/group --project demo \
+  --worker mac-mini --expires 2027-01-31                      # at a terminal: asks for the value, without echo
+evo-agents hub secret list                                    # name, kind, target, projects, workers, dates
+evo-agents hub secret delete gitlab-kb                        # its leases still out are revoked
+```
+
+`secret set` creates the secret or replaces it whole (`PUT /v1/secrets/{name}`). It takes no flag for the value, which
+`ps` and the shell's history would see: the value comes from stdin when stdin is not a terminal, with one final line
+break dropped, and otherwise it is asked for without echo. Every argument is checked before the value is read, and no
+command prints the value, an error included. `--kind env` needs `--env-var`; `--kind git` needs `--url-prefix`, and
+`--username` defaults to `oauth2`. `--project` names a project whose runs get it, on which you hold writer, and
+`--worker` one of your workers that alone gets it; both repeat. `--expires YYYY-MM-DD` ends it at 00:00 UTC of that
+day, as GitLab ends an access token on its expiry date. `secret list` reads `GET /v1/secrets` (`--json` prints it),
+and `secret delete` is `DELETE /v1/secrets/{name}`. `docs/credentials.md` describes which leases a run gets of them.
 
 The agent of a plan run asks its owner the decisions it may not take alone (`docs/notifications.md`), and the hub
 tells the owner of them, and of pushes to a default branch, in notifications:

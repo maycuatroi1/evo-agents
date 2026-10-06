@@ -388,6 +388,7 @@ def test_the_docs_of_this_repository_pass():
         ROOT / "web" / "README.md",
         docs / "workers.md",
         docs / "notifications.md",
+        docs / "credentials.md",
     ]
     count, problems = contract.check_files(commands(), [str(path) for path in files])
     assert problems == []

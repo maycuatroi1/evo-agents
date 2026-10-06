@@ -1724,6 +1724,50 @@
         "schema": "Run"
       }
     },
+    "hub run credentials": {
+      "positionals": [
+        {
+          "name": "run",
+          "metavar": "RUN",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "array",
+        "keys": [
+          "id",
+          "name",
+          "provider",
+          "kind",
+          "target",
+          "worker",
+          "issued_at",
+          "expires_at",
+          "revoked_at"
+        ],
+        "schema": "RunLease"
+      }
+    },
     "hub run dispatch": {
       "positionals": [
         {
@@ -2580,6 +2624,122 @@
         ],
         "schema": "Run"
       }
+    },
+    "hub secret delete": {
+      "positionals": [
+        {
+          "name": "name",
+          "metavar": "NAME",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [],
+      "json": null
+    },
+    "hub secret list": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "array",
+        "keys": [
+          "name",
+          "kind",
+          "env_var",
+          "url_prefix",
+          "username",
+          "projects",
+          "workers",
+          "expires_at",
+          "created_at",
+          "updated_at"
+        ],
+        "schema": "Secret"
+      }
+    },
+    "hub secret set": {
+      "positionals": [
+        {
+          "name": "name",
+          "metavar": "NAME",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--kind"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false,
+          "choices": [
+            "env",
+            "git"
+          ]
+        },
+        {
+          "flags": [
+            "--env-var"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--url-prefix"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--username"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--worker"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--expires"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": null
     },
     "hub serve": {
       "positionals": [],
@@ -12730,6 +12890,111 @@
           }
         }
       },
+      "/v1/projects/{project}/runs/{run_id}/credentials": {
+        "get": {
+          "tags": [
+            "runs"
+          ],
+          "summary": "Run Credentials",
+          "description": "Every lease the run got, given back or not, without a value; for the member who dispatched it.",
+          "operationId": "run_credentials_v1_projects__project__runs__run_id__credentials_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/RunLease"
+                    },
+                    "title": "Response Run Credentials V1 Projects  Project  Runs  Run Id  Credentials Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "/v1/worker/runs/{run_id}/credentials": {
         "post": {
           "tags": [
@@ -18853,6 +19118,92 @@
             "more"
           ],
           "title": "RunEvents"
+        },
+        "RunLease": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "name": {
+              "type": "string",
+              "title": "Name",
+              "description": "the secret's name, or github-app:<account>"
+            },
+            "provider": {
+              "type": "string",
+              "enum": [
+                "secret",
+                "github-app"
+              ],
+              "title": "Provider",
+              "description": "secret: the owner's; github-app: a token the hub's App made"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "env",
+                "git"
+              ],
+              "title": "Kind",
+              "description": "env: a variable of the agent; git: what git's helper answered"
+            },
+            "target": {
+              "type": "string",
+              "title": "Target",
+              "description": "kind env: the variable it set; kind git: the origins of the run's repos it answered for, space-separated, in the form of normalize_origin"
+            },
+            "worker": {
+              "type": "string",
+              "title": "Worker",
+              "description": "the worker it was leased to"
+            },
+            "issued_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Issued At"
+            },
+            "expires_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Expires At",
+              "description": "when it stops working: a GitHub token's hour, a secret's end"
+            },
+            "revoked_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Revoked At",
+              "description": "when the run gave it back or the hub took it; null while out"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "name",
+            "provider",
+            "kind",
+            "target",
+            "worker",
+            "issued_at",
+            "expires_at",
+            "revoked_at"
+          ],
+          "title": "RunLease",
+          "description": "A lease a run got, as its owner sees it: everything but the value."
         },
         "RunList": {
           "properties": {

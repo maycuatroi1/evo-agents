@@ -232,6 +232,7 @@ def create_app(config: HubConfig) -> FastAPI:
     from evo_agents.hub.server.sealing import Sealer
 
     app.include_router(secrets.router)
+    app.include_router(credentials.router)
     app.include_router(credentials.worker_router)
     app.state.sealer = Sealer.from_config(config)  # None without EVO_HUB_SECRETS_KEY: the secret routes answer 503
     return app

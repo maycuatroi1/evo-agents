@@ -1886,6 +1886,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project}/runs/{run_id}/credentials": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Run Credentials
+         * @description Every lease the run got, given back or not, without a value; for the member who dispatched it.
+         */
+        get: operations["run_credentials_v1_projects__project__runs__run_id__credentials_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/worker/runs/{run_id}/credentials": {
         parameters: {
             query?: never;
@@ -4417,6 +4437,56 @@ export interface components {
              * @description more events follow the last one here: ask again after it
              */
             more: boolean;
+        };
+        /**
+         * RunLease
+         * @description A lease a run got, as its owner sees it: everything but the value.
+         */
+        RunLease: {
+            /** Id */
+            id: number;
+            /**
+             * Name
+             * @description the secret's name, or github-app:<account>
+             */
+            name: string;
+            /**
+             * Provider
+             * @description secret: the owner's; github-app: a token the hub's App made
+             * @enum {string}
+             */
+            provider: "secret" | "github-app";
+            /**
+             * Kind
+             * @description env: a variable of the agent; git: what git's helper answered
+             * @enum {string}
+             */
+            kind: "env" | "git";
+            /**
+             * Target
+             * @description kind env: the variable it set; kind git: the origins of the run's repos it answered for, space-separated, in the form of normalize_origin
+             */
+            target: string;
+            /**
+             * Worker
+             * @description the worker it was leased to
+             */
+            worker: string;
+            /**
+             * Issued At
+             * Format: date-time
+             */
+            issued_at: string;
+            /**
+             * Expires At
+             * @description when it stops working: a GitHub token's hour, a secret's end
+             */
+            expires_at: string | null;
+            /**
+             * Revoked At
+             * @description when the run gave it back or the hub took it; null while out
+             */
+            revoked_at: string | null;
         };
         /** RunList */
         RunList: {
@@ -11903,6 +11973,67 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_credentials_v1_projects__project__runs__run_id__credentials_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunLease"][];
+                };
             };
             /** @description Unauthorized */
             401: {

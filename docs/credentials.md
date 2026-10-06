@@ -96,6 +96,24 @@ only their own secrets, and `/v1/admin/stats` counts the rows of `secrets` witho
 audit row `secret.put` or `secret.delete` whose target is the secret's name; no audit row, log line or error carries
 a value, and a 422 never repeats the input.
 
+From the command line (`evo_agents/hub/cli_secrets.py`):
+
+```sh
+pbpaste | evo-agents hub secret set claude-oauth --kind env --env-var CLAUDE_CODE_OAUTH_TOKEN --project demo
+evo-agents hub secret set gitlab-docs --kind git --url-prefix https://gitlab.example.org/group \
+  --project demo --worker mac-mini --expires 2027-09-15
+evo-agents hub secret list --json
+evo-agents hub secret delete gitlab-docs
+```
+
+`secret set NAME (--kind env --env-var VAR | --kind git --url-prefix URL [--username U]) --project P [--project P ...]
+[--worker NAME ...] [--expires YYYY-MM-DD]` has no flag for the value. It reads the value from stdin when stdin is not
+a terminal, dropping one final line break, and otherwise asks for it with `getpass`, which does not echo it. The
+arguments are checked first, then that the machine is signed in, and only then is the value read, so a mistake never
+costs a paste. The value is checked for what the hub would refuse (empty, over `MAX_SECRET_BYTES`, a NUL, more than
+one line for kind `git`) without being shown, and no output or error of the command carries it. `--expires` ends the
+secret at 00:00 UTC of that day, as GitLab ends an access token on its expiry date, so the token's own date fits.
+
 ## Which leases a run gets
 
 `evo_agents/hub/server/credentials.py`. `POST /v1/worker/runs/{id}/credentials`, with the worker's token and the
@@ -125,6 +143,16 @@ lease's id, until it expires, so the hub can revoke it. Asked again, a run gets 
 `GITHUB_TOKEN_REFRESH_SECONDS` or more left, and new ones in new leases after that; the tokens they replace go on
 working until they expire, so a push that took one is not cut off. GitHub is asked between two transactions, never
 while the run's row is locked; when the run ended in between, the tokens just made are revoked and the answer is 404.
+
+## What a run got
+
+`GET /v1/projects/{project}/runs/{id}/credentials` lists every lease of the run, given back or not, oldest first:
+`id`, `name` (the secret's, or `github-app:<account>`), `provider`, `kind`, `target` (the variable it set, or the
+origins of the run's repos it answered for, space-separated, in the form of `normalize_origin`), `worker`, `issued_at`,
+`expires_at` and `revoked_at`. It never carries a value, sealed or not. The run must be one the caller may read, and
+only the member who dispatched it gets the list: another member gets 403, a hub admin included, since the leases name
+the owner's secrets as `GET /v1/secrets` does to the owner alone. `evo-agents hub run credentials RUN [--json]` prints
+it, each lease as out, expired, or revoked with the time.
 
 ## Life of a lease
 
