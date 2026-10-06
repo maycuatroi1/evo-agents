@@ -1,6 +1,7 @@
 # Workers and runs
 
-A worker is a member's own laptop or desktop, registered with the hub, that runs plan steps for that member. The
+A worker is a machine registered with the hub that runs plan steps for one member: usually the member's own laptop or
+desktop, but possibly a machine others also administer (see [A machine others administer](#a-machine-others-administer)). The
 member dispatches a ready step; the hub queues a run; the member's worker claims it, runs the step with Claude Code,
 opencode or Codex CLI, headless or with a person at the keyboard, and sends logs, state and evidence back while it
 works. The hub then records the step's progress in the plan. From 0.4.0 a member can also hand a whole plan to one of
@@ -1059,6 +1060,17 @@ heartbeat, and a daemon started after `evo-agents worker revoke` deleted the tok
 does not start either again; at each login it starts the daemon once more, which stops the same way, until the
 machine is a worker again. `evo-agents worker revoke` leaves the service installed and says so; `evo-agents worker
 service uninstall` removes it.
+
+## A machine others administer
+
+Root on a worker reads every file of the worker's user and the memory of its processes. On a machine only its owner
+uses that is the owner; on a shared Mac mini or a lab server it is someone else too. From 0.5.0 such a machine need
+keep no long-lived credential of its owner: the hub keeps the owner's secrets sealed and leases each run only what
+it needs (a GitHub App token for the run's repos that lives an hour, a static GitLab token of the project, the
+runtime's environment such as `CLAUDE_CODE_OAUTH_TOKEN`), the daemon keeps leases in memory, and the agent reaches
+the hub's MCP with the worker token, scoped to the run's project. `evo-agents worker doctor` says what the machine
+still holds. [docs/credentials.md](credentials.md) describes the design, what stays a risk, and how to cut a
+credential off.
 
 ## What version 1 does not do
 
