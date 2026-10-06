@@ -133,6 +133,211 @@
       "options": [],
       "json": null
     },
+    "hub decision answer": {
+      "positionals": [
+        {
+          "name": "decision",
+          "metavar": "DECISION",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--option"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--text"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "project",
+          "run_id",
+          "run_state",
+          "plan_id",
+          "step_key",
+          "category",
+          "question",
+          "context",
+          "options",
+          "recommended",
+          "state",
+          "owner",
+          "answer_option",
+          "answer_text",
+          "answered_by",
+          "answer_run_id",
+          "asked_at",
+          "answered_at",
+          "delivered_at"
+        ],
+        "schema": "Decision"
+      }
+    },
+    "hub decision list": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--state"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true,
+          "choices": [
+            "open",
+            "answered",
+            "expired",
+            "cancelled"
+          ]
+        },
+        {
+          "flags": [
+            "--run"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--plan"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--limit"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false,
+          "minimum": 1,
+          "maximum": 200
+        },
+        {
+          "flags": [
+            "--offset"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "decisions",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "schema": "DecisionList"
+      }
+    },
+    "hub decision show": {
+      "positionals": [
+        {
+          "name": "decision",
+          "metavar": "DECISION",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "project",
+          "run_id",
+          "run_state",
+          "plan_id",
+          "step_key",
+          "category",
+          "question",
+          "context",
+          "options",
+          "recommended",
+          "state",
+          "owner",
+          "answer_option",
+          "answer_text",
+          "answered_by",
+          "answer_run_id",
+          "asked_at",
+          "answered_at",
+          "delivered_at"
+        ],
+        "schema": "Decision"
+      }
+    },
     "hub hook session-start": {
       "positionals": [],
       "options": [],
@@ -595,6 +800,93 @@
         }
       ],
       "json": null
+    },
+    "hub notifications": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--unread"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--kind"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "decision",
+            "notice"
+          ]
+        },
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--limit"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false,
+          "minimum": 1,
+          "maximum": 200
+        },
+        {
+          "flags": [
+            "--offset"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--read"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "notifications",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "schema": "NotificationList",
+        "with": {
+          "--read": {
+            "kind": "object",
+            "keys": [
+              "read",
+              "unread"
+            ],
+            "schema": "ReadResult"
+          }
+        }
+      }
     },
     "hub openapi": {
       "positionals": [],
@@ -1514,6 +1806,14 @@
         },
         {
           "flags": [
+            "--model"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
             "--json"
           ],
           "value": null,
@@ -1842,6 +2142,143 @@
           "more"
         ],
         "schema": "RunEvents"
+      }
+    },
+    "hub run plan": {
+      "positionals": [
+        {
+          "name": "plan",
+          "metavar": "PLAN",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--worker"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--runtime"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "any",
+            "claude-code",
+            "opencode",
+            "codex"
+          ]
+        },
+        {
+          "flags": [
+            "--model"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--mode"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "headless",
+            "interactive"
+          ]
+        },
+        {
+          "flags": [
+            "--timeout-h"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            2,
+            4,
+            8,
+            24
+          ]
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "kind",
+          "project",
+          "plan_id",
+          "step_key",
+          "title",
+          "plan_revision",
+          "dispatched_by",
+          "worker_id",
+          "worker",
+          "pinned_worker_id",
+          "requested_runtime",
+          "runtime",
+          "model",
+          "mode",
+          "approval",
+          "timeout_min",
+          "run_seconds",
+          "attempt",
+          "max_attempts",
+          "parent_run_id",
+          "resume_of_run_id",
+          "state",
+          "lease_expires_at",
+          "session_id",
+          "repo",
+          "branch",
+          "repos",
+          "commit_sha",
+          "diffstat",
+          "verify",
+          "evidence",
+          "usage",
+          "error",
+          "log_sha256",
+          "diff_sha256",
+          "last_seq",
+          "cancel_requested_at",
+          "takeover_requested_at",
+          "handback_requested_at",
+          "queued_at",
+          "leased_at",
+          "started_at",
+          "waiting_since",
+          "parked_at",
+          "finished_at"
+        ],
+        "schema": "Run"
       }
     },
     "hub run rerun": {
@@ -2428,6 +2865,206 @@
           "required": false,
           "repeatable": false,
           "default": 1
+        }
+      ],
+      "json": null
+    },
+    "worker ask": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--category"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false,
+          "choices": [
+            "deploy",
+            "delete_data",
+            "live_migration",
+            "external_send",
+            "spend_money",
+            "architecture",
+            "scope"
+          ]
+        },
+        {
+          "flags": [
+            "--question"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--context-file"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--option"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--recommended"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--step"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": null
+    },
+    "worker notify": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--kind"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false,
+          "choices": [
+            "push_default_branch",
+            "merge_default_branch"
+          ]
+        },
+        {
+          "flags": [
+            "--title"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--body"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--repo"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--branch"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--commit"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        }
+      ],
+      "json": null
+    },
+    "worker plan": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "plan_id",
+          "area",
+          "revision",
+          "digest",
+          "label",
+          "body",
+          "created_at",
+          "updated_at",
+          "updated_by"
+        ],
+        "schema": "Plan"
+      }
+    },
+    "worker step": {
+      "positionals": [
+        {
+          "name": "key",
+          "metavar": "KEY",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "name": "status",
+          "metavar": "STATUS",
+          "value": "string",
+          "required": true,
+          "repeatable": false,
+          "choices": [
+            "in_progress",
+            "done",
+            "pending"
+          ]
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--repo"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--evidence"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--verify"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
         }
       ],
       "json": null

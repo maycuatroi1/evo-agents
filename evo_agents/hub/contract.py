@@ -2,16 +2,21 @@
 
 ``contract print`` prints ``{"version": 1, "commands": {...}, "openapi": {...}}``, the owner's side of the seam
 hub-cli-v1. ``commands`` is generated from the argparse definitions: for every ``evo-agents hub`` command (keyed
-``"hub plan step"``), its positional arguments and options, and for a command with ``--json`` the keys of what it
-prints, declared next to the flag with ``json_option``. ``openapi`` is the API's OpenAPI document, the one
-``evo-agents hub openapi`` prints, so ``print`` needs the hub-server extra. evo-cli checks the argv it builds and the
-keys it reads against this document; tests/hub/golden/cli-contract.json is the copy the tests compare with, so a
-change to either part shows up as a diff there.
+``"hub plan step"``) and every command the agent of a plan run uses (``evo-agents worker step|ask|notify|plan``,
+keyed ``"worker step"``, AGENT_COMMANDS), its positional arguments and options, and for a command with ``--json`` the
+keys of what it prints, declared next to the flag with ``json_option``. ``openapi`` is the API's OpenAPI document,
+the one ``evo-agents hub openapi`` prints, so ``print`` needs the hub-server extra. evo-cli checks the argv it builds
+and the keys it reads against this document, and agent-skills the agent's commands its skills name;
+tests/hub/golden/cli-contract.json is the copy the tests compare with, so a change to either part shows up as a diff
+there.
 
-``contract check FILE...`` reads every ``evo-agents hub ...`` command in the code spans and fenced code blocks of
-markdown files and reports a subcommand or option the command line does not have, an option missing its value, a
-literal value outside an option's choices, and more positional arguments than the command takes. Placeholders pass:
-``<name>``, an all-caps word such as ``PLAN``, anything with a shell variable, and ``...`` (any further arguments).
+``contract check FILE...`` reads every ``evo-agents hub ...`` command, and every ``evo-agents worker`` command of
+AGENT_COMMANDS, in the code spans and fenced code blocks of markdown files and reports a subcommand or option the
+command line does not have, an option missing its value, a literal value outside an option's choices, and more
+positional arguments than the command takes. The other ``evo-agents worker`` commands are not in the contract and
+are not read. Placeholders pass:
+``<name>``, an all-caps word such as ``PLAN``, anything with a shell variable, and ``...`` (any further arguments);
+a value written as alternatives, ``a|b`` (``a\\|b`` in a markdown table), passes when each alternative does.
 A command ends at a shell operator (``|``, ``&&``, ``;``, ``>``, ``)``) or a comment. Indented code blocks are not
 read. ``check`` needs only the core package; ``--contract FILE`` checks against a saved contract instead of the
 command line of this installation.
@@ -31,7 +36,8 @@ CONTRACT_VERSION = 1
 EXIT_PROBLEMS = 1
 EXIT_USAGE = 2
 
-HUB_COMMAND = re.compile(r"(?<![\w./-])evo-agents\s+hub\b")
+AGENT_COMMANDS = ("step", "ask", "notify", "plan")  # `evo-agents worker ...` that a plan run's agent runs
+HUB_COMMAND = re.compile(rf"(?<![\w./-])evo-agents\s+(hub|worker\s+({'|'.join(AGENT_COMMANDS)}))\b")
 FENCE = re.compile(r"^\s*(`{3,}|~{3,})")
 PLACEHOLDER = re.compile(r"<[A-Za-z][^<>\n]*>")
 SENTINEL = "\x1fplaceholder\x1f"  # stands for a <placeholder> while the command is split into words
@@ -173,9 +179,20 @@ def hub_parsers(parser: argparse.ArgumentParser | None = None) -> dict[str, argp
     return dict(sorted(found.items()))
 
 
+def contract_parsers(parser: argparse.ArgumentParser | None = None) -> dict[str, argparse.ArgumentParser]:
+    """The parser of every command in the contract: those of ``hub_parsers`` and the agent's ``evo-agents worker``
+    commands (AGENT_COMMANDS, keyed ``"worker step"``)."""
+    from evo_agents.cli import build_parser
+
+    root = parser or build_parser()
+    worker = _subparsers(_subparsers(root)["worker"])
+    found = {**hub_parsers(root), **{f"worker {name}": worker[name] for name in AGENT_COMMANDS}}
+    return dict(sorted(found.items()))
+
+
 def commands(parser: argparse.ArgumentParser | None = None) -> dict:
     """The ``commands`` part of the contract: needs only the core package."""
-    return {path: _command(node) for path, node in hub_parsers(parser).items()}
+    return {path: _command(node) for path, node in contract_parsers(parser).items()}
 
 
 def build() -> dict:
@@ -300,6 +317,8 @@ def _placeholder(word: str) -> bool:
 def _check_value(what: str, entry: dict, value: str) -> str | None:
     if _placeholder(value):
         return None
+    if "|" in value.strip("|"):  # a usage line's alternatives, such as a markdown table's push\|merge: each one
+        return next((p for part in value.split("|") if (p := _check_value(what, entry, part))), None)
     choices = entry.get("choices")
     if choices is not None and value not in [str(choice) for choice in choices]:
         return f"{what} {value!r} is not one of {', '.join(str(c) for c in choices)}"
