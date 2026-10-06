@@ -249,6 +249,49 @@ commands again in the repo's worktree, commits and pushes that repo's branch, an
 The agent talks to the hub through four commands that use the worker's token and the run's id (`EVO_RUN_ID`), not a
 token of the owner's: `evo-agents worker step`, `ask`, `notify` and `plan`. Outside a run they refuse to run.
 
+`POST /v1/projects/{p}/plan-runs` (writer) takes `plan_id`, `worker_id` (optional, one of the caller's own workers:
+403 for any other id, 409 for a revoked worker or one that does not serve the project), `runtime` (`any` by
+default), `model` (optional, one line of at most 200 characters; null leaves the choice to the runtime), `mode`
+(`headless` by default) and `timeout_h` (2, 4, 8 or 24; 4 by default), and answers 201 with the run. It answers 409,
+and queues nothing, when the plan has no pending step, when the plan has an active run of either kind, or when a step
+that is not done names no repo and the plan does not list exactly one. The run has kind `plan`, approval `auto`, the
+plan's title, no step key and no repo, and `repos`: the repo of each step not done, once each in plan order, with the
+branch the plan's `repos` names for it (null when it names none). A dispatch of steps (`POST .../runs`, and a rerun)
+and a dispatch of a plan run take the same transaction-scoped advisory lock of the plan before they look at its
+active runs, so they cannot both get in: a step of a plan with an active plan run gets 409 (`plan X has plan run #N,
+...`), and so does a plan run while a run of one of its steps is active. `ready-steps` answers the plan's active plan
+run as `plan_run`, and while there is one, no step reads as ready. A plan run is not rerun (409): dispatch the plan
+again.
+
+The worker holding a plan run reads the plan as the hub holds it now with `GET /v1/worker/runs/{id}/plan` (as the
+member who dispatched the run, in the shape of `GET /v1/projects/{p}/plans/{plan}`), and reports each step with
+`POST /v1/worker/runs/{id}/steps/{key}`:
+
+```json
+{"status": "done", "repo": "evo-agents", "commit_sha": "<40 or 64 hex>",
+ "verify": [{"command": "ruff check .", "exit_code": 0}], "evidence": "what the agent did and how it checked it"}
+```
+
+`status` is `in_progress`, `done` or `pending`; `repo` must be one of the run's repos (422 otherwise) and defaults to
+the one the plan gives the step. `done` needs at least one verify result and every one exited 0 (422 otherwise). The
+hub writes the step as the member who dispatched the run, through the same write as a run of one step: `in_progress`
+with the note `run #N on worker W`, `pending` with the note `run #N on worker W handed it back`, and `done` with
+`done_at`; the evidence (the run, `repo@commit` on the repo's branch, each verify command with its exit code, then the
+agent's text) on `done`, or whenever the report carries evidence. A step that is done is never set back (409), and a
+done step reported done again writes nothing (`written: false`). When the plan cannot be written (the dispatcher lost
+the writer role, the plan is gone, five revision conflicts in a row) the report gets that error and nothing is kept.
+The answer is `{run_id, plan_id, step_key, status, revision, written}`. Each report that writes leaves a `system`
+event in the run's log (`{"text": "step 2: done (evo-agents@...)", "step_report": {step, status, repo,
+commit_sha}}`) and a `run.step_report` audit row of the dispatcher with the worker's token. A step the plan does not
+have, a run of one step, and a run the worker does not hold get 404.
+
+A plan run's own moves write no step: starting it writes nothing, and it ends `done` from `verifying` without verify
+results, since each step was verified when it was reported (it never goes to `review`: 409). One that ends `failed`
+or `cancelled` sets back to `pending` the steps it reported, it or an earlier attempt of it, that are still
+`in_progress`, with the note `run #N failed: ...` or `run #N was cancelled: ...`; a step someone else left in
+progress stays as it is. A plan run that is `lost` queues its next attempt as a plan run with the same repos and model,
+and leaves the steps as they are.
+
 ## Decisions and notices
 
 A plan run's agent stops for its owner only on a decision of one of the categories `docs/notifications.md` lists
@@ -322,7 +365,10 @@ neither draining nor revoked. The oldest such run is leased for 300 seconds (`EV
 tests shorten). The answer is `{"run": {...}}` with the
 id, project, plan, step key and title, plan revision, attempt, max attempts, parent run, runtime, mode, approval,
 timeout in minutes, repo, branch, lease expiry and the prompt (built from the plan revision the run was dispatched
-from), or `{"run": null}` when the wait ends empty, and the daemon claims again at once. A worker has at most one
+from), with the run's `kind` and `model`, or `{"run": null}` when the wait ends empty, and the daemon claims again at
+once. A plan run is claimed only by a worker with a checkout of every repo in its `repos`; its answer has no step key
+and no repo, but `repos`, the prompt of `build_plan_prompt`, and `plan`, `{revision, body}` at the hub's current
+revision, which the daemon writes to `.evo-run/plan.yaml`. A worker has at most one
 claim waiting: a newer claim ends the older one, which answers no run. A claim whose worker hung up, as a daemon that
 stops drops the claim it waits on, takes no run: it ends before it looks at the queue again, and when the worker hangs
 up while the claim leases a run, the lease is rolled back before it commits, so the run stays queued for the next
@@ -387,8 +433,8 @@ and usage when it has them:
 The hub checks the move against the transition table with the worker as actor and answers 409 when the table refuses
 it, and 404 when the worker does not hold the run (another worker's, or one no longer held: lost, cancelled, in
 review or done). `from`, when given, must be the state the run is in (409 otherwise). `done` needs approval `auto`
-and at least one verify result, every one with exit code 0; `review` needs approval `review`; otherwise 409. A
-`failed` report without an `error` gets one naming the worker. Reporting the state the run is in already moves
+and at least one verify result, every one with exit code 0; `review` needs approval `review`; otherwise 409. A plan
+run ends `done` without verify results and never reports `review`. A `failed` report without an `error` gets one naming the worker. Reporting the state the run is in already moves
 nothing and keeps the session id, commit, diffstat, verify results and usage it carries, so a resend after a lost
 answer is safe. The answer is the run as the hub holds it.
 
@@ -456,6 +502,8 @@ For the worker, with an `evw_` token and the version header:
 | `POST /v1/worker/claim` | waits up to 25 s for a run |
 | `POST /v1/worker/heartbeat` | reports the machine, extends leases, returns control |
 | `POST /v1/worker/runs/{id}/state` | reports a move |
+| `GET /v1/worker/runs/{id}/plan` | reads the plan of a plan run it holds, as the hub holds it now |
+| `POST /v1/worker/runs/{id}/steps/{key}` | reports a step of a plan run it holds |
 | `POST /v1/worker/runs/{id}/events` | sends a batch of events |
 | `POST /v1/worker/runs/{id}/inbox` | acknowledges messages handed to the agent, takes the waiting ones |
 | `POST /v1/worker/runs/{id}/uploads`, `/blobs` | uploads the run's log and diff, records them on the run |
@@ -473,6 +521,7 @@ For members, with a web session or a machine token. `{p}` is a project, and run 
 | `POST /v1/workers/{id}/undrain` | owner | resume claims |
 | `GET /v1/projects/{p}/plans/{plan}/ready-steps` | reader | every step, with whether it may be dispatched and why not |
 | `POST /v1/projects/{p}/runs` | writer | dispatch steps, all or none |
+| `POST /v1/projects/{p}/plan-runs` | writer | dispatch a plan run: every step of the plan not done yet, on one worker |
 | `GET /v1/projects/{p}/runs`, `GET .../runs/{id}` | reader | list (filters, pages, counts by state) and show runs |
 | `GET .../runs/{id}/events?after=SEQ` | reader | events after a number |
 | `GET .../runs/{id}/stream` | reader | the same as server-sent events, with a ping every 15 s, resumed by `Last-Event-ID` |
