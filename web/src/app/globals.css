@@ -2,186 +2,262 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
-/* Design tokens: web/DESIGN.md explains every value and its contrast ratio. Components use the Tailwind names
-   (bg-background, text-muted-foreground, ...), never raw colours. */
+/* Design tokens of the evo-agents hub UI kit (web/DESIGN.md lists every value with its contrast ratio). Components use
+   the Tailwind names (bg-background, text-muted-foreground, bg-running-soft, text-term-agent, ...), never raw colours. */
 
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
+  --font-sans: var(--font-plex-sans), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --font-heading: var(--font-plex-sans), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  /* shadcn names, mapped onto the kit (DESIGN.md, "Colour"). */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-be-vietnam-pro), ui-sans-serif, system-ui, sans-serif;
-  --font-mono: var(--font-jetbrains-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
-  --font-heading: var(--font-be-vietnam-pro), ui-sans-serif, system-ui, sans-serif;
-  --color-sidebar-ring: var(--sidebar-ring);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar: var(--sidebar);
-  --color-chart-5: var(--chart-5);
-  --color-chart-4: var(--chart-4);
-  --color-chart-3: var(--chart-3);
-  --color-chart-2: var(--chart-2);
-  --color-chart-1: var(--chart-1);
-  --color-ring: var(--ring);
-  --color-input: var(--input);
-  --color-border: var(--border);
-  --color-destructive: var(--destructive);
-  --color-destructive-foreground: var(--destructive-foreground);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-accent: var(--accent);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-muted: var(--muted);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-secondary: var(--secondary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-primary: var(--primary);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-popover: var(--popover);
-  --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
-  --color-info: var(--info);
-  --color-info-foreground: var(--info-foreground);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  /* Kit tokens without a shadcn name. */
+  --color-surface-sunken: var(--surface-sunken);
+  --color-surface-raised: var(--surface-raised);
+  --color-surface-selected: var(--surface-selected);
+  --color-border-strong: var(--border-strong);
+  --color-border-control: var(--border-control);
+  --color-fg-subtle: var(--fg-subtle);
+  --color-action-hover: var(--action-hover);
+  --color-brand: var(--brand);
+  --color-brand-hover: var(--brand-hover);
+  --color-brand-soft: var(--brand-soft);
+  --color-on-brand: var(--on-brand);
+  --color-running: var(--running);
+  --color-running-soft: var(--running-soft);
+  --color-attention: var(--attention);
+  --color-attention-soft: var(--attention-soft);
+  --color-attention-solid: var(--attention-solid);
+  --color-review: var(--review);
+  --color-review-soft: var(--review-soft);
+  --color-review-solid: var(--review-solid);
   --color-success: var(--success);
-  --color-success-foreground: var(--success-foreground);
-  --color-warning: var(--warning);
-  --color-warning-foreground: var(--warning-foreground);
-  --color-log: var(--log);
-  --color-log-foreground: var(--log-foreground);
-  --color-log-muted: var(--log-muted);
-  --color-log-border: var(--log-border);
-  --color-log-row: var(--log-row);
-  --color-log-agent: var(--log-agent);
-  --color-log-tool: var(--log-tool);
-  --color-log-system: var(--log-system);
-  --color-log-user: var(--log-user);
-  --color-log-ok: var(--log-ok);
-  --color-log-error: var(--log-error);
-  --color-log-mark: var(--log-mark);
-  --color-log-mark-foreground: var(--log-mark-foreground);
-  --radius-sm: calc(var(--radius) * 0.6);
-  --radius-md: calc(var(--radius) * 0.8);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) * 1.4);
-  --radius-2xl: calc(var(--radius) * 1.8);
-  --radius-3xl: calc(var(--radius) * 2.2);
-  --radius-4xl: calc(var(--radius) * 2.6);
+  --color-success-soft: var(--success-soft);
+  --color-success-solid: var(--success-solid);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-danger-solid: var(--danger-solid);
+  --color-on-danger: var(--on-danger);
+  --color-neutral-solid: var(--neutral-solid);
+
+  /* The terminal surface: the log, tool output and the web terminal, dark in both themes. */
+  --color-term-bg: var(--term-bg);
+  --color-term-row: var(--term-row);
+  --color-term-border: var(--term-border);
+  --color-term-fg: var(--term-fg);
+  --color-term-muted: var(--term-muted);
+  --color-term-agent: var(--term-agent);
+  --color-term-tool: var(--term-tool);
+  --color-term-system: var(--term-system);
+  --color-term-user: var(--term-user);
+  --color-term-ok: var(--term-ok);
+  --color-term-error: var(--term-error);
+  --color-term-mark: var(--term-mark);
+
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-chart-grid: var(--chart-grid);
+
+  /* Radius by role: xs names (chips, tags, kbd), sm controls, md containers, lg overlays, full states and counts. */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+
+  /* Elevation: cards, then menus and toasts, then dialogs, sheets and the command palette. */
+  --shadow-raised: var(--elevation-raised);
+  --shadow-popover: var(--elevation-popover);
+  --shadow-dialog: var(--elevation-dialog);
+
+  /* Motion: fast for hover and press, base for menus and toasts, slow for sheets, dialogs and expanding. */
+  --transition-duration-fast: 120ms;
+  --transition-duration-base: 180ms;
+  --transition-duration-slow: 240ms;
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --default-transition-duration: 120ms;
+  --default-transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
+
+  /* The live dot: a ring that grows and fades once per pulse period, over a solid dot. */
+  --animate-live-ping: live-ping var(--pulse-period) cubic-bezier(0, 0, 0.2, 1) infinite;
+  @keyframes live-ping {
+    0% {
+      transform: scale(1);
+      opacity: 0.55;
+    }
+    75%,
+    100% {
+      transform: scale(2.4);
+      opacity: 0;
+    }
+  }
 }
 
-/* Light: slate neutrals, blue-800 primary, amber reserved for admin and warnings. */
+/* Light. Graphite surfaces, ink for the primary action, cobalt for live agent work, amber when a person is needed. */
 :root {
-  --background: #f8fafc;
-  --foreground: #0f172a;
-  --card: #ffffff;
-  --card-foreground: #0f172a;
-  --popover: #ffffff;
-  --popover-foreground: #0f172a;
-  --primary: #1e40af;
-  --primary-foreground: #ffffff;
-  --secondary: #f1f5f9;
-  --secondary-foreground: #0f172a;
-  --muted: #f1f5f9;
-  --muted-foreground: #475569;
-  --accent: #eff6ff;
-  --accent-foreground: #1e3a8a;
-  --destructive: #b91c1c;
-  --destructive-foreground: #ffffff;
-  --info: #dbeafe;
-  --info-foreground: #1e3a8a;
-  --success: #dcfce7;
-  --success-foreground: #14532d;
-  --warning: #fef3c7;
-  --warning-foreground: #78350f;
-  --border: #e2e8f0;
-  --input: #cbd5e1;
-  --ring: #2563eb;
-  --chart-1: #2563eb;
-  --chart-2: #f59e0b;
-  --chart-3: #059669;
-  --chart-4: #7c3aed;
-  --chart-5: #64748b;
-  --radius: 0.5rem;
-  --sidebar: #ffffff;
-  --sidebar-foreground: #0f172a;
-  --sidebar-primary: #1e40af;
-  --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #eff6ff;
-  --sidebar-accent-foreground: #1e40af;
-  --sidebar-border: #e2e8f0;
-  --sidebar-ring: #2563eb;
-  /* The run log: a dark terminal surface in both themes; every colour is at least 6.9:1 on it. */
-  --log: #0f172a;
-  --log-foreground: #e2e8f0;
-  --log-muted: #94a3b8;
-  --log-border: #1e293b;
-  --log-row: #1e293b;
-  --log-agent: #93c5fd;
-  --log-tool: #fcd34d;
-  --log-system: #c4b5fd;
-  --log-user: #f9a8d4;
-  --log-ok: #86efac;
-  --log-error: #fca5a5;
-  --log-mark: #fcd34d;
-  --log-mark-foreground: #0f172a;
+  --canvas: #f5f6f8;
+  --surface: #ffffff;
+  --surface-sunken: #eef0f3;
+  --surface-raised: #ffffff;
+  --surface-hover: #f0f2f5;
+  --surface-selected: #e9edfd;
+  --border: #e2e5ea;
+  --border-strong: #d3d7de;
+  --border-control: #858c99;
+  --fg: #0e1116;
+  --fg-muted: #4b5362;
+  --fg-subtle: #646c7b;
+  --action: #0e1116;
+  --action-hover: #2a303a;
+  --on-action: #ffffff;
+  --brand: #2f4bd8;
+  --brand-hover: #263fba;
+  --brand-soft: #ebeefd;
+  --on-brand: #ffffff;
+  --attention: #8a4b00;
+  --attention-soft: #fdf0da;
+  --attention-solid: #bc7800;
+  --review: #6136c2;
+  --review-soft: #f1ecfd;
+  --review-solid: #7c4de8;
+  --success: #11713d;
+  --success-soft: #e4f4ea;
+  --success-solid: #1e9e58;
+  --danger: #b3261e;
+  --danger-soft: #fcebea;
+  --danger-solid: #d93a2f;
+  --on-danger: #ffffff;
+  --neutral-solid: #858c99;
+  --chart-3: #0f8c80;
+  --elevation-raised: 0 1px 2px rgba(14, 17, 22, 0.05);
+  --elevation-popover: 0 1px 3px rgba(14, 17, 22, 0.08), 0 8px 24px rgba(14, 17, 22, 0.1);
+  --elevation-dialog: 0 2px 6px rgba(14, 17, 22, 0.08), 0 24px 48px rgba(14, 17, 22, 0.18);
+
+  /* The terminal surface is the same in both themes. */
+  --term-bg: #0b0d11;
+  --term-row: #141820;
+  --term-border: #1e222a;
+  --term-fg: #d8dde5;
+  --term-muted: #8c95a4;
+  --term-agent: #9fb0ff;
+  --term-tool: #f2c46d;
+  --term-system: #bba6ff;
+  --term-user: #f29bc4;
+  --term-ok: #7adfa4;
+  --term-error: #ff8f86;
+  --term-mark: #f2c46d;
+
+  /* Aliases, resolved against the theme in force. */
+  --focus-ring: var(--brand);
+  --running: var(--brand);
+  --running-soft: var(--brand-soft);
+  --chart-1: var(--brand);
+  --chart-2: var(--attention-solid);
+  --chart-4: var(--review-solid);
+  --chart-5: var(--neutral-solid);
+  --chart-grid: var(--border);
+
+  /* shadcn's variables, mapped onto the kit. */
+  --background: var(--canvas);
+  --foreground: var(--fg);
+  --card: var(--surface);
+  --card-foreground: var(--fg);
+  --popover: var(--surface-raised);
+  --popover-foreground: var(--fg);
+  --primary: var(--action);
+  --primary-foreground: var(--on-action);
+  --secondary: var(--surface-sunken);
+  --secondary-foreground: var(--fg);
+  --muted: var(--surface-sunken);
+  --muted-foreground: var(--fg-muted);
+  --accent: var(--surface-hover);
+  --accent-foreground: var(--fg);
+  --destructive: var(--danger-solid);
+  --input: var(--border-control);
+  --ring: var(--focus-ring);
+  --sidebar: var(--surface);
+  --sidebar-foreground: var(--fg);
+  --sidebar-primary: var(--action);
+  --sidebar-primary-foreground: var(--on-action);
+  --sidebar-accent: var(--surface-selected);
+  --sidebar-accent-foreground: var(--fg);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--focus-ring);
+
+  --pulse-period: 1600ms;
   color-scheme: light;
 }
 
-/* Dark: slate-950 canvas, slate-900 surfaces, blue-400 primary. */
+/* Dark. surface-raised is lighter than surface, so overlays separate without heavy shadows. */
 .dark {
-  --background: #020617;
-  --foreground: #f8fafc;
-  --card: #0f172a;
-  --card-foreground: #f8fafc;
-  --popover: #0f172a;
-  --popover-foreground: #f8fafc;
-  --primary: #60a5fa;
-  --primary-foreground: #020617;
-  --secondary: #1e293b;
-  --secondary-foreground: #f8fafc;
-  --muted: #1e293b;
-  --muted-foreground: #94a3b8;
-  --accent: #172554;
-  --accent-foreground: #dbeafe;
-  --destructive: #f87171;
-  --destructive-foreground: #020617;
-  --info: #172554;
-  --info-foreground: #bfdbfe;
-  --success: #052e16;
-  --success-foreground: #bbf7d0;
-  --warning: #422006;
-  --warning-foreground: #fde68a;
-  --border: #1e293b;
-  --input: #334155;
-  --ring: #60a5fa;
-  --chart-1: #60a5fa;
-  --chart-2: #fbbf24;
-  --chart-3: #34d399;
-  --chart-4: #a78bfa;
-  --chart-5: #94a3b8;
-  --sidebar: #0f172a;
-  --sidebar-foreground: #f8fafc;
-  --sidebar-primary: #60a5fa;
-  --sidebar-primary-foreground: #020617;
-  --sidebar-accent: #1e293b;
-  --sidebar-accent-foreground: #f8fafc;
-  --sidebar-border: #1e293b;
-  --sidebar-ring: #60a5fa;
-  --log: #020617;
-  --log-foreground: #e2e8f0;
-  --log-muted: #94a3b8;
-  --log-border: #1e293b;
-  --log-row: #0f172a;
-  --log-agent: #93c5fd;
-  --log-tool: #fcd34d;
-  --log-system: #c4b5fd;
-  --log-user: #f9a8d4;
-  --log-ok: #86efac;
-  --log-error: #fca5a5;
-  --log-mark: #fcd34d;
-  --log-mark-foreground: #0f172a;
+  --canvas: #0a0c10;
+  --surface: #111419;
+  --surface-sunken: #0c0e12;
+  --surface-raised: #181b22;
+  --surface-hover: #1a1e26;
+  --surface-selected: #1a2246;
+  --border: #22262f;
+  --border-strong: #2e333d;
+  --border-control: #626a7a;
+  --fg: #e9ecf1;
+  --fg-muted: #a4acba;
+  --fg-subtle: #868f9e;
+  --action: #e9ecf1;
+  --action-hover: #c9cfd9;
+  --on-action: #0a0c10;
+  --brand: #8c9dff;
+  --brand-hover: #a3b0ff;
+  --brand-soft: #19204a;
+  --on-brand: #0a0c10;
+  --attention: #f2b54a;
+  --attention-soft: #2d2210;
+  --attention-solid: #e9a23b;
+  --review: #b9a0ff;
+  --review-soft: #241b3e;
+  --review-solid: #9d7df6;
+  --success: #5fd394;
+  --success-soft: #0f2a1c;
+  --success-solid: #34b86e;
+  --danger: #ff8178;
+  --danger-soft: #33161a;
+  --danger-solid: #ef5a4e;
+  --on-danger: #0a0c10;
+  --neutral-solid: #6b7383;
+  --chart-3: #2dc2b0;
+  --elevation-raised: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --elevation-popover: 0 0 0 1px rgba(255, 255, 255, 0.04), 0 8px 24px rgba(0, 0, 0, 0.55);
+  --elevation-dialog: 0 0 0 1px rgba(255, 255, 255, 0.05), 0 24px 64px rgba(0, 0, 0, 0.7);
   color-scheme: dark;
 }
 
@@ -195,17 +271,21 @@
   }
   body {
     @apply bg-background text-foreground antialiased;
-    font-feature-settings: "cv11", "ss01";
   }
   button:not(:disabled),
   [role="button"]:not(:disabled) {
     cursor: pointer;
+  }
+  /* Lucide icons at the kit's stroke, 1.75. */
+  svg.lucide {
+    stroke-width: 1.75;
   }
   /* One visible focus style for every interactive element reached by keyboard. */
   :focus-visible {
     outline: 2px solid var(--ring);
     outline-offset: 2px;
   }
+  /* Reduced motion: every animation and transition ends at once, and the live dot stays solid. */
   @media (prefers-reduced-motion: reduce) {
     *,
     *::before,
@@ -215,39 +295,45 @@
       scroll-behavior: auto !important;
       transition-duration: 0.01ms !important;
     }
+    .animate-live-ping {
+      animation: none !important;
+    }
   }
 }
 
-/* The web terminal of a run (wterm, components/runs/terminal-view.tsx): the log's terminal surface in both themes,
-   JetBrains Mono, and 16 ANSI colours that keep at least 4.5:1 on it. TUIs set their own colours past these. */
+/* The web terminal of a run (wterm, components/runs/terminal-view.tsx): the terminal surface of the kit in both themes,
+   IBM Plex Mono, and 16 ANSI colours drawn from the term-* tokens. Colours 1 to 15 keep at least 6.4:1 on term-bg;
+   colour 0 (black) is a ground, one step above term-bg. TUIs set their own colours past these. */
 .hub-terminal {
   height: 100%;
-  background: var(--log);
+  background: var(--term-bg);
 }
 .wterm.hub-terminal {
-  --term-bg: var(--log);
-  --term-fg: var(--log-foreground);
-  --term-cursor: var(--log-foreground);
-  --term-font-family: var(--font-jetbrains-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+  /* wterm reads --term-bg and --term-fg, the kit's own names; inherit takes the kit's values back over wterm's
+     defaults on its root element. */
+  --term-bg: inherit;
+  --term-fg: inherit;
+  --term-cursor: var(--term-fg);
+  --term-font-family: var(--font-plex-mono), ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   --term-font-size: 13px;
   --term-row-height: 18px;
-  --term-selection-bg: rgb(96 165 250 / 35%);
-  --term-color-0: #1e293b;
-  --term-color-1: #f87171;
-  --term-color-2: #4ade80;
-  --term-color-3: #facc15;
-  --term-color-4: #60a5fa;
-  --term-color-5: #c084fc;
-  --term-color-6: #22d3ee;
-  --term-color-7: #cbd5e1;
-  --term-color-8: #94a3b8;
-  --term-color-9: #fca5a5;
-  --term-color-10: #86efac;
-  --term-color-11: #fde047;
-  --term-color-12: #93c5fd;
-  --term-color-13: #d8b4fe;
-  --term-color-14: #67e8f9;
-  --term-color-15: #f8fafc;
+  --term-selection-bg: rgb(140 157 255 / 35%);
+  --term-color-0: #1e222a;
+  --term-color-1: #ff8f86;
+  --term-color-2: #7adfa4;
+  --term-color-3: #f2c46d;
+  --term-color-4: #9fb0ff;
+  --term-color-5: #bba6ff;
+  --term-color-6: #5fd3c4;
+  --term-color-7: #d8dde5;
+  --term-color-8: #8c95a4;
+  --term-color-9: #ffb0aa;
+  --term-color-10: #a3ecc1;
+  --term-color-11: #f7d898;
+  --term-color-12: #c0cbff;
+  --term-color-13: #d4c7ff;
+  --term-color-14: #93e6db;
+  --term-color-15: #f5f6f8;
   padding: 8px 12px;
   border-radius: 0;
   box-shadow: none;
@@ -258,5 +344,5 @@
   outline-offset: -2px;
 }
 .wterm.hub-terminal ::selection {
-  background: rgb(96 165 250 / 35%);
+  background: rgb(140 157 255 / 35%);
 }

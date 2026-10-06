@@ -94,8 +94,8 @@ export function UserMenu() {
               aria-label={t("trigger", { login: me.login })}
               className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
             >
-              <Avatar className="size-8 rounded-lg">
-                <AvatarFallback className="rounded-lg bg-secondary font-mono text-xs font-semibold">
+              <Avatar className="size-8 rounded-md">
+                <AvatarFallback className="rounded-md bg-secondary font-mono text-xs font-medium">
                   {initials(me.login)}
                 </AvatarFallback>
               </Avatar>
@@ -109,7 +109,7 @@ export function UserMenu() {
             </SidebarMenuButton>
           </DropdownMenuTrigger>
           <DropdownMenuContent
-            className="w-(--radix-dropdown-menu-trigger-width) min-w-64 rounded-lg"
+            className="w-(--radix-dropdown-menu-trigger-width) min-w-64 rounded-md"
             side={isMobile ? "top" : "right"}
             align="end"
             sideOffset={4}
@@ -188,7 +188,7 @@ export function UserMenu() {
               {pending ? t("loggingOut") : t("logout")}
             </DropdownMenuItem>
             {failed ? (
-              <p role="alert" className="flex items-start gap-2 px-2 py-1.5 text-xs text-destructive">
+              <p role="alert" className="flex items-start gap-2 px-2 py-1.5 text-xs text-danger">
                 <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
                 {t("logoutFailed")}
               </p>

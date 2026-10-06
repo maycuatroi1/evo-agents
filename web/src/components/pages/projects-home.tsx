@@ -32,7 +32,7 @@ function ProjectsTable({ projects }: { projects: Project[] }) {
         cell: (info) => (
           <Link
             href={projectHref(info.getValue())}
-            className="font-medium text-primary underline-offset-4 hover:underline"
+            className="font-medium text-brand underline-offset-4 hover:underline"
             aria-label={t("open", { name: info.getValue() })}
           >
             {info.getValue()}

@@ -6,7 +6,7 @@ import type { ReactNode } from "react";
 import { isObject, text } from "@/lib/plans";
 import { cn } from "@/lib/utils";
 
-/** Mono text that is data (commands, paths, YAML): JetBrains Mono's ligatures would draw "->" or "|-" as glyphs. */
+/** Mono text that is data (commands, paths, YAML): ligatures stay off, so "->" or "|-" read exactly as typed. */
 export const VERBATIM_MONO = "font-mono [font-variant-ligatures:none]";
 
 /**
@@ -32,7 +32,7 @@ export function Verbatim({ children, testId, className }: { children: string; te
     <pre
       data-testid={testId}
       className={cn(
-        "max-w-full rounded-lg border bg-muted/40 px-3 py-2.5 font-mono text-[13px] leading-relaxed whitespace-pre-wrap [font-variant-ligatures:none] [overflow-wrap:anywhere]",
+        "max-w-full rounded-md border bg-muted/40 px-3 py-2.5 font-mono text-[13px] leading-relaxed whitespace-pre-wrap [font-variant-ligatures:none] [overflow-wrap:anywhere]",
         className,
       )}
     >
@@ -95,7 +95,7 @@ export function ValueView({
     return (
       <ol className="flex flex-col gap-2">
         {value.map((item, index) => (
-          <li key={index} className="rounded-lg border bg-background/60 px-3 py-2.5">
+          <li key={index} className="rounded-md border bg-background/60 px-3 py-2.5">
             <ValueView value={item} depth={depth + 1} order={order} />
           </li>
         ))}

@@ -68,7 +68,7 @@ export function AuditTable({ rows, caption, testId = "audit-table" }: { rows: Au
           const actor = info.getValue();
           if (!actor) return <span className="text-muted-foreground italic">{t("hub")}</span>;
           return (
-            <Link href={memberHref(actor)} className="font-medium text-primary underline-offset-4 hover:underline" data-actor={actor}>
+            <Link href={memberHref(actor)} className="font-medium text-brand underline-offset-4 hover:underline" data-actor={actor}>
               {actor}
             </Link>
           );
@@ -86,7 +86,7 @@ export function AuditTable({ rows, caption, testId = "audit-table" }: { rows: Au
           const project = info.getValue();
           if (!project) return <span className="text-muted-foreground">{t("noProject")}</span>;
           return (
-            <Link href={projectHref(project)} className="font-mono text-xs text-primary underline-offset-4 hover:underline">
+            <Link href={projectHref(project)} className="font-mono text-xs text-brand underline-offset-4 hover:underline">
               {project}
             </Link>
           );

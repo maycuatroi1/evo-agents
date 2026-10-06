@@ -90,7 +90,7 @@ export function RunComposer({ run }: { run: Pick<Run, "project" | "id"> }) {
         </Button>
       </div>
       {problem ? (
-        <p id={`${ids}-problem`} className="text-xs font-medium text-destructive" data-testid="run-composer-problem">
+        <p id={`${ids}-problem`} className="text-xs font-medium text-danger" data-testid="run-composer-problem">
           {problem === "blank" ? t("blank") : t("long", { max: format.number(MAX_MESSAGE_BYTES) })}
         </p>
       ) : null}
@@ -101,7 +101,7 @@ export function RunComposer({ run }: { run: Pick<Run, "project" | "id"> }) {
         </p>
         <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
           {/* Always in the page, so a sent message is announced. */}
-          <span aria-live="polite" className="font-medium text-success-foreground" data-testid="run-composer-sent">
+          <span aria-live="polite" className="font-medium text-success" data-testid="run-composer-sent">
             {sent ? (
               <span className="inline-flex items-center gap-1.5">
                 <CircleCheck className="size-3.5 shrink-0" aria-hidden="true" />
@@ -110,7 +110,7 @@ export function RunComposer({ run }: { run: Pick<Run, "project" | "id"> }) {
             ) : null}
           </span>
           {bytes >= MAX_MESSAGE_BYTES * COUNT_FROM ? (
-            <span className={cn("tabular-nums", long && "font-medium text-destructive")}>
+            <span className={cn("tabular-nums", long && "font-medium text-danger")}>
               {t("bytes", { count: format.number(bytes), max: format.number(MAX_MESSAGE_BYTES) })}
             </span>
           ) : null}

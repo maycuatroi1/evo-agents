@@ -22,7 +22,7 @@ import type { KgNode, KindCount, NodeSearch } from "@/lib/kg/types";
 import { KindBadge, KindShape, LabelBadge } from "./badges";
 
 const FIELD =
-  "h-9 w-full min-w-0 rounded-lg border border-input bg-transparent px-2.5 text-sm transition-colors outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30";
+  "h-9 w-full min-w-0 rounded-md border border-input bg-transparent px-2.5 text-sm transition-colors outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30";
 
 /**
  * A GET form: the query lives in the URL (`?q=&kind=`), so a search can be shared, reloaded and walked back, and it
@@ -101,7 +101,7 @@ export function KindSummary({ kinds, project }: { kinds: KindCount[]; project: s
       <ul className="flex flex-wrap gap-2" aria-label={t("byKind")}>
         {kinds.map((k) => (
           <li key={k.kind}>
-            <span className="inline-flex items-center gap-1.5 rounded-lg border bg-card px-2.5 py-1 text-xs">
+            <span className="inline-flex items-center gap-1.5 rounded-md border bg-card px-2.5 py-1 text-xs">
               <KindShape kind={k.kind} />
               <span className="font-medium">{k.kind}</span>
               <span className="text-muted-foreground tabular-nums">{k.count}</span>
@@ -112,7 +112,7 @@ export function KindSummary({ kinds, project }: { kinds: KindCount[]; project: s
       {kinds.length === 0 ? (
         <p className="text-sm text-muted-foreground">
           {t("nothingVisible")}{" "}
-          <Link href={projectHref(project)} className="text-primary underline-offset-4 hover:underline">
+          <Link href={projectHref(project)} className="text-brand underline-offset-4 hover:underline">
             {t("seeLevels")}
           </Link>
         </p>
@@ -136,7 +136,7 @@ function ResultsTable({ project, results, caption }: { project: string; results:
           <div className="flex min-w-0 flex-col gap-0.5">
             <Link
               href={nodeHref(project, info.row.original.id)}
-              className="font-medium break-words whitespace-normal text-primary underline-offset-4 hover:underline"
+              className="font-medium break-words whitespace-normal text-brand underline-offset-4 hover:underline"
               data-testid="kg-result-link"
               data-node-id={info.row.original.id}
             >

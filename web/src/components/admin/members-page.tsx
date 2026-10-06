@@ -65,7 +65,7 @@ function MembersTable({ users, onGrant }: { users: AdminUser[]; onGrant: (login:
             <div className="flex flex-col items-start gap-1.5">
               <Link
                 href={memberHref(user.login)}
-                className="font-medium break-all text-primary underline-offset-4 hover:underline"
+                className="font-medium break-all text-brand underline-offset-4 hover:underline"
                 data-testid={`member-link-${user.login}`}
               >
                 {user.login}
@@ -92,7 +92,7 @@ function MembersTable({ users, onGrant }: { users: AdminUser[]; onGrant: (login:
         cell: (info) => (
           <Link
             href={tokensHref({ login: info.row.original.login })}
-            className="tabular-nums text-primary underline-offset-4 hover:underline"
+            className="tabular-nums text-brand underline-offset-4 hover:underline"
           >
             {info.getValue()}
           </Link>
@@ -197,7 +197,7 @@ export function AdminMembers({ initialError }: { initialError: ApiErrorInfo | nu
               <div
                 role="search"
                 aria-label={t("title")}
-                className="grid grid-cols-1 gap-4 rounded-xl border bg-card p-4 sm:grid-cols-2"
+                className="grid grid-cols-1 gap-4 rounded-md border bg-card shadow-raised p-4 sm:grid-cols-2"
                 data-testid="member-filters"
               >
                 <div className="flex min-w-0 flex-col gap-1.5">

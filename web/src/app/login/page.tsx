@@ -51,23 +51,23 @@ export default async function LoginPage() {
 
   return (
     <main className="grid min-h-svh lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
-      <section className="hidden flex-col justify-between bg-primary p-10 text-primary-foreground lg:flex">
+      <section className="hidden flex-col justify-between border-r bg-surface-sunken p-10 lg:flex">
         <div className="flex items-center gap-3">
-          <BrandMark className="[&_rect]:fill-primary-foreground/15" />
+          <BrandMark />
           <span className="text-lg font-semibold tracking-tight">{tApp("name")}</span>
         </div>
         <div className="flex max-w-md flex-col gap-6">
           <p className="text-2xl leading-snug font-semibold text-balance">{tApp("description")}</p>
           <ul className="grid grid-cols-2 gap-3 text-sm">
             {FEATURES.map(({ icon: Icon, label }) => (
-              <li key={label} className="flex items-center gap-2 rounded-lg bg-primary-foreground/10 px-3 py-2.5">
-                <Icon className="size-4 shrink-0" aria-hidden="true" />
+              <li key={label} className="flex items-center gap-2 rounded-sm border bg-card px-3 py-2.5 shadow-raised">
+                <Icon className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
                 {label}
               </li>
             ))}
           </ul>
         </div>
-        <p className="text-sm opacity-90">{t("access")}</p>
+        <p className="text-sm text-muted-foreground">{t("access")}</p>
       </section>
 
       <section className="flex items-center justify-center px-4 py-12 sm:px-8">

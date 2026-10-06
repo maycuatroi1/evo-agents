@@ -40,7 +40,7 @@ function CompareForm({ project, planId, revisions, pair }: { project: string; pl
   const t = useTranslations("plans.history");
   const fromId = useId();
   const toId = useId();
-  const select = "h-10 w-full rounded-lg border border-input bg-background px-2.5 font-mono text-sm";
+  const select = "h-10 w-full rounded-md border border-input bg-background px-2.5 font-mono text-sm";
   const options = revisions.map((revision) => (
     <option key={revision.revision} value={revision.revision}>
       {t("option", { revision: revision.revision, login: revision.actor })}
@@ -49,7 +49,7 @@ function CompareForm({ project, planId, revisions, pair }: { project: string; pl
   return (
     <Form
       action={revisionsHref(project, planId)}
-      className="flex flex-col gap-3 rounded-xl border bg-card p-4 sm:flex-row sm:items-end"
+      className="flex flex-col gap-3 rounded-md border bg-card shadow-raised p-4 sm:flex-row sm:items-end"
       aria-label={t("compareLabel")}
       data-testid="compare-form"
     >
@@ -81,7 +81,7 @@ function CompareForm({ project, planId, revisions, pair }: { project: string; pl
 function RevisionMeta({ revision, label }: { revision: PlanRevision; label: string }) {
   const t = useTranslations("plans.history");
   return (
-    <div className="flex min-w-0 flex-1 flex-col gap-1 rounded-lg border bg-card px-3 py-2.5">
+    <div className="flex min-w-0 flex-1 flex-col gap-1 rounded-md border bg-card px-3 py-2.5">
       <span className="text-xs text-muted-foreground">{label}</span>
       <span className="font-mono text-sm font-medium">{t("revision", { revision: revision.revision })}</span>
       <span className="text-xs text-muted-foreground">
@@ -102,11 +102,11 @@ function Comparison({ project, planId, revisions, pair }: { project: string; pla
         {same ? t("compareTitle") : t("diffTitle", { from: pair.from, to: pair.to })}
       </h2>
       {revisions.length < 2 ? (
-        <p className="rounded-lg border border-dashed bg-card px-4 py-6 text-center text-sm text-muted-foreground">
+        <p className="rounded-md border border-dashed bg-card px-4 py-6 text-center text-sm text-muted-foreground">
           {t("onlyOne")}
         </p>
       ) : same ? (
-        <p className="rounded-lg border border-dashed bg-card px-4 py-6 text-center text-sm text-muted-foreground" data-testid="diff-same">
+        <p className="rounded-md border border-dashed bg-card px-4 py-6 text-center text-sm text-muted-foreground" data-testid="diff-same">
           {t("sameRevision")}
         </p>
       ) : (
@@ -149,8 +149,8 @@ function HistoryList({ project, planId, revisions, pair }: { project: string; pl
             <li
               key={revision.revision}
               className={cn(
-                "flex flex-col gap-1 rounded-lg border bg-card px-3 py-2.5",
-                current ? "border-primary/50 bg-accent/60" : null,
+                "flex flex-col gap-1 rounded-md border bg-card px-3 py-2.5",
+                current ? "border-brand/50 bg-surface-selected" : null,
               )}
               aria-current={current ? "true" : undefined}
               data-testid="revision-item"
@@ -176,7 +176,7 @@ function HistoryList({ project, planId, revisions, pair }: { project: string; pl
                 ) : (
                   <Link
                     href={revisionsHref(project, planId, { from: previous, to: revision.revision })}
-                    className="w-fit rounded text-xs font-medium text-primary underline-offset-4 hover:underline"
+                    className="w-fit rounded text-xs font-medium text-brand underline-offset-4 hover:underline"
                     data-testid="revision-compare"
                   >
                     {t("compareWithPrevious", { previous, revision: revision.revision })}

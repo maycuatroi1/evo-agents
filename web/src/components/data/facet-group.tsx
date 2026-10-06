@@ -51,7 +51,7 @@ export function FacetGroup({ label, options, selected, onSelect, countLabel, tes
                 "inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-full border px-3 text-xs transition-colors",
                 "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
                 pressed
-                  ? "border-primary bg-accent font-semibold text-accent-foreground"
+                  ? "border-brand bg-surface-selected font-semibold text-foreground"
                   : "border-border bg-card text-foreground hover:bg-muted",
               )}
             >

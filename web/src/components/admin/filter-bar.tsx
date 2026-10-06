@@ -42,7 +42,7 @@ export function FilterBar({
     onApply(new FormData(event.currentTarget));
   };
   return (
-    <form role="search" aria-label={label} onSubmit={submit} noValidate className="rounded-xl border bg-card p-4" data-testid={testId}>
+    <form role="search" aria-label={label} onSubmit={submit} noValidate className="rounded-md border bg-card shadow-raised p-4" data-testid={testId}>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-[repeat(auto-fit,minmax(11rem,1fr))]">{children}</div>
       {note ? <div className="mt-3 text-xs text-muted-foreground">{note}</div> : null}
       <div className="mt-4 flex flex-wrap items-end gap-2 border-t pt-4">
@@ -87,7 +87,7 @@ export function FilterField({
         </p>
       ) : null}
       {error ? (
-        <p id={`${id}-error`} className="text-xs font-medium text-destructive" role="alert">
+        <p id={`${id}-error`} className="text-xs font-medium text-danger" role="alert">
           {error}
         </p>
       ) : null}

@@ -60,7 +60,7 @@ export function ProjectSwitcher() {
             >
               <span
                 aria-hidden="true"
-                className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary font-mono text-xs font-semibold text-sidebar-primary-foreground"
+                className="flex aspect-square size-8 items-center justify-center rounded-md bg-sidebar-primary font-mono text-xs font-medium text-sidebar-primary-foreground"
               >
                 {selected ? initials(selected.name) : <FolderGit2 className="size-4" />}
               </span>
@@ -74,7 +74,7 @@ export function ProjectSwitcher() {
             </SidebarMenuButton>
           </DropdownMenuTrigger>
           <DropdownMenuContent
-            className="w-(--radix-dropdown-menu-trigger-width) min-w-64 rounded-lg"
+            className="w-(--radix-dropdown-menu-trigger-width) min-w-64 rounded-md"
             align="start"
             side={isMobile ? "bottom" : "right"}
             sideOffset={4}

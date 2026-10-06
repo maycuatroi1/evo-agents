@@ -98,7 +98,7 @@ function GrantsTable({
         header: () => t("columns.project"),
         sortFn: "alphanumeric",
         cell: (info) => (
-          <Link href={projectHref(info.getValue())} className="font-mono text-sm font-medium text-primary underline-offset-4 hover:underline">
+          <Link href={projectHref(info.getValue())} className="font-mono text-sm font-medium text-brand underline-offset-4 hover:underline">
             {info.getValue()}
           </Link>
         ),
@@ -125,7 +125,7 @@ function GrantsTable({
         cell: (info) => {
           const by = info.getValue();
           return by ? (
-            <Link href={memberHref(by)} className="text-primary underline-offset-4 hover:underline">
+            <Link href={memberHref(by)} className="text-brand underline-offset-4 hover:underline">
               {by}
             </Link>
           ) : (
@@ -161,7 +161,7 @@ function GrantsTable({
                 type="button"
                 variant="outline"
                 size="lg"
-                className="text-destructive hover:text-destructive"
+                className="text-danger hover:text-danger"
                 aria-label={t("revokeLabel", names)}
                 onClick={() => onRevoke(grant)}
                 data-testid={`revoke-grant-${grant.project}`}

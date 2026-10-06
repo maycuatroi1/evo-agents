@@ -44,7 +44,7 @@ export function InboxBell() {
         aria-current={current ? "page" : undefined}
         title={label}
         className={cn(
-          "relative inline-flex size-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors",
+          "relative inline-flex size-9 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors",
           "hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
           current && "bg-accent text-accent-foreground",
           unread > 0 && "text-foreground",

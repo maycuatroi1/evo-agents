@@ -199,7 +199,7 @@ function OldRevision({
   if (state.status === "loading") {
     return (
       <LoadingState>
-        <Skeleton className="h-64 w-full rounded-xl" />
+        <Skeleton className="h-64 w-full rounded-md" />
       </LoadingState>
     );
   }
@@ -253,7 +253,7 @@ function Content({ body }: { body: string }) {
         <CardTitle>
           <h2>{t("content")}</h2>
         </CardTitle>
-        <div role="group" aria-label={t("view")} className="flex gap-1 rounded-lg border p-0.5">
+        <div role="group" aria-label={t("view")} className="flex gap-1 rounded-md border p-0.5">
           <Button
             type="button"
             size="sm"
@@ -283,7 +283,7 @@ function Content({ body }: { body: string }) {
             tabIndex={0}
             aria-label={t("raw")}
             className={cn(
-              "max-h-[70vh] overflow-auto rounded-lg border bg-muted/40 p-3 font-mono text-xs leading-relaxed",
+              "max-h-[70vh] overflow-auto rounded-md border bg-muted/40 p-3 font-mono text-xs leading-relaxed",
               "whitespace-pre-wrap [overflow-wrap:anywhere]",
             )}
             data-testid="memory-raw"
@@ -293,10 +293,10 @@ function Content({ body }: { body: string }) {
         ) : (
           <>
             {frontmatter !== null ? (
-              <details className="group rounded-lg border bg-muted/30 text-xs">
+              <details className="group rounded-md border bg-muted/30 text-xs">
                 <summary
                   className={cn(
-                    "cursor-pointer rounded-lg px-3 py-2 font-medium text-muted-foreground select-none",
+                    "cursor-pointer rounded-md px-3 py-2 font-medium text-muted-foreground select-none",
                     "hover:text-foreground",
                   )}
                 >

@@ -28,7 +28,7 @@ function TilesSkeleton() {
   return (
     <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
       {Array.from({ length: 4 }, (_, i) => (
-        <Skeleton key={i} className="h-24 w-full rounded-xl" />
+        <Skeleton key={i} className="h-24 w-full rounded-md" />
       ))}
     </div>
   );
@@ -180,7 +180,7 @@ export function KgOverviewSkeleton() {
         <Skeleton className="h-7 w-64" />
       </div>
       <TilesSkeleton />
-      <Skeleton className="h-40 w-full rounded-xl" />
+      <Skeleton className="h-40 w-full rounded-md" />
       <TableSkeleton rows={4} />
     </div>
   );

@@ -23,7 +23,7 @@ export function ReadOnlyNotice({ className }: { className?: string }) {
       aria-label={t("readOnly.label")}
       data-testid="plans-read-only"
       className={cn(
-        "flex items-start gap-2.5 rounded-lg border border-dashed bg-card px-3 py-2.5 text-sm text-muted-foreground",
+        "flex items-start gap-2.5 rounded-md border border-dashed bg-card px-3 py-2.5 text-sm text-muted-foreground",
         className,
       )}
     >
@@ -41,7 +41,7 @@ export function BackLink({ href, children }: { href: string; children: ReactNode
   return (
     <Link
       href={href as "/"}
-      className="inline-flex w-fit items-center gap-1.5 rounded-md text-sm text-primary underline-offset-4 hover:underline"
+      className="inline-flex w-fit items-center gap-1.5 rounded-sm text-sm text-brand underline-offset-4 hover:underline"
     >
       <ArrowLeft className="size-4" aria-hidden="true" />
       {children}
@@ -70,7 +70,7 @@ function PlanTabs({ project, planId, current }: { project: string; planId: strin
             className={cn(
               "inline-flex min-h-11 items-center gap-2 border-b-2 px-3 text-sm font-medium whitespace-nowrap transition-colors",
               active
-                ? "border-primary text-foreground"
+                ? "border-brand text-foreground"
                 : "border-transparent text-muted-foreground hover:border-input hover:text-foreground",
             )}
           >

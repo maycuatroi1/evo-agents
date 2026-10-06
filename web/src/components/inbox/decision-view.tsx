@@ -59,7 +59,7 @@ function Fact({ label, children, testId }: { label: string; children: ReactNode;
   );
 }
 
-const LINK = "text-primary underline-offset-4 hover:underline";
+const LINK = "text-brand underline-offset-4 hover:underline";
 /** A link standing alone in the facts: at least 24 px tall, the target size WCAG 2.2 asks of it. */
 const FACT_LINK = cn(LINK, "inline-flex min-h-6 items-center");
 
@@ -120,12 +120,12 @@ function OptionList({ decision, level }: { decision: Decision; level: HeadingLev
           return (
             <li
               key={option.key}
-              className={cn("flex min-w-0 items-start gap-2.5 rounded-lg border px-3 py-2", chosen ? "border-success-foreground/30 bg-success/60" : "bg-card")}
+              className={cn("flex min-w-0 items-start gap-2.5 rounded-md border px-3 py-2", chosen ? "border-success/30 bg-success-soft/60" : "bg-card")}
               data-testid="decision-option"
               data-key={option.key}
               data-chosen={chosen || undefined}
             >
-              {chosen ? <CircleCheck className="mt-0.5 size-4 shrink-0 text-success-foreground" aria-hidden="true" /> : <span className="mt-0.5 size-4 shrink-0" aria-hidden="true" />}
+              {chosen ? <CircleCheck className="mt-0.5 size-4 shrink-0 text-success" aria-hidden="true" /> : <span className="mt-0.5 size-4 shrink-0" aria-hidden="true" />}
               <OptionText option={option} />
               <span className="flex shrink-0 flex-col items-end gap-1">
                 {option.recommended ? <RecommendedBadge /> : null}
@@ -164,7 +164,7 @@ function AnswerSummary({ decision, level }: { decision: Decision; level: Heading
   return (
     <section
       aria-labelledby={`${ids}-answer`}
-      className="flex flex-col gap-2 rounded-lg border border-success-foreground/20 bg-success/40 px-3 py-2.5"
+      className="flex flex-col gap-2 rounded-md border border-success/20 bg-success-soft/40 px-3 py-2.5"
       data-testid="decision-answer"
     >
       <SubHeading level={level} id={`${ids}-answer`}>
@@ -323,13 +323,13 @@ export function AnswerForm({ decision, onNotice, onAnswered }: { decision: Decis
           data-testid="decision-text"
         />
         {bytes >= MAX_ANSWER_BYTES * COUNT_FROM ? (
-          <span className={cn("self-end text-xs tabular-nums text-muted-foreground", long && "font-medium text-destructive")} data-testid="decision-bytes">
+          <span className={cn("self-end text-xs tabular-nums text-muted-foreground", long && "font-medium text-danger")} data-testid="decision-bytes">
             {t("bytes", { count: format.number(bytes), max: format.number(MAX_ANSWER_BYTES) })}
           </span>
         ) : null}
       </div>
       {problem ? (
-        <p id={problemId} className="text-sm font-medium text-destructive" role="alert" data-testid="decision-problem">
+        <p id={problemId} className="text-sm font-medium text-danger" role="alert" data-testid="decision-problem">
           {problem === "empty" ? t("empty") : t("long", { max: format.number(MAX_ANSWER_BYTES) })}
         </p>
       ) : null}
@@ -352,7 +352,7 @@ function NoFormNote({ decision, access }: { decision: Decision; access: "notOwne
   const t = useTranslations("inbox.decision");
   const tState = useTranslations("runs.state");
   return (
-    <p className="flex items-start gap-2 rounded-lg border border-dashed px-3 py-2.5 text-sm text-pretty text-muted-foreground" data-testid="decision-locked" data-reason={access}>
+    <p className="flex items-start gap-2 rounded-md border border-dashed px-3 py-2.5 text-sm text-pretty text-muted-foreground" data-testid="decision-locked" data-reason={access}>
       <Lock className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
       <span>
         {access === "notOwner"
@@ -367,7 +367,7 @@ function ClosedNote({ decision }: { decision: Decision }) {
   const t = useTranslations("inbox.decision");
   if (decision.state !== "expired" && decision.state !== "cancelled") return null;
   return (
-    <p className="flex items-start gap-2 rounded-lg border border-dashed px-3 py-2.5 text-sm text-pretty text-muted-foreground" data-testid="decision-closed">
+    <p className="flex items-start gap-2 rounded-md border border-dashed px-3 py-2.5 text-sm text-pretty text-muted-foreground" data-testid="decision-closed">
       <Lock className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
       <span>{decision.state === "expired" ? t("expired", { run: decision.run_id }) : t("cancelled", { run: decision.run_id })}</span>
     </p>
@@ -436,7 +436,7 @@ export function DecisionView({
           <SubHeading level={level} id={`${ids}-context`}>
             {t("context")}
           </SubHeading>
-          <div className="rounded-lg border bg-muted/30 px-3 py-2.5">
+          <div className="rounded-md border bg-muted/30 px-3 py-2.5">
             <SafeMarkdown testId="decision-context-markdown">{decision.context}</SafeMarkdown>
           </div>
         </section>

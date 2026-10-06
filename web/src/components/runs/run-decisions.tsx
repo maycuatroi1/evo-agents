@@ -53,12 +53,12 @@ export function RunDecisions({ run, owner }: { run: Run; owner: boolean }) {
         ? t("titleYou")
         : t("titleOther", { login: run.dispatched_by });
   const first = open[0] ?? null;
-  const tone = open.length > 0 || (active && waitingState) ? "border-warning-foreground/30 bg-warning/50" : "border-success-foreground/20 bg-success/30";
+  const tone = open.length > 0 || (active && waitingState) ? "border-attention/30 bg-attention-soft/50" : "border-success/20 bg-success-soft/30";
 
   return (
     <section
       aria-labelledby={`${ids}-title`}
-      className={cn("flex min-w-0 flex-col gap-4 rounded-xl border p-4 md:p-5", tone)}
+      className={cn("flex min-w-0 flex-col gap-4 rounded-md border p-4 md:p-5", tone)}
       data-testid="run-decisions"
       data-state={run.state}
       data-open={open.length}
@@ -83,7 +83,7 @@ export function RunDecisions({ run, owner }: { run: Run; owner: boolean }) {
         {first ? (
           <Link
             href={decisionHref(first.id)}
-            className="inline-flex min-h-7 shrink-0 items-center gap-1.5 text-sm font-medium text-primary underline-offset-4 hover:underline"
+            className="inline-flex min-h-7 shrink-0 items-center gap-1.5 text-sm font-medium text-brand underline-offset-4 hover:underline"
             data-testid="run-decision-link"
           >
             <Inbox className="size-4" aria-hidden="true" />
@@ -95,7 +95,7 @@ export function RunDecisions({ run, owner }: { run: Run; owner: boolean }) {
       {shown.length > 0 ? (
         <ol className="flex flex-col gap-4">
           {shown.map((decision) => (
-            <li key={decision.id} className="rounded-xl border bg-card p-4" data-testid="run-decision">
+            <li key={decision.id} className="rounded-md border bg-card shadow-raised p-4" data-testid="run-decision">
               <LiveDecision
                 decision={decision}
                 answeredHere={kept.has(decision.id)}

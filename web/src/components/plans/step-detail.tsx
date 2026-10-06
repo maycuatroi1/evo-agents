@@ -63,7 +63,7 @@ function Facts({ step, context }: { step: PlanStep; context: Context }) {
             <Link
               key={other.key}
               href={stepHref(context.project, context.planId, other.key)}
-              className="inline-flex items-center gap-1 rounded font-mono text-primary underline-offset-4 hover:underline"
+              className="inline-flex items-center gap-1 rounded font-mono text-brand underline-offset-4 hover:underline"
               aria-label={t("dependencyLink", { key: other.key, title: stepLabel(other) })}
             >
               <StepStatusIcon group={other.group} raw={other.rawStatus} className="[&_svg]:size-3.5" />
@@ -77,7 +77,7 @@ function Facts({ step, context }: { step: PlanStep; context: Context }) {
     ],
   ];
   return (
-    <dl className="grid grid-cols-1 gap-x-6 gap-y-3 rounded-xl border bg-card p-4 sm:grid-cols-[auto_1fr]" data-testid="step-facts">
+    <dl className="grid grid-cols-1 gap-x-6 gap-y-3 rounded-md border bg-card shadow-raised p-4 sm:grid-cols-[auto_1fr]" data-testid="step-facts">
       {rows.map(([label, value]) => (
         <div key={label} className="contents">
           <dt className="text-sm text-muted-foreground sm:pt-0.5">{label}</dt>
@@ -92,7 +92,7 @@ function StepNavigator({ steps, current, context }: { steps: PlanStep[]; current
   const t = useTranslations("plans.step");
   return (
     <nav aria-label={t("navigator")} className="hidden lg:block">
-      <ol className="sticky top-20 flex max-h-[calc(100svh-6rem)] flex-col gap-0.5 overflow-y-auto rounded-xl border bg-card p-1.5">
+      <ol className="sticky top-20 flex max-h-[calc(100svh-6rem)] flex-col gap-0.5 overflow-y-auto rounded-md border bg-card shadow-raised p-1.5">
         {steps.map((step) => {
           const active = step.index === current.index;
           return (
@@ -101,7 +101,7 @@ function StepNavigator({ steps, current, context }: { steps: PlanStep[]; current
                 href={stepHref(context.project, context.planId, step.key)}
                 aria-current={active ? "page" : undefined}
                 className={cn(
-                  "flex min-h-9 items-start gap-2 rounded-md px-2 py-1.5 text-sm transition-colors",
+                  "flex min-h-9 items-start gap-2 rounded-sm px-2 py-1.5 text-sm transition-colors",
                   active ? "bg-accent font-medium text-accent-foreground" : "hover:bg-muted",
                 )}
               >
@@ -122,7 +122,7 @@ function PrevNext({ steps, current, context }: { steps: PlanStep[]; current: Pla
   const previous = current.index > 0 ? steps[current.index - 1] : null;
   const next = current.index < steps.length - 1 ? steps[current.index + 1] : null;
   if (!previous && !next) return null;
-  const card = "flex min-h-11 flex-1 flex-col gap-0.5 rounded-lg border bg-card px-3 py-2 text-sm transition-colors hover:border-primary/40 hover:bg-accent/40";
+  const card = "flex min-h-11 flex-1 flex-col gap-0.5 rounded-md border bg-card px-3 py-2 text-sm transition-colors hover:border-brand/40 hover:bg-accent/40";
   return (
     <nav aria-label={t("prevNext")} className="flex flex-col gap-2 border-t pt-4 sm:flex-row">
       {previous ? (
@@ -195,7 +195,7 @@ function Detail({ project, plan, stepKey }: { project: string; plan: Plan; stepK
           <Block title={t("evidence")}>
             {step.evidence ? (
               <div className="flex flex-col gap-1.5">
-                <Verbatim testId="step-evidence" className="border-success-foreground/30 bg-success/40">
+                <Verbatim testId="step-evidence" className="border-success/30 bg-success-soft/40">
                   {step.evidence}
                 </Verbatim>
                 <p className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">

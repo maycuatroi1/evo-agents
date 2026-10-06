@@ -59,7 +59,7 @@ export function TokensTable({ tokens, caption, showLogin = true, onNotice, testI
             header: () => t("columns.login"),
             enableSorting: false,
             cell: (info) => (
-              <Link href={memberHref(info.getValue())} className="font-medium text-primary underline-offset-4 hover:underline">
+              <Link href={memberHref(info.getValue())} className="font-medium text-brand underline-offset-4 hover:underline">
                 {info.getValue()}
               </Link>
             ),
@@ -127,7 +127,7 @@ export function TokensTable({ tokens, caption, showLogin = true, onNotice, testI
               type="button"
               variant="outline"
               size="lg"
-              className="text-destructive hover:text-destructive"
+              className="text-danger hover:text-danger"
               aria-label={t("revokeLabel", { id: token.id, login: token.login })}
               onClick={() => startRevoke(token)}
               data-testid={`revoke-token-${token.id}`}
@@ -186,7 +186,7 @@ export function TokensTable({ tokens, caption, showLogin = true, onNotice, testI
                     ? tRevoke("worker", { host: target.host ?? "" })
                     : tRevoke("web")}
               </p>
-              {target.current ? <p className="font-medium text-destructive">{tRevoke("current")}</p> : null}
+              {target.current ? <p className="font-medium text-danger">{tRevoke("current")}</p> : null}
               <p>{tRevoke("audit")}</p>
             </>
           ) : null

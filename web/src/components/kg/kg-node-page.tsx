@@ -25,7 +25,7 @@ function BackLink({ project }: { project: string }) {
   return (
     <Link
       href={kgHref(project)}
-      className="inline-flex w-fit items-center gap-1.5 rounded-md text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+      className="inline-flex w-fit items-center gap-1.5 rounded-sm text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
       data-testid="kg-back"
     >
       <ArrowLeft className="size-4" aria-hidden="true" />
@@ -73,7 +73,7 @@ function Node({ project, detail, hops, neighbourhoodError }: { project: string; 
         meta={
           <>
             <LabelBadge label={node.label} />
-            <span className="rounded-4xl border px-2 py-0.5 font-mono text-xs" title={t("status")}>
+            <span className="rounded-full border px-2 py-0.5 font-mono text-xs" title={t("status")}>
               <span className="sr-only">{t("status")}: </span>
               {node.status}
             </span>

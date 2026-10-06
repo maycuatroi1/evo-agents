@@ -45,7 +45,7 @@ export function CommandLine({ command, label, testId }: { command: string; label
     <div
       role="group"
       aria-label={label}
-      className="flex min-w-0 items-stretch overflow-hidden rounded-lg border bg-muted/60"
+      className="flex min-w-0 items-stretch overflow-hidden rounded-md border bg-muted/60"
       data-testid={testId}
     >
       {/* Focusable so a keyboard can scroll a command wider than the dialog. */}

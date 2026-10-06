@@ -39,7 +39,7 @@ export function WorkerRuns({ worker }: { worker: Worker }) {
   return (
     <div className="flex flex-col gap-2" data-testid="worker-recent-runs">
       {runs.length === 0 ? (
-        <p className="rounded-lg border border-dashed px-3 py-2.5 text-sm text-muted-foreground" data-testid="worker-runs-empty">
+        <p className="rounded-md border border-dashed px-3 py-2.5 text-sm text-muted-foreground" data-testid="worker-runs-empty">
           {t("empty")}
         </p>
       ) : (

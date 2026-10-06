@@ -30,15 +30,15 @@ export type DiffState =
 
 const ROW_TONE: Record<DiffLine["kind"], string> = {
   context: "",
-  added: "bg-success",
-  removed: "bg-destructive/10",
+  added: "bg-success-soft",
+  removed: "bg-danger-soft",
   note: "",
 };
 const SIGN: Record<DiffLine["kind"], string> = { context: " ", added: "+", removed: "-", note: "\\" };
 const SIGN_TONE: Record<DiffLine["kind"], string> = {
   context: "text-muted-foreground",
-  added: "text-success-foreground",
-  removed: "text-destructive",
+  added: "text-success",
+  removed: "text-danger",
   note: "text-muted-foreground",
 };
 const NUMBER = "w-0 px-2 py-0.5 text-right align-top font-mono text-xs text-muted-foreground tabular-nums select-none";
@@ -81,7 +81,7 @@ function Hunk({ hunk, index, path }: { hunk: DiffHunk; index: number; path: stri
                 {line.kind === "added" || line.kind === "removed" ? (
                   <span className="sr-only">{line.kind === "added" ? t("added") : t("removed")} </span>
                 ) : null}
-                <span className={cn("mr-2 inline-block w-2 font-bold", SIGN_TONE[line.kind])} aria-hidden="true">
+                <span className={cn("mr-2 inline-block w-2 font-semibold", SIGN_TONE[line.kind])} aria-hidden="true">
                   {SIGN[line.kind]}
                 </span>
                 {line.text}
@@ -98,8 +98,8 @@ function FileCounts({ file }: { file: DiffFile }) {
   const t = useTranslations("runs.diff");
   return (
     <span className="shrink-0 font-mono text-xs tabular-nums">
-      <span className="text-success-foreground">+{file.additions}</span>{" "}
-      <span className="text-destructive">-{file.deletions}</span>
+      <span className="text-success">+{file.additions}</span>{" "}
+      <span className="text-danger">-{file.deletions}</span>
       <span className="sr-only">{t("fileCounts", { additions: file.additions, deletions: file.deletions })}</span>
     </span>
   );
@@ -111,7 +111,7 @@ function FileSection({ file, index }: { file: DiffFile; index: number }) {
     <section
       id={fileAnchor(index)}
       aria-labelledby={`${fileAnchor(index)}-title`}
-      className="scroll-mt-20 overflow-hidden rounded-xl border bg-card [contain-intrinsic-size:auto_480px] [content-visibility:auto]"
+      className="scroll-mt-20 overflow-hidden rounded-md border bg-card shadow-raised [contain-intrinsic-size:auto_480px] [content-visibility:auto]"
       data-testid="diff-file"
       data-path={file.path}
     >
@@ -211,29 +211,29 @@ function DiffBody({ run, diff }: { run: Run; diff: DiffState }) {
   return (
     <div className="flex flex-col gap-4">
       {cut || diff.cutBytes ? (
-        <p className="flex items-start gap-2.5 rounded-lg border border-warning-foreground/20 bg-warning px-3 py-2.5 text-sm text-warning-foreground" data-testid="diff-cut">
+        <p className="flex items-start gap-2.5 rounded-md border border-attention/20 bg-attention-soft px-3 py-2.5 text-sm text-attention" data-testid="diff-cut">
           <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
           <span className="text-pretty">{t("cut", { lines: format.number(MAX_DIFF_LINES) })}</span>
         </p>
       ) : null}
       {files.length === 0 ? (
-        <p className="rounded-xl border border-dashed bg-card px-4 py-6 text-center text-sm text-muted-foreground" data-testid="diff-empty">
+        <p className="rounded-md border border-dashed bg-card px-4 py-6 text-center text-sm text-muted-foreground" data-testid="diff-empty">
           {t("empty")}
         </p>
       ) : (
         <>
-          <nav aria-label={t("filesLabel")} className="rounded-xl border bg-card" data-testid="diff-files">
+          <nav aria-label={t("filesLabel")} className="rounded-md border bg-card shadow-raised" data-testid="diff-files">
             <h2 className="border-b px-4 py-3 text-base font-medium">
               {t("filesTitle", { count: files.length })}{" "}
               <span className="font-mono text-sm font-normal tabular-nums">
-                <span className="text-success-foreground">+{format.number(additions)}</span>{" "}
-                <span className="text-destructive">-{format.number(deletions)}</span>
+                <span className="text-success">+{format.number(additions)}</span>{" "}
+                <span className="text-danger">-{format.number(deletions)}</span>
               </span>
             </h2>
             <ol className="flex max-h-72 flex-col divide-y overflow-y-auto">
               {files.map((file, index) => (
                 <li key={index} className="flex min-w-0 items-center gap-3 px-4 py-2">
-                  <a href={`#${fileAnchor(index)}`} className="min-w-0 flex-1 font-mono text-xs break-all text-primary underline-offset-4 hover:underline">
+                  <a href={`#${fileAnchor(index)}`} className="min-w-0 flex-1 font-mono text-xs break-all text-brand underline-offset-4 hover:underline">
                     {file.path}
                   </a>
                   <Badge variant={STATUS_VARIANT[file.status]}>{t(`status.${file.status}`)}</Badge>

@@ -19,7 +19,7 @@ export default function GlobalError({ error, reset }: { error: Error & { digest?
           <button
             type="button"
             onClick={reset}
-            className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
+            className="rounded-sm bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-action-hover"
           >
             Try again
           </button>

@@ -176,7 +176,7 @@ function GrantSteps({
           <DialogDescription>{t("confirmDescription")}</DialogDescription>
         </DialogHeader>
         <dl
-          className="grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-2.5 rounded-lg border bg-muted/40 px-3 py-3 text-sm"
+          className="grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-2.5 rounded-md border bg-muted/40 px-3 py-3 text-sm"
           data-testid="grant-summary"
         >
           <dt className="text-muted-foreground">{t("summary.login")}</dt>
@@ -272,7 +272,7 @@ function GrantSteps({
             {t("loginHint")}
           </p>
           {errors.login ? (
-            <p id={`${ids}-login-error`} className="text-xs font-medium text-destructive">
+            <p id={`${ids}-login-error`} className="text-xs font-medium text-danger">
               {errors.login}
             </p>
           ) : null}
@@ -282,7 +282,7 @@ function GrantSteps({
       <div className="flex flex-col gap-1.5">
         <Label htmlFor={`${ids}-project`}>{t("project")}</Label>
         {projects.length === 0 ? (
-          <p className="rounded-lg border border-dashed px-3 py-2.5 text-sm text-muted-foreground" data-testid="grant-no-projects">
+          <p className="rounded-md border border-dashed px-3 py-2.5 text-sm text-muted-foreground" data-testid="grant-no-projects">
             {t("noProjects")}
           </p>
         ) : (
@@ -308,7 +308,7 @@ function GrantSteps({
           </NativeSelect>
         )}
         {errors.project ? (
-          <p id={`${ids}-project-error`} className="text-xs font-medium text-destructive">
+          <p id={`${ids}-project-error`} className="text-xs font-medium text-danger">
             {errors.project}
           </p>
         ) : null}
@@ -329,7 +329,7 @@ function GrantSteps({
             <Label
               key={value}
               htmlFor={`${ids}-role-${value}`}
-              className="flex cursor-pointer items-start gap-3 rounded-lg border px-3 py-2.5 font-normal transition-colors hover:bg-muted/50 has-data-checked:border-primary/40 has-data-checked:bg-accent"
+              className="flex cursor-pointer items-start gap-3 rounded-md border px-3 py-2.5 font-normal transition-colors hover:bg-muted/50 has-data-checked:border-brand/40 has-data-checked:bg-surface-selected"
             >
               <RadioGroupItem
                 id={`${ids}-role-${value}`}
@@ -377,14 +377,14 @@ function GrantSteps({
           {t("maxLevelHint")}
         </p>
         {errors.maxLevel ? (
-          <p id={`${ids}-maxLevel-error`} className="text-xs font-medium text-destructive">
+          <p id={`${ids}-maxLevel-error`} className="text-xs font-medium text-danger">
             {errors.maxLevel}
           </p>
         ) : null}
       </div>
 
       {existing ? (
-        <p className="flex items-start gap-2 rounded-lg border bg-accent px-3 py-2.5 text-sm text-accent-foreground" data-testid="grant-existing">
+        <p className="flex items-start gap-2 rounded-md border bg-accent px-3 py-2.5 text-sm text-accent-foreground" data-testid="grant-existing">
           <Info className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
           {unchanged
             ? t("unchanged", { login: grantee?.login ?? name })

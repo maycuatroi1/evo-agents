@@ -90,7 +90,7 @@ function TakeoverDialog({
             </li>
           ) : null}
         </ol>
-        <p className="flex items-start gap-2.5 rounded-lg border border-warning-foreground/20 bg-warning px-3 py-2.5 text-sm text-warning-foreground">
+        <p className="flex items-start gap-2.5 rounded-md border border-attention/20 bg-attention-soft px-3 py-2.5 text-sm text-attention">
           <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
           <span className="text-pretty">{t("warning")}</span>
         </p>
@@ -265,9 +265,9 @@ function Note({ tone, icon: Icon, children, testId }: { tone: "info" | "warning"
   return (
     <p
       className={cn(
-        "flex items-start gap-2.5 rounded-lg border px-3 py-2.5 text-sm",
-        tone === "info" && "border-info-foreground/15 bg-info text-info-foreground",
-        tone === "warning" && "border-warning-foreground/20 bg-warning text-warning-foreground",
+        "flex items-start gap-2.5 rounded-md border px-3 py-2.5 text-sm",
+        tone === "info" && "bg-muted text-foreground",
+        tone === "warning" && "border-attention/20 bg-attention-soft text-attention",
         tone === "muted" && "bg-card text-muted-foreground",
       )}
       data-testid={testId}
@@ -315,7 +315,7 @@ export function RunNotes({ run, controls }: { run: Run; controls: RunControls })
         {t.rich("interactive", {
           worker: run.worker ?? "-",
           command: attachCommand(run.id),
-          code: (chunks) => <code className="font-mono font-semibold">{chunks}</code>,
+          code: (chunks) => <code className="font-mono font-medium">{chunks}</code>,
         })}
       </Note>,
     );

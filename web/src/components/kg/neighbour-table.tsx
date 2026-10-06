@@ -62,9 +62,9 @@ export function NeighbourTable({
         </div>
       </div>
       {rows.length === 0 ? (
-        <p className="rounded-lg border border-dashed px-3 py-6 text-center text-sm text-muted-foreground">{t("empty")}</p>
+        <p className="rounded-md border border-dashed px-3 py-6 text-center text-sm text-muted-foreground">{t("empty")}</p>
       ) : (
-        <div className="overflow-hidden rounded-lg border">
+        <div className="overflow-hidden rounded-md border">
           <Table scrollLabel={caption}>
             <TableCaption className="sr-only">{caption}</TableCaption>
             <TableHeader className="bg-muted/50">
@@ -101,7 +101,7 @@ export function NeighbourTable({
                         <button
                           type="button"
                           onClick={() => onSelect(row.node.id)}
-                          className="cursor-pointer rounded-sm text-left font-medium break-words text-primary underline-offset-4 hover:underline"
+                          className="cursor-pointer rounded-xs text-left font-medium break-words text-brand underline-offset-4 hover:underline"
                           aria-label={t("select", { name: other })}
                           data-testid="neighbour-select"
                         >
@@ -109,7 +109,7 @@ export function NeighbourTable({
                         </button>
                         <Link
                           href={nodeHref(project, row.node.id)}
-                          className="-my-1 inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                          className="-my-1 inline-flex size-7 shrink-0 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                           aria-label={t("open", { name: other })}
                           title={t("open", { name: other })}
                         >

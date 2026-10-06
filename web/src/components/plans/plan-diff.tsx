@@ -17,15 +17,15 @@ type Mode = "unified" | "split";
 
 const ROW_TONE: Record<PlanDiffLine["kind"], string> = {
   context: "",
-  added: "bg-success",
-  removed: "bg-destructive/10",
+  added: "bg-success-soft",
+  removed: "bg-danger-soft",
 };
 
 const SIGN: Record<PlanDiffLine["kind"], string> = { context: " ", added: "+", removed: "-" };
 const SIGN_TONE: Record<PlanDiffLine["kind"], string> = {
   context: "text-muted-foreground",
-  added: "text-success-foreground",
-  removed: "text-destructive",
+  added: "text-success",
+  removed: "text-danger",
 };
 
 const NUMBER = "w-0 px-2 py-0.5 text-right align-top font-mono text-xs text-muted-foreground tabular-nums select-none";
@@ -72,7 +72,7 @@ function UnifiedHunk({ hunk, index, diff }: { hunk: PlanDiffHunk; index: number;
   const t = useTranslations("plans.diff");
   const range = hunkRange(hunk);
   return (
-    <div className="overflow-hidden rounded-lg border bg-card" data-testid="diff-hunk">
+    <div className="overflow-hidden rounded-md border bg-card" data-testid="diff-hunk">
       <HunkTitle hunk={hunk} index={index} diff={diff} />
       <table className="w-full border-collapse">
         <caption className="sr-only">
@@ -92,7 +92,7 @@ function UnifiedHunk({ hunk, index, diff }: { hunk: PlanDiffHunk; index: number;
               <td className={cn(NUMBER, "border-r")}>{line.new ?? ""}</td>
               <td className={CODE}>
                 <KindWord kind={line.kind} />
-                <span className={cn("mr-2 inline-block w-2 font-bold", SIGN_TONE[line.kind])} aria-hidden="true">
+                <span className={cn("mr-2 inline-block w-2 font-semibold", SIGN_TONE[line.kind])} aria-hidden="true">
                   {SIGN[line.kind]}
                 </span>
                 <span data-testid="diff-text">{line.text}</span>
@@ -120,7 +120,7 @@ function SplitCell({ line, side }: { line: PlanDiffLine | null; side: "old" | "n
       <td className={cn(NUMBER, ROW_TONE[line.kind])}>{number ?? ""}</td>
       <td className={cn(CODE, ROW_TONE[line.kind], side === "old" ? "border-r" : null)} data-kind={line.kind}>
         <KindWord kind={line.kind} />
-        <span className={cn("mr-2 inline-block w-2 font-bold", SIGN_TONE[line.kind])} aria-hidden="true">
+        <span className={cn("mr-2 inline-block w-2 font-semibold", SIGN_TONE[line.kind])} aria-hidden="true">
           {SIGN[line.kind]}
         </span>
         {line.text}
@@ -133,7 +133,7 @@ function SplitHunk({ hunk, index, diff }: { hunk: PlanDiffHunk; index: number; d
   const t = useTranslations("plans.diff");
   const range = hunkRange(hunk);
   return (
-    <div className="overflow-hidden rounded-lg border bg-card" data-testid="diff-hunk">
+    <div className="overflow-hidden rounded-md border bg-card" data-testid="diff-hunk">
       <HunkTitle hunk={hunk} index={index} diff={diff} />
       <table className="w-full table-fixed border-collapse">
         <caption className="sr-only">
@@ -169,7 +169,7 @@ function SplitHunk({ hunk, index, diff }: { hunk: PlanDiffHunk; index: number; d
 export function DiffModeToggle({ mode, onChange }: { mode: Mode; onChange: (mode: Mode) => void }) {
   const t = useTranslations("plans.diff");
   return (
-    <div role="group" aria-label={t("mode")} className="hidden w-fit rounded-lg border bg-muted/40 p-0.5 md:inline-flex">
+    <div role="group" aria-label={t("mode")} className="hidden w-fit rounded-md border bg-muted/40 p-0.5 md:inline-flex">
       {(
         [
           ["unified", Rows3],
@@ -182,8 +182,8 @@ export function DiffModeToggle({ mode, onChange }: { mode: Mode; onChange: (mode
           aria-pressed={mode === id}
           onClick={() => onChange(id)}
           className={cn(
-            "inline-flex min-h-9 items-center gap-1.5 rounded-md px-3 text-sm font-medium transition-colors",
-            mode === id ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+            "inline-flex min-h-9 items-center gap-1.5 rounded-sm px-3 text-sm font-medium transition-colors",
+            mode === id ? "bg-card text-foreground shadow-raised" : "text-muted-foreground hover:text-foreground",
           )}
           data-testid={`diff-mode-${id}`}
         >
@@ -205,10 +205,10 @@ export function DiffView({ diff }: { diff: PlanDiff }) {
     <div className="flex flex-col gap-3" data-testid="plan-diff">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm" data-testid="diff-stats">
-          <span className="inline-flex items-center gap-1 rounded-md bg-success px-1.5 py-0.5 font-mono text-xs font-medium text-success-foreground">
+          <span className="inline-flex items-center gap-1 rounded-sm bg-success-soft px-1.5 py-0.5 font-mono text-xs font-medium text-success">
             {t("added", { count: diff.added })}
           </span>
-          <span className="inline-flex items-center gap-1 rounded-md bg-destructive/10 px-1.5 py-0.5 font-mono text-xs font-medium text-destructive">
+          <span className="inline-flex items-center gap-1 rounded-sm bg-danger-soft px-1.5 py-0.5 font-mono text-xs font-medium text-danger">
             {t("removed", { count: diff.removed })}
           </span>
           <span className="text-xs text-muted-foreground">{t("context", { count: diff.context })}</span>
@@ -216,7 +216,7 @@ export function DiffView({ diff }: { diff: PlanDiff }) {
         {diff.hunks.length ? <DiffModeToggle mode={mode} onChange={setMode} /> : null}
       </div>
       {diff.hunks.length === 0 ? (
-        <p className="rounded-lg border border-dashed bg-card px-4 py-6 text-center text-sm text-muted-foreground" data-testid="diff-empty">
+        <p className="rounded-md border border-dashed bg-card px-4 py-6 text-center text-sm text-muted-foreground" data-testid="diff-empty">
           {t("noChange")}
         </p>
       ) : (

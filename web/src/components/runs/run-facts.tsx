@@ -19,7 +19,7 @@ import { useDuration } from "./runs-table";
 function Card({ title, children, testId }: { title: string; children: ReactNode; testId: string }) {
   const id = useId();
   return (
-    <section className="flex min-w-0 flex-col rounded-xl border bg-card" aria-labelledby={id} data-testid={testId}>
+    <section className="flex min-w-0 flex-col rounded-md border bg-card shadow-raised" aria-labelledby={id} data-testid={testId}>
       <h2 id={id} className="border-b px-4 py-3 text-base font-medium">
         {title}
       </h2>
@@ -79,7 +79,7 @@ export function RunDetails({ run, viewer }: { run: Run; viewer: RunViewer | null
         <Fact label={t("worker")} testId="run-worker">
           {run.worker_id !== null && run.worker ? (
             mayOpenWorker ? (
-              <Link href={workerHref(run.worker_id)} className="font-mono text-primary underline-offset-4 hover:underline">
+              <Link href={workerHref(run.worker_id)} className="font-mono text-brand underline-offset-4 hover:underline">
                 {run.worker}
               </Link>
             ) : (
@@ -139,7 +139,7 @@ export function RunDetails({ run, viewer }: { run: Run; viewer: RunViewer | null
           {run.parent_run_id !== null ? (
             <>
               {", "}
-              <Link href={runHref(run.project, run.parent_run_id)} className="text-primary underline-offset-4 hover:underline" data-testid="run-parent">
+              <Link href={runHref(run.project, run.parent_run_id)} className="text-brand underline-offset-4 hover:underline" data-testid="run-parent">
                 {t("parent", { id: run.parent_run_id })}
               </Link>
             </>
@@ -147,7 +147,7 @@ export function RunDetails({ run, viewer }: { run: Run; viewer: RunViewer | null
           {run.resume_of_run_id !== null ? (
             <>
               {", "}
-              <Link href={runHref(run.project, run.resume_of_run_id)} className="text-primary underline-offset-4 hover:underline" data-testid="run-resumes">
+              <Link href={runHref(run.project, run.resume_of_run_id)} className="text-brand underline-offset-4 hover:underline" data-testid="run-resumes">
                 {t("resumes", { id: run.resume_of_run_id })}
               </Link>
             </>
@@ -213,7 +213,7 @@ export function RunResult({ run }: { run: Run }) {
         <div className="flex flex-col gap-3 text-sm">
           {run.error ? (
             <p
-              className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-destructive"
+              className="flex items-start gap-2 rounded-md border border-danger/30 bg-danger-soft px-3 py-2 text-danger"
               data-testid="run-error-text"
             >
               <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
@@ -264,7 +264,7 @@ export function RunResult({ run }: { run: Run }) {
                 {run.diff_sha256 ? (
                   <Link
                     href={runDiffHref(run.project, run.id)}
-                    className="mt-0.5 flex w-fit items-center gap-1 text-primary underline-offset-4 hover:underline"
+                    className="mt-0.5 flex w-fit items-center gap-1 text-brand underline-offset-4 hover:underline"
                     data-testid="run-diff-link"
                   >
                     <FileDiff className="size-3.5" aria-hidden="true" />
@@ -289,7 +289,7 @@ export function RunResult({ run }: { run: Run }) {
             <div className="flex flex-col gap-1">
               <h3 className="text-sm text-muted-foreground">{t("evidence")}</h3>
               <p
-                className="max-h-60 overflow-y-auto rounded-lg bg-muted/60 px-3 py-2 text-xs break-words whitespace-pre-wrap"
+                className="max-h-60 overflow-y-auto rounded-md bg-muted/60 px-3 py-2 text-xs break-words whitespace-pre-wrap"
                 tabIndex={0}
                 data-testid="run-evidence"
               >

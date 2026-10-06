@@ -31,8 +31,8 @@ const RUNNING_AS: Partial<Record<RunState, LucideIcon>> = {
 };
 
 const BAR: Record<PhaseItem["status"], string> = {
-  done: "bg-chart-3",
-  current: "bg-primary",
+  done: "bg-success-solid",
+  current: "bg-running",
   stopped: "bg-destructive",
   todo: "bg-border",
 };
@@ -64,14 +64,14 @@ function Item({ item, ended, state }: { item: PhaseItem; ended: Stepper["ended"]
         className={cn(
           "flex min-w-0 items-center gap-1.5 text-sm",
           item.status === "todo" ? "text-muted-foreground" : "font-medium",
-          item.status === "stopped" && "text-destructive",
+          item.status === "stopped" && "text-danger",
         )}
       >
         <Icon
           className={cn(
             "size-4 shrink-0",
-            item.status === "done" && "text-chart-3",
-            item.status === "current" && "text-primary",
+            item.status === "done" && "text-success",
+            item.status === "current" && "text-running",
             spin && "animate-spin motion-reduce:animate-none",
           )}
           aria-hidden="true"
@@ -101,7 +101,7 @@ function Item({ item, ended, state }: { item: PhaseItem; ended: Stepper["ended"]
 export function RunStepper({ stepper, state }: { stepper: Stepper; state: RunState }) {
   const t = useTranslations("runs.detail.stepper");
   return (
-    <section aria-label={t("label")} className="rounded-xl border bg-card px-4 py-4" data-testid="run-stepper">
+    <section aria-label={t("label")} className="rounded-md border bg-card shadow-raised px-4 py-4" data-testid="run-stepper">
       <ol className="grid grid-cols-3 gap-x-3 gap-y-4 md:grid-flow-col md:auto-cols-fr md:grid-cols-none">
         {stepper.items.map((item) => (
           <Item key={item.phase} item={item} ended={stepper.ended} state={state} />

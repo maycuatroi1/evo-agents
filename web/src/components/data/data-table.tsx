@@ -72,7 +72,7 @@ export function DataTable<TData extends RowData>({
 
   const rows = table.getRowModel().rows;
   return (
-    <div className="overflow-hidden rounded-xl border bg-card" data-testid={testId}>
+    <div className="overflow-hidden rounded-md border bg-card shadow-raised" data-testid={testId}>
       <Table scrollLabel={caption}>
         <TableCaption className="sr-only">{caption}</TableCaption>
         <TableHeader className="bg-muted/50">
@@ -91,7 +91,7 @@ export function DataTable<TData extends RowData>({
                       <button
                         type="button"
                         onClick={header.column.getToggleSortingHandler()}
-                        className="-mx-1.5 inline-flex items-center gap-1.5 rounded-md px-1.5 py-1 transition-colors hover:bg-muted hover:text-foreground"
+                        className="-mx-1.5 inline-flex items-center gap-1.5 rounded-sm px-1.5 py-1 transition-colors hover:bg-muted hover:text-foreground"
                       >
                         <table.FlexRender header={header} />
                         {sorted === "asc" ? (

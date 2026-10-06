@@ -27,9 +27,9 @@ type Variant = "outline" | "info" | "success" | "warning";
 
 export const STEP_LOOK: Record<StepGroup, { icon: LucideIcon; variant: Variant; tone: string }> = {
   pending: { icon: CircleDashed, variant: "outline", tone: "text-muted-foreground" },
-  in_progress: { icon: CircleDot, variant: "info", tone: "text-primary" },
-  blocked: { icon: OctagonAlert, variant: "warning", tone: "text-warning-foreground" },
-  done: { icon: CircleCheck, variant: "success", tone: "text-success-foreground" },
+  in_progress: { icon: CircleDot, variant: "info", tone: "text-running" },
+  blocked: { icon: OctagonAlert, variant: "warning", tone: "text-attention" },
+  done: { icon: CircleCheck, variant: "success", tone: "text-success" },
   other: { icon: CircleHelp, variant: "outline", tone: "text-muted-foreground" },
 };
 

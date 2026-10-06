@@ -49,7 +49,7 @@ function useFilters(): [RunFilters, (next: RunFilters) => void] {
 
 function Stat({ icon: Icon, label, value, hint, testId, spin }: { icon: LucideIcon; label: string; value: number; hint: string; testId: string; spin?: boolean }) {
   return (
-    <div className="flex flex-col gap-1 rounded-xl border bg-card px-4 py-3.5" data-testid={testId}>
+    <div className="flex flex-col gap-1 rounded-md border bg-card shadow-raised px-4 py-3.5" data-testid={testId}>
       <dt className="flex items-center gap-1.5 text-sm text-muted-foreground">
         <Icon className={spin && value > 0 ? "size-4 shrink-0 animate-spin motion-reduce:animate-none" : "size-4 shrink-0"} aria-hidden="true" />
         {label}
@@ -124,7 +124,7 @@ function RunList({ project }: { project: string }) {
       <h2 id="runs-list-title" className="sr-only">
         {t("caption", { project })}
       </h2>
-      <div className="flex flex-col gap-3 rounded-xl border bg-card p-4">
+      <div className="flex flex-col gap-3 rounded-md border bg-card shadow-raised p-4">
         <SearchField
           value={filters.q}
           onCommit={(q) => setFilters({ ...filters, q, page: 1 })}

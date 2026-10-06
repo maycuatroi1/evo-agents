@@ -1,65 +1,230 @@
 # Design system of the hub web
 
-The hub web is an internal, read-mostly dashboard for a small team: projects, members, plans, memories,
-skills and the knowledge graph. People read it in English first, with Vietnamese one pick away in the user
-menu, and on laptops first, but it has to work on a 375 px phone. The choices below came from the
-`ui-ux-pro-max` skill (design-system queries for an admin dashboard and a data-dense developer tool, the
-`typography` domain for Vietnamese, the `shadcn` stack and the `web` accessibility guidelines). The tokens live
-in `src/app/globals.css`; components use the Tailwind names (`bg-background`, `text-muted-foreground`, ...) and
-never raw colours.
+The hub web is the operator console for coding agents that run on the team's own machines. A person opens it to
+answer three questions: what needs me, what is running, and what finished. It is read in English first, with
+Vietnamese one pick away in the user menu, on laptops first, and it has to work on a 375 px phone.
+
+The design follows the evo-agents hub UI kit ([kit](https://claude.ai/artifact/H8SfKSwspNPCrGtdmX8gdV): README,
+`tokens.json`, a README and preview per component), which answers the
+[review of the 0.3.0 interface](https://claude.ai/artifact/YHprjCQ9SjqmxSnDM9qXni) (findings F1 to F13). This file is
+the source of truth inside the repo; the kit is the design reference behind it. Every UI change loads the
+`ui-ux-pro-max` skill. The tokens live in `src/app/globals.css`; components use the Tailwind names (`bg-background`,
+`text-muted-foreground`, `bg-running-soft`, `text-term-agent`) and never raw colours.
 
 ## Style
 
-The skill's "Data-Dense Dashboard" style: tables and compact cards, small padding, no decoration, WCAG AA.
-Its anti-patterns apply too: no ornate effects, and any list long enough to scan gets sorting or filtering.
-Icons come from Lucide only, no emoji. The GitHub mark is the Simple Icons path.
+Calm graphite surfaces, one cobalt for live agent work, amber only when a person is needed, and IBM Plex for an
+engineered voice that reads the same in English and Vietnamese.
+
+1. **Live state first.** A page that shows work in progress says whether it is current, and running work carries a
+   pulsing dot.
+2. **Colour is spent on state.** The primary button is ink (`action`, the `primary` of shadcn), never a colour.
+   Cobalt (`brand`) means an agent is working right now; it also marks links, the focus ring, the selected tab and
+   the selected nav icon. Amber (`attention`) means a person is needed. Green, red and violet mean done, failed and
+   waiting for review. Everything else is neutral.
+3. **Product words, not system words.** "Visibility: Internal", not "Max label level".
+4. **Dense, not cramped.** 14 px text, 44 px table rows and 32 px controls on desktop; 44 px touch targets under
+   768 px. Tables over cards for lists; one container for a row of numbers.
+5. **Every wait says what it waits for.** A queued run names the worker it waits for, a locked button the run that
+   holds it.
+
+No gradients, no glass, no coloured left borders on cards, no emoji: state lives in the pill and the dot. Icons are
+Lucide only; the GitHub mark is the Simple Icons path.
 
 ## Colour
 
-Slate neutrals, a blue primary for links and the selected state, amber kept for the hub admin role and
-warnings. Ratios are WCAG contrast against the surface named; the e2e axe run checks the rendered pages.
+Light and dark are both first-class; the hub follows the system until a person picks one in the user menu
+(`next-themes`, class strategy). Ratios are WCAG contrast; the e2e axe run checks the rendered pages in both themes.
 
-| Token | Light | Dark | Use |
+**Surfaces and lines**
+
+| Kit token | Tailwind | Light | Dark | Use |
+| --- | --- | --- | --- | --- |
+| `canvas` | `background` | `#f5f6f8` | `#0a0c10` | the page behind the content |
+| `surface` | `card`, `sidebar` | `#ffffff` | `#111419` | cards, tables, the sidebar, the top bar, inputs |
+| `surface-sunken` | `muted`, `surface-sunken` | `#eef0f3` | `#0c0e12` | wells: table header, identifier chips, skeletons, disabled fields |
+| `surface-raised` | `popover`, `surface-raised` | `#ffffff` | `#181b22` | menus, dialogs, sheets, toasts; lighter than `surface` in dark |
+| `surface-hover` | `accent` | `#f0f2f5` | `#1a1e26` | hover of rows, nav items, ghost and outline buttons |
+| `surface-selected` | `sidebar-accent`, `surface-selected` | `#e9edfd` | `#1a2246` | the selected nav item, row, pressed chip, checked card |
+| `border` | `border`, `chart-grid` | `#e2e5ea` | `#22262f` | hairlines; never the only cue that something is a control |
+| `border-strong` | `border-strong` | `#d3d7de` | `#2e333d` | outline (secondary) buttons, segmented controls |
+| `border-control` | `input` | `#858c99` (3.4:1 on surface, 3.1:1 on canvas) | `#626a7a` (3.4:1, 3.2:1 on surface-raised) | edges of inputs, selects, radios and checkboxes; under 3:1 on surface-sunken, so an enabled control never sits in a well |
+
+**Text**
+
+| Kit token | Tailwind | Light | Dark | Use |
+| --- | --- | --- | --- | --- |
+| `fg` | `foreground` | `#0e1116` (18.9:1 on surface, 16.2:1 at the least, on surface-selected) | `#e9ecf1` (15.6:1, 13.0:1 at the least) | primary text and icons |
+| `fg-muted` | `muted-foreground` | `#4b5362` (7.7:1, 6.6:1 at the least) | `#a4acba` (8.1:1, 6.8:1 at the least) | secondary text, labels, inactive nav |
+| `fg-subtle` | `fg-subtle` | `#646c7b` (5.3:1, 4.5:1 at the least) | `#868f9e` (5.7:1, 4.7:1 at the least) | timestamps, placeholders, helper text; nothing lighter is text |
+
+**Action and brand**
+
+| Kit token | Tailwind | Light | Dark | Use |
+| --- | --- | --- | --- | --- |
+| `action` / `on-action` | `primary` / `primary-foreground` | `#0e1116` / `#ffffff` (18.9:1) | `#e9ecf1` / `#0a0c10` (16.5:1) | the primary button, one per view |
+| `action-hover` | `action-hover` | `#2a303a` (13.3:1 with on-action) | `#c9cfd9` (12.5:1) | primary button hover |
+| `brand` | `brand` | `#2f4bd8` (6.7:1 on surface, 5.8:1 on brand-soft and surface-selected) | `#8c9dff` (7.4:1, 6.2:1) | links, the selected tab underline, the selected nav icon, running |
+| `brand-hover` | `brand-hover` | `#263fba` (8.4:1) | `#a3b0ff` (9.0:1) | link hover |
+| `brand-soft` | `brand-soft` | `#ebeefd` | `#19204a` | ground of the running pill and brand tags |
+| `on-brand` | `on-brand` | `#ffffff` (6.7:1 on brand) | `#0a0c10` (7.8:1) | glyphs on a brand fill: the logo tile |
+| `focus-ring` | `ring` | = `brand` (6.2:1 on canvas) | = `brand` (7.8:1) | the 2 px keyboard focus outline |
+
+Cobalt is never a large fill; the logo tile is the one exception.
+
+**States.** Each tone has a text token, a soft ground and a solid mark. Text and icons on the soft ground use the text
+token; dots, bars and progress segments use the solid one. Ratios are text on the soft ground; marks are at least
+3:1 on surface.
+
+| Tone | Text / ground / mark (Tailwind) | Light | Dark | Means |
+| --- | --- | --- | --- | --- |
+| Running | `running` / `running-soft` / `running` | `#2f4bd8` / `#ebeefd` (5.8:1) | `#8c9dff` / `#19204a` (6.2:1) | an agent is working now: leased, running, busy, plan run active |
+| Attention | `attention` / `attention-soft` / `attention-solid` | `#8a4b00` / `#fdf0da` (6.0:1) / `#bc7800` | `#f2b54a` / `#2d2210` (8.5:1) / `#e9a23b` | a person is needed: waiting for you, parked, draining, blocked |
+| Review | `review` / `review-soft` / `review-solid` | `#6136c2` / `#f1ecfd` (6.5:1) / `#7c4de8` | `#b9a0ff` / `#241b3e` (7.3:1) / `#9d7df6` | done, waiting to be checked: verifying, review |
+| Success | `success` / `success-soft` / `success-solid` | `#11713d` / `#e4f4ea` (5.3:1) / `#1e9e58` | `#5fd394` / `#0f2a1c` (8.2:1) / `#34b86e` | finished well, healthy: done, idle, received heartbeat |
+| Danger | `danger` / `danger-soft` / `danger-solid` (`destructive`) | `#b3261e` / `#fcebea` (5.7:1) / `#d93a2f` | `#ff8178` / `#33161a` (6.8:1) / `#ef5a4e` | failed or unreachable: failed, offline, errors, destructive buttons |
+| Neutral | `muted-foreground` / `muted` / `neutral-solid` | `#4b5362` / `#eef0f3` (6.8:1) / `#858c99` | `#a4acba` / `#0c0e12` (8.5:1) / `#6b7383` | no tone: queued, lost, cancelled, pending |
+
+`on-danger` (`#ffffff` light, 4.6:1; `#0a0c10` dark, 5.8:1) is the label on a `danger-solid` fill, which darkens on
+hover (`hover:brightness-94`) and never lightens, so the label keeps its ratio. `danger-solid` is
+a mark and a fill, not text: it falls to 4.2:1 on canvas, so error text is `text-danger`. Amber is the same idea as
+the mark's third node, the person in the loop; it is not a warning colour for anything else.
+
+**Terminal.** The log, tool output and the web terminal sit on `term-bg` in both themes. Every colour below is
+measured on `term-bg` and holds at least 5.9:1 on the hovered row (`term-row`, `#141820`).
+
+| Token | Value | Ratio | Use |
 | --- | --- | --- | --- |
-| `background` | `#f8fafc` | `#020617` | page canvas |
-| `card`, `popover`, `sidebar` | `#ffffff` | `#0f172a` | surfaces |
-| `foreground` | `#0f172a` (17.9:1 on card) | `#f8fafc` (17.1:1 on card) | text |
-| `muted-foreground` | `#475569` (7.6:1 on card) | `#94a3b8` (7.0:1 on card) | secondary text, labels |
-| `primary` / `primary-foreground` | `#1e40af` / `#ffffff` (8.7:1) | `#60a5fa` / `#020617` (7.9:1) | links, buttons, brand |
-| `accent` / `accent-foreground` | `#eff6ff` / `#1e3a8a` (9.5:1) | `#172554` / `#dbeafe` (12.0:1) | hover, active nav, visible levels |
-| `info` | `#dbeafe` / `#1e3a8a` (8.5:1) | `#172554` / `#bfdbfe` (10.3:1) | writer role |
-| `success` | `#dcfce7` / `#14532d` (8.3:1) | `#052e16` / `#bbf7d0` (12.3:1) | done states (later steps) |
-| `warning` | `#fef3c7` / `#78350f` (8.2:1) | `#422006` / `#fde68a` (11.7:1) | admin role, no-access state |
-| `destructive` | `#b91c1c` (6.5:1 on card) | `#f87171` (6.5:1 on card) | errors |
-| `border` / `input` | `#e2e8f0` / `#cbd5e1` | `#1e293b` / `#334155` | dividers, fields |
-| `ring` | `#2563eb` (5.2:1 on card) | `#60a5fa` (7.9:1 on canvas) | focus outline |
-| `log` / `log-foreground` | `#0f172a` / `#e2e8f0` (14.5:1) | `#020617` / `#e2e8f0` (16.4:1) | a run's log, a terminal surface in both themes |
-| `log-muted`, `log-agent`, `log-tool`, `log-system`, `log-user`, `log-ok`, `log-error` | slate-400, blue-300, amber-300, violet-300, pink-300, green-300, red-300 (7.0:1 to 12.7:1 on `log`) | the same (7.9:1 to 14.4:1) | time, kinds and tones of log lines |
+| `term-bg` / `term-border` | `#0b0d11` / `#1e222a` | | ground and dividers |
+| `term-fg` | `#d8dde5` | 14.3:1 | log text |
+| `term-muted` | `#8c95a4` | 6.4:1 | timestamps, thoughts, output |
+| `term-agent`, `term-tool`, `term-system`, `term-user` | `#9fb0ff`, `#f2c46d`, `#bba6ff`, `#f29bc4` | 9.4:1, 11.9:1, 9.3:1, 9.5:1 | log kinds |
+| `term-ok`, `term-error` | `#7adfa4`, `#ff8f86` | 12.0:1, 8.8:1 | log tones |
+| `term-mark` | `#f2c46d`, with `term-bg` text | 11.9:1 | search matches |
 
-Charts (steps 26 to 28) use `chart-1` to `chart-5`: blue, amber, emerald, violet, slate. A role or state is
-never told by colour alone: badges carry an icon and a word (`Admin`, `Writer`, `Reader`; `Quản trị`, `Ghi`,
-`Đọc` in Vietnamese).
+**Charts.** Series use `chart-1` to `chart-5` in order: `brand`, `attention-solid`, teal (`#0f8c80` light, `#2dc2b0`
+dark), `review-solid`, `neutral-solid`; `chart-grid` (`border`) draws the rules. The first series is always the main
+measure. The knowledge graph's node kinds use the same five.
+
+**shadcn's variables** map onto the kit, so the generated primitives follow it: `--background` canvas, `--card` and
+`--sidebar` surface, `--popover` surface-raised, `--foreground` fg, `--muted` surface-sunken, `--muted-foreground`
+fg-muted, `--primary` action, `--primary-foreground` on-action, `--secondary` surface-sunken, `--accent`
+surface-hover, `--border` border, `--input` border-control, `--ring` focus-ring, `--destructive` danger-solid,
+`--sidebar-accent` surface-selected. A role or state is never told by colour alone: badges carry an icon and a word
+(`Admin`, `Writer`, `Reader`; `Quản trị`, `Ghi`, `Đọc` in Vietnamese).
 
 ## Type
 
-- Be Vietnam Pro, weights 400, 500, 600 and 700, Latin and Vietnamese subsets, for all interface text. The
-  skill's "Vietnamese Friendly" pairing; it draws Vietnamese diacritics cleanly at small sizes. It stays with
-  English first: the Vietnamese interface and the Vietnamese prose people write (plans, memories, evidence)
-  render in the same face as the English copy around them.
-- JetBrains Mono for identifiers: project names on their own page, levels, branches, paths, request ids and
-  table counts. It has a Vietnamese subset, so mixed text never falls back to another font.
-- Both load through `next/font/google`, which serves the files from the app's own origin (`font-src 'self'`).
-- Scale: page title 24 px semibold, card title 16 px medium, body and table text 14 px, captions 12 px; line
-  height 1.5 for prose. Counts and dates use `tabular-nums`.
+IBM Plex Sans for the interface and IBM Plex Mono for data, logs and the terminal, both through `next/font/google`
+with the latin, latin-ext and vietnamese subsets, so the files come from the app's own origin (`font-src 'self'`) and
+the Vietnamese people write in plans, evidence and memories renders in the same faces as the English around it.
+Sans loads 400, 500 and 600; Mono loads 400 and 500, so mono text is never set heavier than `font-medium`. The faces
+reach Tailwind as `--font-plex-sans` and `--font-plex-mono` behind `font-sans`, `font-heading` and `font-mono`.
+
+| Role | Size / line | Weight | Tailwind | Use |
+| --- | --- | --- | --- | --- |
+| `display` | 28 / 34 px, -0.015em | 600 | `text-[28px] leading-[34px] font-semibold tracking-tight` | Home's greeting, large empty states; once a page |
+| `page-title` | 20 / 28 px, -0.01em | 600 | `text-xl font-semibold tracking-tight` | every h1, beside its status pill |
+| `section-title` | 15 / 22 px | 600 | `text-[15px] leading-[22px] font-semibold` | h2, card titles |
+| `body` | 14 / 20 px | 400 | `text-sm` | interface text, menus, dialogs, the trace |
+| `body-strong` | 14 / 20 px | 500 | `text-sm font-medium` | buttons, the primary cell of a row |
+| `small` | 13 / 18 px | 400 | `text-[13px] leading-[18px]` | secondary lines, descriptions, chip labels |
+| `caption` | 12 / 16 px | 400 | `text-xs` | timestamps, column headers, helper text |
+| `overline` | 11 / 16 px, 0.06em, uppercase | 600 | `text-[11px] leading-4 font-semibold tracking-[0.06em] uppercase` | sidebar and palette group labels only |
+| `metric` | 24 / 30 px, -0.01em | 600 | `text-2xl leading-[30px] font-semibold tabular-nums` | the metric strip, progress headers |
+| `code` | 13 / 20 px | 400 | `font-mono text-[13px] leading-5` | log lines, commands, inline code, the terminal |
+| `code-small` | 12 / 16 px | 400 | `font-mono text-xs` | identifiers in chips and cells |
+
+- Mono is for values, never for titles: a plan's title is `page-title`; its id sits in the breadcrumb and details.
+- A number that lines up in a column, a count or a duration uses `tabular-nums`.
+- Inputs use 16 px below 768 px (`text-base md:text-sm`), so phones do not zoom. The kit also steps body text up to
+  15 px under 640 px; the app does not do that yet.
+- `PageHeader` still sets the h1 at 24 px (`text-2xl`); it moves to `page-title` with the one-row page head.
+
+## Shape
+
+| Radius | Value | Tailwind | For |
+| --- | --- | --- | --- |
+| `radius-xs` | 4 px | `rounded-xs`, `rounded` | names: identifier chips, tags, kbd keys |
+| `radius-sm` | 6 px | `rounded-sm` | controls: buttons, inputs, selects, menu items, nav items |
+| `radius-md` | 8 px | `rounded-md` | containers: cards, tables, menus, notices, toasts |
+| `radius-lg` | 12 px | `rounded-lg` | overlays: dialogs, sheets, the command palette |
+| `radius-full` | 999 px | `rounded-full` | states and counts only: status pills, live dots, avatars |
+
+A fully round shape always means a state or a count; a square-ish one means a name.
+
+Borders before shadows. Cards take `border` and `shadow-raised`; menus, popovers and toasts `shadow-popover`; dialogs,
+sheets and the palette `shadow-dialog`. In dark, elevation comes mostly from the lighter `surface-raised`.
+
+| Shadow | Light | Dark |
+| --- | --- | --- |
+| `shadow-raised` | `0 1px 2px rgba(14,17,22,0.05)` | `0 1px 2px rgba(0,0,0,0.4)` |
+| `shadow-popover` | `0 1px 3px rgba(14,17,22,0.08), 0 8px 24px rgba(14,17,22,0.10)` | `0 0 0 1px rgba(255,255,255,0.04), 0 8px 24px rgba(0,0,0,0.55)` |
+| `shadow-dialog` | `0 2px 6px rgba(14,17,22,0.08), 0 24px 48px rgba(14,17,22,0.18)` | `0 0 0 1px rgba(255,255,255,0.05), 0 24px 64px rgba(0,0,0,0.7)` |
+
+One container for a row of numbers, never four separate cards.
+
+## Motion
+
+| Token | Value | Tailwind | For |
+| --- | --- | --- | --- |
+| `duration-fast` | 120 ms | `duration-fast`, and the default of every `transition-*` | hover and press |
+| `duration-base` | 180 ms | `duration-base` | menus, popovers, toasts entering |
+| `duration-slow` | 240 ms | `duration-slow` | sheets, dialogs, expanding a trace step |
+| `ease-standard` | `cubic-bezier(0.2, 0, 0, 1)` | `ease-standard`, and the default easing | every transition |
+| `pulse-period` | 1600 ms | `animate-live-ping` | one cycle of the live dot |
+
+- Hover changes colour, never layout. Menus and sheets fade and slide in through `tw-animate-css`.
+- The live dot pulses only for live work: a running run, a busy worker, the live connection. At most one pulsing dot
+  per row. A ring grows and fades over a solid dot:
+
+  ```tsx
+  <span className="relative inline-flex size-2 rounded-full bg-running">
+    <span className="absolute inset-0 animate-live-ping rounded-full bg-running" aria-hidden="true" />
+  </span>
+  ```
+
+- Streamed agent text appends as it arrives; finished text never animates in.
+- Under `prefers-reduced-motion: reduce` every animation and transition ends at once and `animate-live-ping` is off,
+  so the dot stays solid. Playwright runs with reduced motion, so menus and sheets are settled before axe looks.
+
+## Iconography
+
+Lucide (`lucide-react`), outline, stroke 1.75 (`svg.lucide` in `globals.css`). 16 px in the interface, 14 px inside pills, chips and small buttons, 20 px in empty
+states and the phone top bar. Icons sit before their label and inherit its colour; icon-only buttons carry an
+`aria-label` that names the object. One icon per concept:
+
+| Concept | Icon |
+| --- | --- |
+| Dispatch | `Send` |
+| Run plan | `Play` |
+| Rerun | `RotateCcw` |
+| Take over, terminal | `Terminal` |
+| Diff | `FileDiff` |
+| Decision, waiting for you | `MessageSquare` |
+| Runs | `Activity` |
+| Plans | `ListChecks` |
+| Workers | `Server` |
+| Knowledge graph | `Network` |
+| Memories | `BookOpen` |
+| Skills | `Sparkles` |
+| Inbox; the bell in the top bar | `Inbox`; `Bell` |
+| Done, failed, lost, cancelled | `CircleCheck`, `CircleX`, `Unplug`, `Ban` |
+
+The mark (`components/brand.tsx`, `src/app/icon.svg`) is three linked nodes on a rounded tile: the tile in `brand`
+(`#2f4bd8` in the favicon), two nodes and the edges in `on-brand`, the third node amber `#fbbf24` in both themes. It
+shows at 20 px or larger beside the name in Plex Sans 600, and is never recoloured.
 
 ## Spacing and layout
 
 - A 4 px grid (Tailwind spacing). Page padding 16, 24 and 32 px from phone to desktop, content at most
   1280 px wide (`max-w-7xl`), 24 px between sections, 16 px inside cards, 12 by 10 px in table cells.
-- Radius 8 px (`--radius: 0.5rem`), smaller than shadcn's default to suit dense screens.
 - The sidebar is 16 rem wide, folds to 3 rem icons on desktop (Ctrl or Cmd + B, or the header button) and
   becomes a sheet below 768 px. The header is 56 px and sticks to the top.
 - z-index: header 10, sidebar rail 20, menus, sheets and tooltips 50.
+- The kit's sizes: controls 32 px (28 in dense toolbars, 40 in dialog footers), every control at least 44 px under
+  768 px, table rows 44 px (36 compact), a 52 px top bar, a 240 px sidebar folding to 56 px, content at most 1280 px
+  with a 24 px gutter (16 on phones). The shell above keeps its own sizes until it is rebuilt on the kit's AppShell.
 - Checked widths: 375, 768, 1024 and 1440 px. At 375 px secondary table columns hide, wide tables scroll
   inside their own focusable region, and the page itself never scrolls sideways (`e2e/shell.spec.ts`;
   `e2e/no-sideways-scroll.spec.ts` checks a page of each area at 375, 768 and 1024 px). The shell's inset is
@@ -73,9 +238,17 @@ changed where the defaults fell short:
 - `sidebar.tsx`: the sheet title and trigger label take translated text; `SidebarInset` is a `div`, so each
   page has exactly one `<main>`; group labels use `muted-foreground` (the 70 % opacity default fails AA in dark).
 - `table.tsx`: `scrollLabel` makes a table's scroll container a named, focusable region.
-- `badge.tsx`: `info`, `success` and `warning` variants.
+- `badge.tsx`: `info`, `success` and `warning` variants on the kit's tones (`brand-soft` with `brand`, `success-soft`
+  with `success`, `attention-soft` with `attention`); `destructive` is `danger-soft` with `danger`; the shape is
+  `rounded-full`, a state.
+- `button.tsx`: `default` is the ink primary (`primary`, `action-hover` on hover), `outline` the kit's secondary
+  (`card` with a `border-strong` edge), `ghost` hovers `accent`; every size has the control radius.
+- `input.tsx`, `textarea.tsx`, `native-select.tsx`: a `card` fill inside an `input` (`border-control`) edge,
+  `fg-subtle` placeholders, `muted` when disabled.
+- `card.tsx`, `dialog.tsx`, `alert-dialog.tsx`, `sheet.tsx`, `dropdown-menu.tsx`: the kit's radius and elevation by
+  role (Shape), with `duration-slow` for dialogs and sheets and `duration-base` for menus.
 - `hooks/use-mobile.ts`: `useSyncExternalStore` instead of state set inside an effect.
-- `tabs.tsx` (Radix tabs): a line style, the selected tab underlined in `primary` and set in a heavier weight.
+- `tabs.tsx` (Radix tabs): a line style, the selected tab underlined in `brand` and set in a heavier weight.
 - Menus (`DropdownMenu`) are not modal, so the page behind stays readable by assistive technology.
 
 Shared pieces built on them:
@@ -178,7 +351,8 @@ Shared pieces built on them:
   the hub (4401, 4403, 4408, 4409, 4426, 1011, a lost connection) says what happened and what to do, with the hub's own
   reason under it, and a sign-in older than 12 hours (whoami's `token.created_at`) asks to sign in again before
   anything is tried. On a headless run the intro and the waiting message say that connecting takes the run over. The
-  surface is the log's (`hub-terminal` in `globals.css`): JetBrains Mono 13 px, 16 ANSI colours readable on it, a 2 px
+  surface is the log's (`term-*` tokens, `hub-terminal` in `globals.css`): IBM Plex Mono 13 px, 16 ANSI colours drawn
+  from the `term-*` tokens, a 2 px
   `ring` outline inside its edge while focused; Esc then Tab leaves it, as the footer says. The CSP allows
   `'wasm-unsafe-eval'` (WebAssembly only, no JavaScript eval) and keeps connect-src `'self'`, which covers a websocket
   to the page's own host in Chromium and Firefox (`e2e/terminal.spec.ts` runs in both).
@@ -194,15 +368,10 @@ or dark in the user menu. The language is the `NEXT_LOCALE` cookie set from the 
 (or with a value that is not a locale), Vietnamese when it says `vi`. The browser's Accept-Language is not read,
 so the server renders a page the same way for everyone who has not picked a language.
 
-## Motion
-
-Colour and opacity transitions of 150 to 200 ms; hover never moves layout. Menus and sheets fade and slide
-in through `tw-animate-css`. `prefers-reduced-motion: reduce` turns every animation and transition off.
-
 ## Accessibility
 
-- Text contrast at least 4.5:1 in both themes (table above); a 2 px focus outline in `ring` with a 2 px
-  offset on every focusable element.
+- Text contrast at least 4.5:1 in both themes (tables above); a 2 px focus outline in `ring` (`focus-ring`, the
+  brand cobalt) with a 2 px offset on every focusable element.
 - A skip link to `#main`, one `<main>`, a labelled `<nav>` and breadcrumb, an `h1` on every page.
 - `e2e/a11y.spec.ts` runs axe (WCAG 2.2 A and AA rules) on every page and open menu in light and dark and
   fails on any serious or critical violation.
