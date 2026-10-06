@@ -58,7 +58,8 @@ and at the end the commit, diffstat, verify results, evidence, usage and error.
 - **Roles on the project still apply.** Dispatching needs the writer role; reading runs, events and diffs needs
   reader. Messages, takeover, handback, cancel, approve, rerun and the terminal belong to the run's owner, the member
   who dispatched it. A worker takes runs only of the projects it was registered for, and only while its owner still
-  holds writer on them: once the grant goes, claims skip those runs.
+  holds writer on them: once the grant goes, claims skip those runs, the hub takes back the credentials leased to the
+  member's runs there and leases them none.
 - **The agent has the full permissions of the machine's owner.** Claude Code runs with permission mode
   `bypassPermissions` (`--dangerously-skip-permissions`), opencode with the equivalent of `--auto`, and Codex with
   `--dangerously-bypass-approvals-and-sandbox`. The run's worktree is where the agent works, not a sandbox: the

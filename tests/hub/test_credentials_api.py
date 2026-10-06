@@ -411,6 +411,51 @@ def test_another_workers_run_and_a_run_that_ended_are_refused(client, hub, hub_d
     assert len(audit_rows(hub_db, "credential.lease")) == 1
 
 
+def test_a_member_whose_writer_grant_goes_gets_no_lease_and_loses_the_ones_out(client, hub, github, hub_db):
+    install(github, "evo-agents")
+    env_secret(client, hub["owner"], "claude-oauth", "CLAUDE_CODE_OAUTH_TOKEN", sample())
+    env_secret(client, hub["other"], "their-oauth", "CLAUDE_CODE_OAUTH_TOKEN", sample())
+    worker = worker_of(client, hub["owner"], "mac-mini", slots=2)
+    run_id = step_run(client, hub["owner"], "evo-agents", worker)
+    token = by_name(leased(client, worker, run_id))[f"github-app:{MINE}"]["value"]
+    theirs = worker_of(client, hub["other"], "their-box")
+    their_run = step_run(client, hub["other"], "notes", theirs)
+    assert len(leased(client, theirs, their_run)["leases"]) == 1
+
+    # The admin takes owner's grant away: the leases of owner's runs in the project go back, the token is revoked.
+    grant = f"/v1/admin/projects/{PROJECT}/grants/{OWNER}"
+    assert client.delete(grant, headers=hub["admin"]).status_code == 204
+    assert [(row[4], row[5]) for row in leases_of(hub_db, run_id)] == [(True, False), (True, False)]
+    assert revoked_at_github(github) == [token] and not github.covers(token, MINE, "evo-agents")
+    target = f"{PROJECT}/{PLAN}#1 run:{run_id} leases=2 secrets=claude-oauth github-app=1 by=grant-deleted"
+    assert audit_rows(hub_db, "credential.revoke") == [(target, ADMIN, PROJECT, True)]
+    assert [row[4] for row in leases_of(hub_db, their_run)] == [False], "another member's run keeps its leases"
+
+    # The run is still held by the worker, which asks again: refused while owner holds no writer.
+    refused = ask(client, worker["headers"], run_id)
+    assert refused.status_code == 403, refused.text
+    assert refused.json()["message"] == (
+        f"{OWNER}, who dispatched run {run_id}, no longer holds the writer role on project {PROJECT}: the run gets "
+        "no credentials"
+    )
+    assert len(leases_of(hub_db, run_id)) == 2 and len(github.calls("/app/installations/1001/access_tokens")) == 1
+    assert give_back(client, worker["headers"], run_id).json() == {"revoked": 0}, "giving back is never refused"
+
+    # Back as writer, then lowered to reader: the same.
+    put = {"role": "writer", "max_level": "internal"}
+    assert client.put(grant, json=put, headers=hub["admin"]).status_code == 200
+    again = by_name(leased(client, worker, run_id))
+    assert set(again) == {"claude-oauth", f"github-app:{MINE}"}
+    assert client.put(grant, json={**put, "role": "reader"}, headers=hub["admin"]).status_code == 200
+    assert [row[4] for row in leases_of(hub_db, run_id)] == [True] * 4
+    assert audit_rows(hub_db, "credential.revoke")[-1][0].endswith(" by=grant-reader")
+    assert ask(client, worker["headers"], run_id).status_code == 403
+    assert revoked_at_github(github)[-1] == again[f"github-app:{MINE}"]["value"]
+    # raising a grant takes nothing back
+    assert client.put(grant, json=put, headers=hub["admin"]).status_code == 200
+    assert len(audit_rows(hub_db, "credential.revoke")) == 2
+
+
 def test_machine_tokens_and_web_sessions_get_403_and_a_daemon_without_the_protocol_426(client, hub, github, hub_db):
     worker = worker_of(client, hub["owner"], "mac-mini")
     run_id = step_run(client, hub["owner"], "notes", worker)

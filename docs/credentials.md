@@ -137,7 +137,9 @@ secret at 00:00 UTC of that day, as GitLab ends an access token on its expiry da
 `evo_agents/hub/server/credentials.py`. `POST /v1/worker/runs/{id}/credentials`, with the worker's token and the
 protocol header, for a run the worker holds: one of the held states, `waiting` of a plan run among them. Any other run,
 another worker's or one that ended, is 404, as for a state report; a machine token or a web session gets 403, as on
-every worker route. The hub takes the run's repos (the run's repo for a step run, the repos of the plan run, those of
+every worker route. The run's owner, the member who dispatched it, must still hold writer on the run's project: once
+an admin deletes that grant or lowers it to reader, the ask is 403 ("LOGIN, who dispatched run N, no longer holds the
+writer role on project P: the run gets no credentials"), even for a run the worker still holds. The hub takes the run's repos (the run's repo for a step run, the repos of the plan run, those of
 the plan's steps not done when it was dispatched) and their origins from `project_repos`, compared in the form of
 `normalize_origin` (`git@host:path` and `ssh://git@host[:port]/path` included). It then leases what the run's owner
 bound to the run's project, bound to no worker or to this one, and not past its `expires_at`:
@@ -191,8 +193,10 @@ Credentials card.
    `credential.revoke` and answers `{revoked}`, how many leases were still out.
 4. **Revoked anyway.** The hub does the same itself, as its own audited action, when a run leaves the held states (it
    ends, waits in review, or is parked; `run_state.move_run`), when the reaper ends a run whose worker stopped
-   extending its lease, and when the owner revokes the worker or its token, which takes every lease of the worker
-   still out. The leases are marked in the transaction of the move; the GitHub tokens are revoked once it commits, by
+   extending its lease, when the owner revokes the worker or its token, which takes every lease of the worker still
+   out, and when an admin deletes a member's grant on a project or lowers it to reader, which takes every lease still
+   out of the runs that member dispatched in the project (the audit row says `by=grant-deleted` or
+   `by=grant-reader`). The leases are marked in the transaction of the move; the GitHub tokens are revoked once it commits, by
    the route that made the move and by every pass of the reaper, which also takes the tokens GitHub failed to answer
    for. The daily job that prunes run events drops the sealed GitHub tokens of leases past their end.
 
