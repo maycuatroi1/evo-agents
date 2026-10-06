@@ -506,7 +506,7 @@
       "emptyTitle": "Dự án chưa có plan nào trên hub",
       "emptyDescription": "Plan hiện ở đây khi một thành viên đẩy các plan trong harness lên bằng evo-agents hub plan import; plan có nhãn cao hơn mức hiển thị của bạn không hiện.",
       "search": "Tìm plan theo tên hoặc mã",
-      "searchPlaceholder": "Tìm plan…",
+      "searchPlaceholder": "Tìm plan",
       "clearSearch": "Xoá ô tìm",
       "shown": "Hiện {shown} trên {total} plan",
       "total": "{count, plural, other {# plan}}",
@@ -514,6 +514,7 @@
       "noMatchTitle": "Không có plan nào khớp",
       "activeCaption": "Plan đang chạy",
       "completedCaption": "Plan đã hoàn tất",
+      "revisionValue": "r{revision}",
       "columns": {
         "plan": "Plan",
         "progress": "Tiến độ",
@@ -533,7 +534,8 @@
     "board": {
       "title": "Các bước",
       "search": "Tìm bước theo mã, tên, repo hoặc nội dung",
-      "searchPlaceholder": "Tìm bước…",
+      "searchPlaceholder": "Tìm bước",
+      "clearSearch": "Xoá ô tìm",
       "repo": "Repo",
       "allRepos": "Mọi repo",
       "view": "Cách xem các bước",

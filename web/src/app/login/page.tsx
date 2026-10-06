@@ -1,4 +1,4 @@
-import { BookOpenText, Brain, ListChecks, Network, TriangleAlert } from "lucide-react";
+import { BookOpen, ListChecks, Network, Sparkles, TriangleAlert } from "lucide-react";
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
@@ -38,9 +38,10 @@ async function signedIn(): Promise<boolean> {
   }
 }
 
+/** One icon per concept, the same ones the sidebar uses (web/DESIGN.md, Iconography). */
 const FEATURES = [
-  { icon: Brain, label: "Memories" },
-  { icon: BookOpenText, label: "Skills" },
+  { icon: BookOpen, label: "Memories" },
+  { icon: Sparkles, label: "Skills" },
   { icon: ListChecks, label: "Plans" },
   { icon: Network, label: "Knowledge graph" },
 ] as const;

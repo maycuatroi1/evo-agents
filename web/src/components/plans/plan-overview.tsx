@@ -6,6 +6,7 @@ import { useFormatter, useTranslations } from "next-intl";
 import { type ReactNode, useEffect, useRef } from "react";
 
 import { NoticeArea, useNotice } from "@/components/admin/notice";
+import { Identifier } from "@/components/data/identifier";
 import { useCanDispatch, usePlanRunNotice } from "@/components/runs/hooks";
 import { PlanRunBanner, RunPlanButton, usePlanActivity } from "@/components/runs/plan-run";
 import { LIVE_REFRESH_MS } from "@/components/runs/queries";
@@ -79,7 +80,7 @@ function Intro({ view }: { view: PlanView }) {
   if (!view.goal && !view.context && !view.createdAt && !view.status) return null;
   return (
     <section aria-labelledby="plan-goal-title" className="flex flex-col gap-3 rounded-md border bg-card shadow-raised p-4">
-      <h2 id="plan-goal-title" className="text-base font-medium">
+      <h2 id="plan-goal-title" className="text-[15px] leading-[22px] font-semibold">
         {t("goal")}
       </h2>
       {view.goal ? <Prose>{view.goal}</Prose> : <p className="text-sm text-muted-foreground">{t("noGoal")}</p>}
@@ -118,13 +119,13 @@ function Repos({ repos }: { repos: PlanRepo[] }) {
   if (repos.length === 0) return null;
   return (
     <section aria-labelledby="plan-repos-title" className="flex flex-col gap-3">
-      <h2 id="plan-repos-title" className="text-base font-medium">
+      <h2 id="plan-repos-title" className="text-[15px] leading-[22px] font-semibold">
         {t("title")}
       </h2>
       <div className="overflow-hidden rounded-md border bg-card shadow-raised">
         <Table scrollLabel={t("title")}>
           <TableCaption className="sr-only">{t("caption")}</TableCaption>
-          <TableHeader className="bg-muted/50">
+          <TableHeader className="bg-muted">
             <TableRow className="hover:bg-transparent">
               <TableHead className="h-10 px-3 text-xs text-muted-foreground">{t("order")}</TableHead>
               <TableHead className="h-10 px-3 text-xs text-muted-foreground">{t("repo")}</TableHead>
@@ -137,8 +138,10 @@ function Repos({ repos }: { repos: PlanRepo[] }) {
           <TableBody>
             {repos.map((repo, index) => (
               <TableRow key={`${repo.repo}-${index}`}>
-                <TableCell className="px-3 py-2.5 font-mono text-xs tabular-nums">{repo.order ?? "-"}</TableCell>
-                <TableCell className="px-3 py-2.5 font-mono text-xs font-medium">{repo.repo}</TableCell>
+                <TableCell className="px-3 py-2.5 text-muted-foreground tabular-nums">{repo.order ?? "-"}</TableCell>
+                <TableCell className="px-3 py-2.5">
+                  <Identifier value={repo.repo} className="text-foreground" />
+                </TableCell>
                 <TableCell className="px-3 py-2.5">
                   <div className="flex flex-col items-start gap-1">
                     <RepoStatusBadge status={repo.status} />
@@ -149,9 +152,19 @@ function Repos({ repos }: { repos: PlanRepo[] }) {
                     ) : null}
                   </div>
                 </TableCell>
-                <TableCell className="hidden px-3 py-2.5 font-mono text-xs md:table-cell">{repo.branch ?? "-"}</TableCell>
-                <TableCell className="hidden px-3 py-2.5 font-mono text-xs lg:table-cell">
-                  {repo.dependsOn.length ? repo.dependsOn.join(", ") : "-"}
+                <TableCell className="hidden px-3 py-2.5 md:table-cell">
+                  {repo.branch ? <Identifier value={repo.branch} /> : <span className="text-muted-foreground">-</span>}
+                </TableCell>
+                <TableCell className="hidden px-3 py-2.5 lg:table-cell">
+                  {repo.dependsOn.length ? (
+                    <span className="flex flex-wrap gap-1">
+                      {repo.dependsOn.map((name) => (
+                        <Identifier key={name} value={name} />
+                      ))}
+                    </span>
+                  ) : (
+                    <span className="text-muted-foreground">-</span>
+                  )}
                 </TableCell>
                 <TableCell className="hidden max-w-md px-3 py-2.5 text-xs whitespace-normal text-pretty xl:table-cell">
                   {repo.scope ?? "-"}
@@ -178,7 +191,7 @@ function OtherSections({ sections: given }: { sections: [string, unknown][] }) {
   if (sections.length === 0) return null;
   return (
     <section aria-labelledby="plan-sections-title" className="flex flex-col gap-3">
-      <h2 id="plan-sections-title" className="text-base font-medium">
+      <h2 id="plan-sections-title" className="text-[15px] leading-[22px] font-semibold">
         {t("title")}
       </h2>
       <div className="flex flex-col gap-2">

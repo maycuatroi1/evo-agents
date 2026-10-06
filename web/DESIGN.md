@@ -361,6 +361,10 @@ Shared pieces built on them:
   registered one in document order; the knowledge graph's query field too) unless focus is in a field that takes
   text or a dialog is open. Filters live in the URL and change it through `window.history.replaceState`, which
   Next.js syncs with `useSearchParams` without rendering the page on the server again.
+- `components/data/segmented.tsx`: the kit's segmented control, for two or three ways to show the same thing (a
+  plan's board or list, a diff unified or split, a memory rendered or raw). A labelled group of `aria-pressed`
+  buttons on `surface-sunken` with 6 px corners, 24 px with 12 px text (44 px under 768 px); the pressed one sits on
+  `surface` inside a `border-strong` ring. A select beside it is `ui/native-select.tsx` in Plex Sans, 32 px.
 - `components/workers`: the workers pages poll the hub every 10 seconds (`refetchInterval`), the Register dialog
   every 2 seconds while its pairing code waits. Draining or revoking a worker asks for its name, typed out
   (`confirm-by-name.tsx`). The hub keeps only a worker's latest heartbeat, so the 60-minute heartbeat strip is built

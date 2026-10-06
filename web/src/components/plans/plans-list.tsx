@@ -10,7 +10,7 @@ import { useMemo, useState } from "react";
 import { NoticeArea, useNotice } from "@/components/admin/notice";
 import { DataCard, DataToolbar } from "@/components/data/data-card";
 import { CellMain, DataTable, dataTableColumns } from "@/components/data/data-table";
-import { NAME_LINK } from "@/components/data/identifier";
+import { Identifier, NAME_LINK } from "@/components/data/identifier";
 import { SearchField } from "@/components/data/search-field";
 import { useCanDispatch, usePlanRunNotice } from "@/components/runs/hooks";
 import { activePlanRun, planRunPhase } from "@/components/runs/model";
@@ -134,7 +134,7 @@ function PlansTable({
         header: () => t("columns.revision"),
         sortFn: "basic",
         meta: { numeric: true },
-        cell: (info) => <span className="font-mono text-xs">{info.getValue()}</span>,
+        cell: (info) => <Identifier value={t("revisionValue", { revision: info.getValue() })} />,
       }),
       helper.accessor((row) => new Date(row.updated_at), {
         id: "updated",

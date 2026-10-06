@@ -223,7 +223,7 @@ function DiffBody({ run, diff }: { run: Run; diff: DiffState }) {
       ) : (
         <>
           <nav aria-label={t("filesLabel")} className="rounded-md border bg-card shadow-raised" data-testid="diff-files">
-            <h2 className="border-b px-4 py-3 text-base font-medium">
+            <h2 className="border-b px-4 py-3 text-[15px] leading-[22px] font-semibold">
               {t("filesTitle", { count: files.length })}{" "}
               <span className="font-mono text-sm font-normal tabular-nums">
                 <span className="text-success">+{format.number(additions)}</span>{" "}

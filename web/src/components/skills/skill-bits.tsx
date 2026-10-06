@@ -4,7 +4,7 @@ import { Check, Copy, ExternalLink, FolderGit2, GitCommitHorizontal, Globe } fro
 import { useFormatter, useTranslations } from "next-intl";
 import { useEffect, useRef, useState } from "react";
 
-import { Badge } from "@/components/ui/badge";
+import { Tag } from "@/components/data/identifier";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -17,7 +17,13 @@ export function ByteSize({ bytes }: { bytes: number }) {
   const { value, unit } = sizeParts(bytes);
   return (
     <span className="tabular-nums" title={t("bytes", { count: bytes })}>
-      {format.number(value, { style: "unit", unit, unitDisplay: "short", maximumFractionDigits: unit === "byte" ? 0 : 1 })}
+      {format.number(value, {
+        style: "unit",
+        unit,
+        // "230 bytes", not the short form's "230 byte"; kB and MB keep their symbols.
+        unitDisplay: unit === "byte" ? "long" : "short",
+        maximumFractionDigits: unit === "byte" ? 0 : 1,
+      })}
     </span>
   );
 }
@@ -115,14 +121,14 @@ export function SourceLink({
 export function ScopeBadge({ project }: { project: string | null }) {
   const t = useTranslations("skills");
   return project === null ? (
-    <Badge variant="info" className="gap-1">
+    <Tag>
       <Globe aria-hidden="true" />
       {t("scopeGlobal")}
-    </Badge>
+    </Tag>
   ) : (
-    <Badge variant="outline" className="gap-1">
+    <Tag>
       <FolderGit2 aria-hidden="true" />
       {t("scopeProject", { project })}
-    </Badge>
+    </Tag>
   );
 }

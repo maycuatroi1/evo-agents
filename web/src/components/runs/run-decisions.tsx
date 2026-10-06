@@ -65,7 +65,7 @@ export function RunDecisions({ run, owner }: { run: Run; owner: boolean }) {
     >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex min-w-0 flex-col gap-1.5">
-          <h2 id={`${ids}-title`} className="flex items-center gap-2 text-base font-semibold">
+          <h2 id={`${ids}-title`} className="flex items-center gap-2 text-[15px] leading-[22px] font-semibold">
             <MessageCircleQuestionMark className="size-5 shrink-0" aria-hidden="true" />
             {title}
             {open.length > 1 ? (

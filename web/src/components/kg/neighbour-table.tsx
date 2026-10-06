@@ -37,7 +37,7 @@ export function NeighbourTable({
     <div className="flex min-w-0 flex-col gap-3" data-testid="kg-neighbours" data-selected={node.id}>
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="flex min-w-0 flex-col gap-0.5">
-          <h3 className="text-base font-medium break-words" id="kg-neighbours-title">
+          <h3 className="text-[15px] leading-[22px] font-semibold break-words" id="kg-neighbours-title">
             {t("title", { name })}
           </h3>
           <p className="text-xs text-muted-foreground">

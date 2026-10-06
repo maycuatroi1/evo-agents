@@ -98,7 +98,7 @@ function Comparison({ project, planId, revisions, pair }: { project: string; pla
   const state = useHubQuery({ ...planDiffQuery(browserApi, project, planId, pair.from, pair.to), enabled: !same });
   return (
     <section aria-labelledby="plan-diff-title" className="flex min-w-0 flex-col gap-3">
-      <h2 id="plan-diff-title" className="text-base font-medium" data-testid="diff-title">
+      <h2 id="plan-diff-title" className="text-[15px] leading-[22px] font-semibold" data-testid="diff-title">
         {same ? t("compareTitle") : t("diffTitle", { from: pair.from, to: pair.to })}
       </h2>
       {revisions.length < 2 ? (
@@ -134,7 +134,7 @@ function HistoryList({ project, planId, revisions, pair }: { project: string; pl
   const shown = all ? newest : newest.slice(0, HISTORY_LIMIT);
   return (
     <section aria-labelledby="plan-history-title" className="flex min-w-0 flex-col gap-3">
-      <h2 id="plan-history-title" className="flex items-center gap-2 text-base font-medium">
+      <h2 id="plan-history-title" className="flex items-center gap-2 text-[15px] leading-[22px] font-semibold">
         <History className="size-4 text-muted-foreground" aria-hidden="true" />
         {t("title")}
         <span className="font-mono text-xs text-muted-foreground tabular-nums">{revisions.length}</span>

@@ -79,7 +79,7 @@ function Builds({ data }: { data: KgBuilds }) {
   return (
     <section aria-labelledby="kg-builds-title" className="flex flex-col gap-4" data-testid="kg-builds">
       <div className="flex flex-col gap-1">
-        <h2 id="kg-builds-title" className="text-lg font-semibold tracking-tight">
+        <h2 id="kg-builds-title" className="text-[15px] leading-[22px] font-semibold">
           {t("title")}
         </h2>
         <p className="max-w-3xl text-sm text-pretty text-muted-foreground">
@@ -93,7 +93,7 @@ function Builds({ data }: { data: KgBuilds }) {
             <BuildQueue data={data} now={now} />
           </div>
           <div className="flex flex-col gap-2">
-            <h3 className="text-base font-medium">{t("history")}</h3>
+            <h3 className="text-[15px] leading-[22px] font-semibold">{t("history")}</h3>
             <BuildHistory builds={data.builds} now={now} />
           </div>
         </>

@@ -44,10 +44,13 @@ test.describe("screenshots", () => {
       await page.goto("/");
       await expect(page.getByTestId("projects-table")).toBeVisible();
       await page.screenshot({ path: path.join(dir!, `shell-home-mobile-${scheme}.png`) });
-      await page.goto("/login");
+      // Leave the app before signing out: a page of the app still polling (the inbox bell, the fleet line) answers
+      // its first 401 with window.location.assign("/login"), which would abort a page.goto("/login") under way.
+      await page.goto("about:blank");
       await page.context().clearCookies();
       await page.goto("/login");
       await page.setViewportSize({ width: 1440, height: 900 });
+      await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
       await page.screenshot({ path: path.join(dir!, `login-${scheme}.png`) });
     });
   }

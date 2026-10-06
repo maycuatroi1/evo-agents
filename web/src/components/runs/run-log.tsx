@@ -100,12 +100,13 @@ function Highlighted({ text, query }: { text: string; query: string }) {
 const LogRow = memo(function LogRow({ line, query, time, kind, notes }: { line: LogLine; query: string; time: string; kind: string; notes: string[] }) {
   return (
     <div
-      className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-2.5 px-3 py-px hover:bg-term-row sm:grid-cols-[4.75rem_6.75rem_minmax(0,1fr)] sm:px-3.5"
+      className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-2.5 px-3 py-px hover:bg-term-row sm:grid-cols-[11ch_6.75rem_minmax(0,1fr)] sm:px-3.5"
       data-seq={line.seq}
       data-kind={line.kind}
       data-testid="log-line"
     >
-      <time dateTime={line.at} className="text-term-muted tabular-nums">
+      {/* 11ch holds the longest time of either locale, "12:42:05 AM", on one line in the mono log. */}
+      <time dateTime={line.at} className="whitespace-nowrap text-term-muted tabular-nums">
         {time}
       </time>
       <span className={cn("truncate font-medium", KIND_TONE[line.kind])}>{kind}</span>
@@ -376,7 +377,7 @@ export function RunLogCard({
     return (
       <section aria-labelledby={`${ids}-title`} className="flex min-w-0 flex-col rounded-md border bg-card shadow-raised" data-testid="run-log">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b px-4 py-3">
-          <h2 id={`${ids}-title`} className="text-base font-medium">
+          <h2 id={`${ids}-title`} className="text-[15px] leading-[22px] font-semibold">
             {t("title")}
           </h2>
           {logState}

@@ -4,6 +4,7 @@ import { Columns2, Rows3 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { Fragment, useState } from "react";
 
+import { Segmented } from "@/components/data/segmented";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { type PlanDiff, type PlanDiffHunk, type PlanDiffLine, splitRows } from "@/lib/plans";
 import { cn } from "@/lib/utils";
@@ -169,29 +170,16 @@ function SplitHunk({ hunk, index, diff }: { hunk: PlanDiffHunk; index: number; d
 export function DiffModeToggle({ mode, onChange }: { mode: Mode; onChange: (mode: Mode) => void }) {
   const t = useTranslations("plans.diff");
   return (
-    <div role="group" aria-label={t("mode")} className="hidden w-fit rounded-md border bg-muted/40 p-0.5 md:inline-flex">
-      {(
-        [
-          ["unified", Rows3],
-          ["split", Columns2],
-        ] as const
-      ).map(([id, Icon]) => (
-        <button
-          key={id}
-          type="button"
-          aria-pressed={mode === id}
-          onClick={() => onChange(id)}
-          className={cn(
-            "inline-flex min-h-9 items-center gap-1.5 rounded-sm px-3 text-sm font-medium transition-colors",
-            mode === id ? "bg-card text-foreground shadow-raised" : "text-muted-foreground hover:text-foreground",
-          )}
-          data-testid={`diff-mode-${id}`}
-        >
-          <Icon className="size-4" aria-hidden="true" />
-          {t(id)}
-        </button>
-      ))}
-    </div>
+    <Segmented
+      label={t("mode")}
+      value={mode}
+      onChange={onChange}
+      className="hidden md:inline-flex"
+      options={[
+        { value: "unified", label: t("unified"), icon: Rows3, testId: "diff-mode-unified" },
+        { value: "split", label: t("split"), icon: Columns2, testId: "diff-mode-split" },
+      ]}
+    />
   );
 }
 
