@@ -782,6 +782,7 @@ page's own origin, under the CSP's `connect-src 'self'`.
 | `evo-agents worker service uninstall` | stops the daemon and removes the service; the worker stays registered |
 | `evo-agents worker service status [--json]` | whether the service is installed and the daemon runs, its pid and last exit |
 | `evo-agents worker status [--json]` | the worker as this machine and the hub see it: runtimes, tmux and whether the web terminal is allowed, checkouts, the daemon's pid, runs kept, the spool |
+| `evo-agents worker doctor [--json]` | what the machine holds or allows that a worker should not (another administrator, a readable home, the owner's long-lived credentials, a PATH others write), each finding with a code, a severity, what was found and how to fix it; exits 2 when a finding is high (see [Checking a worker machine](credentials.md#checking-a-worker-machine)) |
 | `evo-agents worker attach N` | puts this terminal on the tmux session `evo-run-N` of an interactive run (`tmux attach`, or `switch-client` from inside tmux on the same server) |
 | `evo-agents worker selftest --runtime NAME [--model M] [--effort E] [--timeout S] [--keep] [--background]` | runs the runtime's adapter for real on a tiny prompt in a scratch git repository, prints each event and how many of each kind came, and exits 0 when the turn completed and the agent wrote the file it was asked for (it spends a little of the owner's quota; Claude Code and Codex run at effort `low` unless `--effort` says otherwise); `--background` (claude-code only) checks that the session waits for a command run in the background: the agent starts `sleep 20 && date -u` that way, ends its turn, and writes the file once the command ended |
 | `evo-agents worker drain [--resume]` | stops claims (or resumes them) through `POST /v1/workers/{id}/drain` or `/undrain`, with the machine token |
@@ -1076,6 +1077,8 @@ command says so, and `evo-agents worker run` can go under a supervisor of your o
   directory on macOS, and to `journalctl --user -u evo-agents-worker` on Linux.
 - systemd stops a user's services when the user logs out; `loginctl enable-linger` keeps them running, and the
   install says so when lingering is off.
+- The install then runs `evo-agents worker doctor` with the PATH it wrote and prints its high and medium findings
+  as `warning:` lines. They do not stop it.
 
 The install refuses a machine that is not a worker yet, a Python without the worker extra, and a machine where a
 daemon already runs outside the service. It waits up to 10 seconds for the daemon to run and fails, leaving the

@@ -17,7 +17,8 @@ the installed plist or unit sets (``EVO_WORKER_OPENCODE_MODEL``, ``EVO_WORKER_CL
 the owner may have added by hand), and writes PATH, EVO_WORKER_HOME and EVO_WORKER_REVOKED_EXIT as a first install
 does. Stopping the service sends the daemon SIGTERM and kills what is left 60 seconds later. The daemon, and so its
 agents, start with umask 077 (``Umask`` 63 in the plist, ``UMask=0077`` in the unit): what a run writes is its
-owner's alone.
+owner's alone. ``install`` then runs ``evo-agents worker doctor`` with the service's PATH and prints its high and
+medium findings as warnings (``doctor.warnings``); they never stop the install.
 
 The daemon writes ``worker.log`` itself (``logs``: rotated at 10 MiB, five old files kept). What it prints before that
 log is open, such as a missing extra or a machine that is not a worker, goes to ``service.log`` in the state directory
@@ -540,6 +541,13 @@ def missing_extra() -> str | None:
     return None if importlib.util.find_spec("aiohttp") is not None else "aiohttp"
 
 
+def doctor_warnings(spec: Spec) -> list[str]:
+    """The warning lines of ``evo-agents worker doctor`` on this machine, with the PATH of ``spec``."""
+    from evo_agents.worker import doctor
+
+    return doctor.warnings(doctor.examine(doctor.Machine.here(path=spec.path)))
+
+
 def _refuse_foreign_daemon(home: WorkerHome, service: Manager) -> None:
     pid = home.read_pid()
     if pid is None:
@@ -610,6 +618,12 @@ def cmd_install(args) -> int:
             "  systemd stops user services when you log out; to keep the worker running without a session: "
             "loginctl enable-linger"
         )
+    try:
+        warned = doctor_warnings(spec)
+    except Exception as exc:  # the doctor only warns: nothing it meets stops the install
+        warned = [f"warning: `evo-agents worker doctor` did not finish ({type(exc).__name__}: {exc})"]
+    for line in warned:
+        print(line, file=sys.stderr)
     if not status.running:
         print(
             f"error: the service is installed, but the daemon is {_describe(status)}: see {_logs(service, spec.home)}",

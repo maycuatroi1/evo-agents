@@ -5,6 +5,8 @@
   with the machine token of ``evo-agents hub login``.
 - ``run``: the daemon in the foreground (``daemon``).
 - ``status``: what this machine is to the hub, and what the daemon sees here.
+- ``doctor [--json]``: what this machine holds or allows that a worker should not, such as another administrator or a
+  long-lived credential of its owner (``doctor``); exit status 2 when a finding is high.
 - ``attach N``: this terminal on the tmux session of run N while a person drives its agent (``evo-run-N``).
 - ``drain [--resume]``, ``revoke [--force]``: the owner's controls, with the machine token.
 - ``step KEY STATUS``, ``ask``, ``notify``, ``plan``: the commands of a plan run's agent, which report a step (the
@@ -818,6 +820,10 @@ def register(sub) -> None:
     status = wsub.add_parser("status", help="this worker as the hub and this machine see it")
     status.add_argument("--json", action="store_true", help="machine-readable output")
     status.set_defaults(func=cmd_status)
+
+    from evo_agents.worker.doctor import add_parser as add_doctor  # `doctor [--json]`
+
+    add_doctor(wsub)
 
     from evo_agents.worker.selftest import add_parser as add_selftest  # `selftest --runtime NAME`
 
