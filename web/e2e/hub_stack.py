@@ -27,6 +27,9 @@ over a real PTY, whose line discipline echoes what is typed and whose program an
 and each resize with ``size: <cols>x<rows>``; GET /terminal/worker/<run_id> says how it went. POST /sessions/age
 {login, hours} makes that member's web sessions that many hours older, for the 12-hour limit of the terminal.
 
+The hub seals secrets with an EVO_HUB_SECRETS_KEY of its own, made for each start, and has no GitHub App: a run gets
+the owner's secrets as leases, and a repo on github.com that no git secret covers is missing with that reason.
+
 Environment: EVO_HUB_TEST_DSN (required, a superuser DSN), E2E_API_PORT (18324), E2E_STACK_PORT (18325),
 E2E_WEB_ORIGIN (http://localhost:3324, the hub's public URL), E2E_ADMIN_LOGIN (e2e-admin).
 """
@@ -398,6 +401,7 @@ def main() -> int:
             EVO_HUB_GITHUB_URL=github.url,
             EVO_HUB_GITHUB_API_URL=github.url,
             EVO_HUB_SESSION_SECRET="e2e-session-" + secrets.token_hex(24),
+            EVO_HUB_SECRETS_KEY=secrets.token_urlsafe(32),  # seals the members' secrets (docs/credentials.md)
             EVO_HUB_PUBLIC_URL=web_origin,
             **s3.env(),
         )

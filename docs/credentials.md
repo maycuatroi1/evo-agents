@@ -96,6 +96,10 @@ only their own secrets, and `/v1/admin/stats` counts the rows of `secrets` witho
 audit row `secret.put` or `secret.delete` whose target is the secret's name; no audit row, log line or error carries
 a value, and a 422 never repeats the input.
 
+On the web, the Secrets page (`/secrets`) lists the visitor's secrets and adds, replaces and deletes them. Its value
+field is a password field the page never fills: a replace asks for the value again, and the field is emptied as soon
+as the form is sent, whatever the hub answers.
+
 From the command line (`evo_agents/hub/cli_secrets.py`):
 
 ```sh
@@ -152,7 +156,8 @@ origins of the run's repos it answered for, space-separated, in the form of `nor
 `expires_at` and `revoked_at`. It never carries a value, sealed or not. The run must be one the caller may read, and
 only the member who dispatched it gets the list: another member gets 403, a hub admin included, since the leases name
 the owner's secrets as `GET /v1/secrets` does to the owner alone. `evo-agents hub run credentials RUN [--json]` prints
-it, each lease as out, expired, or revoked with the time.
+it, each lease as out, expired, or revoked with the time, and the run's page on the web shows it to its owner in a
+Credentials card.
 
 ## Life of a lease
 

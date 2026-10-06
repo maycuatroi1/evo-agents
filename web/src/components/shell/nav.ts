@@ -5,6 +5,7 @@ import {
   Inbox,
   LayoutDashboard,
   ListChecks,
+  LockKeyhole,
   type LucideIcon,
   Network,
   NotebookPen,
@@ -17,7 +18,7 @@ import type { Route } from "next";
 
 /**
  * The sidebar's links. Steps that add a project area (plans, runs, memories, skills, knowledge graph) add one entry to
- * PROJECT_NAV, a hub-wide area (the inbox, workers) one entry to HUB_NAV, and one label under `nav` in messages/vi.json
+ * PROJECT_NAV, a hub-wide area (the inbox, workers, secrets) one entry to HUB_NAV, and one label under `nav` in messages/vi.json
  * and messages/en.json.
  */
 export type NavLabel =
@@ -32,6 +33,7 @@ export type NavLabel =
   | "myMemories"
   | "globalSkills"
   | "workers"
+  | "secrets"
   | "inbox";
 
 export type ProjectNavItem = {
@@ -61,6 +63,7 @@ export const HUB_NAV: readonly HubNavItem[] = [
   { label: "projects", icon: FolderGit2, href: "/" },
   { label: "inbox", icon: Inbox, href: "/inbox" },
   { label: "workers", icon: Server, href: "/workers" },
+  { label: "secrets", icon: LockKeyhole, href: "/secrets" },
   { label: "myMemories", icon: NotebookPen, href: "/memories" },
   { label: "globalSkills", icon: Blocks, href: "/skills" },
   { label: "admin", icon: ShieldCheck, href: "/admin", adminOnly: true },
