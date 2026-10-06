@@ -51,6 +51,9 @@ NOTIFICATION_READ = "notification.read"  # a member marked notifications read: "
 # ended ("... to_worker=<n> to_browser=<n> end=<idle|timeout|browser|worker|protocol|shutdown>"), never the bytes.
 TERMINAL_OPEN = "terminal.open"  # the owner opened the run's terminal in a browser
 TERMINAL_CLOSE = "terminal.close"
+# A member's secrets belong to no one project; the target is the secret's name, never its value.
+SECRET_PUT = "secret.put"  # the owner created a secret or replaced it, value included
+SECRET_DELETE = "secret.delete"  # the owner deleted it: its sealed value and bindings went, its leases were revoked
 
 NAMED_FAMILIES = frozenset({"grant", "project", "plan", "kg", "blob"})  # targets that start with the project's name
 _FIRST_NAME = re.compile(r"([a-z0-9][a-z0-9-]{0,99})(?:[/ @]|$)")

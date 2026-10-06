@@ -1822,6 +1822,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/secrets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Secrets
+         * @description The caller's own secrets, by name, without their values; a hub admin's own too.
+         */
+        get: operations["list_secrets_v1_secrets_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/secrets/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Put Secret
+         * @description Create the caller's secret ``name``, or replace it whole; the value is sealed and never shown again.
+         */
+        put: operations["put_secret_v1_secrets__name__put"];
+        post?: never;
+        /**
+         * Delete Secret
+         * @description Delete the caller's secret ``name``: its value and bindings go, and its leases are revoked.
+         */
+        delete: operations["delete_secret_v1_secrets__name__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -4432,6 +4476,155 @@ export interface components {
              * @description the models the runtime lists on the machine, for a dispatch to suggest; null when it lists none
              */
             models?: string[] | null;
+        };
+        /**
+         * Secret
+         * @description A secret as its owner sees it: everything but the value.
+         */
+        Secret: {
+            /** Name */
+            name: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "env" | "git";
+            /**
+             * Env Var
+             * @description kind env: the variable it sets
+             */
+            env_var: string | null;
+            /**
+             * Url Prefix
+             * @description kind git: the https prefix of the origins it answers for
+             */
+            url_prefix: string | null;
+            /**
+             * Username
+             * @description kind git: the user git sends with it
+             */
+            username: string | null;
+            /**
+             * Projects
+             * @description the projects whose runs get it
+             */
+            projects: string[];
+            /**
+             * Workers
+             * @description the workers it is bound to; empty for any worker of its owner
+             */
+            workers: string[];
+            /** Expires At */
+            expires_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description when its value was last written
+             */
+            updated_at: string;
+        };
+        /** SecretWrite */
+        SecretWrite: {
+            /**
+             * Kind
+             * @description env: a variable of the agent's environment; git: what git's credential helper answers
+             * @enum {string}
+             */
+            kind: "env" | "git";
+            /**
+             * Env Var
+             * @description kind env only: the variable it sets, upper case, never one that steers the shell, git or the worker (PATH, HOME, EVO_*, GIT_* ...)
+             */
+            env_var?: string | null;
+            /**
+             * Url Prefix
+             * @description kind git only: the https prefix of the origins it answers for, such as https://gitlab.example.org/group; kept as https://host/path, without .git or a trailing slash
+             */
+            url_prefix?: string | null;
+            /**
+             * Username
+             * @description kind git only: the user git sends with the value; oauth2 when left out
+             */
+            username?: string | null;
+            /**
+             * Projects
+             * @description the projects whose runs get it; the writer role on each
+             */
+            projects: string[];
+            /**
+             * Workers
+             * @description names of the caller's own workers that are not revoked; left out or empty for any of them
+             */
+            workers?: string[];
+            /**
+             * Expires At
+             * @description after this no run gets it; in the future
+             */
+            expires_at?: string | null;
+            /**
+             * Value
+             * Format: password
+             * @description the secret itself, 1 to 16384 bytes of UTF-8; written once, never shown again
+             */
+            value: string;
+        };
+        /** SecretWritten */
+        SecretWritten: {
+            /** Name */
+            name: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "env" | "git";
+            /**
+             * Env Var
+             * @description kind env: the variable it sets
+             */
+            env_var: string | null;
+            /**
+             * Url Prefix
+             * @description kind git: the https prefix of the origins it answers for
+             */
+            url_prefix: string | null;
+            /**
+             * Username
+             * @description kind git: the user git sends with it
+             */
+            username: string | null;
+            /**
+             * Projects
+             * @description the projects whose runs get it
+             */
+            projects: string[];
+            /**
+             * Workers
+             * @description the workers it is bound to; empty for any worker of its owner
+             */
+            workers: string[];
+            /** Expires At */
+            expires_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description when its value was last written
+             */
+            updated_at: string;
+            /**
+             * Created
+             * @description false when a secret of this name was replaced
+             */
+            created: boolean;
         };
         /** SignedIn */
         SignedIn: {
@@ -11359,6 +11552,173 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_secrets_v1_secrets_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Secret"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    put_secret_v1_secrets__name__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description unique among the caller's secrets */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SecretWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SecretWritten"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_secret_v1_secrets__name__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description unique among the caller's secrets */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

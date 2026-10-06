@@ -60,6 +60,38 @@ where it belongs (`secret:{owner_id}:{name}:{kind}`, `lease:{id}`), so a sealed 
 open. Without the key the hub refuses to write secrets (503) and leases nothing. The key is not in the database and
 not in its backups.
 
+## The owner's routes
+
+`evo_agents/hub/server/secrets.py`, with a machine token or a web session; a write made with the session cookie needs
+`X-Evo-CSRF`, as every write does. A worker token gets 403 here.
+
+| Route | What it does |
+| --- | --- |
+| `PUT /v1/secrets/{name}` | creates the caller's secret `name`, or replaces it whole, value included; `created` says which |
+| `GET /v1/secrets` | the caller's own secrets that are not deleted, without their values |
+| `DELETE /v1/secrets/{name}` | deletes it softly: the row stays, its sealed value and bindings go, its live leases are revoked |
+
+The body of a PUT:
+
+- `kind`: `env` with `env_var`, an upper-case variable that is none of `DENIED_ENV` and starts with none of its
+  prefixes (`EVO_`, `GIT_`, `LD_`, `DYLD_`, `PYTHON`), or `git` with `url_prefix`, an https URL without a user,
+  password, query or fragment, kept in the form of `normalize_origin`, and `username` (`oauth2` when left out). A field
+  of the other kind is refused.
+- `projects`: one or more projects the caller holds writer on; a project the caller holds less on is 403, one they
+  cannot see 404.
+- `workers`: optional names of the caller's own workers that are not revoked; any other name, another member's worker
+  included, is 403, also for a hub admin. Left out, the secret goes to any worker of its owner. The bindings are each
+  project on each named worker.
+- `expires_at`: optional, with a time zone, in the future.
+- `value`: 1 to `MAX_SECRET_BYTES` (16384) bytes of UTF-8, without NUL; one line for kind `git`.
+
+A name is 1 to 64 characters of `a-z`, `0-9`, `.`, `_` and `-`, starting with a letter or digit, unique among the
+owner's secrets that are not deleted; a deleted secret's name is free again. A member keeps at most
+`MAX_SECRETS_PER_OWNER` (200) secrets (409 past that). A hub admin's routes are the same: they list, change and delete
+only their own secrets, and `/v1/admin/stats` counts the rows of `secrets` without showing one. Each write adds an
+audit row `secret.put` or `secret.delete` whose target is the secret's name; no audit row, log line or error carries
+a value, and a 422 never repeats the input.
+
 ## Which leases a run gets
 
 `POST /v1/worker/runs/{id}/credentials`, with the worker's token, for a run the worker holds (a held state, or

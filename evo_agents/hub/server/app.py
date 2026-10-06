@@ -8,7 +8,8 @@ string, which can carry OAuth codes. Every path under /v1 needs a credential exc
 ``security.PUBLIC_PATHS`` lists. The OpenAPI document is served at /v1/openapi.json for the web client's generated
 types. /mcp is the MCP endpoint (``evo_agents.hub.server.mcp``): its SDK app is mounted, so the lifespan runs its
 session manager. The only websockets are the two ends of a run's web terminal (``evo_agents.hub.server.terminal``),
-which check their own credential.
+which check their own credential. ``app.state.sealer`` seals the members' secrets (``evo_agents.hub.server.sealing``);
+it is None without EVO_HUB_SECRETS_KEY, and the routes that write secrets answer 503.
 """
 
 from __future__ import annotations
@@ -124,6 +125,7 @@ def create_app(config: HubConfig) -> FastAPI:
                 "device_login": bool(config.github_client_id),
                 "web_login_missing": config.web_login_missing(),
                 "blob_bucket": config.s3_bucket,
+                "credentials_missing": config.credentials_missing(),
             },
         )
         try:
@@ -214,6 +216,12 @@ def create_app(config: HubConfig) -> FastAPI:
     app.include_router(terminal.router)
     app.include_router(terminal.worker_router)
     app.state.terminals = terminal.Terminals()  # the web terminals open in this process, one per run
+
+    from evo_agents.hub.server import secrets
+    from evo_agents.hub.server.sealing import Sealer
+
+    app.include_router(secrets.router)
+    app.state.sealer = Sealer.from_config(config)  # None without EVO_HUB_SECRETS_KEY: the secret routes answer 503
     return app
 
 
