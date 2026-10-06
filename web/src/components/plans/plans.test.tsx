@@ -60,9 +60,9 @@ beforeEach(() => {
 describe("StepStatusBadge", () => {
   it("says the status in words beside its icon", () => {
     renderVi(<StepStatusBadge group="blocked" />);
-    const badge = screen.getByText("Bị chặn");
+    const badge = screen.getByText("Bị chặn").closest("[data-slot=status-badge]");
     expect(badge).toHaveAttribute("data-status", "blocked");
-    expect(badge.querySelector("svg")).toHaveAttribute("aria-hidden", "true");
+    expect(badge?.querySelector("svg")).toHaveAttribute("aria-hidden", "true");
   });
 
   it("keeps an unknown status as written", () => {

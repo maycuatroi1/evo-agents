@@ -1,6 +1,6 @@
 "use client";
 
-import { Loader2, TriangleAlert } from "lucide-react";
+import { TriangleAlert } from "lucide-react";
 import type { ReactNode } from "react";
 
 import {
@@ -71,15 +71,14 @@ export function ConfirmAction({
           </AlertDialogCancel>
           <Button
             type="button"
+            variant="destructive"
             size="lg"
-            className="bg-destructive text-on-danger hover:brightness-94"
-            aria-disabled={pending || undefined}
+            busy={pending}
             onClick={() => {
               if (!pending) onConfirm();
             }}
             data-testid={`${testId}-confirm`}
           >
-            {pending ? <Loader2 className="animate-spin motion-reduce:animate-none" aria-hidden="true" /> : null}
             {pending ? pendingLabel : confirmLabel}
           </Button>
         </AlertDialogFooter>

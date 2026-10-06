@@ -2,10 +2,11 @@
 
 import { useFormatter, useTranslations } from "next-intl";
 
+import { TONE_TEXT } from "@/components/status/status-badge";
 import { percent, STEP_GROUPS, type StepCounts, type StepGroup } from "@/lib/plans";
 import { cn } from "@/lib/utils";
 
-import { STEP_LOOK, useStepStatusText } from "./status";
+import { stepLook, useStepStatusText } from "./status";
 
 /** The state marks of web/DESIGN.md: green done, cobalt in progress, amber blocked, neutral the rest. */
 const SEGMENT: Record<StepGroup, string> = {
@@ -80,11 +81,11 @@ export function PlanProgress({ counts }: { counts: StepCounts }) {
       <StepBar counts={counts} className="h-2.5" />
       <ul className="flex flex-wrap gap-x-5 gap-y-1.5 text-sm" aria-label={t("legend")}>
         {shown.map((group) => {
-          const look = STEP_LOOK[group];
+          const look = stepLook(group);
           return (
             <li key={group} className="flex items-center gap-1.5">
               <span className={cn("size-2.5 rounded-full border border-input", SEGMENT[group])} aria-hidden="true" />
-              <look.icon className={cn("size-3.5", look.tone)} aria-hidden="true" />
+              <look.icon className={cn("size-3.5", TONE_TEXT[look.tone])} aria-hidden="true" />
               <span>{group === "other" ? t("otherStatus") : label(group)}</span>
               <span className="font-mono text-xs font-medium tabular-nums" data-testid={`count-${group}`}>
                 {counts[group]}

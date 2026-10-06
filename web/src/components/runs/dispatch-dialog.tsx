@@ -1,12 +1,13 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { CircleCheck, CircleDashed, Info, Loader2, Send, X } from "lucide-react";
+import { CircleCheck, CircleDashed, Info, Send, X } from "lucide-react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { type FormEvent, useId, useState } from "react";
 
 import { InlineError, useWriteFailure } from "@/components/admin/notice";
+import { type StepStatus, useStatusText } from "@/components/status/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
@@ -341,10 +342,10 @@ function DispatchForm({
             type="submit"
             size="lg"
             disabled={selected.length === 0 || tooMany || plan === null}
-            aria-disabled={pending || undefined}
+            busy={pending}
             data-testid="dispatch-submit"
           >
-            {pending ? <Loader2 className="animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <Send aria-hidden="true" />}
+            <Send aria-hidden="true" />
             {pending ? t("submitting") : t("submit", { count: selected.length })}
           </Button>
         </div>
@@ -359,7 +360,7 @@ export type PlanRunHold = { planId: string; run: ActiveRun };
 /** "Plan run #12 (Waiting) holds this plan's steps until it ends.", linked to the run. */
 export function PlanRunHoldNote({ project, hold, testId }: { project: string; hold: PlanRunHold; testId?: string }) {
   const t = useTranslations("runs.planRun");
-  const tState = useTranslations("runs.state");
+  const tState = useStatusText("run");
   return (
     <p className="flex items-start gap-2 rounded-md border border-dashed px-3 py-2.5 text-sm text-pretty text-muted-foreground" data-testid={testId}>
       <Info className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
@@ -475,8 +476,8 @@ function planRunReason({ planId, run }: PlanRunHold): string {
  */
 export function useNotReadyReason() {
   const t = useTranslations("runs.dispatch.reason");
-  const tStatus = useTranslations("plans.status");
-  const tState = useTranslations("runs.state");
+  const tStatus = useStatusText("step");
+  const tState = useStatusText("run");
   return (step: StepReadiness, planRun: PlanRunHold | null = null): string => {
     if (step.ready) return "";
     if (step.active_run) {
@@ -484,7 +485,7 @@ export function useNotReadyReason() {
     }
     if (step.status && step.status !== "pending") {
       const known = ["in_progress", "blocked", "done"].includes(step.status);
-      return t("status", { status: known ? tStatus(step.status as "done") : step.status });
+      return t("status", { status: known ? tStatus(step.status as StepStatus) : step.status });
     }
     if (planRun && step.reason === planRunReason(planRun)) {
       return t("planRun", { id: planRun.run.id, state: tState(planRun.run.state), login: planRun.run.dispatched_by });

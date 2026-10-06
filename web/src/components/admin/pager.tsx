@@ -29,7 +29,6 @@ function PageButton({ unavailable, onClick, ...props }: ComponentProps<typeof Bu
     <Button
       type="button"
       variant="outline"
-      size="lg"
       aria-disabled={unavailable || undefined}
       className="aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
       onClick={(event) => {

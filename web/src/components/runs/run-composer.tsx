@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation } from "@tanstack/react-query";
-import { CircleCheck, Loader2, Send } from "lucide-react";
+import { CircleCheck, Send } from "lucide-react";
 import { useFormatter, useTranslations } from "next-intl";
 import { type FormEvent, useId, useState } from "react";
 
@@ -84,8 +84,8 @@ export function RunComposer({ run }: { run: Pick<Run, "project" | "id"> }) {
           aria-describedby={describedBy}
           data-testid="run-composer-text"
         />
-        <Button type="submit" size="lg" className="shrink-0" aria-disabled={send.isPending || undefined} data-testid="run-composer-send">
-          {send.isPending ? <Loader2 className="animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <Send aria-hidden="true" />}
+        <Button type="submit" size="lg" className="shrink-0" busy={send.isPending} data-testid="run-composer-send">
+          <Send aria-hidden="true" />
           {send.isPending ? t("sending") : t("send")}
         </Button>
       </div>

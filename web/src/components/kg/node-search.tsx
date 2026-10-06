@@ -7,6 +7,7 @@ import { useTranslations } from "next-intl";
 import { useMemo } from "react";
 
 import { DataTable, dataTableColumns } from "@/components/data/data-table";
+import { NAME_LINK } from "@/components/data/identifier";
 import { projectHref } from "@/components/shell/nav";
 import { QueryView, useHubQuery } from "@/components/states/query-view";
 import { EmptyState, TableSkeleton } from "@/components/states/states";
@@ -18,11 +19,12 @@ import { displayName } from "@/lib/kg/graph";
 import { kgSearchQuery, MAX_QUERY } from "@/lib/kg/queries";
 import { kgHref, nodeHref } from "@/lib/kg/routes";
 import type { KgNode, KindCount, NodeSearch } from "@/lib/kg/types";
+import { cn } from "@/lib/utils";
 
 import { KindBadge, KindShape, LabelBadge } from "./badges";
 
 const FIELD =
-  "h-9 w-full min-w-0 rounded-md border border-input bg-transparent px-2.5 text-sm transition-colors outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30";
+  "h-8 w-full min-w-0 rounded-md border border-input bg-transparent px-2.5 text-sm transition-colors outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30";
 
 /**
  * A GET form: the query lives in the URL (`?q=&kind=`), so a search can be shared, reloaded and walked back, and it
@@ -63,7 +65,6 @@ export function SearchForm({
           placeholder={t("placeholder")}
           autoComplete="off"
           spellCheck={false}
-          className="h-9"
           aria-describedby="kg-q-hint"
         />
       </div>
@@ -80,7 +81,7 @@ export function SearchForm({
           ))}
         </select>
       </div>
-      <Button type="submit" size="lg" className="cursor-pointer">
+      <Button type="submit" className="cursor-pointer">
         <Search aria-hidden="true" />
         {t("submit")}
       </Button>
@@ -136,7 +137,7 @@ function ResultsTable({ project, results, caption }: { project: string; results:
           <div className="flex min-w-0 flex-col gap-0.5">
             <Link
               href={nodeHref(project, info.row.original.id)}
-              className="font-medium break-words whitespace-normal text-brand underline-offset-4 hover:underline"
+              className={cn(NAME_LINK, "break-words whitespace-normal")}
               data-testid="kg-result-link"
               data-node-id={info.row.original.id}
             >
@@ -199,7 +200,7 @@ function Results({ project, query, kind, data }: { project: string; query: strin
       {data.results.length === 0 ? (
         <EmptyState icon={SearchX} title={t("emptyTitle", { query })} description={t("emptyDescription")}>
           {kind ? (
-            <Button asChild variant="outline" size="lg">
+            <Button asChild variant="outline">
               <Link href={kgHref(project, { q: query })}>{t("clearKind")}</Link>
             </Button>
           ) : null}

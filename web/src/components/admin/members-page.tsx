@@ -7,6 +7,7 @@ import { useTranslations } from "next-intl";
 import { useCallback, useId, useMemo, useState } from "react";
 
 import { DataTable, dataTableColumns } from "@/components/data/data-table";
+import { NAME_LINK } from "@/components/data/identifier";
 import { PageHeader } from "@/components/shell/page-header";
 import { RoleBadge } from "@/components/shell/role-badge";
 import { QueryView, useHubQuery } from "@/components/states/query-view";
@@ -20,6 +21,7 @@ import { browserApi } from "@/lib/api/browser";
 import type { Project } from "@/lib/api/client";
 import type { ApiErrorInfo } from "@/lib/api/errors";
 import { projectsQuery } from "@/lib/queries";
+import { cn } from "@/lib/utils";
 
 import { HubAdminBadge, NotSignedInBadge } from "./badges";
 import { type AdminUser, adminUsersQuery, filterMembers, memberHref, parseMemberFilters, tokensHref } from "./data";
@@ -65,7 +67,7 @@ function MembersTable({ users, onGrant }: { users: AdminUser[]; onGrant: (login:
             <div className="flex flex-col items-start gap-1.5">
               <Link
                 href={memberHref(user.login)}
-                className="font-medium break-all text-brand underline-offset-4 hover:underline"
+                className={cn(NAME_LINK, "break-all")}
                 data-testid={`member-link-${user.login}`}
               >
                 {user.login}
@@ -122,7 +124,7 @@ function MembersTable({ users, onGrant }: { users: AdminUser[]; onGrant: (login:
               >
                 <ShieldPlus aria-hidden="true" />
               </Button>
-              <Button asChild variant="ghost" size="lg">
+              <Button asChild variant="ghost">
                 <Link href={memberHref(login)} aria-label={t("manage", { login })}>
                   {t("manageShort")}
                   <ChevronRight aria-hidden="true" />
@@ -176,7 +178,7 @@ export function AdminMembers({ initialError }: { initialError: ApiErrorInfo | nu
           <>
             {state.status === "success" ? <Badge variant="secondary">{t("count", { count: users.length })}</Badge> : null}
             {state.status === "success" && projects ? (
-              <Button type="button" size="lg" onClick={() => openGrant()} data-testid="grant-open">
+              <Button type="button" onClick={() => openGrant()} data-testid="grant-open">
                 <ShieldPlus aria-hidden="true" />
                 {t("grant")}
               </Button>

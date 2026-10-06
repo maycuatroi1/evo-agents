@@ -14,12 +14,12 @@ import { useNow } from "@/components/kg/use-now";
 import { PageHeader } from "@/components/shell/page-header";
 import { QueryView, useHubQuery } from "@/components/states/query-view";
 import { EmptyState, PageSkeleton, TableSkeleton } from "@/components/states/states";
+import { STATUS_LOOKS } from "@/components/status/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { browserApi } from "@/lib/api/browser";
 import type { ApiErrorInfo } from "@/lib/api/errors";
 
-import { STATE_LOOK } from "./badges";
 import { DispatchDialog } from "./dispatch-dialog";
 import { useCanDispatch, useDispatchedNotice, useViewer } from "./hooks";
 import {
@@ -107,10 +107,10 @@ function Summary({ summary }: { summary: RunsSummary }) {
 }
 
 const FACET_ICONS: Record<RunFacet, LucideIcon> = {
-  active: STATE_LOOK.running.icon,
-  review: STATE_LOOK.review.icon,
-  done: STATE_LOOK.done.icon,
-  ended: STATE_LOOK.failed.icon,
+  active: STATUS_LOOKS.run.running.icon,
+  review: STATUS_LOOKS.run.review.icon,
+  done: STATUS_LOOKS.run.done.icon,
+  ended: STATUS_LOOKS.run.failed.icon,
 };
 
 function RunList({ project }: { project: string }) {
@@ -165,7 +165,7 @@ function RunList({ project }: { project: string }) {
               </p>
               {list.runs.length === 0 ? (
                 <EmptyState icon={SearchX} title={t("noResults.title")} description={t("noResults.description")}>
-                  <Button variant="outline" size="lg" onClick={() => setFilters(NO_FILTERS)}>
+                  <Button variant="outline" onClick={() => setFilters(NO_FILTERS)}>
                     {t("noResults.clear")}
                   </Button>
                 </EmptyState>
@@ -220,7 +220,7 @@ export function RunsPage({ project, initialError }: { project: string; initialEr
               </Badge>
             ) : null}
             {canDispatch ? (
-              <Button size="lg" onClick={() => setDispatching(true)} data-testid="runs-dispatch">
+              <Button onClick={() => setDispatching(true)} data-testid="runs-dispatch">
                 <Send aria-hidden="true" />
                 {t("dispatchButton")}
               </Button>
@@ -239,7 +239,7 @@ export function RunsPage({ project, initialError }: { project: string; initialEr
               description={canDispatch ? t("empty.description") : t("empty.readerDescription")}
             >
               {canDispatch ? (
-                <Button size="lg" onClick={() => setDispatching(true)} data-testid="runs-empty-dispatch">
+                <Button onClick={() => setDispatching(true)} data-testid="runs-empty-dispatch">
                   <Send aria-hidden="true" />
                   {t("dispatchButton")}
                 </Button>

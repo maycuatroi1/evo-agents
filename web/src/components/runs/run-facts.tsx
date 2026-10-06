@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useFormatter, useTranslations } from "next-intl";
 import { type ReactNode, useId } from "react";
 
+import { Identifier } from "@/components/data/identifier";
 import { useNow } from "@/components/kg/use-now";
 import { Badge } from "@/components/ui/badge";
 import { workerHref } from "@/components/workers/queries";
@@ -78,13 +79,7 @@ export function RunDetails({ run, viewer }: { run: Run; viewer: RunViewer | null
       <dl className="grid grid-cols-[max-content_minmax(0,1fr)] gap-x-4 gap-y-2 text-sm">
         <Fact label={t("worker")} testId="run-worker">
           {run.worker_id !== null && run.worker ? (
-            mayOpenWorker ? (
-              <Link href={workerHref(run.worker_id)} className="font-mono text-brand underline-offset-4 hover:underline">
-                {run.worker}
-              </Link>
-            ) : (
-              <span className="font-mono">{run.worker}</span>
-            )
+            <Identifier value={run.worker} href={mayOpenWorker ? workerHref(run.worker_id) : undefined} />
           ) : (
             <span className="text-muted-foreground">{run.pinned_worker_id !== null ? tRun("pinnedWaiting") : tRun("noWorkerYet")}</span>
           )}
@@ -103,13 +98,13 @@ export function RunDetails({ run, viewer }: { run: Run; viewer: RunViewer | null
           <Fact label={t("repos")} testId="run-repos">
             <ul className="flex flex-col gap-1">
               {(run.repos ?? []).map((repo) => (
-                <li key={repo.repo} className="flex min-w-0 flex-wrap items-center gap-x-1.5">
+                <li key={repo.repo} className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1">
                   <span className="font-mono text-xs">{repo.repo}</span>
                   {repo.branch ? (
-                    <span className="inline-flex min-w-0 items-center gap-1 font-mono text-xs text-muted-foreground [overflow-wrap:anywhere]">
+                    <span className="inline-flex min-w-0 items-center gap-1 text-muted-foreground">
                       <GitBranch className="size-3 shrink-0" aria-hidden="true" />
                       <span className="sr-only">{t("on")} </span>
-                      {repo.branch}
+                      <Identifier value={repo.branch} />
                     </span>
                   ) : null}
                 </li>
@@ -123,13 +118,13 @@ export function RunDetails({ run, viewer }: { run: Run; viewer: RunViewer | null
             {run.branch ? (
               <>
                 {" "}
-                <span className="text-muted-foreground">{t("on")}</span> <span className="font-mono text-xs">{run.branch}</span>
+                <span className="text-muted-foreground">{t("on")}</span> <Identifier value={run.branch} />
               </>
             ) : null}
           </Fact>
         )}
         <Fact label={t("session")}>
-          {run.session_id ? <span className="font-mono text-xs">{run.session_id}</span> : <span className="text-muted-foreground">{t("none")}</span>}
+          {run.session_id ? <Identifier value={run.session_id} copy copyLabel={t("copySession")} /> : <span className="text-muted-foreground">{t("none")}</span>}
         </Fact>
         <Fact label={t("lease")}>
           <Lease run={run} />
@@ -188,7 +183,7 @@ export function RunDetails({ run, viewer }: { run: Run; viewer: RunViewer | null
           </Fact>
         ) : null}
         <Fact label={t("revision")}>
-          <span className="font-mono text-xs">{t("revisionValue", { revision: run.plan_revision })}</span>
+          <Identifier value={t("revisionValue", { revision: run.plan_revision })} />
         </Fact>
       </dl>
     </Card>
@@ -248,9 +243,9 @@ export function RunResult({ run }: { run: Run }) {
             ) : null}
             {run.commit_sha ? (
               <Fact label={t("commit")} testId="run-commit">
-                <span className="font-mono text-xs" title={run.commit_sha}>
+                <Identifier value={run.commit_sha} title={run.commit_sha} copy copyLabel={t("copyCommit")}>
                   {shortSha(run.commit_sha)}
-                </span>
+                </Identifier>
                 {run.branch ? <span className="text-xs text-muted-foreground"> {t("onBranch", { branch: run.branch })}</span> : null}
               </Fact>
             ) : null}

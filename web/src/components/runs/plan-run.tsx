@@ -8,12 +8,12 @@ import { useId, useState } from "react";
 
 import { useNow } from "@/components/kg/use-now";
 import { stepHref } from "@/components/plans/links";
+import { StatusBadge, useStatusText } from "@/components/status/status-badge";
 import { Button } from "@/components/ui/button";
 import { browserApi } from "@/lib/api/browser";
 import { type PlanStep, percent } from "@/lib/plans";
 import { cn } from "@/lib/utils";
 
-import { PlanRunPhaseBadge } from "./badges";
 import { useCanDispatch, useViewer } from "./hooks";
 import { activePlanRun, type PlanRunLock, planRunLock, planRunPhase } from "./model";
 import { PlanRunDialog } from "./plan-run-dialog";
@@ -43,7 +43,7 @@ export function usePlanActivity(project: string, planId: string, enabled = true)
 
 function useLockText() {
   const t = useTranslations("runs.planRun.lock");
-  const tState = useTranslations("runs.state");
+  const tState = useStatusText("run");
   return (lock: PlanRunLock | "loading"): string => {
     if (lock === "loading") return t("loading");
     if (lock.kind === "planRun") return t("planRun", { id: lock.id, state: tState(lock.state) });
@@ -132,6 +132,7 @@ const BANNER_TONE = {
  */
 export function PlanRunBanner({ project, run, steps }: { project: string; run: Run; steps: readonly PlanStep[] }) {
   const t = useTranslations("runs.planRun.banner");
+  const tPhase = useTranslations("runs.planRun.phase");
   const format = useFormatter();
   const ids = useId();
   const viewer = useViewer();
@@ -165,7 +166,7 @@ export function PlanRunBanner({ project, run, steps }: { project: string; run: R
           <h2 id={`${ids}-title`} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-base font-medium">
             <Workflow className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
             <span>{t("title", { id: run.id })}</span>
-            <PlanRunPhaseBadge phase={phase} long />
+            <StatusBadge kind="run" status={phase} label={tPhase(`${phase}Long`)} data-testid="plan-run-phase" />
           </h2>
           <p className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-sm text-pretty text-muted-foreground" data-testid="plan-run-banner-worker">
             <Server className="size-3.5 shrink-0" aria-hidden="true" />
@@ -187,7 +188,7 @@ export function PlanRunBanner({ project, run, steps }: { project: string; run: R
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2">
           {latest ? (
-            <Button asChild size="lg" variant={phase === "waiting" || phase === "parked" ? "default" : "outline"}>
+            <Button asChild variant={phase === "waiting" || phase === "parked" ? "default" : "outline"}>
               <Link href={decisionHref(latest.id)} data-testid="plan-run-banner-decision">
                 <MessageCircleQuestionMark aria-hidden="true" />
                 {owner ? t("answer") : t("openDecision")}
@@ -195,7 +196,7 @@ export function PlanRunBanner({ project, run, steps }: { project: string; run: R
               </Link>
             </Button>
           ) : null}
-          <Button asChild size="lg" variant="outline" className="bg-card">
+          <Button asChild variant="outline" className="bg-card">
             <Link href={runHref(project, run.id)} data-testid="plan-run-banner-link">
               {t("openRun", { id: run.id })}
               <ArrowRight aria-hidden="true" />

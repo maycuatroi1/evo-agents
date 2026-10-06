@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, CircleCheck, Download, FileQuestion, Loader2, ServerOff, TriangleAlert } from "lucide-react";
+import { ArrowLeft, CircleCheck, Download, FileQuestion, ServerOff, TriangleAlert } from "lucide-react";
 import Link from "next/link";
 import { useFormatter, useTranslations } from "next-intl";
 import { useState } from "react";
@@ -9,13 +9,13 @@ import { InlineError, type WriteFailure } from "@/components/admin/notice";
 import { PageHeader } from "@/components/shell/page-header";
 import { QueryView, useHubQuery } from "@/components/states/query-view";
 import { NotFoundState, PageSkeleton, ServerErrorState, StatePanel } from "@/components/states/states";
+import { StatusBadge } from "@/components/status/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { browserApi } from "@/lib/api/browser";
 import type { ApiErrorInfo } from "@/lib/api/errors";
 import { cn } from "@/lib/utils";
 
-import { RunStateBadge } from "./badges";
 import { type DiffFile, type DiffHunk, type DiffLine, fileAnchor, MAX_DIFF_LINES, type ParsedDiff } from "./diff-model";
 import { useRunFailure } from "./hooks";
 import { type Run, runDiffLink, runHref, runQuery } from "./queries";
@@ -166,8 +166,8 @@ function DownloadButton({ run }: { run: Pick<Run, "project" | "id"> }) {
   };
   return (
     <div className="relative flex flex-col items-end gap-1.5">
-      <Button type="button" variant="outline" size="lg" onClick={() => void start()} aria-disabled={state === "pending" || undefined} data-testid="diff-download">
-        {state === "pending" ? <Loader2 className="animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <Download aria-hidden="true" />}
+      <Button type="button" variant="outline" onClick={() => void start()} busy={state === "pending"} data-testid="diff-download">
+        <Download aria-hidden="true" />
         {t("download")}
       </Button>
       {/* Under the button without taking room, so the header's row keeps its height. */}
@@ -190,7 +190,7 @@ function DiffBody({ run, diff }: { run: Run; diff: DiffState }) {
   if (diff.status === "none") {
     return (
       <StatePanel icon={FileQuestion} title={t("none.title")} description={t("none.description")} testId="diff-none">
-        <Button asChild variant="outline" size="lg">
+        <Button asChild variant="outline">
           <Link href={runHref(run.project, run.id)}>{t("back")}</Link>
         </Button>
       </StatePanel>
@@ -271,7 +271,7 @@ export function RunDiff({ project, runId, initialError, diff }: { project: strin
                 <span>
                   {t("title")} <span className="font-mono tabular-nums">#{run.id}</span>
                 </span>
-                <RunStateBadge state={run.state} className="h-6 text-sm" />
+                <StatusBadge kind="run" status={run.state} size="lg" />
               </span>
             }
             description={
@@ -285,7 +285,7 @@ export function RunDiff({ project, runId, initialError, diff }: { project: strin
             }
             meta={
               <>
-                <Button asChild variant="ghost" size="lg">
+                <Button asChild variant="ghost">
                   <Link href={runHref(run.project, run.id)} data-testid="diff-back">
                     <ArrowLeft aria-hidden="true" />
                     {t("back")}

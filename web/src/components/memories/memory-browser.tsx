@@ -9,6 +9,7 @@ import { useMemo } from "react";
 
 import { DataTable, dataTableColumns } from "@/components/data/data-table";
 import { FacetGroup, type FacetOption } from "@/components/data/facet-group";
+import { NAME_LINK } from "@/components/data/identifier";
 import { SearchField } from "@/components/data/search-field";
 import { projectHref } from "@/components/shell/nav";
 import { PageHeader } from "@/components/shell/page-header";
@@ -21,6 +22,7 @@ import { browserApi } from "@/lib/api/browser";
 import type { Project } from "@/lib/api/client";
 import type { ApiErrorInfo } from "@/lib/api/errors";
 import { projectQuery } from "@/lib/queries";
+import { cn } from "@/lib/utils";
 
 import { LabelBadge, MemoryTypeBadge } from "./badges";
 import {
@@ -78,7 +80,7 @@ function MemoryTable({
             <div className="flex min-w-0 flex-col gap-0.5 py-0.5">
               <Link
                 href={memoryHref(scope, row.id)}
-                className="w-fit font-medium text-brand underline-offset-4 [overflow-wrap:anywhere] hover:underline"
+                className={cn(NAME_LINK, "w-fit [overflow-wrap:anywhere]")}
                 data-memory-name={row.name}
               >
                 {title}
@@ -446,7 +448,6 @@ function Results({
         >
           <Button
             variant="outline"
-            size="lg"
             onClick={() => setFilters(searching ? NO_FILTERS : { ...filters, location: null, type: null })}
           >
             {searching ? t("search.clear") : t("facets.clear")}

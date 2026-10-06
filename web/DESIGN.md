@@ -240,9 +240,19 @@ changed where the defaults fell short:
 - `table.tsx`: `scrollLabel` makes a table's scroll container a named, focusable region.
 - `badge.tsx`: `info`, `success` and `warning` variants on the kit's tones (`brand-soft` with `brand`, `success-soft`
   with `success`, `attention-soft` with `attention`); `destructive` is `danger-soft` with `danger`; the shape is
-  `rounded-full`, a state.
-- `button.tsx`: `default` is the ink primary (`primary`, `action-hover` on hover), `outline` the kit's secondary
-  (`card` with a `border-strong` edge), `ghost` hovers `accent`; every size has the control radius.
+  `rounded-full`, a state or a count. A state of a run, worker, plan, step, repo or decision is a `StatusBadge`, not a
+  `Badge`.
+- `button.tsx`: `default` is the ink primary (`primary`, `action-hover` on hover), one per view; `secondary` (and
+  `outline`, the same button under shadcn's name) is `card` inside a `border-strong` edge; `ghost` is
+  `muted-foreground` until it hovers `accent`, for toolbars, rows and icon-only buttons; `quiet-danger` is `danger`
+  text on no fill, for a reversible stop (Cancel run); `destructive` is `danger-solid` with `on-danger`, darker on
+  hover (`brightness-94`), only inside the confirm step of something permanent; `link` is `brand`. Sizes: `sm` 28 px
+  (dense toolbars, table rows), `default` 32 px (page and card actions), `lg` 40 px (dialog footers, the composer's
+  Send), `icon`, `icon-sm` and `icon-lg` square at 32, 28 and 40 px; every size has the control radius. Under 768 px
+  every button but `link` is at least 44 px tall, and icon buttons 44 px wide too. `busy` sets `aria-busy` and
+  `aria-disabled`, hides the button's own icon behind a turning `LoaderCircle` (still under reduced motion) and
+  ignores clicks, so a busy submit button does not submit; the caller passes the -ing label ("Dispatching"). The
+  focus outline is the global 2 px `ring`.
 - `input.tsx`, `textarea.tsx`, `native-select.tsx`: a `card` fill inside an `input` (`border-control`) edge,
   `fg-subtle` placeholders, `muted` when disabled.
 - `card.tsx`, `dialog.tsx`, `alert-dialog.tsx`, `sheet.tsx`, `dropdown-menu.tsx`: the kit's radius and elevation by
@@ -259,6 +269,25 @@ Shared pieces built on them:
   `EmptyState` with what to do next.
 - `components/data/data-table.tsx`: TanStack Table v9 with sorting, `aria-sort`, a caption, and columns that
   hide on narrow screens.
+- `components/status/status-badge.tsx`: one `StatusBadge` (`kind` and `status`) and one map per kind, run, worker,
+  plan, step, repo and decision; each state has a tone, a Lucide icon and its words under `status.<kind>` in
+  `messages/en.json` and `vi.json`. The maps are `satisfies Record<...>` on the API's own types in
+  `src/lib/api/schema.d.ts` (`Run["state"]`; `Worker["status"]` with online split into idle and busy;
+  `PlanSummary["area"]` with pending and blocked; `StepReport["status"]` with blocked; `Decision["state"]`), and
+  `useStatusText` reads the words through typed keys, so a state the API adds fails typecheck until it has a look
+  and words. The pill is 22 px (26 px with `size="lg"`, beside an h1), the icon 14 px and `aria-hidden`; leased
+  shows a still dot, and only a running run, a busy worker and an active plan run show the pulsing one. A plan's
+  state comes from `planState` in `lib/plans.ts`: completed by its area, active while a plan run holds it, blocked
+  when every step not done is blocked, pending otherwise. A status the hub does not know (a plan written by hand) is
+  `OtherStatusBadge`, kept as written. `StatusIcon` is the icon alone with its word for screen readers, and the
+  test ids stay those the e2e specs read (`run-state`, `worker-status`, `decision-state`).
+- `components/data/identifier.tsx`: names. `Identifier` is a mono chip on `surface-sunken` with 4 px corners for a
+  worker, branch, revision, session or hash, a link in text colour turning `brand` on hover when it has a page, with
+  an optional copy button (24 px, a 44 px hit area under 768 px) that says what it copied in a polite live region and
+  selects the text where the clipboard is refused. `RunRef` writes a run as `#N` in mono with tabular figures.
+  `Tag` is a kind or a role (Admin, Plan run, Deploy, Blocking): an icon and a word on `surface-sunken` with 4 px
+  corners, never round. `NAME_LINK` is the name in a table's first column or a list's primary cell: text colour,
+  `brand` on hover.
 - `components/shell`: sidebar, project picker, user menu (login, hub role, role in the current project,
   theme, language, sign out), header with breadcrumbs, page header.
 - `components/data/search-field.tsx` and `facet-group.tsx`: a search box in a search landmark (committed after a
@@ -274,8 +303,8 @@ Shared pieces built on them:
   parked (nobody answered for 24 hours) included; both show in the running phase of a run's stepper, under their own
   name and icon. The runs pages ask the hub every 5 seconds while the project (or the step, or the worker) has an
   active run and every 30 seconds otherwise; the list's facets (active, review, done, failed or cancelled) and search
-  are the API's own filters, so a page of 50 runs comes back with the count of each state. A run's state is a badge
-  with an icon and a word. The Dispatch dialog lists every pending step of a plan in plan order and folds the done,
+  are the API's own filters, so a page of 50 runs comes back with the count of each state. A run's state is a
+  `StatusBadge` with an icon and a word. The Dispatch dialog lists every pending step of a plan in plan order and folds the done,
   in progress and blocked ones away; a step that is not ready keeps a disabled checkbox and says why. Its footer says
   which of the visitor's own workers could take the runs now, from what their heartbeats report, the way the hub
   matches them at claim time. The Dispatch and Run this step buttons show only for a writer of the project (whoami's

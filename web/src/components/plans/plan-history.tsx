@@ -8,11 +8,12 @@ import { useId, useState } from "react";
 
 import { QueryView, useHubQuery } from "@/components/states/query-view";
 import { ApiErrorState, LoadingState, PageSkeleton, TableSkeleton } from "@/components/states/states";
+import { StatusBadge } from "@/components/status/status-badge";
 import { Button } from "@/components/ui/button";
 import { browserApi } from "@/lib/api/browser";
 import type { ApiErrorInfo } from "@/lib/api/errors";
 import { planDiffQuery, planQuery, planRevisionsQuery } from "@/lib/plan-queries";
-import { comparedPair, type Plan, type PlanRevision, previousRevision } from "@/lib/plans";
+import { comparedPair, type Plan, type PlanRevision, planState, previousRevision } from "@/lib/plans";
 import { cn } from "@/lib/utils";
 
 import { revisionsHref } from "./links";
@@ -20,7 +21,6 @@ import { DiffView } from "./plan-diff";
 import { PlanHeader, ReadOnlyNotice } from "./plan-header";
 import { PlanNotFound } from "./plan-not-found";
 import { VERBATIM_MONO } from "./prose";
-import { AreaBadge } from "./status";
 
 /** The history shows this many revisions before "show all"; a busy plan has hundreds. */
 const HISTORY_LIMIT = 20;
@@ -70,7 +70,7 @@ function CompareForm({ project, planId, revisions, pair }: { project: string; pl
           {options}
         </select>
       </div>
-      <Button type="submit" size="lg" className="h-10 px-4" data-testid="compare-submit">
+      <Button type="submit" size="lg" data-testid="compare-submit">
         <GitCompareArrows aria-hidden="true" />
         {t("compare")}
       </Button>
@@ -158,7 +158,7 @@ function HistoryList({ project, planId, revisions, pair }: { project: string; pl
             >
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="font-mono text-sm font-medium">{t("revision", { revision: revision.revision })}</span>
-                {moved ? <AreaBadge area={revision.area} /> : null}
+                {moved ? <StatusBadge kind="plan" status={planState(revision.area, null)} /> : null}
               </div>
               <p className={cn(VERBATIM_MONO, "text-xs [overflow-wrap:anywhere]")} data-testid="revision-summary">
                 {revision.summary}
@@ -190,7 +190,7 @@ function HistoryList({ project, planId, revisions, pair }: { project: string; pl
         })}
       </ol>
       {newest.length > HISTORY_LIMIT ? (
-        <Button variant="outline" size="lg" aria-expanded={all} aria-controls={listId} onClick={() => setAll((value) => !value)}>
+        <Button variant="outline" aria-expanded={all} aria-controls={listId} onClick={() => setAll((value) => !value)}>
           {all ? t("showFewer") : t("showAll", { count: newest.length })}
         </Button>
       ) : null}

@@ -73,7 +73,6 @@ export function StepRuns({ project, planId, stepKey }: { project: string; planId
         {canDispatch ? (
           <Button
             type="button"
-            size="lg"
             className="shrink-0 aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
             aria-disabled={!isReady || undefined}
             aria-describedby={readiness ? `${ids}-readiness` : undefined}

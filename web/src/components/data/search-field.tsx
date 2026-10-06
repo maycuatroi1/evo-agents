@@ -92,7 +92,7 @@ export function SearchField({
         autoComplete="off"
         spellCheck={false}
         enterKeyHint="search"
-        className="h-9 pr-9 pl-8 [&::-webkit-search-cancel-button]:hidden"
+        className="pr-9 pl-8 max-md:h-11 max-md:pr-12 [&::-webkit-search-cancel-button]:hidden"
         onChange={(event) => change(event.target.value)}
         onKeyDown={(event) => {
           if (event.key === "Escape" && draft) {
@@ -108,7 +108,7 @@ export function SearchField({
           type="button"
           variant="ghost"
           size="icon-sm"
-          className="absolute top-1/2 right-1 -translate-y-1/2"
+          className="absolute top-1/2 right-0 -translate-y-1/2 md:right-1"
           aria-label={clearLabel}
           onClick={() => {
             setDraft("");

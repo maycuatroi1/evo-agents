@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Bell, CheckCheck, Inbox, Loader2, MessageCircleQuestionMark, SearchX, X } from "lucide-react";
+import { ArrowLeft, Bell, CheckCheck, Inbox, MessageCircleQuestionMark, SearchX, X } from "lucide-react";
 import type { Route } from "next";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
@@ -258,10 +258,10 @@ export function InboxPage({ initialError }: { initialError: ApiErrorInfo | null 
             ) : null}
             <Button
               type="button"
-              size="lg"
               variant="outline"
               className="aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
               aria-disabled={nothingToRead || reading !== null || undefined}
+              busy={reading === "all"}
               onClick={() => {
                 if (nothingToRead || reading !== null) return;
                 if (filtered) read({ ids: pageUnread }, "all");
@@ -269,7 +269,7 @@ export function InboxPage({ initialError }: { initialError: ApiErrorInfo | null 
               }}
               data-testid="inbox-mark-all"
             >
-              {reading === "all" ? <Loader2 className="animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <CheckCheck aria-hidden="true" />}
+              <CheckCheck aria-hidden="true" />
               {filtered ? t("markShown") : t("markAll")}
             </Button>
           </>
@@ -399,7 +399,7 @@ function InboxList({
       {page.notifications.length === 0 ? (
         filtered || filters.page > 1 ? (
           <EmptyState icon={SearchX} title={t("noResults.title")} description={t("noResults.description")}>
-            <Button variant="outline" size="lg" onClick={onClear} data-testid="inbox-clear-filters">
+            <Button variant="outline" onClick={onClear} data-testid="inbox-clear-filters">
               {t("noResults.clear")}
             </Button>
           </EmptyState>

@@ -1,6 +1,6 @@
 "use client";
 
-import { CircleCheck, Download, LoaderCircle } from "lucide-react";
+import { CircleCheck, Download } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
 
@@ -95,16 +95,13 @@ export function DownloadBundle({
         variant={variant}
         size={compact ? "sm" : "lg"}
         onClick={() => void start()}
-        disabled={unconfigured || state.status === "pending"}
+        disabled={unconfigured}
+        busy={state.status === "pending"}
         aria-label={compact ? t("aria", { name, version }) : undefined}
         title={unconfigured ? t("unconfigured") : undefined}
         data-testid={`download-v${version}`}
       >
-        {state.status === "pending" ? (
-          <LoaderCircle className="animate-spin" aria-hidden="true" />
-        ) : (
-          <Download aria-hidden="true" />
-        )}
+        <Download aria-hidden="true" />
         {state.status === "pending" ? t("pending") : label}
       </Button>
       <p aria-live="polite" className="min-h-0 text-xs empty:hidden" data-testid={`download-status-v${version}`}>

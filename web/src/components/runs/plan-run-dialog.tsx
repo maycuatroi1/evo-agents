@@ -1,13 +1,14 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { CircleAlert, Flag, GitBranch, GitMerge, ListChecks, Loader2, Play, TriangleAlert, X } from "lucide-react";
+import { CircleAlert, Flag, GitBranch, GitMerge, ListChecks, Play, TriangleAlert, X } from "lucide-react";
 import Link from "next/link";
 import { useFormatter, useTranslations } from "next-intl";
 import { type FormEvent, type ReactNode, useId, useState } from "react";
 
 import { InlineError, useWriteFailure } from "@/components/admin/notice";
-import { STEP_LOOK, useStepStatusText } from "@/components/plans/status";
+import { useStepStatusText } from "@/components/plans/status";
+import { StatusBadge, useStatusText } from "@/components/status/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
@@ -18,7 +19,7 @@ import { workersQuery } from "@/components/workers/queries";
 import { browserApi } from "@/lib/api/browser";
 import { isApiError } from "@/lib/api/errors";
 import { planQuery } from "@/lib/plan-queries";
-import { parsePlan, type StepGroup } from "@/lib/plans";
+import { parsePlan } from "@/lib/plans";
 import { projectQuery, whoamiQuery } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 
@@ -285,8 +286,8 @@ function PlanRunForm({
               {tDispatch("cancel")}
             </Button>
           </DialogClose>
-          <Button type="submit" size="lg" disabled={!runnable || model.problem !== null} aria-disabled={pending || undefined} data-testid="plan-run-submit">
-            {pending ? <Loader2 className="animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <Play aria-hidden="true" />}
+          <Button type="submit" size="lg" disabled={!runnable || model.problem !== null} busy={pending} data-testid="plan-run-submit">
+            <Play aria-hidden="true" />
             {pending ? t("submitting") : t("submit")}
           </Button>
         </div>
@@ -297,7 +298,7 @@ function PlanRunForm({
 
 function Blockers({ project, blockers }: { project: string; blockers: Blocker[] }) {
   const t = useTranslations("runs.planRun.blocker");
-  const tState = useTranslations("runs.state");
+  const tState = useStatusText("run");
   const format = useFormatter();
   if (blockers.length === 0) return null;
   const runLink = (id: number) =>
@@ -339,12 +340,12 @@ function ScopeSummary({ scope }: { scope: PlanRunScope }) {
   const t = useTranslations("runs.planRun.summary");
   const format = useFormatter();
   const statusText = useStepStatusText();
-  const counts: [StepGroup, number][] = (
+  const counts = (
     [
       ["pending", scope.pending],
       ["in_progress", scope.inProgress],
       ["blocked", scope.blocked],
-    ] as [StepGroup, number][]
+    ] as const
   ).filter(([, count]) => count > 0);
   const defaults = scope.repos.filter((repo) => repo.defaultBranch);
   const titled = new Map(scope.checkpoints.map((step) => [step.key, step.title]));
@@ -361,15 +362,16 @@ function ScopeSummary({ scope }: { scope: PlanRunScope }) {
           <span className="font-medium">{t("stepsCount", { count: scope.steps.length })}</span>
           {counts.length > 0 ? (
             <span className="flex flex-wrap gap-1.5">
-              {counts.map(([group, count]) => {
-                const look = STEP_LOOK[group];
-                return (
-                  <Badge key={group} variant={look.variant} className="tabular-nums" data-status={group}>
-                    <look.icon aria-hidden="true" />
-                    {t("statusCount", { count, status: statusText(group) })}
-                  </Badge>
-                );
-              })}
+              {counts.map(([group, count]) => (
+                <StatusBadge
+                  key={group}
+                  kind="step"
+                  status={group}
+                  label={t("statusCount", { count, status: statusText(group) })}
+                  className="tabular-nums"
+                  data-testid={`plan-run-count-${group}`}
+                />
+              ))}
             </span>
           ) : null}
           <span className="text-xs text-pretty text-muted-foreground">{t("order")}</span>

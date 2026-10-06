@@ -56,7 +56,7 @@ export function HashText({ sha256, full = false }: { sha256: string; full?: bool
           </>
         )}
       </code>
-      <Button type="button" variant="ghost" size="icon-xs" onClick={() => void copy()} aria-label={t("copyHash")}>
+      <Button type="button" variant="ghost" size="icon-sm" onClick={() => void copy()} aria-label={t("copyHash")}>
         {copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
       </Button>
       <span className="sr-only" aria-live="polite">
