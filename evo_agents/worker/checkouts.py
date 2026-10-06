@@ -5,13 +5,17 @@ of that key, so a project's repo without one here is a run this worker cannot ta
 Three sources, the first that names a key winning:
 
 1. ``checkouts`` of config.json, ``{"<project>/<repo>": "/path"}``, set by hand.
-2. The project's repos as the hub lists them (``project_repos``: name and path), kept in config.json when the
-   machine registered or joined while signed in to the hub (``evo-agents hub login``). Each path is placed in the
-   workspace of the project's cluster in the harness registry, else in the workspace the project was registered
-   with, as ``evo-agents hub registry pull`` places it.
+2. The project's repos as the hub lists them (``project_repos``: name and path), then its harness, keyed by its
+   directory name, kept in config.json when the machine registered, joined or started its daemon while signed in to
+   the hub (``evo-agents hub login``). Each path is placed in the workspace of the project's cluster in the harness
+   registry, else in the workspace the project was registered with, as ``evo-agents hub registry pull`` places it.
 3. The harness registry (``~/.evo/harness/registry.json``, then ``~/.claude/harness/registry.json``): the repos of the
    cluster whose ``hub.project`` is the project (on the worker's hub, when the cluster names one), or of the cluster
-   named as the project when it names no hub, each keyed by its directory name.
+   named as the project when it names no hub, then its ``root``, the harness, each keyed by its directory name.
+
+The hub lists a project's harness apart from its repos, but a plan names it as a repo (its plans live there), and a
+plan run needs a checkout of every repo its plan names: without the harness here, no plan run of the project is ever
+claimed by this worker.
 
 Only a directory that is a git work tree counts. Standard library only.
 """
@@ -114,8 +118,13 @@ def discover(config: WorkerConfig, clusters: list[dict] | None = None) -> dict[s
             name = repo.get("name") if isinstance(repo, dict) else None
             if isinstance(name, str) and workspace:
                 add(f"{project}/{name}", place(repo.get("path") or name, Path(workspace).expanduser()))
+        harness = held.get("harness")
+        if isinstance(harness, str) and harness and workspace:
+            local = place(harness, Path(workspace).expanduser())
+            add(f"{project}/{local.name}", local)
         for cluster in own:
-            for path in cluster.get("repos") or []:
+            paths = [*(cluster.get("repos") or []), cluster.get("root")]
+            for path in paths:
                 if isinstance(path, str) and path:
                     local = Path(path).expanduser()
                     add(f"{project}/{local.name}", local)
@@ -131,12 +140,13 @@ def default_branch_of(config: WorkerConfig, project: str, repo: str) -> str | No
 
 
 def hub_repos(project: dict) -> dict:
-    """What config.json keeps of a project as GET /v1/projects/{p} answers it: the workspace it was registered with
-    and its repos."""
+    """What config.json keeps of a project as GET /v1/projects/{p} answers it: the workspace it was registered with,
+    its repos, and the path of its harness."""
     harness = project.get("harness") if isinstance(project.get("harness"), dict) else {}
     repos = []
     for repo in project.get("repos") or []:
         if isinstance(repo, dict) and isinstance(repo.get("name"), str):
             repos.append({"name": repo["name"], "path": repo.get("path"), "default_branch": repo.get("default_branch")})
     workspace = harness.get("workspace") if isinstance(harness.get("workspace"), str) else None
-    return {"workspace": workspace, "repos": repos}
+    path = harness.get("path") if isinstance(harness.get("path"), str) and harness["path"].strip() else None
+    return {"workspace": workspace, "repos": repos, "harness": path}
