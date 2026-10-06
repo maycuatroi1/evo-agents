@@ -259,9 +259,10 @@ def test_a_put_replaces_the_secret_whole(client, hub, hub_db, config):
     assert len(stored(hub_db, OWNER, "token")) == 1
     assert opened(config, hub_db, OWNER, "token") == value
     assert bindings(hub_db, "token") == [("docs", None)]
+    token_id = stored(hub_db, OWNER, "token")[0][0]
     assert [(action, target) for action, target, _, _ in audit_rows(hub_db)] == [
-        ("secret.put", "token"),
-        ("secret.put", "token"),
+        ("secret.put", f"secret:{token_id}"),
+        ("secret.put", f"secret:{token_id}"),
     ]
 
 
@@ -426,10 +427,11 @@ def test_a_delete_drops_the_sealed_value_and_bindings_revokes_the_leases_and_fre
     again = written(client, hub["owner"], "claude-oauth", env_secret(sample()))
     assert again["created"] is True and again["workers"] == []
     assert len(stored(hub_db, OWNER, "claude-oauth")) == 2
+    first, second = sorted(row[0] for row in stored(hub_db, OWNER, "claude-oauth"))
     assert [(action, target, login) for action, target, login, _ in audit_rows(hub_db)] == [
-        ("secret.put", "claude-oauth", OWNER),
-        ("secret.delete", "claude-oauth", OWNER),
-        ("secret.put", "claude-oauth", OWNER),
+        ("secret.put", f"secret:{first}", OWNER),
+        ("secret.delete", f"secret:{first}", OWNER),
+        ("secret.put", f"secret:{second}", OWNER),
     ]
     assert value not in table_dump(hub_db)
 
@@ -489,6 +491,7 @@ def test_a_web_session_writes_only_with_its_csrf_header(client, hub, github, hub
 def test_neither_the_audit_nor_a_log_record_holds_a_value(client, hub, hub_db, caplog):
     caplog.set_level(logging.DEBUG)
     values = [sample("oauth-"), sample("oauth-"), sample("glpat-")]
+    names = ("claude-oauth", "gitlab-ops")
     written(client, hub["owner"], "claude-oauth", env_secret(values[0]))
     written(client, hub["owner"], "claude-oauth", env_secret(values[1], projects=["docs"]))
     written(client, hub["owner"], "gitlab-ops", git_secret(values[2]))
@@ -496,14 +499,19 @@ def test_neither_the_audit_nor_a_log_record_holds_a_value(client, hub, hub_db, c
     assert client.delete("/v1/secrets/gitlab-ops", headers=hub["owner"]).status_code == 204
 
     rows = audit_rows(hub_db)
+    (oauth,), (ops,) = (sql(hub_db, "SELECT id FROM secrets WHERE name = %s", (name,)) for name in names)
     assert [(action, target, login, project) for action, target, login, project in rows] == [
-        ("secret.put", "claude-oauth", OWNER, None),
-        ("secret.put", "claude-oauth", OWNER, None),
-        ("secret.put", "gitlab-ops", OWNER, None),
-        ("secret.delete", "gitlab-ops", OWNER, None),
+        ("secret.put", f"secret:{oauth[0]}", OWNER, None),
+        ("secret.put", f"secret:{oauth[0]}", OWNER, None),
+        ("secret.put", f"secret:{ops[0]}", OWNER, None),
+        ("secret.delete", f"secret:{ops[0]}", OWNER, None),
     ]
     trail = client.get("/v1/admin/audit", params={"action": "secret.put"}, headers=hub["admin"])
     assert trail.status_code == 200, trail.text
+    # the audit is a hub admin's to read, and a secret's name is its owner's alone: the audit names it by id
+    deletes = client.get("/v1/admin/audit", params={"action": "secret.delete"}, headers=hub["admin"]).text
+    for name in names:
+        assert name not in trail.text and name not in deletes
 
     assert {"secret written", "secret deleted"} <= {record.getMessage() for record in caplog.records}
     raw = caplog.text + "\n".join(

@@ -107,8 +107,9 @@ A name is 1 to 64 characters of `a-z`, `0-9`, `.`, `_` and `-`, starting with a 
 owner's secrets that are not deleted; a deleted secret's name is free again. A member keeps at most
 `MAX_SECRETS_PER_OWNER` (200) secrets (409 past that). A hub admin's routes are the same: they list, change and delete
 only their own secrets, and `/v1/admin/stats` counts the rows of `secrets` without showing one. Each write adds an
-audit row `secret.put` or `secret.delete` whose target is the secret's name; no audit row, log line or error carries
-a value, and a 422 never repeats the input.
+audit row `secret.put` or `secret.delete` whose target is the secret's id, `secret:<id>`, never its name: hub admins
+read the audit (`/v1/admin/audit`), and a secret's name is its owner's alone, as their list and a run's credentials
+are. No audit row, log line or error carries a value, and a 422 never repeats the input.
 
 On the web, the Secrets page (`/secrets`) lists the visitor's secrets and adds, replaces and deletes them. Its value
 field is a password field the page never fills: a replace asks for the value again, and the field is emptied as soon
@@ -159,7 +160,8 @@ App configured, GitHub failing. Without
 `EVO_HUB_SECRETS_KEY` nothing is leased and every repo is missing with that reason.
 
 Each call records its leases in `credential_leases` and adds one audit row `credential.lease` naming the run, the
-secrets, the App's accounts and the repos, never a value. A secret is leased once per run and worker: asked again,
+secrets by id (`secrets=12,15`), the App's accounts and the repos, never a value; `credential.revoke` names the
+secrets by id too. A secret is leased once per run and worker: asked again,
 the same lease comes back with the secret's value as it is now. A GitHub token stays sealed in its lease, bound to the
 lease's id, until it expires, so the hub can revoke it. Asked again, a run gets the same tokens while each has
 `GITHUB_TOKEN_REFRESH_SECONDS` or more left, and new ones in new leases after that; the tokens they replace go on

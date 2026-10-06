@@ -350,6 +350,7 @@ class World:
         self.oauth = sample("sk-ant-oat01-")  # the owner's CLAUDE_CODE_OAUTH_TOKEN
         self.glpat = git_http.password  # the owner's token for the git http-backend
         self.machines: list[Machine] = []
+        self.secret_ids: dict[str, int] = {}  # the owner's secrets by name, as the audit names them by id
         self.bare = {REPO: git_http.root / f"{REPO}.git", APP_REPO: tmp / f"{APP_REPO}.git"}
         self.origins = {
             REPO: git_http.repo_url(f"{REPO}.git", "http"),  # an http origin: the server answers https alone
@@ -396,6 +397,8 @@ class World:
             response = self.client.put(f"/v1/secrets/{name}", json=body, headers=self.owner)
             assert response.status_code == 200, response.text
             assert self.glpat not in response.text and self.oauth not in response.text
+            (secret_id,) = live.sql(self.hub.db, "SELECT id FROM secrets WHERE name = %s", (name,))[0]
+            self.secret_ids[name] = secret_id
 
     def dispatch(self, repo: str) -> int:
         body = {"plan_id": PLAN, "steps": [STEPS[repo]], "runtime": "claude-code", "approval": "auto"}
@@ -679,7 +682,8 @@ def test_a_worker_without_credentials_of_its_own_runs_on_leases_and_gives_them_b
     assert all(lease["revoked_at"] for lease in world.leases(run_id).values())
     (lease_row,) = world.audit("credential.lease", run_id)
     assert (lease_row["actor"], lease_row["project"]) == (OWNER, PROJECT)
-    assert "secrets=claude-oauth,git-http github-app=- " in lease_row["target"]
+    secrets = ",".join(str(found) for found in sorted(world.secret_ids.values()))  # by id: names are the owner's
+    assert f"secrets={secrets} github-app=- " in lease_row["target"]
     revoke_rows = world.audit("credential.revoke", run_id)
     assert revoke_rows and revoke_rows[0]["target"].endswith("by=run-done"), revoke_rows
     world.assert_nothing_leaked(mac)
@@ -706,7 +710,8 @@ def test_a_worker_without_credentials_of_its_own_runs_on_leases_and_gives_them_b
     seen = json.loads(env_seen[APP_REPO].read_text(encoding="utf-8"))
     assert seen.get("CLAUDE_CODE_OAUTH_TOKEN") == world.oauth and token not in json.dumps(seen)
     (lease_row,) = world.audit("credential.lease", app_run)
-    assert f"secrets=claude-oauth github-app={GITHUB_OWNER} repos={APP_REPO}" in lease_row["target"]
+    oauth = world.secret_ids["claude-oauth"]
+    assert f"secrets={oauth} github-app={GITHUB_OWNER} repos={APP_REPO}" in lease_row["target"]
     assert world.audit("credential.revoke", app_run)
     assert not mac.helper_calls.exists(), "the machine's own credential helper was called"
 
@@ -750,5 +755,5 @@ def test_a_daemon_killed_mid_run_leaves_its_leases_to_the_reaper(world):
     assert world.hub_lines("credentials given back", run_id) == [], "the killed daemon gave nothing back"
     (revoked,) = world.audit("credential.revoke", run_id)
     assert revoked["actor"] is None and revoked["target"].endswith("by=run-lost"), revoked
-    assert "leases=2 secrets=claude-oauth github-app=1" in revoked["target"]
+    assert f"leases=2 secrets={world.secret_ids['claude-oauth']} github-app=1" in revoked["target"]
     world.assert_nothing_leaked(mac)

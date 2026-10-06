@@ -217,6 +217,18 @@ def leases_of(db, run_id: int) -> list[tuple]:
     )
 
 
+def secret_ids(db, *names: str, owner: str = OWNER) -> str:
+    """The ids of ``owner``'s live secrets ``names``, as an audit row lists them: ``12,15``."""
+    rows = sql(
+        db,
+        "SELECT s.id FROM secrets s JOIN users u ON u.id = s.owner_id "
+        "WHERE u.login = %s AND s.name = ANY(%s) AND s.deleted_at IS NULL ORDER BY s.id",
+        (owner, list(names)),
+    )
+    assert len(rows) == len(names), (names, rows)
+    return ",".join(str(row[0]) for row in rows)
+
+
 def audit_rows(db, action: str) -> list[tuple]:
     return sql(
         db,
@@ -294,7 +306,8 @@ def test_a_run_gets_its_owners_secrets_and_an_app_token_for_its_own_github_repos
     assert Sealer(config.secrets_key).open(Sealed(sealed, nonce, key_id), lease_aad(lease_id)) == app["value"]
 
     repos = "evo-agents,m1-identity,m1-kb-docs,notes"
-    target = f"{PROJECT}/{PLAN} run:{run_id} secrets=claude-oauth,gitlab-kb github-app={MINE} repos={repos}"
+    secrets = secret_ids(hub_db, "claude-oauth", "gitlab-kb")  # by id: their names are the owner's
+    target = f"{PROJECT}/{PLAN} run:{run_id} secrets={secrets} github-app={MINE} repos={repos}"
     assert audit_rows(hub_db, "credential.lease") == [(target, OWNER, PROJECT, True)]
 
 
@@ -427,7 +440,8 @@ def test_a_member_whose_writer_grant_goes_gets_no_lease_and_loses_the_ones_out(c
     assert client.delete(grant, headers=hub["admin"]).status_code == 204
     assert [(row[4], row[5]) for row in leases_of(hub_db, run_id)] == [(True, False), (True, False)]
     assert revoked_at_github(github) == [token] and not github.covers(token, MINE, "evo-agents")
-    target = f"{PROJECT}/{PLAN}#1 run:{run_id} leases=2 secrets=claude-oauth github-app=1 by=grant-deleted"
+    secrets = secret_ids(hub_db, "claude-oauth", owner=OWNER)
+    target = f"{PROJECT}/{PLAN}#1 run:{run_id} leases=2 secrets={secrets} github-app=1 by=grant-deleted"
     assert audit_rows(hub_db, "credential.revoke") == [(target, ADMIN, PROJECT, True)]
     assert [row[4] for row in leases_of(hub_db, their_run)] == [False], "another member's run keeps its leases"
 
@@ -512,7 +526,8 @@ def test_the_worker_gives_back_its_leases_and_github_revokes_the_token(client, h
     assert revoked_at_github(github) == [token]
     assert not github.covers(token, MINE, "evo-agents")
     assert [(row[4], row[5]) for row in leases_of(hub_db, run_id)] == [(True, False)] * 3
-    target = f"{PROJECT}/{PLAN} run:{run_id} leases=3 secrets=claude-oauth,gitlab-kb github-app=1 by=worker"
+    secrets = secret_ids(hub_db, "claude-oauth", "gitlab-kb")
+    target = f"{PROJECT}/{PLAN} run:{run_id} leases=3 secrets={secrets} github-app=1 by=worker"
     assert audit_rows(hub_db, "credential.revoke") == [(target, OWNER, PROJECT, True)]
 
     # again: nothing is out, nothing is revoked or audited
@@ -547,7 +562,8 @@ def test_a_run_that_ends_or_waits_in_review_gives_back_its_leases_and_github_rev
         assert revoked_at_github(github) == tokens
         assert not github.covers(tokens[-1], MINE, "evo-agents")
         assert [(row[4], row[5]) for row in leases_of(hub_db, run_id)] == [(True, False), (True, False)]
-        target = f"{PROJECT}/{PLAN}#1 run:{run_id} leases=2 secrets=claude-oauth github-app=1 by=run-{end}"
+        secrets = secret_ids(hub_db, "claude-oauth")
+        target = f"{PROJECT}/{PLAN}#1 run:{run_id} leases=2 secrets={secrets} github-app=1 by=run-{end}"
         assert audit_rows(hub_db, "credential.revoke")[-1] == (target, None, PROJECT, False)  # the hub's own
 
 
@@ -601,12 +617,10 @@ def test_revoking_a_worker_revokes_every_lease_still_out(client, hub, github, hu
     assert sql(hub_db, "SELECT count(*) FROM credential_leases WHERE revoked_at IS NULL") == [(0,)]
     assert sql(hub_db, "SELECT count(*) FROM credential_leases WHERE sealed_value IS NOT NULL") == [(0,)]
     assert revoked_at_github(github) == [token] and not github.covers(token, MINE, "evo-agents")
+    both, oauth = secret_ids(hub_db, "claude-oauth", "gitlab-kb"), secret_ids(hub_db, "claude-oauth")
     assert [row[:2] for row in audit_rows(hub_db, "credential.revoke")] == [
-        (
-            f"{PROJECT}/{PLAN}#2 run:{on_gitlab} leases=2 secrets=claude-oauth,gitlab-kb github-app=0 by=run-failed",
-            None,
-        ),
-        (f"{PROJECT}/{PLAN}#1 run:{on_github} leases=2 secrets=claude-oauth github-app=1 by=worker-revoked", OWNER),
+        (f"{PROJECT}/{PLAN}#2 run:{on_gitlab} leases=2 secrets={both} github-app=0 by=run-failed", None),
+        (f"{PROJECT}/{PLAN}#1 run:{on_github} leases=2 secrets={oauth} github-app=1 by=worker-revoked", OWNER),
     ]
 
     # revoking a worker's token revokes its worker, and its leases, the same way
@@ -684,6 +698,12 @@ def test_neither_the_audit_nor_a_log_record_nor_a_table_holds_a_value(client, hu
     assert give_back(client, worker["headers"], run_id).status_code == 200
     trail = client.get("/v1/admin/audit", params={"action": "credential.lease"}, headers=hub["admin"])
     assert trail.status_code == 200, trail.text
+    revokes = client.get("/v1/admin/audit", params={"action": "credential.revoke"}, headers=hub["admin"])
+    assert revokes.status_code == 200, revokes.text
+    # a hub admin reads the audit, and a secret's name is its owner's alone, as GET .../runs/{id}/credentials says
+    for name in ("claude-oauth", "gitlab-kb"):
+        assert name not in trail.text and name not in revokes.text, "the audit names a secret by its name"
+    assert f"secrets={secret_ids(hub_db, 'claude-oauth', 'gitlab-kb')} " in trail.text
 
     assert {"credentials leased", "credentials given back"} <= {record.getMessage() for record in caplog.records}
     logged = caplog.text + "\n".join(f"{record.getMessage()} {vars(record)!r}" for record in caplog.records)

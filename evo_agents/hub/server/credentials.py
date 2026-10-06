@@ -25,11 +25,13 @@ revoke it. Asked again, the run gets the same tokens while each has GITHUB_TOKEN
 ones, in new leases, after that; the tokens they replace go on working until they expire, so a push that took one is
 not cut off. GitHub is asked between two transactions, never while the run's row is locked; the second one checks the
 run is still held, and when it is not, the tokens just made are revoked and the answer is 404. Every ask adds one audit
-row credential.lease naming the run, the secrets, the App's accounts and the repos, never a value.
+row credential.lease naming the run, the secrets by id (``secrets=12,15``: their names are their owner's, and the audit
+is read by hub admins), the App's accounts and the repos, never a value.
 
 DELETE on the same route gives back every lease this worker holds of the run, whatever state the run is in now: the
 leases are marked revoked, each GitHub token is revoked with itself (DELETE /installation/token) and its sealed value
-dropped, and one audit row credential.revoke names the run and what it gave back. A run of another worker is 404.
+dropped, and one audit row credential.revoke names the run and what it gave back, the secrets by id. A run of another
+worker is 404.
 
 GET /v1/projects/{p}/runs/{id}/credentials lists every lease the run got, given back or not, for the member who
 dispatched it: the secret's name or ``github-app:<account>``, provider, kind, target (the variable, or the origins it
@@ -503,7 +505,7 @@ async def lease_credentials(request: Request, run_id: RunId, user: CurrentUser, 
                         survey.missing[repo] = reasons.get(repo) or (
                             f"GitHub made no token for {'/'.join(survey.github[repo])}; ask again"
                         )
-            target = _lease_target(survey.run, leases)
+            target = _lease_target(survey.run, leases, {secret.name: secret.id for secret in survey.secrets})
             await audit.record(
                 conn,
                 actor_id=user.user_id,
@@ -537,9 +539,14 @@ def _names(values) -> str:
     return ",".join(sorted(set(values))) or "-"
 
 
-def _lease_target(run: _Run, leases: list[Lease]) -> str:
-    """How a credential.lease audit row names an ask: the run, the secrets, the App's accounts and the repos."""
-    secrets = _names(lease.name for lease in leases if lease.provider == "secret")
+def _ids(values) -> str:
+    return ",".join(str(value) for value in sorted(set(values))) or "-"
+
+
+def _lease_target(run: _Run, leases: list[Lease], secret_ids: dict[str, int]) -> str:
+    """How a credential.lease audit row names an ask: the run, the secrets by id (their names are their owner's, and
+    the audit is read by hub admins), the App's accounts and the repos."""
+    secrets = _ids(secret_ids[lease.name] for lease in leases if lease.provider == "secret")
     accounts = _names(lease.name.partition(":")[2] for lease in leases if lease.provider == "github-app")
     return f"{run.target} secrets={secrets} github-app={accounts} repos={_names(run.repos)}"
 
@@ -623,9 +630,8 @@ WITH ended AS (
     RETURNING run_id, provider, secret_id
 )
 SELECT e.run_id, r.project_id, p.name, r.plan_id, r.step_key, count(*),
-       array_remove(array_agg(DISTINCT s.name), NULL), count(*) FILTER (WHERE e.provider = 'github-app')
+       array_remove(array_agg(DISTINCT e.secret_id), NULL), count(*) FILTER (WHERE e.provider = 'github-app')
   FROM ended e JOIN runs r ON r.id = e.run_id JOIN projects p ON p.id = r.project_id
-  LEFT JOIN secrets s ON s.id = e.secret_id
  GROUP BY e.run_id, r.project_id, p.name, r.plan_id, r.step_key
  ORDER BY e.run_id
 """
@@ -649,7 +655,7 @@ async def end_leases(
     rows = await (await conn.execute(END_LEASES, {"run": run_id, "worker": worker_id})).fetchall()
     for run, project_id, project, plan_id, step_key, count, secrets, tokens in rows:
         target = (
-            f"{_run_target(project, plan_id, step_key, run)} leases={count} secrets={_names(secrets)} "
+            f"{_run_target(project, plan_id, step_key, run)} leases={count} secrets={_ids(secrets)} "
             f"github-app={tokens} by={by}"
         )
         await audit.record(
