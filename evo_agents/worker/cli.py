@@ -7,6 +7,10 @@
 - ``status``: what this machine is to the hub, and what the daemon sees here.
 - ``attach N``: this terminal on the tmux session of run N while a person drives its agent (``evo-run-N``).
 - ``drain [--resume]``, ``revoke [--force]``: the owner's controls, with the machine token.
+- ``step KEY STATUS``, ``ask``, ``notify``, ``plan``: the commands of a plan run's agent, which report a step (the
+  verify commands run again, the repo committed and pushed), ask the run's owner a decision, send the owner a notice,
+  and print the plan as the hub holds it now. They read the run from EVO_RUN_ID, EVO_WORKER_HOME and the run's record
+  there, call the hub with the worker's token, and refuse to run outside a plan run of this worker.
 
 The worker token goes to ``~/.evo/worker/token`` (0600) and is never printed. A failure is one ``error:`` line on
 stderr and exit status 1; a command that needs the worker extra and lacks it says how to install it (status 2).
@@ -24,11 +28,16 @@ import json
 import logging
 import os
 import platform
+import re
 import sys
+import time
+from dataclasses import dataclass
 from datetime import datetime, timezone
+from pathlib import Path
 from urllib.parse import quote
 
 from evo_agents import __version__
+from evo_agents.hub import runs
 from evo_agents.hub.client import Hub, HubError, check_url, host_name, load_credentials
 from evo_agents.worker.home import NotJoined, PidLock, WorkerConfig, WorkerHome, WorkerStateError, revoked_exit
 
@@ -428,6 +437,316 @@ def _service_file():
     return path if path.exists() else None
 
 
+# The commands of a plan run's agent
+
+RUN_VARIABLE = "EVO_RUN_ID"
+AGENT_STEP_STATUSES = ("in_progress", "done", "pending")  # what POST /v1/worker/runs/{id}/steps/{key} takes
+AGENT_NOTICE_KINDS = ("push_default_branch", "merge_default_branch")  # the hub sends plan_finished and run_failed
+MAX_VERIFY_COMMANDS = 50
+MAX_VERIFY_CHARS = 2000
+MAX_EVIDENCE_CHARS = 16 * 1024  # a step report's evidence, as the hub takes it
+OUTPUT_TAIL = 4000  # characters of a failed verify command's output printed
+
+
+@dataclass
+class _AgentRun:
+    """The plan run an agent's command acts for: the worker's state, its token and the run's record."""
+
+    run_id: int
+    home: WorkerHome
+    config: WorkerConfig
+    token: str
+    record: dict
+
+
+def _agent_run(command: str) -> _AgentRun:
+    """The plan run of EVO_RUN_ID on this worker; WorkerStateError outside one."""
+    raw = (os.environ.get(RUN_VARIABLE) or "").strip()
+    if not raw.isdigit() or int(raw) < 1:
+        raise WorkerStateError(
+            f"`evo-agents worker {command}` works only inside a plan run of this worker: {RUN_VARIABLE} is not set. "
+            "The worker sets it, with EVO_RUN_KIND and EVO_WORKER_HOME, for the agent of each run."
+        )
+    run_id = int(raw)
+    home = WorkerHome()
+    config = home.load_config()
+    token = home.load_token()
+    record = home.load_run(run_id)
+    if record is None or record.get("finished_at"):
+        raise WorkerStateError(
+            f"run {run_id} is not running on this worker (its state is under {home.root}): "
+            f"`evo-agents worker {command}` works only inside it"
+        )
+    if record.get("kind") != "plan":
+        raise WorkerStateError(
+            f"run {run_id} is a run of one step: only the agent of a plan run uses `evo-agents worker {command}`; a "
+            f"run of one step writes {runs.RESULT_FILE} instead"
+        )
+    return _AgentRun(run_id, home, config, token, record)
+
+
+def _with_hub(agent: _AgentRun, work):
+    """``await work(hub)`` with the worker's client of the hub; the hub's refusal, or no answer, is a HubError."""
+    hubapi = _hubapi()
+    from evo_agents.worker import gitops
+
+    async def go():
+        async with hubapi.new_session() as session:
+            return await work(hubapi.WorkerHub(agent.config.url, agent.token, session))
+
+    try:
+        return asyncio.run(go())
+    except hubapi.HubProblem as exc:
+        raise HubError(str(exc), exc.status, exc.code) from None
+    except gitops.GitError as exc:
+        raise WorkerStateError(str(exc)) from None
+
+
+def _workspaces(agent: _AgentRun) -> dict:
+    from evo_agents.worker import gitops
+
+    found = {}
+    for item in agent.record.get("repos") or []:
+        try:
+            workspace = gitops.Workspace.from_record(item)
+        except ValueError:
+            continue
+        found[workspace.repo] = workspace
+    return found
+
+
+def _plan_step(body: dict, key: str) -> dict | None:
+    """The step of ``body`` whose id is ``key`` (ids compare as text), or whose order it is."""
+    steps = [step for step in body.get("steps") or [] if isinstance(step, dict)]
+    for step in steps:
+        if str(step.get("id")) == key:
+            return step
+    if key.isdigit() and 1 <= int(key) <= len(steps):
+        return steps[int(key) - 1]
+    return None
+
+
+def _step_repo(body: dict, step: dict | None, workspaces: dict) -> str | None:
+    """The repo a step is in: the plan's repo of the step, or the run's only repo."""
+    named = step.get("repo") if isinstance(step, dict) else None
+    if isinstance(named, str) and named in workspaces:
+        return named
+    repos = [entry.get("repo") for entry in body.get("repos") or [] if isinstance(entry, dict)]
+    if not isinstance(named, str) and len(repos) == 1 and repos[0] in workspaces:
+        return repos[0]
+    return next(iter(workspaces)) if len(workspaces) == 1 else None
+
+
+async def _verify(path: Path, commands: list[str]) -> list[dict]:
+    """Run each command with /bin/sh in ``path``, every one even after a failure; each one's exit code."""
+    results = []
+    for command in commands:
+        started = time.monotonic()
+        proc = await asyncio.create_subprocess_shell(
+            command,
+            cwd=str(path),
+            stdin=asyncio.subprocess.DEVNULL,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+        )
+        output, _ = await proc.communicate()
+        duration_ms = int((time.monotonic() - started) * 1000)
+        results.append({"command": command, "exit_code": proc.returncode, "duration_ms": duration_ms})
+        print(f"verify: `{command}` exited {proc.returncode} after {duration_ms} ms")
+        if proc.returncode != 0:
+            tail = output.decode(errors="replace")[-OUTPUT_TAIL:].rstrip()
+            if tail:
+                print("\n".join(f"  | {line}" for line in tail.splitlines()))
+    return results
+
+
+@_worker_command
+def cmd_step(args) -> int:
+    agent = _agent_run("step")
+    verify = list(args.verify or [])
+    if args.status == "done" and not verify:
+        raise WorkerStateError(
+            "a step is done only with the commands that check it: give --verify COMMAND once for each; the worker "
+            "runs each again in the repo's worktree"
+        )
+    if args.status != "done" and verify:
+        raise WorkerStateError("--verify goes with done only: the worker runs the verify commands of a done step")
+    if len(verify) > MAX_VERIFY_COMMANDS or any(not c.strip() or len(c) > MAX_VERIFY_CHARS for c in verify):
+        raise WorkerStateError(
+            f"give 1 to {MAX_VERIFY_COMMANDS} verify commands, each 1 to {MAX_VERIFY_CHARS} characters"
+        )
+    if args.evidence is not None and (not args.evidence.strip() or len(args.evidence) > MAX_EVIDENCE_CHARS):
+        raise WorkerStateError(f"--evidence takes 1 to {MAX_EVIDENCE_CHARS} characters")
+    workspaces = _workspaces(agent)
+    if args.repo is not None and args.repo not in workspaces:
+        raise WorkerStateError(f"run {agent.run_id} works in {', '.join(workspaces) or 'no repo'}, not in {args.repo}")
+    from evo_agents.worker import gitops
+
+    async def work(hub) -> int:
+        body = (await hub.plan(agent.run_id)).get("body") or {}
+        step = _plan_step(body, args.key)
+        name = args.repo or _step_repo(body, step, workspaces)
+        report: dict = {"status": args.status}
+        if name is not None:
+            report["repo"] = name
+        if args.evidence is not None:
+            report["evidence"] = args.evidence
+        pushed = None
+        if args.status == "done":
+            if name is None:
+                raise WorkerStateError(f"name the repo of step {args.key} with --repo: one of {', '.join(workspaces)}")
+            workspace = workspaces[name]
+            results = await _verify(workspace.worktree, verify)
+            failed = [item for item in results if item["exit_code"] != 0]
+            if failed:
+                print(
+                    f"Step {args.key} is not done: {len(failed)} verify command(s) exited other than 0. Nothing was "
+                    f"committed or pushed, and nothing was reported; fix it and run `evo-agents worker step "
+                    f"{args.key} done` again, or hand the step back with pending.",
+                    file=sys.stderr,
+                )
+                return EXIT_FAILED
+            title = step.get("title") if isinstance(step, dict) and isinstance(step.get("title"), str) else None
+            message = f"run #{agent.run_id} step {args.key}" + (f": {' '.join(title.split())}" if title else "")
+            path = workspace.worktree
+            if await gitops.commit_all(path, message):
+                print(f"Committed what was left in {name} as {message!r}.")
+            branch = await gitops.current_branch(path)
+            if branch is None:
+                raise WorkerStateError(f"HEAD is detached in {path}: the worker does not push a detached HEAD")
+            if branch != workspace.local_branch:
+                raise WorkerStateError(
+                    f"{path} is on {branch}, not {workspace.local_branch}: switch back; the worker pushes only the "
+                    "run's branch"
+                )
+            plan_branch = gitops.plan_branches(body).get(name) if "repos" in body else workspace.plan_branch
+            try:
+                pushed = await gitops.push(
+                    path, workspace.branch, protected=workspace.protected, kind="plan", plan_branch=plan_branch
+                )
+            except gitops.PushRefused as exc:
+                raise WorkerStateError(f"{name}: {exc}; step {args.key} is not reported done") from None
+            except gitops.GitError as exc:
+                raise WorkerStateError(
+                    f"git push of {name} to {workspace.branch} failed: {exc}; step {args.key} is not reported done"
+                ) from None
+            if pushed.default and pushed.changed:
+                from evo_agents.worker.hubapi import HubProblem
+
+                try:
+                    await hub.notice(agent.run_id, gitops.push_notice(agent.run_id, name, pushed))
+                    print(f"Notified the run's owner of the push to {pushed.branch}, a default branch.")
+                except HubProblem as exc:  # the push happened: the step is reported all the same
+                    print(
+                        f"warning: the notice of the push to {pushed.branch} was not sent ({exc}); send it with "
+                        "`evo-agents worker notify --kind push_default_branch`",
+                        file=sys.stderr,
+                    )
+            report["verify"] = results
+            report["commit_sha"] = pushed.head
+        answer = await hub.step(agent.run_id, args.key, report)
+        where = f" ({name}@{pushed.head[:12]}, pushed to {pushed.branch})" if pushed is not None else ""
+        kept = "" if answer.get("written", True) else ", as the plan had it already"
+        print(f"Step {args.key} of plan {answer.get('plan_id')}: {answer.get('status')}{where}{kept}.")
+        return 0
+
+    return _with_hub(agent, work)
+
+
+def _option(text: str) -> dict:
+    """``KEY=LABEL[:DESCRIPTION]`` as an option of a decision."""
+    key, sep, rest = text.partition("=")
+    label, _, description = rest.partition(":")
+    key, label, description = key.strip(), label.strip(), description.strip()
+    if not sep or not label or not re.fullmatch(runs.OPTION_KEY, key):
+        raise WorkerStateError(
+            f"--option takes KEY=LABEL[:DESCRIPTION], KEY being letters, digits, _ and - (at most 32), not {text!r}"
+        )
+    return {"key": key, "label": label, **({"description": description} if description else {})}
+
+
+@_worker_command
+def cmd_ask(args) -> int:
+    agent = _agent_run("ask")
+    options = [_option(text) for text in args.option]
+    keys = [option["key"] for option in options]
+    fewest, most = runs.DECISION_OPTIONS
+    if not fewest <= len(options) <= most or len(set(keys)) != len(keys):
+        raise WorkerStateError(f"a decision offers {fewest} to {most} options, each with a key of its own")
+    if args.recommended is not None and args.recommended not in keys:
+        raise WorkerStateError(f"--recommended names one of the options: {', '.join(keys)}")
+    body: dict = {"category": args.category, "question": args.question, "options": options}
+    if args.context_file:
+        try:
+            text = sys.stdin.read() if args.context_file == "-" else Path(args.context_file).read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as exc:
+            raise WorkerStateError(f"cannot read {args.context_file}: {exc}") from None
+        if len(text.encode()) > runs.MAX_DECISION_CONTEXT_BYTES:
+            raise WorkerStateError(f"the context is at most {runs.MAX_DECISION_CONTEXT_BYTES} bytes of UTF-8")
+        if text.strip():
+            body["context"] = text
+    if args.recommended is not None:
+        body["recommended"] = args.recommended
+    if args.step is not None:
+        body["step_key"] = args.step
+
+    async def work(hub) -> dict:
+        return await hub.decision(agent.run_id, body)
+
+    answer = _with_hub(agent, work)
+    decision_id = answer.get("id") if isinstance(answer, dict) else None
+    if not isinstance(decision_id, int):
+        raise HubError("the hub did not answer with the decision's id")
+    noted = json.dumps({"id": decision_id, "asked_at": datetime.now(timezone.utc).isoformat(timespec="seconds")})
+    with open(agent.home.decisions_path(agent.run_id), "a", encoding="utf-8") as handle:  # the daemon waits on it
+        handle.write(noted + "\n")
+    print(f"Decision #{decision_id} is open: {' '.join(args.question.split())}")
+    print(
+        "Go on with the work that does not depend on the answer. When none is left, end your turn: the run waits "
+        f"for its owner, and the answer comes back in this session as a message naming decision #{decision_id}."
+    )
+    return 0
+
+
+@_worker_command
+def cmd_notify(args) -> int:
+    agent = _agent_run("notify")
+    body: dict = {"kind": args.kind, "title": args.title}
+    for name in ("body", "repo", "branch"):
+        if getattr(args, name) is not None:
+            body[name] = getattr(args, name)
+    if args.commit:
+        body["commits"] = list(dict.fromkeys(args.commit))
+
+    async def work(hub) -> dict:
+        return await hub.notice(agent.run_id, body)
+
+    answer = _with_hub(agent, work)
+    print(f"Notice #{answer.get('id')} sent to the owner of run #{agent.run_id}: {args.title}")
+    return 0
+
+
+@_worker_command
+def cmd_plan(args) -> int:
+    agent = _agent_run("plan")
+
+    async def work(hub) -> dict:
+        return await hub.plan(agent.run_id)
+
+    view = _with_hub(agent, work)
+    if args.json:
+        print(json.dumps(view, ensure_ascii=False, indent=2))
+        return 0
+    import yaml
+
+    print(
+        f"# The plan {view.get('plan_id')} of project {view.get('project')} at revision {view.get('revision')}, as "
+        "the hub holds it now."
+    )
+    print(yaml.safe_dump(view.get("body") or {}, allow_unicode=True, sort_keys=False, width=120), end="")
+    return 0
+
+
 def _slots(value: str) -> int:
     try:
         number = int(value)
@@ -500,3 +819,49 @@ def register(sub) -> None:
         "--force", action="store_true", help="delete the token here even when the hub cannot revoke the worker"
     )
     revoke.set_defaults(func=cmd_revoke)
+
+    # The agent of a plan run runs these; outside one they refuse.
+    step = wsub.add_parser(
+        "step", help="inside a plan run: report a step of the plan; done runs its verify commands again and pushes"
+    )
+    step.add_argument("key", help="the step's id, or its order")
+    step.add_argument("status", choices=AGENT_STEP_STATUSES, help="in_progress, done, or pending to hand it back")
+    step.add_argument("--repo", help="the run's repo the step is in (default: the plan's repo of the step)")
+    step.add_argument("--evidence", help="what was done and how it was checked; a line per decision taken")
+    step.add_argument(
+        "--verify",
+        action="append",
+        metavar="COMMAND",
+        help="a command that checks the step, run again in the repo's worktree; repeat it; done needs one",
+    )
+    step.set_defaults(func=cmd_step)
+
+    ask = wsub.add_parser("ask", help="inside a plan run: ask the run's owner a decision; prints its id")
+    ask.add_argument("--category", required=True, choices=runs.DECISION_CATEGORIES, help="what kind of decision")
+    ask.add_argument("--question", required=True, help="the question, in a sentence or two")
+    ask.add_argument("--context-file", help="a markdown file of context for the owner, at most 16 KiB (- for stdin)")
+    ask.add_argument(
+        "--option",
+        action="append",
+        required=True,
+        metavar="KEY=LABEL[:DESCRIPTION]",
+        help="an option; repeat it, 2 to 6 times",
+    )
+    ask.add_argument("--recommended", metavar="KEY", help="the key of the option you recommend")
+    ask.add_argument("--step", help="the step of the plan it is about")
+    ask.set_defaults(func=cmd_ask)
+
+    notify = wsub.add_parser(
+        "notify", help="inside a plan run: tell the run's owner of a push or merge into a default branch"
+    )
+    notify.add_argument("--kind", required=True, choices=AGENT_NOTICE_KINDS)
+    notify.add_argument("--title", required=True, help="one line")
+    notify.add_argument("--body", help="what happened, at most 16 KiB")
+    notify.add_argument("--repo", help="the run's repo")
+    notify.add_argument("--branch", help="the branch pushed or merged into")
+    notify.add_argument("--commit", action="append", metavar="SHA", help="a commit pushed or merged; repeat it")
+    notify.set_defaults(func=cmd_notify)
+
+    plan = wsub.add_parser("plan", help="inside a plan run: print the run's plan as the hub holds it now")
+    plan.add_argument("--json", action="store_true", help="the hub's answer as JSON")
+    plan.set_defaults(func=cmd_plan)

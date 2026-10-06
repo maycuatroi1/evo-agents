@@ -7,7 +7,8 @@
 - It claims a run whenever it has a free slot and is neither draining nor stopping, one long poll of up to 25
   seconds at a time, and runs each run it gets (``run.Run``) next to the others.
 - The answer's ``takeover`` and ``handback`` hand a run's agent to a person in tmux and back (``interactive``), and
-  ``terminal_open`` connects the worker's end of the run's web terminal.
+  ``terminal_open`` connects the worker's end of the run's web terminal. For a plan run, ``inbox`` also wakes a run
+  that waits for its owner's answer, and ``park`` lets go of a run the hub parked, its session and worktrees kept.
 - A call the hub does not answer is sent again with a backoff from 1 to 60 seconds; runs go on meanwhile.
 - SIGTERM or SIGINT: no new claim; the runs held go on until they end or reach their timeout, then the daemon exits
   0. A second signal stops the agents now and fails their runs.
@@ -39,7 +40,7 @@ from evo_agents.worker import checkouts, gitops, interactive
 from evo_agents.worker.adapter import Adapter, detect_runtimes
 from evo_agents.worker.home import WorkerConfig, WorkerHome, revoked_exit
 from evo_agents.worker.hubapi import Backoff, HubProblem, Outdated, Refused, Unreachable, WorkerHub, new_session
-from evo_agents.worker.run import Run, Sender
+from evo_agents.worker.run import Run, Sender, run_class
 from evo_agents.worker.spool import Spool, SpoolBudget, leftover_runs
 
 log = logging.getLogger("evo_agents.worker")
@@ -274,13 +275,17 @@ class Daemon:
             run = self.runs.get(control.get("id"))
             if run is None or run.ended:
                 continue
-            if not control.get("held"):
+            if control.get("park"):  # parked, or done because a new run resumes it: not held, and not cancelled
+                run.request_park()
+            elif not control.get("held"):
                 run.request_stop("gone")
             elif control.get("cancel"):
                 run.request_stop("cancel")
             else:
+                decisions = control.get("decisions")
+                run.open_decisions = decisions if isinstance(decisions, int) else 0
                 if control.get("inbox"):
-                    run._spawn(run.deliver_inbox())
+                    run.inbox_waits()
                 if control.get("takeover"):
                     run.request_takeover()
                 if control.get("handback"):
@@ -334,7 +339,7 @@ class Daemon:
             await self.hub.report(int(spec["id"]), {"state": "failed", "error": error})
 
     def _start(self, spec: dict) -> None:
-        run = Run(self, spec)
+        run = run_class(spec)(self, spec)
         log.info(
             "run claimed",
             extra={
@@ -342,8 +347,10 @@ class Daemon:
                 "project": run.project,
                 "plan_id": spec.get("plan_id"),
                 "step": spec.get("step_key"),
+                "kind": spec.get("kind") or "step",
                 "runtime": run.runtime,
                 "repo": run.repo,
+                "repos": [entry.get("repo") for entry in spec.get("repos") or [] if isinstance(entry, dict)] or None,
                 "branch": run.branch,
             },
         )
@@ -419,15 +426,26 @@ class Daemon:
         return removed
 
     async def _remove_worktree(self, record: dict) -> None:
-        path = Path(record["worktree"]) if record.get("worktree") else None
-        checkout = Path(record["checkout"]) if record.get("checkout") else None
+        """Remove a run's worktree and its evo-run branch; for a plan run, each repo's, then the run's directory. A
+        plan run whose worktrees a resumed run took over names none of them any more."""
+        if record.get("kind") == "plan":
+            for item in record.get("repos") or []:
+                if isinstance(item, dict):
+                    await self._remove_one(item)
+            await self._remove_one({"worktree": record.get("dir")})
+        else:
+            await self._remove_one(record)
+
+    async def _remove_one(self, item: dict) -> None:
+        path = Path(item["worktree"]) if item.get("worktree") else None
+        checkout = Path(item["checkout"]) if item.get("checkout") else None
         if checkout is not None and checkout.is_dir():
             async with self.repo_lock(checkout):
                 if path is not None and path.exists():
                     with contextlib.suppress(gitops.GitError):
                         await gitops.remove_worktree(checkout, path)
                 await gitops.prune_worktrees(checkout)
-                branch = record.get("local_branch")
+                branch = item.get("local_branch")
                 if isinstance(branch, str) and branch.startswith("evo-run/"):
                     await gitops.delete_branch(checkout, branch)
         if path is not None and path.exists() and path.resolve().is_relative_to(self.home.worktrees_dir.resolve()):

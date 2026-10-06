@@ -285,3 +285,65 @@ def test_worktrees_of_runs_that_ended_over_7_days_ago_are_removed(tmp_path, monk
         ["git", "-C", str(checkout), "branch", "--list", "evo-run/*"], capture_output=True, text=True, check=True
     ).stdout
     assert "evo-run/1" not in branches and "evo-run/2" in branches
+
+
+def test_a_plan_runs_directory_and_worktrees_go_7_days_after_it_ended_and_a_resumed_runs_stay(tmp_path):
+    pytest.importorskip("aiohttp")
+    from evo_agents.worker.daemon import Daemon
+    from evo_agents.worker.gitops import Workspace
+
+    env = {
+        **os.environ,
+        "GIT_AUTHOR_NAME": "a",
+        "GIT_AUTHOR_EMAIL": "a@b",
+        "GIT_COMMITTER_NAME": "a",
+        "GIT_COMMITTER_EMAIL": "a@b",
+    }
+    checkouts_of = {}
+    for name in ("alpha", "beta"):
+        checkout = _repo(tmp_path / name)
+        (checkout / "README.md").write_text("x", encoding="utf-8")
+        subprocess.run(["git", "-C", str(checkout), "add", "."], check=True, env=env)
+        subprocess.run(["git", "-C", str(checkout), "commit", "--quiet", "-m", "x"], check=True, env=env)
+        checkouts_of[name] = checkout
+    home = WorkerHome(tmp_path / "worker")
+    home.ensure()
+    old = (datetime.now(timezone.utc) - timedelta(days=8)).isoformat()
+    for run_id in (5, 6):  # 5 ended; 6 was parked, and a run that resumed it took its worktrees over
+        directory = home.worktree_path("demo", run_id)
+        directory.mkdir()
+        repos = []
+        for name, checkout in checkouts_of.items():
+            branch = f"evo-run/{run_id}/{name}"
+            path = directory / name
+            subprocess.run(
+                ["git", "-C", str(checkout), "worktree", "add", "--quiet", "-b", branch, str(path)], check=True
+            )
+            base = subprocess.run(["git", "-C", str(checkout), "rev-parse", "HEAD"], capture_output=True, text=True)
+            workspace = Workspace(name, "feat/x", "feat/x", checkout, path, branch, base.stdout.strip(), ("main",))
+            assert Workspace.from_record(workspace.to_record()) == workspace
+            repos.append(workspace.to_record())
+        record = {"id": run_id, "kind": "plan", "dir": str(directory), "repos": repos, "finished_at": old}
+        if run_id == 6:
+            record.update({"dir": None, "repos": [], "resumed_by": 7, "moved_to": str(directory)})
+        home.save_run(record)
+    config = WorkerConfig(url="https://hub.example.org", worker_id=1, name="mac", projects=["demo"])
+    assert asyncio.run(Daemon(home, config, "evw_x", adapters={}).cleanup()) == [5, 6]
+    assert not home.worktree_path("demo", 5).exists()
+    assert (home.worktree_path("demo", 6) / "alpha" / "README.md").exists(), "the resumed run's worktrees stay"
+    for checkout in checkouts_of.values():
+        branches = subprocess.run(
+            ["git", "-C", str(checkout), "branch", "--list", "evo-run/*"], capture_output=True, text=True, check=True
+        ).stdout
+        assert "evo-run/5/" not in branches and "evo-run/6/" in branches
+
+
+def test_a_plan_runs_worktree_folders_are_valid_branch_names_and_never_collide():
+    from evo_agents.worker.gitops import folder_name, plan_branches
+
+    assert folder_name("evo-agents") == "evo-agents"
+    assert folder_name("team/web app") == "team-web-app"
+    assert folder_name("..hidden") == "hidden" and folder_name("x.lock") == "x.lock-repo" and folder_name("/") == "repo"
+    assert folder_name("evo-agents", {"evo-agents", "evo-agents-2"}) == "evo-agents-3"
+    body = {"repos": [{"repo": "a", "branch": "main"}, {"repo": "b"}, "c", {"branch": "x"}]}
+    assert plan_branches(body) == {"a": "main", "b": None} and plan_branches({}) == {}

@@ -22,6 +22,15 @@ adapter in this order:
 ``session_id`` is the runtime's id of the agent's session once it is known (from the start for a runtime that takes
 an id, from its first event otherwise); the daemon reports it, and a later takeover resumes that session.
 
+A plan run (``context.run["kind"] == "plan"``, ``evo_agents.worker.run.PlanRun``) drives every adapter the same way,
+one adapter per turn of the agent, so opencode, Codex and Claude Code need nothing of their own for it:
+``context.worktree`` is the run's directory, which holds a worktree of each repo and ``.evo-run/``. A turn that ends
+with a decision of the run open is followed by no new adapter until the owner answers: the daemon reports the run
+``waiting``, and the answer, from the inbox, is the prompt of a new adapter with ``context.resume_session`` set to the
+same session, which reports the run ``running`` again. When the hub parks the run, ``stop_at_turn_boundary`` ends the
+agent at the end of its turn and the session and the worktrees stay; the run that resumes it, claimed with
+``resume_of_run_id``, starts its adapter in the same directory and session.
+
 An adapter whose ``interactive`` is true can also hand the session to a person: ``tui(context, session_id)`` gives the
 runtime's own terminal UI on that session (a new one on ``context.prompt`` when ``session_id`` is None), which the
 daemon runs in tmux (``evo_agents.worker.interactive``). Once the person hands the run back, a new adapter goes on
