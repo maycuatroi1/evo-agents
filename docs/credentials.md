@@ -171,9 +171,11 @@ while the run's row is locked; when the run ended in between, the tokens just ma
   {reason}; git uses this machine's own", and git falls back to the machine's credentials, as before 0.5.0. A
   laptop whose owner set no secret runs as it always did.
 
-With a `CLAUDE_CODE_OAUTH_TOKEN` lease the Claude Code adapter drops `ANTHROPIC_API_KEY` from the agent's environment
-(the API key comes first in Claude Code's order of authentication), and the interactive UI starts without
-`--remote-control`, which a `claude setup-token` token cannot open.
+With a `CLAUDE_CODE_OAUTH_TOKEN` lease the Claude Code adapter drops the daemon's `ANTHROPIC_API_KEY` from the agent's
+environment, unless a lease sets the key too (the API key comes first in Claude Code's order of authentication), and
+the interactive UI starts without `--remote-control`, which a `claude setup-token` token cannot open. A `system`
+event of the run says each. `ANTHROPIC_AUTH_TOKEN` and an `apiKeyHelper` of the machine's settings also come before
+the token in that order, and are left as they are.
 
 ## The agent and the hub
 

@@ -32,7 +32,9 @@ The leases stay in the daemon's memory (``credentials.RunCredentials``): the run
 ``git_env``, its agent through ``agent_env``, each event goes through ``credentials.scrub`` before the spool, and
 they are given back once the run ends here, whether it ended, was parked, or the daemon stops. A push of the daemon
 that fails to authenticate on a leased origin takes the leases again once and pushes once more
-(``RunCredentials.with_renewal``).
+(``RunCredentials.with_renewal``). What the runtime leaves out of the agent's environment because of the leases (Claude
+Code drops the daemon's ANTHROPIC_API_KEY next to a leased CLAUDE_CODE_OAUTH_TOKEN) is noted once a run
+(``_note_environment``).
 
 Each time an agent starts, headless or in its terminal UI, the daemon notes its process group in
 ``runs/<run>/agent.json`` (``orphans``), and removes the file just before the run counts as ended here, so a daemon
@@ -343,6 +345,7 @@ class Run:
         self._report_lock = asyncio.Lock()
         self._delivering = False
         self._unsupported_noted: set[str] = set()
+        self._environment_noted: set[str] = set()  # the lines of environment_notes written already
         self._background: set[asyncio.Task] = set()
         home = daemon.home
         home.run_dir(self.id).mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -885,12 +888,26 @@ class Run:
 
     def _context(self, prompt: str, session_id: str | None) -> RunContext:
         return RunContext(
-            run=dict(self.spec), worktree=self.worktree, prompt=prompt, env=self.agent_env(), resume_session=session_id
+            run=dict(self.spec),
+            worktree=self.worktree,
+            prompt=prompt,
+            env=self.agent_env(),
+            resume_session=session_id,
+            leased=self.credentials.withheld,
         )
+
+    def _note_environment(self, cls, context: RunContext) -> None:
+        """What the runtime leaves out of the agent's environment because of the run's leases
+        (``Adapter.environment_notes``), each line once a run."""
+        for line in cls.environment_notes(context):
+            if line not in self._environment_noted:
+                self._environment_noted.add(line)
+                self.note(line)
 
     async def _headless(self, cls, prompt: str, session_id: str | None) -> Outcome:
         """The agent headless, on a new session or going on with ``session_id``, until its events end."""
-        adapter = cls(self._context(prompt, session_id))
+        context = self._context(prompt, session_id)
+        adapter = cls(context)
         self.adapter = adapter
         self.phase = "headless"
         self._inbox_waits = False
@@ -911,6 +928,7 @@ class Run:
             self.note(f"{self.runtime} goes on headless in session {session_id}.")
         else:
             self.note(f"{self.runtime} started in {self.worktree}.")
+        self._note_environment(cls, context)
         self._spawn(self._report_running((self.state,) if self.state in ("interactive", "waiting") else ("leased",)))
         if self.takeover_asked or self._park_requested():  # asked while the agent was starting
             self._spawn(self._stop_at_boundary(adapter))
@@ -928,7 +946,8 @@ class Run:
         self.handback_asked.clear()
         tmux = self.daemon.tmux
         name = interactive.session_name(self.id)
-        tui = cls.tui(self._context(prompt, session_id), session_id)
+        context = self._context(prompt, session_id)
+        tui = cls.tui(context, session_id)
         try:
             for line in await tui.prepare():
                 self.note(line)
@@ -956,6 +975,7 @@ class Run:
             self.note(f"The terminal UI of {self.runtime} did not open ({reason}); the agent goes on headless.")
             return session_id
         self.tui = tui
+        self._note_environment(cls, context)
         self._agent_starts()
         await self._note_agent(None)
         self.group_noted = False

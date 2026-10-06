@@ -27,9 +27,11 @@ with a session (after a handback, or a plan run resumed after it was parked) fol
 scenarios have it. Each ``cli`` and ``sh`` action is written as a JSON line ``{"run", "turn", "cmd", "exit",
 "stdout", "stderr"}`` to the file EVO_FAKE_CLI names.
 ``stop_at_turn_boundary`` ends a ``wait_for`` or ``sleep`` as a completed turn, as a takeover would. Each start is
-written as a JSON line ``{"run", "session", "resume", "prompt", "cwd"}`` to the file EVO_FAKE_STARTS names.
+written as a JSON line ``{"run", "session", "resume", "prompt", "cwd", "leased"}`` to the file EVO_FAKE_STARTS names.
 
 The messages ``send`` hands the agent are written, one per line, to the file EVO_FAKE_MESSAGES names.
+``environment_notes`` names the variables the run's leases set, but for git's configuration, so the daemon's tests see
+where its notes go.
 
 The adapter is interactive: its terminal UI (``FakeTui``) is ``tests/worker/fake_tui.py``, which prints its session and
 the first line of its prompt, echoes each line typed (``echo: <line>``), clears the screen on ``clear`` and ends on
@@ -236,6 +238,12 @@ class FakeAdapter(Adapter):
     def tui(cls, context, session_id):
         return FakeTui(context, session_id)
 
+    @classmethod
+    def environment_notes(cls, context) -> list[str]:
+        """A line naming the variables the run's leases set, but for git's configuration, when there are any."""
+        names = sorted(name for name in context.leased if not name.startswith("GIT_CONFIG_"))
+        return [f"The fake agent's environment has the leased {', '.join(names)}."] if names else []
+
     def __init__(self, context):
         super().__init__(context)
         self._session = context.resume_session or str(uuid.uuid4())
@@ -266,6 +274,7 @@ class FakeAdapter(Adapter):
                     "resume": context.resume_session,
                     "prompt": context.prompt,
                     "cwd": str(context.worktree),
+                    "leased": sorted(context.leased),
                 }
                 handle.write(json.dumps(start) + "\n")
 

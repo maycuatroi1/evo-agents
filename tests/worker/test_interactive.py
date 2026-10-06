@@ -32,7 +32,7 @@ import pytest
 from evo_agents.hub import terminal as frames
 from evo_agents.worker import interactive
 from evo_agents.worker.adapter import RunContext
-from evo_agents.worker.runtimes import opencode
+from evo_agents.worker.runtimes import claude_code, opencode
 from tests.hub import pg
 
 TMUX = shutil.which("tmux")
@@ -152,11 +152,20 @@ def _fake_bin(directory: Path, *, hook_flag: bool = True) -> Path:
     return directory
 
 
-def _tui_context(tmp_path: Path, *, prompt: str = "Do the step.", **run) -> RunContext:
+def _tui_context(
+    tmp_path: Path,
+    *,
+    prompt: str = "Do the step.",
+    env: dict | None = None,
+    leased: frozenset[str] = frozenset(),
+    **run,
+) -> RunContext:
     worktree = tmp_path / "worktree"
     worktree.mkdir(exist_ok=True)
-    env = {"HOME": str(tmp_path / "home"), "PATH": str(tmp_path / "bin"), "CLAUDECODE": "1"}
-    return RunContext(run={"id": 7, "title": "the step", **run}, worktree=worktree, prompt=prompt, env=env)
+    environment = {"HOME": str(tmp_path / "home"), "PATH": str(tmp_path / "bin"), "CLAUDECODE": "1", **(env or {})}
+    return RunContext(
+        run={"id": 7, "title": "the step", **run}, worktree=worktree, prompt=prompt, env=environment, leased=leased
+    )
 
 
 def test_the_terminal_uis_go_on_with_the_session_with_full_permissions(tmp_path):
@@ -231,6 +240,65 @@ def test_the_terminal_uis_go_on_with_the_session_with_full_permissions(tmp_path)
     ]
     env = oc.environment()
     assert env["OPENCODE_SERVER_PASSWORD"] == "the-password" and env["OPENCODE_SERVER_USERNAME"] == "opencode"
+
+
+def test_claude_codes_ui_on_a_leased_oauth_token_has_no_remote_control_and_no_api_key_of_the_daemons(tmp_path):
+    bin_dir = _fake_bin(tmp_path / "bin")
+    (tmp_path / "home").mkdir()
+    key, token = "sk-ant-api03-" + "k" * 32, "sk-ant-oat01-" + "t" * 32
+    keys = {"ANTHROPIC_API_KEY": key, "CLAUDE_CODE_OAUTH_TOKEN": token}
+    leased = frozenset({"CLAUDE_CODE_OAUTH_TOKEN", "GIT_CONFIG_COUNT"})
+    context = _tui_context(tmp_path, env=keys, leased=leased)
+
+    claude = interactive.ClaudeCodeTui(context, "sid-1")
+    notes = asyncio.run(claude.prepare())
+    assert notes[0].startswith(f"Marked {context.worktree} as trusted")
+    assert notes[1] == claude_code.REMOTE_CONTROL_NOTE
+    assert "`claude setup-token`, which only calls the model and cannot open a Remote Control session" in notes[1]
+    assert claude.command("evo-run-7") == [
+        str(bin_dir / "claude"),
+        "--resume",
+        "sid-1",
+        "--dangerously-skip-permissions",
+    ], "a token of setup-token cannot open Remote Control"
+    fresh = interactive.ClaudeCodeTui(_tui_context(tmp_path, env=keys, leased=leased, model="opus"), None)
+    assert fresh.command("evo-run-7") == [
+        str(bin_dir / "claude"),
+        "--session-id",
+        fresh.session_id,
+        "--dangerously-skip-permissions",
+        "--model",
+        "opus",
+        "Do the step.",
+    ]
+    environment = claude.environment()
+    assert "ANTHROPIC_API_KEY" not in environment and "CLAUDECODE" not in environment
+    assert environment["CLAUDE_CODE_OAUTH_TOKEN"] == token
+    assert set(claude.drop_env) == {"CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT", "ANTHROPIC_API_KEY"}
+
+    # The pane's environment is the tmux server's under the script's, and that server may hold the daemon's key: the
+    # script unsets it, after it evaluated the run's leases.
+    printer = _script(tmp_path / "print-env", f"echo \"export CLAUDE_CODE_OAUTH_TOKEN='{token}'\"")  # `worker env`
+    script = interactive.write_script(
+        tmp_path / "runs" / "7" / "evo-run-7.sh",
+        ["/bin/sh", "-c", 'echo "key=${ANTHROPIC_API_KEY:-none} token=$CLAUDE_CODE_OAUTH_TOKEN"'],
+        environment,
+        context.worktree,
+        claude.drop_env,
+        withheld=context.leased,
+        env_command=str(printer),
+    )
+    text = script.read_text(encoding="utf-8")
+    assert key not in text and token not in text and "unset ANTHROPIC_API_KEY" in text
+    server = {**os.environ, "ANTHROPIC_API_KEY": key}
+    done = subprocess.run(["/bin/sh", str(script)], env=server, capture_output=True, text=True, timeout=30)
+    assert done.stdout.strip() == f"key=none token={token}", done.stderr
+
+    # The daemon's own token, not leased: Remote Control and the key stay as they were.
+    own = interactive.ClaudeCodeTui(_tui_context(tmp_path, env=keys), "sid-1")
+    assert own.command("evo-run-7")[-2:] == ["--remote-control", "evo-run-7"]
+    assert own.environment()["ANTHROPIC_API_KEY"] == key and "ANTHROPIC_API_KEY" not in own.drop_env
+    assert claude_code.REMOTE_CONTROL_NOTE not in asyncio.run(own.prepare())
 
 
 def test_the_opencode_ui_shares_a_server_of_its_own_whose_events_the_run_logs(tmp_path):
