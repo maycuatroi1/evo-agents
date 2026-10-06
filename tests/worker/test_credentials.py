@@ -300,9 +300,8 @@ def test_git_credential_fill_answers_the_lease_and_never_calls_the_machines_help
     assert machine.files_holding(token, other) == [], "no file under HOME holds a lease value"
 
 
-@needs_worker
-def test_a_push_over_http_with_basic_auth_works_with_the_lease_and_fails_once_it_is_given_back(machine):
-    token = sample("glpat-")
+def served_checkout(machine: Machine) -> tuple[Path, Path]:
+    """A bare origin.git under ``served`` (for ``GitHttp``) and a checkout of it under HOME with a first commit."""
     served = machine.tmp / "served"
     git("init", "--quiet", "--bare", str(served / "origin.git"), env=machine.env)
     checkout = machine.home / "ws" / "repo"
@@ -310,6 +309,13 @@ def test_a_push_over_http_with_basic_auth_works_with_the_lease_and_fails_once_it
     (checkout / "README.md").write_text("# repo\n", encoding="utf-8")
     git("add", "README.md", cwd=checkout, env=machine.env)
     git("commit", "--quiet", "-m", "first", cwd=checkout, env=machine.env)
+    return served, checkout
+
+
+@needs_worker
+def test_a_push_over_http_with_basic_auth_works_with_the_lease_and_fails_once_it_is_given_back(machine):
+    token = sample("glpat-")
+    served, checkout = served_checkout(machine)
 
     with GitHttp(served, "oauth2", token) as server:
         origin = server.repo_url("origin.git")
@@ -384,6 +390,116 @@ def test_the_socket_answers_processes_of_its_own_uid_only_and_lives_as_long_as_t
     assert credentials.peer_uid(left) == os.getuid()
     left.close()
     right.close()
+
+
+@needs_worker
+@pytest.mark.parametrize("minutes_left", [5, -1], ids=["near-its-end", "past-its-end"])
+def test_git_credential_fill_through_the_runs_helper_gets_a_new_token_once_the_held_one_nears_its_end(
+    machine, minutes_left
+):
+    held, fresh = sample("ghs_held"), sample("ghs_fresh")
+    hub = StubHub(
+        {"leases": [app_lease(1, "maycuatroi1", held, minutes_left)], "missing": []},
+        {"leases": [app_lease(2, "maycuatroi1", fresh, 60)], "missing": []},
+    )
+    url = "https://github.com/maycuatroi1/evo-agents.git"
+
+    async def go():
+        leases = machine.leases()
+        await leases.take(hub, {"evo-agents": [url]})
+        env = {**machine.env, **leases.git_vars}
+        asks_after_take = hub.asks
+        first = await run(["git", "credential", "fill"], env, machine.tmp, fill(url))
+        second = await run(["git", "credential", "fill"], env, machine.tmp, fill(url))
+        await leases.release()
+        return asks_after_take, first, second
+
+    asks_after_take, first, second = asyncio.run(go())
+    assert asks_after_take == 1
+    assert first.returncode == 0, first.stderr
+    got = answered(first.stdout)
+    assert (got["username"], got["password"]) == ("x-access-token", fresh), (
+        "git got the token the hub made when asked again, not the one with less than 10 minutes left"
+    )
+    assert hub.asks == 2, "the run asked the hub once more, before it answered git"
+    assert answered(second.stdout)["password"] == fresh and hub.asks == 2, "the new token has an hour: no third ask"
+    assert not machine.called.exists()
+    assert machine.files_holding(held, fresh) == []
+
+
+@needs_worker
+def test_a_push_whose_token_the_origin_refuses_takes_the_leases_again_once_and_pushes_with_the_new_one(machine):
+    from evo_agents.worker import gitops
+
+    refused, taken = sample("glpat-revoked"), sample("glpat-good")
+    served, checkout = served_checkout(machine)
+    with GitHttp(served, "oauth2", taken) as server:
+        origin = server.repo_url("origin.git")
+        git("remote", "set-url", "origin", origin, cwd=checkout, env=machine.env)
+        prefix = server.url.replace("http://", "https://")
+        hub = StubHub(
+            {"leases": [git_lease(1, prefix, refused)], "missing": []},
+            {"leases": [git_lease(2, prefix, taken)], "missing": []},
+        )
+
+        async def go():
+            leases = machine.leases()
+            await leases.take(hub, {"repo": [origin]})
+            env = {**machine.env, **leases.git_vars}
+            pushed = await leases.with_renewal("repo", lambda: gitops.push(checkout, "feat/renewed", env=env))
+            await leases.release()
+            return pushed
+
+        pushed = asyncio.run(go())
+        requests = list(server.requests)
+
+    assert pushed.changed and git("--git-dir", str(served / "origin.git"), "rev-parse", "feat/renewed") == pushed.head
+    assert hub.asks == 2 and hub.given_back == [RUN, RUN], "given back and taken again once, then given back at the end"
+    assert [user for _, _, user, status in requests if status == 200 and user] and requests[-1][3] == 200
+    texts = [text for text, _ in machine.notes]
+    assert any(text.startswith("The push of repo failed to authenticate") for text in texts), texts
+    assert all(refused not in text and taken not in text for text in texts), "no value in the run's notes"
+    assert not machine.called.exists()
+
+
+@needs_worker
+def test_a_second_refusal_is_not_tried_again_and_an_origin_without_a_lease_is_not_tried_twice(machine):
+    from evo_agents.worker import gitops
+
+    served, checkout = served_checkout(machine)
+    with GitHttp(served, "oauth2", sample("glpat-good")) as server:
+        origin = server.repo_url("origin.git")
+        git("remote", "set-url", "origin", origin, cwd=checkout, env=machine.env)
+        prefix = server.url.replace("http://", "https://")
+        hub = StubHub(
+            {"leases": [git_lease(1, prefix, sample("glpat-bad"))], "missing": []},
+            {"leases": [git_lease(2, prefix, sample("glpat-worse"))], "missing": []},
+            {"leases": [git_lease(3, prefix, sample("glpat-never-asked"))], "missing": []},
+        )
+        elsewhere = StubHub({"leases": [git_lease(4, "https://git.example.org/group", sample("glpat-"))]})
+
+        async def attempt(leases, hub_used):
+            await leases.take(hub_used, {"repo": [origin]})
+            env = {**machine.env, **leases.git_vars}
+            try:
+                await leases.with_renewal("repo", lambda: gitops.push(checkout, "feat/refused", env=env))
+            except gitops.GitError as exc:
+                return exc
+            finally:
+                await leases.release()
+            return None
+
+        error = asyncio.run(attempt(machine.leases(), hub))
+        refused_gets = [item for item in server.requests if item[3] == 401]
+        uncovered = asyncio.run(attempt(machine.leases(RUN + 1), elsewhere))
+        uncovered_gets = [item for item in server.requests if item[3] == 401][len(refused_gets) :]
+
+    assert isinstance(error, gitops.GitAuthError), error
+    assert hub.asks == 2, "the leases were taken again once, not twice"
+    assert len(refused_gets) == 4, "two pushes, each refused with and without the token: no third push"
+    assert git("--git-dir", str(served / "origin.git"), "for-each-ref", "refs/heads/feat/refused") == ""
+    assert isinstance(uncovered, gitops.GitAuthError)
+    assert elsewhere.asks == 1 and len(uncovered_gets) <= 2, "no lease covers the origin: no renewal, one push"
 
 
 @needs_worker

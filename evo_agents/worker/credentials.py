@@ -21,6 +21,9 @@
   that URL, the longest one, a GitHub token with less than GITHUB_TOKEN_REFRESH_SECONDS left asked for again first, so
   git never gets a token about to end; ``{"op": "env"}`` gets what the run's leases add to its agent's environment, for
   ``evo-agents worker env``, which an interactive pane evaluates rather than holding the values in its script.
+- ``with_renewal`` runs a push of the daemon; when it fails to authenticate (``gitops.GitAuthError``) on an origin a
+  lease of the run covers, ``renew`` gives the run's leases back and takes them again, which makes new GitHub tokens
+  even when the ones held had time left, and the push runs once more. A second failure is the run's failure.
 - ``release`` gives the leases back (``DELETE`` on the same route) when the run ends, is parked or the daemon stops,
   closes the socket and forgets the values.
 
@@ -42,9 +45,10 @@ import re
 import shlex
 import socket
 import struct
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Iterable, Mapping, Sequence
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import TypeVar
 from urllib.parse import urlsplit
 
 from evo_agents.hub.credentials import (
@@ -80,6 +84,7 @@ _NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\Z")
 _SCP = re.compile(r"^(?:[^@/\s]+@)?([^:/\s]+):(?!//)(.+)$")
 
 _secrets: set[str] = set()  # every lease value this process was handed, for ``scrub``
+T = TypeVar("T")
 
 
 def _now() -> datetime:
@@ -311,6 +316,7 @@ class RunCredentials:
         self.missing: list[dict] = []
         self.agent_vars: dict[str, str] = {}
         self.git_vars: dict[str, str] = {}
+        self.origins: dict[str, list[str]] = {}  # repo -> the URLs of its checkout's origin, as take was given them
         self.asked = False  # the hub may hold leases of the run for this worker: give them back at the end
         self._server: asyncio.AbstractServer | None = None
         self._lock = asyncio.Lock()
@@ -336,6 +342,7 @@ class RunCredentials:
         from evo_agents.worker.hubapi import Backoff, Refused, Unreachable
 
         self.hub = hub
+        self.origins = {repo: list(urls) for repo, urls in origins.items()}
         backoff = Backoff()
         answer = None
         for attempt in range(1, TAKE_TRIES + 1):
@@ -515,6 +522,48 @@ class RunCredentials:
                 return
             self._keep(answer)
             log.info("credentials asked for again", extra={"run_id": self.run_id, "leases": len(self.leases)})
+
+    def covers(self, repo: str) -> bool:
+        """Whether a git lease of the run covers the origin of ``repo``'s checkout."""
+        return any(covering(self.leases, url) is not None for url in self.origins.get(repo) or ())
+
+    async def renew(self) -> bool:
+        """Give the run's leases back and take them again: the hub revokes the GitHub tokens held, so the ask makes
+        new ones, and a secret comes with its value as it is now. Whether the hub answered both."""
+        from evo_agents.worker.hubapi import HubProblem
+
+        async with self._lock:
+            if self.hub is None:
+                return False
+            try:
+                await self.hub.release_credentials(self.run_id)
+                answer = await self.hub.credentials(self.run_id)
+            except HubProblem as exc:
+                log.warning("the run's leases were not taken again", extra={"run_id": self.run_id, "error": str(exc)})
+                return False
+            self._keep(answer)
+            log.info("credentials taken again", extra={"run_id": self.run_id, "leases": len(self.leases)})
+            return True
+
+    async def with_renewal(self, repo: str, push: Callable[[], Awaitable[T]]) -> T:
+        """``push()``, a push of the daemon to ``repo``'s origin; when the origin refuses its credential and a lease of
+        the run covers it, the leases are taken again once (``renew``) and ``push()`` runs once more. Its second
+        failure, like any other, goes to the caller."""
+        from evo_agents.worker.gitops import GitAuthError
+
+        try:
+            return await push()
+        except GitAuthError as exc:
+            if not self.covers(repo):
+                raise
+            self.note(
+                f"The push of {repo} failed to authenticate ({exc}): the run gives its leases back, takes them again "
+                "and pushes once more.",
+                repo=repo,
+            )
+            if not await self.renew():
+                raise
+        return await push()
 
     # Giving back
 

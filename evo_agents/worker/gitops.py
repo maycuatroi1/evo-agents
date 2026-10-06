@@ -6,7 +6,9 @@ end of git's own message. Nothing here forces a push, rewrites a branch that has
 
 ``git``, ``fetch``, ``remote_tip`` and ``push`` take the environment to run git in (``env``): a run passes its own,
 whose ``GIT_CONFIG_*`` entries hand its leased origins to its credential helper (``credentials.git_config``); without
-one, git gets the environment of this process.
+one, git gets the environment of this process. A command the remote refused for want of a credential, or for a
+credential it does not take, fails with ``GitAuthError``, so the run can take its leases again and try once more
+(``credentials.RunCredentials.with_renewal``).
 
 ``push`` refuses a repo's default branch (``PushRefused``), except in a plan run whose plan names that very branch for
 the repo: there the push goes ahead, never forced, and the answer says it was a default branch with the commits it
@@ -41,11 +43,21 @@ EXCLUDE_RESULT = f":(exclude){RESULT_DIR}"  # the agent's result file stays out 
 # the session's directory, and the worker's own files beside the agent's work.
 RUN_COMMIT_EXCLUDES = (".claude/skills/.learned/", f"{RESULT_DIR}/")
 PATHS_PER_CALL = 200  # paths in one `git reset`, well within any argv limit
+# What git prints when the remote did not take its credential, or it had none to send (GitHub, GitLab, any http).
+AUTH_FAILURE = re.compile(
+    r"Authentication failed|could not read (?:Username|Password)|Invalid username or password"
+    r"|HTTP Basic: Access denied|returned error: 40[13]\b",
+    re.IGNORECASE,
+)
 _SHORTSTAT = re.compile(r"(\d+) files? changed(?:, (\d+) insertions?\(\+\))?(?:, (\d+) deletions?\(-\))?")
 
 
 class GitError(Exception):
     pass
+
+
+class GitAuthError(GitError):
+    """The remote refused the command for its credential: none was there, or the remote did not take it."""
 
 
 class PushRefused(GitError):
@@ -175,7 +187,8 @@ async def git(
         raise GitError(f"git {args[0]} gave no answer within {timeout:g}s") from None
     stdout, stderr = out.decode(errors="replace"), err.decode(errors="replace")
     if check and proc.returncode != 0:
-        raise GitError(f"git {args[0]} failed ({proc.returncode}): {_tail(stderr or stdout)}")
+        error = GitAuthError if AUTH_FAILURE.search(stderr) else GitError
+        raise error(f"git {args[0]} failed ({proc.returncode}): {_tail(stderr or stdout)}")
     return proc.returncode, stdout, stderr
 
 

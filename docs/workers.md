@@ -901,7 +901,8 @@ hands it no run.
    in the worktree, and are named in a `system` event of the run (`left_out`); a copy the agent edited is its work
    and is committed. The daemon then refuses to push a detached HEAD, a branch the agent switched to, or a default
    branch; and pushes `HEAD` to the plan's branch on origin, never forced and never merged. A push the remote refuses
-   (not a fast-forward, say) fails the run.
+   (not a fast-forward, say) fails the run; one it refuses for its credential, on an origin a lease covers, is tried
+   once more after the daemon took the run's leases again (see [docs/credentials.md](credentials.md)).
 5. Once every event of the run is acknowledged, it reports `done` (approval `auto`) or `review`, with the commit,
    the diffstat, the verify results, the agent's summary and its usage. It then uploads the run's log and diff
    when the hub has a blob store, and moves the worktree off the plan's branch, so the owner can check the branch

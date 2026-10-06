@@ -129,9 +129,13 @@ while the run's row is locked; when the run ended in between, the tokens just ma
 ## Life of a lease
 
 1. **Ask.** The daemon asks right after its claim, before it prepares worktrees, so fetch already uses the lease.
-2. **Refresh.** A GitHub token with less than `GITHUB_TOKEN_REFRESH_SECONDS` (10 minutes) left is asked for again
-   before git gets it, so a fetch or push never starts with a token about to end; while the hub does not answer, git
-   gets the token it has. Runs of a plan may last 24 hours.
+2. **Refresh.** A GitHub token with less than `GITHUB_TOKEN_REFRESH_SECONDS` (10 minutes) left, or past its end, is
+   asked for again before git gets it, so a fetch or push never starts with a token about to end; while the hub does
+   not answer, git gets the token it has. A push of the daemon that the origin refuses for its credential (git says
+   the authentication failed, or had no credential to send), on an origin a `git` lease covers, makes the daemon give
+   the run's leases back and take them again once, which revokes the GitHub tokens held and makes new ones even when
+   they had time left, and push once more; a second refusal fails the run, with no further try. Runs of a plan may
+   last 24 hours.
 3. **Give back.** When the run ends, is parked, or the daemon stops, the daemon calls `DELETE` on the same route,
    whatever state the run is in by then (404 only for a run this worker never held). The hub marks the leases
    revoked, revokes each GitHub token (`DELETE /installation/token`), drops its sealed value, audits
