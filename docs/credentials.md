@@ -52,7 +52,11 @@ the owner holds writer on, and optionally to some of the owner's workers. A hub 
 The **GitHub App** is the hub's own (`EVO_HUB_GITHUB_APP_ID`, `EVO_HUB_GITHUB_APP_PRIVATE_KEY`). For each owner of a
 run's github.com repos the hub finds the installation (`GET /repos/{owner}/{repo}/installation`) and asks for a token
 for those repos only (`POST /app/installations/{id}/access_tokens`). A run over repos of two GitHub owners gets two
-tokens. A repo the App is not installed on gets none, and the run is told why.
+tokens. A repo the App is not installed on gets none, and the run is told why: "the GitHub App is not installed on
+owner/repo". The hub signs each of these calls with a JWT of the App (RS256, issued 60 seconds back, ending 9 minutes
+ahead, inside the 10 minutes GitHub allows), keeps an installation it found for 10 minutes per repo, and looks again
+every time for a repo the App is not installed on, so installing the App counts at the run's next ask. A token is
+revoked with itself (`DELETE /installation/token`).
 
 Values are sealed with AES-256-GCM under `EVO_HUB_SECRETS_KEY` (32 bytes, base64url). Each sealed value records the
 `key_id` of the key that sealed it (the first 8 hex digits of its SHA-256) and is bound by its associated data to
