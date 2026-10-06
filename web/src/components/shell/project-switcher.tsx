@@ -23,6 +23,13 @@ import { initials } from "@/lib/utils";
 import { projectHref } from "./nav";
 import { roleLabelKey } from "./role-badge";
 
+/**
+ * The kit's switch, shared by the project switcher and the account menu: a bordered surface control 48 px tall, the
+ * name over a subtle second line; folded to its 24 px tile in a 32 px square.
+ */
+export const SWITCH_CLASS =
+  "gap-2 border border-border bg-card px-2 py-1.5 hover:bg-accent data-[state=open]:bg-accent data-[state=open]:text-foreground group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:border-transparent group-data-[collapsible=icon]:bg-transparent";
+
 export function useCurrentProject(): string | null {
   const params = useParams<{ project?: string }>();
   return typeof params.project === "string" ? decodeURIComponent(params.project) : null;
@@ -56,21 +63,23 @@ export function ProjectSwitcher() {
               size="lg"
               data-testid="project-switcher"
               aria-label={selected ? t("trigger", { name: selected.name }) : t("triggerEmpty")}
-              className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+              className={SWITCH_CLASS}
             >
               <span
                 aria-hidden="true"
-                className="flex aspect-square size-8 items-center justify-center rounded-md bg-sidebar-primary font-mono text-xs font-medium text-sidebar-primary-foreground"
+                className="flex size-6 shrink-0 items-center justify-center rounded-xs bg-foreground text-[11px] font-semibold text-background [&_svg]:size-3.5!"
               >
-                {selected ? initials(selected.name) : <FolderGit2 className="size-4" />}
+                {selected ? initials(selected.name) : <FolderGit2 />}
               </span>
-              <span className="grid flex-1 text-left text-sm leading-tight">
-                <span className="truncate font-semibold">{selected ? selected.name : t("placeholder")}</span>
-                <span className="truncate text-xs text-muted-foreground">
+              <span className="grid min-w-0 flex-1 text-left group-data-[collapsible=icon]:hidden">
+                <span className="truncate text-[13px] leading-[18px] font-semibold text-foreground">
+                  {selected ? selected.name : t("placeholder")}
+                </span>
+                <span className="truncate text-xs leading-4 font-normal text-fg-subtle">
                   {selected ? tRoles(roleLabelKey(selected.role)) : t("hint")}
                 </span>
               </span>
-              <ChevronsUpDown className="ml-auto size-4" aria-hidden="true" />
+              <ChevronsUpDown className="ml-auto text-fg-subtle group-data-[collapsible=icon]:hidden" aria-hidden="true" />
             </SidebarMenuButton>
           </DropdownMenuTrigger>
           <DropdownMenuContent

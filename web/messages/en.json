@@ -16,8 +16,8 @@
   },
   "nav": {
     "label": "Main navigation",
+    "home": "Home",
     "hub": "Hub",
-    "projects": "My projects",
     "project": "Project",
     "overview": "Overview",
     "plans": "Plans",
@@ -32,7 +32,18 @@
     "globalSkills": "Shared skills",
     "workers": "Workers",
     "runDiff": "Diff",
-    "inbox": "Inbox"
+    "inbox": "Inbox",
+    "counts": {
+      "openDecisions": "{count, plural, one {# decision waits for your answer} other {# decisions wait for your answer}}",
+      "activeRuns": "{count, plural, one {# active run} other {# active runs}}"
+    },
+    "fleet": {
+      "onlineBusy": "<b>{online, plural, one {# worker online} other {# workers online}}</b>, {busy} busy",
+      "onlineIdle": "<b>{online, plural, one {# worker online} other {# workers online}}</b>, none busy",
+      "offline": "<b>No workers online</b>, {registered} registered",
+      "none": "No workers yet",
+      "error": "Couldn't read your workers"
+    }
   },
   "projectSwitcher": {
     "label": "Projects",

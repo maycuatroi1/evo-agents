@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { Bell, BellDot } from "lucide-react";
+import { Bell } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
@@ -18,6 +18,9 @@ import { INBOX_HREF, notificationCountQuery } from "./queries";
  * accessible name says the number and how many decisions wait for the visitor's answer; when the number grows, a
  * polite live region says how many arrived, so a screen reader hears of them without moving to the bell. Until the
  * first count arrives (and when it cannot be read) the bell shows no number.
+ *
+ * As in the kit, the number is an attention pill (a person is needed), raised beside the glyph rather than over it, so
+ * the bell stays whole; the link widens to hold it. A ghost icon control: 32 px, 44 px with a 20 px glyph under 768 px.
  */
 export function InboxBell() {
   const t = useTranslations("inbox.bell");
@@ -44,19 +47,19 @@ export function InboxBell() {
         aria-current={current ? "page" : undefined}
         title={label}
         className={cn(
-          "relative inline-flex size-9 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors",
-          "hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
-          current && "bg-accent text-accent-foreground",
+          "inline-flex h-8 min-w-8 shrink-0 items-center justify-center gap-0.5 rounded-sm px-2 text-muted-foreground transition-colors duration-fast ease-standard",
+          "hover:bg-accent hover:text-foreground max-md:h-11 max-md:min-w-11",
           unread > 0 && "text-foreground",
+          current && "bg-surface-selected text-foreground hover:bg-surface-selected",
         )}
         data-testid="inbox-bell"
         data-unread={data ? unread : undefined}
         data-decisions={data ? decisions : undefined}
       >
-        {unread > 0 ? <BellDot className="size-5" aria-hidden="true" /> : <Bell className="size-5" aria-hidden="true" />}
+        <Bell className="size-4 shrink-0 max-md:size-5" aria-hidden="true" data-testid="inbox-bell-glyph" />
         {unread > 0 ? (
           <span
-            className="pointer-events-none absolute -top-0.5 -right-0.5 flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-primary px-1 text-[0.6875rem] leading-none font-semibold text-primary-foreground tabular-nums ring-2 ring-background"
+            className="pointer-events-none -mt-3 inline-flex h-3.75 min-w-3.75 shrink-0 items-center justify-center rounded-full bg-attention-soft px-1 text-[10px] leading-none font-semibold text-attention tabular-nums"
             aria-hidden="true"
             data-testid="inbox-bell-count"
           >

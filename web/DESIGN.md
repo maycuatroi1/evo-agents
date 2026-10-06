@@ -210,6 +210,9 @@ states and the phone top bar. Icons sit before their label and inherit its colou
 | Memories | `BookOpen` |
 | Skills | `Sparkles` |
 | Inbox; the bell in the top bar | `Inbox`; `Bell` |
+| Home; a project's overview | `LayoutDashboard`; `FolderKanban` |
+| My memories; administration | `Brain`; `Shield` |
+| Sidebar toggle | `PanelLeft` |
 | Done, failed, lost, cancelled | `CircleCheck`, `CircleX`, `Unplug`, `Ban` |
 
 The mark (`components/brand.tsx`, `src/app/icon.svg`) is three linked nodes on a rounded tile: the tile in `brand`
@@ -218,14 +221,15 @@ shows at 20 px or larger beside the name in Plex Sans 600, and is never recolour
 
 ## Spacing and layout
 
-- A 4 px grid (Tailwind spacing). Page padding 16, 24 and 32 px from phone to desktop, content at most
-  1280 px wide (`max-w-7xl`), 24 px between sections, 16 px inside cards, 12 by 10 px in table cells.
-- The sidebar is 16 rem wide, folds to 3 rem icons on desktop (Ctrl or Cmd + B, or the header button) and
-  becomes a sheet below 768 px. The header is 56 px and sticks to the top.
+- A 4 px grid (Tailwind spacing). Page padding 16 px on phones and 24 px from 768 px, content at most 1280 px wide
+  (`max-w-7xl`), 24 px between sections, 16 px inside cards, 12 by 10 px in table cells.
+- The shell is the kit's AppShell: the sidebar is 240 px wide (`15rem`), folds to 56 px of icons on desktop (Ctrl or
+  Cmd + B, or the top bar's toggle) and becomes a sheet below 768 px; the top bar is 52 px on `surface` and sticks to
+  the top.
 - z-index: header 10, sidebar rail 20, menus, sheets and tooltips 50.
 - The kit's sizes: controls 32 px (28 in dense toolbars, 40 in dialog footers), every control at least 44 px under
   768 px, table rows 44 px (36 compact), a 52 px top bar, a 240 px sidebar folding to 56 px, content at most 1280 px
-  with a 24 px gutter (16 on phones). The shell above keeps its own sizes until it is rebuilt on the kit's AppShell.
+  with a 24 px gutter (16 on phones).
 - Checked widths: 375, 768, 1024 and 1440 px. At 375 px secondary table columns hide, wide tables scroll
   inside their own focusable region, and the page itself never scrolls sideways (`e2e/shell.spec.ts`;
   `e2e/no-sideways-scroll.spec.ts` checks a page of each area at 375, 768 and 1024 px). The shell's inset is
@@ -237,7 +241,10 @@ shadcn/ui in the `radix-nova` style on Radix primitives, generated into `src/com
 changed where the defaults fell short:
 
 - `sidebar.tsx`: the sheet title and trigger label take translated text; `SidebarInset` is a `div`, so each
-  page has exactly one `<main>`; group labels use `muted-foreground` (the 70 % opacity default fails AA in dark).
+  page has exactly one `<main>`; 240 px wide, 56 px folded. Group labels are the `overline` in `fg-subtle` (the 70 %
+  opacity default fails AA in dark). A menu button is the kit's nav item: 32 px (44 px in the sheet), 13 px `fg-muted`
+  text, `accent` (surface-hover) under the pointer, `sidebar-accent` (surface-selected) with a `brand` icon when it is
+  the page shown, and the global focus outline instead of the default inset ring.
 - `table.tsx`: `scrollLabel` makes a table's scroll container a named, focusable region.
 - `badge.tsx`: `info`, `success` and `warning` variants on the kit's tones (`brand-soft` with `brand`, `success-soft`
   with `success`, `attention-soft` with `attention`); `destructive` is `danger-soft` with `danger`; the shape is
@@ -289,8 +296,19 @@ Shared pieces built on them:
   `Tag` is a kind or a role (Admin, Plan run, Deploy, Blocking): an icon and a word on `surface-sunken` with 4 px
   corners, never round. `NAME_LINK` is the name in a table's first column or a list's primary cell: text colour,
   `brand` on hover.
-- `components/shell`: sidebar, project picker, user menu (login, hub role, role and visibility in the current
-  project, theme, language, sign out), header with breadcrumbs, page header.
+- `components/shell`: the kit's AppShell. The sidebar (`app-sidebar.tsx`, links in `nav.ts`) carries the mark and
+  "evo-agents hub" (Plex Sans 600, the mark at 24 px), the project switcher, then Home and Inbox, the current project
+  (Overview, Plans, Runs, Memories, Skills, Knowledge graph), the hub (Workers, My memories, Shared skills,
+  Administration for a hub admin), and at the foot the fleet line and the account. Inbox counts the decisions waiting
+  for the visitor's answer in `attention`, Runs the project's active runs in `running` (`nav-counts.ts`, through the
+  same queries as the bell and the runs pages); a count is a round pill drawn for the eye, said in words to screen
+  readers after the label, hidden at zero, and a dot on the icon when the sidebar is folded. The fleet line
+  (`fleet-line.tsx`) reads `GET /v1/workers` like the Workers page ("2 workers online, 1 busy"; a `success` dot while
+  any is online, `danger` when every one is offline or draining, `neutral` before the first) and links there. The
+  project switcher and the account menu (login, hub role, role and visibility in the current project, theme,
+  language, sign out) are the kit's switch: a bordered `card` control, the name over an `fg-subtle` line. The top bar
+  (`site-header.tsx`) holds the sidebar toggle, the breadcrumb (13 px, slashes, the trail starts at the project) and
+  the inbox bell. Page header below.
 - `components/shell/page-header.tsx`: the page head of the kit, one row. `title` is the one h1 (`page-title`, Plex
   Sans, wrapping anywhere for a long unbroken name), `status` the state of what it names (a `StatusBadge` at `lg`),
   `tags` its kind, role, counts and identifier chips, `actions` the page's buttons on the right (`ml-auto`), and `sub`
@@ -348,9 +366,9 @@ Shared pieces built on them:
   carries a Plan run badge, lists the plan's steps with their status (the one in progress `aria-current="step"`), its
   repos and branches, its model and the agent time used, and the open decisions it waits on (below); it offers no Rerun.
 - `components/inbox`, notifications and decisions (docs/notifications.md): a bell in the top bar (`inbox-bell.tsx`) links
-  to the Inbox with the number of unread notifications (99+ past 99), read from `GET /v1/me/notifications/count` every
-  10 seconds; its accessible name says that number and the decisions waiting for the visitor's answer, and a polite live
-  region says how many arrived when the number grows. The Inbox (`/inbox`, also in the sidebar's hub section) lists the
+  to the Inbox with the number of unread notifications (99+ past 99) in an `attention` pill raised beside the glyph, never
+  over it, read from `GET /v1/me/notifications/count` every 10 seconds; its accessible name says that number and the decisions waiting for the visitor's answer, and a polite live
+  region says how many arrived when the number grows. The Inbox (`/inbox`, also at the top of the sidebar) lists the
   member's notifications 50 a page, refreshed every 10 seconds: the decisions still open first under "Waiting for your
   answer", then the notices and the decisions answered, expired or cancelled, newest first. Facets for unread, kind and
   project live in the URL like the runs page's; Mark as read on each unread one, and Mark all as read in the header (Mark
