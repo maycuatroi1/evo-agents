@@ -133,6 +133,14 @@ export async function workerHeartbeat(live: LiveWorker, runs: number[] = [], rep
   });
 }
 
+/** What the worker holding a run gets from the hub: each lease with its value, and the repos no lease covers. */
+export type Credentials = components["schemas"]["Credentials"];
+
+/** The daemon asking for the leases of a run it holds, right after its claim. */
+export async function leaseCredentials(live: LiveWorker, runId: number): Promise<Credentials> {
+  return (await workerCall(live, `/v1/worker/runs/${runId}/credentials`, {})) as Credentials;
+}
+
 /** The daemon's claim, answered at once: the run it leased, or null. */
 export async function claimRun(live: LiveWorker): Promise<{ id: number } | null> {
   const answer = (await workerCall(live, "/v1/worker/claim", { wait_s: 0 })) as { run: { id: number } | null };

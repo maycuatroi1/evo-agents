@@ -269,6 +269,26 @@ export const runQuery = (api: ApiSource, project: string, id: number) =>
     refetchInterval: (query) => (query.state.data && isActiveState(query.state.data.state) ? LIVE_REFRESH_MS : false),
   });
 
+export type RunLease = Schemas["RunLease"];
+
+/** Below the run's own key, so whatever reloads the run (a move the log tells, a control) reloads its leases too. */
+export function runCredentialsKey(project: string, id: number) {
+  return [...runKey(project, id), "credentials"] as const;
+}
+
+/**
+ * Every lease the run got, given back or not, never a value: for the member who dispatched it alone (403 for anyone
+ * else, a hub admin included). Asked again every 5 seconds while the run is active, when its worker takes and gives
+ * back its leases.
+ */
+export const runCredentialsQuery = (api: ApiSource, project: string, id: number, active: boolean) =>
+  queryOptions({
+    queryKey: runCredentialsKey(project, id),
+    queryFn: ({ signal }) =>
+      call(api().GET("/v1/projects/{project}/runs/{run_id}/credentials", { params: { path: { project, run_id: id } }, signal })),
+    refetchInterval: active ? LIVE_REFRESH_MS : false,
+  });
+
 /** The run's events after `after`, in seq order: what the log reads when the stream cannot be used. */
 export function runEvents(api: ApiClient, project: string, id: number, after: number, signal?: AbortSignal) {
   return call(
