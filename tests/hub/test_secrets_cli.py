@@ -368,7 +368,7 @@ def test_set_list_and_delete_a_secret_without_ever_printing_its_value(hub, monke
 
 @needs_pg
 def test_run_credentials_lists_each_lease_of_a_run_for_its_owner_alone(hub, monkeypatch, capsys):
-    hub.github.install(MINE, "evo-agents")
+    leases_api.install(hub.github, "evo-agents")
     oauth, glpat = sample("oauth-"), sample("glpat-")
     leases_api.env_secret(hub.client, hub.headers["owner"], "claude-oauth", "CLAUDE_CODE_OAUTH_TOKEN", oauth)
     leases_api.git_secret(hub.client, hub.headers["owner"], "gitlab-kb", GITLAB_KB, glpat)

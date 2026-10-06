@@ -16,12 +16,23 @@ line or an error, and ``InstallationToken`` leaves its token out of its repr.
 ``GitHubApp.tokens`` is what the lease route asks: a token per installation, and for each repo left without one the
 reason, such as "the GitHub App is not installed on owner/repo". A repo the App is not installed on is not cached, so
 installing the App counts at the next ask.
+
+The App is installed on accounts, not given to members: any member who registers a repo of an account the App is
+installed on would get a token for it. So ``tokens`` asks for the run's owner too, the hub user whose login is their
+GitHub login, and hands out a token only for the repos that account may push to: GitHub's answer to GET
+/repos/{owner}/{repo}/collaborators/{login}/permission, asked with the token just made (which opens that repo, with
+``metadata: read``), must be ``write``, ``maintain`` or ``admin``, for the account of the user's GitHub id. A repo it
+may not push to is left without a token, with the reason "<login> cannot push to owner/repo on GitHub: ...", and the
+token made with it is revoked and made again for the other repos of its installation. An answer that allows is kept
+``PERMISSION_CACHE_SECONDS`` per login and owner/repo; a refusal is not kept, so access granted on GitHub counts at the
+next ask.
 """
 
 from __future__ import annotations
 
 import base64
 import json
+import logging
 import time
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
@@ -41,7 +52,11 @@ JWT_BACKDATE_SECONDS = 60  # iat this far back, for a hub clock ahead of GitHub'
 JWT_LIFETIME_SECONDS = 9 * 60  # exp this far ahead; GitHub refuses a JWT ending more than 10 minutes from its now
 JWT_HEADER = {"alg": "RS256", "typ": "JWT"}
 INSTALLATION_CACHE_SECONDS = 600  # how long the installation found for an owner/repo is kept
+PERMISSION_CACHE_SECONDS = 300  # how long GitHub saying a login may push to an owner/repo is kept; a refusal is not
+PUSH_PERMISSIONS = frozenset({"write", "maintain", "admin"})  # a role on a repo that may push to it
 PERMISSIONS_TEXT = ", ".join(f"{name}: {level}" for name, level in GITHUB_PERMISSIONS.items())
+
+log = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -76,8 +91,20 @@ class AppTokens:
     missing: dict[str, str]  # "owner/repo" -> reason
 
 
+@dataclass(frozen=True)
+class Pusher:
+    """The GitHub account a token is made for: the hub user who dispatched the run, by login and GitHub id."""
+
+    login: str
+    github_id: int | None = None  # None for a user who never signed in: the login alone is checked
+
+
 def not_installed(owner: str, repo: str) -> str:
     return f"the GitHub App is not installed on {owner}/{repo}"
+
+
+def cannot_push(login: str, owner: str, repo: str, why: str) -> str:
+    return f"{login} cannot push to {owner}/{repo} on GitHub: {why}"
 
 
 def _b64(data: bytes) -> str:
@@ -133,6 +160,7 @@ class GitHubApp(GitHubClient):
         self._issuer: int | str = int(app_id) if app_id.isdigit() else app_id  # an App ID as a number, a client ID
         self._clock, self._now = clock, now
         self._installations: dict[tuple[str, str], tuple[float, Installation]] = {}
+        self._pushers: dict[tuple[str, int | None, str, str], float] = {}  # (login, id, owner, repo) -> kept until
         super().__init__(config, transport)
 
     @classmethod
@@ -248,9 +276,77 @@ class GitHubApp(GitHubClient):
             return False
         raise GitHubUnavailable(f"GitHub answered {response.status_code} while {doing}")
 
-    async def tokens(self, repos: Iterable[tuple[str, str]]) -> AppTokens:
+    async def push_refusal(self, token: str, owner: str, repo: str, pusher: Pusher) -> str | None:
+        """Why ``pusher`` may not push to owner/repo, or None when GitHub says it may: its permission there (GET
+        /repos/{owner}/{repo}/collaborators/{login}/permission, asked with installation ``token``, which must open the
+        repo) is write, maintain or admin, and GitHub's account of that login has the pusher's GitHub id.
+
+        An answer that allows is kept PERMISSION_CACHE_SECONDS; GitHub failing raises ``GitHubUnavailable``."""
+        key = (pusher.login.lower(), pusher.github_id, owner.lower(), repo.lower())
+        until = self._pushers.get(key)
+        if until is not None and until > self._clock():
+            return None
+        doing = f"asking GitHub whether {pusher.login} may push to {owner}/{repo}"
+        path = "/".join(quote(part, safe="") for part in (owner, repo, "collaborators", pusher.login, "permission"))
+        headers = {**API_HEADERS, "Authorization": f"Bearer {token}"}
+        response = await self._call("GET", f"{self.config.github_api_url}/repos/{path}", doing, headers=headers)
+        if response.status_code == 404:
+            return cannot_push(pusher.login, owner, repo, "GitHub knows no collaborator of that login there")
+        if response.status_code != 200:
+            raise GitHubUnavailable(f"GitHub answered {response.status_code} while {doing}")
+        data = self._json(response, doing)
+        role, permission = data.get("role_name"), data.get("permission")
+        account = data.get("user") if isinstance(data.get("user"), dict) else {}
+        if pusher.github_id is not None and account.get("id") != pusher.github_id:
+            return cannot_push(
+                pusher.login,
+                owner,
+                repo,
+                f"the GitHub account named {pusher.login} now is not the one that signed in to the hub; sign in again",
+            )
+        if role not in PUSH_PERMISSIONS and permission not in PUSH_PERMISSIONS:
+            held = role or permission or "none"
+            return cannot_push(pusher.login, owner, repo, f"their role there is {held}, and pushing needs write")
+        self._pushers[key] = self._clock() + PERMISSION_CACHE_SECONDS
+        return None
+
+    async def _token_for_pushers(
+        self, installation: Installation, members: list[tuple[str, str]], pusher: Pusher, missing: dict[str, str]
+    ) -> InstallationToken | None:
+        """A token of ``installation`` for those of ``members`` (owner, repo) ``pusher`` may push to, or None when it
+        may push to none; the reason of each other one goes into ``missing``. The token made for all of them answers
+        the question for the repos not kept yet, and is revoked and made again without the ones refused.
+        ``GitHubRefused`` and ``GitHubUnavailable`` go to the caller, with any token made here revoked."""
+        token = await self.create_token(installation, [repo for _, repo in members])
+        allowed = []
+        try:
+            for owner, repo in members:
+                refusal = await self.push_refusal(token.token, owner, repo, pusher)
+                if refusal is None:
+                    allowed.append((owner, repo))
+                else:
+                    missing[f"{owner}/{repo}"] = refusal
+        except GitHubUnavailable:
+            await self._revoke_quietly(token)
+            raise
+        if len(allowed) == len(members):
+            return token
+        await self._revoke_quietly(token)
+        if not allowed:
+            return None
+        return await self.create_token(installation, [repo for _, repo in allowed])
+
+    async def _revoke_quietly(self, token: InstallationToken) -> None:
+        """Revoke a token made for a repo its pusher may not push to; GitHub failing leaves it to expire unused."""
+        try:
+            await self.revoke(token.token)
+        except GitHubUnavailable as exc:
+            log.warning("a GitHub token made and not handed out is left to expire", extra={"why": str(exc)})
+
+    async def tokens(self, repos: Iterable[tuple[str, str]], pusher: Pusher) -> AppTokens:
         """A token for each installation that covers some of ``repos`` ((owner, repo) on github.com), naming those
-        repos alone, and the reason each repo left without one has none.
+        repos alone, and only those ``pusher`` may push to (``push_refusal``); the reason each repo left without one
+        has none.
 
         It never raises for GitHub: a refusal is the reason of the repos it concerns, and GitHub failing or not
         answering is the reason of that repo and of every one not asked yet, which are not asked."""
@@ -278,12 +374,14 @@ class GitHubApp(GitHubClient):
             reason = outage
             if reason is None:
                 try:
-                    made.append(await self.create_token(installation, [repo for _, repo in members]))
+                    token = await self._token_for_pushers(installation, members, pusher, missing)
+                    if token is not None:
+                        made.append(token)
                     continue
                 except GitHubUnavailable as exc:
                     outage = reason = str(exc)
                 except GitHubRefused as exc:
                     reason = str(exc)
             for owner, repo in members:
-                missing[f"{owner}/{repo}"] = reason
+                missing.setdefault(f"{owner}/{repo}", reason)  # a refusal found before GitHub failed stays
         return AppTokens(made, missing)

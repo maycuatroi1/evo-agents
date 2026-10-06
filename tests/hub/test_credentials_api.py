@@ -133,6 +133,14 @@ def hub(client, github) -> dict:
     return members(client, github)
 
 
+def install(github, *repos: str) -> int:
+    """The App installed on MINE for ``repos``, each of which owner may push to on GitHub."""
+    installation = github.install(MINE, *repos)
+    for repo in repos:
+        github.collaborate(MINE, repo, Account(OWNER, OWNER_ID), "write")
+    return installation
+
+
 def worker_of(client, headers, name: str, slots: int = 1) -> dict:
     return add_worker(client, headers, name, slots=slots, checkouts=CHECKOUTS)
 
@@ -228,7 +236,7 @@ def reap(client) -> dict:
 
 
 def test_a_run_gets_its_owners_secrets_and_an_app_token_for_its_own_github_repos(client, hub, github, hub_db, config):
-    github.install(MINE, "evo-agents", "agent-skills")
+    install(github, "evo-agents", "agent-skills")
     oauth, glpat, theirs = sample("oauth-"), sample("glpat-"), sample("other-")
     env_secret(client, hub["owner"], "claude-oauth", "CLAUDE_CODE_OAUTH_TOKEN", oauth)
     git_secret(client, hub["owner"], "gitlab-kb", GITLAB_KB, glpat)
@@ -288,6 +296,37 @@ def test_a_run_gets_its_owners_secrets_and_an_app_token_for_its_own_github_repos
     repos = "evo-agents,m1-identity,m1-kb-docs,notes"
     target = f"{PROJECT}/{PLAN} run:{run_id} secrets=claude-oauth,gitlab-kb github-app={MINE} repos={repos}"
     assert audit_rows(hub_db, "credential.lease") == [(target, OWNER, PROJECT, True)]
+
+
+def test_a_repo_of_an_account_the_owner_cannot_push_to_gets_no_app_token(client, hub, github, hub_db):
+    """A project's admin can register any origin: one naming another GitHub account, on which the App is installed,
+    gets no token unless the run's owner may push to that repo on GitHub."""
+    github.install(THEIRS, "m1-identity")
+    github.accounts[OWNER] = OWNER_ID
+    worker = worker_of(client, hub["owner"], "mac-mini")
+    run_id = step_run(client, hub["owner"], "m1-identity", worker)
+
+    answer = leased(client, worker, run_id)
+    assert answer["leases"] == []
+    assert missing(answer) == {
+        "m1-identity": (
+            ORIGINS["m1-identity"],
+            f"{OWNER} cannot push to {THEIRS}/m1-identity on GitHub: their role there is none, and pushing needs write",
+        )
+    }
+    assert leases_of(hub_db, run_id) == []
+    # the token made to ask GitHub opened the repo: it was revoked, and is in no lease
+    (made,) = github.app_tokens
+    assert revoked_at_github(github) == [made] and not github.covers(made, THEIRS, "m1-identity")
+    (target, *_), *_ = audit_rows(hub_db, "credential.lease")
+    assert target.endswith(" github-app=- repos=m1-identity")
+
+    for role, covered in (("read", False), ("triage", False), ("write", True)):
+        github.collaborate(THEIRS, "m1-identity", Account(OWNER, OWNER_ID), role)
+        answer = leased(client, worker, run_id)
+        assert (f"github-app:{THEIRS}" in by_name(answer)) is covered, role
+    token = by_name(answer)[f"github-app:{THEIRS}"]["value"]
+    assert github.covers(token, THEIRS, "m1-identity")
 
 
 def test_an_ssh_origin_on_gitlab_is_covered_by_an_https_url_prefix_the_longest_first(client, hub, hub_db, github):
@@ -391,7 +430,7 @@ def test_machine_tokens_and_web_sessions_get_403_and_a_daemon_without_the_protoc
 
 
 def test_asking_again_keeps_the_leases_until_the_github_token_nears_its_end(client, hub, github, hub_db):
-    github.install(MINE, "evo-agents")
+    install(github, "evo-agents")
     env_secret(client, hub["owner"], "claude-oauth", "CLAUDE_CODE_OAUTH_TOKEN", sample())
     worker = worker_of(client, hub["owner"], "mac-mini")
     run_id = step_run(client, hub["owner"], "evo-agents", worker)
@@ -416,7 +455,7 @@ def test_asking_again_keeps_the_leases_until_the_github_token_nears_its_end(clie
 
 
 def test_the_worker_gives_back_its_leases_and_github_revokes_the_token(client, hub, github, hub_db):
-    github.install(MINE, "evo-agents")
+    install(github, "evo-agents")
     env_secret(client, hub["owner"], "claude-oauth", "CLAUDE_CODE_OAUTH_TOKEN", sample())
     git_secret(client, hub["owner"], "gitlab-kb", GITLAB_KB, sample("glpat-"))
     worker = worker_of(client, hub["owner"], "mac-mini")
@@ -446,7 +485,7 @@ def test_the_worker_gives_back_its_leases_and_github_revokes_the_token(client, h
 def test_a_run_that_ends_or_waits_in_review_gives_back_its_leases_and_github_revokes_the_token(
     client, hub, github, hub_db
 ):
-    github.install(MINE, "evo-agents")
+    install(github, "evo-agents")
     env_secret(client, hub["owner"], "claude-oauth", "CLAUDE_CODE_OAUTH_TOKEN", sample())
     worker = worker_of(client, hub["owner"], "mac-mini")
     tokens = []
@@ -470,7 +509,7 @@ def test_a_run_that_ends_or_waits_in_review_gives_back_its_leases_and_github_rev
 def test_the_reaper_revokes_the_token_of_a_run_whose_lease_ran_out_and_what_github_failed_to_take(
     client, hub, github, hub_db
 ):
-    github.install(MINE, "evo-agents")
+    install(github, "evo-agents")
     worker = worker_of(client, hub["owner"], "mac-mini")
     lost = step_run(client, hub["owner"], "evo-agents", worker)
     token = by_name(leased(client, worker, lost))[f"github-app:{MINE}"]["value"]
@@ -500,7 +539,7 @@ def test_the_reaper_revokes_the_token_of_a_run_whose_lease_ran_out_and_what_gith
 
 
 def test_revoking_a_worker_revokes_every_lease_still_out(client, hub, github, hub_db):
-    github.install(MINE, "evo-agents")
+    install(github, "evo-agents")
     env_secret(client, hub["owner"], "claude-oauth", "CLAUDE_CODE_OAUTH_TOKEN", sample())
     git_secret(client, hub["owner"], "gitlab-kb", GITLAB_KB, sample("glpat-"))
     worker = worker_of(client, hub["owner"], "mac-mini", slots=2)
@@ -535,7 +574,7 @@ def test_revoking_a_worker_revokes_every_lease_still_out(client, hub, github, hu
 
 
 def test_the_pruning_drops_the_sealed_tokens_past_their_end(client, hub, github, hub_db):
-    github.install(MINE, "evo-agents")
+    install(github, "evo-agents")
     worker = worker_of(client, hub["owner"], "mac-mini")
     run_id = step_run(client, hub["owner"], "evo-agents", worker)
     leased(client, worker, run_id)
@@ -555,7 +594,7 @@ def test_the_pruning_drops_the_sealed_tokens_past_their_end(client, hub, github,
 
 def test_without_the_secrets_key_nothing_is_leased_and_every_repo_says_why(hub_db, tmp_path, github, app_key):
     config = hub_config(hub_db, tmp_path, github, app_key, key=False)
-    github.install(MINE, "evo-agents")
+    install(github, "evo-agents")
     with TestClient(create_app(config), base_url="https://hub.test") as client:
         hub = members(client, github)
         worker = worker_of(client, hub["owner"], "mac-mini")
@@ -588,7 +627,7 @@ def test_without_the_github_app_the_github_repos_are_missing_with_its_variables(
 
 def test_neither_the_audit_nor_a_log_record_nor_a_table_holds_a_value(client, hub, github, hub_db, caplog):
     caplog.set_level(logging.DEBUG)
-    github.install(MINE, "evo-agents")
+    install(github, "evo-agents")
     values = [sample("oauth-"), sample("glpat-")]
     env_secret(client, hub["owner"], "claude-oauth", "CLAUDE_CODE_OAUTH_TOKEN", values[0])
     git_secret(client, hub["owner"], "gitlab-kb", GITLAB_KB, values[1])

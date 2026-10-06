@@ -13,7 +13,11 @@ It also plays the hub's GitHub App: GET /repos/{owner}/{repo}/installation, POST
 against ``app_public_key`` (the public half of the key a test hands the hub), ``app_id``, and an ``exp`` in the
 future but no more than 10 minutes ahead. A test installs the App with ``install``; a token is made for the repos the
 request names, or for every repo of the installation when it names none, as GitHub does, with permissions no
-wider than the installation's, and ``covers`` says what it opens.
+wider than the installation's, and ``covers`` says what it opens. GET
+/repos/{owner}/{repo}/collaborators/{login}/permission answers, for an installation token that opens the repo, the
+role ``collaborate`` gave the login there, admin for the account the repo belongs to, and none for any other account
+the fake knows (one it issued a token to, or one ``collaborate`` named); a login it does not know is 404, as GitHub
+answers for a login with no account.
 """
 
 from __future__ import annotations
@@ -34,6 +38,7 @@ APP_TOKEN_SECONDS = 3600  # an installation token lives an hour
 JWT_MAX_SECONDS = 600  # GitHub refuses an App JWT whose exp is further ahead
 JWT_LEEWAY_SECONDS = 60  # an iat this far in the future still passes, for clocks apart
 _LEVELS = {"read": 1, "write": 2, "admin": 3}
+LEGACY_PERMISSIONS = {"admin": "admin", "maintain": "write", "write": "write", "triage": "read", "read": "read"}
 
 
 @dataclass(frozen=True)
@@ -104,6 +109,8 @@ class FakeGitHub:
     installations: dict = field(default_factory=dict)  # installation id -> AppInstallation
     app_tokens: dict = field(default_factory=dict)  # installation token -> AppToken
     app_jwts: list[str] = field(default_factory=list)  # every App JWT a request carried, taken or not
+    accounts: dict = field(default_factory=dict)  # login, lower case -> GitHub id, of every account the fake knows
+    collaborators: dict = field(default_factory=dict)  # (owner, repo, login), lower case -> role on the repo
 
     def __post_init__(self):
         self._lock = threading.Lock()
@@ -132,7 +139,14 @@ class FakeGitHub:
         token = "gho_" + secrets.token_hex(18)
         with self._lock:
             self.tokens[token] = (account, self.client_id if app else None)
+            self.accounts[account.login.lower()] = account.id
         return token
+
+    def collaborate(self, owner: str, repo: str, account: Account, role: str = "write") -> None:
+        """Give ``account`` ``role`` (admin, maintain, write, triage or read) on owner/repo, as its admin would."""
+        with self._lock:
+            self.accounts[account.login.lower()] = account.id
+            self.collaborators[(owner.lower(), repo.lower(), account.login.lower())] = role
 
     def install(self, account: str, *repos: str, permissions: dict | None = None) -> int:
         """Install the fake's GitHub App on ``account`` for ``repos``; the installation's id."""
@@ -333,6 +347,29 @@ class FakeGitHub:
             "repositories": [{"name": name, "full_name": f"{found.account}/{name}"} for name in covered],
         }
 
+    def _permission(self, owner: str, repo: str, login: str, headers: dict):
+        scheme, _, token = headers.get("authorization", "").partition(" ")
+        with self._lock:
+            found = self.app_tokens.get(token) if scheme.lower() in ("bearer", "token") else None
+            if found is None or found.revoked or found.expires_at <= time.time():
+                return 401, {"message": "Bad credentials"}
+            installation = self.installations[found.installation]
+            opens = owner.lower() == installation.account.lower() and repo.lower() in {
+                name.lower() for name in found.repositories
+            }
+            account_id = self.accounts.get(login.lower())
+            role = self.collaborators.get((owner.lower(), repo.lower(), login.lower()))
+        if not opens or account_id is None:
+            return 404, {"message": "Not Found"}
+        if login.lower() == owner.lower():
+            role = "admin"
+        role = role or "none"
+        return 200, {
+            "permission": LEGACY_PERMISSIONS.get(role, "none"),
+            "role_name": role,
+            "user": {"login": login, "id": account_id, "type": "User"},
+        }
+
     def _revoke_token(self, headers: dict):
         scheme, _, token = headers.get("authorization", "").partition(" ")
         with self._lock:
@@ -362,6 +399,9 @@ class FakeGitHub:
         parts = path.strip("/").split("/")
         if method == "GET" and parts[0] == "repos" and parts[3:] == ["installation"]:
             return self._installation(parts[1], parts[2], headers)
+        permission = len(parts) == 6 and (parts[0], parts[3], parts[5]) == ("repos", "collaborators", "permission")
+        if method == "GET" and permission:
+            return self._permission(parts[1], parts[2], parts[4], headers)
         if method == "POST" and parts[:2] == ["app", "installations"] and parts[3:] == ["access_tokens"]:
             return self._access_tokens(parts[2], headers, body)
         if method == "DELETE" and path == "/installation/token":

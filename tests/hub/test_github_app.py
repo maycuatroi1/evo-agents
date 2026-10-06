@@ -26,10 +26,12 @@ from evo_agents.hub.credentials import GITHUB_PERMISSIONS
 from evo_agents.hub.log import JsonFormatter
 from evo_agents.hub.server import github_app
 from evo_agents.hub.server.github import GitHubRefused, GitHubUnavailable
-from evo_agents.hub.server.github_app import AppTokens, GitHubApp, Installation
-from tests.hub.fake_github import _unb64
+from evo_agents.hub.server.github_app import AppTokens, GitHubApp, Installation, Pusher
+from tests.hub.fake_github import Account, _unb64
 
 OWNER, THEIRS = "maycuatroi1", "hawkteam404"
+OWNER_ID = 1001001
+PUSHER = Pusher(OWNER, OWNER_ID)  # the hub user who dispatched the run: the account the repos of OWNER belong to
 CONFIG_VARIABLES = ("EVO_HUB_GITHUB_APP_ID", "EVO_HUB_GITHUB_APP_PRIVATE_KEY")
 
 
@@ -54,6 +56,7 @@ def app_key():
 @pytest.fixture
 def fake(github, app_key):
     github.app_public_key = app_key[1]
+    github.accounts[OWNER.lower()] = OWNER_ID
     return github
 
 
@@ -83,8 +86,8 @@ def with_app(hub_config: HubConfig, body, **options):
     return asyncio.run(main())
 
 
-def tokens(hub_config: HubConfig, repos) -> AppTokens:
-    return with_app(hub_config, lambda app: app.tokens(repos))
+def tokens(hub_config: HubConfig, repos, pusher: Pusher = PUSHER) -> AppTokens:
+    return with_app(hub_config, lambda app: app.tokens(repos, pusher))
 
 
 def jwt_parts(jwt: str) -> tuple[dict, dict]:
@@ -102,6 +105,7 @@ def calls(fake, prefix: str) -> list:
 def test_a_token_covers_only_the_repos_asked_for_with_the_permissions_of_a_run(fake, app_key):
     own = fake.install(OWNER, "evo-agents", "evo-agents-harness", "evo-cli")
     other = fake.install(THEIRS, "m1-identity", "m1-secbox-frontend")
+    fake.collaborate(THEIRS, "m1-identity", Account(OWNER, OWNER_ID), "write")
     asked = [(OWNER, "evo-agents"), (OWNER, "evo-agents-harness"), (THEIRS, "m1-identity")]
     before = datetime.now(timezone.utc)
     result = tokens(config(fake, app_key), asked)
@@ -167,6 +171,150 @@ def test_a_repo_the_app_is_not_installed_on_gets_a_clear_reason(fake, app_key):
     assert with_app(config(fake, app_key), lambda app: app.installation(THEIRS, "m1-identity")) is None
 
 
+# Whose token it is
+
+
+def permission_calls(fake) -> list[str]:
+    """owner/repo/login of each permission GitHub was asked for, in order."""
+    return [
+        "/".join(r.path.split("/")[2:4] + r.path.split("/")[5:6])
+        for r in fake.requests
+        if r.path.endswith("/permission")
+    ]
+
+
+def test_a_token_opens_only_the_repos_its_pusher_may_push_to_and_the_wider_one_is_revoked(fake, app_key):
+    installation = fake.install(THEIRS, "m1-identity", "m1-kb", "m1-ops", "m1-docs", "m1-web")
+    someone = Account("someone-else", 502)
+    for repo, role in (("m1-identity", "write"), ("m1-kb", "maintain"), ("m1-ops", "admin"), ("m1-docs", "triage")):
+        fake.collaborate(THEIRS, repo, someone, role)
+    asked = [(THEIRS, repo) for repo in ("m1-identity", "m1-kb", "m1-ops", "m1-docs", "m1-web")]
+    result = tokens(config(fake, app_key), asked, Pusher(someone.login, someone.id))
+
+    assert result.missing == {
+        f"{THEIRS}/m1-docs": f"someone-else cannot push to {THEIRS}/m1-docs on GitHub: their role there is triage, "
+        "and pushing needs write",
+        f"{THEIRS}/m1-web": f"someone-else cannot push to {THEIRS}/m1-web on GitHub: their role there is none, and "
+        "pushing needs write",
+    }
+    (token,) = result.tokens
+    assert token.repositories == ("m1-identity", "m1-kb", "m1-ops")
+    for repo in ("m1-identity", "m1-kb", "m1-ops"):
+        assert fake.covers(token.token, THEIRS, repo)
+    assert not fake.covers(token.token, THEIRS, "m1-docs") and not fake.covers(token.token, THEIRS, "m1-web")
+
+    # The token that answered the question opened all five: it is revoked, never handed out.
+    first, second = [r for r in calls(fake, f"/app/installations/{installation}/access_tokens")]
+    assert json.loads(first.body)["repositories"] == ["m1-docs", "m1-identity", "m1-kb", "m1-ops", "m1-web"]
+    assert json.loads(second.body)["repositories"] == ["m1-identity", "m1-kb", "m1-ops"]
+    (wide,) = [value for value, made in fake.app_tokens.items() if len(made.repositories) == 5]
+    assert made_revoked(fake, wide) and not fake.covers(wide, THEIRS, "m1-docs")
+    assert permission_calls(fake) == [f"{THEIRS}/{repo}/someone-else" for _, repo in asked]
+    asked_with = {r.headers["authorization"] for r in fake.requests if r.path.endswith("/permission")}
+    assert asked_with == {f"Bearer {wide}"}, "the permission is asked with the installation token, never the JWT"
+
+    # Pushing to none of them: no token at all, and the one made is revoked.
+    fake.requests.clear()
+    result = tokens(config(fake, app_key), [(THEIRS, "m1-docs"), (THEIRS, "m1-web")], Pusher(someone.login, 502))
+    assert result.tokens == [] and set(result.missing) == {f"{THEIRS}/m1-docs", f"{THEIRS}/m1-web"}
+    assert len(calls(fake, "/app/installations/")) == 1
+    (narrow,) = [value for value, made in fake.app_tokens.items() if len(made.repositories) == 2]
+    assert made_revoked(fake, narrow)
+
+
+def made_revoked(fake, token: str) -> bool:
+    return fake.app_tokens[token].revoked and any(
+        r.method == "DELETE" and r.headers.get("authorization") == f"Bearer {token}"
+        for r in calls(fake, "/installation/token")
+    )
+
+
+def test_a_member_whose_repo_names_another_account_gets_no_token_for_it(fake, app_key):
+    """The attack of the review: a member registers https://github.com/<other account>/<repo> as a repo's origin in a
+    project they administer, and the App is installed on that account."""
+    fake.install(THEIRS, "m1-identity")
+    mallory = Account("mallory", 666)
+    fake.accounts[mallory.login] = mallory.id  # a GitHub account of its own, no role on m1-identity
+    result = tokens(config(fake, app_key), [(THEIRS, "m1-identity")], Pusher(mallory.login, mallory.id))
+    assert result.tokens == []
+    assert result.missing == {
+        f"{THEIRS}/m1-identity": f"mallory cannot push to {THEIRS}/m1-identity on GitHub: their role there is none, "
+        "and pushing needs write"
+    }
+    assert all(made.revoked for made in fake.app_tokens.values()), "the token made to ask is revoked"
+
+    # A hub login GitHub has no account of, and a login whose account is not the one that signed in to the hub.
+    fake.requests.clear()
+    unknown = tokens(config(fake, app_key), [(THEIRS, "m1-identity")], Pusher("nobody-here", 404))
+    assert unknown.missing == {
+        f"{THEIRS}/m1-identity": f"nobody-here cannot push to {THEIRS}/m1-identity on GitHub: GitHub knows no "
+        "collaborator of that login there"
+    }
+    fake.collaborate(THEIRS, "m1-identity", mallory, "write")
+    renamed = tokens(config(fake, app_key), [(THEIRS, "m1-identity")], Pusher(mallory.login, 7))
+    assert renamed.tokens == []
+    assert renamed.missing[f"{THEIRS}/m1-identity"].endswith("is not the one that signed in to the hub; sign in again")
+    (granted,) = tokens(config(fake, app_key), [(THEIRS, "m1-identity")], Pusher(mallory.login, mallory.id)).tokens
+    assert fake.covers(granted.token, THEIRS, "m1-identity"), "once a collaborator who may push, mallory gets one"
+
+
+def test_a_push_permission_is_kept_five_minutes_and_a_refusal_is_asked_again(fake, app_key):
+    fake.install(THEIRS, "m1-identity", "m1-kb")
+    someone = Account("someone-else", 502)
+    fake.collaborate(THEIRS, "m1-identity", someone, "write")
+    fake.accounts[someone.login] = someone.id
+    pusher = Pusher(someone.login, someone.id)
+    clock = [1000.0]
+    asked = [(THEIRS, "m1-identity"), (THEIRS, "m1-kb")]
+
+    async def body(app: GitHubApp):
+        first = await app.tokens(asked, pusher)
+        assert [t.repositories for t in first.tokens] == [("m1-identity",)] and list(first.missing) == [
+            f"{THEIRS}/m1-kb"
+        ]
+        assert permission_calls(fake) == [f"{THEIRS}/m1-identity/someone-else", f"{THEIRS}/m1-kb/someone-else"]
+
+        fake.collaborate(THEIRS, "m1-kb", someone, "write")  # the account's admin lets them push to m1-kb now
+        second = await app.tokens(asked, pusher)
+        assert second.missing == {} and [t.repositories for t in second.tokens] == [("m1-identity", "m1-kb")]
+        assert permission_calls(fake)[2:] == [f"{THEIRS}/m1-kb/someone-else"], "m1-identity was kept, m1-kb asked"
+
+        fake.collaborate(THEIRS, "m1-identity", someone, "read")  # and takes m1-identity away
+        await app.tokens(asked, pusher)
+        assert len(permission_calls(fake)) == 3, "both are kept for PERMISSION_CACHE_SECONDS"
+        clock[0] += github_app.PERMISSION_CACHE_SECONDS + 1
+        later = await app.tokens(asked, pusher)
+        assert [t.repositories for t in later.tokens] == [("m1-kb",)] and list(later.missing) == [
+            f"{THEIRS}/m1-identity"
+        ]
+
+        # Another hub user, or the same login of another GitHub id, is asked for on its own.
+        await app.tokens(asked, Pusher(someone.login, 9))
+        assert permission_calls(fake)[-2:] == [f"{THEIRS}/m1-identity/someone-else", f"{THEIRS}/m1-kb/someone-else"]
+
+    with_app(config(fake, app_key), body, clock=lambda: clock[0])
+
+
+def test_github_failing_on_the_permission_revokes_the_token_and_names_the_outage(fake, app_key, monkeypatch):
+    fake.install(THEIRS, "m1-identity")
+    fake.collaborate(THEIRS, "m1-identity", Account(OWNER, OWNER_ID), "write")
+    answer = fake.answer
+
+    def failing(method, path, query, headers, body):
+        if path.endswith("/permission"):
+            return 502, {"message": "Server Error"}
+        return answer(method, path, query, headers, body)
+
+    monkeypatch.setattr(fake, "answer", failing)
+    result = tokens(config(fake, app_key), [(THEIRS, "m1-identity")])
+    assert result.tokens == []
+    assert result.missing == {
+        f"{THEIRS}/m1-identity": f"GitHub answered 502 while asking GitHub whether {OWNER} may push to "
+        f"{THEIRS}/m1-identity; try again shortly"
+    }
+    assert all(made.revoked for made in fake.app_tokens.values())
+
+
 # The JWT
 
 
@@ -177,7 +325,8 @@ def test_the_app_jwt_is_rs256_under_the_apps_key_and_ends_within_ten_minutes(fak
     after = int(time.time())
     assert result.tokens and not result.missing, "the fake took the JWT: its signature, iss, iat and exp"
 
-    jwts = [r.headers["authorization"].removeprefix("Bearer ") for r in calls(fake, "/repos/") + calls(fake, "/app/")]
+    lookups = [r for r in calls(fake, "/repos/") if r.path.endswith("/installation")]
+    jwts = [r.headers["authorization"].removeprefix("Bearer ") for r in lookups + calls(fake, "/app/")]
     assert len(jwts) == 2 and set(jwts) <= set(fake.app_jwts)
     public = serialization.load_pem_public_key(app_key[1].encode())
     for jwt in jwts:
@@ -245,27 +394,27 @@ def test_an_installation_is_kept_ten_minutes_per_repo_and_a_missing_one_is_asked
         return len(calls(fake, f"/repos/{OWNER}/{repo}/installation"))
 
     async def body(app: GitHubApp):
-        first = await app.tokens(asked)
+        first = await app.tokens(asked, PUSHER)
         assert list(first.missing) == [f"{OWNER}/evo-cli"]
-        second = await app.tokens([(OWNER, "Evo-Agents"), (OWNER, "evo-cli")])  # owner/repo in any case
+        second = await app.tokens([(OWNER, "Evo-Agents"), (OWNER, "evo-cli")], PUSHER)  # owner/repo in any case
         assert [t.repositories for t in second.tokens] == [("Evo-Agents",)] and list(second.missing)
         assert (lookups("evo-agents"), lookups("Evo-Agents"), lookups("evo-cli")) == (1, 0, 2)
 
         fake.installations[installation].repos.add("evo-cli")  # the owner adds evo-cli to the installation
-        third = await app.tokens(asked)
+        third = await app.tokens(asked, PUSHER)
         assert third.missing == {} and [t.repositories for t in third.tokens] == [("evo-agents", "evo-cli")]
         assert (lookups("evo-agents"), lookups("evo-cli")) == (1, 3)
 
         clock[0] += github_app.INSTALLATION_CACHE_SECONDS + 1
-        await app.tokens(asked)
+        await app.tokens(asked, PUSHER)
         assert (lookups("evo-agents"), lookups("evo-cli")) == (2, 4)
 
         # A token GitHub refuses drops what was kept for the installation, so the next ask looks again.
         fake.installations[installation].suspended = True
-        refused = await app.tokens(asked)
+        refused = await app.tokens(asked, PUSHER)
         assert set(refused.missing) == {f"{OWNER}/evo-agents", f"{OWNER}/evo-cli"}
         assert all("is suspended" in reason for reason in refused.missing.values())
-        await app.tokens(asked)
+        await app.tokens(asked, PUSHER)
         assert (lookups("evo-agents"), lookups("evo-cli")) == (3, 5)
 
     with_app(config(fake, app_key), body, clock=lambda: clock[0])
@@ -278,7 +427,7 @@ def test_a_token_is_revoked_with_itself(fake, app_key):
     fake.install(OWNER, "evo-agents")
 
     async def body(app: GitHubApp):
-        (token,) = (await app.tokens([(OWNER, "evo-agents")])).tokens
+        (token,) = (await app.tokens([(OWNER, "evo-agents")], PUSHER)).tokens
         assert fake.covers(token.token, OWNER, "evo-agents")
         assert await app.revoke(token.token) is True
         assert not fake.covers(token.token, OWNER, "evo-agents") and fake.app_tokens[token.token].revoked
@@ -349,7 +498,7 @@ def test_github_refusals_and_outages_become_reasons_and_stop_the_asking(fake, ap
 
 
 def tokens_with(hub_config: HubConfig, repos, **options) -> AppTokens:
-    return with_app(hub_config, lambda app: app.tokens(repos), **options)
+    return with_app(hub_config, lambda app: app.tokens(repos, PUSHER), **options)
 
 
 # The log
@@ -362,7 +511,7 @@ def test_one_log_line_per_call_and_no_token_or_jwt_in_any(fake, app_key, caplog)
 
     async def body(app: GitHubApp):
         result = await app.tokens(
-            [(OWNER, "evo-agents"), (OWNER, "evo-agents-harness"), (THEIRS, "m1-identity"), (THEIRS, "m1-kb")]
+            [(OWNER, "evo-agents"), (OWNER, "evo-agents-harness"), (THEIRS, "m1-identity"), (THEIRS, "m1-kb")], PUSHER
         )
         for token in result.tokens:
             assert await app.revoke(token.token)
@@ -378,7 +527,8 @@ def test_one_log_line_per_call_and_no_token_or_jwt_in_any(fake, app_key, caplog)
     records = [r for r in caplog.records if r.name.startswith("evo_agents.")]
     github_calls = [r for r in records if r.getMessage() == "github call"]
     assert [(r.method, r.path) for r in github_calls] == [(r.method, r.path) for r in fake.requests], "one line a call"
-    assert [r.status for r in github_calls] == [200, 200, 200, 404, 201, 422, 204, 401]
+    # four installations looked up, a token made, the pusher's permission on its two repos, a token refused, revoked
+    assert [r.status for r in github_calls] == [200, 200, 200, 404, 201, 200, 200, 422, 204, 401]
 
     formatter = JsonFormatter()
     everything = "\n".join(
