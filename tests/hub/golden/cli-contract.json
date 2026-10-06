@@ -1651,7 +1651,9 @@
             "running",
             "interactive",
             "verifying",
+            "waiting",
             "review",
+            "parked",
             "done",
             "failed",
             "lost",
@@ -8633,7 +8635,9 @@
                     "running",
                     "interactive",
                     "verifying",
+                    "waiting",
                     "review",
+                    "parked",
                     "done",
                     "failed",
                     "lost",
@@ -10690,7 +10694,9 @@
                 "running",
                 "interactive",
                 "verifying",
-                "review"
+                "waiting",
+                "review",
+                "parked"
               ],
               "title": "State"
             },
@@ -14832,7 +14838,9 @@
                 "running",
                 "interactive",
                 "verifying",
+                "waiting",
                 "review",
+                "parked",
                 "done",
                 "failed",
                 "lost",
@@ -15245,7 +15253,9 @@
                     "running",
                     "interactive",
                     "verifying",
+                    "waiting",
                     "review",
+                    "parked",
                     "done",
                     "failed",
                     "lost",
@@ -15373,7 +15383,9 @@
                 "running",
                 "interactive",
                 "verifying",
+                "waiting",
                 "review",
+                "parked",
                 "done",
                 "failed",
                 "lost",
@@ -15993,10 +16005,22 @@
               "title": "Verifying",
               "default": 0
             },
+            "waiting": {
+              "type": "integer",
+              "minimum": 0.0,
+              "title": "Waiting",
+              "default": 0
+            },
             "review": {
               "type": "integer",
               "minimum": 0.0,
               "title": "Review",
+              "default": 0
+            },
+            "parked": {
+              "type": "integer",
+              "minimum": 0.0,
+              "title": "Parked",
               "default": 0
             },
             "done": {
@@ -16038,7 +16062,9 @@
                 "running",
                 "interactive",
                 "verifying",
+                "waiting",
                 "review",
+                "parked",
                 "done",
                 "failed",
                 "lost",
@@ -16057,7 +16083,9 @@
                     "running",
                     "interactive",
                     "verifying",
+                    "waiting",
                     "review",
+                    "parked",
                     "done",
                     "failed",
                     "lost",
