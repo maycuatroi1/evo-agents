@@ -1,24 +1,82 @@
-"""git's smart HTTP on 127.0.0.1 behind Basic auth, for the tests of a run's credentials: a server in a thread of the
-test's process runs ``git http-backend`` as a CGI program for each request, over the bare repositories under a root.
+"""git's smart HTTP over TLS on 127.0.0.1 behind Basic auth, for the tests of a run's credentials: a server in a thread
+of the test's process runs ``git http-backend`` as a CGI program for each request, over the bare repositories under a
+root.
 
-A request without the expected user and password gets 401 with a Basic challenge, as GitLab answers one, so git asks
-its credential helpers and tries again with what they answered. ``requests`` keeps (method, path, user or None,
-status) of each request, never the password. Pushing needs no configuration of the repositories: http-backend takes
-a push from a request that names REMOTE_USER, which this server sets once the user is checked.
+It answers https alone, with a certificate for 127.0.0.1 of a CA of its own drawn when it starts: git trusts it with
+``GIT_SSL_CAINFO`` (``env``), and plain http to its port fails, so an http origin reaches it only once the run's git
+rewrites it to https. A request without the expected user and password gets 401 with a Basic challenge, as GitLab
+answers one, so git asks its credential helpers and tries again with what they answered. ``requests`` keeps (method,
+path, user or None, status) of each request, never the password. Pushing needs no configuration of the repositories:
+http-backend takes a push from a request that names REMOTE_USER, which this server sets once the user is checked.
 """
 
 from __future__ import annotations
 
 import base64
 import binascii
+import datetime
+import ipaddress
 import os
+import shutil
+import ssl
 import subprocess
+import tempfile
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import unquote
 
 CGI_TIMEOUT = 60
+
+
+def _tls_files(directory: Path) -> tuple[Path, Path, Path]:
+    """(certificate, key, CA certificate) for 127.0.0.1 under ``directory``: a CA drawn now signs the server's
+    certificate, both on P-256 keys, valid for a day."""
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
+
+    now = datetime.datetime.now(datetime.timezone.utc)
+    ca_key, key = ec.generate_private_key(ec.SECP256R1()), ec.generate_private_key(ec.SECP256R1())
+    ca_name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "git-http test CA")])
+    ca = (
+        x509.CertificateBuilder()
+        .subject_name(ca_name)
+        .issuer_name(ca_name)
+        .public_key(ca_key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(now - datetime.timedelta(minutes=5))
+        .not_valid_after(now + datetime.timedelta(days=1))
+        .add_extension(x509.BasicConstraints(ca=True, path_length=0), critical=True)
+        .add_extension(
+            x509.KeyUsage(True, False, False, False, False, True, True, False, False), critical=True
+        )  # digital signature, cert sign, CRL sign
+        .sign(ca_key, hashes.SHA256())
+    )
+    cert = (
+        x509.CertificateBuilder()
+        .subject_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "127.0.0.1")]))
+        .issuer_name(ca_name)
+        .public_key(key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(now - datetime.timedelta(minutes=5))
+        .not_valid_after(now + datetime.timedelta(days=1))
+        .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True)
+        .add_extension(
+            x509.SubjectAlternativeName([x509.IPAddress(ipaddress.ip_address("127.0.0.1")), x509.DNSName("localhost")]),
+            critical=False,
+        )
+        .add_extension(x509.ExtendedKeyUsage([ExtendedKeyUsageOID.SERVER_AUTH]), critical=False)
+        .sign(ca_key, hashes.SHA256())
+    )
+    paths = directory / "server.pem", directory / "server.key", directory / "ca.pem"
+    paths[0].write_bytes(cert.public_bytes(serialization.Encoding.PEM))
+    paths[1].write_bytes(
+        key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption())
+    )
+    paths[2].write_bytes(ca.public_bytes(serialization.Encoding.PEM))
+    return paths
 
 
 class GitHttp:
@@ -29,7 +87,9 @@ class GitHttp:
         self.username = username
         self.password = password
         self.requests: list[tuple[str, str, str | None, int]] = []
-        self.url = ""
+        self.url = ""  # https://127.0.0.1:PORT
+        self.ca_file: Path | None = None  # the CA git must trust to reach it
+        self._tls_dir: str | None = None
         self._server: ThreadingHTTPServer | None = None
         self._thread: threading.Thread | None = None
 
@@ -41,13 +101,18 @@ class GitHttp:
         self.stop()
 
     def start(self) -> str:
+        self._tls_dir = tempfile.mkdtemp(prefix="git-https-")
+        cert, key, self.ca_file = _tls_files(Path(self._tls_dir))
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        context.load_cert_chain(cert, key)
         server = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
+        server.socket = context.wrap_socket(server.socket, server_side=True, do_handshake_on_connect=False)
         server.daemon_threads = True
         server.owner = self
         self._server = server
         self._thread = threading.Thread(target=server.serve_forever, name="git-http-backend", daemon=True)
         self._thread.start()
-        self.url = f"http://127.0.0.1:{server.server_address[1]}"
+        self.url = f"https://127.0.0.1:{server.server_address[1]}"
         return self.url
 
     def stop(self) -> None:
@@ -55,9 +120,19 @@ class GitHttp:
             self._server.shutdown()
             self._server.server_close()
             self._server = None
+        if self._tls_dir is not None:
+            shutil.rmtree(self._tls_dir, ignore_errors=True)
+            self._tls_dir = None
 
-    def repo_url(self, name: str) -> str:
-        return f"{self.url}/{name}"
+    @property
+    def env(self) -> dict[str, str]:
+        """What git's environment needs to trust this server."""
+        return {"GIT_SSL_CAINFO": str(self.ca_file)}
+
+    def repo_url(self, name: str, scheme: str = "https") -> str:
+        """The URL of repository ``name``; with scheme http, the one an http origin names, which git reaches only once
+        rewritten to https."""
+        return f"{self.url.replace('https://', f'{scheme}://', 1)}/{name}"
 
     def user_of(self, header: str | None) -> str | None:
         """The user a Basic Authorization header proves, or None."""

@@ -936,14 +936,15 @@ def test_a_run_fetches_and_pushes_with_its_leases_which_it_gives_back_at_its_end
     cli_log, seen_config = stack.tmp / "cli.jsonl", stack.tmp / "git-config.env"
     stack.env.update({"GIT_CONFIG_NOSYSTEM": "1", "EVO_FAKE_CLI": str(cli_log)})
 
-    with GitHttp(stack.tmp, "oauth2", token) as server:  # serves the bare origin.git of the stack
+    with GitHttp(stack.tmp, "oauth2", token) as server:  # serves the bare origin.git of the stack, over https
+        stack.env.update(server.env)
         origin = server.repo_url("origin.git")
         git("remote", "set-url", "origin", origin, cwd=stack.checkout, env=stack.env)
         admin = bearer(live.sign_in(stack.client, github, ADMIN, 801)["token"])
         body = registration()
         body["repos"] = [{**repo, "origin": origin} if repo["name"] == REPO else repo for repo in body["repos"]]
         assert stack.client.put(f"/v1/projects/{PROJECT}", json=body, headers=admin).status_code == 200
-        prefix = server.url.replace("http://", "https://")
+        prefix = server.url
         for name, secret in {
             "local-git": {"kind": "git", "url_prefix": prefix, "value": token},
             "claude-oauth": {"kind": "env", "env_var": "CLAUDE_CODE_OAUTH_TOKEN", "value": oauth},
