@@ -12626,6 +12626,154 @@
             }
           }
         }
+      },
+      "/v1/worker/runs/{run_id}/credentials": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Lease Credentials",
+          "description": "The leases of a run this worker holds: the owner's secrets for its project and a GitHub token for its repos on\ngithub.com, with the reason of each repo nothing covers.",
+          "operationId": "lease_credentials_v1_worker_runs__run_id__credentials_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Credentials"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "delete": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Give Back Credentials",
+          "description": "Give back every lease this worker holds of the run, in whatever state the run is; GitHub tokens are revoked.",
+          "operationId": "give_back_credentials_v1_worker_runs__run_id__credentials_delete",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/GivenBack"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
       }
     },
     "components": {
@@ -13414,6 +13562,130 @@
             "changed"
           ],
           "title": "ConfigSaved"
+        },
+        "CredentialLease": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id",
+              "description": "the lease; the same id when it is asked for again"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "env",
+                "git"
+              ],
+              "title": "Kind",
+              "description": "env: a variable of the agent; git: what git's helper answers"
+            },
+            "provider": {
+              "type": "string",
+              "enum": [
+                "secret",
+                "github-app"
+              ],
+              "title": "Provider",
+              "description": "secret: the owner's; github-app: a token the hub's App made"
+            },
+            "name": {
+              "type": "string",
+              "title": "Name",
+              "description": "the secret's name, or github-app:<account>"
+            },
+            "env_var": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Env Var",
+              "description": "kind env: the variable it sets"
+            },
+            "url_prefix": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Url Prefix",
+              "description": "kind git: the https prefix of the origins it answers for"
+            },
+            "username": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Username",
+              "description": "kind git: the user git sends with the value"
+            },
+            "value": {
+              "type": "string",
+              "title": "Value",
+              "description": "the credential itself: for memory only, never a file, a log line or an event"
+            },
+            "expires_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Expires At",
+              "description": "when it stops working; ask again before, for a GitHub token"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "kind",
+            "provider",
+            "name",
+            "env_var",
+            "url_prefix",
+            "username",
+            "value",
+            "expires_at"
+          ],
+          "title": "CredentialLease",
+          "description": "One credential a run holds, as ``evo_agents.hub.credentials.Lease`` reads it."
+        },
+        "Credentials": {
+          "properties": {
+            "leases": {
+              "items": {
+                "$ref": "#/components/schemas/CredentialLease"
+              },
+              "type": "array",
+              "title": "Leases"
+            },
+            "missing": {
+              "items": {
+                "$ref": "#/components/schemas/MissingOrigin"
+              },
+              "type": "array",
+              "title": "Missing"
+            }
+          },
+          "type": "object",
+          "required": [
+            "leases",
+            "missing"
+          ],
+          "title": "Credentials"
         },
         "Csrf": {
           "properties": {
@@ -14280,6 +14552,20 @@
             "host"
           ],
           "title": "GitHubLogin"
+        },
+        "GivenBack": {
+          "properties": {
+            "revoked": {
+              "type": "integer",
+              "title": "Revoked",
+              "description": "leases of the run this worker gave back now; 0 when none was out any more"
+            }
+          },
+          "type": "object",
+          "required": [
+            "revoked"
+          ],
+          "title": "GivenBack"
         },
         "Grant": {
           "properties": {
@@ -15436,6 +15722,38 @@
             "missing"
           ],
           "title": "MissingBlobs"
+        },
+        "MissingOrigin": {
+          "properties": {
+            "repo": {
+              "type": "string",
+              "title": "Repo"
+            },
+            "origin": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Origin",
+              "description": "as the project registered it; null when it registered none"
+            },
+            "reason": {
+              "type": "string",
+              "title": "Reason"
+            }
+          },
+          "type": "object",
+          "required": [
+            "repo",
+            "origin",
+            "reason"
+          ],
+          "title": "MissingOrigin",
+          "description": "A repo of the run whose origin no lease covers: git uses the machine's own credentials for it."
         },
         "Neighbourhood": {
           "properties": {

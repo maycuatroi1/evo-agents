@@ -54,6 +54,12 @@ TERMINAL_CLOSE = "terminal.close"
 # A member's secrets belong to no one project; the target is the secret's name, never its value.
 SECRET_PUT = "secret.put"  # the owner created a secret or replaced it, value included
 SECRET_DELETE = "secret.delete"  # the owner deleted it: its sealed value and bindings went, its leases were revoked
+# The leases of a run, in the run's project; the target names the run as above, then the secrets by name, the GitHub
+# App's accounts and the repos, never a value: "... run:<id> secrets=<names> github-app=<accounts> repos=<repos>".
+CREDENTIAL_LEASE = "credential.lease"  # the worker holding the run asked for its leases
+# Leases given back: "... run:<id> leases=<n> secrets=<names> github-app=<tokens> by=<worker|run-<state>|...>",
+# by the worker (its actor), or by the hub itself when the run left the held states or its worker was revoked.
+CREDENTIAL_REVOKE = "credential.revoke"
 
 NAMED_FAMILIES = frozenset({"grant", "project", "plan", "kg", "blob"})  # targets that start with the project's name
 _FIRST_NAME = re.compile(r"([a-z0-9][a-z0-9-]{0,99})(?:[/ @]|$)")

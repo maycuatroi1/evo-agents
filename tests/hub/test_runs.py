@@ -947,11 +947,11 @@ def test_events_of_runs_that_ended_long_ago_are_pruned(client, hub, hub_db):
     sql(hub_db, "UPDATE runs SET finished_at = now() - interval '29 days' WHERE id = %s", (recent,))
     running = dispatched(client, hub["owner"], [2])[0]["id"]
     claim(client, worker)
-    context = SimpleNamespace(
-        additional_context={"hub": SimpleNamespace(pool=client.app.state.pool, config=client.app.state.config)}
-    )
+    state = client.app.state
+    found = SimpleNamespace(pool=state.pool, config=state.config, sealer=state.sealer, github_app=state.github_app)
+    context = SimpleNamespace(additional_context={"hub": found})
     report_ = client.portal.call(queue.tasks[jobs.PRUNE_RUN_EVENTS].func, context)
-    assert report_ == {"deleted": 1, "days": 30}
+    assert report_ == {"deleted": 1, "days": 30, "tokens_dropped": 0}
     left = dict(sql(hub_db, "SELECT run_id, count(*) FROM run_events GROUP BY run_id"))
     assert left == {recent: 1, running: 1}
     assert sql(hub_db, "SELECT count(*) FROM runs") == [(3,)]  # the runs stay; only their events go
