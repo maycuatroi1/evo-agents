@@ -60,7 +60,9 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | knowledge graphs | `/v1/kg/{project}/config`, `.../runs`, `.../blobs/check`, `.../builds`, `.../tools/{tool}`, and the web's `.../graph`, `.../nodes`, `.../node`, `.../neighbourhood` |
 | workers | `POST /v1/workers/pairings`, `GET /v1/workers/pairings/{id}`, `POST /v1/worker/join`, `GET` and `POST /v1/workers`, `GET /v1/workers/{id}`, `POST /v1/workers/{id}/{drain,undrain,revoke}` |
 | runs | `/v1/projects/{project}/plans/{plan_id}/ready-steps`, `GET` and `POST /v1/projects/{project}/runs`, `.../runs/{id}`, `.../events`, `.../stream`, `.../diff`, `.../messages`, `.../{cancel,approve,rerun,takeover,handback}` |
-| worker protocol | `/v1/worker/{claim,heartbeat}`, `/v1/worker/runs/{id}/{state,events,inbox,uploads,blobs}` |
+| decisions | `GET /v1/projects/{project}/decisions`, `.../decisions/{id}`, `POST .../decisions/{id}/answer` |
+| notifications | `GET /v1/me/notifications`, `GET /v1/me/notifications/count`, `POST /v1/me/notifications/read` |
+| worker protocol | `/v1/worker/{claim,heartbeat}`, `/v1/worker/runs/{id}/{state,events,inbox,uploads,blobs,decisions,notices}` |
 
 `/mcp` speaks MCP's Streamable HTTP transport, statelessly: each POST carries one JSON-RPC message and gets one JSON
 answer. It takes machine tokens only, and the `Host` header must be the host of `EVO_HUB_PUBLIC_URL` or a loopback
@@ -352,7 +354,10 @@ Postgres database; there is no separate broker. The api only defers jobs. Jobs:
 - `hub.prune_kg_artifacts`, hourly at minute 31: deletes the artifacts of graphs older than each project's
   `EVO_HUB_KG_KEEP_ARTIFACTS` newest.
 - `hub.recover_runs`, every minute: runs whose worker stopped extending the lease become lost and their step is
-  queued again, or fail on their third attempt (`docs/workers.md`).
+  queued again, or fail on their third attempt; runs past their timeout fail; a plan run that waited 24 hours for an
+  answer is parked, and one parked for 7 days cancelled (`docs/workers.md`).
+- `hub.deliver_notifications`, every minute: hands each notification delivery that is due to its channel's class, and
+  tries a failing one again with a backoff, failing it after 5 tries (`docs/notifications.md`).
 - `hub.prune_run_events`, daily at 04:13: deletes the events of runs that ended more than `EVO_HUB_RUN_LOG_DAYS` ago.
 - `hub.cleanup_uploads`, hourly: removes uploads nobody committed within 24 hours.
 - `hub.prune_jobs`, daily: removes finished jobs older than 14 days.

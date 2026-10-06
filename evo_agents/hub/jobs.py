@@ -27,6 +27,7 @@ RECOVER_KG_BUILDS = "hub.recover_kg_builds"  # every 5 minutes: kg builds whose 
 PRUNE_KG_ARTIFACTS = "hub.prune_kg_artifacts"  # hourly: artifacts of graphs older than each project's newest few
 RECOVER_RUNS = "hub.recover_runs"  # every minute: runs whose lease ran out become lost and are queued again
 PRUNE_RUN_EVENTS = "hub.prune_run_events"  # daily: events of runs that ended more than EVO_HUB_RUN_LOG_DAYS ago
+DELIVER_NOTIFICATIONS = "hub.deliver_notifications"  # every minute: notifications due on their channels, retried
 
 
 def kg_lock(project: str) -> str:

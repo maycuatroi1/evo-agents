@@ -26,6 +26,8 @@ connection (``listen``), and it looks again every STREAM_POLL_SECONDS besides.
 The owner sends the run's agent a message (POST .../runs/{id}/messages, at most MAX_MESSAGE_BYTES of UTF-8) while the
 run is queued or held: it waits in run_inbox, the log gets a ``user_message`` event, and the heartbeat counts it
 until the worker takes it with POST /v1/worker/runs/{id}/inbox, which also acknowledges the ones handed to the agent.
+The owner's answer to a decision of the run comes the same way (``decisions``), as a message that names the decision
+(``decision_id``); acknowledging it records when the answer reached the agent (``decisions.delivered_at``).
 
 When the run ends, its worker uploads the whole log (blob kind run-log) and the diff of its commits (run-diff)
 through the blob store's uploads and commit (POST /v1/worker/runs/{id}/uploads and /blobs, as the worker's owner,
@@ -210,6 +212,7 @@ class InboxMessage(BaseModel):
     text: str
     sent_by: str
     created_at: datetime
+    decision_id: int | None = Field(None, description="the decision this message answers; null for any other message")
 
 
 class Inbox(BaseModel):
@@ -365,9 +368,17 @@ async def post_events(request: Request, run_id: RunId, body: EventBatch, user: C
     return EventsAck(ack_seq=acked + len(fresh), stored=len(fresh))
 
 
-DELIVER = "UPDATE run_inbox SET delivered_at = now() WHERE run_id = %s AND id <= %s AND delivered_at IS NULL"
+# The messages handed to the agent, and the decisions they answer, which reached the agent with them.
+DELIVER = """
+WITH taken AS (
+    UPDATE run_inbox SET delivered_at = now() WHERE run_id = %s AND id <= %s AND delivered_at IS NULL
+    RETURNING decision_id
+)
+UPDATE decisions SET delivered_at = now()
+ WHERE id IN (SELECT decision_id FROM taken) AND state = 'answered' AND delivered_at IS NULL
+"""
 UNDELIVERED = """
-SELECT i.id, i.body, u.login, i.created_at
+SELECT i.id, i.body, u.login, i.created_at, i.decision_id
   FROM run_inbox i JOIN users u ON u.id = i.sent_by
  WHERE i.run_id = %s AND i.delivered_at IS NULL
  ORDER BY i.id
@@ -386,7 +397,12 @@ async def take_inbox(request: Request, run_id: RunId, user: CurrentUser, body: I
         if ack is not None:
             await conn.execute(DELIVER, (run_id, ack))
         rows = await (await conn.execute(UNDELIVERED, (run_id, MAX_INBOX))).fetchall()
-    return Inbox(messages=[InboxMessage(id=i, text=text, sent_by=login, created_at=at) for i, text, login, at in rows])
+    return Inbox(
+        messages=[
+            InboxMessage(id=i, text=text, sent_by=login, created_at=at, decision_id=decision)
+            for i, text, login, at, decision in rows
+        ]
+    )
 
 
 @worker_router.post(

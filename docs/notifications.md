@@ -100,8 +100,8 @@ The job `hub.deliver_notifications` runs every minute in the hub's worker, throu
 the other jobs (`docs/hub.md`). It takes the pending deliveries whose `next_at` has passed, with `FOR UPDATE SKIP
 LOCKED`, and hands each to the class `CHANNELS` names for its channel's kind. The web's class marks a delivery
 delivered at once, since the web reads notifications from the table. A class that fails leaves the delivery pending
-with `last_error` and a later `next_at`, backing off, and the fifth failure (`MAX_DELIVERY_ATTEMPTS`) marks it
-`failed`. A channel kind with no class in the registry fails its deliveries with that reason, so a hub that drops a
+with `last_error` and a later `next_at`, backing off (1 minute after the first failure, doubling up to an hour), and
+the fifth failure (`MAX_DELIVERY_ATTEMPTS`) marks it `failed`. A channel kind with no class in the registry fails its deliveries with that reason, so a hub that drops a
 channel does not retry forever.
 
 Adding a channel takes a class with one method, which sends one notification to one channel's `config` or raises,
@@ -111,6 +111,44 @@ a member belong to that channel, like the Telegram ones below.
 A notification is read when its owner opens it on the web, marks it read (`POST /v1/me/notifications/read`, by ids or
 all), or answers its decision. The web shows the unread count on a bell in the top bar and the notifications in the
 Inbox, open decisions first. The audit row `notification.read` names the notifications, not their text.
+
+## Routes
+
+`evo_agents/hub/server/decisions.py` and `evo_agents/hub/server/notifications.py` hold them.
+
+For the worker holding a plan run, with its `evw_` token and the protocol header (`docs/workers.md`); any other run,
+a run of one step included, gets 404:
+
+| Route | Body | Answer |
+| --- | --- | --- |
+| `POST /v1/worker/runs/{id}/decisions` | `category`, `question` (at most 2,000 characters), `context` (markdown, at most 16 KiB), `options` (2 to 6 of `{key, label, description}`, keys unique), `recommended` (a key), `step_key` (a step of the plan) | 201, the decision; 422 for a category not listed above or a step the plan does not have; 409 when the run has 20 decisions open |
+| `POST /v1/worker/runs/{id}/notices` | `kind` (of `NOTICE_KINDS`), `title` (one line, at most 200 characters), `body` (at most 16 KiB), `repo` (one of the run's repos), `branch`, `commits` (at most 100) | 201, the notification |
+
+A decision leaves a `system` event in the run's log, and so does a notice. The hub sends `plan_finished` itself when a
+plan run ends `done` with every step of its plan done (with the steps it reported), and `run_failed` when one fails
+(with the error), its last attempt lost included.
+
+For members, with a web session or a machine token:
+
+| Route | Who | What it does |
+| --- | --- | --- |
+| `GET /v1/projects/{p}/decisions` | readers of the run's plan | the project's decisions, newest first, filtered by `state` (repeatable), `run_id` and `plan_id`, with `limit` and `offset` |
+| `GET /v1/projects/{p}/decisions/{id}` | readers of the run's plan | one decision: its options, the recommended one, its state, the answer, `answer_run_id` (the run whose inbox took the answer) and when the agent got it (`delivered_at`) |
+| `POST /v1/projects/{p}/decisions/{id}/answer` | the run's owner, who still holds writer | `{"option": KEY, "text": "..."}`, one or both; answers the decision |
+| `GET /v1/me/notifications` | the member | their notifications, open decisions first, then newest first, filtered by `unread`, `kind` and `project`, with `limit` and `offset` |
+| `GET /v1/me/notifications/count` | the member | `{"unread": N, "open_decisions": M}`, for the bell |
+| `POST /v1/me/notifications/read` | the member | `{"ids": [...]}` or `{"all": true}`; answers how many it marked read and how many are left unread |
+
+The answer takes the plan's dispatch lock and the run's row, then: the decision is `answered`, its notification read,
+and the answer goes to an inbox as a message that names the decision. A run that is queued or held (waiting
+included) gets it in its own inbox. A parked run is resumed: the hub queues a new plan run pinned to the parked run's
+worker, at the plan's current revision, with its session, repos, model, timeout and the agent time used so far, and
+`resume_of_run_id` naming it; the parked run is `done` with the reason `resumed as #N`, its other open decisions move
+to the new run, and the answer goes to the new run's inbox. The inbox message reads `Answer to decision #N (category):
+question`, then `Chosen option: KEY, LABEL.` and the owner's text.
+
+A notification links to a page of the hub's web: a decision to `/inbox?decision=ID`, a notice to the run's page
+(`/p/{p}/runs/{id}`). A member sees only the notifications of projects they hold a grant on.
 
 ## Telegram, designed for a later plan
 

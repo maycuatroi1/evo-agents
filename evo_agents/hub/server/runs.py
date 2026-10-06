@@ -39,16 +39,22 @@ queue again, and a run it leased in the meantime is rolled back before the trans
 queued for the next claim instead of waiting out a lease nobody holds.
 
 POST /v1/worker/heartbeat records the machine (runtimes, checkouts keyed ``<project>/<repo>``, free slots), extends
-the lease of every run the worker names and still holds by the same time, and answers with control: per run, whether
-to cancel (asked by the owner, or a run the worker no longer holds), takeover, handback, terminal_open (a browser
-waits for the worker's end of the run's terminal, ``terminal.Terminals.waiting``) and how many inbox messages wait;
-for the worker, whether to drain.
+the lease of every run the worker names and still holds by the same time, settles their agent time
+(``run_state.SETTLE``), and answers with control: per run, whether to cancel (asked by the owner, or a run the worker
+no longer holds), takeover, handback, terminal_open (a browser waits for the worker's end of the run's terminal,
+``terminal.Terminals.waiting``), how many inbox messages wait and how many decisions of the run are open; for the
+worker, whether to drain. A run the reaper parked, or one done because a new run resumes it, comes back with held
+false, cancel false and park true: the worker stops its agent at the end of the turn, keeps the session and the
+worktrees, and frees the slot.
 
 POST /v1/worker/runs/{id}/state reports a move of a run the worker holds (404 otherwise), checked against
 ``runs.TRANSITIONS`` with the worker as actor (409 otherwise): ``done`` only for approval auto with every verify
 command exited 0, ``review`` only for approval review. A plan run ends ``done`` without verify results, since each of
 its steps was verified when it was reported, and never in review. Reporting the state the run is in already changes
-nothing but the session id, commit, diffstat, verify results and usage given, so a resend is safe.
+nothing but the session id, commit, diffstat, verify results and usage given, so a resend is safe. A plan run reports
+``waiting`` when its agent's turn ended with a decision open, which needs a decision of the run that is open or whose
+answer the worker has not taken yet (409 otherwise: waiting does not count toward the timeout), and ``running`` once
+the answer reached the agent.
 
 The worker holding a plan run reads the plan as the hub holds it now with GET /v1/worker/runs/{id}/plan, and reports
 each step with POST /v1/worker/runs/{id}/steps/{key}: ``in_progress``, ``done`` (with at least one verify result,
@@ -97,6 +103,7 @@ from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.run_state import (
     MAX_EVIDENCE_BYTES,
     RUNS_CHANNEL,
+    SETTLE,
     StepNotWritten,
     evidence,
     move_run,
@@ -218,6 +225,7 @@ class Run(BaseModel):
     attempt: int
     max_attempts: int
     parent_run_id: int | None = Field(description="the run this one retries or reruns")
+    resume_of_run_id: int | None = Field(description="the parked plan run this one goes on from, in its session")
     state: Literal[runs.RUN_STATES]
     lease_expires_at: datetime | None
     session_id: str | None
@@ -239,6 +247,10 @@ class Run(BaseModel):
     queued_at: datetime
     leased_at: datetime | None
     started_at: datetime | None
+    waiting_since: datetime | None = Field(
+        description="when the agent's turn ended with a decision open, while waiting"
+    )
+    parked_at: datetime | None = Field(description="when the run was parked, for want of an answer")
     finished_at: datetime | None
 
 
@@ -266,6 +278,10 @@ class RunSpec(BaseModel):
     attempt: int
     max_attempts: int
     parent_run_id: int | None
+    resume_of_run_id: int | None = Field(
+        None, description="the parked plan run this one goes on from: reuse its worktrees and resume its session"
+    )
+    session_id: str | None = Field(None, description="the agent session to resume; null for a new one")
     runtime: Literal[runs.RUNTIMES]
     model: str | None = Field(description="the model the dispatch asked for; null: the runtime's own choice")
     mode: Literal[runs.MODES]
@@ -356,7 +372,13 @@ class RunControl(BaseModel):
         description="a browser waits for the run's terminal: connect WS /v1/worker/runs/{id}/terminal once the run "
         "is interactive",
     )
+    park: bool = Field(
+        False,
+        description="the run is parked (it waited too long for an answer), or done because a new run resumes it: stop "
+        "the agent at the end of its turn, keep the session and the worktrees, free the slot",
+    )
     inbox: int = Field(0, description="messages from the owner waiting for the agent: POST .../runs/{id}/inbox")
+    decisions: int = Field(0, description="decisions of the run still open, waiting for the owner's answer")
 
 
 class HeartbeatAnswer(BaseModel):
@@ -430,10 +452,10 @@ class StepWritten(BaseModel):
 RUN_COLUMNS = """
 SELECT r.id, r.kind, p.name, r.plan_id, r.step_key, r.title, r.plan_revision, u.login, r.worker_id, w.name,
        r.pinned_worker_id, r.requested_runtime, r.runtime, r.model, r.mode, r.approval, r.timeout_s / 60,
-       r.run_seconds, r.attempt, r.max_attempts, r.parent_run_id, r.state, r.lease_expires_at, r.session_id, r.repo,
-       r.branch, r.repos, r.commit_sha, r.diffstat, r.verify, r.evidence, r.usage, r.error, r.log_sha256,
-       r.diff_sha256, r.event_seq, r.cancel_requested_at, r.takeover_requested_at, r.handback_requested_at,
-       r.queued_at, r.leased_at, r.started_at, r.finished_at
+       r.run_seconds, r.attempt, r.max_attempts, r.parent_run_id, r.resume_of_run_id, r.state, r.lease_expires_at,
+       r.session_id, r.repo, r.branch, r.repos, r.commit_sha, r.diffstat, r.verify, r.evidence, r.usage, r.error,
+       r.log_sha256, r.diff_sha256, r.event_seq, r.cancel_requested_at, r.takeover_requested_at,
+       r.handback_requested_at, r.queued_at, r.leased_at, r.started_at, r.waiting_since, r.parked_at, r.finished_at
   FROM runs r JOIN projects p ON p.id = r.project_id JOIN users u ON u.id = r.dispatched_by
   LEFT JOIN workers w ON w.id = r.worker_id
 """
@@ -1320,6 +1342,8 @@ async def _run_spec(conn, run_id: int) -> RunSpec:
         attempt=view.attempt,
         max_attempts=view.max_attempts,
         parent_run_id=view.parent_run_id,
+        resume_of_run_id=view.resume_of_run_id,
+        session_id=view.session_id,
         runtime=view.runtime,
         model=view.model,
         mode=view.mode,
@@ -1369,15 +1393,24 @@ async def claim(request: Request, user: CurrentUser, body: ClaimRequest | None =
         wakeups.done(worker_id, number)
 
 
-EXTEND = """
-UPDATE runs SET lease_expires_at = now() + %(lease)s
+EXTEND = f"""
+UPDATE runs SET lease_expires_at = now() + %(lease)s, {SETTLE}
  WHERE worker_id = %(worker)s AND id = ANY(%(ids)s) AND state = ANY(%(held)s)
 RETURNING id, state, cancel_requested_at IS NOT NULL, lease_expires_at, takeover_requested_at IS NOT NULL,
           handback_requested_at IS NOT NULL
 """
+# Runs of the worker it should let go of without cancelling: parked, or done because a new run resumes them, which
+# needs their session and worktrees on this worker.
+PARKED_HERE = """
+SELECT r.id, r.state
+  FROM runs r
+ WHERE r.worker_id = %s AND r.id = ANY(%s)
+   AND (r.state = 'parked' OR (r.state = 'done' AND EXISTS (SELECT 1 FROM runs n WHERE n.resume_of_run_id = r.id)))
+"""
 INBOX = """
 SELECT run_id, count(*) FROM run_inbox WHERE run_id = ANY(%s) AND delivered_at IS NULL GROUP BY run_id
 """
+OPEN_DECISIONS = "SELECT run_id, count(*) FROM decisions WHERE run_id = ANY(%s) AND state = 'open' GROUP BY run_id"
 RECORD_HEARTBEAT = """
 UPDATE workers SET last_heartbeat_at = now(), runtimes = %(runtimes)s, checkouts = %(checkouts)s,
        free_slots = least(%(free)s, slots), agent_version = coalesce(%(version)s, agent_version)
@@ -1402,9 +1435,19 @@ async def heartbeat(request: Request, body: HeartbeatRequest, user: CurrentUser)
                 "version": body.agent_version,
             },
         )
-        params = {"lease": lease_of(request), "worker": worker_id, "ids": reported, "held": list(runs.HELD_STATES)}
+        params = {
+            "lease": lease_of(request),
+            "worker": worker_id,
+            "ids": reported,
+            "held": list(runs.HELD_STATES),
+            "clock": list(runs.CLOCK_STATES),
+        }
         extended = {row[0]: row[1:] for row in await (await conn.execute(EXTEND, params)).fetchall()}
+        others = [run_id for run_id in reported if run_id not in extended]
+        parked = dict(await (await conn.execute(PARKED_HERE, (worker_id, others))).fetchall()) if others else {}
+        known = [*extended, *parked]
         waiting = dict(await (await conn.execute(INBOX, (list(extended),))).fetchall()) if extended else {}
+        open_decisions = dict(await (await conn.execute(OPEN_DECISIONS, (known,))).fetchall()) if known else {}
     terminals = request.app.state.terminals
     controls = []
     for run_id in reported:
@@ -1421,6 +1464,19 @@ async def heartbeat(request: Request, body: HeartbeatRequest, user: CurrentUser)
                     handback=handback,
                     terminal_open=terminals.waiting(run_id),
                     inbox=waiting.get(run_id, 0),
+                    decisions=open_decisions.get(run_id, 0),
+                )
+            )
+        elif run_id in parked:  # let go of it without cancelling: its session goes on, or will, on this worker
+            controls.append(
+                RunControl(
+                    id=run_id,
+                    held=False,
+                    state=parked[run_id],
+                    lease_expires_at=None,
+                    cancel=False,
+                    park=True,
+                    decisions=open_decisions.get(run_id, 0),
                 )
             )
         else:
@@ -1436,6 +1492,11 @@ UPDATE runs SET session_id = coalesce(%(session_id)s, session_id), commit_sha = 
  WHERE id = %(id)s
 """
 REPORTED_RUN = "SELECT state, approval, worker_id, cancel_requested_at, kind FROM runs WHERE id = %s FOR UPDATE"
+# What a run may wait for: a decision still open, or an answer the worker has not taken for the agent yet.
+WAITS_FOR = """
+SELECT EXISTS (SELECT 1 FROM decisions WHERE run_id = %(id)s AND state = 'open')
+    OR EXISTS (SELECT 1 FROM run_inbox WHERE run_id = %(id)s AND decision_id IS NOT NULL AND delivered_at IS NULL)
+"""
 
 
 def _reported_columns(body: StateReport) -> dict:
@@ -1474,6 +1535,12 @@ async def report_state(request: Request, run_id: RunId, body: StateReport, user:
         except runs.TransitionRefused as exc:
             raise HTTPException(409, f"run {run_id}: {exc}") from None
         _check_verdict(run_id, kind, approval, body)
+        if body.state == "waiting" and not (await (await conn.execute(WAITS_FOR, {"id": run_id})).fetchone())[0]:
+            raise HTTPException(
+                409,
+                f"run {run_id} has no open decision and no answer waiting for the agent: a run waits only for the "
+                "answer to a decision of its own, and the time it waits does not count toward its timeout",
+            )
         error = body.error
         if body.state == "failed" and error is None:
             error = f"worker {name} reported that the run failed"

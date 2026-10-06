@@ -59,7 +59,9 @@ RUN_KINDS = ("step", "plan")  # a run of one step, or of every step of a plan no
 RUNTIMES = ("claude-code", "opencode", "codex")
 MODES = ("headless", "interactive")
 APPROVALS = ("auto", "review")
-CONTROLS = ("cancel", "takeover", "handback", "terminal_open", "inbox", "drain")  # what a heartbeat answer carries
+# What a heartbeat answer carries: per run, whether to cancel, take over, hand back, open the terminal or park, how
+# many inbox messages and open decisions it has; for the worker, whether to drain.
+CONTROLS = ("cancel", "takeover", "handback", "terminal_open", "park", "inbox", "decisions", "drain")
 
 DECISION_WAIT_SECONDS = 24 * 3600  # a run waiting this long for its owner's answer is parked
 PARKED_DAYS = 7  # a run parked this long is cancelled, and its open decisions expire
@@ -120,6 +122,10 @@ DECISION_STATES = ("open", "answered", "expired", "cancelled")
 DECISION_OPTIONS = (2, 6)  # the fewest and the most options a decision offers
 OPTION_KEY = r"^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$"  # the key of an option, as `worker ask --option KEY=LABEL` gives it
 MAX_DECISION_CONTEXT_BYTES = 16 * 1024  # the markdown context of a decision
+MAX_QUESTION_CHARS = 2000  # the question of a decision
+MAX_ANSWER_BYTES = 4 * 1024  # the owner's own text in an answer, which goes to the agent in an inbox message
+MAX_NOTICE_BODY_BYTES = 16 * 1024  # the body of a notice, and of any notification
+MAX_NOTICE_COMMITS = 100  # the commits a notice of a push or merge names
 NOTICE_KINDS = ("push_default_branch", "merge_default_branch", "plan_finished", "run_failed")
 NOTIFICATION_KINDS = ("decision", "notice")
 DELIVERY_STATES = ("pending", "delivered", "failed")  # of one notification on one channel
