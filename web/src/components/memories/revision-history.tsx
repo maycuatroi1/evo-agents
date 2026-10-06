@@ -1,6 +1,6 @@
 "use client";
 
-import { Archive, LoaderCircle } from "lucide-react";
+import { Archive } from "lucide-react";
 import type { Route } from "next";
 import Link from "next/link";
 import { useFormatter, useTranslations } from "next-intl";
@@ -167,8 +167,7 @@ function Entries({
         </p>
       ) : null}
       {before !== null ? (
-        <Button variant="outline" size="sm" onClick={() => void more()} disabled={loading} className="self-start">
-          {loading ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : null}
+        <Button variant="outline" size="sm" onClick={() => void more()} busy={loading} className="self-start">
           {loading ? t("loadingMore") : t("more")}
         </Button>
       ) : null}

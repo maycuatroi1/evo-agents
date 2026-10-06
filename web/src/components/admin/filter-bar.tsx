@@ -48,12 +48,12 @@ export function FilterBar({
       <div className="mt-4 flex flex-wrap items-end gap-2 border-t pt-4">
         {footer ? <div className="mr-auto">{footer}</div> : <span className="mr-auto" />}
         {canClear ? (
-          <Button type="button" variant="ghost" size="lg" onClick={onClear}>
+          <Button type="button" variant="ghost" onClick={onClear}>
             <X aria-hidden="true" />
             {t("clear")}
           </Button>
         ) : null}
-        <Button type="submit" size="lg" data-testid={`${testId}-apply`}>
+        <Button type="submit" data-testid={`${testId}-apply`}>
           <Filter aria-hidden="true" />
           {t("apply")}
         </Button>
@@ -114,7 +114,7 @@ export function PageSizeField({ id, value }: { id: string; value: number }) {
       <Label htmlFor={id} className="font-normal text-muted-foreground">
         {t("pageSize")}
       </Label>
-      <NativeSelect id={id} name="limit" defaultValue={String(value)} className="[&_select]:h-9">
+      <NativeSelect id={id} name="limit" defaultValue={String(value)}>
         {PAGE_SIZES.map((size) => (
           <NativeSelectOption key={size} value={String(size)}>
             {size}

@@ -319,7 +319,6 @@ export function RunLogCard({
           <Button
             type="button"
             variant="outline"
-            size="lg"
             aria-pressed={follow}
             onClick={() => setFollow((value) => !value)}
             className="aria-pressed:border-brand aria-pressed:bg-surface-selected aria-pressed:text-foreground"
@@ -331,7 +330,6 @@ export function RunLogCard({
           <Button
             type="button"
             variant="outline"
-            size="lg"
             aria-pressed={frozenAt !== null}
             onClick={() => setFrozenAt((value) => (value === null ? all.length : null))}
             data-testid="log-pause"

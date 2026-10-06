@@ -70,6 +70,60 @@
     "reader": "Đọc",
     "none": "Không có vai trò"
   },
+  "status": {
+    "run": {
+      "queued": "Đang chờ",
+      "leased": "Đã nhận",
+      "running": "Đang chạy",
+      "interactive": "Tương tác",
+      "verifying": "Đang kiểm",
+      "waiting": "Chờ quyết định",
+      "review": "Chờ duyệt",
+      "parked": "Tạm gác",
+      "done": "Xong",
+      "failed": "Thất bại",
+      "lost": "Mất lease",
+      "cancelled": "Đã huỷ"
+    },
+    "worker": {
+      "idle": "Rảnh",
+      "busy": "Đang chạy",
+      "draining": "Ngừng nhận việc",
+      "offline": "Offline",
+      "revoked": "Đã thu hồi"
+    },
+    "plan": {
+      "pending": "Chưa xong",
+      "active": "Plan run đang chạy",
+      "blocked": "Bị chặn",
+      "completed": "Đã hoàn tất"
+    },
+    "step": {
+      "pending": "Chưa làm",
+      "in_progress": "Đang làm",
+      "blocked": "Bị chặn",
+      "done": "Xong"
+    },
+    "repo": {
+      "merged": "Đã merge",
+      "done": "Xong",
+      "in_progress": "Đang làm",
+      "pending": "Chưa làm",
+      "not-needed": "Không cần"
+    },
+    "decision": {
+      "open": "Đang mở",
+      "answered": "Đã trả lời",
+      "expired": "Hết hạn",
+      "cancelled": "Đã huỷ"
+    },
+    "other": "Trạng thái khác: {status}"
+  },
+  "identifier": {
+    "copy": "Sao chép {value}",
+    "copied": "Đã chép {value} vào clipboard",
+    "selected": "Đã chọn sẵn: bấm Ctrl+C hoặc Cmd+C để chép"
+  },
   "home": {
     "title": "Dự án của tôi",
     "description": "Các dự án hub trả về cho tài khoản của bạn, kèm vai trò và mức nhãn cao nhất bạn được xem.",
@@ -411,25 +465,6 @@
       "label": "Các phần của plan",
       "steps": "Các bước",
       "revisions": "Lịch sử revision"
-    },
-    "area": {
-      "active": "Đang chạy",
-      "completed": "Đã hoàn tất"
-    },
-    "status": {
-      "pending": "Chưa làm",
-      "in_progress": "Đang làm",
-      "blocked": "Bị chặn",
-      "done": "Xong",
-      "other": "Trạng thái khác: {status}"
-    },
-    "repoStatus": {
-      "merged": "Đã merge",
-      "done": "Xong",
-      "in_progress": "Đang làm",
-      "pending": "Chưa làm",
-      "not-needed": "Không cần",
-      "other": "Trạng thái khác: {status}"
     },
     "progress": {
       "title": "Tiến độ",
@@ -1119,13 +1154,6 @@
     "slotsLabel": "Đang dùng {held} trên {slots} slot",
     "notReported": "Chưa báo",
     "never": "Chưa có",
-    "status": {
-      "idle": "Rảnh",
-      "busy": "Đang chạy",
-      "draining": "Ngừng nhận việc",
-      "offline": "Offline",
-      "revoked": "Đã thu hồi"
-    },
     "summary": {
       "label": "Tóm tắt",
       "idle": "Rảnh",
@@ -1296,20 +1324,6 @@
     "caption": "Run của dự án {project}",
     "pagerLabel": "run",
     "dispatched": "{count, plural, =1 {Đã xếp run {ids} vào queue.} other {Đã xếp # run vào queue: {ids}.}}",
-    "state": {
-      "queued": "Đang chờ",
-      "leased": "Đã nhận",
-      "running": "Đang chạy",
-      "interactive": "Tương tác",
-      "verifying": "Đang kiểm",
-      "waiting": "Chờ quyết định",
-      "review": "Chờ duyệt",
-      "parked": "Tạm gác",
-      "done": "Xong",
-      "failed": "Thất bại",
-      "lost": "Mất lease",
-      "cancelled": "Đã huỷ"
-    },
     "runtime": {
       "any": "Bất kỳ",
       "claude-code": "Claude Code",
@@ -1511,15 +1525,10 @@
       "holds": "<link>Plan run #{id}</link> ({state}, do {login} giao) giữ mọi bước của plan này tới khi kết thúc.",
       "listLink": "Plan run #{id}: {state}",
       "phase": {
-        "queued": "Đang chờ",
         "queuedLong": "Đang chờ worker",
-        "running": "Đang chạy",
         "runningLong": "Đang chạy",
-        "waiting": "Chờ quyết định",
         "waitingLong": "Đang chờ bạn quyết định",
-        "parked": "Tạm gác",
         "parkedLong": "Tạm gác",
-        "review": "Chờ duyệt",
         "reviewLong": "Chờ duyệt"
       },
       "lock": {
@@ -1820,7 +1829,8 @@
         "duration": "Thời lượng",
         "waited": "Đã chờ",
         "revision": "Revision của plan",
-        "revisionValue": "r{revision}"
+        "revisionValue": "r{revision}",
+        "copySession": "Sao chép mã phiên"
       },
       "result": {
         "title": "Kết quả",
@@ -1836,7 +1846,8 @@
         "diffstat": "{files, plural, other {# file}}, +{insertions} -{deletions}",
         "viewDiff": "Xem diff",
         "usage": "Mức dùng",
-        "evidence": "Bằng chứng"
+        "evidence": "Bằng chứng",
+        "copyCommit": "Sao chép SHA của commit"
       },
       "actions": {
         "diff": "Xem diff",
@@ -1986,12 +1997,6 @@
     "kind": {
       "decision": "Quyết định",
       "notice": "Thông báo"
-    },
-    "decisionState": {
-      "open": "Đang mở",
-      "answered": "Đã trả lời",
-      "expired": "Hết hạn",
-      "cancelled": "Đã huỷ"
     },
     "category": {
       "deploy": "Triển khai",

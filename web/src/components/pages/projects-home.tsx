@@ -7,6 +7,7 @@ import { useFormatter, useTranslations } from "next-intl";
 import { useMemo } from "react";
 
 import { DataTable, dataTableColumns } from "@/components/data/data-table";
+import { NAME_LINK } from "@/components/data/identifier";
 import { projectHref } from "@/components/shell/nav";
 import { PageHeader } from "@/components/shell/page-header";
 import { RoleBadge } from "@/components/shell/role-badge";
@@ -32,7 +33,7 @@ function ProjectsTable({ projects }: { projects: Project[] }) {
         cell: (info) => (
           <Link
             href={projectHref(info.getValue())}
-            className="font-medium text-brand underline-offset-4 hover:underline"
+            className={NAME_LINK}
             aria-label={t("open", { name: info.getValue() })}
           >
             {info.getValue()}

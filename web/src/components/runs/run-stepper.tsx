@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { useFormatter, useTranslations } from "next-intl";
 
+import { useStatusText } from "@/components/status/status-badge";
 import { cn } from "@/lib/utils";
 
 import type { RunState } from "./queries";
@@ -39,7 +40,7 @@ const BAR: Record<PhaseItem["status"], string> = {
 
 function Item({ item, ended, state }: { item: PhaseItem; ended: Stepper["ended"]; state: RunState }) {
   const t = useTranslations("runs.detail.stepper");
-  const tState = useTranslations("runs.state");
+  const tState = useStatusText("run");
   const format = useFormatter();
   const own = item.phase === "running" && item.status === "current" ? (RUNNING_AS[state] ?? null) : null;
   const label = item.status === "stopped" && ended ? tState(ended) : own ? tState(state) : t(`phase.${item.phase}`);

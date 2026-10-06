@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, Check, ChevronDown, GitBranch, GitCommitHorizontal, Loader2, MessageCircleQuestionMark } from "lucide-react";
+import { ArrowRight, Check, ChevronDown, GitBranch, GitCommitHorizontal, MessageCircleQuestionMark } from "lucide-react";
 import type { Route } from "next";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
@@ -8,11 +8,12 @@ import { type MouseEvent, useId, useState } from "react";
 
 import { Prose } from "@/components/plans/prose";
 import { runHref } from "@/components/runs/queries";
+import { StatusBadge } from "@/components/status/status-badge";
 import { Button } from "@/components/ui/button";
 import { Ago } from "@/components/workers/ago";
 import { cn } from "@/lib/utils";
 
-import { DecisionStateBadge, NOTICE_LOOK, NoticeKindBadge } from "./badges";
+import { NOTICE_LOOK, NoticeKindBadge } from "./badges";
 import { COMMITS_SHOWN, isBranchNotice, isOpenDecision, noticeFacts, shortCommit } from "./model";
 import type { Notification } from "./queries";
 
@@ -35,8 +36,8 @@ function FoldedText({ text }: { text: string }) {
         <Button
           type="button"
           variant="link"
-          size="xs"
-          className="h-auto px-0"
+          size="sm"
+          className="h-auto px-0 text-xs"
           aria-expanded={open}
           aria-controls={`${ids}-body`}
           onClick={() => setOpen(!open)}
@@ -83,7 +84,7 @@ function BranchFacts({ notification }: { notification: Notification }) {
           <dd className="min-w-0">
             <ul className="flex flex-wrap items-center gap-1.5" data-testid="notice-commits">
               {shown.map((sha) => (
-                <li key={sha} className="inline-flex items-center gap-1 rounded border bg-muted/40 px-1.5 py-0.5 font-mono" data-sha={sha}>
+                <li key={sha} className="inline-flex h-5 items-center gap-1 rounded-xs bg-surface-sunken px-1.5 font-mono text-muted-foreground" data-sha={sha}>
                   <GitCommitHorizontal className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
                   <span title={sha}>{shortCommit(sha)}</span>
                   <span className="sr-only">{t("commitFull", { sha })}</span>
@@ -91,7 +92,7 @@ function BranchFacts({ notification }: { notification: Notification }) {
               ))}
               {more > 0 || all ? (
                 <li>
-                  <Button type="button" variant="link" size="xs" className="h-auto px-0" aria-expanded={all} onClick={() => setAll(!all)} data-testid="notice-commits-toggle">
+                  <Button type="button" variant="link" size="sm" className="h-auto px-0 text-xs" aria-expanded={all} onClick={() => setAll(!all)} data-testid="notice-commits-toggle">
                     {all ? t("fewerCommits") : t("moreCommits", { count: more })}
                   </Button>
                 </li>
@@ -179,7 +180,7 @@ export function NotificationItem({
               {t("unread")}
             </span>
           ) : null}
-          {decision && notification.decision_state ? <DecisionStateBadge state={notification.decision_state} /> : null}
+          {decision && notification.decision_state ? <StatusBadge kind="decision" status={notification.decision_state} /> : null}
           {!decision && notification.notice_kind ? <NoticeKindBadge kind={notification.notice_kind} /> : null}
           {notification.project ? <span className="font-mono [overflow-wrap:anywhere]">{notification.project}</span> : null}
           <Ago value={notification.created_at} never="-" />
@@ -242,14 +243,14 @@ export function NotificationItem({
               variant="ghost"
               size="sm"
               className="ml-auto aria-disabled:opacity-60"
-              aria-disabled={reading || undefined}
+              busy={reading}
               aria-label={t("markReadLabel", { title: notification.title })}
               onClick={() => {
                 if (!reading) onRead(notification.id);
               }}
               data-testid="notification-mark-read"
             >
-              {reading ? <Loader2 className="animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <Check aria-hidden="true" />}
+              <Check aria-hidden="true" />
               {t("markRead")}
             </Button>
           ) : null}

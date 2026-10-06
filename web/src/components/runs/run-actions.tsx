@@ -1,6 +1,6 @@
 "use client";
 
-import { Ban, Check, FileDiff, Hand, Info, Loader2, type LucideIcon, RotateCcw, ShieldAlert, Square, TriangleAlert, Undo2 } from "lucide-react";
+import { Ban, Check, FileDiff, Hand, Info, type LucideIcon, RotateCcw, ShieldAlert, Square, TriangleAlert, Undo2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useFormatter, useTranslations } from "next-intl";
@@ -105,8 +105,8 @@ function TakeoverDialog({
           >
             {t("cancel")}
           </Button>
-          <Button type="button" size="lg" onClick={() => !pending && onConfirm()} aria-disabled={pending || undefined} data-testid="takeover-confirm">
-            {pending ? <Loader2 className="animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <Hand aria-hidden="true" />}
+          <Button type="button" size="lg" onClick={() => !pending && onConfirm()} busy={pending} data-testid="takeover-confirm">
+            <Hand aria-hidden="true" />
             {pending ? t("pending") : t("confirm")}
           </Button>
         </DialogFooter>
@@ -163,13 +163,11 @@ export function RunActions({ run, controls, onNotice }: { run: Run; controls: Ru
   };
 
   const busy = (action: RunControl) => control.isPending && acting === action;
-  const icon = (action: RunControl, Icon: LucideIcon) =>
-    busy(action) ? <Loader2 className="animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <Icon aria-hidden="true" />;
 
   return (
     <div className="flex flex-wrap items-center gap-2" data-testid="run-actions">
       {run.diff_sha256 ? (
-        <Button asChild variant="outline" size="lg">
+        <Button asChild variant="outline">
           <Link href={runDiffHref(run.project, run.id)} data-testid="run-view-diff">
             <FileDiff aria-hidden="true" />
             {t("diff")}
@@ -177,16 +175,15 @@ export function RunActions({ run, controls, onNotice }: { run: Run; controls: Ru
         </Button>
       ) : null}
       {controls.rerun ? (
-        <Button type="button" variant="outline" size="lg" onClick={() => act("rerun")} aria-disabled={control.isPending || undefined} data-testid="run-rerun">
-          {icon("rerun", RotateCcw)}
+        <Button type="button" variant="outline" onClick={() => act("rerun")} aria-disabled={control.isPending || undefined} busy={busy("rerun")} data-testid="run-rerun">
+          <RotateCcw aria-hidden="true" />
           {t("rerun")}
         </Button>
       ) : null}
       {controls.cancel === "offer" ? (
         <Button
           type="button"
-          variant="destructive"
-          size="lg"
+          variant="quiet-danger"
           onClick={() => {
             setDialogError(null);
             setConfirming("cancel");
@@ -202,7 +199,6 @@ export function RunActions({ run, controls, onNotice }: { run: Run; controls: Ru
         <Button
           type="button"
           variant="outline"
-          size="lg"
           onClick={() => {
             setDialogError(null);
             setConfirming("takeover");
@@ -215,14 +211,14 @@ export function RunActions({ run, controls, onNotice }: { run: Run; controls: Ru
         </Button>
       ) : null}
       {controls.handback === "offer" ? (
-        <Button type="button" size="lg" onClick={() => act("handback")} aria-disabled={control.isPending || undefined} data-testid="run-handback">
-          {icon("handback", Undo2)}
+        <Button type="button" onClick={() => act("handback")} aria-disabled={control.isPending || undefined} busy={busy("handback")} data-testid="run-handback">
+          <Undo2 aria-hidden="true" />
           {t("handback")}
         </Button>
       ) : null}
       {controls.approve ? (
-        <Button type="button" size="lg" onClick={() => act("approve")} aria-disabled={control.isPending || undefined} data-testid="run-approve">
-          {icon("approve", Check)}
+        <Button type="button" onClick={() => act("approve")} aria-disabled={control.isPending || undefined} busy={busy("approve")} data-testid="run-approve">
+          <Check aria-hidden="true" />
           {t("approve")}
         </Button>
       ) : null}

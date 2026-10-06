@@ -7,6 +7,7 @@ import { useFormatter, useTranslations } from "next-intl";
 import { useMemo } from "react";
 
 import { DataTable, dataTableColumns } from "@/components/data/data-table";
+import { NAME_LINK } from "@/components/data/identifier";
 import { SearchField } from "@/components/data/search-field";
 import { PageHeader } from "@/components/shell/page-header";
 import { QueryView, useHubQuery } from "@/components/states/query-view";
@@ -47,10 +48,7 @@ function SkillsTable({ skills, place, repos }: { skills: Skill[]; place: SkillPl
           <div className="flex min-w-0 flex-col gap-0.5 py-0.5">
             <Link
               href={skillHref(place, info.getValue())}
-              className={cn(
-                "w-fit font-mono text-sm font-medium text-brand underline-offset-4 [overflow-wrap:anywhere]",
-                "hover:underline",
-              )}
+              className={cn(NAME_LINK, "w-fit font-mono text-sm [overflow-wrap:anywhere]")}
               data-skill-name={info.getValue()}
             >
               {info.getValue()}
@@ -146,7 +144,7 @@ export function SkillsBrowser({ place, initialError }: { place: SkillPlace; init
                   project: place.project,
                 })}
               >
-                <Button asChild variant="outline" size="lg">
+                <Button asChild variant="outline">
                   <Link href="/skills">
                     <Globe aria-hidden="true" />
                     {t("empty.toGlobal")}
@@ -187,7 +185,7 @@ export function SkillsBrowser({ place, initialError }: { place: SkillPlace; init
                   title={t("noResults.title", { q: filter })}
                   description={t("noResults.description")}
                 >
-                  <Button variant="outline" size="lg" onClick={() => setFilter("")}>
+                  <Button variant="outline" onClick={() => setFilter("")}>
                     {t("filter.clear")}
                   </Button>
                 </EmptyState>

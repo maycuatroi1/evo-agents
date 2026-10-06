@@ -8,7 +8,7 @@ import { useMemo, useState } from "react";
 
 import { NoticeArea, useNotice } from "@/components/admin/notice";
 import { DataTable, dataTableColumns } from "@/components/data/data-table";
-import { PlanRunPhaseBadge } from "@/components/runs/badges";
+import { NAME_LINK } from "@/components/data/identifier";
 import { useCanDispatch, usePlanRunNotice } from "@/components/runs/hooks";
 import { activePlanRun, planRunPhase } from "@/components/runs/model";
 import { RunPlanButton } from "@/components/runs/plan-run";
@@ -16,12 +16,14 @@ import { type Run, runHref, runsSummaryQuery } from "@/components/runs/queries";
 import { PageHeader } from "@/components/shell/page-header";
 import { QueryView, useHubQuery } from "@/components/states/query-view";
 import { EmptyState, NotFoundState, TableSkeleton } from "@/components/states/states";
+import { StatusBadge } from "@/components/status/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { browserApi } from "@/lib/api/browser";
 import type { ApiErrorInfo } from "@/lib/api/errors";
 import { plansQuery } from "@/lib/plan-queries";
 import { type PlanArea, type PlanSummary, percent } from "@/lib/plans";
+import { cn } from "@/lib/utils";
 
 import { planHref } from "./links";
 import { ReadOnlyNotice } from "./plan-header";
@@ -39,12 +41,12 @@ function PlanRunLink({ project, run }: { project: string; run: Run }) {
   return (
     <Link
       href={runHref(project, run.id)}
-      className="w-fit rounded-sm underline-offset-4 hover:underline"
+      className="w-fit rounded-full transition-[filter] hover:brightness-95 dark:hover:brightness-125"
       aria-label={t("listLink", { id: run.id, state: t(`phase.${phase}Long`) })}
       data-testid="plan-run-link"
       data-run-id={run.id}
     >
-      <PlanRunPhaseBadge phase={phase} />
+      <StatusBadge kind="run" status={phase} data-testid="plan-run-phase" />
     </Link>
   );
 }
@@ -86,7 +88,7 @@ function PlansTable({
             runs={activity.runs}
             loaded={activity.loaded}
             onDispatched={onDispatched}
-            size="lg"
+            size="sm"
             variant="outline"
             layout="row"
             testId="plans-run-plan"
@@ -106,7 +108,7 @@ function PlansTable({
             <div className="flex min-w-0 flex-col items-start gap-0.5">
               <Link
                 href={planHref(project, plan.plan_id)}
-                className="font-medium text-pretty text-brand underline-offset-4 hover:underline"
+                className={cn(NAME_LINK, "text-pretty")}
                 data-testid="plan-link"
               >
                 {plan.title ?? plan.plan_id}

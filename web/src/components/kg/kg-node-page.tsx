@@ -49,7 +49,7 @@ function NodeNotFound({ project, id }: { project: string; id: string }) {
       }
       testId="state-not-found"
     >
-      <Button asChild variant="outline" size="lg">
+      <Button asChild variant="outline">
         <Link href={kgHref(project, id ? { q: id } : undefined)}>{t("searchInstead")}</Link>
       </Button>
     </StatePanel>

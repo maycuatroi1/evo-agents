@@ -5,12 +5,12 @@ import Link from "next/link";
 import { useFormatter, useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 
-import { Badge } from "@/components/ui/badge";
-import type { Plan } from "@/lib/plans";
+import { Identifier } from "@/components/data/identifier";
+import { StatusBadge } from "@/components/status/status-badge";
+import { countSteps, type Plan, parsePlan, planState } from "@/lib/plans";
 import { cn } from "@/lib/utils";
 
 import { planHref, plansHref, revisionsHref } from "./links";
-import { AreaBadge } from "./status";
 
 /**
  * A plan's content is read-only on the web (decision of 2026-10-04): every plan page says how a plan is changed, and
@@ -94,6 +94,7 @@ export function PlanHeader({
   current,
   title: pageTitle,
   actions,
+  planRunActive = false,
 }: {
   project: string;
   plan: Plan;
@@ -101,11 +102,14 @@ export function PlanHeader({
   /** The page's own h1 (a step's title); the plan's title becomes the line above it. */
   title?: ReactNode;
   actions?: ReactNode;
+  /** A plan run holds the plan: its pill says Plan run active instead of pending or blocked. */
+  planRunActive?: boolean;
 }) {
   const t = useTranslations("plans");
   const format = useFormatter();
   const planTitle = typeof plan.body.title === "string" && plan.body.title.trim() ? plan.body.title : null;
   const name = planTitle ?? plan.plan_id;
+  const state = planState(plan.area, countSteps(parsePlan(plan.body, plan.plan_id).steps), planRunActive);
   return (
     <header className={cn("flex flex-col gap-4", current ? null : "border-b pb-5")}>
       <BackLink href={pageTitle ? planHref(project, plan.plan_id) : plansHref(project)}>
@@ -136,10 +140,8 @@ export function PlanHeader({
         </div>
         <div className="flex shrink-0 flex-col items-start gap-3 sm:items-end">
           <div className="flex flex-wrap items-center gap-2">
-            <AreaBadge area={plan.area} />
-            <Badge variant="outline" className="font-mono" data-testid="plan-revision">
-              {t("revision", { revision: plan.revision })}
-            </Badge>
+            <StatusBadge kind="plan" status={state} size="lg" />
+            <Identifier value={t("revision", { revision: plan.revision })} testId="plan-revision" />
           </div>
           {actions ? (
             <div className="flex flex-wrap items-start gap-2 sm:justify-end" data-testid="plan-actions">

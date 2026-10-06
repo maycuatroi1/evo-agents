@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, CircleCheck, Clock, Eraser, Info, Loader2, Lock, Send } from "lucide-react";
+import { Check, CircleCheck, Clock, Eraser, Info, Lock, Send } from "lucide-react";
 import Link from "next/link";
 import { useFormatter, useTranslations } from "next-intl";
 import { type FormEvent, type ReactNode, type Ref, useId, useRef, useState } from "react";
@@ -9,10 +9,10 @@ import { type Notice, NoticeArea, useNotice } from "@/components/admin/notice";
 import { SafeMarkdown } from "@/components/memories/markdown";
 import { Prose } from "@/components/plans/prose";
 import { planHref, stepHref } from "@/components/plans/links";
-import { RunStateBadge } from "@/components/runs/badges";
 import { Choice, Section } from "@/components/runs/dispatch-fields";
 import { runHref } from "@/components/runs/queries";
 import { utf8Bytes } from "@/components/runs/run-model";
+import { StatusBadge, useStatusText } from "@/components/status/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -20,7 +20,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Ago } from "@/components/workers/ago";
 import { cn } from "@/lib/utils";
 
-import { DecisionCategoryBadge, DecisionStateBadge, RecommendedBadge } from "./badges";
+import { DecisionCategoryBadge, RecommendedBadge } from "./badges";
 import { useAnswerDecision, useAnswerFailure, useInboxViewer } from "./hooks";
 import { answerAccess, answerBody, answerProblem, type AnswerProblem, chosenOption } from "./model";
 import { type Decision, type DecisionOption, MAX_ANSWER_BYTES } from "./queries";
@@ -78,7 +78,7 @@ function DecisionFacts({ decision, where }: { decision: Decision; where: "inbox"
               <Link href={runHref(decision.project, decision.run_id)} className={cn(FACT_LINK, "font-mono tabular-nums")} data-testid="decision-run-link">
                 {t("runLink", { id: decision.run_id })}
               </Link>
-              <RunStateBadge state={decision.run_state} />
+              <StatusBadge kind="run" status={decision.run_state} />
             </span>
           </Fact>
         </>
@@ -338,8 +338,8 @@ export function AnswerForm({ decision, onNotice, onAnswered }: { decision: Decis
           <Info className="mt-px size-3.5 shrink-0" aria-hidden="true" />
           <span>{parked ? t("hintParked", { run: decision.run_id }) : t("hint", { run: decision.run_id })}</span>
         </p>
-        <Button type="submit" size="lg" className="shrink-0" aria-disabled={answer.isPending || undefined} data-testid="decision-send">
-          {answer.isPending ? <Loader2 className="animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <Send aria-hidden="true" />}
+        <Button type="submit" size="lg" className="shrink-0" busy={answer.isPending} data-testid="decision-send">
+          <Send aria-hidden="true" />
           {answer.isPending ? t("sending") : t("send")}
         </Button>
       </div>
@@ -350,7 +350,7 @@ export function AnswerForm({ decision, onNotice, onAnswered }: { decision: Decis
 /** Why the visitor sees no form: someone else's decision, one that is closed, or one whose run can no longer take it. */
 function NoFormNote({ decision, access }: { decision: Decision; access: "notOwner" | "runGone" }) {
   const t = useTranslations("inbox.decision");
-  const tState = useTranslations("runs.state");
+  const tState = useStatusText("run");
   return (
     <p className="flex items-start gap-2 rounded-md border border-dashed px-3 py-2.5 text-sm text-pretty text-muted-foreground" data-testid="decision-locked" data-reason={access}>
       <Lock className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
@@ -413,7 +413,7 @@ export function DecisionView({
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
             <span className="font-medium tracking-wide uppercase">{t("number", { id: decision.id })}</span>
-            <DecisionStateBadge state={decision.state} />
+            <StatusBadge kind="decision" status={decision.state} />
             <DecisionCategoryBadge category={decision.category} />
           </p>
           {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}

@@ -70,6 +70,60 @@
     "reader": "Reader",
     "none": "No role"
   },
+  "status": {
+    "run": {
+      "queued": "Queued",
+      "leased": "Leased",
+      "running": "Running",
+      "interactive": "Interactive",
+      "verifying": "Verifying",
+      "waiting": "Waiting for decision",
+      "review": "Review",
+      "parked": "Parked",
+      "done": "Done",
+      "failed": "Failed",
+      "lost": "Lost",
+      "cancelled": "Cancelled"
+    },
+    "worker": {
+      "idle": "Idle",
+      "busy": "Busy",
+      "draining": "Draining",
+      "offline": "Offline",
+      "revoked": "Revoked"
+    },
+    "plan": {
+      "pending": "Pending",
+      "active": "Plan run active",
+      "blocked": "Blocked",
+      "completed": "Completed"
+    },
+    "step": {
+      "pending": "Pending",
+      "in_progress": "In progress",
+      "blocked": "Blocked",
+      "done": "Done"
+    },
+    "repo": {
+      "merged": "Merged",
+      "done": "Done",
+      "in_progress": "In progress",
+      "pending": "Pending",
+      "not-needed": "Not needed"
+    },
+    "decision": {
+      "open": "Open",
+      "answered": "Answered",
+      "expired": "Expired",
+      "cancelled": "Cancelled"
+    },
+    "other": "Other status: {status}"
+  },
+  "identifier": {
+    "copy": "Copy {value}",
+    "copied": "{value} copied to the clipboard",
+    "selected": "Selected: press Ctrl+C or Cmd+C to copy it"
+  },
   "home": {
     "title": "My projects",
     "description": "The projects the hub returns for your account, with your role and the highest label level you may see.",
@@ -411,25 +465,6 @@
       "label": "Parts of the plan",
       "steps": "Steps",
       "revisions": "Revision history"
-    },
-    "area": {
-      "active": "Active",
-      "completed": "Completed"
-    },
-    "status": {
-      "pending": "Pending",
-      "in_progress": "In progress",
-      "blocked": "Blocked",
-      "done": "Done",
-      "other": "Other status: {status}"
-    },
-    "repoStatus": {
-      "merged": "Merged",
-      "done": "Done",
-      "in_progress": "In progress",
-      "pending": "Pending",
-      "not-needed": "Not needed",
-      "other": "Other status: {status}"
     },
     "progress": {
       "title": "Progress",
@@ -1119,13 +1154,6 @@
     "slotsLabel": "{held} of {slots} slots in use",
     "notReported": "Not reported",
     "never": "Never",
-    "status": {
-      "idle": "Idle",
-      "busy": "Busy",
-      "draining": "Draining",
-      "offline": "Offline",
-      "revoked": "Revoked"
-    },
     "summary": {
       "label": "Summary",
       "idle": "Idle",
@@ -1296,20 +1324,6 @@
     "caption": "Runs of project {project}",
     "pagerLabel": "runs",
     "dispatched": "{count, plural, one {Queued run {ids}.} other {Queued # runs: {ids}.}}",
-    "state": {
-      "queued": "Queued",
-      "leased": "Leased",
-      "running": "Running",
-      "interactive": "Interactive",
-      "verifying": "Verifying",
-      "waiting": "Waiting",
-      "review": "Review",
-      "parked": "Parked",
-      "done": "Done",
-      "failed": "Failed",
-      "lost": "Lost",
-      "cancelled": "Cancelled"
-    },
     "runtime": {
       "any": "Any",
       "claude-code": "Claude Code",
@@ -1511,15 +1525,10 @@
       "holds": "<link>Plan run #{id}</link> ({state}, dispatched by {login}) holds every step of this plan until it ends.",
       "listLink": "Plan run #{id}: {state}",
       "phase": {
-        "queued": "Queued",
         "queuedLong": "Queued",
-        "running": "Running",
         "runningLong": "Running",
-        "waiting": "Waiting",
         "waitingLong": "Waiting for your decision",
-        "parked": "Parked",
         "parkedLong": "Parked",
-        "review": "Review",
         "reviewLong": "Review"
       },
       "lock": {
@@ -1820,7 +1829,8 @@
         "duration": "Duration",
         "waited": "Waiting",
         "revision": "Plan revision",
-        "revisionValue": "r{revision}"
+        "revisionValue": "r{revision}",
+        "copySession": "Copy the session id"
       },
       "result": {
         "title": "Result",
@@ -1836,7 +1846,8 @@
         "diffstat": "{files, plural, one {# file} other {# files}}, +{insertions} -{deletions}",
         "viewDiff": "View the diff",
         "usage": "Usage",
-        "evidence": "Evidence"
+        "evidence": "Evidence",
+        "copyCommit": "Copy the commit SHA"
       },
       "actions": {
         "diff": "View diff",
@@ -1986,12 +1997,6 @@
     "kind": {
       "decision": "Decision",
       "notice": "Notice"
-    },
-    "decisionState": {
-      "open": "Open",
-      "answered": "Answered",
-      "expired": "Expired",
-      "cancelled": "Cancelled"
     },
     "category": {
       "deploy": "Deploy",

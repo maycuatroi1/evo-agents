@@ -1,6 +1,6 @@
 "use client";
 
-import { Loader2, type LucideIcon } from "lucide-react";
+import { type LucideIcon } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { type FormEvent, type ReactNode, useId, useState } from "react";
 
@@ -17,7 +17,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { cn } from "@/lib/utils";
 
 type Props = {
   open: boolean;
@@ -146,16 +145,11 @@ function ConfirmForm({
         </AlertDialogCancel>
         <Button
           type="submit"
+          variant={tone === "danger" ? "destructive" : "default"}
           size="lg"
-          className={cn(
-            tone === "danger"
-              ? "bg-destructive text-on-danger hover:brightness-94"
-              : "bg-primary text-primary-foreground hover:bg-action-hover",
-          )}
-          aria-disabled={pending || undefined}
+          busy={pending}
           data-testid={`${testId}-confirm`}
         >
-          {pending ? <Loader2 className="animate-spin motion-reduce:animate-none" aria-hidden="true" /> : null}
           {pending ? pendingLabel : confirmLabel}
         </Button>
       </div>

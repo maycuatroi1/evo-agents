@@ -7,6 +7,7 @@ import { useFormatter, useTranslations } from "next-intl";
 import { type ReactNode, useCallback, useEffect, useId, useRef, useState } from "react";
 
 import { useNow } from "@/components/kg/use-now";
+import { useStatusText } from "@/components/status/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { browserApi } from "@/lib/api/browser";
@@ -74,7 +75,7 @@ export function RunTerminalPanel({
   sessionCreatedAt: string | null;
 }) {
   const t = useTranslations("runs.detail.terminal");
-  const tState = useTranslations("runs.state");
+  const tState = useStatusText("run");
   const format = useFormatter();
   const ids = useId();
   const worker = run.worker ?? "";
@@ -152,7 +153,6 @@ export function RunTerminalPanel({
     action = (
       <Button
         type="button"
-        size="lg"
         onClick={() => {
           setLeaving(true);
           void signInAgain();
@@ -166,14 +166,14 @@ export function RunTerminalPanel({
     );
   } else if (busy) {
     action = (
-      <Button type="button" variant="outline" size="lg" onClick={disconnect} disabled={shown === "loading"} data-testid="terminal-disconnect">
+      <Button type="button" variant="outline" onClick={disconnect} disabled={shown === "loading"} data-testid="terminal-disconnect">
         <Unplug aria-hidden="true" />
         {t("disconnect")}
       </Button>
     );
   } else {
     action = (
-      <Button type="button" size="lg" onClick={start} disabled={!open} data-testid="terminal-connect">
+      <Button type="button" onClick={start} disabled={!open} data-testid="terminal-connect">
         <SquareTerminal aria-hidden="true" />
         {session > 0 ? t("connectAgain") : t("connect")}
       </Button>

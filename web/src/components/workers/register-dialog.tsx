@@ -467,8 +467,8 @@ function PairingForm({
             {t("cancel")}
           </Button>
         </DialogClose>
-        <Button type="submit" size="lg" disabled={noProjects} aria-disabled={pending || undefined} data-testid="register-create">
-          {pending ? <Loader2 className="animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <KeyRound aria-hidden="true" />}
+        <Button type="submit" size="lg" disabled={noProjects} busy={pending} data-testid="register-create">
+          <KeyRound aria-hidden="true" />
           {pending ? t("creating") : t("create")}
         </Button>
       </DialogFooter>

@@ -10,12 +10,13 @@ import { planHref, stepHref } from "@/components/plans/links";
 import { PageHeader } from "@/components/shell/page-header";
 import { QueryView, useHubQuery } from "@/components/states/query-view";
 import { NotFoundState, PageSkeleton } from "@/components/states/states";
+import { StatusBadge, useStatusText } from "@/components/status/status-badge";
 import { workerQuery } from "@/components/workers/queries";
 import { browserApi } from "@/lib/api/browser";
 import type { ApiErrorInfo } from "@/lib/api/errors";
 import { whoamiQuery } from "@/lib/queries";
 
-import { PlanRunKindBadge, RunStateBadge } from "./badges";
+import { PlanRunKindBadge } from "./badges";
 import { useRunViewer } from "./hooks";
 import type { RunMove } from "./log-model";
 import { isActiveState, type Run, runKey, runQuery } from "./queries";
@@ -34,7 +35,7 @@ import { useRunLog } from "./use-run-log";
 /** A move between states as the log says it: "Running to Verifying, by the worker: ..." */
 function useDescribeMove() {
   const t = useTranslations("runs.detail.log");
-  const tState = useTranslations("runs.state");
+  const tState = useStatusText("run");
   return useCallback(
     (move: RunMove) => {
       const to = tState(move.to);
@@ -102,8 +103,8 @@ function RunPage({ run }: { run: Run }) {
             <span>
               {plan ? t("planTitle") : t("title")} <span className="font-mono tabular-nums">#{run.id}</span>
             </span>
-            <RunStateBadge state={run.state} className="h-6 text-sm" />
-            {plan ? <PlanRunKindBadge className="h-6 text-sm" /> : null}
+            <StatusBadge kind="run" status={run.state} size="lg" />
+            {plan ? <PlanRunKindBadge className="h-6 px-2 text-xs" /> : null}
           </span>
         }
         description={

@@ -5,12 +5,14 @@ import { useFormatter, useTranslations } from "next-intl";
 import { useMemo } from "react";
 
 import { DataTable, dataTableColumns } from "@/components/data/data-table";
+import { Identifier, NAME_LINK, RunRef } from "@/components/data/identifier";
 import { useNow } from "@/components/kg/use-now";
 import { planHref, stepHref } from "@/components/plans/links";
+import { StatusBadge } from "@/components/status/status-badge";
 import { workerHref } from "@/components/workers/queries";
 import { cn } from "@/lib/utils";
 
-import { PlanRunKindBadge, RunStateBadge } from "./badges";
+import { PlanRunKindBadge } from "./badges";
 import { durationParts, runTiming } from "./model";
 import { isActiveState, type Run, runHref } from "./queries";
 
@@ -98,7 +100,7 @@ function StepCell({ run, showProject }: { run: Run; showProject: boolean }) {
       {plan ? (
         <Link
           href={planHref(run.project, run.plan_id)}
-          className="w-fit text-sm font-medium text-brand underline-offset-4 hover:underline"
+          className={cn(NAME_LINK, "w-fit text-sm")}
           data-testid="run-plan-link"
         >
           {run.title ?? run.plan_id}
@@ -106,7 +108,7 @@ function StepCell({ run, showProject }: { run: Run; showProject: boolean }) {
       ) : (
         <Link
           href={stepHref(run.project, run.plan_id, run.step_key ?? "")}
-          className="w-fit text-sm font-medium text-brand underline-offset-4 hover:underline"
+          className={cn(NAME_LINK, "w-fit text-sm")}
           data-testid="run-step-link"
         >
           {run.title ?? t("untitled")}
@@ -141,16 +143,7 @@ function WorkerCell({ run, viewer }: { run: Run; viewer: Viewer | null }) {
     );
   }
   const mayOpen = viewer !== null && (viewer.admin || viewer.login === run.dispatched_by);
-  return mayOpen ? (
-    <Link
-      href={workerHref(run.worker_id)}
-      className="font-mono text-xs text-brand underline-offset-4 [overflow-wrap:anywhere] hover:underline"
-    >
-      {run.worker}
-    </Link>
-  ) : (
-    <span className="font-mono text-xs [overflow-wrap:anywhere]">{run.worker}</span>
-  );
+  return <Identifier value={run.worker} href={mayOpen ? workerHref(run.worker_id) : undefined} />;
 }
 
 /** Runs as a table, newest first as the API sends them; the order is the server's, so the columns do not sort. */
@@ -175,15 +168,13 @@ export function RunsTable({
       id: "run",
       header: () => t("columns.run"),
       cell: (info) => (
-        <Link
+        <RunRef
+          id={info.row.original.id}
           href={runHref(info.row.original.project, info.row.original.id)}
-          className="font-mono text-sm font-medium text-brand tabular-nums underline-offset-4 hover:underline"
-          aria-label={t("openRun", { id: info.row.original.id })}
+          label={t("openRun", { id: info.row.original.id })}
           data-run-id={info.row.original.id}
           data-testid="run-link"
-        >
-          #{info.row.original.id}
-        </Link>
+        />
       ),
     });
     const step = helper.display({
@@ -194,7 +185,7 @@ export function RunsTable({
     const state = helper.display({
       id: "state",
       header: () => t("columns.state"),
-      cell: (info) => <RunStateBadge state={info.row.original.state} />,
+      cell: (info) => <StatusBadge kind="run" status={info.row.original.state} />,
     });
     const worker = helper.display({
       id: "worker",

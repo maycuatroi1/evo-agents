@@ -1,121 +1,75 @@
 "use client";
 
-import {
-  Archive,
-  CircleCheck,
-  CircleDashed,
-  CircleDot,
-  CircleHelp,
-  CircleMinus,
-  Flag,
-  GitMerge,
-  type LucideIcon,
-  OctagonAlert,
-  Rocket,
-} from "lucide-react";
+import { CircleMinus, Flag } from "lucide-react";
 import { useTranslations } from "next-intl";
 
-import { Badge } from "@/components/ui/badge";
-import { type PlanArea, REPO_STATUSES, type RepoStatus, type StepGroup } from "@/lib/plans";
-import { cn } from "@/lib/utils";
+import { Tag } from "@/components/data/identifier";
+import {
+  LookIcon,
+  OTHER_LOOK,
+  OtherStatusBadge,
+  STATUS_LOOKS,
+  StatusBadge,
+  StatusIcon,
+  type StatusLook,
+  useStatusText,
+} from "@/components/status/status-badge";
+import { REPO_STATUSES, type RepoStatus, type StepGroup } from "@/lib/plans";
 
 /**
- * Status, blocking and area as an icon and a word, never colour alone (web/DESIGN.md). The colours are the
- * design system's state tokens: success for done, info for in progress, warning for blocked, outline otherwise.
+ * A plan's steps and repos on the shared `StatusBadge` (web/DESIGN.md): what the plan pages add is a status the hub
+ * does not know (`other`, kept as written) and the blocking flag.
  */
-type Variant = "outline" | "info" | "success" | "warning";
 
-export const STEP_LOOK: Record<StepGroup, { icon: LucideIcon; variant: Variant; tone: string }> = {
-  pending: { icon: CircleDashed, variant: "outline", tone: "text-muted-foreground" },
-  in_progress: { icon: CircleDot, variant: "info", tone: "text-running" },
-  blocked: { icon: OctagonAlert, variant: "warning", tone: "text-attention" },
-  done: { icon: CircleCheck, variant: "success", tone: "text-success" },
-  other: { icon: CircleHelp, variant: "outline", tone: "text-muted-foreground" },
-};
+/** A step group's look; `other` is a question mark in an outline. */
+export function stepLook(group: StepGroup): StatusLook {
+  return group === "other" ? OTHER_LOOK : STATUS_LOOKS.step[group];
+}
 
 /** The word for a step's status; `raw` is the status as written when it is none of the four. */
 export function useStepStatusText() {
-  const t = useTranslations("plans.status");
+  const text = useStatusText("step");
+  const t = useTranslations("status");
   return (group: StepGroup, raw: string | null = null) =>
-    group === "other" ? t("other", { status: raw ?? "?" }) : t(group);
+    group === "other" ? t("other", { status: raw ?? "?" }) : text(group);
 }
 
-export function StepStatusBadge({
-  group,
-  raw = null,
-  className,
-}: {
-  group: StepGroup;
-  raw?: string | null;
-  className?: string;
-}) {
-  const label = useStepStatusText();
-  const look = STEP_LOOK[group];
-  return (
-    <Badge variant={look.variant} className={className} data-status={group}>
-      <look.icon aria-hidden="true" />
-      {label(group, raw)}
-    </Badge>
+export function StepStatusBadge({ group, raw = null, className }: { group: StepGroup; raw?: string | null; className?: string }) {
+  return group === "other" ? (
+    <OtherStatusBadge raw={raw} className={className} />
+  ) : (
+    <StatusBadge kind="step" status={group} className={className} />
   );
 }
 
-/** The status icon alone, with its word for screen readers (for dense lists where a badge would crowd). */
+/** The status icon alone, with its word for screen readers (for dense lists where a pill would crowd). */
 export function StepStatusIcon({ group, raw = null, className }: { group: StepGroup; raw?: string | null; className?: string }) {
   const label = useStepStatusText();
-  const look = STEP_LOOK[group];
-  return (
-    <span className={cn("inline-flex shrink-0", look.tone, className)} title={label(group, raw)}>
-      <look.icon className="size-4" aria-hidden="true" />
-      <span className="sr-only">{label(group, raw)}</span>
-    </span>
+  return group === "other" ? (
+    <LookIcon look={OTHER_LOOK} label={label(group, raw)} className={className} data-status="other" />
+  ) : (
+    <StatusIcon kind="step" status={group} className={className} />
   );
 }
 
-/** A step marked `blocking: true` holds the plan back until it is done. */
+/** A step marked `blocking: true` holds the plan back until it is done: a property of the step, so a tag. */
 export function BlockingBadge({ blocking, showFalse = false }: { blocking: boolean | null; showFalse?: boolean }) {
   const t = useTranslations("plans.step");
   if (blocking !== true && !showFalse) return null;
   if (blocking === null) return <span className="text-sm text-muted-foreground">{t("blockingUnset")}</span>;
   return (
-    <Badge variant="outline" data-blocking={blocking ? "true" : "false"}>
+    <Tag data-blocking={blocking ? "true" : "false"}>
       {blocking ? <Flag aria-hidden="true" /> : <CircleMinus aria-hidden="true" />}
       {blocking ? t("blocking") : t("notBlocking")}
-    </Badge>
+    </Tag>
   );
 }
-
-const REPO_LOOK: Record<RepoStatus, { icon: LucideIcon; variant: Variant }> = {
-  merged: { icon: GitMerge, variant: "success" },
-  done: { icon: CircleCheck, variant: "success" },
-  in_progress: { icon: CircleDot, variant: "info" },
-  pending: { icon: CircleDashed, variant: "outline" },
-  "not-needed": { icon: CircleMinus, variant: "outline" },
-};
 
 function isRepoStatus(status: string): status is RepoStatus {
   return (REPO_STATUSES as readonly string[]).includes(status);
 }
 
 export function RepoStatusBadge({ status }: { status: string | null }) {
-  const t = useTranslations("plans.repoStatus");
   if (status === null) return <span className="text-muted-foreground">-</span>;
-  const known = isRepoStatus(status);
-  const look = known ? REPO_LOOK[status] : { icon: CircleHelp, variant: "outline" as const };
-  return (
-    <Badge variant={look.variant}>
-      <look.icon aria-hidden="true" />
-      {known ? t(status) : t("other", { status })}
-    </Badge>
-  );
-}
-
-export function AreaBadge({ area }: { area: PlanArea }) {
-  const t = useTranslations("plans.area");
-  const Icon = area === "completed" ? Archive : Rocket;
-  return (
-    <Badge variant={area === "completed" ? "success" : "info"} data-area={area}>
-      <Icon aria-hidden="true" />
-      {t(area)}
-    </Badge>
-  );
+  return isRepoStatus(status) ? <StatusBadge kind="repo" status={status} /> : <OtherStatusBadge raw={status} />;
 }

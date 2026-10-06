@@ -6,6 +6,8 @@ import { useFormatter, useTranslations } from "next-intl";
 import { useId, useMemo, useState } from "react";
 
 import { DataTable, dataTableColumns } from "@/components/data/data-table";
+import { NAME_LINK } from "@/components/data/identifier";
+import { TONE_TEXT } from "@/components/status/status-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -21,7 +23,7 @@ import {
 import { cn } from "@/lib/utils";
 
 import { stepHref } from "./links";
-import { BlockingBadge, STEP_LOOK, StepStatusBadge, StepStatusIcon, useStepStatusText } from "./status";
+import { BlockingBadge, StepStatusBadge, StepStatusIcon, stepLook, useStepStatusText } from "./status";
 
 /** A column shows this many cards before "show all", so a long column does not bury the others; fewer on a phone,
  * where the columns stack. */
@@ -94,7 +96,7 @@ function StepCard({ step, context }: { step: PlanStep; context: Context }) {
       {step.group === "other" ? <StepStatusBadge group="other" raw={step.rawStatus} /> : null}
       <div className="flex flex-wrap items-center gap-1.5">
         {step.repo ? (
-          <span className="inline-flex max-w-full items-center gap-1 rounded-sm bg-muted px-1.5 py-0.5 font-mono text-xs text-muted-foreground">
+          <span className="inline-flex h-5 max-w-full items-center gap-1 rounded-xs bg-surface-sunken px-1.5 font-mono text-xs text-muted-foreground">
             <FolderGit2 className="size-3 shrink-0" aria-hidden="true" />
             <span className="truncate">{step.repo}</span>
           </span>
@@ -125,7 +127,7 @@ function Column({ group, steps, context }: { group: StepGroup; steps: PlanStep[]
   const label = useStepStatusText();
   const [expanded, setExpanded] = useState(false);
   const listId = useId();
-  const look = STEP_LOOK[group];
+  const look = stepLook(group);
   const limit = useIsMobile() ? PHONE_COLUMN_LIMIT : COLUMN_LIMIT;
   const shown = expanded ? steps : steps.slice(0, limit);
   const headingId = `${listId}-heading`;
@@ -136,7 +138,7 @@ function Column({ group, steps, context }: { group: StepGroup; steps: PlanStep[]
       data-testid={`board-column-${group}`}
     >
       <h3 id={headingId} className="flex items-center gap-2 px-1 text-sm font-medium">
-        <look.icon className={cn("size-4", look.tone)} aria-hidden="true" />
+        <look.icon className={cn("size-4", TONE_TEXT[look.tone])} aria-hidden="true" />
         {group === "other" ? t("otherColumn") : label(group)}
         <span className="ml-auto font-mono text-xs text-muted-foreground tabular-nums" data-testid="column-count">
           {steps.length}
@@ -154,7 +156,6 @@ function Column({ group, steps, context }: { group: StepGroup; steps: PlanStep[]
       {steps.length > limit ? (
         <Button
           variant="ghost"
-          size="lg"
           className="w-full text-muted-foreground"
           aria-expanded={expanded}
           aria-controls={listId}
@@ -183,7 +184,7 @@ function StepTable({ steps, context }: { steps: PlanStep[]; context: Context }) 
               <span className="mt-0.5 font-mono text-xs text-muted-foreground tabular-nums">{step.key}</span>
               <Link
                 href={stepHref(context.project, context.planId, step.key)}
-                className="font-medium text-pretty text-brand underline-offset-4 [overflow-wrap:anywhere] hover:underline"
+                className={cn(NAME_LINK, "text-pretty [overflow-wrap:anywhere]")}
               >
                 {stepLabel(step) || step.key}
               </Link>

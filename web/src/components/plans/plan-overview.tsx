@@ -211,6 +211,7 @@ function Overview({ project, plan, activity }: { project: string; plan: Plan; ac
         project={project}
         plan={plan}
         current="steps"
+        planRunActive={activity.planRun !== null}
         actions={
           plan.area === "active" && canDispatch ? (
             <RunPlanButton

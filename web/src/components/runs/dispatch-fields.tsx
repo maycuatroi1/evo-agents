@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useFormatter, useTranslations } from "next-intl";
 import { type ReactNode, useId } from "react";
 
+import { useStatusText } from "@/components/status/status-badge";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { KNOWN_RUNTIMES } from "@/components/workers/model";
@@ -140,7 +141,7 @@ export function WorkerPicker({
   subject?: DispatchSubject;
 }) {
   const t = useTranslations("runs.dispatch");
-  const tStatus = useTranslations("workers.status");
+  const tStatus = useStatusText("worker");
   const ids = useId();
   const none = !loading && workers.length === 0;
   return (

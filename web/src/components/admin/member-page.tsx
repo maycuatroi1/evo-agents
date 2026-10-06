@@ -7,6 +7,7 @@ import { useFormatter, useTranslations } from "next-intl";
 import { type ReactNode, useCallback, useMemo, useState } from "react";
 
 import { DataTable, dataTableColumns } from "@/components/data/data-table";
+import { NAME_LINK } from "@/components/data/identifier";
 import { projectHref } from "@/components/shell/nav";
 import { PageHeader } from "@/components/shell/page-header";
 import { RoleBadge } from "@/components/shell/role-badge";
@@ -18,6 +19,7 @@ import { browserApi } from "@/lib/api/browser";
 import type { Project } from "@/lib/api/client";
 import type { ApiErrorInfo } from "@/lib/api/errors";
 import { projectsQuery } from "@/lib/queries";
+import { cn } from "@/lib/utils";
 
 import { AuditTable } from "./audit-table";
 import { HubAdminBadge, NotSignedInBadge } from "./badges";
@@ -98,7 +100,7 @@ function GrantsTable({
         header: () => t("columns.project"),
         sortFn: "alphanumeric",
         cell: (info) => (
-          <Link href={projectHref(info.getValue())} className="font-mono text-sm font-medium text-brand underline-offset-4 hover:underline">
+          <Link href={projectHref(info.getValue())} className={cn(NAME_LINK, "font-mono text-sm")}>
             {info.getValue()}
           </Link>
         ),
@@ -149,7 +151,6 @@ function GrantsTable({
               <Button
                 type="button"
                 variant="outline"
-                size="lg"
                 aria-label={t("changeLabel", names)}
                 onClick={() => onChange(grant)}
                 data-testid={`change-grant-${grant.project}`}
@@ -160,7 +161,6 @@ function GrantsTable({
               <Button
                 type="button"
                 variant="outline"
-                size="lg"
                 className="text-danger hover:text-danger"
                 aria-label={t("revokeLabel", names)}
                 onClick={() => onRevoke(grant)}
@@ -290,7 +290,7 @@ function MemberView({ user, projects }: { user: AdminUser; projects: Project[] }
           <>
             {user.admin ? <HubAdminBadge /> : null}
             {!user.signed_in ? <NotSignedInBadge /> : null}
-            <Button type="button" size="lg" onClick={grantNew} data-testid="grant-open">
+            <Button type="button" onClick={grantNew} data-testid="grant-open">
               <ShieldPlus aria-hidden="true" />
               {tMembers("grant")}
             </Button>
@@ -321,7 +321,7 @@ function MemberView({ user, projects }: { user: AdminUser; projects: Project[] }
         title={t("tokensTitle")}
         description={t("tokensDescription")}
         action={
-          <Button asChild variant="ghost" size="lg">
+          <Button asChild variant="ghost">
             <Link href={tokensHref({ login: user.login, state: "any" })}>
               {t("allTokens", { login: user.login })}
               <ArrowRight aria-hidden="true" />
@@ -345,7 +345,7 @@ function MemberView({ user, projects }: { user: AdminUser; projects: Project[] }
         title={t("activityTitle")}
         description={t("activityDescription")}
         action={
-          <Button asChild variant="ghost" size="lg">
+          <Button asChild variant="ghost">
             <Link href={auditHref({ actor: user.login })}>
               {t("allActivity")}
               <ArrowRight aria-hidden="true" />

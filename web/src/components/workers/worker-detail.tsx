@@ -8,7 +8,6 @@ import {
   CircleMinus,
   GitBranch,
   Info,
-  Loader2,
   type LucideIcon,
   Pause,
   Play,
@@ -25,6 +24,7 @@ import { WorkerRuns } from "@/components/runs/worker-runs";
 import { PageHeader } from "@/components/shell/page-header";
 import { QueryView, useHubQuery } from "@/components/states/query-view";
 import { NotFoundState, PageSkeleton } from "@/components/states/states";
+import { StatusBadge } from "@/components/status/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -34,7 +34,7 @@ import { whoamiQuery } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 
 import { Ago } from "./ago";
-import { ChipList, WorkerStatusBadge } from "./badges";
+import { ChipList } from "./badges";
 import { ConfirmByName } from "./confirm-by-name";
 import { HeartbeatStrip } from "./heartbeat-strip";
 import { useRecordPrefetched, useWorkerFailure, useWorkerWrite } from "./hooks";
@@ -85,7 +85,7 @@ function WorkerPage({
         title={
           <span className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
             <span className="font-mono [overflow-wrap:anywhere]">{worker.name}</span>
-            <WorkerStatusBadge view={view} className="h-6 text-sm" />
+            <StatusBadge kind="worker" status={view} size="lg" />
           </span>
         }
         description={t("facts", {
@@ -357,17 +357,17 @@ function WorkerActions({ worker, isOwner, onNotice }: { worker: Worker; isOwner:
             <Button
               type="button"
               variant="outline"
-              size="lg"
               onClick={() => void run("undrain")}
               aria-disabled={write.isPending || undefined}
+              busy={pendingUndrain}
               data-testid="worker-undrain"
             >
-              {pendingUndrain ? <Loader2 className="animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <Play aria-hidden="true" />}
+              <Play aria-hidden="true" />
               {pendingUndrain ? t("undrainPending") : t("undrain")}
             </Button>
           ) : null
         ) : (
-          <Button type="button" variant="outline" size="lg" onClick={() => open("drain")} data-testid="worker-drain">
+          <Button type="button" variant="outline" onClick={() => open("drain")} data-testid="worker-drain">
             <Pause aria-hidden="true" />
             {t("drain")}
           </Button>
@@ -375,7 +375,6 @@ function WorkerActions({ worker, isOwner, onNotice }: { worker: Worker; isOwner:
         <Button
           type="button"
           variant="outline"
-          size="lg"
           className="text-danger hover:text-danger"
           onClick={() => open("revoke")}
           data-testid="worker-revoke"

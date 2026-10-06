@@ -59,7 +59,7 @@ export function EmptyState(props: Omit<StateProps, "tone">) {
 function BackHome() {
   const t = useTranslations("states");
   return (
-    <Button asChild variant="outline" size="lg">
+    <Button asChild variant="outline">
       <Link href="/">{t("backHome")}</Link>
     </Button>
   );
@@ -121,7 +121,7 @@ export function ServerErrorState({ error, onRetry }: { error: ApiErrorInfo; onRe
   return (
     <StatePanel icon={icon} tone="danger" title={title} description={description} testId="state-error">
       {onRetry ? (
-        <Button size="lg" onClick={onRetry}>
+        <Button onClick={onRetry}>
           {t("retry")}
         </Button>
       ) : null}

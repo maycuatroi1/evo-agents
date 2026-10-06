@@ -9,17 +9,20 @@ import { useMemo, useState } from "react";
 import { NoticeArea, useNotice } from "@/components/admin/notice";
 import { DataTable, dataTableColumns } from "@/components/data/data-table";
 import { FacetGroup, type FacetOption } from "@/components/data/facet-group";
+import { NAME_LINK } from "@/components/data/identifier";
 import { SearchField } from "@/components/data/search-field";
 import { useNow } from "@/components/kg/use-now";
 import { PageHeader } from "@/components/shell/page-header";
+import { STATUS_LOOKS, StatusBadge, useStatusText } from "@/components/status/status-badge";
 import { QueryView, useHubQuery } from "@/components/states/query-view";
 import { EmptyState, PageSkeleton } from "@/components/states/states";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { browserApi } from "@/lib/api/browser";
 import type { ApiErrorInfo } from "@/lib/api/errors";
+import { cn } from "@/lib/utils";
 
-import { ChipList, VIEW_ICONS, WorkerStatusBadge } from "./badges";
+import { ChipList } from "./badges";
 import { useRecordPrefetched } from "./hooks";
 import {
   countByView,
@@ -116,7 +119,7 @@ function WorkersTable({ workers, caption }: { workers: Worker[]; caption: string
             <div className="flex min-w-0 flex-col gap-0.5 py-0.5 whitespace-normal">
               <Link
                 href={workerHref(worker.id)}
-                className="w-fit font-mono text-sm font-medium text-brand underline-offset-4 [overflow-wrap:anywhere] hover:underline"
+                className={cn(NAME_LINK, "w-fit font-mono text-sm [overflow-wrap:anywhere]")}
                 data-worker-name={worker.name}
               >
                 {worker.name}
@@ -132,7 +135,7 @@ function WorkersTable({ workers, caption }: { workers: Worker[]; caption: string
         id: "status",
         header: () => t("columns.status"),
         sortFn: "basic",
-        cell: (info) => <WorkerStatusBadge view={workerView(info.row.original)} />,
+        cell: (info) => <StatusBadge kind="worker" status={workerView(info.row.original)} />,
       }),
       helper.accessor("held_runs", {
         id: "slots",
@@ -196,18 +199,19 @@ function WorkersTable({ workers, caption }: { workers: Worker[]; caption: string
 
 function WorkerList({ workers, onRegister }: { workers: Worker[]; onRegister: () => void }) {
   const t = useTranslations("workers");
+  const statusText = useStatusText("worker");
   const [filters, setFilters] = useFilters();
   const revoked = countByView(workers).revoked;
   // No live worker, and no filter asking for the revoked ones: the page is empty, with what to do next.
   if (workers.length === revoked && filters.status === null && !filters.q) {
     return (
       <EmptyState icon={Server} title={t("empty.title")} description={t("empty.description")}>
-        <Button size="lg" onClick={onRegister} data-testid="workers-empty-register">
+        <Button onClick={onRegister} data-testid="workers-empty-register">
           <Plus aria-hidden="true" />
           {t("registerButton")}
         </Button>
         {revoked > 0 ? (
-          <Button variant="outline" size="lg" onClick={() => setFilters({ status: "revoked", q: "" })}>
+          <Button variant="outline" onClick={() => setFilters({ status: "revoked", q: "" })}>
             {t("empty.showRevoked")}
           </Button>
         ) : null}
@@ -221,7 +225,7 @@ function WorkerList({ workers, onRegister }: { workers: Worker[]; onRegister: ()
   const hiddenRevoked = filters.status === null ? counts.revoked : 0;
   const options: FacetOption[] = [
     { value: null, label: t("facets.all"), count: searched.length - counts.revoked },
-    ...WORKER_VIEWS.map((view) => ({ value: view, label: t(`status.${view}`), icon: VIEW_ICONS[view], count: counts[view] })),
+    ...WORKER_VIEWS.map((view) => ({ value: view, label: statusText(view), icon: STATUS_LOOKS.worker[view].icon, count: counts[view] })),
   ];
 
   return (
@@ -258,7 +262,7 @@ function WorkerList({ workers, onRegister }: { workers: Worker[]; onRegister: ()
       </p>
       {shown.length === 0 ? (
         <EmptyState icon={SearchX} title={t("noResults.title")} description={t("noResults.description")}>
-          <Button variant="outline" size="lg" onClick={() => setFilters({ status: null, q: "" })}>
+          <Button variant="outline" onClick={() => setFilters({ status: null, q: "" })}>
             {t("noResults.clear")}
           </Button>
         </EmptyState>
@@ -287,7 +291,7 @@ export function WorkersPage({ initialError }: { initialError: ApiErrorInfo | nul
         meta={
           <>
             {live !== null ? <Badge variant="secondary">{t("count", { count: live })}</Badge> : null}
-            <Button size="lg" onClick={() => setRegistering(true)} data-testid="workers-register">
+            <Button onClick={() => setRegistering(true)} data-testid="workers-register">
               <Plus aria-hidden="true" />
               {t("registerButton")}
             </Button>

@@ -157,16 +157,16 @@ test("a writer runs a plan from its page, and the page follows the run until it 
   // The list marks the plan with the run's state, and its Run plan is locked too.
   await open(page, `/p/${project}/plans`);
   const row = main(page).getByTestId("plans-table-active").locator("tbody tr").filter({ hasText: PLAN_RUN_PLAN });
-  await expect(row.getByTestId("plan-run-phase")).toHaveText("Waiting");
+  await expect(row.getByTestId("plan-run-phase")).toHaveText("Waiting for decision");
   await expect(row.getByTestId("plan-run-link")).toHaveAccessibleName(`Plan run #${run.id}: Waiting for your decision`);
   await expect(row.getByTestId("plans-run-plan")).toHaveAttribute("aria-disabled", "true");
-  await expect(row.getByTestId("plans-run-plan-lock")).toHaveText(`Plan run #${run.id} is Waiting.`);
+  await expect(row.getByTestId("plans-run-plan-lock")).toHaveText(`Plan run #${run.id} is Waiting for decision.`);
 
   // The run's page says it is a plan run, with its plan's steps, repos and model.
   await open(page, runPath(project, run.id));
   await expect(main(page).getByRole("heading", { level: 1 })).toContainText(`Plan run #${run.id}`);
   await expect(main(page).getByTestId("run-kind")).toHaveText("Plan run");
-  await expect(main(page).getByTestId("run-state").first()).toHaveText("Waiting");
+  await expect(main(page).getByTestId("run-state").first()).toHaveText("Waiting for decision");
   await expect(main(page).getByTestId("run-model")).toHaveText(MODELS[0]);
   await expect(main(page).getByTestId("run-repos").locator("li")).toHaveText([`${REPO}on ${PLAN_RUN_BRANCH}`, `${HARNESS_REPO}on main`]);
   const steps = main(page).getByTestId("run-plan-step");

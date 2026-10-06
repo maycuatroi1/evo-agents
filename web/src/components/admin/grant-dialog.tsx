@@ -1,7 +1,7 @@
 "use client";
 
 import type { UseMutationResult } from "@tanstack/react-query";
-import { ArrowLeft, Info, Loader2, ShieldPlus } from "lucide-react";
+import { ArrowLeft, Info, ShieldPlus } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { type FormEvent, useEffect, useId, useRef, useState } from "react";
 
@@ -215,10 +215,9 @@ function GrantSteps({
             type="button"
             size="lg"
             onClick={() => void confirm()}
-            aria-disabled={pending || undefined}
+            busy={pending}
             data-testid="grant-confirm"
           >
-            {pending ? <Loader2 className="animate-spin motion-reduce:animate-none" aria-hidden="true" /> : null}
             {pending ? t("saving") : t("confirm")}
           </Button>
         </DialogFooter>

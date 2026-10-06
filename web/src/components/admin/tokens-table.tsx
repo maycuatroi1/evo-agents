@@ -6,6 +6,7 @@ import { useTranslations } from "next-intl";
 import { useCallback, useMemo, useState } from "react";
 
 import { DataTable, dataTableColumns } from "@/components/data/data-table";
+import { NAME_LINK } from "@/components/data/identifier";
 import { Button } from "@/components/ui/button";
 import { LOGIN_PATH } from "@/lib/config";
 
@@ -59,7 +60,7 @@ export function TokensTable({ tokens, caption, showLogin = true, onNotice, testI
             header: () => t("columns.login"),
             enableSorting: false,
             cell: (info) => (
-              <Link href={memberHref(info.getValue())} className="font-medium text-brand underline-offset-4 hover:underline">
+              <Link href={memberHref(info.getValue())} className={NAME_LINK}>
                 {info.getValue()}
               </Link>
             ),
@@ -126,7 +127,6 @@ export function TokensTable({ tokens, caption, showLogin = true, onNotice, testI
             <Button
               type="button"
               variant="outline"
-              size="lg"
               className="text-danger hover:text-danger"
               aria-label={t("revokeLabel", { id: token.id, login: token.login })}
               onClick={() => startRevoke(token)}
