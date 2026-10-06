@@ -72,6 +72,7 @@ RUN_KEYS = (
     "title",
     "plan_revision",
     "dispatched_by",
+    "dispatched_via",
     "worker_id",
     "worker",
     "pinned_worker_id",

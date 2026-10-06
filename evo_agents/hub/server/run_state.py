@@ -137,12 +137,15 @@ UPDATE runs SET state = %(to)s, error = coalesce(%(error)s, error), event_seq = 
 RETURNING event_seq
 """
 END_DECISIONS = "UPDATE decisions SET state = %s WHERE run_id = %s AND state = 'open'"
+# The next attempt keeps the dispatch's credential, so a worker that takes runs dispatched from the web only takes the
+# retry of one too, and never the retry of a run dispatched with a token.
 NEXT_ATTEMPT = """
-INSERT INTO runs (kind, project_id, plan_id, step_key, title, plan_revision, dispatched_by, pinned_worker_id,
-                  requested_runtime, runtime, mode, approval, timeout_s, attempt, max_attempts, parent_run_id, repo,
-                  branch, repos, model)
-SELECT kind, project_id, plan_id, step_key, title, plan_revision, dispatched_by, pinned_worker_id, requested_runtime,
-       requested_runtime, mode, approval, timeout_s, attempt + 1, max_attempts, id, repo, branch, repos, model
+INSERT INTO runs (kind, project_id, plan_id, step_key, title, plan_revision, dispatched_by, dispatched_via,
+                  pinned_worker_id, requested_runtime, runtime, mode, approval, timeout_s, attempt, max_attempts,
+                  parent_run_id, repo, branch, repos, model)
+SELECT kind, project_id, plan_id, step_key, title, plan_revision, dispatched_by, dispatched_via, pinned_worker_id,
+       requested_runtime, requested_runtime, mode, approval, timeout_s, attempt + 1, max_attempts, id, repo, branch,
+       repos, model
   FROM runs WHERE id = %s
 RETURNING id
 """

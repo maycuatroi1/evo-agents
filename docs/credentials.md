@@ -190,6 +190,23 @@ no longer opens `/mcp` for it. A worker machine needs no machine token at all.
 dispatched from a web session, so a machine token that leaked from some other machine cannot put a plan step onto it.
 Only the worker's owner, signed in on the web, flips it.
 
+- **The switch.** `POST /v1/workers/{id}/dispatch-from` with `{"value": "any"}` or `{"value": "web"}`, from the
+  owner's web session and its `X-Evo-CSRF` header; the web shows it on the worker's page as "Only runs dispatched from
+  the web". A machine token gets 403 there, whoever holds it and whichever worker it names, so a token that leaked
+  cannot turn the switch back off; a hub admin who does not own the worker gets 403, another member 404, a revoked
+  worker 409. Each change adds an audit row `worker.dispatch_from` whose target ends `dispatch_from=any` or
+  `dispatch_from=web`; setting the value the worker has changes nothing.
+- **What a run records.** `POST /v1/projects/{p}/runs`, `POST /v1/projects/{p}/plan-runs` and `.../runs/{id}/rerun`
+  record in `runs.dispatched_via` the credential of the caller: `web` for a web session, `machine` for any token, the
+  machine token of `evo-agents hub run dispatch` and the worker token an agent reaches `/mcp` with alike
+  (`credentials.dispatch_credential`). The next attempt of a lost run and the run that resumes a parked plan run keep
+  the value of the run they follow. A run shows it as `dispatched_via`; runs dispatched before 0.5.0 have none.
+- **What a worker set to `web` takes.** Its claims pass over every queued run whose `dispatched_via` is not `web`,
+  those without one included, and leave them for the owner's other workers. A dispatch, plan run or rerun pinned to it
+  with a token gets 403, "worker NAME takes only runs dispatched from a web session, as its owner set it, ...", and
+  nothing is queued. Runs that were queued for it with a token before the switch was turned on stay queued until the
+  owner cancels them or turns the switch off again.
+
 ## What is still a risk
 
 - Root on the worker reads the leases a run is using: the agent's environment, the daemon's memory, the run's

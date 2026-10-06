@@ -99,3 +99,11 @@ def test_constants():
     assert credentials.GITHUB_PERMISSIONS == {"contents": "write", "metadata": "read"}
     assert credentials.MAX_SECRET_BYTES == 16384
     assert credentials.MAX_SECRETS_PER_OWNER == 200
+
+
+def test_who_may_dispatch_to_a_worker_and_the_credential_a_dispatch_is_recorded_with():
+    assert credentials.DISPATCH_FROM == ("any", "web")
+    assert credentials.DISPATCHED_VIA == ("machine", "web")
+    # a web session, a machine token and the worker token of a run's agent on /mcp
+    kinds = ("web", "machine", "worker")
+    assert [credentials.dispatch_credential(kind) for kind in kinds] == ["web", "machine", "machine"]

@@ -424,16 +424,17 @@ READ_ITS_NOTIFICATION = """
 UPDATE notifications SET read_at = now() WHERE decision_id = %s AND user_id = %s AND read_at IS NULL
 """
 NEXT_RUN_ID = "SELECT nextval(pg_get_serial_sequence('runs', 'id'))"
-# The run that resumes a parked plan run: pinned to its worker, in its session, with the agent time it used, at the
-# plan's current revision (the one it was dispatched from when the plan is gone).
+# The run that resumes a parked plan run: pinned to its worker, in its session, with the agent time it used and the
+# credential it was dispatched with, at the plan's current revision (the one it was dispatched from when the plan is
+# gone).
 RESUME_RUN = """
-INSERT INTO runs (id, kind, project_id, plan_id, title, plan_revision, dispatched_by, pinned_worker_id,
+INSERT INTO runs (id, kind, project_id, plan_id, title, plan_revision, dispatched_by, dispatched_via, pinned_worker_id,
                   requested_runtime, runtime, model, mode, approval, timeout_s, max_attempts, repos, resume_of_run_id,
                   run_seconds, session_id)
 OVERRIDING SYSTEM VALUE
 SELECT %(new)s, 'plan', r.project_id, r.plan_id, r.title, coalesce(pl.revision, r.plan_revision), r.dispatched_by,
-       r.worker_id, r.runtime, r.runtime, r.model, r.mode, r.approval, r.timeout_s, r.max_attempts, r.repos, r.id,
-       r.run_seconds, r.session_id
+       r.dispatched_via, r.worker_id, r.runtime, r.runtime, r.model, r.mode, r.approval, r.timeout_s, r.max_attempts,
+       r.repos, r.id, r.run_seconds, r.session_id
   FROM runs r LEFT JOIN plans pl ON pl.project_id = r.project_id AND pl.plan_id = r.plan_id
  WHERE r.id = %(parked)s
 """

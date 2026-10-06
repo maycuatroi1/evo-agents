@@ -7,8 +7,9 @@ import { CHECKOUTS, heartbeat, joinWithCode, registerWorker, RUNTIMES, workersOf
 /**
  * The workers pages against the real API: the list with its summary, facets, search and 10-second refresh; the
  * Register dialog from the form to the machine joining with its pairing code; a worker's page with its runtimes,
- * scope, checkouts and heartbeat strip; drain, resume and revoke behind a typed name; and a worker token on the admin
- * tokens page. Pages render in English, the default.
+ * scope, checkouts and heartbeat strip; drain, resume and revoke behind a typed name; the owner's switch that keeps a
+ * worker to runs dispatched from the web; and a worker token on the admin tokens page. Pages render in English, the
+ * default.
  */
 test.skip(isDeployed, "registers workers through the local stack");
 
@@ -199,6 +200,56 @@ test("a worker's page shows what its heartbeat reports, and drain, resume and re
   await expect(main.getByTestId("worker-revoked")).toBeVisible();
   await expect(main.getByTestId("worker-actions")).toHaveCount(0);
   expect((await workersOf(me)).find((w) => w.id === worker.id)?.status).toBe("revoked");
+});
+
+test("the owner keeps a worker to runs dispatched from the web, which a token cannot undo", async ({ page, member, signInAs }) => {
+  const me = await member([{ role: "writer", maxLevel: "internal" }]);
+  const worker = await registerWorker(me, { name: uniqueName("guarded"), projects: [me.projects[0]] });
+  await heartbeat(worker.id, { runtimes: RUNTIMES, checkouts: CHECKOUTS });
+  const dispatchFromOf = async () => (await workersOf(me)).find((w) => w.id === worker.id)?.dispatch_from;
+
+  await page.goto(`/workers/${worker.id}`);
+  const main = page.locator("#main");
+  const toggle = main.getByRole("switch", { name: "Only runs dispatched from the web" });
+  await expect(toggle).not.toBeChecked();
+  await expect(main.getByTestId("worker-dispatch")).toHaveText(`${me.login} only`);
+
+  await toggle.click();
+  await expect(toggle).toBeChecked();
+  await expect(page.getByTestId("admin-notice-status")).toContainText(`${worker.name} now takes only runs dispatched from the web.`);
+  await expect(main.getByTestId("worker-dispatch")).toHaveText(`${me.login} only, from the web`);
+  expect(await dispatchFromOf()).toBe("web");
+
+  // The member's own machine token is refused, so a token that leaked cannot open the worker again.
+  const api = bearerClient(await machineToken(me));
+  const refused = await api.POST("/v1/workers/{worker_id}/dispatch-from", {
+    params: { path: { worker_id: worker.id } },
+    body: { value: "any" },
+  });
+  expect(refused.response.status).toBe(403);
+  expect(refused.error?.message).toContain("web session only");
+  expect(await dispatchFromOf()).toBe("web");
+
+  // A hub admin sees the setting, without the switch.
+  await page.context().clearCookies(); // signed out of the hub and the fake GitHub
+  await signInAs(ADMIN_ACCOUNT);
+  await page.goto(`/workers/${worker.id}`);
+  await expect(main.getByTestId("worker-dispatch")).toHaveText(`${me.login} only, from the web`);
+  await expect(main.getByTestId("worker-as-admin")).toBeVisible();
+  await expect(main.getByTestId("worker-dispatch-from")).toHaveCount(0);
+
+  // The owner turns it off again, from its label.
+  await page.context().clearCookies();
+  await signInAs(me);
+  await page.goto(`/workers/${worker.id}`);
+  await expect(toggle).toBeChecked();
+  await main.getByTestId("worker-dispatch-from").getByText("Only runs dispatched from the web").click();
+  await expect(toggle).not.toBeChecked();
+  await expect(page.getByTestId("admin-notice-status")).toContainText(
+    `${worker.name} takes runs dispatched from the command line and the web again.`,
+  );
+  await expect(main.getByTestId("worker-dispatch")).toHaveText(`${me.login} only`);
+  expect(await dispatchFromOf()).toBe("any");
 });
 
 test("a worker token on the admin tokens page says so, and revoking it revokes the worker", async ({ page, admin, signInAs }) => {

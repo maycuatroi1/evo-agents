@@ -76,6 +76,9 @@ changed where the defaults fell short:
 - `badge.tsx`: `info`, `success` and `warning` variants.
 - `hooks/use-mobile.ts`: `useSyncExternalStore` instead of state set inside an effect.
 - `tabs.tsx` (Radix tabs): a line style, the selected tab underlined in `primary` and set in a heavier weight.
+- `switch.tsx` (Radix switch): for a setting that applies once flipped. The track is `primary` when on and
+  `muted-foreground` at 70 % when off, so it stands out from the card in both themes, and the thumb moves; a
+  `<label htmlFor>` names it.
 - Menus (`DropdownMenu`) are not modal, so the page behind stays readable by assistive technology.
 
 Shared pieces built on them:
@@ -96,7 +99,9 @@ Shared pieces built on them:
   every 2 seconds while its pairing code waits. Draining or revoking a worker asks for its name, typed out
   (`confirm-by-name.tsx`). The hub keeps only a worker's latest heartbeat, so the 60-minute heartbeat strip is built
   from what the tab has read (`heartbeats.ts`): a received minute is a full bar, a missed one a short red bar, a
-  minute nobody watched a dot, with the counts written out beside it.
+  minute nobody watched a dot, with the counts written out beside it. On a worker's page its owner flips "Only runs
+  dispatched from the web" (`dispatch_from`) with a switch in the Scope card; the switch moves once the hub answered
+  and the worker was read again, and nobody else sees it, only the value in "Who dispatches".
 - `components/runs`: a run is in one of the API's states, waiting (a plan run's agent asked its owner a decision) and
   parked (nobody answered for 24 hours) included; both show in the running phase of a run's stepper, under their own
   name and icon. The runs pages ask the hub every 5 seconds while the project (or the step, or the worker) has an

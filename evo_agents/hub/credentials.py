@@ -12,6 +12,10 @@ hour and is revoked when the run ends.
 Origins are compared in one form: ``normalize_origin`` turns ``git@host:path``, ``ssh://git@host/path`` and
 ``https://host/path.git`` into ``https://host/path``, so a secret whose url_prefix is https also covers a repo whose
 origin is SSH, which the daemon rewrites to https for the run's git only.
+
+A worker's ``dispatch_from`` says who may hand it runs: ``any`` credential of its owner, or a ``web`` session only, so
+a machine token that leaked cannot put work onto it. A run's ``dispatched_via`` is the credential it was dispatched
+with (``dispatch_credential``); a worker set to ``web`` claims only runs whose dispatched_via is ``web``.
 """
 
 from __future__ import annotations
@@ -40,6 +44,18 @@ SECRET_NAME = re.compile(r"[a-z0-9][a-z0-9._-]{0,63}")
 DEFAULT_GIT_USERNAME = "oauth2"  # what GitLab takes with a project or personal access token as password
 
 _SCP_ORIGIN = re.compile(r"^(?:[^@/\s]+@)?([^:/\s]+):(?!//)(.+)$")
+
+# Who may hand a worker its runs (workers.dispatch_from): runs dispatched with any credential of its owner, or only
+# those dispatched from a web session. And the credential a run was dispatched with (runs.dispatched_via): a web
+# session, or a token (a machine token, or the worker token of a run's agent on /mcp).
+DISPATCH_FROM = ("any", "web")
+DISPATCHED_VIA = ("machine", "web")
+
+
+def dispatch_credential(credential_kind: str) -> str:
+    """The ``dispatched_via`` of a dispatch made with a credential of ``credential_kind``, one of the kinds of
+    ``evo_agents.hub.server.security``: ``web`` for a web session, ``machine`` for any token."""
+    return "web" if credential_kind == "web" else "machine"
 
 
 def env_name_refusal(name: str) -> str | None:

@@ -27,7 +27,7 @@ and notices reach a member.
 
 | Entity | What it is | Table |
 | --- | --- | --- |
-| worker | a machine its owner registered: a name unique per owner, host facts (hostname, OS, arch, daemon version), 1 to 8 slots, labels, the runtimes and checkouts it reports, whether it allows the web terminal | `workers` |
+| worker | a machine its owner registered: a name unique per owner, host facts (hostname, OS, arch, daemon version), 1 to 8 slots, labels, the runtimes and checkouts it reports, whether it allows the web terminal, who may dispatch to it (`dispatch_from`) | `workers` |
 | worker project | a project the worker may take runs of, chosen at registration | `worker_projects` |
 | pairing | a one-time code the web creates so a machine can join without a machine token | `worker_pairings` |
 | run | one attempt at one plan step on one worker (kind `step`), or one session on one worker that does every step of a plan not done yet (kind `plan`) | `runs` |
@@ -37,10 +37,10 @@ and notices reach a member.
 | notification | a decision or a notice (a push to a default branch, say) for the run's owner, and its deliveries to the owner's channels | `notifications`, `notification_channels`, `notification_deliveries` |
 
 A run records the project, plan and step key, the step's title at dispatch, the plan revision it was dispatched from,
-who dispatched it, the worker (or the worker it is pinned to), the runtime the dispatch asked for
-(`requested_runtime`: `claude-code`, `opencode`, `codex` or `any`, which the next attempt asks for again) and the one
-the run has (`runtime`: the same, except that `any` becomes the runtime the claiming worker picked), the
-mode (`headless` or `interactive`), the approval (`auto` or `review`), a timeout of 5 to 240 minutes, its attempt out
+who dispatched it and with which credential (`dispatched_via`: `web` or `machine`), the worker (or the worker it is
+pinned to), the runtime the dispatch asked for (`requested_runtime`: `claude-code`, `opencode`, `codex` or `any`,
+which the next attempt asks for again) and the one the run has (`runtime`: the same, except that `any` becomes the
+runtime the claiming worker picked), the mode (`headless` or `interactive`), the approval (`auto` or `review`), a timeout of 5 to 240 minutes, its attempt out
 of at most 3, the run it retries (`parent_run_id`), its state and lease, the agent's session id, the repo and branch,
 and at the end the commit, diffstat, verify results, evidence, usage and error.
 
@@ -51,6 +51,10 @@ and at the end the commit, diffstat, verify results, evidence, usage and error.
   otherwise). Another writer of the same project never gets a run onto your worker. A hub admin sees every worker
   and may drain or revoke one, but cannot dispatch to it or undrain it: only the owner sets a drained worker going
   again (403 for anyone else).
+- **The owner may keep a worker to runs dispatched from the web.** With `dispatch_from` set to `web`, the worker
+  claims only runs its owner dispatched from a web session, and a dispatch pinned to it with a token gets 403, so a
+  machine token that leaked cannot hand it work. Only the owner turns this on or off, from a web session: a machine
+  token gets 403 there. [credentials.md](credentials.md#who-may-hand-a-worker-its-work) has the details.
 - **Roles on the project still apply.** Dispatching needs the writer role; reading runs, events and diffs needs
   reader. Messages, takeover, handback, cancel, approve, rerun and the terminal belong to the run's owner, the member
   who dispatched it. A worker takes runs only of the projects it was registered for, and only while its owner still
@@ -73,9 +77,9 @@ What stays a risk: a plan's text, or anything the agent reads while it works, ca
 acts on them with the owner's permissions. Whoever controls the hub server itself, rather than an admin account
 through the API, can hand work to every worker; signing dispatches with a key kept on the owner's machine is an open
 question. The web terminal is a remote shell into the machine, which is why it has the extra checks under
-[Terminal](#terminal). Every dispatch, cancel, approve, rerun, pairing, join, registration, drain, revoke and terminal
-session leaves an audit row (`run.*`, `worker.*`, `terminal.open`, `terminal.close`), and so does each message,
-takeover and handback (`run.message`, `run.takeover`, `run.handback`); a row names the run and the message by id,
+[Terminal](#terminal). Every dispatch, cancel, approve, rerun, pairing, join, registration, drain, change of
+`dispatch_from`, revoke and terminal session leaves an audit row (`run.*`, `worker.*`, `terminal.open`,
+`terminal.close`), and so does each message, takeover and handback (`run.message`, `run.takeover`, `run.handback`); a row names the run and the message by id,
 never the text.
 
 ## Worker status
@@ -372,8 +376,9 @@ with the run's id, on one connection of the api process opened by the first clai
 seconds, so a missed notification delays a claim but never loses one. It picks a queued run with `SELECT ... FOR UPDATE SKIP LOCKED` when all of these hold: the worker's owner
 dispatched it, the project is one of the worker's and the owner still holds writer on it, the worker reported the
 runtime as available (a run asking for `any` takes the first of `claude-code`, `opencode`, `codex` it has) and a
-checkout of the repo, the run is pinned to no other worker, the worker holds fewer runs than its slots, and it is
-neither draining nor revoked. A plan run also needs a daemon of 0.4.0 or later, as the worker's `agent_version` says:
+checkout of the repo, the run is pinned to no other worker, the run was dispatched from a web session when the
+worker's `dispatch_from` is `web`, the worker holds fewer runs than its slots, and it is neither draining nor revoked.
+A plan run also needs a daemon of 0.4.0 or later, as the worker's `agent_version` says:
 an older daemon would read it as a run of one step without a repo and fail it. The oldest such run is leased for 300 seconds (`EVO_HUB_RUN_LEASE_SECONDS`, which
 tests shorten). The answer is `{"run": {...}}` with the
 id, project, plan, step key and title, plan revision, attempt, max attempts, parent run, runtime, mode, approval,
@@ -545,6 +550,7 @@ For members, with a web session or a machine token. `{p}` is a project, and run 
 | `GET /v1/workers`, `GET /v1/workers/{id}` | owner; a hub admin sees all | list and show workers |
 | `POST /v1/workers/{id}/drain`, `/revoke` | owner or hub admin | stop new claims, end the worker |
 | `POST /v1/workers/{id}/undrain` | owner | resume claims |
+| `POST /v1/workers/{id}/dispatch-from` | owner, web session only | `{"value": "web"}`: claim only runs dispatched from the web; `"any"`: from anywhere again |
 | `GET /v1/projects/{p}/plans/{plan}/ready-steps` | reader | every step, with whether it may be dispatched and why not |
 | `POST /v1/projects/{p}/runs` | writer | dispatch steps, all or none |
 | `POST /v1/projects/{p}/plan-runs` | writer | dispatch a plan run: every step of the plan not done yet, on one worker |
@@ -565,8 +571,10 @@ worker of the caller's), `approval` (`review` by default, or `auto`), `timeout_m
 `model` (optional, one line of at most 200 characters, as the runtime names it; null, the default, leaves the choice
 to the runtime as before). It queues one run per step, at the plan's current revision, or nothing: a step that is not ready or has an active run is
 409, a step the plan does not have or one without a repo is 422, a worker that is not the caller's (or no worker) is
-403, and a revoked worker or one that does not serve the project is 409. `ready-steps` answers every step of the plan
-in plan order with `ready`, `reason` (as `unready_reason` says it, or the active run) and the active run.
+403, and a revoked worker or one that does not serve the project is 409. A worker whose owner set `dispatch_from` to
+`web` takes a pinned dispatch only from a web session: with a token the answer is 403, saying so. Each run records
+the caller's credential in `dispatched_via`, `web` or `machine`, and so does a rerun. `ready-steps` answers every step
+of the plan in plan order with `ready`, `reason` (as `unready_reason` says it, or the active run) and the active run.
 
 A dispatch, a plan run or a rerun pinned to a worker is checked against what that worker's last heartbeat reported,
 as the claim checks it: the runtime asked for available (any one for `any`), a checkout of each repo the run needs
