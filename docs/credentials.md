@@ -204,7 +204,9 @@ Credentials card.
 
 - **Memory only.** Leases live in the daemon's memory (`evo_agents/worker/credentials.py`), never in a file, a log
   line or an event: worker.log masks every lease value, and so does the filter each event of the run goes through
-  before the spool.
+  before the spool. The daemon counts which of its runs hold each value: a run that gives its leases back drops its
+  values from both, those it took again and replaced included, and a value another run still holds stays masked. So
+  the daemon's memory holds the values of the runs in progress, not every value it was handed since it started.
 - **A socket per run.** The daemon listens on `runs/<id>/cred.sock` (mode 0600, in the run's directory, mode 0700) while
   the run holds leases, and answers only processes of its own uid (`SO_PEERCRED` on Linux, `getpeereid` on macOS):
   one JSON request a connection, git's credential for a URL or the variables of the agent's environment.

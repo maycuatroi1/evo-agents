@@ -541,26 +541,71 @@ def test_a_github_token_near_its_end_is_asked_for_again_before_git_gets_it(machi
 
 
 @needs_worker
-def test_lease_values_are_masked_in_the_log_and_in_events(machine):
+def test_lease_values_are_masked_in_the_log_and_in_events_while_a_run_holds_them(machine):
     from evo_agents.worker import logs
 
-    token, oauth = sample("glpat-"), sample("oauth-")
-    hub = StubHub({"leases": [git_lease(1, GITLAB, token), env_lease(2, "CLAUDE_CODE_OAUTH_TOKEN", oauth)]})
+    token, oauth, shared = sample("glpat-"), sample("oauth-"), sample("shared-")
+    first = StubHub({"leases": [git_lease(1, GITLAB, token), env_lease(2, "CLAUDE_CODE_OAUTH_TOKEN", shared)]})
+    second = StubHub({"leases": [env_lease(3, "CLAUDE_CODE_OAUTH_TOKEN", shared), env_lease(4, "OPENAI_KEY", oauth)]})
+    log_path = machine.tmp / "worker.log"
+    logs.configure(log_path, stderr=False)
+
+    def logged(text: str, **extra) -> str:
+        """The line worker.log got for ``text``."""
+        logging.getLogger("evo_agents.worker").warning(text, extra=extra)
+        return log_path.read_text(encoding="utf-8").splitlines()[-1]
+
+    async def go():
+        one, two = machine.leases(7), machine.leases(8)
+        await one.take(first, {})
+        await two.take(second, {})
+        line = logged(f"the agent printed {token}", seen=[oauth, shared])
+        assert token not in line and oauth not in line and shared not in line and line.count("***") == 3
+        body = {"text": f"echo {token}", "output": {"lines": [f"x{oauth}y", 3]}, "n": 1}
+        assert credentials.scrub(body) == {"text": "echo ***", "output": {"lines": ["x***y", 3]}, "n": 1}
+
+        # Run 7 gave its leases back: its own values are masked no more, the one run 8 holds too still is.
+        await one.release()
+        line = logged(f"after run 7: {token} {shared} {oauth}")
+        assert token in line and shared not in line and oauth not in line
+        assert credentials.scrub(f"{token} {shared} {oauth}") == f"{token} *** ***"
+
+        # Run 8 too: the daemon holds no value any more, and masks none of them.
+        await two.release()
+        line = logged(f"after run 8: {shared} {oauth}")
+        assert shared in line and oauth in line
+        assert credentials.scrub(f"{token} {shared} {oauth}") == f"{token} {shared} {oauth}"
+
+    asyncio.run(go())
+    assert all(value not in credentials._held for value in (token, oauth, shared))
+    assert repr(RunCredentials(RUN, machine.worker, machine.env, machine.note)).startswith("RunCredentials(run=7")
+
+
+@needs_worker
+def test_a_value_replaced_stays_masked_until_the_run_gives_its_leases_back(machine):
+    from evo_agents.hub.log import scrub as scrub_log
+    from evo_agents.worker import logs
+
+    old, new, token = sample("app-old-"), sample("app-new-"), sample("worker-token-")
+    hub = StubHub(
+        {"leases": [app_lease(1, "maycuatroi1", old, 60), env_lease(2, "WORKER_ECHO", token)]},
+        {"leases": [app_lease(3, "maycuatroi1", new, 60)]},
+    )
+    logs.mask(token)  # masked for good, as the daemon masks its worker token
 
     async def go():
         leases = machine.leases()
         await leases.take(hub, {})
+        assert await leases.renew()
+        # the token renewed away still works until its end: it stays masked while the run lasts
+        assert credentials.scrub(f"{old} {new}") == "*** ***"
+        assert scrub_log(f"git said {old} {new}") == "git said *** ***"
         await leases.release()
+        assert credentials.scrub(f"{old} {new}") == f"{old} {new}"
+        assert scrub_log(f"git said {old} {new} {token}") == f"git said {old} {new} ***", "the token stays masked"
 
-    log_path = machine.tmp / "worker.log"
-    logs.configure(log_path, stderr=False)
     asyncio.run(go())
-    logging.getLogger("evo_agents.worker").warning(f"the agent printed {token}", extra={"seen": [oauth]})
-    text = log_path.read_text(encoding="utf-8")
-    assert token not in text and oauth not in text and text.count("***") >= 2
-    body = {"text": f"echo {token}", "output": {"lines": [f"x{oauth}y", 3]}, "n": 1}
-    assert credentials.scrub(body) == {"text": "echo ***", "output": {"lines": ["x***y", 3]}, "n": 1}
-    assert repr(RunCredentials(RUN, machine.worker, machine.env, machine.note)).startswith("RunCredentials(run=7")
+    logs.unmask(token)
 
 
 @needs_worker

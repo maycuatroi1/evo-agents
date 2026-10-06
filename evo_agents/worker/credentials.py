@@ -3,7 +3,9 @@
 
 - ``RunCredentials.take`` asks the hub for the run's leases (``POST /v1/worker/runs/{id}/credentials``) right after
   the claim, before the run fetches. The leases stay in the daemon's memory, never in a file, a log line or an event:
-  each value is masked in worker.log (``logs.mask``) and in the run's events before they reach the spool (``scrub``).
+  each value is masked in worker.log (``logs.mask``) and in the run's events before they reach the spool (``scrub``)
+  while a run holds it. ``release`` forgets the run's values (``forget``), each one masked no more once no other run
+  of the daemon holds it, so the daemon does not keep every value it was handed for its whole life.
   A hub that does not answer is asked again with the backoff, TAKE_TRIES times in all; one that refuses, an older hub
   without the route among them, leaves the run to the machine's own credentials, as before 0.5.0.
 - Each repo whose origin no lease covers gets a ``system`` event, "no leased credential for {origin}: {reason}; git
@@ -25,7 +27,7 @@
   lease of the run covers, ``renew`` gives the run's leases back and takes them again, which makes new GitHub tokens
   even when the ones held had time left, and the push runs once more. A second failure is the run's failure.
 - ``release`` gives the leases back (``DELETE`` on the same route) when the run ends, is parked or the daemon stops,
-  closes the socket and forgets the values.
+  closes the socket and forgets the values, in the redaction too.
 
 ``git_credential`` and ``print_env`` are the sides of ``evo-agents worker git-credential --run N get|store|erase``
 (git's credential protocol; store and erase do nothing) and ``evo-agents worker env --run N``. This module is standard
@@ -83,7 +85,7 @@ GIT_ACTIONS = ("get", "store", "erase")
 _NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\Z")
 _SCP = re.compile(r"^(?:[^@/\s]+@)?([^:/\s]+):(?!//)(.+)$")
 
-_secrets: set[str] = set()  # every lease value this process was handed, for ``scrub``
+_held: dict[str, set[int]] = {}  # each lease value a run of this process holds -> those runs, for ``scrub``
 T = TypeVar("T")
 
 
@@ -178,19 +180,34 @@ def config_env(base: Mapping[str, str], entries: Sequence[tuple[str, str]]) -> d
 # Values out of logs and events
 
 
-def remember(value: str) -> None:
-    """Mask ``value`` in worker.log and in the events of every run of this process from now on."""
+def remember(value: str, run_id: int) -> None:
+    """Mask ``value`` in worker.log and in the events of every run of this process while run ``run_id``, or another
+    run of it, holds the value."""
     if not value or len(value) < MIN_SECRET_LENGTH:
         return
-    logs.mask(value)
-    _secrets.add(value)
+    holders = _held.setdefault(value, set())
+    if not holders:
+        logs.mask(value)
+    holders.add(int(run_id))
+
+
+def forget(run_id: int) -> None:
+    """Stop masking the values run ``run_id`` held, once no other run of this process holds them: the daemon's
+    redaction keeps the leases of the runs in progress, not every value it was ever handed."""
+    for value in [value for value, holders in _held.items() if int(run_id) in holders]:
+        holders = _held[value]
+        holders.discard(int(run_id))
+        if not holders:
+            del _held[value]
+            logs.unmask(value)
 
 
 def scrub(value):
-    """``value`` with every lease value this process was handed replaced by ``***``, in each string at any depth."""
-    if not _secrets:
+    """``value`` with every lease value a run of this process holds replaced by ``***``, in each string at any
+    depth."""
+    if not _held:
         return value
-    return _scrub(value, sorted(_secrets, key=len, reverse=True))
+    return _scrub(value, sorted(_held, key=len, reverse=True))
 
 
 def _scrub(value, secrets: list[str]):
@@ -398,7 +415,7 @@ class RunCredentials:
             except (KeyError, TypeError, ValueError):
                 log.warning("a lease the hub sent was not read", extra={"run_id": self.run_id})
                 continue
-            remember(lease.value)
+            remember(lease.value, self.run_id)
             leases.append(lease)
         self.leases = leases
         missing = answer.get("missing") if isinstance(answer, dict) else None
@@ -578,9 +595,10 @@ class RunCredentials:
             self.path.unlink(missing_ok=True)
 
     async def release(self, *, stop: asyncio.Event | None = None, tries: int = RELEASE_TRIES) -> None:
-        """Close the socket, give the leases back to the hub and forget them; once."""
+        """Close the socket, give the leases back to the hub and forget them, values included (``forget``); once."""
         await self.close()
         self.leases, self.agent_vars, self.git_vars = [], {}, {}
+        forget(self.run_id)
         if not self.asked or self.hub is None:
             return
         self.asked = False
