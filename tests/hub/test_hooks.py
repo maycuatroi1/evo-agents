@@ -40,7 +40,14 @@ PLUGIN = ROOT / "plugins" / "evo-hub"
 EVALS = PLUGIN / "evals"
 TOOL = "mcp__plugin_evo-hub_evo-hub__"
 MARKER = "Wombat-Memory-Text"  # in memory bodies only: must never reach a hook's output or the hub's log
-HOST_VARIABLES = ("CLAUDE_CONFIG_DIR", "CLAUDE_PROJECT_DIR", "CODEX_HOME", "EVO_KG_PROJECT", "EVO_KG_HOME")
+HOST_VARIABLES = (
+    "CLAUDE_CONFIG_DIR",
+    "CLAUDE_PROJECT_DIR",
+    "CODEX_HOME",
+    "EVO_KG_PROJECT",
+    "EVO_KG_HOME",
+    hooks.RUN_VARIABLE,  # set when these tests run inside a worker run
+)
 
 needs_pg = pytest.mark.skipif(not pg.DSN, reason=pg.SKIP_REASON)
 
@@ -305,6 +312,50 @@ def test_a_closed_stdout_does_not_fail_the_hook(own_home, monkeypatch):
     assert main(["hub", "hook", "session-start"]) == 0
 
 
+# The agent of a worker run (EVO_RUN_ID)
+
+
+def test_in_a_worker_run_session_start_exports_no_plan_and_stop_pushes_no_memory(
+    own_home, monkeypatch, capsys, requests
+):
+    url = closed_port_url()
+    sign_in(own_home, url)
+    session = make_harness(own_home / "ws" / "demo-harness")
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(session))
+    exported = []
+    monkeypatch.setattr(hooks, "_pull_memories", lambda hub, login, where, line: line.add("0 memories pulled"))
+    monkeypatch.setattr(hooks, "_export_plans", lambda hub, root, project, line: exported.append((root, project)))
+    monkeypatch.setattr(hooks, "_check_skills", lambda hub, line: line.add("skills up to date"))
+
+    monkeypatch.setenv(hooks.RUN_VARIABLE, "12")
+    code, out, err = run_hook("session-start", {"cwd": str(session)}, monkeypatch, capsys)
+    told = context_of(out)
+    assert (code, err, told["message"]) == (0, "", None)
+    assert (
+        told["context"] == f"evo-hub {url}, project demo: {hooks.run_note(12)}; 0 memories pulled; skills up to date."
+    )
+    assert "no plan copy exported" in told["context"] and "no memory pushed at Stop" in told["context"]
+    assert exported == [] and not (session / "plans").exists()
+
+    # Stop sends nothing, even with a memory file waiting; it waits for a session outside a run.
+    directory = memory_dir(own_home, session)
+    directory.mkdir(parents=True)
+    (directory / "note.md").write_text(typed("project", MARKER), encoding="utf-8")
+    assert run_hook("stop", {"cwd": str(session)}, monkeypatch, capsys) == (0, "", "")
+    assert requests == [] and MemorySync(hub_client.Hub(url), "alice").pending(session) is True
+
+    # Only a run id the daemon would set counts; without one the hooks do their usual work.
+    for value in ("", "abc", "-3", "١٢"):
+        monkeypatch.setenv(hooks.RUN_VARIABLE, value)
+        assert hooks.worker_run() is None, value
+    monkeypatch.delenv(hooks.RUN_VARIABLE)
+    code, out, _ = run_hook("session-start", {"cwd": str(session)}, monkeypatch, capsys)
+    assert code == 0 and "evo-agents worker" not in context_of(out)["context"]
+    assert exported == [(session, "demo")]
+    code, out, err = run_hook("stop", {"cwd": str(session)}, monkeypatch, capsys)
+    assert (code, out) == (0, "") and "did not answer" in err and len(requests) == 1
+
+
 # The plugin's hooks.json, run as Claude Code runs it
 
 
@@ -529,12 +580,14 @@ def test_the_memory_case_holds_the_answer_only_on_the_hub(tmp_path):
 SKILL = "---\nname: house-style\ndescription: Use when writing anything for the team\n---\nWrite plainly.\n"
 
 
-def hook_cli(name: str, home: Path, session: Path, url_check: str | None = None) -> subprocess.CompletedProcess:
-    """``evo-agents hub hook NAME`` as Claude Code runs it for a session in ``session``, as the person of ``home``."""
+def hook_cli(name: str, home: Path, session: Path, **variables: str) -> subprocess.CompletedProcess:
+    """``evo-agents hub hook NAME`` as Claude Code runs it for a session in ``session``, as the person of ``home``,
+    with ``variables`` added to its environment."""
     env = pg.clean_env(HOME=str(home), CLAUDE_PROJECT_DIR=str(session))
     for variable in HOST_VARIABLES:
         if variable != "CLAUDE_PROJECT_DIR":
             env.pop(variable, None)
+    env.update(variables)
     event = {"session-start": "SessionStart", "stop": "Stop"}[name]
     payload = {"session_id": "0b5e7a52-4c1e-4b8e-9d55-2f3c1a7e9b10", "cwd": str(session), "hook_event_name": event}
     command = [sys.executable, "-m", "evo_agents", "hub", "hook", name]
@@ -682,6 +735,44 @@ def test_stop_pushes_what_waited_while_the_hub_was_down(hub_db, tmp_path):
         pushed = hook_cli("stop", home, root)
         assert (pushed.returncode, pushed.stdout, pushed.stderr) == (0, "", "")
         assert live.sql(hub_db, "SELECT name, revision FROM memories") == [("deploys.md", 1)]
+
+
+@needs_pg
+def test_a_worker_run_in_a_harness_gets_no_plan_copy_and_pushes_no_memory(hub_db, tmp_path):
+    with live.running_hub(hub_db, tmp_path, EVO_HUB_ADMINS=live.ADMIN) as served:
+        admin = hub_client.Hub(served.url, live.insert_token(hub_db, live.ADMIN))
+        admin.call("PUT", "/v1/projects/demo", live_project())
+        admin.call("PUT", "/v1/admin/projects/demo/grants/alice", {"role": "writer", "max_level": "internal"})
+        token = live.insert_token(hub_db, "alice")
+        hub_client.Hub(served.url, token).call(
+            "PUT", "/v1/projects/demo/plans/demo", {"body": {"id": "demo", **plan("demo")}}
+        )
+        home, root = machine(tmp_path, "worker", served.url, "alice", token)
+        note = memory_dir(home, root) / "deploys.md"
+        note.parent.mkdir(parents=True)
+        note.write_text(typed("project", MARKER), encoding="utf-8")
+        copy = root / "plans" / "active" / "demo.yaml"
+
+        # The agent of run #7 on a worker, in a worktree of the harness.
+        started = hook_cli("session-start", home, root, EVO_RUN_ID="7")
+        told = context_of(started.stdout)
+        assert (started.returncode, started.stderr, told["message"]) == (0, "", None)
+        assert told["context"] == (
+            f"evo-hub {served.url}, project demo: {hooks.run_note(7)}; 0 memories pulled; skills up to date."
+        )
+        assert not copy.exists(), "no plan copy for the worker to commit"
+        stopped = hook_cli("stop", home, root, EVO_RUN_ID="7")
+        assert (stopped.returncode, stopped.stdout, stopped.stderr) == (0, "", "")
+        assert live.sql(hub_db, "SELECT count(*) FROM memories") == [(0,)]
+
+        # The same directory in a session of its owner: the copy is written and the memory pushed.
+        started = hook_cli("session-start", home, root)
+        assert "1 plan copy written of 1 plan (no commit)" in context_of(started.stdout)["context"]
+        assert read_plan(copy).hub["revision"] == 1
+        stopped = hook_cli("stop", home, root)
+        assert (stopped.returncode, stopped.stdout, stopped.stderr) == (0, "", "")
+        assert live.sql(hub_db, "SELECT name FROM memories") == [("deploys.md",)]
+    assert MARKER not in served.log()
 
 
 def live_project() -> dict:

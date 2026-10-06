@@ -11,6 +11,8 @@
   runs/<run>/run.json           what the daemon knows of a run: its worktree, branch, base, when it ended
   runs/<run>/events.jsonl       every event of the run, uploaded as its log when it ends
   runs/<run>/decisions.jsonl    the decisions a plan run's agent asked (``evo-agents worker ask``), one id a line
+  runs/<run>/agent.json         the process group of the run's latest agent while the run has not ended here, for the
+                                next daemon to stop when this one dies first (``orphans``)
   worktrees/<project>-<run>/    the run's git worktree, removed 7 days after the run ended; for a plan run, the
                                 agent's directory: a worktree of each repo and .evo-run/ (plan.yaml, result.json)
 ```
@@ -197,6 +199,33 @@ class WorkerHome:
 
     def remove_run(self, run_id: int) -> None:
         shutil.rmtree(self.run_dir(run_id), ignore_errors=True)
+
+    # The agent of a run that has not ended
+
+    def agent_path(self, run_id: int) -> Path:
+        return self.run_dir(run_id) / "agent.json"
+
+    def save_agent(self, run_id: int, agent: dict) -> None:
+        """Note the process of the agent that run ``run_id`` started last (``orphans.describe``)."""
+        directory = self.run_dir(run_id)
+        directory.mkdir(mode=DIR_MODE, parents=True, exist_ok=True)
+        data = json.dumps({"run_id": int(run_id), **agent}, indent=2, ensure_ascii=False).encode() + b"\n"
+        write_atomic(self.agent_path(run_id), data, FILE_MODE)
+
+    def load_agents(self) -> dict[int, dict]:
+        """run id -> what agent.json says, for every run with one; a file that does not read is left out."""
+        found: dict[int, dict] = {}
+        if not self.runs_dir.is_dir():
+            return found
+        for path in sorted(self.runs_dir.glob("*/agent.json")):
+            with contextlib.suppress(OSError, ValueError):
+                agent = json.loads(path.read_text(encoding="utf-8"))
+                if isinstance(agent, dict) and agent.get("run_id") == int(path.parent.name):
+                    found[agent["run_id"]] = agent
+        return found
+
+    def remove_agent(self, run_id: int) -> None:
+        self.agent_path(run_id).unlink(missing_ok=True)
 
     # The daemon's pid
 

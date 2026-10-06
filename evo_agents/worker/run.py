@@ -16,15 +16,20 @@
 3. ``verifying``: the agent wrote ``.evo-run/result.json``; the daemon runs each of its ``verify_commands`` again in
    the worktree, with the run's time left, and records each exit code as a ``system`` event. A command that exits
    other than 0 fails the run, and nothing is pushed: the work stays in the worktree.
-4. The daemon commits what the agent left uncommitted as ``run #N: <title>`` (``.evo-run/`` stays out), refuses to
-   push a detached HEAD or a branch the agent switched to, pushes the plan's branch to origin (never forced, never
-   merged), and reports ``done`` (approval ``auto``) or ``review`` with the commit, the diffstat, the verify results,
-   the agent's summary and usage. Every event is sent before that report.
+4. The daemon commits what the agent left uncommitted as ``run #N: <title>``, leaving out ``.evo-run/``, what hooks
+   wrote (``gitops.RUN_COMMIT_EXCLUDES``) and copies of hub plans as the hub wrote them, which a ``system`` event
+   names (``gitops.commit_run``); refuses to push a detached HEAD or a branch the agent switched to, pushes the plan's
+   branch to origin (never forced, never merged), and reports ``done`` (approval ``auto``) or ``review`` with the
+   commit, the diffstat, the verify results, the agent's summary and usage. Every event is sent before that report.
 5. After the last report the log (the run's events) and the diff are uploaded as blobs when the hub has a blob store,
    and the worktree leaves the plan's branch, so the owner can check it out elsewhere; it is removed 7 days later.
 
 A hub that does not answer holds nothing up: events wait in the spool and each report is sent again with the
 backoff until the hub answers, or says the run is no longer this worker's.
+
+Each time an agent starts, headless or in its terminal UI, the daemon notes its process group in
+``runs/<run>/agent.json`` (``orphans``), and removes the file just before the run counts as ended here, so a daemon
+that starts after this one died finds the agents it left.
 
 A plan run (kind ``plan``, ``PlanRun``) does every step of a plan not done yet, in one session:
 
@@ -42,11 +47,11 @@ A plan run (kind ``plan``, ``PlanRun``) does every step of a plan not done yet, 
    inbox and goes to a new turn of the agent in the same session (``running`` again). A run the hub parks (no answer
    within a day) stops at the end of its turn, keeps its session and worktrees, and frees its slot; the run that
    resumes it, claimed with ``resume_of_run_id``, goes on in them.
-4. Once a turn ends with nothing to wait for, the daemon reports ``verifying`` and commits and pushes what each repo
-   has left, never forced (a default branch only when the plan names it, with the notice ``push_default_branch``),
-   and reports ``done`` with the agent's summary from ``.evo-run/result.json``: no verify commands run at the end,
-   since ``evo-agents worker step`` ran each step's. The log and the diffs of every repo are uploaded as for a run of
-   one step.
+4. Once a turn ends with nothing to wait for, the daemon reports ``verifying`` and commits (leaving out what a run
+   of one step leaves out) and pushes what each repo has left, never forced (a default branch only when the plan
+   names it, with the notice ``push_default_branch``), and reports ``done`` with the agent's summary from
+   ``.evo-run/result.json``: no verify commands run at the end, since ``evo-agents worker step`` ran each step's. The
+   log and the diffs of every repo are uploaded as for a run of one step.
 """
 
 from __future__ import annotations
@@ -67,7 +72,7 @@ from typing import TYPE_CHECKING
 import yaml
 
 from evo_agents.hub import runs
-from evo_agents.worker import gitops, interactive
+from evo_agents.worker import gitops, interactive, orphans
 from evo_agents.worker.adapter import AgentEvent, AgentFinished, Outcome, RunContext
 from evo_agents.worker.checkouts import default_branch_of
 from evo_agents.worker.hubapi import Backoff, HubProblem, Outdated, Refused, Unreachable
@@ -87,6 +92,9 @@ MAX_ERROR_CHARS = 2000
 MAX_SUMMARY_CHARS = 8000
 MAX_USAGE_BYTES = 64 * 1024
 OUTPUT_TAIL = 8 * 1024  # bytes of a verify command's output kept in its event
+NOTE_GROUP_LOOKS = 20  # events after its start at which an adapter is asked again for its agent's process group
+MAX_LEFT_OUT_NAMED = 20  # files a note of what a commit left out names in its text
+MAX_LEFT_OUT_LISTED = 200  # and lists in its body
 LOG_LIMIT = 64 * 1024 * 1024  # the run-log blob
 DIFF_LIMIT = 8 * 1024 * 1024  # the run-diff blob
 STOP_GRACE = 30.0  # seconds an interrupted agent has to end its events
@@ -299,6 +307,7 @@ class Run:
         self.adapter = None
         self.agent_running = False
         self.agent_started = False  # the agent (headless or in a terminal) has started once: the timeout counts
+        self.group_noted = False  # agent.json names the process group of the agent that runs now
         self.session_reported: str | None = None
         self.phase = "prepare"  # prepare, headless, interactive (a person drives the agent), after
         self.takeover_asked = False
@@ -643,6 +652,10 @@ class Run:
                     await sender
             if self.sender.settled:
                 self.spool.remove()
+            # The agent is over: before the run counts as ended here, so a daemon that dies in between leaves an
+            # abandoned run rather than an orphan whose worktree the next one would remove.
+            with contextlib.suppress(OSError):
+                self.daemon.home.remove_agent(self.id)
             self.record["finished_at"] = _now().isoformat()
             self.record["state"] = self.state
             with contextlib.suppress(OSError):
@@ -854,6 +867,9 @@ class Run:
             raise RunFailed(f"{self.runtime} did not start: {type(exc).__name__}: {exc}") from None
         self.agent_running = True
         self._agent_starts()
+        pid = self._group_of(adapter)
+        await self._note_agent(pid)
+        self.group_noted = pid is not None
         if self._pending_ack is not None:  # the messages its prompt carries are the agent's now
             ack, self._pending_ack = self._pending_ack, None
             self._spawn(self._ack_inbox(ack))
@@ -905,6 +921,8 @@ class Run:
             return session_id
         self.tui = tui
         self._agent_starts()
+        await self._note_agent(None)
+        self.group_noted = False
         logs = asyncio.create_task(self._terminal_log(tui, name))  # before anyone is told the session is there
         try:
             self.record["tmux_session"] = name
@@ -988,11 +1006,37 @@ class Run:
             if pane_log is not None:
                 pane_log.unlink(missing_ok=True)
 
+    def _group_of(self, adapter) -> int | None:
+        try:
+            pid = adapter.group_pid()
+        except Exception:  # an adapter's bug must not stop the run
+            log.warning("the adapter did not name the agent's process group", extra={"run_id": self.id}, exc_info=True)
+            return None
+        return pid if isinstance(pid, int) and pid > 1 else None
+
+    async def _note_agent(self, pid: int | None) -> None:
+        """Note the agent that runs now in runs/<run>/agent.json (``orphans``): the process group ``pid`` leads, or
+        none (an agent in its terminal UI, whose tmux session a daemon that starts closes, or an adapter that does not
+        name its group). The file stays until the run ends here."""
+        agent = await asyncio.to_thread(orphans.describe, pid)
+        agent.update({"runtime": self.runtime, "phase": self.phase})
+        try:
+            self.daemon.home.save_agent(self.id, agent)
+        except OSError as exc:
+            log.warning("agent.json not written", extra={"run_id": self.id, "error": str(exc)})
+
     async def _consume(self, adapter) -> Outcome:
         async def pump() -> None:
+            looks = 0
             async for item in adapter.events():
                 if isinstance(item, AgentEvent):
                     self.event(item.kind, item.body, item.at)
+                if not self.group_noted and looks < NOTE_GROUP_LOOKS:  # a runtime that started after start returned
+                    looks += 1
+                    pid = self._group_of(adapter)
+                    if pid is not None:
+                        await self._note_agent(pid)
+                        self.group_noted = True
                 session_id = adapter.session_id
                 if session_id and session_id != self.session_reported and self.state == "running":
                     self.session_reported = session_id
@@ -1136,11 +1180,31 @@ class Run:
 
     # Commit and push
 
+    async def _commit(self, path: Path, repo: str | None = None) -> bool:
+        """Commit what the agent left in the work tree at ``path`` as ``run #N: <title>``, and say in the run's log
+        which files the commit leaves out (``gitops.commit_run``); whether a commit was made."""
+        message = f"run #{self.id}: {self.title}"
+        committed = await gitops.commit_run(path, message)
+        extra = {"repo": repo} if repo else {}
+        where = f" in {repo}" if repo else ""
+        if committed.left_out:
+            left = committed.left_out
+            shown = ", ".join(left[:MAX_LEFT_OUT_NAMED])
+            more = f" and {len(left) - MAX_LEFT_OUT_NAMED} more" if len(left) > MAX_LEFT_OUT_NAMED else ""
+            self.note(
+                f"Left out of the commit{where}, as what a hook or a plan export wrote rather than the agent's work: "
+                f"{shown}{more}.",
+                left_out=list(left[:MAX_LEFT_OUT_LISTED]),
+                **extra,
+            )
+        if committed.made:
+            self.note(f"Committed what the agent left{where or ' uncommitted'} as {message}.", **extra)
+        return committed.made
+
     async def _commit_and_push(self) -> tuple[str, dict]:
         wt = self.worktree
         try:
-            if await gitops.commit_all(wt, f"run #{self.id}: {self.title}"):
-                self.note(f"Committed what the agent left uncommitted as run #{self.id}: {self.title}.")
+            await self._commit(wt)
         except gitops.GitError as exc:
             raise RunFailed(f"committing what the agent left failed: {exc}", verify=self.verify) from None
         head_branch = await gitops.current_branch(wt)
@@ -1640,8 +1704,7 @@ class PlanRun(Run):
             if not path.is_dir():
                 raise RunFailed(f"the worktree of {name} at {path} is gone")
             try:
-                if await gitops.commit_all(path, f"run #{self.id}: {self.title}"):
-                    self.note(f"Committed what the agent left in {name} as run #{self.id}: {self.title}.")
+                await self._commit(path, name)
             except gitops.GitError as exc:
                 raise RunFailed(f"committing what the agent left in {name} failed: {exc}") from None
             head_branch = await gitops.current_branch(path)
