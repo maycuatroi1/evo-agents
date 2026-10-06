@@ -7,6 +7,7 @@ import logging
 import os
 import stat
 import subprocess
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -172,6 +173,41 @@ def test_checkouts_come_from_config_then_the_hubs_repos_then_the_registry(tmp_pa
         "demo/evo-cli": {"path": str(cli), "branch": "dev"},
         "other/tool": {"path": str(manual), "branch": "main"},
     }
+
+
+def test_the_harness_is_a_checkout_from_the_hubs_project_or_the_registrys_root(tmp_path):
+    workspace = tmp_path / "ws"
+    harness = _repo(workspace / "demo-harness")
+    agents = _repo(workspace / "evo-agents")
+    project = {
+        "name": "demo",
+        "harness": {"name": "demo", "workspace": str(workspace), "path": "demo-harness"},
+        "repos": [{"name": "evo-agents", "path": "evo-agents", "default_branch": "main"}],
+    }
+    held = checkouts.hub_repos(project)
+    assert held == {
+        "workspace": str(workspace),
+        "repos": [{"name": "evo-agents", "path": "evo-agents", "default_branch": "main"}],
+        "harness": "demo-harness",
+    }
+    expected = {
+        "demo/demo-harness": {"path": str(harness), "branch": "main"},
+        "demo/evo-agents": {"path": str(agents), "branch": "main"},
+    }
+    config = WorkerConfig(url="https://hub.example.org", worker_id=1, name="mac", projects=["demo"])
+    assert checkouts.discover(replace(config, repos={"demo": held}), []) == expected
+    # an older config.json, without the harness, finds it in the registry's cluster, as `hub registry pull` wrote it
+    cluster = {
+        "name": "demo",
+        "root": str(harness),
+        "workspace": str(workspace),
+        "repos": [str(agents)],
+        "hub": {"url": "https://hub.example.org", "project": "demo"},
+    }
+    old = {"demo": {key: value for key, value in held.items() if key != "harness"}}
+    assert checkouts.discover(replace(config, repos=old), [cluster]) == expected
+    assert checkouts.discover(config, [cluster]) == expected
+    assert checkouts.hub_repos({"harness": {"workspace": "~/github", "path": " "}})["harness"] is None
 
 
 def test_registry_files_are_read_in_order_and_a_broken_one_is_skipped(tmp_path):

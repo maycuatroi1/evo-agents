@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 from datetime import datetime, timedelta
 
 from evo_agents.hub.plans import step_key
@@ -56,6 +57,7 @@ MAX_MESSAGE_BYTES = 8 * 1024  # one message from the owner to a running agent
 MAX_PROMPT_BYTES = 32 * 1024  # the prompt build_prompt or build_plan_prompt returns, as UTF-8
 
 RUN_KINDS = ("step", "plan")  # a run of one step, or of every step of a plan not done yet, in one session
+PLAN_RUN_AGENT = (0, 4, 0)  # the first daemon release that runs a plan run; an older one reads it as a step run
 RUNTIMES = ("claude-code", "opencode", "codex")
 MAX_MODEL_CHARS = 200  # a run's model, one line (runs.model, as schema 0010 bounds it), and each model a runtime lists
 MAX_RUNTIME_MODELS = 200  # the models a heartbeat lists for one runtime
@@ -313,6 +315,19 @@ def worker_status(
     if drained_at is not None:
         return "draining"
     return "online"
+
+
+def takes_plan_runs(agent_version: str | None) -> bool:
+    """Whether a daemon of ``agent_version`` runs a plan run: PLAN_RUN_AGENT or later. A version whose release
+    cannot be read does not, as an older daemon would fail the run."""
+    match = re.match(r"(\d+)\.(\d+)(?:\.(\d+))?", (agent_version or "").strip())
+    if match is None:
+        return False
+    return tuple(int(part or 0) for part in match.groups()) >= PLAN_RUN_AGENT
+
+
+def version_text(version: tuple[int, ...]) -> str:
+    return ".".join(str(part) for part in version)
 
 
 # Which steps are ready
