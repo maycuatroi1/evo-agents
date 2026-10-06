@@ -82,7 +82,7 @@ export async function liveWorker(
   project: string,
   name: string,
   slots = 1,
-  { terminal = false }: { terminal?: boolean } = {},
+  { terminal = false, report = {} }: { terminal?: boolean; report?: MachineReport } = {},
 ): Promise<LiveWorker> {
   const api = bearerClient(await machineToken(account));
   const credential = await call(
@@ -99,7 +99,7 @@ export async function liveWorker(
     }),
   );
   const live = { worker: credential.worker, token: credential.token, project };
-  await workerHeartbeat(live);
+  await workerHeartbeat(live, [], report);
   return live;
 }
 
@@ -113,11 +113,21 @@ async function workerCall(live: LiveWorker, path: string, body: unknown): Promis
   return response.json();
 }
 
-/** The daemon's heartbeat: Claude Code available, a checkout of the plan's repo, the runs it holds. */
-export async function workerHeartbeat(live: LiveWorker, runs: number[] = []): Promise<void> {
+/** What a heartbeat may say beyond the default: the repos checked out, and the models Claude Code lists. */
+export type MachineReport = { repos?: string[]; models?: string[] | null };
+
+/**
+ * The daemon's heartbeat: Claude Code available (listing `models` when given), a checkout of each repo in `repos` (the
+ * plan's repo by default), the runs it holds.
+ */
+export async function workerHeartbeat(live: LiveWorker, runs: number[] = [], report: MachineReport = {}): Promise<void> {
+  const repos = report.repos ?? [REPO];
   await workerCall(live, "/v1/worker/heartbeat", {
-    runtimes: { "claude-code": { available: true, version: "2.1.289" }, codex: { available: false, reason: "not found on PATH" } },
-    checkouts: { [`${live.project}/${REPO}`]: { path: `~/github/${REPO}`, branch: "main" } },
+    runtimes: {
+      "claude-code": { available: true, version: "2.1.289", ...(report.models ? { models: report.models } : {}) },
+      codex: { available: false, reason: "not found on PATH" },
+    },
+    checkouts: Object.fromEntries(repos.map((repo) => [`${live.project}/${repo}`, { path: `~/github/${repo}`, branch: "main" }])),
     free_slots: Math.max(live.worker.slots - runs.length, 0),
     runs,
   });
@@ -260,4 +270,120 @@ export async function eventsOf(account: Account, project: string, id: number) {
 /** The run's page. */
 export function runPath(project: string, id: number): string {
   return `/p/${project}/runs/${id}`;
+}
+
+// Plan runs: one run that does every step of a plan not done yet (docs/workers.md, A plan run on the machine).
+
+/** The plan the plan-run specs run: four steps over two repos, step 1 done, step 3 a checkpoint. */
+export const PLAN_RUN_PLAN = "fleet";
+/** The second repo of the plan run, on its default branch main. */
+export const HARNESS_REPO = "harness";
+export const PLAN_RUN_BRANCH = "feat/plan-runs";
+export const PLAN_RUN_TITLES: Record<string, string> = {
+  "1": "Plan run model",
+  "2": "Run plan dialog",
+  "3": "Checkpoint: deploy to staging",
+  "4": "Update the use-case catalog",
+};
+/** The models the plan-run worker's Claude Code lists. */
+export const MODELS = ["claude-opus-4-1", "claude-sonnet-4-5"];
+
+export function planRunBody(id = PLAN_RUN_PLAN, { allDone = false }: { allDone?: boolean } = {}) {
+  const step = (key: number, repo: string, extra: Record<string, unknown>) => ({
+    id: key,
+    title: PLAN_RUN_TITLES[String(key)],
+    repo,
+    what: `Do step ${key}.`,
+    verify: "pnpm test",
+    ...(allDone ? { status: "done", evidence: `step ${key} verified` } : {}),
+    ...extra,
+  });
+  return {
+    id,
+    title: "Plan runs on the web",
+    goal: "Run a whole plan on one worker.",
+    repos: [
+      { repo: REPO, branch: PLAN_RUN_BRANCH, status: "in_progress" },
+      { repo: HARNESS_REPO, branch: "main", status: "pending" },
+    ],
+    steps: [
+      step(1, REPO, { status: "done", evidence: "api@abc1234: 40 tests pass" }),
+      step(2, REPO, { status: allDone ? "done" : "pending", depends_on: [1] }),
+      step(3, REPO, { status: allDone ? "done" : "pending", depends_on: [2] }),
+      step(4, HARNESS_REPO, { status: allDone ? "done" : "pending", depends_on: [3] }),
+    ],
+  };
+}
+
+/** Push the plan-run plan into `project` as `writer`. */
+export async function seedPlanRunPlan(writer: Account, project: string, id = PLAN_RUN_PLAN, options: { allDone?: boolean } = {}): Promise<void> {
+  const api = bearerClient(await machineToken(writer));
+  await call(
+    api.PUT("/v1/projects/{project}/plans/{plan_id}", {
+      params: { path: { project, plan_id: id } },
+      body: { body: planRunBody(id, options), area: "active" },
+    }),
+  );
+}
+
+/** A worker with checkouts of both repos of the plan run, whose Claude Code lists MODELS. */
+export function planRunWorker(account: Account, project: string, name: string): Promise<LiveWorker> {
+  return liveWorker(account, project, name, 1, { report: { repos: [REPO, HARNESS_REPO], models: MODELS } });
+}
+
+/** Dispatch a plan run through the API as `account`, the way `evo-agents hub run plan` does. */
+export async function dispatchPlan(account: Account, project: string, extra: Record<string, unknown> = {}): Promise<Run> {
+  const api: ApiClient = bearerClient(await machineToken(account));
+  return call(
+    api.POST("/v1/projects/{project}/plan-runs", {
+      params: { path: { project } },
+      body: { plan_id: PLAN_RUN_PLAN, runtime: "any", mode: "headless", timeout_h: 4, ...extra },
+    }),
+  );
+}
+
+/** The agent's `evo-agents worker step KEY in_progress`, through the worker's token. */
+export async function reportStep(live: LiveWorker, runId: number, key: string, status: "in_progress" | "pending", repo = REPO): Promise<void> {
+  await workerCall(live, `/v1/worker/runs/${runId}/steps/${key}`, { status, repo });
+}
+
+/** The agent's `evo-agents worker ask`: a decision of the run, answered by its owner. Returns its id. */
+export async function askDecision(live: LiveWorker, runId: number, question: string, step = "3"): Promise<number> {
+  const decision = (await workerCall(live, `/v1/worker/runs/${runId}/decisions`, {
+    category: "deploy",
+    question,
+    context: "The checkpoint deploys **staging**.",
+    options: [
+      { key: "deploy", label: "Deploy to staging now" },
+      { key: "wait", label: "Wait until tomorrow" },
+    ],
+    recommended: "deploy",
+    step_key: step,
+  })) as { id: number };
+  return decision.id;
+}
+
+/**
+ * A plan run the worker took and started, with step 2 in progress; with `waiting`, its agent then asked a decision and
+ * the run waits for the answer. Returns the run and the decision's id, if any.
+ */
+export async function planRunUnderway(
+  owner: Account,
+  project: string,
+  name: string,
+  { waiting = false, dispatch = {} }: { waiting?: boolean; dispatch?: Record<string, unknown> } = {},
+): Promise<{ live: LiveWorker; run: Run; decision: number | null }> {
+  const live = await planRunWorker(owner, project, name);
+  const run = await dispatchPlan(owner, project, { worker_id: live.worker.id, runtime: "claude-code", model: MODELS[1], ...dispatch });
+  const claimed = await claimRun(live);
+  if (claimed?.id !== run.id) throw new Error(`the worker claimed ${claimed?.id ?? "nothing"}, not plan run #${run.id}`);
+  await workerHeartbeat(live, [run.id], { repos: [REPO, HARNESS_REPO], models: MODELS });
+  await reportState(live, run.id, { state: "running", session_id: "3f2a9c1e-0000-4000-8000-0000000000aa" });
+  await reportStep(live, run.id, "2", "in_progress");
+  let decision: number | null = null;
+  if (waiting) {
+    decision = await askDecision(live, run.id, "Deploy the plan-runs build to staging now?");
+    await reportState(live, run.id, { state: "waiting" });
+  }
+  return { live, run: await runOf(owner, project, run.id), decision };
 }

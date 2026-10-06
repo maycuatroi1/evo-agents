@@ -6,11 +6,11 @@ import { useMemo } from "react";
 
 import { DataTable, dataTableColumns } from "@/components/data/data-table";
 import { useNow } from "@/components/kg/use-now";
-import { stepHref } from "@/components/plans/links";
+import { planHref, stepHref } from "@/components/plans/links";
 import { workerHref } from "@/components/workers/queries";
 import { cn } from "@/lib/utils";
 
-import { RunStateBadge } from "./badges";
+import { PlanRunKindBadge, RunStateBadge } from "./badges";
 import { durationParts, runTiming } from "./model";
 import { isActiveState, type Run, runHref } from "./queries";
 
@@ -91,20 +91,37 @@ function Timing({ run, part }: { run: Run; part: "started" | "duration" }) {
 function StepCell({ run, showProject }: { run: Run; showProject: boolean }) {
   const t = useTranslations("runs");
   const ended = run.state === "failed" || run.state === "lost" || run.state === "cancelled";
+  const plan = run.kind === "plan" || run.step_key === null;
+  const repos = run.repos?.length ?? 0;
   return (
-    <div className="flex min-w-36 flex-col gap-0.5 py-0.5 break-words whitespace-normal">
-      <Link
-        href={stepHref(run.project, run.plan_id, run.step_key)}
-        className="w-fit text-sm font-medium text-primary underline-offset-4 hover:underline"
-        data-testid="run-step-link"
-      >
-        {run.title ?? t("untitled")}
-      </Link>
+    <div className="flex min-w-36 flex-col items-start gap-0.5 py-0.5 break-words whitespace-normal">
+      {plan ? (
+        <Link
+          href={planHref(run.project, run.plan_id)}
+          className="w-fit text-sm font-medium text-primary underline-offset-4 hover:underline"
+          data-testid="run-plan-link"
+        >
+          {run.title ?? run.plan_id}
+        </Link>
+      ) : (
+        <Link
+          href={stepHref(run.project, run.plan_id, run.step_key ?? "")}
+          className="w-fit text-sm font-medium text-primary underline-offset-4 hover:underline"
+          data-testid="run-step-link"
+        >
+          {run.title ?? t("untitled")}
+        </Link>
+      )}
       <span className="font-mono text-xs text-muted-foreground">
-        {showProject
-          ? t("stepLineProject", { project: run.project, plan: run.plan_id, step: run.step_key })
-          : t("stepLine", { plan: run.plan_id, step: run.step_key })}
+        {plan
+          ? showProject
+            ? t("planLineProject", { project: run.project, plan: run.plan_id, repos })
+            : t("planLine", { plan: run.plan_id, repos })
+          : showProject
+            ? t("stepLineProject", { project: run.project, plan: run.plan_id, step: run.step_key ?? "" })
+            : t("stepLine", { plan: run.plan_id, step: run.step_key ?? "" })}
       </span>
+      {plan ? <PlanRunKindBadge className="mt-0.5" /> : null}
       {ended && run.error ? (
         <span className="line-clamp-2 text-xs text-muted-foreground" title={run.error} data-testid="run-error">
           {run.error}

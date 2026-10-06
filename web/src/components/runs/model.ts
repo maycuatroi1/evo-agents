@@ -1,8 +1,10 @@
 import type { Worker } from "@/components/workers/queries";
+import type { PlanStep, PlanView } from "@/lib/plans";
 
 import {
   HELD_STATES,
   isActiveState,
+  MAX_MODEL_CHARS,
   MAX_QUERY,
   type RequestedRuntime,
   type Run,
@@ -26,7 +28,7 @@ export const RUN_FACETS = ["active", "review", "done", "ended"] as const;
 export type RunFacet = (typeof RUN_FACETS)[number];
 
 export const FACET_STATES: Record<RunFacet, readonly RunState[]> = {
-  active: ["queued", ...HELD_STATES],
+  active: ["queued", ...HELD_STATES, "parked"],
   review: ["review"],
   done: ["done"],
   ended: ["failed", "lost", "cancelled"],
@@ -219,7 +221,8 @@ export function dispatchWorkers(workers: readonly Worker[], login: string, proje
 export type FitProblem =
   | { kind: "draining" }
   | { kind: "runtime"; runtime: RequestedRuntime }
-  | { kind: "checkout"; repo: string };
+  /** Every repo of the request the worker has no checkout of. */
+  | { kind: "checkout"; repos: string[] };
 
 export type WorkerFit = {
   worker: Worker;
@@ -239,8 +242,8 @@ export function fitWorker(worker: Worker, request: FitRequest): WorkerFit {
   if (request.runtime === "any" ? runtimes.length === 0 : !runtimes.includes(request.runtime as RuntimeName)) {
     return no({ kind: "runtime", runtime: request.runtime });
   }
-  const missing = request.repos.find((repo) => !(`${request.project}/${repo}` in worker.checkouts));
-  if (missing !== undefined) return no({ kind: "checkout", repo: missing });
+  const missing = request.repos.filter((repo) => !(`${request.project}/${repo}` in worker.checkouts));
+  if (missing.length > 0) return no({ kind: "checkout", repos: missing });
   if (worker.status !== "online") return { worker, fit: "offline", problem: null, free };
   return { worker, fit: free > 0 ? "now" : "busy", problem: null, free };
 }
@@ -280,4 +283,147 @@ export function dispatchOutlook(
   const later = fits.filter((fit) => fit.fit === "busy" || fit.fit === "offline");
   if (later.length) return { kind: "later", fits: later };
   return { kind: "none", fits };
+}
+
+// Models. A dispatch may name the model its runtime uses; the heartbeat reports, per runtime, the models it lists on
+// the machine (`runtimes.<runtime>.models`, null when it lists none), which the dialogs offer as suggestions.
+
+/** The models one runtime report lists, in its order; none for a report without a list. */
+export function runtimeModels(report: unknown): string[] {
+  if (typeof report !== "object" || report === null || Array.isArray(report)) return [];
+  const models = (report as Record<string, unknown>).models;
+  return Array.isArray(models) ? models.filter((model): model is string => typeof model === "string" && model.trim() !== "") : [];
+}
+
+/**
+ * The models to suggest for `runtime` from what `workers` report for it, each once, sorted. Nothing for any runtime:
+ * each runtime names its models its own way (opencode as provider/model), so a model goes with a runtime picked.
+ */
+export function modelSuggestions(workers: readonly Pick<Worker, "runtimes">[], runtime: RequestedRuntime): string[] {
+  if (runtime === "any") return [];
+  const found = new Set<string>();
+  for (const worker of workers) {
+    const report = worker.runtimes[runtime];
+    if (runtimeAvailable(report)) for (const model of runtimeModels(report)) found.add(model);
+  }
+  return [...found].sort((a, b) => a.localeCompare(b));
+}
+
+/** Why a typed model cannot go with the dispatch: control characters, over 200 characters, or no runtime picked. */
+export type ModelProblem = "line" | "long" | "runtime";
+
+/** The model as the API takes it (trimmed; null for none), or the problem with it. */
+export function readModel(text: string, runtime: RequestedRuntime): { model: string | null; problem: ModelProblem | null } {
+  const model = text.trim();
+  if (!model) return { model: null, problem: null };
+  // The API's LINE pattern: one line, without control characters.
+  if (/[\u0000-\u001f\u007f]/.test(model)) return { model, problem: "line" };
+  if ([...model].length > MAX_MODEL_CHARS) return { model, problem: "long" };
+  if (runtime === "any") return { model, problem: "runtime" };
+  return { model, problem: null };
+}
+
+// Plan runs. A plan run is one run on one worker that does every step of the plan not done yet, in depends_on order
+// (runs.py, dispatch_plan); its repos are those of the steps not done, each on the branch the plan names for it.
+
+/** A step that is a checkpoint (a verification, a review, a deploy): flagged so, or named so in its title or first words. */
+export function isCheckpoint(step: Pick<PlanStep, "title" | "what" | "extra">): boolean {
+  if (step.extra.some(([key, value]) => key === "checkpoint" && value === true)) return true;
+  return /\bcheck-?point\b/i.test(step.title ?? "") || /^\s*check-?point\b/i.test(step.what ?? "");
+}
+
+/** Branches a worker never pushes unless the plan names them: `gitops.PROTECTED`, plus each repo's registered default. */
+export const DEFAULT_BRANCHES = ["main", "master"] as const;
+
+export type PlanRunRepo = {
+  repo: string;
+  /** The branch the plan names for it; null when it names none, which fails the run before the agent starts. */
+  branch: string | null;
+  /** The branch is main, master or the default branch registered for the repo: the agent may push and merge into it. */
+  defaultBranch: boolean;
+};
+
+export type PlanRunScope = {
+  /** The steps the run does: every step not done, in plan order. */
+  steps: StepReadiness[];
+  pending: number;
+  inProgress: number;
+  blocked: number;
+  repos: PlanRunRepo[];
+  /** Steps not done that name no repo while the plan does not list exactly one: the hub refuses the run (409). */
+  unplaced: string[];
+  /** Checkpoint steps among those the run does. */
+  checkpoints: PlanStep[];
+};
+
+/**
+ * What a plan run of `plan` would do, from the readiness of its steps (each with the repo the hub gives it), the plan
+ * itself (titles and the branches of its repos) and the default branches the project registers for its repos.
+ */
+export function planRunScope(
+  steps: readonly StepReadiness[],
+  plan: Pick<PlanView, "steps" | "repos">,
+  defaults: Readonly<Record<string, string | null | undefined>> = {},
+): PlanRunScope {
+  const open = steps.filter((step) => step.status !== "done");
+  const repos = new Map<string, PlanRunRepo>();
+  const unplaced: string[] = [];
+  for (const step of open) {
+    if (!step.repo) {
+      unplaced.push(step.key);
+      continue;
+    }
+    if (repos.has(step.repo)) continue;
+    const branch = plan.repos.find((entry) => entry.repo === step.repo)?.branch ?? null;
+    const known = defaults[step.repo];
+    const defaultBranch = branch !== null && ((DEFAULT_BRANCHES as readonly string[]).includes(branch) || branch === known);
+    repos.set(step.repo, { repo: step.repo, branch, defaultBranch });
+  }
+  const keys = new Set(open.map((step) => step.key));
+  return {
+    steps: open,
+    pending: open.filter((step) => step.status === "pending" || step.status === null).length,
+    inProgress: open.filter((step) => step.status === "in_progress").length,
+    blocked: open.filter((step) => step.status === "blocked").length,
+    repos: [...repos.values()],
+    unplaced,
+    checkpoints: plan.steps.filter((step) => keys.has(step.key) && isCheckpoint(step)),
+  };
+}
+
+/** The active plan run of `planId` among `runs`, or null. */
+export function activePlanRun<R extends Pick<Run, "kind" | "plan_id" | "state">>(runs: readonly R[], planId: string): R | null {
+  return runs.find((run) => run.kind === "plan" && run.plan_id === planId && isActiveState(run.state)) ?? null;
+}
+
+/** Why Run plan is not offered for a plan now, or null when it is. */
+export type PlanRunLock =
+  | { kind: "planRun"; id: number; state: RunState }
+  | { kind: "stepRun"; id: number; state: RunState; step: string }
+  | { kind: "noPending" };
+
+/**
+ * The hub refuses a plan run (409) while the plan has an active run of any kind, or no pending step. `runs` are runs of
+ * the project (only the plan's active ones count); `pending` is how many steps of the plan are pending, or, where only
+ * the counts of done steps are known (the plans list), how many are not done.
+ */
+export function planRunLock(
+  runs: readonly Pick<Run, "id" | "kind" | "plan_id" | "state" | "step_key">[],
+  planId: string,
+  pending: number,
+): PlanRunLock | null {
+  const active = runs.filter((run) => run.plan_id === planId && isActiveState(run.state));
+  const plan = active.find((run) => run.kind === "plan");
+  if (plan) return { kind: "planRun", id: plan.id, state: plan.state };
+  const step = [...active].sort((a, b) => a.id - b.id)[0];
+  if (step) return { kind: "stepRun", id: step.id, state: step.state, step: step.step_key ?? "" };
+  return pending > 0 ? null : { kind: "noPending" };
+}
+
+/** How the plan pages name a plan run's state: queued, running (any state a worker drives), waiting or parked. */
+export type PlanRunPhase = "queued" | "running" | "waiting" | "parked" | "review";
+
+export function planRunPhase(state: RunState): PlanRunPhase {
+  if (state === "queued" || state === "waiting" || state === "parked" || state === "review") return state;
+  return "running";
 }

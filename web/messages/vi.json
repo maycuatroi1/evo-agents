@@ -404,7 +404,7 @@
     "emptyList": "Danh sách trống",
     "readOnly": {
       "label": "Trang chỉ để đọc",
-      "text": "Trang này chỉ để đọc. Plan được sửa bằng <code>evo harness step</code> hoặc <code>evo-agents hub plan</code>; mỗi lần sửa thêm một revision vào lịch sử."
+      "text": "Nội dung plan ở đây chỉ để đọc: plan được sửa bằng <code>evo harness step</code> hoặc <code>evo-agents hub plan</code>, và mỗi lần sửa thêm một revision vào lịch sử. Muốn một worker của bạn làm plan này thì người có quyền ghi dùng Chạy plan."
     },
     "tabs": {
       "label": "Các phần của plan",
@@ -460,7 +460,8 @@
         "plan": "Plan",
         "progress": "Tiến độ",
         "revision": "Revision",
-        "updated": "Sửa lần cuối"
+        "updated": "Sửa lần cuối",
+        "actions": "Thao tác"
       }
     },
     "overview": {
@@ -1286,7 +1287,7 @@
   "runs": {
     "title": "Run",
     "metaTitle": "Run của {project}",
-    "description": "Mỗi run là một bước plan được dispatch tới một worker của bạn. Trạng thái, log và bằng chứng của run gửi về hub trong lúc chạy.",
+    "description": "Mỗi run là một bước của plan, hoặc cả một plan (plan run), được giao cho một worker của bạn. Trạng thái, log và bằng chứng của run gửi về hub trong lúc chạy.",
     "dispatchButton": "Dispatch",
     "liveBadge": "Trực tiếp",
     "live": "Cập nhật mỗi 5 giây khi còn run đang hoạt động.",
@@ -1300,7 +1301,9 @@
       "running": "Đang chạy",
       "interactive": "Tương tác",
       "verifying": "Đang kiểm",
+      "waiting": "Chờ quyết định",
       "review": "Chờ duyệt",
+      "parked": "Tạm gác",
       "done": "Xong",
       "failed": "Thất bại",
       "lost": "Mất lease",
@@ -1357,6 +1360,8 @@
     },
     "stepLine": "{plan}, bước {step}",
     "stepLineProject": "{project}, {plan}, bước {step}",
+    "planLine": "{plan}, mọi bước chưa xong, {repos, plural, other {# repo}}",
+    "planLineProject": "{project}, {plan}, mọi bước chưa xong, {repos, plural, other {# repo}}",
     "untitled": "Bước chưa có tiêu đề",
     "noWorkerYet": "chưa có",
     "pinnedWaiting": "đang chờ worker đã ghim",
@@ -1418,6 +1423,7 @@
       "reason": {
         "activeRun": "Run #{id} đang ở trạng thái {state}, do {login} dispatch",
         "status": "Trạng thái là {status}, không phải chưa làm",
+        "planRun": "Plan run #{id} đang ở trạng thái {state}, do {login} giao: run này giữ mọi bước của plan tới khi kết thúc",
         "unknown": "Hub không nêu lý do"
       },
       "runtime": "Runtime",
@@ -1442,9 +1448,9 @@
       },
       "worker": "Worker",
       "workerAuto": "Tự ghép worker",
-      "workerAutoHint": "Một worker của bạn đang online, còn slot trống, có runtime và có checkout của repo của bước.",
+      "workerAutoHint": "Một worker của bạn đang online, còn slot trống, có runtime và {subject, select, plan {có checkout của mọi repo mà plan chạy} other {có checkout của repo của bước}}.",
       "workerPin": "Ghim vào một worker",
-      "workerPinHint": "Run nằm trong queue tới khi worker này có slot trống.",
+      "workerPinHint": "{subject, select, plan {Plan run nằm} other {Run nằm}} trong queue tới khi worker này có slot trống.",
       "workerSelect": "Worker được ghim",
       "workerOption": "{name} ({status})",
       "noWorkers": "Bạn chưa đăng ký worker nào cho dự án {project}.",
@@ -1460,15 +1466,15 @@
       "submit": "{count, plural, =0 {Dispatch} other {Dispatch # run}}",
       "submitting": "Đang dispatch…",
       "outlook": {
-        "nothing": "Chọn ít nhất một bước đã sẵn sàng.",
-        "noWorker": "Bạn chưa có worker nào cho dự án {project}. Run nằm trong queue tới khi bạn đăng ký một worker.",
+        "nothing": "{subject, select, plan {Chưa có gì để chạy: xem phía trên.} other {Chọn ít nhất một bước đã sẵn sàng.}}",
+        "noWorker": "Bạn chưa có worker nào cho dự án {project}. {subject, select, plan {Plan run nằm} other {Run nằm}} trong queue tới khi bạn đăng ký một worker.",
         "now": "Phù hợp ngay: {workers}.",
-        "later": "Hiện không worker nào của bạn rảnh; {workers} nhận được sau. Run nằm trong queue.",
-        "none": "Chưa worker nào của bạn nhận được các run này ({reasons}). Run nằm trong queue.",
-        "pinnedNow": "{name} nhận được các run này ngay.",
-        "pinnedBusy": "Run nằm trong queue tới khi {name} có slot trống.",
-        "pinnedOffline": "{name} đang offline; run nằm trong queue tới khi worker quay lại.",
-        "pinnedNo": "{name} chưa nhận được các run này ({problem}). Run nằm trong queue.",
+        "later": "Hiện không worker nào của bạn rảnh; {workers} nhận được {subject, select, plan {plan run này} other {các run này}} sau. {subject, select, plan {Plan run nằm} other {Run nằm}} trong queue.",
+        "none": "Chưa worker nào của bạn nhận được {subject, select, plan {plan run này} other {các run này}} ({reasons}). {subject, select, plan {Plan run nằm} other {Run nằm}} trong queue.",
+        "pinnedNow": "{name} nhận được {subject, select, plan {plan run này} other {các run này}} ngay.",
+        "pinnedBusy": "{subject, select, plan {Plan run nằm} other {Run nằm}} trong queue tới khi {name} có slot trống.",
+        "pinnedOffline": "{name} đang offline; {subject, select, plan {plan run nằm} other {run nằm}} trong queue tới khi worker quay lại.",
+        "pinnedNo": "{name} chưa nhận được {subject, select, plan {plan run này} other {các run này}} ({problem}). {subject, select, plan {Plan run nằm} other {Run nằm}} trong queue.",
         "free": "{name} ({count, plural, other {còn # slot trống}})",
         "busy": "{name} (hết slot)",
         "offline": "{name} (offline)",
@@ -1479,7 +1485,7 @@
         "draining": "đang ngừng nhận việc",
         "runtime": "không có {runtime}",
         "runtimeAny": "chưa báo runtime nào",
-        "checkout": "không có checkout của {repo}"
+        "checkout": "không có checkout của {repos}"
       },
       "errors": {
         "forbidden": "Hub từ chối: dispatch cần quyền ghi trên dự án này, và worker được ghim phải là worker của bạn.",
@@ -1488,12 +1494,122 @@
         "invalid": "Hub không chấp nhận lần dispatch này."
       }
     },
+    "planRun": {
+      "kind": "Plan run",
+      "button": "Chạy plan",
+      "title": "Chạy plan",
+      "description": "Một run trên một worker của bạn làm mọi bước chưa xong của <name>{plan}</name>, theo thứ tự depends_on và trong một phiên, và chỉ hỏi bạn những quyết định quan trọng.",
+      "loading": "Đang tải các bước của plan",
+      "loadFailed": "Không tải được các bước của plan. Đóng hộp thoại rồi thử lại.",
+      "timeout": "Thời gian tối đa",
+      "timeoutValue": "{hours} giờ",
+      "timeoutHint": "Thời gian agent được chạy. Lúc chờ bạn trả lời hay lúc tạm gác không tính vào.",
+      "submit": "Chạy plan",
+      "submitting": "Đang đưa vào queue…",
+      "dispatched": "Đã đưa plan run #{id} của {plan} vào queue.",
+      "holds": "<link>Plan run #{id}</link> ({state}, do {login} giao) giữ mọi bước của plan này tới khi kết thúc.",
+      "listLink": "Plan run #{id}: {state}",
+      "phase": {
+        "queued": "Đang chờ",
+        "queuedLong": "Đang chờ worker",
+        "running": "Đang chạy",
+        "runningLong": "Đang chạy",
+        "waiting": "Chờ quyết định",
+        "waitingLong": "Đang chờ bạn quyết định",
+        "parked": "Tạm gác",
+        "parkedLong": "Tạm gác",
+        "review": "Chờ duyệt",
+        "reviewLong": "Chờ duyệt"
+      },
+      "lock": {
+        "loading": "Đang kiểm tra các run của plan…",
+        "planRun": "Plan run #{id} đang ở trạng thái {state}.",
+        "stepRun": "Run #{id} của bước {step} đang ở trạng thái {state}; plan run phải chờ run này kết thúc.",
+        "noPending": "Không còn bước nào đang chờ làm."
+      },
+      "model": {
+        "label": "Model",
+        "optional": "(không bắt buộc)",
+        "placeholder": "Mặc định của runtime",
+        "hintAny": "Chọn một runtime để ghi model: mỗi runtime đặt tên model theo cách riêng.",
+        "hintSuggested": "Gợi ý {count} model mà các worker của bạn báo cho {runtime}; ghi tên khác cũng được. Để trống thì dùng mặc định của {runtime}.",
+        "hintNone": "Các worker của bạn không báo model nào cho {runtime}. Ghi tên model theo cách {runtime} gọi (opencode: provider/model), hoặc để trống để dùng mặc định.",
+        "line": "Tên model chỉ gồm một dòng, không có ký tự điều khiển.",
+        "long": "Tên model dài tối đa {max} ký tự.",
+        "runtime": "Chọn runtime cho model này: tên model chỉ có nghĩa với runtime mà nó được viết cho."
+      },
+      "summary": {
+        "title": "Run này sẽ làm gì",
+        "steps": "Các bước",
+        "stepsCount": "{count, plural, =0 {Không có bước nào để chạy} other {# bước sẽ chạy}}",
+        "statusCount": "{count} {status}",
+        "order": "Agent làm theo thứ tự depends_on và ghi từng bước lên hub kèm bằng chứng; worker chạy lại verify của mỗi bước trước khi bước đó được tính là xong.",
+        "repos": "Repo",
+        "noBranch": "plan không ghi nhánh",
+        "defaultBranch": "Nhánh mặc định",
+        "noRepos": "Không có repo",
+        "checkpoints": "Checkpoint",
+        "noCheckpoints": "Không có",
+        "checkpointsHint": "Agent làm cả các bước này, và hỏi bạn trước khi bước nào trong đó deploy hay làm việc khác thuộc danh sách quyết định phải hỏi.",
+        "untitled": "Bước chưa có tên",
+        "push": "Agent commit trên nhánh của từng repo rồi push, không bao giờ force; agent không push hay merge vào nhánh nào mà plan không ghi.",
+        "pushDefault": "Plan ghi nhánh mặc định của {repos}: agent sẽ push và merge vào {count, plural, other {các nhánh đó}}, và bạn nhận một thông báo mỗi lần như vậy.",
+        "pushNoDefault": "Không nhánh nào ở đây là main, master hay nhánh mặc định đã đăng ký cho repo của nó.",
+        "repoBranch": "{repo} ({branch})"
+      },
+      "blocker": {
+        "planRun": "<link>Plan run #{id}</link> đang ở trạng thái {state}, do {login} giao: mỗi lúc chỉ một plan run.",
+        "stepRun": "<link>Run #{id}</link> của bước {step} đang ở trạng thái {state}: plan run phải chờ tới khi không còn run nào của các bước đang hoạt động.",
+        "noPending": "Plan này không còn bước nào đang chờ làm: plan run không có gì để làm.",
+        "unplaced": "Các bước sau không ghi repo, và plan không có đúng một repo: {steps}. Hãy ghi repo cho từng bước trong plan.",
+        "noBranch": "Plan không ghi nhánh cho {repos}: run sẽ thất bại trước khi agent bắt đầu. Hãy ghi nhánh cho từng repo trong phần repos của plan."
+      },
+      "errors": {
+        "forbidden": "Hub từ chối: chạy plan cần quyền ghi trên dự án này, và worker được ghim phải là của bạn.",
+        "notFound": "Plan không còn trên hub, hoặc bạn không còn quyền đọc plan.",
+        "conflict": "Hub không đưa plan run vào queue: plan đang có run hoạt động, hoặc không còn bước nào đang chờ làm. Plan đã được tải lại; kiểm tra rồi thử lại.",
+        "invalid": "Hub không nhận plan run này.",
+        "hubSays": "Hub báo: {message}"
+      },
+      "banner": {
+        "title": "Plan run #{id}",
+        "onWorker": "Trên <name>{worker}</name>, do {login} giao",
+        "pinnedWaiting": "Đang chờ worker được ghim; do {login} giao",
+        "noWorker": "Đang chờ một worker của {login}",
+        "waitingOwner": "Agent đã hỏi bạn một quyết định{since, select, none {} other { {since}}} và đang chờ bạn trả lời. Thời gian chờ không tính vào thời gian tối đa của run.",
+        "waitingOther": "Agent đã hỏi {login} một quyết định{since, select, none {} other { {since}}} và đang chờ câu trả lời.",
+        "parkedOwner": "Tạm gác{since, select, none {} other { {since}}}: quyết định chưa được trả lời sau 24 giờ nên worker đã cất phiên lại. Câu trả lời của bạn sẽ chạy tiếp phiên đó trên cùng worker.",
+        "parkedOther": "Tạm gác{since, select, none {} other { {since}}}, đang chờ {login} trả lời.",
+        "answer": "Trả lời quyết định",
+        "openDecision": "Mở quyết định",
+        "openRun": "Mở run #{id}",
+        "question": "Câu hỏi:",
+        "progress": "Xong {done}/{total} bước",
+        "percent": "{percent}%",
+        "progressLabel": "Số bước đã xong",
+        "inProgress": "Các bước đang làm",
+        "now": "Đang làm:",
+        "step": "bước {key}: {title}",
+        "notStarted": "Chưa worker nào nhận run này.",
+        "noStepInProgress": "Lúc này không có bước nào đang làm.",
+        "live": "Plan run #{id}: {state}, xong {done}/{total} bước.",
+        "state": {
+          "queued": "đang chờ",
+          "running": "đang chạy",
+          "waiting": "đang chờ quyết định",
+          "parked": "tạm gác",
+          "review": "chờ duyệt"
+        }
+      }
+    },
     "openRun": "Mở run #{id}",
     "detail": {
       "metaTitle": "Run #{id} của {project}",
       "title": "Run",
+      "planTitle": "Plan run",
       "untitled": "Bước chưa có tên",
       "description": "Plan <planLink>{plan}</planLink>, <stepLink>bước {step}: {title}</stepLink>",
+      "planDescription": "Plan <planLink>{plan}</planLink>: {title}. Mọi bước chưa xong, trong một phiên.",
       "notFoundTitle": "Không tìm thấy run #{id}",
       "notFoundDescription": "Run này không có trong dự án, hoặc thuộc một plan bạn không được đọc.",
       "stepper": {
@@ -1513,6 +1629,24 @@
           "todo": "chưa tới"
         },
         "during": "kết thúc khi đang ở {phase}"
+      },
+      "planSteps": {
+        "title": "Các bước của plan",
+        "count": "Xong {done}/{total} ({percent}%)",
+        "failed": "Không tải được plan.",
+        "none": "Plan không có bước nào.",
+        "untitled": "Bước chưa có tên",
+        "hint": "Theo plan hub đang giữ lúc này; run ghi từng bước khi làm."
+      },
+      "decision": {
+        "waiting": "Đang chờ{since, select, none {} other { từ {since}}} {login} trả lời một quyết định.",
+        "waitingYou": "Đang chờ bạn trả lời một quyết định{since, select, none {} other { từ {since}}}. Thời gian chờ không tính vào thời gian tối đa của run.",
+        "parked": "Tạm gác{since, select, none {} other { từ {since}}}, đang chờ {login} trả lời một quyết định.",
+        "parkedYou": "Tạm gác{since, select, none {} other { từ {since}}}: quyết định chưa được trả lời sau 24 giờ. Câu trả lời của bạn sẽ chạy tiếp run trên cùng worker.",
+        "open": "Agent đã hỏi {login} một quyết định và làm tiếp các việc khác trong lúc chờ.",
+        "openYou": "Agent đã hỏi bạn một quyết định và làm tiếp các việc khác trong lúc chờ.",
+        "answer": "Trả lời quyết định",
+        "openLink": "Mở quyết định"
       },
       "log": {
         "title": "Log",
@@ -1644,11 +1778,14 @@
         "runtimeAny": "Bất kỳ, chọn khi worker nhận run; {mode}",
         "runtimePicked": "{runtime}, do worker chọn; {mode}",
         "runtimeMode": "{runtime}, {mode}",
+        "model": "Model",
+        "modelDefault": "mặc định của runtime",
         "mode": {
           "headless": "headless",
           "interactive": "tương tác"
         },
         "repo": "Repo",
+        "repos": "Repo",
         "on": "trên nhánh",
         "session": "Session",
         "none": "chưa có",
@@ -1660,13 +1797,17 @@
         "attempt": "Lần chạy",
         "attemptValue": "{attempt} trên {max}",
         "parent": "chạy lại run #{id}",
+        "resumes": "chạy tiếp run #{id}",
         "approval": "Duyệt",
         "approvals": {
           "review": "Giữ lại chờ duyệt",
           "auto": "Đánh dấu bước xong khi kiểm đạt"
         },
+        "approvalPlan": "Mỗi bước xong khi verify của bước chạy lại thành công trên worker",
         "timeout": "Thời gian tối đa",
         "timeoutValue": "{minutes} phút",
+        "timeoutHours": "{hours} giờ thời gian agent",
+        "agentTime": "đã dùng {used}",
         "dispatched": "Người dispatch",
         "started": "Bắt đầu",
         "finished": "Kết thúc",
@@ -1702,6 +1843,8 @@
           "title": "Huỷ run #{id}?",
           "now": "Run dừng ngay, và bước của nó quay về pending trong plan.",
           "held": "Worker dừng agent ở heartbeat kế tiếp, trong khoảng 15 giây, rồi báo run đã huỷ. Bước quay về pending trong plan; những gì agent đã sửa vẫn nằm trong worktree trên worker.",
+          "planHeld": "Worker dừng agent ở heartbeat kế tiếp, trong khoảng 15 giây, và báo run đã huỷ. Các bước đang làm trở về chờ làm trong plan; các bước đã xong vẫn xong, và những gì agent đã push vẫn còn.",
+          "planNow": "Run dừng ngay. Các bước đang làm trở về chờ làm trong plan; các bước đã xong vẫn xong.",
           "confirm": "Huỷ run",
           "pending": "Đang huỷ…",
           "keep": "Giữ lại"
