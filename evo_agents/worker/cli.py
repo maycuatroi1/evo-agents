@@ -863,5 +863,8 @@ def register(sub) -> None:
     notify.set_defaults(func=cmd_notify)
 
     plan = wsub.add_parser("plan", help="inside a plan run: print the run's plan as the hub holds it now")
-    plan.add_argument("--json", action="store_true", help="the hub's answer as JSON")
+    from evo_agents.hub.contract import json_option, returns_object
+    from evo_agents.hub.plan_cli import PLAN_KEYS
+
+    json_option(plan, returns_object(*PLAN_KEYS, schema="Plan"), help="the hub's answer as JSON")  # seam hub-cli-v1
     plan.set_defaults(func=cmd_plan)
