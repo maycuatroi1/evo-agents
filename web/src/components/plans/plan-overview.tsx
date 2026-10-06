@@ -1,15 +1,20 @@
 "use client";
 
+import { useQueryClient } from "@tanstack/react-query";
 import { ChevronRight } from "lucide-react";
 import { useFormatter, useTranslations } from "next-intl";
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect, useRef } from "react";
 
+import { NoticeArea, useNotice } from "@/components/admin/notice";
+import { useCanDispatch, usePlanRunNotice } from "@/components/runs/hooks";
+import { PlanRunBanner, RunPlanButton, usePlanActivity } from "@/components/runs/plan-run";
+import { LIVE_REFRESH_MS } from "@/components/runs/queries";
 import { QueryView, useHubQuery } from "@/components/states/query-view";
 import { PageSkeleton } from "@/components/states/states";
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { browserApi } from "@/lib/api/browser";
 import type { ApiErrorInfo } from "@/lib/api/errors";
-import { planQuery } from "@/lib/plan-queries";
+import { planKeys, planQuery } from "@/lib/plan-queries";
 import { countSteps, type Plan, type PlanRepo, parsePlan, type PlanView } from "@/lib/plans";
 
 import { PlanHeader, ReadOnlyNotice } from "./plan-header";
@@ -192,13 +197,36 @@ function OtherSections({ sections: given }: { sections: [string, unknown][] }) {
   );
 }
 
-function Overview({ project, plan }: { project: string; plan: Plan }) {
+type Activity = ReturnType<typeof usePlanActivity>;
+
+function Overview({ project, plan, activity }: { project: string; plan: Plan; activity: Activity }) {
   const view = parsePlan(plan.body, plan.plan_id);
   const counts = countSteps(view.steps);
+  const { notice, show, clear } = useNotice();
+  const dispatched = usePlanRunNotice();
+  const canDispatch = useCanDispatch(project);
   return (
     <>
-      <PlanHeader project={project} plan={plan} current="steps" />
+      <PlanHeader
+        project={project}
+        plan={plan}
+        current="steps"
+        actions={
+          plan.area === "active" && canDispatch ? (
+            <RunPlanButton
+              project={project}
+              planId={plan.plan_id}
+              pending={counts.pending}
+              runs={activity.active}
+              loaded={activity.loaded}
+              onDispatched={(run) => show(dispatched(run))}
+            />
+          ) : null
+        }
+      />
       <ReadOnlyNotice />
+      <NoticeArea notice={notice} onDismiss={clear} />
+      {activity.planRun ? <PlanRunBanner project={project} run={activity.planRun} steps={view.steps} /> : null}
       <div className="grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <Intro view={view} />
         <PlanProgress counts={counts} />
@@ -221,13 +249,26 @@ export function PlanOverview({
   initialError: ApiErrorInfo | null;
   invalid?: boolean;
 }) {
-  const state = useHubQuery({ ...planQuery(browserApi, project, planId), enabled: !invalid }, initialError);
+  const queryClient = useQueryClient();
+  const activity = usePlanActivity(project, planId, !invalid);
+  const runId = activity.planRun?.id ?? null;
+  // While a plan run works on the plan, its steps change as the run reports them: read the plan as often as the runs.
+  const state = useHubQuery(
+    { ...planQuery(browserApi, project, planId), enabled: !invalid, refetchInterval: runId !== null ? LIVE_REFRESH_MS : false },
+    initialError,
+  );
+  // Once the run ends, read the plan once more for what it wrote last.
+  const previous = useRef<number | null>(null);
+  useEffect(() => {
+    if (previous.current !== null && runId === null) void queryClient.invalidateQueries({ queryKey: planKeys.one(project, planId), exact: true });
+    previous.current = runId;
+  }, [runId, queryClient, project, planId]);
   if (invalid || (state.status === "error" && state.error.status === 404)) {
     return <PlanNotFound project={project} planId={planId} />;
   }
   return (
     <QueryView state={state} loading={<PageSkeleton />}>
-      {(plan) => <Overview project={project} plan={plan} />}
+      {(plan) => <Overview project={project} plan={plan} activity={activity} />}
     </QueryView>
   );
 }

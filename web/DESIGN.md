@@ -97,7 +97,9 @@ Shared pieces built on them:
   (`confirm-by-name.tsx`). The hub keeps only a worker's latest heartbeat, so the 60-minute heartbeat strip is built
   from what the tab has read (`heartbeats.ts`): a received minute is a full bar, a missed one a short red bar, a
   minute nobody watched a dot, with the counts written out beside it.
-- `components/runs`: the runs pages ask the hub every 5 seconds while the project (or the step, or the worker) has an
+- `components/runs`: a run is in one of the API's states, waiting (a plan run's agent asked its owner a decision) and
+  parked (nobody answered for 24 hours) included; both show in the running phase of a run's stepper, under their own
+  name and icon. The runs pages ask the hub every 5 seconds while the project (or the step, or the worker) has an
   active run and every 30 seconds otherwise; the list's facets (active, review, done, failed or cancelled) and search
   are the API's own filters, so a page of 50 runs comes back with the count of each state. A run's state is a badge
   with an icon and a word. The Dispatch dialog lists every pending step of a plan in plan order and folds the done,
@@ -105,6 +107,25 @@ Shared pieces built on them:
   which of the visitor's own workers could take the runs now, from what their heartbeats report, the way the hub
   matches them at claim time. The Dispatch and Run this step buttons show only for a writer of the project (whoami's
   grants); the API decides again on every dispatch.
+- `components/runs`, plan runs (`plan-run.tsx`, `plan-run-dialog.tsx`, shared fields in `dispatch-fields.tsx`): Run plan
+  sits in the plan page's header (`PlanHeader`'s `actions`) and in an action column on the rows of the plans list's
+  active area, only for a writer. It is shown but locked, with the reason in words beside it, while the plan has an
+  active run of any kind or no pending step (`planRunLock`; the list only knows steps done of the total). Its dialog
+  first says what the run will do (`planRunScope`): the steps not done, by status; each repo with the branch the plan
+  names, a repo on its default branch (main, master or the one registered for the repo) badged, a repo without a
+  branch blocking; the checkpoint steps; and, in a warning box when a default branch is named, that the agent will push
+  and merge into it there. Then runtime, model, mode, worker and timeout (2, 4, 8 or 24 hours of agent time). The model
+  is free text with the models the visitor's workers list for the picked runtime as a datalist; a model typed with Any
+  runtime is refused in the field, since a model name means something only to its runtime. The footer is the Dispatch
+  dialog's outlook, for one plan run and a worker with a checkout of every repo. The plan page shows the active plan
+  run in a banner between the read-only notice and the goal: run #N on its worker, its state as Queued, Running,
+  Waiting for your decision or Parked (a badge with an icon and a word, and the banner's tone), the steps done of the
+  total with a bar, the steps in progress, and links to the run and to the open decision (`/inbox?decision=ID`). The
+  plan's active runs are read as the runs pages read theirs (every 5 seconds while one is active), and the plan itself
+  as often while its plan run is. The plans list badges a plan whose plan run is active, linked to the run. While a
+  plan run holds a plan, Run this step on its steps is locked and names the run. A plan run's page is titled Plan run,
+  carries a Plan run badge, lists the plan's steps with their status (the one in progress `aria-current="step"`), its
+  repos and branches, its model and the agent time used, and the open decision it waits on; it offers no Rerun.
 - `components/runs`, a run's page (`/p/{project}/runs/{id}`): a stepper of its states (the current one
   `aria-current="step"`, a run that ended badly marked where it stopped), the log, the details and the result, and the
   owner's controls in the header, each shown only when the state and the visitor's rights allow it (`run-model.ts`,

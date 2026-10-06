@@ -77,7 +77,7 @@ function Summary({ summary }: { summary: RunsSummary }) {
       ? t("queuedMany", { count: summary.queued })
       : t("queuedNone");
   const reviewHint = summary.reviewRun
-    ? t("reviewOne", { step: summary.reviewRun.step_key, plan: summary.reviewRun.plan_id })
+    ? t("reviewOne", { step: summary.reviewRun.step_key ?? "", plan: summary.reviewRun.plan_id })
     : summary.review > 0
       ? t("reviewMany")
       : t("reviewNone");

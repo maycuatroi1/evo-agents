@@ -1,11 +1,18 @@
 "use client";
 
+import { useQuery } from "@tanstack/react-query";
 import { Archive, ClipboardList, Rocket, Search } from "lucide-react";
 import Link from "next/link";
 import { useFormatter, useTranslations } from "next-intl";
 import { useMemo, useState } from "react";
 
+import { NoticeArea, useNotice } from "@/components/admin/notice";
 import { DataTable, dataTableColumns } from "@/components/data/data-table";
+import { PlanRunPhaseBadge } from "@/components/runs/badges";
+import { useCanDispatch, usePlanRunNotice } from "@/components/runs/hooks";
+import { activePlanRun, planRunPhase } from "@/components/runs/model";
+import { RunPlanButton } from "@/components/runs/plan-run";
+import { type Run, runHref, runsSummaryQuery } from "@/components/runs/queries";
 import { PageHeader } from "@/components/shell/page-header";
 import { QueryView, useHubQuery } from "@/components/states/query-view";
 import { EmptyState, NotFoundState, TableSkeleton } from "@/components/states/states";
@@ -22,25 +29,81 @@ import { CompactProgress } from "./progress";
 
 const NARROW_HIDDEN = { revision: "hidden md:table-cell", updated: "hidden lg:table-cell" };
 
+/** The project's active runs, as the summary query reads them: which plans have a plan run, or runs of their steps. */
+type Activity = { runs: Run[]; loaded: boolean };
+
+/** A plan's active plan run as a badge with an icon and a word, linked to the run. */
+function PlanRunLink({ project, run }: { project: string; run: Run }) {
+  const t = useTranslations("runs.planRun");
+  const phase = planRunPhase(run.state);
+  return (
+    <Link
+      href={runHref(project, run.id)}
+      className="w-fit rounded-md underline-offset-4 hover:underline"
+      aria-label={t("listLink", { id: run.id, state: t(`phase.${phase}Long`) })}
+      data-testid="plan-run-link"
+      data-run-id={run.id}
+    >
+      <PlanRunPhaseBadge phase={phase} />
+    </Link>
+  );
+}
+
 function matches(plan: PlanSummary, needle: string): boolean {
   if (!needle) return true;
   return [plan.plan_id, plan.title ?? ""].some((value) => value.toLocaleLowerCase("vi").includes(needle));
 }
 
-function PlansTable({ project, plans, area }: { project: string; plans: PlanSummary[]; area: PlanArea }) {
+function PlansTable({
+  project,
+  plans,
+  area,
+  activity,
+  onDispatched,
+}: {
+  project: string;
+  plans: PlanSummary[];
+  area: PlanArea;
+  activity: Activity;
+  onDispatched: (run: Run) => void;
+}) {
   const t = useTranslations("plans.list");
   const format = useFormatter();
+  const canDispatch = useCanDispatch(project);
+  const withActions = area === "active" && canDispatch;
   const columns = useMemo(() => {
     const helper = dataTableColumns<PlanSummary>();
-    return helper.columns([
+    const actions = helper.display({
+      id: "actions",
+      header: () => <span className="sr-only">{t("columns.actions")}</span>,
+      cell: (info) => {
+        const plan = info.row.original;
+        return (
+          <RunPlanButton
+            project={project}
+            planId={plan.plan_id}
+            pending={plan.steps_total - plan.steps_done}
+            runs={activity.runs}
+            loaded={activity.loaded}
+            onDispatched={onDispatched}
+            size="lg"
+            variant="outline"
+            layout="row"
+            testId="plans-run-plan"
+          />
+        );
+      },
+    });
+    const all = helper.columns([
       helper.accessor((row) => row.title ?? row.plan_id, {
         id: "plan",
         header: () => t("columns.plan"),
         sortFn: "text",
         cell: (info) => {
           const plan = info.row.original;
+          const planRun = activePlanRun(activity.runs, plan.plan_id);
           return (
-            <div className="flex min-w-0 flex-col gap-0.5">
+            <div className="flex min-w-0 flex-col items-start gap-0.5">
               <Link
                 href={planHref(project, plan.plan_id)}
                 className="font-medium text-pretty text-primary underline-offset-4 hover:underline"
@@ -49,6 +112,7 @@ function PlansTable({ project, plans, area }: { project: string; plans: PlanSumm
                 {plan.title ?? plan.plan_id}
               </Link>
               {plan.title ? <span className="font-mono text-xs text-muted-foreground">{plan.plan_id}</span> : null}
+              {planRun ? <PlanRunLink project={project} run={planRun} /> : null}
             </div>
           );
         },
@@ -78,7 +142,8 @@ function PlansTable({ project, plans, area }: { project: string; plans: PlanSumm
         ),
       }),
     ]);
-  }, [t, format, project]);
+    return withActions ? [...all, actions] : all;
+  }, [t, format, project, activity, onDispatched, withActions]);
 
   return (
     <DataTable
@@ -99,11 +164,15 @@ function AreaSection({
   area,
   plans,
   filtered,
+  activity,
+  onDispatched,
 }: {
   project: string;
   area: PlanArea;
   plans: PlanSummary[];
   filtered: PlanSummary[];
+  activity: Activity;
+  onDispatched: (run: Run) => void;
 }) {
   const t = useTranslations("plans.list");
   const Icon = area === "active" ? Rocket : Archive;
@@ -122,7 +191,7 @@ function AreaSection({
           {t(area === "active" ? "noActive" : "noCompleted")}
         </p>
       ) : (
-        <PlansTable project={project} plans={filtered} area={area} />
+        <PlansTable project={project} plans={filtered} area={area} activity={activity} onDispatched={onDispatched} />
       )}
     </section>
   );
@@ -131,6 +200,12 @@ function AreaSection({
 function Plans({ project, plans }: { project: string; plans: PlanSummary[] }) {
   const t = useTranslations("plans.list");
   const [query, setQuery] = useState("");
+  const summary = useQuery(runsSummaryQuery(browserApi, project));
+  const runs = summary.data?.runs;
+  const activity = useMemo<Activity>(() => ({ runs: runs ?? [], loaded: !summary.isPending }), [runs, summary.isPending]);
+  const { notice, show, clear } = useNotice();
+  const dispatched = usePlanRunNotice();
+  const onDispatched = useMemo(() => (run: Run) => show(dispatched(run)), [show, dispatched]);
   const needle = query.trim().toLocaleLowerCase("vi");
   if (plans.length === 0) {
     return <EmptyState icon={ClipboardList} title={t("emptyTitle")} description={t("emptyDescription")} />;
@@ -159,6 +234,7 @@ function Plans({ project, plans }: { project: string; plans: PlanSummary[] }) {
           {needle ? t("shown", { shown: shown.length, total: plans.length }) : null}
         </p>
       </div>
+      <NoticeArea notice={notice} onDismiss={clear} />
       {(["active", "completed"] as const).map((area) => (
         <AreaSection
           key={area}
@@ -166,6 +242,8 @@ function Plans({ project, plans }: { project: string; plans: PlanSummary[] }) {
           area={area}
           plans={byArea(area)}
           filtered={shown.filter((plan) => plan.area === area)}
+          activity={activity}
+          onDispatched={onDispatched}
         />
       ))}
     </>

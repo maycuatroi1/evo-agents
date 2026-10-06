@@ -1,0 +1,143 @@
+"use client";
+
+import { useQuery } from "@tanstack/react-query";
+import { MessageCircleQuestionMark } from "lucide-react";
+import Link from "next/link";
+import { useFormatter, useTranslations } from "next-intl";
+import { useId } from "react";
+
+import { stepHref } from "@/components/plans/links";
+import { StepStatusBadge } from "@/components/plans/status";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { browserApi } from "@/lib/api/browser";
+import { planQuery } from "@/lib/plan-queries";
+import { countSteps, parsePlan, percent, stepLabel } from "@/lib/plans";
+import { cn } from "@/lib/utils";
+
+import { decisionHref, isActiveState, LIVE_REFRESH_MS, openDecisionsQuery, type Run } from "./queries";
+
+/**
+ * The steps of a plan run's plan, as the hub holds the plan now: each with its status, the step in progress marked,
+ * and the count done. The run reports each step as it goes, so the list is read again every 5 seconds while the run
+ * is active.
+ */
+export function RunPlanSteps({ run }: { run: Run }) {
+  const t = useTranslations("runs.detail.planSteps");
+  const ids = useId();
+  const active = isActiveState(run.state);
+  const plan = useQuery({ ...planQuery(browserApi, run.project, run.plan_id), refetchInterval: active ? LIVE_REFRESH_MS : false });
+  const view = plan.data ? parsePlan(plan.data.body, plan.data.plan_id) : null;
+  const counts = view ? countSteps(view.steps) : null;
+
+  return (
+    <section className="flex min-w-0 flex-col rounded-xl border bg-card" aria-labelledby={`${ids}-title`} data-testid="run-plan-steps">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 border-b px-4 py-3">
+        <h2 id={`${ids}-title`} className="text-base font-medium">
+          {t("title")}
+        </h2>
+        {counts ? (
+          <span className="text-xs text-muted-foreground tabular-nums" data-testid="run-plan-steps-count">
+            {t("count", { done: counts.done, total: counts.total, percent: percent(counts.done, counts.total) })}
+          </span>
+        ) : null}
+      </div>
+      <div className="min-w-0 px-4 py-3">
+        {plan.isPending ? (
+          <div className="flex flex-col gap-2" aria-hidden="true">
+            <Skeleton className="h-5 w-full" />
+            <Skeleton className="h-5 w-4/5" />
+            <Skeleton className="h-5 w-3/5" />
+          </div>
+        ) : plan.isError || !view ? (
+          <p className="text-sm text-muted-foreground" role="alert">
+            {t("failed")}
+          </p>
+        ) : view.steps.length === 0 ? (
+          <p className="text-sm text-muted-foreground">{t("none")}</p>
+        ) : (
+          <ol className="flex flex-col gap-1.5">
+            {view.steps.map((step) => (
+              <li
+                key={step.key}
+                className={cn(
+                  "flex min-w-0 flex-col gap-1 rounded-lg px-2 py-1.5",
+                  step.group === "in_progress" ? "bg-accent" : "hover:bg-muted/50",
+                )}
+                aria-current={step.group === "in_progress" ? "step" : undefined}
+                data-testid="run-plan-step"
+                data-status={step.group}
+              >
+                <span className="flex min-w-0 items-start gap-2 text-sm">
+                  <span className="mt-0.5 w-6 shrink-0 text-right font-mono text-xs text-muted-foreground tabular-nums">{step.key}</span>
+                  <Link
+                    href={stepHref(run.project, run.plan_id, step.key)}
+                    className="min-w-0 flex-1 text-primary underline-offset-4 [overflow-wrap:anywhere] hover:underline"
+                  >
+                    {stepLabel(step) || t("untitled")}
+                  </Link>
+                </span>
+                <span className="flex flex-wrap items-center gap-1.5 pl-8">
+                  <StepStatusBadge group={step.group} raw={step.rawStatus} />
+                  {step.repo ? <span className="font-mono text-xs text-muted-foreground [overflow-wrap:anywhere]">{step.repo}</span> : null}
+                </span>
+              </li>
+            ))}
+          </ol>
+        )}
+        <p className="mt-3 text-xs text-pretty text-muted-foreground">{t("hint")}</p>
+      </div>
+    </section>
+  );
+}
+
+/**
+ * A plan run that waits for its owner's answer, or was parked for want of one: since when, and a link to the open
+ * decision in the inbox, where the owner answers it.
+ */
+export function RunDecisionNote({ run, owner }: { run: Run; owner: boolean }) {
+  const t = useTranslations("runs.detail.decision");
+  const format = useFormatter();
+  const waiting = run.state === "waiting" || run.state === "parked";
+  const decisions = useQuery({
+    ...openDecisionsQuery(browserApi, run.project, run.id),
+    enabled: run.kind === "plan" && isActiveState(run.state),
+    refetchInterval: LIVE_REFRESH_MS,
+  });
+  const latest = decisions.data?.decisions[0] ?? null;
+  if (!latest && !waiting) return null;
+  const since = run.state === "waiting" ? run.waiting_since : run.state === "parked" ? run.parked_at : null;
+  const when = since ? format.dateTime(new Date(since), { dateStyle: "medium", timeStyle: "short" }) : "none";
+  const key =
+    run.state === "parked" ? (owner ? "parkedYou" : "parked") : waiting ? (owner ? "waitingYou" : "waiting") : owner ? "openYou" : "open";
+  return (
+    <div
+      className={cn(
+        "flex flex-col gap-2 rounded-lg border px-3 py-2.5 text-sm sm:flex-row sm:items-center sm:justify-between",
+        waiting ? "border-warning-foreground/20 bg-warning text-warning-foreground" : "bg-card text-muted-foreground",
+      )}
+      data-testid="run-decision-note"
+      data-state={run.state}
+    >
+      <p className="flex min-w-0 items-start gap-2.5">
+        <MessageCircleQuestionMark className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+        <span className="min-w-0 text-pretty [overflow-wrap:anywhere]">
+          {t(key, { since: when, login: run.dispatched_by })}
+          {latest ? (
+            <>
+              {" "}
+              <span className="font-medium">{latest.question}</span>
+            </>
+          ) : null}
+        </span>
+      </p>
+      {latest ? (
+        <Button asChild size="lg" variant={owner ? "default" : "outline"} className="shrink-0">
+          <Link href={decisionHref(latest.id)} data-testid="run-decision-link">
+            {owner ? t("answer") : t("openLink")}
+          </Link>
+        </Button>
+      ) : null}
+    </div>
+  );
+}
