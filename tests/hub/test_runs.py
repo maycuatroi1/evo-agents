@@ -1055,6 +1055,34 @@ def test_a_worker_set_to_dispatch_from_web_claims_only_runs_dispatched_from_the_
     assert claim(client, guarded)["id"] == rerun.json()["id"]
 
 
+def test_a_token_cannot_message_a_run_a_worker_set_to_web_holds_or_may_claim(web_client, web_hub, hub_db):
+    client, hub = web_client, web_hub
+    guarded = add_worker(client, hub["owner"], "mac-mini")
+    anywhere = add_worker(client, hub["owner"], "linux-box")
+    dispatch_from(client, hub, guarded, "web")
+
+    def message(run_id: int, headers):
+        path = f"/v1/projects/{PROJECT}/runs/{run_id}/messages"
+        return client.post(path, json={"text": "Keep the old API."}, headers=headers)
+
+    # queued without a pin and dispatched from the web: the worker set to web may claim it
+    by_web = dispatched(client, hub["owner_web"], [2])[0]
+    refused = message(by_web["id"], hub["owner"])
+    assert refused.status_code == 403
+    assert refused.json()["message"] == (
+        f"run {by_web['id']} may go to worker mac-mini, which {WEB_ONLY}, as its owner set it, so a token cannot send "
+        "its agent a message: send it from the web; nothing was sent"
+    )
+    assert message(by_web["id"], hub["owner_web"]).status_code == 201
+    # dispatched with a token, it never goes there: a token's message is taken, held by a worker that takes any
+    by_token = dispatched(client, hub["owner"], [4])[0]
+    assert message(by_token["id"], hub["owner"]).status_code == 201
+    assert claim(client, anywhere)["id"] == by_web["id"]
+    assert message(by_web["id"], hub["owner"]).status_code == 201, "held by linux-box, which takes any"
+    assert claim(client, guarded) is None
+    assert sql(hub_db, "SELECT count(*) FROM run_inbox WHERE run_id = %s", (by_web["id"],)) == [(2,)]
+
+
 # Pruning and the periodic jobs
 
 

@@ -259,6 +259,14 @@ Only the worker's owner, signed in on the web, flips it.
   with a token gets 403, "worker NAME takes only runs dispatched from a web session, as its owner set it, ...", and
   nothing is queued. Runs that were queued for it with a token before the switch was turned on stay queued until the
   owner cancels them or turns the switch off again.
+- **Steering what it runs.** A token that cannot hand such a worker work cannot steer the work it has either. A
+  message to a run's agent (`POST .../runs/{id}/messages`) and the answer to a decision (`POST
+  .../decisions/{id}/answer`), which goes to the agent as a message and, for a parked plan run, queues the run that
+  resumes it on the worker it was parked on, get 403 with a token when the run is held by, was parked on or is pinned
+  to a worker set to `web`, or is queued without a pin, dispatched from the web, while one of the owner's workers is
+  set to `web` and may claim it: "run N is held by worker NAME, which takes only runs dispatched from a web session,
+  as its owner set it, so a token cannot send its agent a message: send it from the web; nothing was sent". Nothing
+  is answered, sent or queued. The owner does both from the web (`runs.web_only_steering`).
 
 ## Checking a worker machine
 
@@ -297,6 +305,12 @@ medium findings as `warning:` lines; they never stop the install.
 - `EVO_HUB_SECRETS_KEY` and a dump of the hub's database together open every secret. Keep the key only in the hub's
   environment and the operator's secret store; rotate it by `key_id` (see the harness's `docs/hub-deployment.md`).
 - The GitHub App's private key lets whoever holds it ask a token for every repo the App is installed on.
+- A worker set to `web` takes no run, message or decision answer from a token, but a plan run reads its plan as the
+  hub holds it now (`GET /v1/worker/runs/{id}/plan`), and a machine token of a writer of the project may still edit
+  that plan (`PUT` or `PATCH .../plans/{plan}`, `evo-agents hub plan put` or `plan patch`, a step's status through
+  `plan step` or the `plan_step` MCP tool). A step's text is what the agent of the plan run does next, so a token that
+  leaked steers such a run through its plan. Plan edits are not gated by `dispatch_from`; every revision is kept with
+  who wrote it (`evo-agents hub plan history`), so such an edit can be found afterwards, not prevented.
 
 ## When a credential may have leaked
 

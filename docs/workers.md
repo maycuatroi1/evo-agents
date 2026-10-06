@@ -53,7 +53,8 @@ and at the end the commit, diffstat, verify results, evidence, usage and error.
   again (403 for anyone else).
 - **The owner may keep a worker to runs dispatched from the web.** With `dispatch_from` set to `web`, the worker
   claims only runs its owner dispatched from a web session, and a dispatch pinned to it with a token gets 403, so a
-  machine token that leaked cannot hand it work. Only the owner turns this on or off, from a web session: a machine
+  machine token that leaked cannot hand it work; a message or a decision answer sent with a token to a run on it, or
+  that it may claim, gets 403 too, so that token cannot steer its agent. Only the owner turns this on or off, from a web session: a machine
   token gets 403 there. [credentials.md](credentials.md#who-may-hand-a-worker-its-work) has the details.
 - **Roles on the project still apply.** Dispatching needs the writer role; reading runs, events and diffs needs
   reader. Messages, takeover, handback, cancel, approve, rerun and the terminal belong to the run's owner, the member
