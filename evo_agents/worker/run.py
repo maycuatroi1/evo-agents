@@ -16,32 +16,63 @@
 3. ``verifying``: the agent wrote ``.evo-run/result.json``; the daemon runs each of its ``verify_commands`` again in
    the worktree, with the run's time left, and records each exit code as a ``system`` event. A command that exits
    other than 0 fails the run, and nothing is pushed: the work stays in the worktree.
-4. The daemon commits what the agent left uncommitted as ``run #N: <title>`` (``.evo-run/`` stays out), refuses to
-   push a detached HEAD or a branch the agent switched to, pushes the plan's branch to origin (never forced, never
-   merged), and reports ``done`` (approval ``auto``) or ``review`` with the commit, the diffstat, the verify results,
-   the agent's summary and usage. Every event is sent before that report.
+4. The daemon commits what the agent left uncommitted as ``run #N: <title>``, leaving out ``.evo-run/``, what hooks
+   wrote (``gitops.RUN_COMMIT_EXCLUDES``) and copies of hub plans as the hub wrote them, which a ``system`` event
+   names (``gitops.commit_run``); refuses to push a detached HEAD or a branch the agent switched to, pushes the plan's
+   branch to origin (never forced, never merged), and reports ``done`` (approval ``auto``) or ``review`` with the
+   commit, the diffstat, the verify results, the agent's summary and usage. Every event is sent before that report.
 5. After the last report the log (the run's events) and the diff are uploaded as blobs when the hub has a blob store,
    and the worktree leaves the plan's branch, so the owner can check it out elsewhere; it is removed 7 days later.
 
 A hub that does not answer holds nothing up: events wait in the spool and each report is sent again with the
 backoff until the hub answers, or says the run is no longer this worker's.
+
+Each time an agent starts, headless or in its terminal UI, the daemon notes its process group in
+``runs/<run>/agent.json`` (``orphans``), and removes the file just before the run counts as ended here, so a daemon
+that starts after this one died finds the agents it left.
+
+A plan run (kind ``plan``, ``PlanRun``) does every step of a plan not done yet, in one session:
+
+1. ``leased``: the daemon makes the directory ``~/.evo/worker/worktrees/<project>-<run>`` with a worktree of each repo
+   of the run in it, each on the branch the plan names for that repo (``evo-run/<run>/<repo>`` when that branch is
+   checked out elsewhere; the push still goes to the plan's branch), and writes the plan as claimed to
+   ``.evo-run/plan.yaml`` there. A repo the plan names no branch for fails the run before the agent starts, and so does
+   a default branch the plan does not name for the repo.
+2. ``running``: the agent works in that directory, with EVO_RUN_ID, EVO_RUN_KIND and EVO_WORKER_HOME, and reports
+   each step itself through ``evo-agents worker step`` (which runs the step's verify commands again, commits, pushes
+   the repo's branch and sends the step report), asks its owner through ``evo-agents worker ask``, and notifies with
+   ``evo-agents worker notify``.
+3. ``waiting``: a turn that ends with a decision of the run open moves the run to waiting; the daemon keeps it, with
+   its slot and lease, and the time it waits does not count toward its timeout. The owner's answer comes through the
+   inbox and goes to a new turn of the agent in the same session (``running`` again). A run the hub parks (no answer
+   within a day) stops at the end of its turn, keeps its session and worktrees, and frees its slot; the run that
+   resumes it, claimed with ``resume_of_run_id``, goes on in them.
+4. Once a turn ends with nothing to wait for, the daemon reports ``verifying`` and commits (leaving out what a run
+   of one step leaves out) and pushes what each repo has left, never forced (a default branch only when the plan
+   names it, with the notice ``push_default_branch``), and reports ``done`` with the agent's summary from
+   ``.evo-run/result.json``: no verify commands run at the end, since ``evo-agents worker step`` ran each step's. The
+   log and the diffs of every repo are uploaded as for a run of one step.
 """
 
 from __future__ import annotations
 
 import asyncio
 import contextlib
+import dataclasses
 import hashlib
 import json
 import logging
 import os
 import signal
+from collections.abc import Collection
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import yaml
+
 from evo_agents.hub import runs
-from evo_agents.worker import gitops, interactive
+from evo_agents.worker import gitops, interactive, orphans
 from evo_agents.worker.adapter import AgentEvent, AgentFinished, Outcome, RunContext
 from evo_agents.worker.checkouts import default_branch_of
 from evo_agents.worker.hubapi import Backoff, HubProblem, Outdated, Refused, Unreachable
@@ -53,6 +84,7 @@ if TYPE_CHECKING:
 log = logging.getLogger("evo_agents.worker")
 
 RUN_BRANCH = "evo-run/{id}"
+RUN_REPO_BRANCH = "evo-run/{id}/{folder}"  # a plan run's worktree of a repo whose branch is checked out elsewhere
 RESULT_MAX_BYTES = 1024 * 1024
 MAX_VERIFY = 50
 MAX_COMMAND_CHARS = 2000
@@ -60,6 +92,9 @@ MAX_ERROR_CHARS = 2000
 MAX_SUMMARY_CHARS = 8000
 MAX_USAGE_BYTES = 64 * 1024
 OUTPUT_TAIL = 8 * 1024  # bytes of a verify command's output kept in its event
+NOTE_GROUP_LOOKS = 20  # events after its start at which an adapter is asked again for its agent's process group
+MAX_LEFT_OUT_NAMED = 20  # files a note of what a commit left out names in its text
+MAX_LEFT_OUT_LISTED = 200  # and lists in its body
 LOG_LIMIT = 64 * 1024 * 1024  # the run-log blob
 DIFF_LIMIT = 8 * 1024 * 1024  # the run-diff blob
 STOP_GRACE = 30.0  # seconds an interrupted agent has to end its events
@@ -73,10 +108,35 @@ HANDBACK_PROMPT = (
     "the run from where the session and the working tree stand now, and finish it as the first message of this "
     f"session asks, writing {runs.RESULT_FILE} at the end."
 )
+# What a plan run's agent is told when the owner wrote while its turn was over: an answer to a decision, say.
+ANSWER_PROMPT = (
+    "The owner of this plan run wrote while your turn was over; a message that answers a decision names it. Go on "
+    "with the plan in this session from where you stopped: read the plan as the hub holds it now with "
+    "`evo-agents worker plan` first."
+)
+# And when a run parked while it waited for its owner goes on, as a new run, in the same session and worktrees.
+RESUME_PROMPT = (
+    "This plan run was parked while it waited for its owner, and goes on now as run #{id}, in the same session and "
+    "the same worktrees; EVO_RUN_ID names the new run, and the commands of `evo-agents worker` use it. Go on with the "
+    "plan from where you stopped: read the plan as the hub holds it now with `evo-agents worker plan` first."
+)
 
 
 class RunGone(Exception):
     """The hub no longer takes reports of this run from this worker: lost, cancelled, taken by another attempt."""
+
+
+class ReportRefused(RunGone):
+    """The hub refused a report with a 4xx other than 401 and 403; ``status`` says which."""
+
+    def __init__(self, message: str, status: int | None):
+        super().__init__(message)
+        self.status = status
+
+
+class Parked(Exception):
+    """The hub parked the plan run, or a new run resumes it: the agent's turn is over, and its session and worktrees
+    stay for the run that resumes it."""
 
 
 class RunFailed(Exception):
@@ -111,6 +171,16 @@ async def _wait_or(event: asyncio.Event, seconds: float) -> bool:
     with contextlib.suppress(asyncio.TimeoutError):
         await asyncio.wait_for(event.wait(), max(0.0, seconds))
     return event.is_set()
+
+
+async def _first_of(events: Collection[asyncio.Event], seconds: float) -> None:
+    """Wait ``seconds``, or less when one of ``events`` is set."""
+    waits = {asyncio.create_task(event.wait()) for event in events}
+    try:
+        await asyncio.wait(waits, timeout=max(0.0, seconds), return_when=asyncio.FIRST_COMPLETED)
+    finally:
+        for task in waits:
+            task.cancel()
 
 
 class Sender:
@@ -237,6 +307,7 @@ class Run:
         self.adapter = None
         self.agent_running = False
         self.agent_started = False  # the agent (headless or in a terminal) has started once: the timeout counts
+        self.group_noted = False  # agent.json names the process group of the agent that runs now
         self.session_reported: str | None = None
         self.phase = "prepare"  # prepare, headless, interactive (a person drives the agent), after
         self.takeover_asked = False
@@ -246,6 +317,11 @@ class Run:
         self.terminal_wanted = False  # a browser asked for the terminal before the run was interactive
         self.terminal_failed: str | None = None  # why a terminal UI did not open; later takeovers are refused
         self._inbox_waits = False
+        self.inbox_arrived = asyncio.Event()  # the heartbeat counted messages of the owner in the inbox
+        self.open_decisions = 0  # the run's decisions still open, as the last heartbeat counted them
+        self.answered: set[int] = set()  # the decisions whose answers the agent was handed
+        self._delivered_upto = 0  # the inbox's messages up to this id were handed to the agent
+        self._pending_ack: int | None = None  # handed to the agent in the prompt of the next start: ack once it runs
         self.loop = asyncio.get_running_loop()
         self.deadline = self.loop.time() + self.timeout_s  # from the claim until the agent starts, then from there
         self.worktree: Path | None = None
@@ -268,6 +344,7 @@ class Run:
         self.sender = Sender(daemon, self.spool)
         self.record = {
             "id": self.id,
+            "kind": spec.get("kind") or "step",
             "project": self.project,
             "plan_id": spec.get("plan_id"),
             "step_key": spec.get("step_key"),
@@ -357,6 +434,20 @@ class Run:
         else:
             self.note(f"The owner asked for a takeover: the agent starts in its terminal UI in tmux session {name}.")
 
+    def request_park(self) -> None:
+        """The heartbeat says the hub parked the run; only a plan run parks, so another run is no longer this
+        worker's."""
+        self.request_stop("gone")
+
+    def _park_requested(self) -> bool:
+        return False
+
+    def inbox_waits(self) -> None:
+        """The heartbeat counts messages of the owner in the inbox: hand them to the agent, and wake a run that waits
+        for its owner's answer."""
+        self.inbox_arrived.set()
+        self._spawn(self.deliver_inbox())
+
     def request_handback(self) -> None:
         """The heartbeat says the owner asked to let the agent go on headless; it says so until the run is running."""
         if self.phase == "interactive" and not self.handback_asked.is_set():
@@ -408,8 +499,13 @@ class Run:
                 last = None
                 try:
                     for message in messages:
+                        message_id = message.get("id")
+                        if isinstance(message_id, int) and message_id <= self._delivered_upto:
+                            last = message_id  # in the prompt the agent started on already
+                            continue
                         await adapter.send(str(message.get("text") or ""))
-                        last = message.get("id")
+                        last = message_id
+                        self._handed([message])
                 except AgentFinished:
                     if last is not None:
                         await self.daemon.hub.inbox(self.id, ack=int(last))
@@ -426,6 +522,29 @@ class Run:
             log.exception("messages not handed to the agent", extra={"run_id": self.id})
         finally:
             self._delivering = False
+
+    def _handed(self, messages: list[dict]) -> None:
+        """Note that these messages of the inbox went to the agent: the decisions they answer are answered."""
+        for message in messages:
+            message_id, decision_id = message.get("id"), message.get("decision_id")
+            if isinstance(message_id, int):
+                self._delivered_upto = max(self._delivered_upto, message_id)
+            if isinstance(decision_id, int):
+                self.answered.add(decision_id)
+        self.record["answered"] = sorted(self.answered)
+
+    async def _ack_inbox(self, ack: int) -> None:
+        """Mark the inbox's messages up to ``ack`` delivered, trying a few times."""
+        backoff = Backoff()
+        for _ in range(HARD_STOP_TRIES + 1):
+            try:
+                await self.daemon.hub.inbox(self.id, ack=ack)
+                return
+            except Unreachable:
+                await _wait_or(self.daemon.hard_stop, backoff.next())
+            except HubProblem as exc:
+                log.warning("inbox not acknowledged", extra={"run_id": self.id, "error": str(exc)})
+                return
 
     # Reports
 
@@ -467,7 +586,7 @@ class Run:
                         body = {key: body[key] for key in ("state", "error") if key in body}
                         stripped = True
                         continue
-                    raise RunGone(f"the hub refused the report of {state}: {exc}") from None
+                    raise ReportRefused(f"the hub refused the report of {state}: {exc}", exc.status) from None
                 self.state = state
                 self.record["state"] = state
                 with contextlib.suppress(OSError):
@@ -533,6 +652,10 @@ class Run:
                     await sender
             if self.sender.settled:
                 self.spool.remove()
+            # The agent is over: before the run counts as ended here, so a daemon that dies in between leaves an
+            # abandoned run rather than an orphan whose worktree the next one would remove.
+            with contextlib.suppress(OSError):
+                self.daemon.home.remove_agent(self.id)
             self.record["finished_at"] = _now().isoformat()
             self.record["state"] = self.state
             with contextlib.suppress(OSError):
@@ -678,6 +801,8 @@ class Run:
         env.update(
             {
                 "EVO_RUN_ID": str(self.id),
+                "EVO_RUN_KIND": str(self.spec.get("kind") or "step"),
+                "EVO_WORKER_HOME": str(self.daemon.home.root),  # the commands of `evo-agents worker` read the run here
                 "EVO_RUN_PROJECT": str(self.project),
                 "EVO_RUN_PLAN": str(self.spec.get("plan_id") or ""),
                 "EVO_RUN_STEP": str(self.spec.get("step_key") or ""),
@@ -686,17 +811,27 @@ class Run:
         return env
 
     async def _run_agent(self, cls) -> None:
-        """Run the agent until its last turn is over: headless, and in its terminal UI while a person drives it
-        (interactive mode, or a takeover), each phase going on with the session of the one before."""
-        session_id: str | None = None
-        prompt = self.spec["prompt"]
-        in_terminal = self.mode == "interactive" or self.takeover_asked
+        """Run the agent until its last turn is over (``_turns``), on the run's prompt."""
+        self.outcome, _ = await self._turns(cls, self.spec["prompt"], None, terminal_first=self.mode == "interactive")
+        if not self.outcome.completed:
+            raise RunFailed(
+                self.outcome.error or f"{self.runtime} ended before its turn completed", usage=self.outcome.usage
+            )
+
+    async def _turns(
+        self, cls, prompt: str, session_id: str | None, *, terminal_first: bool
+    ) -> tuple[Outcome, str | None]:
+        """Run the agent on ``prompt`` (in the session ``session_id``, or a new one) until its turn is over: headless,
+        and in its terminal UI while a person drives it (``terminal_first``, or a takeover), each phase going on with
+        the session of the one before. How the last headless phase ended, and the session's id."""
+        first_prompt = prompt
+        in_terminal = terminal_first or self.takeover_asked
         try:
             while True:
                 if in_terminal:
                     session_id = await self._in_terminal(cls, session_id, prompt)
                     in_terminal = False
-                    prompt = HANDBACK_PROMPT if session_id else self.spec["prompt"]
+                    prompt = HANDBACK_PROMPT if session_id else first_prompt
                     continue
                 outcome = await self._headless(cls, prompt, session_id)
                 session_id = self.adapter.session_id or session_id
@@ -704,14 +839,9 @@ class Run:
                 if self.takeover_asked and session_id and self.interactive_unsupported(cls) is None:
                     in_terminal = True
                     continue
-                self.outcome = outcome
-                break
+                return outcome, session_id
         finally:
             self.phase = "after"
-        if not self.outcome.completed:
-            raise RunFailed(
-                self.outcome.error or f"{self.runtime} ended before its turn completed", usage=self.outcome.usage
-            )
 
     def _agent_starts(self) -> None:
         """The run's timeout counts from the first start of its agent."""
@@ -737,12 +867,18 @@ class Run:
             raise RunFailed(f"{self.runtime} did not start: {type(exc).__name__}: {exc}") from None
         self.agent_running = True
         self._agent_starts()
+        pid = self._group_of(adapter)
+        await self._note_agent(pid)
+        self.group_noted = pid is not None
+        if self._pending_ack is not None:  # the messages its prompt carries are the agent's now
+            ack, self._pending_ack = self._pending_ack, None
+            self._spawn(self._ack_inbox(ack))
         if session_id:
             self.note(f"{self.runtime} goes on headless in session {session_id}.")
         else:
             self.note(f"{self.runtime} started in {self.worktree}.")
-        self._spawn(self._report_running(("interactive",) if self.state == "interactive" else ("leased",)))
-        if self.takeover_asked:  # asked while the agent was starting
+        self._spawn(self._report_running((self.state,) if self.state in ("interactive", "waiting") else ("leased",)))
+        if self.takeover_asked or self._park_requested():  # asked while the agent was starting
             self._spawn(self._stop_at_boundary(adapter))
         try:
             return await self._consume(adapter)
@@ -785,6 +921,8 @@ class Run:
             return session_id
         self.tui = tui
         self._agent_starts()
+        await self._note_agent(None)
+        self.group_noted = False
         logs = asyncio.create_task(self._terminal_log(tui, name))  # before anyone is told the session is there
         try:
             self.record["tmux_session"] = name
@@ -868,11 +1006,37 @@ class Run:
             if pane_log is not None:
                 pane_log.unlink(missing_ok=True)
 
+    def _group_of(self, adapter) -> int | None:
+        try:
+            pid = adapter.group_pid()
+        except Exception:  # an adapter's bug must not stop the run
+            log.warning("the adapter did not name the agent's process group", extra={"run_id": self.id}, exc_info=True)
+            return None
+        return pid if isinstance(pid, int) and pid > 1 else None
+
+    async def _note_agent(self, pid: int | None) -> None:
+        """Note the agent that runs now in runs/<run>/agent.json (``orphans``): the process group ``pid`` leads, or
+        none (an agent in its terminal UI, whose tmux session a daemon that starts closes, or an adapter that does not
+        name its group). The file stays until the run ends here."""
+        agent = await asyncio.to_thread(orphans.describe, pid)
+        agent.update({"runtime": self.runtime, "phase": self.phase})
+        try:
+            self.daemon.home.save_agent(self.id, agent)
+        except OSError as exc:
+            log.warning("agent.json not written", extra={"run_id": self.id, "error": str(exc)})
+
     async def _consume(self, adapter) -> Outcome:
         async def pump() -> None:
+            looks = 0
             async for item in adapter.events():
                 if isinstance(item, AgentEvent):
                     self.event(item.kind, item.body, item.at)
+                if not self.group_noted and looks < NOTE_GROUP_LOOKS:  # a runtime that started after start returned
+                    looks += 1
+                    pid = self._group_of(adapter)
+                    if pid is not None:
+                        await self._note_agent(pid)
+                        self.group_noted = True
                 session_id = adapter.session_id
                 if session_id and session_id != self.session_reported and self.state == "running":
                     self.session_reported = session_id
@@ -1016,11 +1180,31 @@ class Run:
 
     # Commit and push
 
+    async def _commit(self, path: Path, repo: str | None = None) -> bool:
+        """Commit what the agent left in the work tree at ``path`` as ``run #N: <title>``, and say in the run's log
+        which files the commit leaves out (``gitops.commit_run``); whether a commit was made."""
+        message = f"run #{self.id}: {self.title}"
+        committed = await gitops.commit_run(path, message)
+        extra = {"repo": repo} if repo else {}
+        where = f" in {repo}" if repo else ""
+        if committed.left_out:
+            left = committed.left_out
+            shown = ", ".join(left[:MAX_LEFT_OUT_NAMED])
+            more = f" and {len(left) - MAX_LEFT_OUT_NAMED} more" if len(left) > MAX_LEFT_OUT_NAMED else ""
+            self.note(
+                f"Left out of the commit{where}, as what a hook or a plan export wrote rather than the agent's work: "
+                f"{shown}{more}.",
+                left_out=list(left[:MAX_LEFT_OUT_LISTED]),
+                **extra,
+            )
+        if committed.made:
+            self.note(f"Committed what the agent left{where or ' uncommitted'} as {message}.", **extra)
+        return committed.made
+
     async def _commit_and_push(self) -> tuple[str, dict]:
         wt = self.worktree
         try:
-            if await gitops.commit_all(wt, f"run #{self.id}: {self.title}"):
-                self.note(f"Committed what the agent left uncommitted as run #{self.id}: {self.title}.")
+            await self._commit(wt)
         except gitops.GitError as exc:
             raise RunFailed(f"committing what the agent left failed: {exc}", verify=self.verify) from None
         head_branch = await gitops.current_branch(wt)
@@ -1034,24 +1218,38 @@ class Run:
                 "worker does not push it",
                 verify=self.verify,
             )
-        if self.branch in self.protected:  # checked before the agent started; checked again before every push
-            raise RunFailed(f"{self.branch} is a default branch: the worker never pushes it", verify=self.verify)
         commit_sha = await gitops.rev(wt, "HEAD")
         diffstat = await gitops.diffstat(wt, self.base)
         self._check()
-        try:
-            await gitops.push(wt, self.branch)
+        try:  # a default branch was refused before the agent started; gitops refuses it again before every push
+            pushed = await gitops.push(wt, self.branch, protected=self.protected, kind="step")
+        except gitops.PushRefused as exc:
+            raise RunFailed(str(exc), verify=self.verify) from None
         except gitops.GitError as exc:
             raise RunFailed(f"git push to {self.branch} on origin failed: {exc}", verify=self.verify) from None
-        self.note(
-            f"Pushed {commit_sha[:12]} to {self.branch} on origin ({diffstat['files']} file(s), "
-            f"+{diffstat['insertions']} -{diffstat['deletions']}).",
-            commit_sha=commit_sha,
-        )
+        if pushed.changed:
+            self.note(
+                f"Pushed {commit_sha[:12]} to {self.branch} on origin ({diffstat['files']} file(s), "
+                f"+{diffstat['insertions']} -{diffstat['deletions']}).",
+                commit_sha=commit_sha,
+            )
+        else:
+            self.note(
+                f"{self.branch} on origin is at {commit_sha[:12]} already: nothing to push.",
+                commit_sha=commit_sha,
+            )
         self.record.update({"commit_sha": commit_sha, "pushed": True})
         return commit_sha, diffstat
 
     # Log and diff
+
+    async def _diff(self) -> bytes:
+        """The diff of the run's commits, empty when there is none."""
+        if self.worktree is None or self.base is None:
+            return b""
+        with contextlib.suppress(gitops.GitError, OSError, asyncio.TimeoutError):
+            return await gitops.diff(self.worktree, self.base)
+        return b""
 
     async def _upload(self) -> None:
         """Upload the run's log and diff to the hub's blob store; a hub without one, or a failure, is logged only."""
@@ -1060,11 +1258,9 @@ class Run:
         with contextlib.suppress(OSError):
             if 0 < self.log_path.stat().st_size <= LOG_LIMIT:
                 payloads["run-log"] = self.log_path.read_bytes()
-        if self.worktree is not None and self.base is not None:
-            with contextlib.suppress(gitops.GitError, OSError, asyncio.TimeoutError):
-                diff = await gitops.diff(self.worktree, self.base)
-                if 0 < len(diff) <= DIFF_LIMIT:
-                    payloads["run-diff"] = diff
+        diff = await self._diff()
+        if 0 < len(diff) <= DIFF_LIMIT:
+            payloads["run-diff"] = diff
         if not payloads:
             return
         by_sha = {}
@@ -1083,3 +1279,497 @@ class Run:
             log.info("run log and diff uploaded", extra={"run_id": self.id, "kinds": sorted(payloads)})
         except (HubProblem, KeyError, TypeError) as exc:
             log.info("run log and diff not uploaded", extra={"run_id": self.id, "error": str(exc)})
+
+
+def read_asked(home, run_id: int) -> set[int]:
+    """The decisions the agent of plan run ``run_id`` asked, as ``evo-agents worker ask`` noted them."""
+    asked: set[int] = set()
+    with contextlib.suppress(OSError):
+        for line in home.decisions_path(run_id).read_text(encoding="utf-8").splitlines():
+            with contextlib.suppress(ValueError, TypeError, AttributeError):
+                decision_id = json.loads(line).get("id")
+                if isinstance(decision_id, int):
+                    asked.add(decision_id)
+    return asked
+
+
+class PlanRun(Run):
+    """A plan run (kind ``plan``, see the module's docstring): a worktree of each of its repos in one directory, the
+    agent in that directory doing every step not done yet, waiting for its owner's answers between its turns, and the
+    repos pushed at its end."""
+
+    def __init__(self, daemon: Daemon, spec: dict):
+        super().__init__(daemon, spec)
+        self.title = spec.get("title") or f"plan {spec.get('plan_id')}"
+        self.directory: Path | None = None
+        self.workspaces: dict[str, gitops.Workspace] = {}
+        self.park_asked = asyncio.Event()
+        self.parked = False
+        self.resume_of = int(spec["resume_of_run_id"]) if spec.get("resume_of_run_id") else None
+        self.session_id: str | None = spec.get("session_id") or None
+        self.record.update({"dir": None, "repos": [], "resume_of_run_id": self.resume_of})
+        daemon.home.save_run(self.record)
+
+    # Control
+
+    def request_park(self) -> None:
+        """The heartbeat says the hub parked the run, or that a new run resumes it: the agent stops at the end of its
+        turn, and its session and worktrees stay."""
+        if self.ended or self.park_asked.is_set():
+            return
+        log.info("park asked", extra={"run_id": self.id, "phase": self.phase})
+        self.park_asked.set()
+        if self.agent_running and self.adapter is not None:
+            self.note("The hub parked the run: the agent stops at the end of its turn.")
+            self._spawn(self._stop_at_boundary(self.adapter))
+        if self.phase == "interactive":
+            self.handback_asked.set()
+
+    def _park_requested(self) -> bool:
+        return self.park_asked.is_set()
+
+    # The run
+
+    async def _go(self) -> None:
+        try:
+            await super()._go()
+        except Parked:
+            await self._park()
+
+    async def _steps(self) -> None:
+        spec = self.spec
+        repos = [entry for entry in spec.get("repos") or [] if isinstance(entry, dict)]
+        names = ", ".join(str(entry.get("repo")) for entry in repos) or "no repo"
+        resumes = f", going on from parked run #{self.resume_of}" if self.resume_of else ""
+        self.note(
+            f"Run #{self.id} claimed by worker {self.daemon.config.name}: plan {spec.get('plan_id')} over {names}, "
+            f"{self.runtime}, {self.mode}, timeout {self.timeout_s // 60} min of agent time{resumes}."
+        )
+        cls = self.daemon.adapters.get(self.runtime)
+        if cls is None:
+            raise RunFailed(f"this worker has no adapter for {self.runtime}")
+        if self.mode == "interactive":
+            why = self.interactive_unsupported(cls)
+            if why is not None:
+                raise RunFailed(f"this worker cannot run {self.runtime} interactive ({why}): run it headless")
+        if not repos:
+            raise RunFailed("the plan run names no repo to work in")
+        await self._prepare_plan(repos)
+        self._check()
+        prompt, session_id = await self._first_turn()
+        await self._plan_turns(cls, prompt, session_id)
+        self.summary = self._read_summary()
+        await self._ensure_running()
+        await self._report("verifying")
+        self._check()
+        diffstat = await self._push_repos()
+        await self._end(
+            "done", diffstat=diffstat, summary=self.summary, usage=self.outcome.usage if self.outcome else None
+        )
+
+    # The directory and its worktrees
+
+    def _plan_body(self) -> dict:
+        plan = self.spec.get("plan")
+        body = plan.get("body") if isinstance(plan, dict) else None
+        return body if isinstance(body, dict) else {}
+
+    def _save_workspaces(self) -> None:
+        self.record["dir"] = str(self.directory) if self.directory is not None else None
+        self.record["repos"] = [workspace.to_record() for workspace in self.workspaces.values()]
+        self.daemon.home.save_run(self.record)
+
+    async def _prepare_plan(self, repos: list[dict]) -> None:
+        """The run's directory with a worktree of each repo: the parked run's when this run resumes one and they are
+        still here, else new ones; and the plan as claimed in .evo-run/plan.yaml."""
+        if self.resume_of is not None:
+            self._adopt(self.resume_of)
+        if self.directory is None:
+            self.directory = self.daemon.home.worktree_path(self.project, self.id)
+            if self.directory.exists():
+                raise RunFailed(f"{self.directory} exists already; remove it and run the plan again")
+        self.directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+        self.worktree = self.directory  # the agent's directory
+        named = gitops.plan_branches(self._plan_body())
+        for name, workspace in list(self.workspaces.items()):  # a default branch is pushed only while the plan names it
+            self.workspaces[name] = dataclasses.replace(workspace, plan_branch=named.get(name))
+        taken = {workspace.worktree.name for workspace in self.workspaces.values()}
+        for entry in repos:
+            name = entry.get("repo")
+            if not isinstance(name, str) or not name:
+                raise RunFailed("the plan run names a repo without a name")
+            if name in self.workspaces:
+                continue
+            branch = entry.get("branch")
+            if not isinstance(branch, str) or not branch:
+                raise RunFailed(
+                    f"the plan names no branch for {name}: a plan run works only on the branch the plan names for "
+                    "each repo; add it to the plan's repos"
+                )
+            checkout = self.daemon.checkout_for(self.project, name)
+            if checkout is None:
+                raise RunFailed(f"this worker has no checkout of {self.project}/{name}")
+            folder = gitops.folder_name(name, taken)
+            taken.add(folder)
+            self.workspaces[name] = await self._make_worktree(name, branch, named.get(name), checkout, folder)
+            self._save_workspaces()
+        self._write_plan()
+        self._save_workspaces()
+
+    async def _make_worktree(
+        self, name: str, branch: str, plan_branch: str | None, checkout: Path, folder: str
+    ) -> gitops.Workspace:
+        """A worktree of the checkout of ``name`` at ``<directory>/<folder>`` on the plan's branch for it, from
+        origin's branch when there is one (see ``Run._prepare``), or on evo-run/<run>/<folder> when that branch is
+        checked out elsewhere or has commits here that the start lacks."""
+        path = self.directory / folder
+        async with self.daemon.repo_lock(checkout):
+            if not await gitops.has_remote(checkout):
+                raise RunFailed(f"the checkout at {checkout} has no remote named origin to fetch from and push to")
+            self.note(f"Fetching origin in {checkout}.")
+            try:
+                await gitops.fetch(checkout)
+            except gitops.GitError as exc:
+                raise RunFailed(f"git fetch in {checkout} failed: {exc}") from None
+            if not await gitops.check_branch_name(checkout, branch):
+                raise RunFailed(f"the plan's branch {branch!r} for {name} is not a valid branch name")
+            remote_head = await gitops.remote_default_branch(checkout)
+            hub_default = default_branch_of(self.daemon.config, self.project, name)
+            protected = tuple(sorted({item for item in (remote_head, hub_default, *gitops.PROTECTED) if item}))
+            try:
+                default = gitops.check_push(branch, protected, kind="plan", plan_branch=plan_branch)
+            except gitops.PushRefused as exc:
+                raise RunFailed(f"the run's branch for {name}: {exc}") from None
+            start = base = None
+            for ref in (f"refs/remotes/origin/{branch}", f"refs/heads/{branch}", "refs/remotes/origin/HEAD", "HEAD"):
+                base = await gitops.rev(checkout, ref)
+                if base is not None:
+                    start = ref
+                    break
+            if base is None:
+                raise RunFailed(f"the checkout at {checkout} has no commit to start from")
+            if path.exists():
+                raise RunFailed(f"{path} exists already; remove it and run the plan again")
+            in_use = await gitops.branches_in_worktrees(checkout)
+            local = await gitops.rev(checkout, f"refs/heads/{branch}")
+            if branch not in in_use and (local is None or await gitops.is_ancestor(checkout, local, base)):
+                local_branch = branch
+            else:
+                local_branch = RUN_REPO_BRANCH.format(id=self.id, folder=folder)
+                why = "is checked out in another worktree" if branch in in_use else "has commits here that it lacks"
+                self.note(f"{branch} of {name} {why}; the run works on {local_branch} and pushes it to {branch}.")
+            try:
+                await gitops.add_worktree(checkout, path, local_branch, base, reset=True)
+            except gitops.GitError as exc:
+                raise RunFailed(f"cannot make the worktree {path}: {exc}") from None
+        pushes = f"; pushes go to {branch}" + (", a default branch the plan names for it" if default else "")
+        self.note(f"Worktree {path} of {name} on {local_branch} at {base[:12]} ({start}){pushes}.", worktree=str(path))
+        return gitops.Workspace(
+            repo=name,
+            branch=branch,
+            plan_branch=plan_branch,
+            checkout=checkout,
+            worktree=path,
+            local_branch=local_branch,
+            base=base,
+            protected=protected,
+        )
+
+    def _adopt(self, old_id: int) -> None:
+        """Take over the directory, worktrees, session and decisions of parked run ``old_id``, which this run resumes;
+        its record no longer names them, so the cleanup of that run leaves them alone."""
+        home = self.daemon.home
+        record = home.load_run(old_id)
+        directory = Path(record["dir"]) if record and record.get("kind") == "plan" and record.get("dir") else None
+        if directory is None or not directory.is_dir():
+            self.note(
+                f"The worktrees of parked run #{old_id} are not on this worker any more: the run makes new ones from "
+                "the branches on origin, and goes on in the session of the parked run."
+            )
+            return
+        for item in record.get("repos") or []:
+            try:
+                workspace = gitops.Workspace.from_record(item)
+            except ValueError:
+                continue
+            if workspace.worktree.is_dir():
+                self.workspaces[workspace.repo] = workspace
+        self.directory = directory
+        self.session_id = self.session_id or record.get("session_id")
+        self.answered |= {item for item in record.get("answered") or [] if isinstance(item, int)}
+        still_open = sorted(read_asked(home, old_id) - self.answered)
+        if still_open:
+            lines = "".join(json.dumps({"id": decision_id}) + "\n" for decision_id in still_open)
+            with open(home.decisions_path(self.id), "a", encoding="utf-8") as handle:
+                handle.write(lines)
+        record.update({"resumed_by": self.id, "dir": None, "repos": [], "moved_to": str(directory)})
+        home.save_run(record)
+        names = ", ".join(self.workspaces) or "no repo"
+        self.note(f"Goes on from parked run #{old_id} in {directory}, with its worktrees of {names}.")
+
+    def _write_plan(self) -> None:
+        plan = self.spec.get("plan") if isinstance(self.spec.get("plan"), dict) else {}
+        path = self.directory / runs.PLAN_FILE
+        path.parent.mkdir(mode=0o700, exist_ok=True)
+        header = (
+            f"# The plan {self.spec.get('plan_id')} of project {self.project} at revision {plan.get('revision')}, as "
+            f"run #{self.id} was claimed. `evo-agents worker plan` prints it as the hub holds it now.\n"
+        )
+        text = yaml.safe_dump(self._plan_body(), allow_unicode=True, sort_keys=False, width=120)
+        path.write_text(header + text, encoding="utf-8")
+
+    async def _release_branch(self) -> None:
+        """Leave each plan branch once the run is over, so it can be checked out elsewhere; a parked run keeps its
+        worktrees as they are, for the run that resumes it."""
+        if self.parked:
+            return
+        for workspace in self.workspaces.values():
+            if workspace.local_branch == workspace.branch and workspace.worktree.exists():
+                with contextlib.suppress(gitops.GitError, OSError):
+                    await gitops.detach(workspace.worktree)
+
+    # The agent's turns
+
+    def _prompt(self) -> str:
+        """The run's prompt; built again here when a worktree's folder is not named as its repo."""
+        folders = {name: workspace.worktree.name for name, workspace in self.workspaces.items()}
+        if all(name == folder for name, folder in folders.items()) and self.spec.get("prompt"):
+            return self.spec["prompt"]
+        return runs.build_plan_prompt(self._plan_body(), self.spec.get("repos") or [], folders)
+
+    async def _first_turn(self) -> tuple[str, str | None]:
+        """The prompt and session of the agent's first turn: the run's prompt in a new session, or, for a run that
+        resumes a parked one, the owner's answers in that run's session."""
+        if self.resume_of is None:
+            return self._prompt(), None
+        messages = await self._unread()
+        said = self._take(messages) if messages else ""
+        if self.session_id is None:  # the parked run never told its session: start again, with the answers
+            self.note("The parked run left no session to go on with: the agent starts a new one.")
+            return runs.clip(self._prompt() + ("\n\n" + said if said else ""), runs.MAX_PROMPT_BYTES), None
+        prompt = RESUME_PROMPT.format(id=self.id) + ("\n\n" + said if said else "")
+        return runs.clip(prompt, runs.MAX_PROMPT_BYTES), self.session_id
+
+    async def _plan_turns(self, cls, prompt: str, session_id: str | None) -> None:
+        """Turns of the agent until one ends with nothing to wait for: after each, the owner's messages that came in
+        the meantime, or the answer to a decision the run waits for, start the next in the same session."""
+        terminal_first = self.mode == "interactive"
+        while True:
+            self.outcome, session_id = await self._turns(cls, prompt, session_id, terminal_first=terminal_first)
+            terminal_first = False
+            self.session_id = session_id or self.session_id
+            self.record["session_id"] = self.session_id
+            if self.park_asked.is_set():
+                raise Parked()
+            if not self.outcome.completed:
+                raise RunFailed(
+                    self.outcome.error or f"{self.runtime} ended before its turn completed", usage=self.outcome.usage
+                )
+            messages = await self._after_turn()
+            if not messages:
+                return
+            prompt = runs.clip(ANSWER_PROMPT + "\n\n" + self._take(messages), runs.MAX_PROMPT_BYTES)
+
+    async def _unread(self) -> list[dict]:
+        """The inbox's messages the agent has not had yet; none when the hub does not answer."""
+        try:
+            messages = await self.daemon.hub.inbox(self.id)
+        except HubProblem as exc:
+            log.warning("the inbox was not read", extra={"run_id": self.id, "error": str(exc)})
+            return []
+        return [
+            message
+            for message in messages
+            if isinstance(message, dict) and isinstance(message.get("id"), int) and message["id"] > self._delivered_upto
+        ]
+
+    def _take(self, messages: list[dict]) -> str:
+        """The text of these messages for the agent's next prompt; they are acknowledged once it starts."""
+        self._handed(messages)
+        self._pending_ack = self._delivered_upto
+        return "\n\n".join(str(message.get("text") or "") for message in messages)
+
+    def open_asked(self) -> set[int]:
+        """The decisions the agent asked whose answers it has not had."""
+        return read_asked(self.daemon.home, self.id) - self.answered
+
+    async def _ensure_running(self) -> None:
+        """Report running unless the hub has it so already (the report spawned when the agent started may still be
+        on its way), so the next move starts from it."""
+        if self.state in ("leased", "waiting"):
+            await self._report("running", only_from=("leased", "waiting"), session_id=self.session_id)
+
+    async def _after_turn(self) -> list[dict]:
+        """What starts the agent's next turn: the owner's messages it has not had, at once; else, while a decision of
+        the run is open, the messages that come once the owner answers (the run waits). None when nothing is left
+        to wait for."""
+        unread = await self._unread()
+        if unread:
+            self.note(f"{len(unread)} message(s) of the owner came while the agent worked: a new turn takes them.")
+            return unread
+        asked = self.open_asked()
+        if not asked and self.open_decisions <= 0:
+            return []
+        await self._ensure_running()
+        try:
+            await self._report("waiting", only_from=("running",))
+        except ReportRefused as exc:
+            if exc.status != 409:
+                raise
+            self.note(f"The agent's turn ended, and the hub has no decision of the run to wait for ({exc}).")
+            return []
+        if self.state != "waiting":
+            return []
+        shown = ", ".join(f"#{decision_id}" for decision_id in sorted(asked)) or "of the run"
+        self.note(
+            f"The agent's turn ended with decision {shown} open: the run waits for its owner's answer, and the time it "
+            "waits does not count toward its timeout."
+        )
+        return await self._wait_for_answer()
+
+    async def _wait_for_answer(self) -> list[dict]:
+        """Wait for the owner's messages, the answer to a decision among them, without the agent: the worker keeps the
+        run and the heartbeat its lease. Stopped on a cancel or when the hub lets go of the run, Parked when it parks
+        it. The time spent here moves the run's deadline back."""
+        started = self.loop.time()
+        try:
+            while True:
+                if self.stop_reason is not None:
+                    raise Stopped(self.stop_reason)
+                if self.park_asked.is_set():
+                    raise Parked()
+                self.inbox_arrived.clear()
+                messages = await self._unread()
+                if messages:
+                    answers = sorted(m["decision_id"] for m in messages if isinstance(m.get("decision_id"), int))
+                    which = f" answering decision {', '.join(f'#{item}' for item in answers)}" if answers else ""
+                    self.note(f"The owner wrote{which}: the agent goes on in session {self.session_id or '(new)'}.")
+                    return messages
+                await _first_of((self.inbox_arrived, self._stop, self.park_asked), self.daemon.heartbeat_s)
+        finally:
+            self.deadline += self.loop.time() - started
+
+    async def _park(self) -> None:
+        """The hub parked the run: its slot is free; the session and the worktrees stay for the run that resumes
+        it, and the hub hears nothing more of this one but its events."""
+        await self._interrupt_agent()
+        self.parked = True
+        self.state = "parked"
+        self.record.update({"state": "parked", "parked_at": _now().isoformat(), "session_id": self.session_id})
+        self.note(
+            f"The hub parked the run: the agent's turn is over, and its session {self.session_id or '(none)'} and the "
+            f"worktrees in {self.directory} stay on this worker for the run that resumes it."
+        )
+        self.ended = True
+        log.info("run parked", extra={"run_id": self.id, "session_id": self.session_id})
+
+    # The end
+
+    def _read_summary(self) -> str | None:
+        """The agent's summary from .evo-run/result.json in the run's directory; a plan run lists no verify commands."""
+        path = self.directory / runs.RESULT_FILE
+        if path.is_symlink() or not path.is_file():
+            self.note(f"The agent wrote no {runs.RESULT_FILE}: the run ends without its summary.")
+            return None
+        try:
+            if path.stat().st_size > RESULT_MAX_BYTES:
+                raise ValueError(f"it is over {RESULT_MAX_BYTES} bytes")
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            self.note(f"{runs.RESULT_FILE} was not read ({exc}): the run ends without its summary.")
+            return None
+        summary = data.get("summary") if isinstance(data, dict) else None
+        return _cut(summary.strip(), MAX_SUMMARY_CHARS) if isinstance(summary, str) and summary.strip() else None
+
+    async def _named_branches(self) -> dict[str, str | None]:
+        """repo -> the branch the plan names for it as the hub holds it now, so a default branch is pushed only while
+        the plan still names it; as the plan was claimed when the hub does not say."""
+        try:
+            view = await self.daemon.hub.plan(self.id)
+        except HubProblem as exc:
+            log.warning("the plan was not read again before the push", extra={"run_id": self.id, "error": str(exc)})
+            view = None
+        body = view.get("body") if isinstance(view, dict) else None
+        if isinstance(body, dict) and "repos" in body:
+            return gitops.plan_branches(body)
+        return {name: workspace.plan_branch for name, workspace in self.workspaces.items()}
+
+    async def _push_repos(self) -> dict:
+        """Commit what the agent left in each repo, and push each repo's branch whose origin lacks its commits; the
+        diffstat of the whole run."""
+        total = {"files": 0, "insertions": 0, "deletions": 0}
+        named = await self._named_branches()
+        for name, workspace in self.workspaces.items():
+            path = workspace.worktree
+            if not path.is_dir():
+                raise RunFailed(f"the worktree of {name} at {path} is gone")
+            try:
+                await self._commit(path, name)
+            except gitops.GitError as exc:
+                raise RunFailed(f"committing what the agent left in {name} failed: {exc}") from None
+            head_branch = await gitops.current_branch(path)
+            if head_branch is None:
+                raise RunFailed(f"HEAD is detached in the worktree of {name}: the worker does not push a detached HEAD")
+            if head_branch != workspace.local_branch:
+                raise RunFailed(
+                    f"the worktree of {name} is on {head_branch}, not {workspace.local_branch}: the agent switched "
+                    "branches, and the worker does not push it"
+                )
+            self._check()
+            try:
+                pushed = await gitops.push(
+                    path,
+                    workspace.branch,
+                    protected=workspace.protected,
+                    kind="plan",
+                    plan_branch=named.get(name),
+                )
+            except gitops.PushRefused as exc:
+                raise RunFailed(f"{name}: {exc}") from None
+            except gitops.GitError as exc:
+                raise RunFailed(f"git push of {name} to {workspace.branch} on origin failed: {exc}") from None
+            stat = await gitops.diffstat(path, workspace.base)
+            for key in total:
+                total[key] += stat[key]
+            if pushed.changed:
+                self.note(
+                    f"Pushed {pushed.head[:12]} of {name} to {workspace.branch} on origin ({len(pushed.commits)} "
+                    "commit(s)).",
+                    commit_sha=pushed.head,
+                    repo=name,
+                )
+                if pushed.default:
+                    await self._notice(name, pushed)
+            else:
+                self.note(f"{workspace.branch} of {name} on origin is at {pushed.head[:12]} already: nothing to push.")
+        return total
+
+    async def _notice(self, name: str, pushed: gitops.Pushed) -> None:
+        """Tell the run's owner of a push to a default branch; a notice the hub does not take is logged."""
+        body = gitops.push_notice(self.id, name, pushed)
+        backoff = Backoff()
+        for _ in range(HARD_STOP_TRIES + 1):
+            try:
+                await self.daemon.hub.notice(self.id, body)
+                self.note(f"Notified the owner of the push to {pushed.branch} of {name}.")
+                return
+            except Unreachable:
+                await _wait_or(self.daemon.hard_stop, backoff.next())
+            except HubProblem as exc:
+                log.warning("notice not sent", extra={"run_id": self.id, "error": str(exc)})
+                break
+        self.note(f"The notice of the push to {pushed.branch} of {name} was not sent.")
+
+    async def _diff(self) -> bytes:
+        """The diffs of every repo of the run, each under its folder (a/<repo>/...)."""
+        parts = []
+        for workspace in self.workspaces.values():
+            if workspace.worktree.is_dir():
+                with contextlib.suppress(gitops.GitError, OSError, asyncio.TimeoutError):
+                    parts.append(await gitops.diff(workspace.worktree, workspace.base, prefix=workspace.worktree.name))
+        return b"".join(parts)
+
+
+def run_class(spec: dict) -> type[Run]:
+    """The class of the run ``spec`` claims: PlanRun for kind plan, Run otherwise."""
+    return PlanRun if spec.get("kind") == "plan" else Run

@@ -11,7 +11,7 @@ A deployment has five parts:
 | api | `evo-agents hub serve`: the HTTP API under `/v1` and the MCP endpoint `/mcp` | none; `/cache` is a cache |
 | worker | `evo-agents hub worker`: background jobs from a queue in Postgres | none; `/cache` is a cache |
 | web | the Next.js server of `web/` | none |
-| Postgres | users, tokens, projects, grants, memories, plans, skills, graph builds, the job queue, the audit trail | all of it |
+| Postgres | users, tokens, projects, grants, memories, plans, skills, graph builds, workers and runs, the decisions of plan runs and the notifications of members, the job queue, the audit trail | all of it |
 | blob store | Cloudflare R2 (any S3 API works): skill bundles, run logs, source files and built graphs | content-addressed bytes |
 
 A reverse proxy in front sends `/v1` and `/mcp` to `api:8080` and every other path to `web:3000`, on one domain.
@@ -59,8 +59,10 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | blobs | `POST /v1/blobs/uploads`, `POST /v1/blobs/commit` |
 | knowledge graphs | `/v1/kg/{project}/config`, `.../runs`, `.../blobs/check`, `.../builds`, `.../tools/{tool}`, and the web's `.../graph`, `.../nodes`, `.../node`, `.../neighbourhood` |
 | workers | `POST /v1/workers/pairings`, `GET /v1/workers/pairings/{id}`, `POST /v1/worker/join`, `GET` and `POST /v1/workers`, `GET /v1/workers/{id}`, `POST /v1/workers/{id}/{drain,undrain,revoke}` |
-| runs | `/v1/projects/{project}/plans/{plan_id}/ready-steps`, `GET` and `POST /v1/projects/{project}/runs`, `.../runs/{id}`, `.../events`, `.../stream`, `.../diff`, `.../messages`, `.../{cancel,approve,rerun,takeover,handback}` |
-| worker protocol | `/v1/worker/{claim,heartbeat}`, `/v1/worker/runs/{id}/{state,events,inbox,uploads,blobs}` |
+| runs | `/v1/projects/{project}/plans/{plan_id}/ready-steps`, `GET` and `POST /v1/projects/{project}/runs`, `POST /v1/projects/{project}/plan-runs`, `.../runs/{id}`, `.../events`, `.../stream`, `.../diff`, `.../messages`, `.../{cancel,approve,rerun,takeover,handback}` |
+| decisions | `GET /v1/projects/{project}/decisions`, `.../decisions/{id}`, `POST .../decisions/{id}/answer` |
+| notifications | `GET /v1/me/notifications`, `GET /v1/me/notifications/count`, `POST /v1/me/notifications/read` |
+| worker protocol | `/v1/worker/{claim,heartbeat}`, `/v1/worker/runs/{id}/{state,events,inbox,uploads,blobs,plan,decisions,notices}`, `/v1/worker/runs/{id}/steps/{key}` |
 
 `/mcp` speaks MCP's Streamable HTTP transport, statelessly: each POST carries one JSON-RPC message and gets one JSON
 answer. It takes machine tokens only, and the `Host` header must be the host of `EVO_HUB_PUBLIC_URL` or a loopback
@@ -79,15 +81,18 @@ what that script generates.
 ### The command line contract
 
 `evo-agents hub contract print` prints `{"version": 1, "commands": {...}, "openapi": {...}}`: every `evo-agents hub`
-command with its arguments, options and the keys its `--json` output holds, plus the OpenAPI document. This is the
-owner's side of the seam `hub-cli-v1`: a consumer, such as evo-cli running `evo-agents hub plan ...`, checks the
-argv it builds and the keys it reads against this document. `tests/hub/golden/cli-contract.json` holds the expected
-copy, so any change to a command, an option, a `--json` key or the API shows up as a diff in review.
+command, and the four commands the agent of a plan run uses (`evo-agents worker step`, `ask`, `notify` and `plan`,
+keyed `worker step` and so on), with its arguments, options and the keys its `--json` output holds, plus the OpenAPI
+document. This is the owner's side of the seam `hub-cli-v1`: a consumer, such as evo-cli running `evo-agents hub
+plan ...` or a skill of agent-skills that tells an agent to run `evo-agents worker step`, checks the argv it builds
+and the keys it reads against this document. `tests/hub/golden/cli-contract.json` holds the expected copy, so any
+change to a command, an option, a `--json` key or the API shows up as a diff in review.
 
-`evo-agents hub contract check README.md docs/hub.md` reads every `evo-agents hub ...` command in the code spans and
-fenced code blocks of markdown files and reports a subcommand or option that does not exist, an option without its
-value, or a value outside an option's choices. It needs only the core package; `--contract FILE` checks against a
-saved `contract print` output instead.
+`evo-agents hub contract check README.md docs/hub.md` reads every `evo-agents hub ...` command, and every one of the
+four `evo-agents worker` commands above, in the code spans and fenced code blocks of markdown files and reports a
+subcommand or option that does not exist, an option without its value, or a value outside an option's choices. The
+other `evo-agents worker` commands are not in the contract and are not read. It needs only the core package;
+`--contract FILE` checks against a saved `contract print` output instead.
 
 ## Signing in
 
@@ -215,7 +220,9 @@ block, and multi-line text a literal block, so two machines exporting the same r
 `evo-agents harness validate` reports a copy whose digest no longer matches its content, and says both ways out:
 push the edit with `plan put` or restore the hub's copy with `plan export`. The evo-hub plugin's SessionStart hook
 exports the copies of the session's harness without committing, and leaves a file edited by hand as it is and names
-it, so it never overwrites someone's work.
+it, so it never overwrites someone's work. In the session of a run's agent on a worker (`EVO_RUN_ID` set by the
+daemon) it exports no copy, since the worker commits what the run leaves in its worktree and a run's commits hold only
+its own work; its line says so.
 
 ## Workers and runs
 
@@ -224,6 +231,12 @@ and the hub queues a run; a worker of that member claims it, runs the step with 
 and sends its log, state and evidence back over HTTPS, and the hub records the step's progress in the plan. Only the
 owner of a worker dispatches runs to it, and dispatching needs the writer role. `docs/workers.md` describes the
 protocol, the run states and who may move a run between them.
+
+Schema 0009 holds the workers and runs: `workers`, `worker_projects`, `worker_pairings`, `runs`, `run_events` and
+`run_inbox`. Schema 0010 adds plan runs (`runs.kind` is `step` or `plan`, a plan run has `repos` instead of a step key
+and a repo, and the states `waiting` and `parked`), the decisions their agents ask (`decisions`) and what reaches the
+members (`notifications`, `notification_channels`, `notification_deliveries`), which `docs/notifications.md`
+describes. Going back to 0009 deletes the plan runs with their decisions and notifications.
 
 The daemon on the member's machine is the `evo-agents worker` command group, which needs the `worker` extra
 (`uv tool install 'evo-ak[worker]'`). It is not `evo-agents hub worker`, the hub's own job worker (see Worker and
@@ -235,6 +248,8 @@ Runs are driven from any machine signed in to the hub:
 ```sh
 evo-agents hub run dispatch rollout 2 4 --approval auto       # one run per step, all of them queued or none
 evo-agents hub run dispatch rollout 5 --worker mac-mini --runtime codex --mode interactive --timeout 90
+evo-agents hub run dispatch rollout 6 --runtime claude-code --model opus
+evo-agents hub run plan rollout --worker mac-mini --timeout-h 8  # one plan run: every step not done yet
 evo-agents hub run list --state running --state review        # newest first, with the runs in each state
 evo-agents hub run show 41
 evo-agents hub run logs 41 --follow                           # the live log, until the run ends
@@ -246,14 +261,25 @@ evo-agents hub run cancel 41
 evo-agents hub run rerun 41                                   # the step again, after a run that ended
 ```
 
-Every command after `dispatch` and `list` takes the id of a run, as `list` shows it, and finds its project as the plan
-commands do: `--project`, or `hub.project` in the harness around the current directory. `dispatch` takes `--runtime`
-(`any` by default: the first runtime the claiming worker has), `--mode` (`headless` by default, or `interactive`),
-`--worker` (the id or the name of one of your workers, which pins the runs to it), `--approval` (`review` by default,
-which waits for `run approve`; `auto` marks the step done once every verify command the worker runs again exits 0)
-and `--timeout` in minutes (5 to 240, 60 by default). `list` filters by `--state` (repeat it for several), `--plan`,
-`--step`, `--worker`, `--by` (the login that dispatched) and `--search`, a page at a time with `--limit` and
-`--offset`.
+Every command after `dispatch`, `plan` and `list` takes the id of a run, as `list` shows it, and finds its project as
+the plan commands do: `--project`, or `hub.project` in the harness around the current directory. `dispatch` takes
+`--runtime` (`any` by default: the first runtime the claiming worker has), `--model` (the model as the runtime names
+it, `provider/model` for opencode; the runtime's own choice by default), `--mode` (`headless` by default, or
+`interactive`), `--worker` (the id or the name of one of your workers, which pins the runs to it), `--approval`
+(`review` by default, which waits for `run approve`; `auto` marks the step done once every verify command the worker
+runs again exits 0) and `--timeout` in minutes (5 to 240, 60 by default). A model belongs to one runtime, so the
+command line takes `--model` only with `--runtime` naming that runtime and refuses it with `any`, before it asks the
+hub; the hub itself does not check the pair.
+
+`run plan` queues a plan run (`POST /v1/projects/{project}/plan-runs`): one run, on one of your workers, whose agent
+does every step of the plan not done yet, in a worktree of each repo those steps name, and reports each step as it
+goes (`docs/workers.md`, Plan runs). It takes `--worker`, `--runtime`, `--model` and `--mode` as `dispatch` does, and
+`--timeout-h`, the hours of agent time the run may use: 2, 4, 8 or 24 (4 by default); the time it waits for your
+answer to a decision, or parked, does not count. The hub refuses a plan with no pending step, a plan with an active
+run of any kind, and a step not done that names no repo when the plan lists more than one. `list` shows each run's
+KIND, `step` or `plan`, and filters by `--state` (repeat it for several), `--plan`, `--step`, `--worker`, `--by` (the
+login that dispatched) and `--search`, a page at a time with `--limit` and `--offset`; `show` of a plan run names its
+repos, the agent time it used, and when it waited or was parked.
 
 `run logs` prints one line per event: its number, its time in UTC, its kind and what it says. With `--follow` it reads
 the run's server-sent events (`GET .../runs/{id}/stream`) until the hub sends `end` once the run is final, and stops
@@ -263,6 +289,29 @@ on that bring nothing, not even the hub's ping, the command gives up and names t
 since. `--json` prints what the hub answered, with the keys the command line contract declares; for `logs` that is
 every event read as one object, so it does not go with `--follow`. `send`, `cancel`, `approve`, `takeover`,
 `handback` and `rerun` belong to the member who dispatched the run: another member gets 403.
+
+The agent of a plan run asks its owner the decisions it may not take alone (`docs/notifications.md`), and the hub
+tells the owner of them, and of pushes to a default branch, in notifications:
+
+```sh
+evo-agents hub decision list --state open                     # newest first; --run, --plan, --limit, --offset
+evo-agents hub decision show 7                                # the question, its context, the options, the answer
+evo-agents hub decision answer 7 --option postgres            # or --text "...", or both; --text - reads stdin
+evo-agents hub notifications --unread                         # yours, open decisions first, then newest first
+evo-agents hub notifications --read all                       # or --read 12,14
+```
+
+`decision list` and `decision show` read the decisions of the plans you may read (`GET /v1/projects/{project}/decisions`,
+`.../decisions/{id}`), and find the project as `run` does. `decision answer` (`POST .../decisions/{id}/answer`)
+belongs to the member who dispatched the run: another member gets 403, and a decision that is no longer open 409. The
+answer names an option of the decision, gives words of your own (at most 4 KiB), or both. It goes to the run's inbox,
+which the worker hands to the agent; a parked run is resumed on its worker in its session, as a new run that the
+answer names. `notifications` lists your own (`GET /v1/me/notifications`), filtered by `--unread`, `--kind`
+(`decision` or `notice`) and `--project`, with `--limit` and `--offset`, and says how many are unread and how many
+decisions wait for your answer (`GET /v1/me/notifications/count`). `--read all`, or `--read` with ids, marks them
+read (`POST /v1/me/notifications/read`) and lists none, so it takes none of the filters; answering a decision reads
+its notification too. Each of these prints the hub's answer with `--json`, `notifications --read` its count of read
+and unread.
 
 ## Memories, skills and knowledge graphs
 
@@ -274,7 +323,8 @@ kg bind --project <name> <dir>` bound it to, among those listing it; else the on
 projects with one harness root among it, is refused rather than guessed, and a memory synced with one project never
 moves to another by itself. When both sides changed a file, the hub's version keeps the name and this machine's lands
 next to it as `<name>.conflict-<host>.md`. Deletions cross only with `--prune`. `evo-agents hub memory search "a
-phrase"` searches what you see. The plugin pulls at SessionStart and pushes at Stop.
+phrase"` searches what you see. The plugin pulls at SessionStart and pushes at Stop; in the session of a run's
+agent on a worker (`EVO_RUN_ID` set) Stop pushes nothing, since nobody reviews that unattended session.
 
 **Skills.** `evo-agents hub skills publish skills/house-style --scope global` packs a skill directory (10 MiB at
 most) and publishes a new version; `--scope project:demo` publishes it to a project. `evo-agents hub skills sync`
@@ -346,7 +396,10 @@ Postgres database; there is no separate broker. The api only defers jobs. Jobs:
 - `hub.prune_kg_artifacts`, hourly at minute 31: deletes the artifacts of graphs older than each project's
   `EVO_HUB_KG_KEEP_ARTIFACTS` newest.
 - `hub.recover_runs`, every minute: runs whose worker stopped extending the lease become lost and their step is
-  queued again, or fail on their third attempt (`docs/workers.md`).
+  queued again, or fail on their third attempt; runs past their timeout fail; a plan run that waited 24 hours for an
+  answer is parked, and one parked for 7 days cancelled (`docs/workers.md`).
+- `hub.deliver_notifications`, every minute: hands each notification delivery that is due to its channel's class, and
+  tries a failing one again with a backoff, failing it after 5 tries (`docs/notifications.md`).
 - `hub.prune_run_events`, daily at 04:13: deletes the events of runs that ended more than `EVO_HUB_RUN_LOG_DAYS` ago.
 - `hub.cleanup_uploads`, hourly: removes uploads nobody committed within 24 hours.
 - `hub.prune_jobs`, daily: removes finished jobs older than 14 days.
@@ -375,7 +428,7 @@ the variables in the platform's environment, never in a committed file. `deploy/
 
 | Variable | Used by | Meaning |
 | --- | --- | --- |
-| `EVO_HUB_VERSION` | compose | image tag, a released version such as `0.3.0` |
+| `EVO_HUB_VERSION` | compose | image tag, a released version such as `0.4.0` |
 | `EVO_HUB_DSN` | api, worker | `postgresql://` URI of the hub database (required) |
 | `EVO_HUB_ADMINS` | api | GitHub logins of hub admins, comma-separated |
 | `EVO_HUB_GITHUB_CLIENT_ID` | api | the OAuth App's client id; without it nobody can sign in |
@@ -397,8 +450,10 @@ the variables in the platform's environment, never in a committed file. `deploy/
 The server also reads `EVO_HUB_POOL_MIN_SIZE`, `EVO_HUB_POOL_MAX_SIZE` and `EVO_HUB_POOL_TIMEOUT` (the connection
 pool, defaults 1, 10 and 10 seconds), and the api `EVO_HUB_RUN_LEASE_SECONDS`, how long a claim and each heartbeat of
 a worker daemon lease a run for before the reaper finds it lost (default 300, from 5 to 3600; the end-to-end tests
-shorten it, and it must stay well above the daemon's heartbeat of 15 seconds); add them to the environment block of
-the compose file to change them. A missing or malformed variable stops the process with a log line naming it.
+shorten it, and it must stay well above the daemon's heartbeat of 15 seconds), and the worker
+`EVO_HUB_DECISION_WAIT_SECONDS`, how long a plan run waits for its owner's answer before the reaper parks it (default
+86400, a day, from 1 to 604800; the end-to-end tests shorten it); add them to the environment block of the compose
+file to change them. A missing or malformed variable stops the process with a log line naming it.
 
 The reverse proxy routes the public domain: `/v1` and `/mcp` to the api on port 8080, everything else to the web on
 port 3000. `EVO_HUB_PUBLIC_URL` must be that domain, because the web sign-in callback, the `/mcp` host check and the

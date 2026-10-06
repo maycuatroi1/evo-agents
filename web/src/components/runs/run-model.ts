@@ -38,6 +38,9 @@ const PHASE_OF: Partial<Record<RunState, Phase>> = {
   leased: "leased",
   running: "running",
   interactive: "running",
+  // A plan run's agent waits for its owner's answer between turns, or was parked for want of one: still its running phase.
+  waiting: "running",
+  parked: "running",
   verifying: "verifying",
   review: "review",
   done: "done",
@@ -125,12 +128,13 @@ const NO_CONTROLS: RunControls = {
 
 export type RunViewer = { login: string; role: "reader" | "writer" | "admin" | null; admin: boolean };
 
-type ControlRun = Pick<Run, "state" | "dispatched_by" | "cancel_requested_at" | "takeover_requested_at" | "handback_requested_at">;
+type ControlRun = Pick<Run, "kind" | "state" | "dispatched_by" | "cancel_requested_at" | "takeover_requested_at" | "handback_requested_at">;
 
 /**
  * What the page offers the visitor for this run, as the API decides it (docs/workers.md): every control belongs to
  * the member who dispatched the run, and approve and rerun also need the writer role on the project. An ask the
- * owner made already (cancel of a held run, takeover, handback) shows as asked until the worker answers it.
+ * owner made already (cancel of a held run, takeover, handback) shows as asked until the worker answers it. A plan run
+ * is never rerun (the hub answers 409: Run plan dispatches the plan again), and never in review.
  */
 export function runControls(run: ControlRun, viewer: RunViewer | null): RunControls {
   if (!viewer || viewer.login !== run.dispatched_by) return NO_CONTROLS;
@@ -144,7 +148,7 @@ export function runControls(run: ControlRun, viewer: RunViewer | null): RunContr
     takeover: (TAKEOVER_STATES as readonly string[]).includes(state) ? (run.takeover_requested_at ? "asked" : "offer") : "none",
     handback: (HANDBACK_STATES as readonly string[]).includes(state) ? (run.handback_requested_at ? "asked" : "offer") : "none",
     approve: writer && state === "review",
-    rerun: writer && terminal,
+    rerun: writer && terminal && run.kind !== "plan",
     message: (MESSAGE_STATES as readonly string[]).includes(state) && !(held && run.cancel_requested_at),
   };
 }

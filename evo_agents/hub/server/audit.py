@@ -32,14 +32,21 @@ WORKER_REGISTER = "worker.register"  # a machine registered itself with its mach
 WORKER_DRAIN = "worker.drain"
 WORKER_UNDRAIN = "worker.undrain"
 WORKER_REVOKE = "worker.revoke"  # the worker and its token are revoked, its runs released
-# Runs happen in a project, which the caller names; a target is "<project>/<plan>#<step> run:<id>", never a prompt.
+# Runs happen in a project, which the caller names; a target is "<project>/<plan>#<step> run:<id>" ("<project>/<plan>
+# run:<id>" for a plan run), never a prompt or evidence.
 RUN_DISPATCH = "run.dispatch"  # a member queued a run of a ready step
+RUN_DISPATCH_PLAN = "run.dispatch_plan"  # a member queued a plan run: "<project>/<plan> run:<id>", no step
+RUN_STEP_REPORT = "run.step_report"  # a plan run's worker wrote a step, as the dispatcher: "... run:<id> status=<s>"
 RUN_CANCEL = "run.cancel"  # the owner cancelled a run, or asked its worker to stop it
 RUN_APPROVE = "run.approve"  # the owner approved a run in review, and the step is done
 RUN_RERUN = "run.rerun"  # the owner queued the step again after a run that ended
 RUN_MESSAGE = "run.message"  # the owner sent the run's agent a message; the target names the message, not its text
 RUN_TAKEOVER = "run.takeover"  # the owner asked to drive the run's agent in a terminal
 RUN_HANDBACK = "run.handback"  # the owner asked to let the run's agent go on headless
+# Decisions and notifications; a target names the decision or the notifications by id, and an answer's option, never
+# the question, the answer's text or a notification's title.
+DECISION_ANSWER = "decision.answer"  # the owner answered: "<project>/<plan>[#<step>] decision:<id> run:<id> option=<k>"
+NOTIFICATION_READ = "notification.read"  # a member marked notifications read: "notifications:<id>,<id>" or ":all"
 # The web terminal of a run; the target names the run as above, and on close the bytes relayed each way and how it
 # ended ("... to_worker=<n> to_browser=<n> end=<idle|timeout|browser|worker|protocol|shutdown>"), never the bytes.
 TERMINAL_OPEN = "terminal.open"  # the owner opened the run's terminal in a browser

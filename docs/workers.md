@@ -3,22 +3,24 @@
 A worker is a member's own laptop or desktop, registered with the hub, that runs plan steps for that member. The
 member dispatches a ready step; the hub queues a run; the member's worker claims it, runs the step with Claude Code,
 opencode or Codex CLI, headless or with a person at the keyboard, and sends logs, state and evidence back while it
-works. The hub then records the step's progress in the plan. The worker always calls the hub over HTTPS and never
-opens a port on the machine.
+works. The hub then records the step's progress in the plan. From 0.4.0 a member can also hand a whole plan to one of
+their workers, as a plan run that does every step not done yet and asks the member only the decisions that matter
+(see [Plan runs](#plan-runs)). The worker always calls the hub over HTTPS and never opens a port on the machine.
 
-This page describes version 1 of the worker protocol as planned. `evo_agents/hub/runs.py` holds the model it rests
-on: the run states and who may change them, a worker's status, the event kinds, which steps are ready, and the
-prompt a run gives its agent. It needs only the standard library, so the api and the daemon share it. Schema 0009
-holds the tables, and `evo_agents/hub/server/workers.py` the routes that register and stop workers (pairings, join,
+This page describes version 1 of the worker protocol. `evo_agents/hub/runs.py` holds the model it rests on: the run
+kinds and states and who may change them, a worker's status, the event kinds, which steps are ready, the prompts a
+run gives its agent, and the decisions and notices of a plan run. It needs only the standard library, so the api and
+the daemon share it. Schema 0009 holds the tables, and 0010 adds plan runs, decisions and notifications, and `evo_agents/hub/server/workers.py` the routes that register and stop workers (pairings, join,
 direct registration, list, drain, undrain, revoke). `evo_agents/hub/server/runs.py` holds the queue: ready steps,
 dispatch, claim, heartbeat, state reports, the list of runs, and the owner's cancel, approve, rerun, takeover and
 handback; `evo_agents/hub/server/run_state.py` moves runs, records each move in the plan, and holds the reaper and the
 pruning of events; `evo_agents/hub/server/run_events.py` holds a run's events, their stream, the owner's messages and
 the log and diff the worker uploads; `evo_agents/hub/server/terminal.py` relays the web terminal, whose frames and
 close codes `evo_agents/hub/terminal.py` holds for the api and the daemon alike. `evo_agents/worker` is the daemon,
-`evo-agents worker` (see [The daemon](#the-daemon)); its adapters for the three runtimes and its end of the terminal
-come in later releases, and this page changes with them. The daemon has its own command group because `evo-agents
-hub worker` is already the server's job worker (see `docs/hub.md`).
+`evo-agents worker` (see [The daemon](#the-daemon)), with an adapter for each of the three runtimes in
+`evo_agents/worker/runtimes` and its end of the web terminal. The daemon has its own command group because `evo-agents
+hub worker` is already the server's job worker (see `docs/hub.md`). `docs/notifications.md` describes how decisions
+and notices reach a member.
 
 ## Entities
 
@@ -27,9 +29,11 @@ hub worker` is already the server's job worker (see `docs/hub.md`).
 | worker | a machine its owner registered: a name unique per owner, host facts (hostname, OS, arch, daemon version), 1 to 8 slots, labels, the runtimes and checkouts it reports, whether it allows the web terminal | `workers` |
 | worker project | a project the worker may take runs of, chosen at registration | `worker_projects` |
 | pairing | a one-time code the web creates so a machine can join without a machine token | `worker_pairings` |
-| run | one attempt at one plan step on one worker | `runs` |
+| run | one attempt at one plan step on one worker (kind `step`), or one session on one worker that does every step of a plan not done yet (kind `plan`) | `runs` |
 | run event | one entry of a run's log, numbered within the run | `run_events` |
 | inbox message | a message from the owner to the run's agent, waiting for the worker | `run_inbox` |
+| decision | a question a plan run's agent asks its owner, with 2 to 6 options | `decisions` |
+| notification | a decision or a notice (a push to a default branch, say) for the run's owner, and its deliveries to the owner's channels | `notifications`, `notification_channels`, `notification_deliveries` |
 
 A run records the project, plan and step key, the step's title at dispatch, the plan revision it was dispatched from,
 who dispatched it, the worker (or the worker it is pinned to), the runtime the dispatch asked for
@@ -53,8 +57,10 @@ and at the end the commit, diffstat, verify results, evidence, usage and error.
 - **The agent has the full permissions of the machine's owner.** Claude Code runs with permission mode
   `bypassPermissions` (`--dangerously-skip-permissions`), opencode with the equivalent of `--auto`, and Codex with
   `--dangerously-bypass-approvals-and-sandbox`. The run's worktree is where the agent works, not a sandbox: the
-  agent can read and change anything its owner can, and it runs on the owner's runtime accounts and quotas. The
-  daemon refuses to push the default branch or a detached HEAD and never merges.
+  agent can read and change anything its owner can, and it runs on the owner's runtime accounts and quotas. In a run
+  of one step the daemon refuses to push the default branch or a detached HEAD and never merges. In a plan run the
+  agent may push, and merge into, the branch the plan names for a repo, the repo's default branch included, never
+  forced, and each such push or merge sends the owner a notice.
 - **A worker token (`evw_...`) works only on `/v1/worker/*`**, and machine tokens and web sessions get 403 there. The
   hub shows the token once, when the machine joins or registers, and keeps only its SHA-256. With it a worker reads
   nothing beyond the runs it holds. Revoking the worker ends the token at once, and revoking the token
@@ -94,15 +100,18 @@ or busy depending on whether it holds runs.
 | `running` | the agent works headless |
 | `interactive` | a person drives the agent in a terminal (takeover, or interactive mode from the start) |
 | `verifying` | the agent has finished; the daemon runs its verify commands again |
+| `waiting` | a plan run whose agent ended its turn with a decision open; the worker keeps the run and the session |
 | `review` | verified; waits for the owner to approve |
+| `parked` | a plan run that waited 24 hours for an answer; the worker let it go and kept the session and worktrees |
 | `done` | approved, or verified with approval `auto` |
 | `failed` | the agent, the checkout or a verify command failed, the run timed out, or the last attempt's lease ran out |
 | `lost` | its worker stopped extending the lease, and another attempt was queued |
 | `cancelled` | stopped on the owner's request |
 
-The worker holds a run, and extends its lease, while it is `leased`, `running`, `interactive` or `verifying`. A run
-in any state before `done` is active, and a step has at most one active run. `done`, `failed`, `lost` and `cancelled`
-are final: running the step again (rerun, or the next attempt) creates a new run.
+The worker holds a run, and extends its lease, while it is `leased`, `running`, `interactive`, `verifying` or
+`waiting`; a waiting run keeps its slot. A run in any state before `done` is active, `parked` included, and a step has
+at most one active run, as a plan has at most one active plan run. `done`, `failed`, `lost` and `cancelled` are final:
+running the step again (rerun, or the next attempt) creates a new run, and so does resuming a parked plan run.
 
 Each move has its actors (`TRANSITIONS` in `runs.py`); the hub refuses any other move, and refuses an actor the move
 does not name. The `worker` is the worker that holds the run, the `owner` is the member who dispatched it, and the
@@ -117,9 +126,14 @@ does not name. The `worker` is the worker that holds the run, the `owner` is the
 | `running` | `interactive` (takeover), `verifying` | worker |
 | `interactive` | `running` (handback), `verifying` | worker |
 | `verifying` | `done` (approval `auto`, every verify command exited 0), `review` (approval `review`) | worker |
+| `running` | `waiting` (the agent's turn ended with a decision open) | worker |
+| `waiting` | `running` (the answer reached the agent) | worker |
+| `waiting` | `parked` (no answer within 24 hours) | reaper |
 | `review` | `done` (approve), `cancelled` | owner |
-| `leased`, `running`, `interactive`, `verifying` | `failed`, `cancelled` | worker or reaper |
-| `leased`, `running`, `interactive`, `verifying` | `lost` | reaper |
+| `parked` | `done` (the owner answered, and the run that resumes it is queued) | owner |
+| `parked` | `cancelled` | owner, or the reaper after 7 days |
+| `leased`, `running`, `interactive`, `verifying`, `waiting` | `failed`, `cancelled` | worker or reaper |
+| `leased`, `running`, `interactive`, `verifying`, `waiting` | `lost` | reaper |
 
 A claim and each heartbeat set a held run's lease to expire 300 seconds later. Every minute the reaper
 (`hub.recover_runs`) looks for held runs whose lease has expired. Such a run becomes `lost`, and the hub queues a
@@ -130,8 +144,10 @@ pinned to it, since no other worker may claim either. Each of these moves writes
 `reaper`. Cancelling a held run sets `cancel_requested_at`; the next heartbeat tells the worker, which stops the agent
 and reports `cancelled`.
 
-The reaper also ends a held run that ran past its timeout, counted from when the agent started, or from the claim
-while it has not: such a run ends `failed` with the error `it ran past its timeout of N minutes` (or `cancelled`, when
+The reaper also ends a held run that ran past its timeout. From 0.4.0 only the time a run spends `leased`, `running`,
+`interactive` or `verifying` counts: the hub adds it up in `run_seconds` at each move and heartbeat, from `counted_at`
+(or, before the first count, from when the agent started, or from the claim), so waiting for a decision and being
+parked never time a run out. Such a run ends `failed` with the error `it ran past its timeout of N minutes` (or `cancelled`, when
 its cancel was asked for) and is not tried again, and the next heartbeat tells the worker to stop it. The reaper looks at
 timeouts before leases, so a run both past its timeout and without a lease fails rather than coming back.
 
@@ -188,7 +204,121 @@ own `verify` is often prose mixed with commands, and a result the daemon saw is 
 The prompt is at most 32 KiB of UTF-8. Each part has its own budget (goal 2 KiB, context 4 KiB, what 10 KiB, verify
 3 KiB, note 2 KiB, 1.5 KiB of evidence per dependency and 5 KiB for all of them, 200 bytes for a title, key, repo or
 branch). A part over its budget is cut on a character boundary and ends with a mark saying how many bytes were left
-out and that the plan on the hub has the full text.
+out and that the plan on the hub has the full text. 0.4.0 gives a run of one step the same prompt as 0.3.0, byte for
+byte (`tests/hub/golden/step-prompts-0.3.0.json`).
+
+### The prompt of a plan run
+
+`build_plan_prompt(plan, repos, worktrees)` gives the agent of a plan run, in this order: rules, each repo of the run
+with its branch and worktree, the plan's goal and context (shortened as above), and one line per step not done yet
+(key, status, title, repo and `depends_on`). The steps' what, verify and note stay in `.evo-run/plan.yaml`, which the
+daemon writes above the worktrees, so a plan of any length fits in 32 KiB: a plan of 60 steps takes about 18 KiB, the
+step list has 14 KiB, and steps past it are counted on a last line that points to the file. The rules tell the agent
+to:
+
+- use the execute-plan skill when its runtime has it, and otherwise work the same way: a step is ready when it is
+  pending and every step it depends on is done, and checkpoint steps are the agent's too;
+- read the plan as the hub holds it now with `evo-agents worker plan` before each step;
+- record progress only with `evo-agents worker step` (`in_progress`, `done` with evidence and verify commands, which
+  the worker runs again and refuses done on a non-zero exit, or `pending`), never with the hub's `plan_step` tool,
+  `evo harness step` or `evo-agents hub plan`;
+- ask the owner with `evo-agents worker ask` only a decision of the categories in `docs/notifications.md`, decide
+  everything else itself and write each choice, with why, in the step's evidence on a line starting with `Decision:`;
+- commit in each worktree on its branch, push or merge only into the branch the plan names for that repo (its default
+  branch included), never force, and run `evo-agents worker notify` after each push or merge into a default branch it
+  makes itself;
+- keep `.evo-run/` out of its commits, and write `.evo-run/result.json` with a `summary` when it stops. A plan run has
+  no verify commands at its end, since `evo-agents worker step` ran each step's.
+
+## Plan runs
+
+A plan run is the whole of a plan handed to one worker. Its owner picks the worker (one of their own, holding a
+checkout of every repo with a step not done), the runtime, the model, the mode and a timeout of 2, 4, 8 or 24 hours
+(`PLAN_TIMEOUT_CHOICES`), which counts only the time the agent runs. The run has kind `plan`, no step key, and the
+list of its repos with the branch the plan names for each. A plan has at most one active plan run, and while it has
+one, dispatching one of its steps gets 409, as does a second plan run; a plan run waits, likewise, until no run of one
+of its steps is active.
+
+On the worker the run gets a directory with a worktree of each of its repos on that repo's branch, and the agent works
+in that directory with the plan in `.evo-run/plan.yaml`. The agent does the steps in the order `depends_on` allows,
+the way execute-plan does, and reports each through `evo-agents worker step`: the worker runs the step's verify
+commands again in the repo's worktree, commits and pushes that repo's branch, and the hub writes the step
+`in_progress`, `done` with its evidence, or back to `pending`, as the member who dispatched the run. A run that ends
+`done` writes no step itself; one that fails, is cancelled, or is lost for the last time gives the steps it left
+`in_progress` back as `pending` with a note.
+
+The agent talks to the hub through four commands that use the worker's token and the run's id (`EVO_RUN_ID`), not a
+token of the owner's: `evo-agents worker step`, `ask`, `notify` and `plan`. Outside a run they refuse to run.
+
+`POST /v1/projects/{p}/plan-runs` (writer) takes `plan_id`, `worker_id` (optional, one of the caller's own workers:
+403 for any other id, 409 for a revoked worker or one that does not serve the project), `runtime` (`any` by
+default), `model` (optional, one line of at most 200 characters; null leaves the choice to the runtime), `mode`
+(`headless` by default) and `timeout_h` (2, 4, 8 or 24; 4 by default), and answers 201 with the run. It answers 409,
+and queues nothing, when the plan has no pending step, when the plan has an active run of either kind, or when a step
+that is not done names no repo and the plan does not list exactly one. The run has kind `plan`, approval `auto`, the
+plan's title, no step key and no repo, and `repos`: the repo of each step not done, once each in plan order, with the
+branch the plan's `repos` names for it (null when it names none). A dispatch of steps (`POST .../runs`, and a rerun)
+and a dispatch of a plan run take the same transaction-scoped advisory lock of the plan before they look at its
+active runs, so they cannot both get in: a step of a plan with an active plan run gets 409 (`plan X has plan run #N,
+...`), and so does a plan run while a run of one of its steps is active. `ready-steps` answers the plan's active plan
+run as `plan_run`, and while there is one, no step reads as ready. A plan run is not rerun (409): dispatch the plan
+again.
+
+The worker holding a plan run reads the plan as the hub holds it now with `GET /v1/worker/runs/{id}/plan` (as the
+member who dispatched the run, in the shape of `GET /v1/projects/{p}/plans/{plan}`), and reports each step with
+`POST /v1/worker/runs/{id}/steps/{key}`:
+
+```json
+{"status": "done", "repo": "evo-agents", "commit_sha": "<40 or 64 hex>",
+ "verify": [{"command": "ruff check .", "exit_code": 0}], "evidence": "what the agent did and how it checked it"}
+```
+
+`status` is `in_progress`, `done` or `pending`; `repo` must be one of the run's repos (422 otherwise) and defaults to
+the one the plan gives the step. `done` needs at least one verify result and every one exited 0 (422 otherwise). The
+hub writes the step as the member who dispatched the run, through the same write as a run of one step: `in_progress`
+with the note `run #N on worker W`, `pending` with the note `run #N on worker W handed it back`, and `done` with
+`done_at`; the evidence (the run, `repo@commit` on the repo's branch, each verify command with its exit code, then the
+agent's text) on `done`, or whenever the report carries evidence. A step that is done is never set back (409), and a
+done step reported done again writes nothing (`written: false`). When the plan cannot be written (the dispatcher lost
+the writer role, the plan is gone, five revision conflicts in a row) the report gets that error and nothing is kept.
+The answer is `{run_id, plan_id, step_key, status, revision, written}`. Each report that writes leaves a `system`
+event in the run's log (`{"text": "step 2: done (evo-agents@...)", "step_report": {step, status, repo,
+commit_sha}}`) and a `run.step_report` audit row of the dispatcher with the worker's token. A step the plan does not
+have, a run of one step, and a run the worker does not hold get 404.
+
+A plan run's own moves write no step: starting it writes nothing, and it ends `done` from `verifying` without verify
+results, since each step was verified when it was reported (it never goes to `review`: 409). One that ends `failed`
+or `cancelled` sets back to `pending` the steps it reported, it or an earlier attempt of it, that are still
+`in_progress`, with the note `run #N failed: ...` or `run #N was cancelled: ...`; a step someone else left in
+progress stays as it is. A plan run that is `lost` queues its next attempt as a plan run with the same repos and model,
+and leaves the steps as they are.
+
+## Decisions and notices
+
+A plan run's agent stops for its owner only on a decision of one of the categories `docs/notifications.md` lists
+(deploy, deleting data, a migration on real data, sending to a service outside, spending money, an architectural or
+scope choice the plan leaves open), with `evo-agents worker ask`. It goes on with work that does not depend on the
+answer, and when none is left it ends its turn: the run is `waiting`, the worker keeps it with its slot and lease, and
+the owner sees the decision in the Inbox on the web. The answer goes to the run's inbox as a message naming the
+decision, the worker hands it to the agent in the same session, and the run is `running` again.
+
+A run that waits 24 hours (`DECISION_WAIT_SECONDS`; `EVO_HUB_DECISION_WAIT_SECONDS` of the hub's job worker changes
+it) is `parked`: the next heartbeat tells the worker to stop the agent at the end of its turn, the slot is free, and the
+worker keeps the agent's session and the worktrees. An answer then queues a new plan run pinned to the same worker,
+with `resume_of_run_id` naming the parked run, which goes on in the same session and worktrees; the parked run is
+`done`. A run parked for 7 days (`PARKED_DAYS`) is `cancelled` and its decisions expire. A waiting run whose cancel
+was asked for is cancelled instead of parked, and revoking a worker cancels the runs parked on it, since no other
+worker has their session.
+
+The worker reports `waiting` (`POST /v1/worker/runs/{id}/state`) when the agent's turn ended with a decision open;
+the hub answers 409 unless the run has a decision that is open or whose answer the worker has not taken yet, since the
+time a run waits does not count toward its timeout. It reports `running` once the answer reached the agent. A run
+that ends any other way cancels its decisions still open. The decision and notice routes are in
+`docs/notifications.md`.
+
+A push or merge into a repo's default branch, a plan finished and a plan run failed are notices: the owner reads them
+in the Inbox and answers nothing. Decisions and notices both reach the owner as notifications, through the channels
+of `docs/notifications.md`.
 
 ## Protocol, version 1
 
@@ -244,7 +374,10 @@ neither draining nor revoked. The oldest such run is leased for 300 seconds (`EV
 tests shorten). The answer is `{"run": {...}}` with the
 id, project, plan, step key and title, plan revision, attempt, max attempts, parent run, runtime, mode, approval,
 timeout in minutes, repo, branch, lease expiry and the prompt (built from the plan revision the run was dispatched
-from), or `{"run": null}` when the wait ends empty, and the daemon claims again at once. A worker has at most one
+from), with the run's `kind` and `model`, or `{"run": null}` when the wait ends empty, and the daemon claims again at
+once. A plan run is claimed only by a worker with a checkout of every repo in its `repos`; its answer has no step key
+and no repo, but `repos`, the prompt of `build_plan_prompt`, and `plan`, `{revision, body}` at the hub's current
+revision, which the daemon writes to `.evo-run/plan.yaml`. A worker has at most one
 claim waiting: a newer claim ends the older one, which answers no run. A claim whose worker hung up, as a daemon that
 stops drops the claim it waits on, takes no run: it ends before it looks at the queue again, and when the worker hangs
 up while the claim leases a run, the lease is rolled back before it commits, so the run stays queued for the next
@@ -258,7 +391,7 @@ it holds:
 ```json
 {
   "runtimes": {
-    "claude-code": {"available": true, "version": "2.1.289"},
+    "claude-code": {"available": true, "version": "2.1.289", "models": ["fable", "opus", "sonnet"]},
     "codex": {"available": false, "version": "0.153.4", "reason": "not signed in"}
   },
   "checkouts": {"evo-agents/evo-agents": {"path": "/Users/me/github/evo-agents", "branch": "main"}},
@@ -268,8 +401,11 @@ it holds:
 }
 ```
 
-`runtimes` is keyed `claude-code`, `opencode` or `codex`, each `{available, version, reason}`: `available` is
-required, `reason` says why a runtime that is there cannot take runs, and only an available runtime is claimed for.
+`runtimes` is keyed `claude-code`, `opencode` or `codex`, each `{available, version, reason, models}`: `available`
+is required, `reason` says why a runtime that is there cannot take runs, and only an available runtime is claimed
+for. `models` lists the models an available runtime offers on the machine, when the runtime lets them be read (see
+[Runtime adapters](#runtime-adapters)): at most 200, each one line of at most 200 characters, so the web can suggest
+them for a dispatch; it is left out (null) otherwise, and a run's `model` is never checked against it.
 `checkouts` is keyed `<project>/<repo>`, as the project and its repo are named on the hub, each `{path, branch}` with
 the path required. The hub keeps both as sent, every key present (a missing one is null), and `GET /v1/workers/{id}`
 shows them in that shape. `free_slots` is what the daemon counts free, at most the worker's slots; the hub shows it,
@@ -283,21 +419,26 @@ same `EVO_HUB_RUN_LEASE_SECONDS`), and answers with control:
 {
   "drain": false,
   "runs": [{"id": 12, "held": true, "state": "running", "lease_expires_at": "...", "cancel": false,
-            "takeover": false, "handback": false, "terminal_open": false, "inbox": 0}]
+            "takeover": false, "handback": false, "terminal_open": false, "park": false, "inbox": 0,
+            "decisions": 0}]
 }
 ```
 
 For each run: whether to `cancel` (the owner asked for it), `takeover`, `handback` or open the terminal
-(`terminal_open`), and how many `inbox` messages wait; for the worker, whether to `drain`. A run the worker reports
-but no longer holds (lost, cancelled, or another worker's now) comes back with `held: false`, `state: null` and
-`cancel: true`. `takeover` stays true from the owner's ask until the worker reports `interactive`, and `handback`
+(`terminal_open`), how many `inbox` messages wait, and how many `decisions` of the run are open; for the worker,
+whether to `drain`. A run the worker reports but no longer holds (lost, cancelled, or another worker's now) comes back
+with `held: false`, `state: null` and `cancel: true`. A plan run the reaper parked, or one that is done because a new
+run resumes it, comes back with `held: false`, its state, `cancel: false` and `park: true`: the worker stops the agent
+at the end of its turn, keeps the session and the worktrees, and frees the slot. The heartbeat also settles the agent
+time of each run it extends (`run_seconds`). `takeover` stays true from the owner's ask until the worker reports `interactive`, and `handback`
 until it reports `running` (see [Takeover and handback](#takeover-and-handback)); `terminal_open` is true while a
 browser waits for the worker's end of the run's terminal (see [Terminal](#terminal)).
 
 ### State
 
 `POST /v1/worker/runs/{id}/state` reports a move of a run the worker holds, with the commit, diffstat, verify results
-and usage when it has them:
+and usage when it has them (a plan run also reports `waiting` and `running`, see
+[Decisions and notices](#decisions-and-notices)):
 
 ```json
 {"state": "done", "from": "verifying", "commit_sha": "<40 or 64 hex>", "session_id": "...",
@@ -309,8 +450,8 @@ and usage when it has them:
 The hub checks the move against the transition table with the worker as actor and answers 409 when the table refuses
 it, and 404 when the worker does not hold the run (another worker's, or one no longer held: lost, cancelled, in
 review or done). `from`, when given, must be the state the run is in (409 otherwise). `done` needs approval `auto`
-and at least one verify result, every one with exit code 0; `review` needs approval `review`; otherwise 409. A
-`failed` report without an `error` gets one naming the worker. Reporting the state the run is in already moves
+and at least one verify result, every one with exit code 0; `review` needs approval `review`; otherwise 409. A plan
+run ends `done` without verify results and never reports `review`. A `failed` report without an `error` gets one naming the worker. Reporting the state the run is in already moves
 nothing and keeps the session id, commit, diffstat, verify results and usage it carries, so a resend after a lost
 answer is safe. The answer is the run as the hub holds it.
 
@@ -348,8 +489,9 @@ The hub's own `state` events are written past the limit, since a move must never
 The owner's messages wait in the run's inbox until the worker takes them: the heartbeat counts them (`inbox`), and
 `POST /v1/worker/runs/{id}/inbox` with `{"ack": ID}` marks the messages up to `ID` delivered, the ones the daemon
 handed to the agent, and answers with those still waiting, oldest first, at most 100 (`{"messages": [{id, text,
-sent_by, created_at}]}`). The body may be left out to read without acknowledging. Only the worker holding the run
-reads its inbox (404 otherwise).
+sent_by, created_at, decision_id}]}`). The body may be left out to read without acknowledging. Only the worker holding
+the run reads its inbox (404 otherwise). The owner's answer to a decision comes as one of these messages, with the
+decision's id in `decision_id` (null for any other message); acknowledging it sets the decision's `delivered_at`.
 
 ### Log and diff
 
@@ -378,6 +520,10 @@ For the worker, with an `evw_` token and the version header:
 | `POST /v1/worker/claim` | waits up to 25 s for a run |
 | `POST /v1/worker/heartbeat` | reports the machine, extends leases, returns control |
 | `POST /v1/worker/runs/{id}/state` | reports a move |
+| `GET /v1/worker/runs/{id}/plan` | reads the plan of a plan run it holds, as the hub holds it now |
+| `POST /v1/worker/runs/{id}/steps/{key}` | reports a step of a plan run it holds |
+| `POST /v1/worker/runs/{id}/decisions` | asks the plan run's owner a decision; answers its id |
+| `POST /v1/worker/runs/{id}/notices` | sends the plan run's owner a notice, such as a push to a default branch |
 | `POST /v1/worker/runs/{id}/events` | sends a batch of events |
 | `POST /v1/worker/runs/{id}/inbox` | acknowledges messages handed to the agent, takes the waiting ones |
 | `POST /v1/worker/runs/{id}/uploads`, `/blobs` | uploads the run's log and diff, records them on the run |
@@ -395,6 +541,7 @@ For members, with a web session or a machine token. `{p}` is a project, and run 
 | `POST /v1/workers/{id}/undrain` | owner | resume claims |
 | `GET /v1/projects/{p}/plans/{plan}/ready-steps` | reader | every step, with whether it may be dispatched and why not |
 | `POST /v1/projects/{p}/runs` | writer | dispatch steps, all or none |
+| `POST /v1/projects/{p}/plan-runs` | writer | dispatch a plan run: every step of the plan not done yet, on one worker |
 | `GET /v1/projects/{p}/runs`, `GET .../runs/{id}` | reader | list (filters, pages, counts by state) and show runs |
 | `GET .../runs/{id}/events?after=SEQ` | reader | events after a number |
 | `GET .../runs/{id}/stream` | reader | the same as server-sent events, with a ping every 15 s, resumed by `Last-Event-ID` |
@@ -408,8 +555,9 @@ For members, with a web session or a machine token. `{p}` is a project, and run 
 
 `POST /v1/projects/{p}/runs` takes `plan_id`, `steps` (1 to 50 step ids or orders), `runtime` (`any` by default,
 or `claude-code`, `opencode`, `codex`), `mode` (`headless` by default), `worker_id` (optional: pin the runs to a
-worker of the caller's), `approval` (`review` by default, or `auto`) and `timeout_min` (5 to 240, 60 by default). It
-queues one run per step, at the plan's current revision, or nothing: a step that is not ready or has an active run is
+worker of the caller's), `approval` (`review` by default, or `auto`), `timeout_min` (5 to 240, 60 by default) and
+`model` (optional, one line of at most 200 characters, as the runtime names it; null, the default, leaves the choice
+to the runtime as before). It queues one run per step, at the plan's current revision, or nothing: a step that is not ready or has an active run is
 409, a step the plan does not have or one without a repo is 422, a worker that is not the caller's (or no worker) is
 403, and a revoked worker or one that does not serve the project is 409. `ready-steps` answers every step of the plan
 in plan order with `ready`, `reason` (as `unready_reason` says it, or the active run) and the active run.
@@ -419,7 +567,7 @@ The owner of a run is the member who dispatched it; another member gets 403 and 
 `cancel_requested_at`, the next heartbeat says `cancel`, and the worker reports `cancelled` (an expired lease after
 that ends the run `cancelled` too). `.../approve` moves a run in review to `done` and writes the step done with the
 evidence the run got when it went to review. `.../rerun` queues the step of a run that ended again, at the plan's
-current revision, with the same requested runtime, mode, approval, timeout and pinned worker, attempt 1 and
+current revision, with the same requested runtime, model, mode, approval, timeout and pinned worker, attempt 1 and
 `parent_run_id` naming the old run; the step must be ready again. Approve and rerun need the writer role.
 
 ### Reading runs
@@ -579,7 +727,9 @@ page's own origin, under the CSP's `connect-src 'self'`.
 | lease | 300 s (`EVO_HUB_RUN_LEASE_SECONDS`, 5 to 3600), extended by each heartbeat |
 | attempts per dispatch | 3 |
 | slots per worker | 1 to 8 |
-| run timeout | 5 to 240 minutes |
+| run timeout | 5 to 240 minutes; a plan run 2, 4, 8 or 24 hours of agent time |
+| decision | 2 to 6 options, context 16 KiB; parked after 24 hours waiting, cancelled 7 days later |
+| prompt of a plan run | 32 KiB, its list of steps 14 KiB |
 | pairing code | 10 minutes, 5 unused per member (locked ones included until they expire), locked after 5 wrong tries |
 | refused joins | 10 per client address in 10 minutes, then 429 |
 | prompt | 32 KiB |
@@ -612,9 +762,13 @@ page's own origin, under the CSP's `connect-src 'self'`.
 | `evo-agents worker service status [--json]` | whether the service is installed and the daemon runs, its pid and last exit |
 | `evo-agents worker status [--json]` | the worker as this machine and the hub see it: runtimes, tmux and whether the web terminal is allowed, checkouts, the daemon's pid, runs kept, the spool |
 | `evo-agents worker attach N` | puts this terminal on the tmux session `evo-run-N` of an interactive run (`tmux attach`, or `switch-client` from inside tmux on the same server) |
-| `evo-agents worker selftest --runtime NAME [--model M] [--effort E] [--keep]` | runs the runtime's adapter for real on a tiny prompt in a scratch git repository, prints each event and how many of each kind came, and exits 0 when the turn completed and the agent wrote the file it was asked for (it spends a little of the owner's quota; Claude Code and Codex run at effort `low` unless `--effort` says otherwise) |
+| `evo-agents worker selftest --runtime NAME [--model M] [--effort E] [--timeout S] [--keep] [--background]` | runs the runtime's adapter for real on a tiny prompt in a scratch git repository, prints each event and how many of each kind came, and exits 0 when the turn completed and the agent wrote the file it was asked for (it spends a little of the owner's quota; Claude Code and Codex run at effort `low` unless `--effort` says otherwise); `--background` (claude-code only) checks that the session waits for a command run in the background: the agent starts `sleep 20 && date -u` that way, ends its turn, and writes the file once the command ended |
 | `evo-agents worker drain [--resume]` | stops claims (or resumes them) through `POST /v1/workers/{id}/drain` or `/undrain`, with the machine token |
 | `evo-agents worker revoke [--force]` | revokes the worker on the hub and deletes its token here; `--force` deletes it even when the hub cannot be reached; a background service stays installed, does not start the daemon again, and is named with the command that removes it |
+| `evo-agents worker step KEY STATUS [--repo R] [--evidence TEXT] [--verify CMD ...]` | for the agent of a plan run: reports a step `in_progress`, `done` or `pending`; `done` runs each verify command again in the repo's worktree, refuses on a non-zero exit, commits what is left there, pushes the repo's branch and reports the commit (see [A plan run on the machine](#a-plan-run-on-the-machine)) |
+| `evo-agents worker ask --category C --question Q [--context-file F] --option KEY=LABEL[:DESCRIPTION] ... [--recommended KEY] [--step KEY]` | for the agent of a plan run: asks the run's owner a decision, 2 to 6 options, and prints its id |
+| `evo-agents worker notify --kind push_default_branch\|merge_default_branch --title T [--body B] [--repo R] [--branch B] [--commit SHA ...]` | for the agent of a plan run: sends the run's owner a notice of a push or merge into a default branch |
+| `evo-agents worker plan [--json]` | for the agent of a plan run: prints the run's plan as the hub holds it now |
 
 `join` and `register` refuse a machine that is a worker already, unless `--replace` is given. When the machine is
 signed in to the same hub, they keep the repos of the worker's projects as the hub lists them, and `run` reads them
@@ -627,8 +781,10 @@ which no command prints; `config.json` (0600) the hub, the worker as the hub reg
 projects; `worker.log` (0600) the daemon's JSON log lines, rotated at 10 MiB with five old files kept, with tokens,
 pairing codes and presigned signatures masked; `service.log` what the daemon printed under launchd before its log
 was open; `daemon.pid`, locked while a daemon runs, so a second one refuses to start; `spool/` the events not
-acknowledged yet; `runs/<id>/` what the daemon knows of each run and its whole event log; `worktrees/` the runs'
-worktrees.
+acknowledged yet; `runs/<id>/` what the daemon knows of each run and its whole event log (and, for a plan run, the
+decisions its agent asked, `decisions.jsonl`; and, until the run ends on this machine, `agent.json`: the pid and the
+process group of the agent the run started last, and when its leader started as `ps` prints it); `worktrees/` the
+runs' worktrees, and each plan run's directory.
 
 ### Runtimes and checkouts
 
@@ -655,15 +811,25 @@ killed once the agent has ended, or 20 seconds after an interrupt it did not end
 
 | Runtime | Through | Full permissions | A message of the owner | Interrupt | The turn ends |
 | --- | --- | --- | --- | --- | --- |
-| `claude-code` | `claude-agent-sdk`: `ClaudeSDKClient` over `claude` on PATH, session id made by the daemon (`--session-id`, or `--resume` for a run that goes on with a session) | `permission_mode="bypassPermissions"` (`--dangerously-skip-permissions`) | `query()`; Claude Code takes it at the next tool boundary and may fold it into the same `result` | the SDK's `interrupt()`, then the input stream ends | at its `result`: the input stream ends and the CLI exits once it has done what it was given; `stop_at_turn_boundary` ends the input stream at once, and the turn in progress still finishes |
+| `claude-code` | `claude-agent-sdk`: `ClaudeSDKClient` over `claude` on PATH, session id made by the daemon (`--session-id`, or `--resume` for a run that goes on with a session) | `permission_mode="bypassPermissions"` (`--dangerously-skip-permissions`) | `query()`; Claude Code takes it at the next tool boundary and may fold it into the same `result` | the SDK's `interrupt()`, then the input stream ends | at its `result`, unless a command the agent started in the background still runs: then the input stays open and the CLI's own turn after the command ends goes on with the agent (the adapter writes to it when no turn opens within 15 seconds), up to 30 minutes after the turn ended; otherwise, and once the agent wrote `.evo-run/result.json`, the input stream ends and the CLI exits once it has done what it was given; `stop_at_turn_boundary` ends the input stream at once, and the turn in progress still finishes |
 | `codex` | `openai-codex` over `codex app-server --listen stdio://`, with `codex` on PATH | sandbox `danger-full-access` and approval policy `never` (`--dangerously-bypass-approvals-and-sandbox`) | `turn/steer` during the turn; a new turn on the same thread when the turn no longer takes it | `turn/interrupt` | at `turn/completed`, with its status |
 | `opencode` | HTTP and the event stream of `opencode serve`, started per run on 127.0.0.1 at a free port, with a random `OPENCODE_SERVER_PASSWORD` and stdin `/dev/null` | each `permission.asked` of the session answered `once`, as `opencode run --auto` does, so the owner's explicit denials still hold; sessions get `opencode run`'s rules (no question, no plan mode) | `POST /session/:id/prompt_async`, taken at the next step boundary | `POST /session/:id/abort` | when the session goes idle with every prompt it was sent |
 
 The agent gets, on top of its runtime's own system prompt, a note that it runs unattended and that the owner may send
 messages. The model and the reasoning effort are the run's `model` and `effort` when the hub sends them, else
 `EVO_WORKER_<RUNTIME>_MODEL` and `EVO_WORKER_<RUNTIME>_EFFORT` in the daemon's environment (`CLAUDE_CODE`,
-`OPENCODE`, `CODEX`), else the runtime's default. opencode is always told the model: the run's, the variable's, or the
-`model` of the owner's opencode config, and a model `opencode serve` does not list fails the start with that reason.
+`OPENCODE`, `CODEX`), else the runtime's default. Claude Code gets it as `options.model` (the CLI's `--model`), codex
+as the model of the thread it starts or resumes. opencode is always told the model: the run's, the variable's, or the
+`model` of the owner's opencode config, as `provider/model`, split at its first `/` into the `providerID` and `modelID`
+of each prompt, and a model `opencode serve` does not list fails the start with that reason.
+
+For the heartbeat, each adapter lists the models its runtime offers on the machine, looked at with the runtime itself
+every 5 minutes: Claude Code, which has no command that lists them, gives the aliases its `--model` help names
+(`fable`, `opus`, `sonnet` with Claude Code 2.1.291); opencode what `opencode models` prints, `provider/model` for
+each provider the owner set up; codex reads the owner's codex home (`$CODEX_HOME`, `~/.codex` by default): the
+`model` of `config.toml` and of each of its profiles, then the slugs its model picker shows, from the cache codex keeps
+there (`models_cache.json`, entries whose `visibility` is `list`). A command that fails or a file not in that shape
+adds nothing. The list goes to the hub for the web to suggest; a dispatch may still name any model the runtime takes.
 A message that comes once the agent takes no more input (its last turn is over) is refused by `send`, and stays in the
 inbox.
 
@@ -692,9 +858,12 @@ hands it no run.
    branch. A plan that names no branch for the repo, or names its default branch (the remote's HEAD, the hub's
    `default_branch`, `main` or `master`), fails the run before the agent starts.
 2. The run's adapter starts the agent on the prompt in the worktree, and the daemon reports `running` with the
-   session id. The owner's messages are handed to the agent when the heartbeat counts them, then acknowledged. A
-   cancel, the run's timeout counted from the agent's start, or a heartbeat answering `held: false` interrupt the
-   agent; a cancelled run is reported `cancelled`, a timed-out one `failed`, and a run no longer held gets no report.
+   session id and notes the agent's process group in `runs/<id>/agent.json`. The agent's environment has
+   `EVO_RUN_ID`, so the hooks of the evo-hub plugin export no plan copy at SessionStart and push no memory at Stop,
+   and say so in the session's first line. The owner's messages are handed to the agent when the heartbeat counts
+   them, then acknowledged. A cancel, the run's timeout counted from the agent's start, or a heartbeat answering
+   `held: false` interrupt the agent; a cancelled run is reported `cancelled`, a timed-out one `failed`, and a run no
+   longer held gets no report.
    A takeover hands the agent to a person and a handback gives it back (see [Interactive runs](#interactive-runs));
    one the worker cannot do (no tmux, or an adapter without a terminal UI) is noted once in the run's log, and the
    run goes on headless.
@@ -702,14 +871,67 @@ hands it no run.
    its `verify_commands` (1 to 50 shell commands) in the worktree with `/bin/sh`, within the time the run has left,
    and records each exit code and the end of its output as a `system` event. A missing or malformed result file, or
    a command that exits other than 0, fails the run; nothing is pushed and the work stays in the worktree.
-4. The daemon commits what the agent left uncommitted as `run #N: <title>`, without `.evo-run/`; refuses to push a
-   detached HEAD, a branch the agent switched to, or a default branch; and pushes `HEAD` to the plan's branch on
-   origin, never forced and never merged. A push the remote refuses (not a fast-forward, say) fails the run.
+4. The daemon commits what the agent left uncommitted as `run #N: <title>`, and leaves out of the commit what the
+   agent did not write: the paths under `RUN_COMMIT_EXCLUDES` at any depth (`.claude/skills/.learned/`, where a
+   Stop hook of Claude Code puts the skills it learned, and `.evo-run/`), and every copy of a hub plan exactly as the
+   hub wrote it (a first line in the format `hub-plan-mirror-v1` writes and a hub key whose digest is the digest of
+   what the file holds). Those paths go back in the index as `HEAD` has them, even when the agent staged them, stay
+   in the worktree, and are named in a `system` event of the run (`left_out`); a copy the agent edited is its work
+   and is committed. The daemon then refuses to push a detached HEAD, a branch the agent switched to, or a default
+   branch; and pushes `HEAD` to the plan's branch on origin, never forced and never merged. A push the remote refuses
+   (not a fast-forward, say) fails the run.
 5. Once every event of the run is acknowledged, it reports `done` (approval `auto`) or `review`, with the commit,
    the diffstat, the verify results, the agent's summary and its usage. It then uploads the run's log and diff
    when the hub has a blob store, and moves the worktree off the plan's branch, so the owner can check the branch
    out elsewhere. The worktree, and an `evo-run/<run>` branch, are removed 7 days after the run ended; the daemon
    looks every hour.
+
+### A plan run on the machine
+
+1. The daemon makes the directory `~/.evo/worker/worktrees/<project>-<run>` and, in it, a worktree of each repo of
+   the run, named as the repo, on the branch the plan names for that repo: from `origin/<branch>` when the remote has
+   it, else the local branch, else the remote's default branch, as for a run of one step. When that branch is checked
+   out elsewhere, or has local commits the start lacks, the worktree is on `evo-run/<run>/<repo>` and the pushes still
+   go to the plan's branch. A repo the plan names no branch for fails the run before the agent starts, and so does a
+   default branch of the repo the plan does not name for it. The plan as claimed goes to `.evo-run/plan.yaml` in the
+   directory.
+2. The agent starts in that directory (not in a repo), with `EVO_RUN_ID`, `EVO_RUN_KIND=plan` and `EVO_WORKER_HOME`
+   in its environment, and the daemon reports `running`. The agent works through four commands that read the run
+   from those variables and its record under `EVO_WORKER_HOME`, call the hub with the worker's token, and refuse to
+   run outside a plan run of the worker (`EVO_RUN_ID` not set, a run that is not running here, or a run of one step):
+   - `evo-agents worker step KEY done --repo R --evidence TEXT --verify CMD` runs each verify command again with
+     `/bin/sh` in R's worktree, all of them, and refuses the step when one exits other than 0: nothing is committed,
+     pushed or reported, and it exits 1. Otherwise it commits what R's worktree has left as `run #N step KEY: title`,
+     leaving out what a run's commit leaves out (see [A run on the machine](#a-run-on-the-machine)), refuses a
+     detached HEAD or a branch the agent switched to, pushes R's branch to the plan's branch on origin
+     (never forced; a branch at HEAD already is left alone), and reports the step with the commit and the verify
+     results. Without `--repo` the step's repo is the one the plan gives it. `in_progress` and `pending` only report.
+   - `evo-agents worker ask` posts the decision, notes its id in `runs/<run>/decisions.jsonl`, prints the id, and
+     tells the agent to go on with work that does not depend on the answer and then end its turn.
+   - `evo-agents worker notify` sends a notice; `evo-agents worker plan` prints the plan as the hub holds it now.
+3. When a turn of the agent ends, messages of the owner it has not had start a new turn at once, in the same session.
+   When none came and a decision it asked is still open, the daemon reports `waiting` (the hub refuses it, 409, when
+   it has no open decision for the run, and the run goes on to its end), keeps the run, its slot and its lease, and
+   waits for the inbox: the answer starts a new turn with the answer as its prompt in the same session, acknowledged
+   once the agent runs, and the daemon reports `running`. The time spent waiting moves the run's own deadline back,
+   as it does not count toward the run's timeout on the hub either. A cancel, or the hub letting go of the run, ends
+   the wait as it ends a turn.
+4. When the heartbeat says `park` (the hub parked the run, or a new run resumes it), the agent stops at the end of its
+   turn, the slot is freed, and the session and the worktrees stay as they are; the run's record says `parked`. The
+   hub takes no report of a parked run, only its events. The run that resumes it is claimed with `resume_of_run_id`
+   and `session_id`: it takes over the parked run's directory and worktrees (the parked run's record no longer names
+   them, so the cleanup of that run leaves them alone), adds a worktree for a repo the plan has gained, and starts
+   the agent in the same session on a prompt naming the new run and carrying the owner's answer. Without the parked
+   run's directory, it makes new worktrees from the branches on origin; without a session, it starts a new one.
+5. A turn that ends with nothing to wait for ends the agent. The daemon reports `verifying`, reads the agent's summary
+   from `.evo-run/result.json` (a missing file is noted, not a failure), and in each repo commits what is left as
+   `run #N: <plan title>`, leaving out and naming what a run's commit leaves out, and pushes the plan's branch when
+   origin lacks its commits; it runs no verify command, since `evo-agents worker step` ran each step's. A push into a
+   default branch happens only while the plan, as the hub holds it at that moment, names that branch for the repo, and
+   sends the notice `push_default_branch` with its commits, as `evo-agents worker step` does for its own pushes. The
+   run ends `done` with the summary and the diffstat of every repo; the log and the diffs of every repo (each under
+   `a/<repo>/`) are uploaded as one `run-log` and one `run-diff`, and each worktree on the plan's branch leaves it. A
+   failed run pushes nothing at its end; what the steps pushed stays.
 
 ### Interactive runs
 
@@ -772,6 +994,22 @@ nothing, so a service does not (see [In the background](#in-the-background)). `E
 another status for both. A 426 (a protocol the hub no longer speaks) stops the daemon with exit status 1, which an
 upgrade of evo-agents mends.
 
+A daemon that dies without ending its runs (SIGKILL, or a service manager whose 60 seconds ran out, which can happen
+while a plan run waits up to a day for its owner's answer) leaves each run's `agent.json`, and may leave the agents
+running, since each has a process group of its own. The next daemon, before it claims anything, names those runs in
+its first heartbeat that gets an answer and stops each one's agent: SIGTERM to the process group, and to the groups of
+its leader's descendants, then SIGKILL to what is left 10 seconds later; nothing is sent when the leader's pid now
+belongs to a process that started at another time. Then, by what the hub answered:
+
+- the hub no longer holds the run for this worker (it ended, was cancelled, or was found lost): the run's worktree,
+  or each worktree and the directory of a plan run, is removed with its `evo-run/` branch;
+- the hub parked the run, or a new run resumes it (`park`): the worktree stays for that run, and the run's record says
+  `parked`;
+- the hub still holds the run: this daemon cannot go on with it, so the worktree stays and no later heartbeat names
+  the run, whose lease runs out; the hub then tries the step again or fails it.
+
+`agent.json` goes once that is done, and worker.log says what became of each agent and worktree.
+
 ### In the background
 
 `evo-agents worker service install` keeps `evo-agents worker run --quiet` running, naming the evo-agents that ran
@@ -789,6 +1027,10 @@ command says so, and `evo-agents worker run` can go under a supervisor of your o
   without relative entries and with `/usr/local/bin`, `/usr/bin`, `/bin`, `/usr/sbin` and `/sbin` added when
   missing, and pins `EVO_WORKER_HOME` to the state directory. The install prints where it found `claude`,
   `opencode`, `codex`, `tmux` and `git` on that PATH; install again after one of them moves.
+- Installing again reads the plist or unit installed before and keeps every `EVO_WORKER_*` variable it sets, such as
+  `EVO_WORKER_OPENCODE_MODEL` or `EVO_WORKER_CLAUDE_CODE_EFFORT` added by hand, and prints their names (never their
+  values). PATH, `EVO_WORKER_HOME` and `EVO_WORKER_REVOKED_EXIT` are written as a first install writes them, whatever
+  the old file said; other variables are not kept.
 - Stopping the service, by `uninstall` or at logout, sends the daemon SIGTERM and kills what is left 60 seconds later
   (launchd `ExitTimeOut`, systemd `KillMode=mixed` and `TimeoutStopSec=60`).
 - The daemon writes `worker.log` itself. What it prints before that log is open goes to `service.log` in the state
@@ -813,4 +1055,5 @@ service uninstall` removes it.
   worker, and a worker without it takes headless runs only.
 - A handback closes the terminal UI where it stands: the daemon cannot see a turn the person started there end.
 - Only the owner dispatches to a worker; workers shared by a team are a later decision.
-- A finished step never dispatches the next one, and nothing opens or merges a pull request.
+- A run of one step never dispatches the next one; a plan run does a plan's steps in one session on one worker,
+  never several workers at once. Nothing opens a pull request.

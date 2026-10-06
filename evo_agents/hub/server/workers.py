@@ -254,7 +254,7 @@ class Worker(BaseModel):
     projects: list[str]
     runtimes: dict = Field(
         description="the runtimes its last heartbeat reported, keyed claude-code, opencode or codex, each "
-        "{available, version, reason}"
+        "{available, version, reason, models}; models lists what the runtime offers there, null when it lists none"
     )
     checkouts: dict = Field(
         description="the checkouts its last heartbeat reported, keyed <project>/<repo>, each {path, branch}"

@@ -1,16 +1,24 @@
 import { describe, expect, it } from "vitest";
 
 import type { Worker } from "@/components/workers/queries";
+import { parsePlan } from "@/lib/plans";
 
 import {
+  activePlanRun,
   dispatchOutlook,
   dispatchWorkers,
   durationParts,
   facetCount,
   filtersSearch,
   fitWorker,
+  isCheckpoint,
   listQuery,
+  modelSuggestions,
+  planRunLock,
+  planRunPhase,
+  planRunScope,
   readFilters,
+  readModel,
   readySelection,
   runTiming,
   runtimeAvailable,
@@ -28,7 +36,9 @@ const ZERO: StateCounts = {
   running: 0,
   interactive: 0,
   verifying: 0,
+  waiting: 0,
   review: 0,
+  parked: 0,
   done: 0,
   failed: 0,
   lost: 0,
@@ -38,6 +48,7 @@ const ZERO: StateCounts = {
 function run(overrides: Partial<Run> = {}): Run {
   return {
     id: 1,
+    kind: "step",
     project: "demo",
     plan_id: "rollout",
     step_key: "2",
@@ -136,6 +147,7 @@ describe("filters", () => {
   it("counts a facet from the counts of its states", () => {
     const counts = { ...ZERO, queued: 2, running: 1, interactive: 1, review: 1, done: 4, failed: 1, lost: 2 };
     expect(facetCount(counts, "active")).toBe(4);
+    expect(facetCount({ ...counts, waiting: 1, parked: 1 }, "active")).toBe(6);
     expect(facetCount(counts, "ended")).toBe(3);
     expect(facetCount(counts, null)).toBe(12);
   });
@@ -147,6 +159,8 @@ describe("refresh", () => {
     expect(hasActiveRuns({ counts: { ...ZERO, done: 3, failed: 1 } })).toBe(false);
     expect(hasActiveRuns({ counts: { ...ZERO, review: 1 } })).toBe(true);
     expect(hasActiveRuns({ counts: { ...ZERO, verifying: 1 } })).toBe(true);
+    expect(hasActiveRuns({ counts: { ...ZERO, waiting: 1 } })).toBe(true);
+    expect(hasActiveRuns({ counts: { ...ZERO, parked: 1 } })).toBe(true);
   });
 });
 
@@ -250,7 +264,8 @@ describe("workers for a dispatch", () => {
     expect(fitWorker(worker({ status: "draining", drained_at: "2026-10-05T07:00:00Z" }), request).problem).toEqual({ kind: "draining" });
     expect(fitWorker(worker(), { ...request, runtime: "codex" }).problem).toEqual({ kind: "runtime", runtime: "codex" });
     expect(fitWorker(worker({ runtimes: {} }), request).problem).toEqual({ kind: "runtime", runtime: "any" });
-    expect(fitWorker(worker(), { ...request, repos: ["api", "web"] }).problem).toEqual({ kind: "checkout", repo: "web" });
+    expect(fitWorker(worker(), { ...request, repos: ["api", "web"] }).problem).toEqual({ kind: "checkout", repos: ["web"] });
+    expect(fitWorker(worker(), { ...request, repos: ["web", "api", "docs"] }).problem).toEqual({ kind: "checkout", repos: ["web", "docs"] });
   });
 
   it("counts the workers that report a runtime", () => {
@@ -271,5 +286,114 @@ describe("workers for a dispatch", () => {
     expect(dispatchOutlook(1, [bare], request, null)).toMatchObject({ kind: "none", fits: [{ problem: { kind: "checkout" } }] });
     expect(dispatchOutlook(1, [free, busy], request, 2)).toMatchObject({ kind: "pinned", fit: { fit: "busy" } });
     expect(dispatchOutlook(1, [free], request, 99)).toEqual({ kind: "noWorker" });
+  });
+});
+
+describe("models", () => {
+  const reporting = (models: unknown, available = true) => worker({ runtimes: { opencode: { available, version: "1.18", models } } });
+
+  it("suggests the models the visitor's workers list for the runtime picked, each once, sorted", () => {
+    const workers = [reporting(["openai/gpt-5", "anthropic/claude-x"]), reporting(["openai/gpt-5", "", 3]), reporting(null)];
+    expect(modelSuggestions(workers, "opencode")).toEqual(["anthropic/claude-x", "openai/gpt-5"]);
+    expect(modelSuggestions(workers, "claude-code")).toEqual([]);
+    expect(modelSuggestions([reporting(["x/y"], false)], "opencode")).toEqual([]);
+  });
+
+  it("suggests nothing for any runtime: a model goes with the runtime that names it", () => {
+    expect(modelSuggestions([reporting(["openai/gpt-5"])], "any")).toEqual([]);
+  });
+
+  it("takes a model as one trimmed line of at most 200 characters, with a runtime picked", () => {
+    expect(readModel("   ", "any")).toEqual({ model: null, problem: null });
+    expect(readModel(" sonnet ", "claude-code")).toEqual({ model: "sonnet", problem: null });
+    expect(readModel("sonnet", "any").problem).toBe("runtime");
+    expect(readModel("a\tb", "codex").problem).toBe("line");
+    expect(readModel("m".repeat(200), "codex").problem).toBeNull();
+    expect(readModel("m".repeat(201), "codex").problem).toBe("long");
+    expect(readModel("\u{1F600}".repeat(200), "codex").problem).toBeNull(); // characters, as the API counts them
+  });
+});
+
+describe("plan runs", () => {
+  const body = {
+    id: "rollout",
+    repos: [
+      { repo: "api", branch: "feat/rollout" },
+      { repo: "web", branch: "main" },
+      { repo: "docs" },
+    ],
+    steps: [
+      { id: 1, title: "Model", repo: "api", status: "done" },
+      { id: 2, title: "Queue", repo: "api", status: "in_progress" },
+      { id: 3, title: "Checkpoint: deploy to staging", repo: "web", status: "pending" },
+      { id: 4, title: "Page", repo: "web", status: "blocked" },
+      { id: 5, title: "Docs", repo: "docs" },
+      { id: 6, title: "Notes", what: "Checkpoint. The owner reads the notes.", repo: "api" },
+      { id: 7, title: "Release", what: "Write the checkpoint notes", repo: "api", checkpoint: true },
+    ],
+  };
+  const plan = parsePlan(body);
+  const readiness = [
+    step("1", { status: "done", ready: false }),
+    step("2", { status: "in_progress", ready: false }),
+    step("3", { repo: "web" }),
+    step("4", { repo: "web", status: "blocked", ready: false }),
+    step("5", { repo: "docs", ready: false }),
+    step("6"),
+    step("7"),
+  ];
+
+  it("finds checkpoint steps by flag, title, or the first word of what to do", () => {
+    expect(plan.steps.filter(isCheckpoint).map((item) => item.key)).toEqual(["3", "6", "7"]);
+  });
+
+  it("does every step not done, in the repos those steps name, on the plan's branches", () => {
+    const scope = planRunScope(readiness, plan, { api: "feat/rollout", web: "develop" });
+    expect(scope.steps.map((item) => item.key)).toEqual(["2", "3", "4", "5", "6", "7"]);
+    expect(scope).toMatchObject({ pending: 4, inProgress: 1, blocked: 1, unplaced: [] });
+    expect(scope.repos).toEqual([
+      { repo: "api", branch: "feat/rollout", defaultBranch: true },
+      { repo: "web", branch: "main", defaultBranch: true },
+      { repo: "docs", branch: null, defaultBranch: false },
+    ]);
+    expect(scope.checkpoints.map((item) => item.key)).toEqual(["3", "6", "7"]);
+  });
+
+  it("names the steps that have no repo when the plan does not list exactly one", () => {
+    const scope = planRunScope([step("2", { repo: null }), step("3", { status: "done", repo: null })], plan);
+    expect(scope.unplaced).toEqual(["2"]);
+    expect(scope.repos).toEqual([]);
+  });
+
+  it("locks Run plan while the plan has an active run, or nothing pending", () => {
+    const runs = [
+      run({ id: 3, plan_id: "other", kind: "plan", state: "running" }),
+      run({ id: 5, step_key: "4", state: "review" }),
+      run({ id: 4, step_key: "2", state: "queued" }),
+      run({ id: 2, kind: "plan", state: "done" }),
+    ];
+    expect(planRunLock(runs, "rollout", 3)).toEqual({ kind: "stepRun", id: 4, state: "queued", step: "2" });
+    expect(planRunLock([run({ id: 9, kind: "plan", step_key: null, state: "waiting" }), ...runs], "rollout", 3)).toEqual({
+      kind: "planRun",
+      id: 9,
+      state: "waiting",
+    });
+    expect(planRunLock(runs.slice(3), "rollout", 0)).toEqual({ kind: "noPending" });
+    expect(planRunLock(runs.slice(3), "rollout", 1)).toBeNull();
+  });
+
+  it("finds the plan's active plan run, and names its phase", () => {
+    const runs = [run({ id: 2, kind: "plan", state: "done" }), run({ id: 3, kind: "plan", state: "parked" })];
+    expect(activePlanRun(runs, "rollout")?.id).toBe(3);
+    expect(activePlanRun(runs, "other")).toBeNull();
+    expect(["queued", "leased", "running", "interactive", "verifying", "waiting", "parked"].map((state) => planRunPhase(state as Run["state"]))).toEqual([
+      "queued",
+      "running",
+      "running",
+      "running",
+      "running",
+      "waiting",
+      "parked",
+    ]);
   });
 });

@@ -6,6 +6,7 @@ import { useTranslations } from "next-intl";
 import { Fragment } from "react";
 
 import { adminCrumbs } from "@/components/admin/crumbs";
+import { InboxBell } from "@/components/inbox/inbox-bell";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -96,6 +97,9 @@ export function SiteHeader() {
           ))}
         </BreadcrumbList>
       </Breadcrumb>
+      <div className="ml-auto flex shrink-0 items-center gap-1 pl-2">
+        <InboxBell />
+      </div>
     </header>
   );
 }

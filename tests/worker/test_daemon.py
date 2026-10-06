@@ -7,8 +7,14 @@ verify commands again, commits what was left and pushes the branch; a push to ma
 detached HEAD); events written while the hub is down wait in the spool and reach it in seq order once it is back;
 SIGTERM in the middle of a run stops the claims and lets the run end; a verify command that exits other than 0 fails
 the run; worker.log holds no token. Around them: the owner's messages and cancel, joining with a pairing code,
-status, drain and revoke."""
+status, drain and revoke.
 
+Step 6 of the plan-runs-and-decisions plan: the run's commit leaves out what hooks wrote (``.claude/skills/.learned/``)
+and copies of hub plans as the hub wrote them, and names them in the run's log; an agent a daemon killed with SIGKILL
+left running is stopped by the next daemon, which removes the run's worktree and evo-run branch once the hub no longer
+holds the run, and keeps the worktree of a run the hub parked."""
+
+import asyncio
 import json
 import os
 import re
@@ -33,6 +39,10 @@ pytest.importorskip("aiohttp", reason="the daemon needs the worker extra, evo-ak
 import httpx
 import uvicorn
 
+from evo_agents.hub.config import HubConfig
+from evo_agents.hub.db import open_pool
+from evo_agents.hub.mirror import render
+from evo_agents.hub.server import run_state
 from evo_agents.hub.server.app import create_app
 from tests.hub.live import ADMIN, bearer
 from tests.hub.test_plans import registration
@@ -705,3 +715,197 @@ def test_a_revoked_worker_stops_its_daemon_with_the_status_a_service_does_not_re
     again = stack.cli("run", env={**stack.env, "EVO_WORKER_REVOKED_EXIT": "0"})
     assert again.returncode == 0, again.stderr
     assert (stack.state / "worker.log").read_text(encoding="utf-8").count("the hub no longer takes this worker") == 2
+
+
+# What a run's commit leaves out, and the agents a dead daemon left
+
+
+def test_hook_files_and_untouched_plan_copies_stay_out_of_the_runs_commit(make_stack):
+    stack = make_stack()
+    view = stack.client.get(f"/v1/projects/{PROJECT}/plans/{PLAN}", headers=stack.owner).json()
+    copy = render(view["body"], PROJECT, view["revision"], view["digest"])  # as `hub plan export` writes it
+    edited = copy.replace("goal: Ship the run queue.", "goal: Ship the run queue, edited by the agent.")
+    assert edited != copy
+    learned = ".claude/skills/.learned/auto-skill/SKILL.md"
+    nested = "docs/.claude/skills/.learned/nested.md"
+    stack.scenarios(
+        {
+            "2": [
+                {
+                    "write": {
+                        "feature.txt": "hello\n",
+                        learned: "---\nname: auto-skill\n---\nlearned in the session\n",
+                        nested: "learned below the root\n",
+                        f"plans/active/{PLAN}.yaml": copy,
+                        "plans/active/edited.yaml": edited,
+                    }
+                },
+                {"git": ["add", "--all"]},  # staged by the agent: the daemon still keeps them out
+                {"result": {"verify_commands": ["test -f feature.txt"]}},
+            ]
+        }
+    )
+    stack.register()
+    proc = stack.start_daemon()
+    run_id = stack.dispatch([2])[0]["id"]
+    run = stack.wait_state(run_id, "done", "failed")
+    assert run["state"] == "done", (run["error"], stack.daemon_output()[-6000:])
+
+    files = set(stack.origin_git("ls-tree", "-r", "--name-only", BRANCH).splitlines())
+    assert files == {"README.md", "feature.txt", "plans/active/edited.yaml"}, "a copy the agent edited is its work"
+    assert run["commit_sha"] == stack.origin_rev(f"refs/heads/{BRANCH}")
+    notes = [
+        event["body"] for event in stack.events(run_id) if event["kind"] == "system" and "left_out" in event["body"]
+    ]
+    assert len(notes) == 1, notes
+    assert notes[0]["left_out"] == sorted([learned, nested, f"plans/active/{PLAN}.yaml"])
+    assert notes[0]["text"].startswith("Left out of the commit, as what a hook or a plan export wrote")
+    status = git("status", "--porcelain", "--untracked-files=all", cwd=stack.worktree(run_id)).splitlines()
+    untracked = (learned, nested, f"plans/active/{PLAN}.yaml", ".evo-run/result.json")
+    assert sorted(status) == sorted(f"?? {path}" for path in untracked), "what was left out stays, untracked"
+    finished_cleanly(stack, proc)
+
+
+ORPHAN_LEASE = 4  # seconds of a lease in the orphan tests, so a dead daemon's run is let go of soon
+SLEEPER = [sys.executable, "-c", "import time; time.sleep(600)"]
+
+
+def group_alive(pgid: int) -> bool:
+    try:
+        os.killpg(pgid, 0)
+    except OSError:
+        return False
+    return True
+
+
+def agent_of(stack: Stack, run_id: int) -> dict | None:
+    """runs/<run>/agent.json once it names a process group."""
+    path = stack.state / "runs" / str(run_id) / "agent.json"
+    try:
+        agent = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return agent if agent.get("pgid") else None
+
+
+def reap(stack: Stack) -> dict:
+    """One pass of the hub's reaper (the job hub.recover_runs), on the hub's database."""
+
+    async def once() -> dict:
+        config = HubConfig(dsn=stack.server.config.dsn, data_dir=stack.tmp, pool_min_size=1, pool_max_size=1)
+        pool = await open_pool(config)
+        try:
+            return await run_state.recover_runs(pool)
+        finally:
+            await pool.close()
+
+    return asyncio.run(once())
+
+
+def orphan(stack: Stack) -> tuple[int, int, subprocess.Popen]:
+    """Run step 2 with an agent that starts a process in a session of its own and waits, then kill the daemon with
+    SIGKILL: the run's id, the agent's process group (alive), and the dead daemon."""
+    started, never = stack.tmp / "started", stack.tmp / "never"
+    stack.scenarios({"2": [{"spawn": SLEEPER}, {"chunks": [1, 1]}, {"touch": str(started)}, {"wait_for": str(never)}]})
+    stack.register()
+    proc = stack.start_daemon()
+    run_id = stack.dispatch([2])[0]["id"]
+    wait_until(started.exists, "the agent to start", explain=stack.daemon_output)
+    agent = wait_until(lambda: agent_of(stack, run_id), "agent.json to name the agent's process group")
+    assert agent["pid"] == agent["pgid"] and agent["started"] and agent["runtime"] == "claude-code"
+    assert group_alive(agent["pgid"])
+    proc.kill()
+    proc.wait(30)
+    time.sleep(0.5)
+    assert group_alive(agent["pgid"]), "the agent outlives a daemon killed with SIGKILL"
+    return run_id, agent["pgid"], proc
+
+
+def dealt_with(stack: Stack, run_id: int) -> dict:
+    """The line of worker.log that says what the daemon did with the orphan of run ``run_id``, once it is there."""
+
+    def found() -> dict | None:
+        for line in (stack.state / "worker.log").read_text(encoding="utf-8").splitlines():
+            record = json.loads(line)
+            if record.get("msg") == "the agent a previous daemon left was dealt with" and record["run_id"] == run_id:
+                return record
+        return None
+
+    return wait_until(found, f"worker.log to say what became of run {run_id}'s agent", explain=stack.daemon_output)
+
+
+def test_an_orphan_agent_of_a_run_the_hub_let_go_is_stopped_and_its_worktree_removed(make_stack):
+    stack = make_stack(run_lease_seconds=ORPHAN_LEASE)
+    git("checkout", "--quiet", "-b", BRANCH, cwd=stack.checkout, env={**os.environ, **GIT_IDENTITY})
+    run_id, pgid, _ = orphan(stack)
+    worktree = stack.worktree(run_id)
+    assert worktree.is_dir() and git("branch", "--list", f"evo-run/{run_id}", cwd=stack.checkout)
+
+    cancelled = stack.client.post(f"/v1/projects/{PROJECT}/runs/{run_id}/cancel", headers=stack.owner)
+    assert cancelled.status_code == 200, cancelled.text
+    time.sleep(ORPHAN_LEASE)
+
+    def let_go() -> bool:
+        reap(stack)
+        if stack.run(run_id)["state"] == "cancelled":
+            return True
+        time.sleep(0.5)
+        return False
+
+    wait_until(let_go, "the reaper to end the run whose lease ran out")
+    assert group_alive(pgid), "nothing stopped the agent yet"
+
+    proc = stack.start_daemon()
+    wait_until(lambda: not group_alive(pgid), "the new daemon to stop the agent", explain=stack.daemon_output)
+    wait_until(lambda: not worktree.exists(), "the new daemon to remove the worktree", explain=stack.daemon_output)
+    record = dealt_with(stack, run_id)
+    assert record["agent"] == f"process group {pgid} stopped on SIGTERM" and record["hub_state"] is None
+    assert record["worktree"].startswith("removed with its evo-run branch")
+    assert git("branch", "--list", f"evo-run/{run_id}", cwd=stack.checkout) == ""
+    assert git("symbolic-ref", "--short", "HEAD", cwd=stack.checkout) == BRANCH, "the owner's branch stays"
+    assert not (stack.state / "runs" / str(run_id) / "agent.json").exists()
+    assert "the agent a previous daemon left was dealt with" in stack.daemon_output()
+    finished_cleanly(stack, proc)
+
+
+def test_an_orphan_agent_of_a_parked_run_is_stopped_and_its_worktree_kept(make_stack, hub_db):
+    stack = make_stack()
+    run_id, pgid, _ = orphan(stack)
+    # The hub parks a plan run that waited a day for its owner; a run of one step is parked here by hand, which is
+    # all the heartbeat looks at (state parked, on this worker).
+    live.sql(
+        hub_db,
+        "UPDATE runs SET state = 'parked', parked_at = now(), lease_expires_at = NULL, counted_at = NULL WHERE id = %s",
+        (run_id,),
+    )
+
+    proc = stack.start_daemon()
+    wait_until(lambda: not group_alive(pgid), "the new daemon to stop the agent", explain=stack.daemon_output)
+    record = dealt_with(stack, run_id)
+    assert record["agent"] == f"process group {pgid} stopped on SIGTERM" and record["hub_state"] == "parked"
+    assert stack.worktree(run_id).is_dir(), "the worktree stays for the run that resumes the parked one"
+    saved = json.loads((stack.state / "runs" / str(run_id) / "run.json").read_text(encoding="utf-8"))
+    assert saved["state"] == "parked" and saved["finished_at"]
+    assert not (stack.state / "runs" / str(run_id) / "agent.json").exists()
+    finished_cleanly(stack, proc)
+
+
+def test_an_orphan_agent_of_a_run_the_hub_still_holds_is_stopped_and_its_lease_runs_out(make_stack):
+    stack = make_stack(run_lease_seconds=ORPHAN_LEASE)
+    run_id, pgid, _ = orphan(stack)
+    proc = stack.start_daemon()  # at once: the hub still holds the run for this worker
+    wait_until(lambda: not group_alive(pgid), "the new daemon to stop the agent", explain=stack.daemon_output)
+    record = dealt_with(stack, run_id)
+    assert record["hub_state"] == "running" and record["worktree"].startswith("kept: the hub still holds the run")
+    assert stack.worktree(run_id).is_dir()
+
+    def lost() -> bool:
+        reap(stack)
+        if stack.run(run_id)["state"] == "lost":
+            return True
+        time.sleep(0.5)
+        return False
+
+    stack.scenarios({})  # the next attempt, which this daemon may claim, ends at once
+    wait_until(lost, "the run's lease to run out: no heartbeat after the first names it", explain=stack.daemon_output)
+    finished_cleanly(stack, proc)
