@@ -71,7 +71,7 @@ export function TokensTable({ tokens, caption, showLogin = true, onNotice, testI
       helper.accessor("id", {
         header: () => t("columns.id"),
         enableSorting: false,
-        cell: (info) => <span className="font-mono text-xs text-muted-foreground tabular-nums">#{info.getValue()}</span>,
+        cell: (info) => <span className="font-mono text-[13px] tabular-nums">#{info.getValue()}</span>,
       }),
       ...login,
       helper.accessor("kind", {
@@ -89,27 +89,32 @@ export function TokensTable({ tokens, caption, showLogin = true, onNotice, testI
         enableSorting: false,
         cell: (info) =>
           info.getValue() ? (
-            <span className="font-mono text-xs break-all">{info.getValue()}</span>
+            <span className="block max-w-56 truncate font-mono text-xs text-foreground" title={info.getValue() ?? undefined}>
+              {info.getValue()}
+            </span>
           ) : (
-            <span className="text-muted-foreground">{t("noHost")}</span>
+            <span className="text-fg-subtle">{t("noHost")}</span>
           ),
       }),
       helper.accessor("created_at", {
         id: "created",
         header: () => t("columns.created"),
         enableSorting: false,
+        meta: { numeric: true },
         cell: (info) => <When value={info.getValue()} short />,
       }),
       helper.accessor("last_used_at", {
         id: "lastUsed",
         header: () => t("columns.lastUsed"),
         enableSorting: false,
+        meta: { numeric: true },
         cell: (info) => <When value={info.getValue()} never={t("never")} short />,
       }),
       helper.accessor("expires_at", {
         id: "expires",
         header: () => t("columns.expires"),
         enableSorting: false,
+        meta: { numeric: true },
         cell: (info) => <When value={info.getValue()} short />,
       }),
       helper.accessor("state", {
@@ -120,14 +125,15 @@ export function TokensTable({ tokens, caption, showLogin = true, onNotice, testI
       helper.display({
         id: "actions",
         header: () => <span className="sr-only">{t("columns.actions")}</span>,
+        meta: { actions: true },
         cell: (info) => {
           const token = info.row.original;
           if (token.state === "revoked") return null;
           return (
             <Button
               type="button"
-              variant="outline"
-              className="text-danger hover:text-danger"
+              variant="quiet-danger"
+              size="sm"
               aria-label={t("revokeLabel", { id: token.id, login: token.login })}
               onClick={() => startRevoke(token)}
               data-testid={`revoke-token-${token.id}`}

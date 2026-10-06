@@ -161,10 +161,16 @@ test("the list filters by state and search, in the URL", async ({ page, member }
   await expect(main(page).getByTestId("runs-table").locator("tbody tr")).toHaveCount(1);
   await expect(runRow(page, waiting.id)).toBeVisible();
   await facets.getByRole("button", { name: /^Done/ }).click();
-  await expect(main(page).getByTestId("state-empty")).toContainText("No run matches");
-  await main(page).getByRole("button", { name: "Show all runs" }).click();
+  const none = main(page).getByTestId("state-empty");
+  await expect(none).toContainText("No run matches");
+  await expect(none.getByTestId("filters-in-use")).toHaveText("State:Done"); // the filter in force, named
+  await none.getByRole("button", { name: "Clear filters" }).click();
   await expect(main(page).getByTestId("runs-table").locator("tbody tr")).toHaveCount(2);
 
+  // "/" focuses the search from anywhere on the page but a text field.
+  await page.keyboard.press("/");
+  await expect(main(page).getByTestId("runs-search")).toBeFocused();
+  await expect(main(page).getByTestId("runs-search")).toHaveValue("");
   await main(page).getByTestId("runs-search").fill(STEP_TITLES["4"]);
   await expect(page).toHaveURL(new RegExp(`\\?q=${encodeURIComponent(STEP_TITLES["4"]).replace(/%20/g, "\\+")}$`));
   await expect(main(page).getByTestId("runs-table").locator("tbody tr")).toHaveCount(1);
@@ -172,7 +178,7 @@ test("the list filters by state and search, in the URL", async ({ page, member }
   await main(page).getByTestId("runs-search").fill(`#${failing.id}`);
   await expect(main(page).getByTestId("runs-table").locator("tbody tr")).toHaveCount(1);
   await expect(runRow(page, failing.id)).toBeVisible();
-  await expect(main(page).getByTestId("runs-list-summary")).toContainText("1 run matches.");
+  await expect(main(page).getByTestId("runs-list-summary")).toHaveText("1 run matches");
 
   // The filters survive a reload.
   await page.reload();

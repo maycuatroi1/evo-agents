@@ -6,6 +6,7 @@ import { useCallback, useMemo } from "react";
 
 import { DataTable, dataTableColumns } from "@/components/data/data-table";
 import { projectHref } from "@/components/shell/nav";
+import { cn } from "@/lib/utils";
 
 import { actionKey, type AuditRow, memberHref } from "./data";
 
@@ -25,18 +26,21 @@ export function useActionName(): (action: string) => string | null {
   );
 }
 
-/** An action as people read it, with its stable name beside it. */
-export function ActionLabel({ action }: { action: string }) {
+/** An action as people read it, with its stable name under it, or beside it on one line (`inline`). */
+export function ActionLabel({ action, inline = false }: { action: string; inline?: boolean }) {
   const name = useActionName()(action);
   return (
-    <span className="flex flex-col gap-0.5">
-      {name ? <span className="font-medium">{name}</span> : null}
-      <code className="font-mono text-xs text-muted-foreground">{action}</code>
+    <span className={cn("flex", inline ? "items-baseline gap-2 whitespace-nowrap" : "flex-col gap-0.5")}>
+      {name ? <span className="font-medium text-foreground">{name}</span> : null}
+      <code className="font-mono text-xs text-fg-subtle">{action}</code>
     </span>
   );
 }
 
-/** Audit rows in the server's order, newest first, with seconds: rows a moment apart must read apart. */
+/**
+ * Audit rows in the server's order, newest first, with seconds: rows a moment apart must read apart. The trail is
+ * long, so its rows are the compact 36 px, one line each; a long target ends in an ellipsis, whole in its tooltip.
+ */
 export function AuditTable({ rows, caption, testId = "audit-table" }: { rows: AuditRow[]; caption: string; testId?: string }) {
   const t = useTranslations("admin.audit");
   const format = useFormatter();
@@ -47,7 +51,7 @@ export function AuditTable({ rows, caption, testId = "audit-table" }: { rows: Au
         header: () => t("columns.id"),
         enableSorting: false,
         cell: (info) => (
-          <span className="font-mono text-xs text-muted-foreground tabular-nums" data-audit-id={info.getValue()}>
+          <span className="font-mono text-[13px] tabular-nums" data-audit-id={info.getValue()}>
             #{info.getValue()}
           </span>
         ),
@@ -56,7 +60,7 @@ export function AuditTable({ rows, caption, testId = "audit-table" }: { rows: Au
         header: () => t("columns.at"),
         enableSorting: false,
         cell: (info) => (
-          <time dateTime={info.getValue()} className="whitespace-nowrap tabular-nums">
+          <time dateTime={info.getValue()} className="whitespace-nowrap text-foreground tabular-nums">
             {format.dateTime(new Date(info.getValue()), { dateStyle: "medium", timeStyle: "medium" })}
           </time>
         ),
@@ -77,7 +81,7 @@ export function AuditTable({ rows, caption, testId = "audit-table" }: { rows: Au
       helper.accessor("action", {
         header: () => t("columns.action"),
         enableSorting: false,
-        cell: (info) => <ActionLabel action={info.getValue()} />,
+        cell: (info) => <ActionLabel action={info.getValue()} inline />,
       }),
       helper.accessor("project", {
         header: () => t("columns.project"),
@@ -95,7 +99,12 @@ export function AuditTable({ rows, caption, testId = "audit-table" }: { rows: Au
       helper.accessor("target", {
         header: () => t("columns.target"),
         enableSorting: false,
-        cell: (info) => <code className="inline-block min-w-[16ch] font-mono text-xs break-all whitespace-normal">{info.getValue()}</code>,
+        meta: { primary: true },
+        cell: (info) => (
+          <code className="block w-0 min-w-full truncate font-mono text-xs text-foreground" title={info.getValue()}>
+            {info.getValue()}
+          </code>
+        ),
       }),
       helper.accessor("token_id", {
         id: "token",
@@ -103,7 +112,7 @@ export function AuditTable({ rows, caption, testId = "audit-table" }: { rows: Au
         enableSorting: false,
         cell: (info) => {
           const id = info.getValue();
-          return id ? <span className="font-mono text-xs text-muted-foreground tabular-nums">#{id}</span> : null;
+          return id ? <span className="font-mono text-xs tabular-nums">#{id}</span> : null;
         },
       }),
     ]);
@@ -115,6 +124,7 @@ export function AuditTable({ rows, caption, testId = "audit-table" }: { rows: Au
       caption={caption}
       getRowId={(row) => String(row.id)}
       columnClassNames={NARROW_HIDDEN}
+      density="compact"
       testId={testId}
     />
   );

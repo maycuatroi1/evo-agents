@@ -264,6 +264,7 @@
       "shown": "Showing {shown} of {total} users",
       "search": "Search by login",
       "searchPlaceholder": "For example: octocat",
+      "clearSearch": "Clear search",
       "project": "Project",
       "allProjects": "All projects",
       "grant": "Grant access",
@@ -273,7 +274,6 @@
       "emptyTitle": "No users yet",
       "emptyDescription": "People show up here after their first sign-in, or once you grant access to their GitHub login.",
       "noMatchTitle": "No user matches the filters",
-      "noMatchDescription": "Try another login or pick all projects.",
       "columns": {
         "login": "User",
         "grants": "Project access",
@@ -282,6 +282,7 @@
         "actions": "Actions"
       },
       "noGrants": "No project access yet",
+      "moreGrants": "and {count} more: {projects}",
       "grantSummary": "{project}: {role}, {level} visibility",
       "hubAdmin": "Hub admin",
       "notSignedIn": "Not signed in yet",
@@ -369,6 +370,7 @@
     "tokens": {
       "title": "Tokens and sessions",
       "caption": "Tokens and sessions",
+      "count": "{count, plural, one {# token} other {# tokens}}",
       "login": "User",
       "loginPlaceholder": "All users",
       "kind": "Kind",
@@ -400,8 +402,9 @@
       "noHost": "None",
       "revoke": "Revoke",
       "revokeLabel": "Revoke token {id} of {login}",
-      "emptyTitle": "No token matches the filters",
-      "emptyDescription": "Change the user, kind or state to see other tokens."
+      "emptyTitle": "No live tokens",
+      "emptyDescription": "Tokens show here once someone signs in to the hub from a browser, the CLI or a worker.",
+      "noMatchTitle": "No token matches the filters"
     },
     "revokeToken": {
       "title": "Revoke token {id} of {login}?",
@@ -420,6 +423,7 @@
     "audit": {
       "title": "Audit trail",
       "caption": "Audit trail, newest first",
+      "count": "{count, plural, one {# entry} other {# entries}}",
       "actor": "Actor",
       "actorPlaceholder": "All users",
       "action": "Action",
@@ -438,8 +442,9 @@
       },
       "hub": "Hub",
       "noProject": "No project",
-      "emptyTitle": "No audit row matches the filters",
-      "emptyDescription": "Loosen the filters, for example drop the actor or widen the dates.",
+      "emptyTitle": "No audit entries yet",
+      "emptyDescription": "Sign-ins, grants, and changes to projects, plans, memories and skills add entries here.",
+      "noMatchTitle": "No audit entry matches the filters",
       "actions": {
         "auth_login": "Sign in",
         "auth_logout": "Sign out",
@@ -502,8 +507,11 @@
       "emptyDescription": "Plans show here once a member pushes the harness's plans with evo-agents hub plan import; plans labelled above your visibility stay hidden.",
       "search": "Search plans by title or id",
       "searchPlaceholder": "Search plans…",
+      "clearSearch": "Clear search",
       "shown": "Showing {shown} of {total} plans",
+      "total": "{count, plural, one {# plan} other {# plans}}",
       "noMatch": "No plan matches the search.",
+      "noMatchTitle": "No plan matches",
       "activeCaption": "Active plans",
       "completedCaption": "Completed plans",
       "columns": {
@@ -671,7 +679,13 @@
     "status": "HTTP status {status}",
     "apiMessage": "Message from the API",
     "retry": "Try again",
-    "backHome": "Back to projects"
+    "backHome": "Back to projects",
+    "noResults": {
+      "inUse": "Filters in use",
+      "filter": "{label}:",
+      "search": "Search",
+      "clear": "Clear filters"
+    }
   },
   "table": {
     "sortAscending": "Sorted ascending",
@@ -737,9 +751,7 @@
     },
     "noResults": {
       "searchTitle": "No memories found for “{q}”",
-      "searchDescription": "Try other words, fewer filters, or put a phrase in double quotes. Memories labelled above your grant never show here.",
-      "filterTitle": "No memories match these filters",
-      "filterDescription": "Remove the location or type filter to see more."
+      "filterTitle": "No memories match these filters"
     },
     "deleted": "Deleted",
     "markdown": {
@@ -829,15 +841,14 @@
     "filter": {
       "label": "Filter skills",
       "placeholder": "Filter by name or description",
-      "clear": "Clear filter"
+      "clear": "Clear search"
     },
     "summary": {
       "all": "{count, plural, =0 {No skills} one {# skill} other {# skills}}",
       "filtered": "Showing {shown} of {count} skills"
     },
     "noResults": {
-      "title": "No skills match “{q}”",
-      "description": "Try other words, or clear the filter to see them all."
+      "title": "No skills match “{q}”"
     },
     "blobStore": {
       "unconfiguredTitle": "The hub has no blob store",
@@ -1175,9 +1186,9 @@
       "clear": "Clear search"
     },
     "listSummary": {
-      "all": "{count, plural, =0 {No worker.} one {# worker.} other {# workers.}}",
-      "filtered": "{count, plural, =0 {No worker matches.} one {# worker matches.} other {# workers match.}}",
-      "revokedHidden": "{count, plural, one {# revoked worker is hidden; pick Revoked to see it.} other {# revoked workers are hidden; pick Revoked to see them.}}"
+      "all": "{count, plural, =0 {No workers} one {# worker} other {# workers}}",
+      "filtered": "{count, plural, =0 {No workers match} one {# worker matches} other {# workers match}}",
+      "revokedHidden": "{count, plural, one {# revoked worker is hidden} other {# revoked workers are hidden}}"
     },
     "columns": {
       "worker": "Worker",
@@ -1190,13 +1201,11 @@
     },
     "empty": {
       "title": "No worker yet",
-      "description": "Register a laptop or desktop to run plan steps for you. The worker calls the hub over HTTPS and opens no port on the machine.",
+      "description": "Register a laptop or desktop to run plan steps for you; it calls the hub over HTTPS and opens no port.",
       "showRevoked": "Show revoked workers"
     },
     "noResults": {
-      "title": "No worker matches",
-      "description": "Change the search or pick another status.",
-      "clear": "Show all workers"
+      "title": "No worker matches"
     },
     "copy": {
       "copy": "Copy",
@@ -1356,8 +1365,8 @@
       "clear": "Clear search"
     },
     "listSummary": {
-      "all": "{count, plural, =0 {No run.} one {# run.} other {# runs.}}",
-      "filtered": "{count, plural, =0 {No run matches.} one {# run matches.} other {# runs match.}}"
+      "all": "{count, plural, =0 {No runs} one {# run} other {# runs}}",
+      "filtered": "{count, plural, =0 {No runs match} one {# run matches} other {# runs match}}"
     },
     "columns": {
       "run": "Run",
@@ -1391,9 +1400,7 @@
       "readerDescription": "Writers of this project dispatch runs to their workers; each one shows here with its state."
     },
     "noResults": {
-      "title": "No run matches",
-      "description": "Try other words, or show runs in every state.",
-      "clear": "Show all runs"
+      "title": "No run matches"
     },
     "step": {
       "title": "Runs of this step",
