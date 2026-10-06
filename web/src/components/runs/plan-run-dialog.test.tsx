@@ -101,6 +101,7 @@ const worker = (id: number, name: string, owner: string, extra: Record<string, u
   checkouts: { "demo/api": { path: "~/github/api", branch: "main" }, "demo/harness": { path: "~/github/harness", branch: "main" } },
   free_slots: 1,
   allow_web_terminal: false,
+  dispatch_from: "any",
   held_runs: 0,
   created_at: "2026-10-05T07:00:00Z",
   last_heartbeat_at: new Date().toISOString(),

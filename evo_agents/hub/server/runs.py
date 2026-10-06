@@ -9,6 +9,10 @@ named: every step must be ready and without an active run (409 otherwise, and no
 must be one of the caller's own (403 for any other id, a hub admin's included), live and serving the project (409).
 Each run is notified on RUNS_CHANNEL and audited (run.dispatch), and keeps the step's title. ``model`` is optional,
 one line of at most ``runs.MAX_MODEL_CHARS``, as the runtime names it; without one the runtime chooses as it would.
+Each run keeps the credential it was dispatched with in dispatched_via (``credentials.dispatch_credential``): web for a
+web session, machine for a token. A worker whose owner set its dispatch_from to web takes runs dispatched from a web
+session only: a dispatch, plan run or rerun pinned to it with a token gets 403 saying so, and its claims pass over
+the runs dispatched with a token.
 
 POST /v1/projects/{p}/plan-runs (writer) queues a plan run (``runs.RUN_KINDS``): one run, on one worker of the
 caller's, that does every step of the plan not done yet. It is refused with 409 when the plan has no pending step,
@@ -25,20 +29,20 @@ shows one. A reader sees the runs of the plans it may read through the sink it n
 of another plan reads as no run (``readable_run``).
 
 A worker claims with POST /v1/worker/claim, which waits up to CLAIM_WAIT_SECONDS: ``RunWakeups`` wakes it when
-RUNS_CHANNEL is notified, on the api process's one LISTEN connection (``listen``, opened by the first claim or
-stream), and it looks again every CLAIM_POLL_SECONDS besides, so a lost notification delays a claim but never loses
-it. A claim takes the oldest queued run, ``FOR UPDATE SKIP LOCKED``, that its owner dispatched, of a project the
-worker serves and on which the owner still holds writer, asking for a runtime the worker reported (``any`` takes the
-first of runs.RUNTIMES it has), of a repo it has a checkout of, pinned to no other worker, while the worker is
-neither draining nor revoked and holds fewer runs than its slots. A worker has one claim waiting at a time: a newer
-claim answers the older one with no run. The claimed run is leased for EVO_HUB_RUN_LEASE_SECONDS (LEASE_SECONDS by
-default) and comes with its prompt (``runs.build_prompt`` over the plan revision it was dispatched from). A plan run
-needs a checkout of every repo in its repos and a daemon of runs.PLAN_RUN_AGENT or later, and comes with
-``runs.build_plan_prompt`` and the plan at the hub's current revision, which the daemon writes to ``runs.PLAN_FILE``.
-A dispatch pinned to a worker whose last heartbeat says it could never claim the run gets 409 (``_fits``). A claim
-whose worker hung up (a daemon stopping drops the claim it waits on) takes nothing: it ends before it looks at the
-queue again, and a run it leased in the meantime is rolled back before the transaction commits, so the run stays
-queued for the next claim instead of waiting out a lease nobody holds.
+RUNS_CHANNEL is notified, on the api process's one LISTEN connection (``listen``, opened by the first claim or stream),
+and it looks again every CLAIM_POLL_SECONDS besides, so a lost notification delays a claim but never loses it. A claim
+takes the oldest queued run, ``FOR UPDATE SKIP LOCKED``, that its owner dispatched, of a project the worker serves and
+on which the owner still holds writer, asking for a runtime the worker reported (``any`` takes the first of
+runs.RUNTIMES it has), of a repo it has a checkout of, pinned to no other worker, dispatched from a web session when the
+worker's dispatch_from is web, while the worker is neither draining nor revoked and holds fewer runs than its slots. A
+worker has one claim waiting at a time: a newer claim answers the older one with no run. The claimed run is leased for
+EVO_HUB_RUN_LEASE_SECONDS (LEASE_SECONDS by default) and comes with its prompt (``runs.build_prompt`` over the plan
+revision it was dispatched from). A plan run needs a checkout of every repo in its repos and a daemon of
+runs.PLAN_RUN_AGENT or later, and comes with ``runs.build_plan_prompt`` and the plan at the hub's current revision,
+which the daemon writes to ``runs.PLAN_FILE``. A dispatch pinned to a worker whose last heartbeat says it could never
+claim the run gets 409 (``_fits``). A claim whose worker hung up (a daemon stopping drops the claim it waits on) takes
+nothing: it ends before it looks at the queue again, and a run it leased in the meantime is rolled back before the
+transaction commits, so the run stays queued for the next claim instead of waiting out a lease nobody holds.
 
 POST /v1/worker/heartbeat records the machine (runtimes, each with the models it lists when it lists any, checkouts
 keyed ``<project>/<repo>``, free slots), extends the lease of every run the worker names and still holds by the same
@@ -96,6 +100,7 @@ from pydantic import BaseModel, ConfigDict, Field, create_model, model_validator
 
 from evo_agents.hub import runs
 from evo_agents.hub.access import has_role
+from evo_agents.hub.credentials import DISPATCHED_VIA, dispatch_credential
 from evo_agents.hub.plans import PlanProblem, step_index, step_key
 from evo_agents.hub.server import audit
 from evo_agents.hub.server import plans as plan_routes
@@ -116,7 +121,7 @@ from evo_agents.hub.server.run_state import (
     write_event,
     write_step,
 )
-from evo_agents.hub.server.security import MACHINE, CurrentUser, Principal
+from evo_agents.hub.server.security import MACHINE, WEB, CurrentUser, Principal
 
 log = logging.getLogger(__name__)
 
@@ -220,6 +225,10 @@ class Run(BaseModel):
     title: str | None = Field(description="the step's title when the run was dispatched; the plan's for a plan run")
     plan_revision: int = Field(description="the plan revision the run was dispatched from")
     dispatched_by: str = Field(description="the login of the member who dispatched it, its owner")
+    dispatched_via: Literal[DISPATCHED_VIA] | None = Field(
+        description="the credential it was dispatched with: web, a web session; machine, a token (the command line, "
+        "an agent); null for a run dispatched before 0.5.0"
+    )
     worker_id: int | None = Field(description="the worker that claimed it")
     worker: str | None = Field(description="that worker's name")
     pinned_worker_id: int | None
@@ -463,11 +472,11 @@ class StepWritten(BaseModel):
 # Reading runs
 
 RUN_COLUMNS = """
-SELECT r.id, r.kind, p.name, r.plan_id, r.step_key, r.title, r.plan_revision, u.login, r.worker_id, w.name,
-       r.pinned_worker_id, r.requested_runtime, r.runtime, r.model, r.mode, r.approval, r.timeout_s / 60,
-       r.run_seconds, r.attempt, r.max_attempts, r.parent_run_id, r.resume_of_run_id, r.state, r.lease_expires_at,
-       r.session_id, r.repo, r.branch, r.repos, r.commit_sha, r.diffstat, r.verify, r.evidence, r.usage, r.error,
-       r.log_sha256, r.diff_sha256, r.event_seq, r.cancel_requested_at, r.takeover_requested_at,
+SELECT r.id, r.kind, p.name, r.plan_id, r.step_key, r.title, r.plan_revision, u.login, r.dispatched_via,
+       r.worker_id, w.name, r.pinned_worker_id, r.requested_runtime, r.runtime, r.model, r.mode, r.approval,
+       r.timeout_s / 60, r.run_seconds, r.attempt, r.max_attempts, r.parent_run_id, r.resume_of_run_id, r.state,
+       r.lease_expires_at, r.session_id, r.repo, r.branch, r.repos, r.commit_sha, r.diffstat, r.verify, r.evidence,
+       r.usage, r.error, r.log_sha256, r.diff_sha256, r.event_seq, r.cancel_requested_at, r.takeover_requested_at,
        r.handback_requested_at, r.queued_at, r.leased_at, r.started_at, r.waiting_since, r.parked_at, r.finished_at
   FROM runs r JOIN projects p ON p.id = r.project_id JOIN users u ON u.id = r.dispatched_by
   LEFT JOIN workers w ON w.id = r.worker_id
@@ -749,7 +758,7 @@ def _dispatcher(access: ProjectAccess) -> None:
 PINNABLE = """
 SELECT w.owner_id, w.name, w.revoked_at,
        EXISTS (SELECT 1 FROM worker_projects wp WHERE wp.worker_id = w.id AND wp.project_id = %s),
-       w.runtimes, w.checkouts, w.agent_version
+       w.runtimes, w.checkouts, w.agent_version, w.dispatch_from
   FROM workers w WHERE w.id = %s
 """
 
@@ -766,17 +775,24 @@ class Pinned:
 
 
 async def _pinnable(conn, user: Principal, access: ProjectAccess, worker_id: int) -> Pinned:
-    """403 unless worker ``worker_id`` is ``user``'s own; 409 when it is revoked or does not serve the project."""
+    """403 unless worker ``worker_id`` is ``user``'s own, and unless ``user`` dispatches from a web session when the
+    worker takes runs dispatched from the web only; 409 when it is revoked or does not serve the project."""
     row = await (await conn.execute(PINNABLE, (access.project_id, worker_id))).fetchone()
     if row is None or row[0] != user.user_id:  # the same answer for another member's worker and for no worker
         raise HTTPException(
             403, f"a run goes only to a worker of the member who dispatches it, and you have no worker {worker_id}"
         )
-    _, name, revoked_at, serves, reported, checkouts, agent_version = row
+    _, name, revoked_at, serves, reported, checkouts, agent_version, dispatch_from = row
     if revoked_at is not None:
         raise HTTPException(409, f"worker {name} was revoked at {revoked_at.isoformat()}; it takes no runs")
     if not serves:
         raise HTTPException(409, f"worker {name} does not take runs of project {access.name}: register it for it")
+    if dispatch_from == "web" and user.kind != WEB:
+        raise HTTPException(
+            403,
+            f"worker {name} takes only runs dispatched from a web session, as its owner set it, so a token cannot "
+            "hand it work: dispatch on the web, or to another worker; nothing was dispatched",
+        )
     return Pinned(worker_id, name, reported or {}, checkouts or {}, agent_version)
 
 
@@ -818,10 +834,10 @@ def _fits(worker: Pinned | None, access: ProjectAccess, kind: str, repos: list[s
 
 
 INSERT_RUN = """
-INSERT INTO runs (project_id, plan_id, step_key, title, plan_revision, dispatched_by, pinned_worker_id,
+INSERT INTO runs (project_id, plan_id, step_key, title, plan_revision, dispatched_by, dispatched_via, pinned_worker_id,
                   requested_runtime, runtime, model, mode, approval, timeout_s, parent_run_id, repo, branch)
-VALUES (%(project)s, %(plan)s, %(step)s, %(title)s, %(revision)s, %(user)s, %(pinned)s, %(runtime)s, %(runtime)s,
-        %(model)s, %(mode)s, %(approval)s, %(timeout)s, %(parent)s, %(repo)s, %(branch)s)
+VALUES (%(project)s, %(plan)s, %(step)s, %(title)s, %(revision)s, %(user)s, %(via)s, %(pinned)s, %(runtime)s,
+        %(runtime)s, %(model)s, %(mode)s, %(approval)s, %(timeout)s, %(parent)s, %(repo)s, %(branch)s)
 RETURNING id
 """
 
@@ -872,6 +888,7 @@ async def _queue_run(
         "title": runs.step_title(step),
         "revision": held.revision,
         "user": user.user_id,
+        "via": dispatch_credential(user.kind),
         "pinned": None if pinned is None else pinned.id,
         "runtime": runtime,
         "model": model,
@@ -960,10 +977,10 @@ async def dispatch(request: Request, project: ProjectName, body: Dispatch, user:
 
 
 INSERT_PLAN_RUN = """
-INSERT INTO runs (kind, project_id, plan_id, title, plan_revision, dispatched_by, pinned_worker_id, requested_runtime,
-                  runtime, model, mode, approval, timeout_s, repos)
-VALUES ('plan', %(project)s, %(plan)s, %(title)s, %(revision)s, %(user)s, %(pinned)s, %(runtime)s, %(runtime)s,
-        %(model)s, %(mode)s, 'auto', %(timeout)s, %(repos)s)
+INSERT INTO runs (kind, project_id, plan_id, title, plan_revision, dispatched_by, dispatched_via, pinned_worker_id,
+                  requested_runtime, runtime, model, mode, approval, timeout_s, repos)
+VALUES ('plan', %(project)s, %(plan)s, %(title)s, %(revision)s, %(user)s, %(via)s, %(pinned)s, %(runtime)s,
+        %(runtime)s, %(model)s, %(mode)s, 'auto', %(timeout)s, %(repos)s)
 RETURNING id
 """
 
@@ -1035,6 +1052,7 @@ async def dispatch_plan(request: Request, project: ProjectName, body: PlanRunDis
             "title": runs.step_title(held.body),
             "revision": held.revision,
             "user": user.user_id,
+            "via": dispatch_credential(user.kind),
             "pinned": body.worker_id,
             "runtime": body.runtime,
             "model": body.model,
@@ -1265,7 +1283,7 @@ class RunWakeups:
 
 
 WORKER_OF_TOKEN = """
-SELECT id, owner_id, name, slots, runtimes, checkouts, drained_at, revoked_at, agent_version
+SELECT id, owner_id, name, slots, runtimes, checkouts, drained_at, revoked_at, agent_version, dispatch_from
   FROM workers WHERE token_id = %s
    FOR UPDATE
 """
@@ -1287,13 +1305,15 @@ SELECT wp.project_id, p.name
                 WHERE g.user_id = %(owner)s AND g.project_id = wp.project_id AND g.role = ANY(%(writers)s))
 """
 # A run of one step needs a checkout of its repo, and a plan run one of every repo in its repos and a daemon of
-# runs.PLAN_RUN_AGENT or later.
+# runs.PLAN_RUN_AGENT or later. A worker set to take runs dispatched from the web only passes over the others, those
+# dispatched before schema 0011 included.
 CLAIMABLE = """
 WITH checkouts (project_id, repo) AS (SELECT * FROM unnest(%(pids)s::bigint[], %(repos)s::text[]))
 SELECT r.id, r.runtime
   FROM runs r
  WHERE r.state = 'queued' AND r.project_id = ANY(%(projects)s) AND r.dispatched_by = %(owner)s
    AND (r.pinned_worker_id IS NULL OR r.pinned_worker_id = %(worker)s)
+   AND (%(dispatch_from)s <> 'web' OR r.dispatched_via = 'web')
    AND (r.runtime = 'any' OR r.runtime = ANY(%(runtimes)s))
    AND (r.kind <> 'plan' OR %(plan_runs)s)
    AND CASE WHEN r.kind = 'plan'
@@ -1331,7 +1351,9 @@ async def _try_claim(
     ``gone`` says the worker hung up once the run is leased, raise ClaimAbandoned before the transaction commits,
     which rolls the lease back."""
     async with pool.connection() as conn:
-        worker_id, owner_id, name, slots, reported, checkouts, drained_at, _, version = await _worker_of(conn, user)
+        worker_id, owner_id, name, slots, reported, checkouts, drained_at, _, version, dispatch_from = await _worker_of(
+            conn, user
+        )
         if drained_at is not None:
             return None
         held = (await (await conn.execute(HELD_COUNT, (worker_id, list(runs.HELD_STATES)))).fetchone())[0]
@@ -1356,6 +1378,7 @@ async def _try_claim(
             "pids": [pid for pid, _ in pairs],
             "repos": [repo for _, repo in pairs],
             "plan_runs": runs.takes_plan_runs(version),
+            "dispatch_from": dispatch_from,
         }
         row = await (await conn.execute(CLAIMABLE, params)).fetchone()
         if row is None:

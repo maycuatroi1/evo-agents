@@ -1179,6 +1179,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/workers/{worker_id}/dispatch-from": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Set Dispatch From
+         * @description Set who may hand the worker its runs: its owner, from a web session only.
+         */
+        post: operations["set_dispatch_from_v1_workers__worker_id__dispatch_from_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/workers/{worker_id}/revoke": {
         parameters: {
             query?: never;
@@ -2465,6 +2485,15 @@ export interface components {
              * @description the model each run uses, as its runtime names it (opencode: provider/model); null: the runtime's own choice
              */
             model?: string | null;
+        };
+        /** DispatchFrom */
+        DispatchFrom: {
+            /**
+             * Value
+             * @description any: runs dispatched with any credential of the owner; web: only runs dispatched from a web session, so a token cannot hand the worker work
+             * @enum {string}
+             */
+            value: "any" | "web";
         };
         /** ErrorBody */
         ErrorBody: {
@@ -4082,6 +4111,11 @@ export interface components {
              */
             dispatched_by: string;
             /**
+             * Dispatched Via
+             * @description the credential it was dispatched with: web, a web session; machine, a token (the command line, an agent); null for a run dispatched before 0.5.0
+             */
+            dispatched_via: ("machine" | "web") | null;
+            /**
              * Worker Id
              * @description the worker that claimed it
              */
@@ -5303,6 +5337,12 @@ export interface components {
             free_slots: number | null;
             /** Allow Web Terminal */
             allow_web_terminal: boolean;
+            /**
+             * Dispatch From
+             * @description who may hand it runs: any, runs its owner dispatched with any credential; web, only runs dispatched from a web session
+             * @enum {string}
+             */
+            dispatch_from: "any" | "web";
             /**
              * Held Runs
              * @description runs it holds now (leased, running, interactive or verifying)
@@ -9495,6 +9535,77 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_dispatch_from_v1_workers__worker_id__dispatch_from_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                worker_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DispatchFrom"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Worker"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
         };

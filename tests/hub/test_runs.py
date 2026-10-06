@@ -7,7 +7,10 @@ reader dispatching at all; a step that is not ready gets 409; once the owner's w
 run; an expired lease makes the run lost and queues it again, the third attempt fails and the step goes back to
 pending; a revision conflict on the plan is tried again; approval auto writes a revision with the evidence; approval
 review waits for the owner's approve. Around them: the claim's other conditions, the long poll waking on NOTIFY, the
-heartbeat's control, cancel and rerun, revoking a pinned worker, and the periodic jobs."""
+heartbeat's control, cancel and rerun, revoking a pinned worker, and the periodic jobs.
+
+And step 10 of the worker-credentials plan: each run records the credential it was dispatched with, a worker set to
+take runs dispatched from the web only claims no other, and a token pinning a run to it gets 403."""
 
 import threading
 import time
@@ -32,8 +35,10 @@ from evo_agents.hub.server import runs as run_routes
 from evo_agents.hub.server.app import create_app
 from evo_agents.hub.worker import queue
 from evo_agents.isotime import parse_iso
+from tests.hub.fake_github import Account
 from tests.hub.live import ADMIN, bearer, sql
 from tests.hub.test_plans import registration
+from tests.hub.test_web_auth import cookie, csrf_for, web_sign_in
 
 PROJECT = "evo-agents"
 PLAN = "rollout"
@@ -98,12 +103,14 @@ def hub(client, github) -> dict:
     return members(client, github)
 
 
+LOGINS = {"admin": ADMIN, "owner": OWNER, "other": OTHER, "reader": READER, "stranger": STRANGER}
+GITHUB_IDS = {login: number for number, login in enumerate(LOGINS.values(), start=601)}
+
+
 def members(client, github) -> dict:
     """What the ``hub`` fixture sets up, on ``client``."""
-    logins = {"admin": ADMIN, "owner": OWNER, "other": OTHER, "reader": READER, "stranger": STRANGER}
     headers = {
-        name: bearer(live.sign_in(client, github, login, number)["token"])
-        for number, (name, login) in enumerate(logins.items(), start=601)
+        name: bearer(live.sign_in(client, github, login, GITHUB_IDS[login])["token"]) for name, login in LOGINS.items()
     }
     assert client.put(f"/v1/projects/{PROJECT}", json=registration(), headers=headers["admin"]).status_code == 200
     for login, grant in ((OWNER, WRITER), (OTHER, WRITER), (READER, READ_ONLY)):
@@ -933,6 +940,119 @@ def test_rerun_queues_the_step_again_after_a_run_that_ended(client, hub, hub_db)
         PROJECT,
     )
     assert claim(client, worker)["id"] == new["id"]
+
+
+# Dispatch from the web only
+
+
+@pytest.fixture
+def web_client(hub_db, tmp_path, github):
+    """``client`` on a hub that also signs in on the web."""
+    config = live.hub_config(hub_db, tmp_path, github, **live.web_changes(github))
+    with TestClient(create_app(config), base_url="https://hub.test") as client:
+        yield client
+
+
+@pytest.fixture
+def web_hub(web_client, github) -> dict:
+    """What ``hub`` sets up, on ``web_client``, with ``owner_web``: the headers of a write the owner makes signed in on
+    the web, the session cookie and its CSRF header."""
+    headers = members(web_client, github)
+    session = web_sign_in(web_client, github, Account(OWNER, GITHUB_IDS[OWNER]))
+    return headers | {"owner_web": {**cookie(session), "X-Evo-CSRF": csrf_for(web_client, session)}}
+
+
+def dispatch_from(client, hub, worker: dict, value: str) -> None:
+    response = client.post(f"/v1/workers/{worker['id']}/dispatch-from", json={"value": value}, headers=hub["owner_web"])
+    assert response.status_code == 200, response.text
+    assert response.json()["dispatch_from"] == value
+
+
+WEB_ONLY = "takes only runs dispatched from a web session"
+
+
+def test_dispatch_from_each_run_records_the_credential_it_was_dispatched_with(web_client, web_hub, hub_db):
+    client, hub = web_client, web_hub
+    by_token = dispatched(client, hub["owner"], [2])[0]
+    by_web = dispatched(client, hub["owner_web"], [4])[0]
+    assert (by_token["dispatched_via"], by_web["dispatched_via"]) == ("machine", "web")
+    shown = client.get(f"/v1/projects/{PROJECT}/runs/{by_web['id']}", headers=hub["reader"]).json()
+    assert shown["dispatched_via"] == "web"
+    # a rerun records the credential of its own dispatch, not the old run's
+    for run in (by_token, by_web):
+        assert control(client, hub["owner"], run["id"], "cancel").status_code == 200
+    from_web = control(client, hub["owner_web"], by_token["id"], "rerun")
+    from_token = control(client, hub["owner"], by_web["id"], "rerun")
+    assert from_web.status_code == from_token.status_code == 201
+    assert (from_web.json()["dispatched_via"], from_token.json()["dispatched_via"]) == ("web", "machine")
+    # and so does a plan run
+    for run in (from_web.json(), from_token.json()):
+        assert control(client, hub["owner"], run["id"], "cancel").status_code == 200
+    body = {"plan_id": PLAN}
+    plan_run = client.post(f"/v1/projects/{PROJECT}/plan-runs", json=body, headers=hub["owner_web"])
+    assert plan_run.status_code == 201, plan_run.text
+    assert plan_run.json()["dispatched_via"] == "web"
+    assert sql(hub_db, "SELECT dispatched_via, count(*) FROM runs GROUP BY 1 ORDER BY 1") == [
+        ("machine", 2),
+        ("web", 3),
+    ]
+
+
+def test_a_worker_set_to_dispatch_from_web_claims_only_runs_dispatched_from_the_web(web_client, web_hub, hub_db):
+    client, hub = web_client, web_hub
+    guarded = add_worker(client, hub["owner"], "mac-mini")
+    dispatch_from(client, hub, guarded, "web")
+
+    # a token pinning a run to it is refused, saying why, and nothing is queued; a plan run too
+    refused = dispatch(client, hub["owner"], [2], worker_id=guarded["id"])
+    assert refused.status_code == 403 and f"worker mac-mini {WEB_ONLY}" in refused.json()["message"]
+    body = {"plan_id": PLAN, "worker_id": guarded["id"]}
+    plan_run = client.post(f"/v1/projects/{PROJECT}/plan-runs", json=body, headers=hub["owner"])
+    assert plan_run.status_code == 403 and WEB_ONLY in plan_run.json()["message"]
+    assert sql(hub_db, "SELECT count(*) FROM runs") == [(0,)]
+
+    # its claims pass over a run dispatched with a token, and take the next one dispatched from the web
+    by_token = dispatched(client, hub["owner"], [2])[0]
+    assert claim(client, guarded) is None
+    by_web = dispatched(client, hub["owner_web"], [4])[0]
+    assert claim(client, guarded)["id"] == by_web["id"]
+    # the next attempt of a lost run keeps the credential of its dispatch, so it comes back here
+    moved(client, guarded, by_web["id"], "running")
+    expire(hub_db, by_web["id"])
+    assert recover(client)["lost"] == 1
+    retry = claim(client, guarded)
+    assert (retry["parent_run_id"], retry["attempt"]) == (by_web["id"], 2)
+    # a worker of the owner's that takes runs from anywhere takes the run dispatched with a token, and its retry
+    # stays with such workers
+    anywhere = add_worker(client, hub["owner"], "linux-box")
+    assert claim(client, anywhere)["id"] == by_token["id"]
+    moved(client, anywhere, by_token["id"], "running")
+    expire(hub_db, by_token["id"])
+    assert recover(client)["lost"] == 1
+    moved(client, guarded, retry["id"], "running", "failed", error="the agent stopped")
+    assert claim(client, guarded) is None
+    assert claim(client, anywhere)["parent_run_id"] == by_token["id"]
+    assert sql(
+        hub_db,
+        "SELECT dispatched_via FROM runs WHERE parent_run_id = ANY(%s) ORDER BY id",
+        ([by_web["id"], by_token["id"]],),
+    ) == [("web",), ("machine",)]
+
+    # pinned from the web, it takes the run; a rerun of that run with a token is refused, one from the web is not
+    pinned = dispatched(client, hub["owner_web"], [5], worker_id=guarded["id"])[0]
+    assert claim(client, guarded)["id"] == pinned["id"]
+    moved(client, guarded, pinned["id"], "running", "failed", error="the agent stopped")
+    again = control(client, hub["owner"], pinned["id"], "rerun")
+    assert again.status_code == 403 and WEB_ONLY in again.json()["message"]
+    rerun = control(client, hub["owner_web"], pinned["id"], "rerun")
+    assert rerun.status_code == 201, rerun.text
+
+    # a run dispatched before schema 0011 recorded no credential, and is passed over too, until the owner lets the
+    # worker take runs from anywhere again
+    sql(hub_db, "UPDATE runs SET dispatched_via = NULL WHERE id = %s", (rerun.json()["id"],))
+    assert claim(client, guarded) is None
+    dispatch_from(client, hub, guarded, "any")
+    assert claim(client, guarded)["id"] == rerun.json()["id"]
 
 
 # Pruning and the periodic jobs

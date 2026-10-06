@@ -1599,6 +1599,7 @@
           "title",
           "plan_revision",
           "dispatched_by",
+          "dispatched_via",
           "worker_id",
           "worker",
           "pinned_worker_id",
@@ -1680,6 +1681,7 @@
           "title",
           "plan_revision",
           "dispatched_by",
+          "dispatched_via",
           "worker_id",
           "worker",
           "pinned_worker_id",
@@ -1832,6 +1834,7 @@
           "title",
           "plan_revision",
           "dispatched_by",
+          "dispatched_via",
           "worker_id",
           "worker",
           "pinned_worker_id",
@@ -1913,6 +1916,7 @@
           "title",
           "plan_revision",
           "dispatched_by",
+          "dispatched_via",
           "worker_id",
           "worker",
           "pinned_worker_id",
@@ -2239,6 +2243,7 @@
           "title",
           "plan_revision",
           "dispatched_by",
+          "dispatched_via",
           "worker_id",
           "worker",
           "pinned_worker_id",
@@ -2320,6 +2325,7 @@
           "title",
           "plan_revision",
           "dispatched_by",
+          "dispatched_via",
           "worker_id",
           "worker",
           "pinned_worker_id",
@@ -2450,6 +2456,7 @@
           "title",
           "plan_revision",
           "dispatched_by",
+          "dispatched_via",
           "worker_id",
           "worker",
           "pinned_worker_id",
@@ -2531,6 +2538,7 @@
           "title",
           "plan_revision",
           "dispatched_by",
+          "dispatched_via",
           "worker_id",
           "worker",
           "pinned_worker_id",
@@ -9022,6 +9030,101 @@
           }
         }
       },
+      "/v1/workers/{worker_id}/dispatch-from": {
+        "post": {
+          "tags": [
+            "workers"
+          ],
+          "summary": "Set Dispatch From",
+          "description": "Set who may hand the worker its runs: its owner, from a web session only.",
+          "operationId": "set_dispatch_from_v1_workers__worker_id__dispatch_from_post",
+          "parameters": [
+            {
+              "name": "worker_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Worker Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DispatchFrom"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Worker"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
       "/v1/workers/{worker_id}/revoke": {
         "post": {
           "tags": [
@@ -14233,6 +14336,24 @@
           ],
           "title": "Dispatch"
         },
+        "DispatchFrom": {
+          "properties": {
+            "value": {
+              "type": "string",
+              "enum": [
+                "any",
+                "web"
+              ],
+              "title": "Value",
+              "description": "any: runs dispatched with any credential of the owner; web: only runs dispatched from a web session, so a token cannot hand the worker work"
+            }
+          },
+          "type": "object",
+          "required": [
+            "value"
+          ],
+          "title": "DispatchFrom"
+        },
         "ErrorBody": {
           "properties": {
             "error": {
@@ -17931,6 +18052,22 @@
               "title": "Dispatched By",
               "description": "the login of the member who dispatched it, its owner"
             },
+            "dispatched_via": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "machine",
+                    "web"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dispatched Via",
+              "description": "the credential it was dispatched with: web, a web session; machine, a token (the command line, an agent); null for a run dispatched before 0.5.0"
+            },
             "worker_id": {
               "anyOf": [
                 {
@@ -18349,6 +18486,7 @@
             "title",
             "plan_revision",
             "dispatched_by",
+            "dispatched_via",
             "worker_id",
             "worker",
             "pinned_worker_id",
@@ -20858,6 +20996,15 @@
               "type": "boolean",
               "title": "Allow Web Terminal"
             },
+            "dispatch_from": {
+              "type": "string",
+              "enum": [
+                "any",
+                "web"
+              ],
+              "title": "Dispatch From",
+              "description": "who may hand it runs: any, runs its owner dispatched with any credential; web, only runs dispatched from a web session"
+            },
             "held_runs": {
               "type": "integer",
               "title": "Held Runs",
@@ -20922,6 +21069,7 @@
             "checkouts",
             "free_slots",
             "allow_web_terminal",
+            "dispatch_from",
             "held_runs",
             "created_at",
             "last_heartbeat_at",

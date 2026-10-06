@@ -1240,6 +1240,7 @@
         "permissionsValue": "Full, as {owner}",
         "dispatch": "Who dispatches",
         "dispatchValue": "{owner} only",
+        "dispatchWeb": "{owner} only, from the web",
         "terminal": "Web terminal",
         "terminalOn": "Allowed",
         "terminalOff": "Not allowed",
@@ -1283,6 +1284,12 @@
       "revokeConfirm": "Revoke worker",
       "revokePending": "Revoking…",
       "revokeSuccess": "Revoked {name}. Its token no longer works."
+    },
+    "dispatchFrom": {
+      "label": "Only runs dispatched from the web",
+      "hint": "On: this worker claims only runs you dispatch while signed in on the web. Runs dispatched with a token, from the command line or by an agent, wait for another worker, and a token cannot pin a run to it, so a token that leaked cannot hand it work.",
+      "webSuccess": "{name} now takes only runs dispatched from the web.",
+      "anySuccess": "{name} takes runs dispatched from the command line and the web again."
     }
   },
   "runs": {

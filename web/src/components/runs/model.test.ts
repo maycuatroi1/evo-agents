@@ -106,6 +106,7 @@ function worker(overrides: Partial<Worker> = {}): Worker {
     checkouts: { "demo/api": { path: "~/github/api", branch: "main" } },
     free_slots: 2,
     allow_web_terminal: false,
+    dispatch_from: "any",
     held_runs: 0,
     created_at: "2026-10-05T07:00:00Z",
     last_heartbeat_at: "2026-10-05T07:10:00Z",

@@ -447,6 +447,7 @@ def test_answering_a_parked_run_queues_a_run_that_resumes_it_on_the_same_worker(
             "attempt",
             "timeout_min",
             "dispatched_by",
+            "dispatched_via",
         )
     } == {
         "kind": "plan",
@@ -461,6 +462,7 @@ def test_answering_a_parked_run_queues_a_run_that_resumes_it_on_the_same_worker(
         "attempt": 1,
         "timeout_min": 4 * 60,
         "dispatched_by": OWNER,
+        "dispatched_via": "machine",  # the parked run's, which its owner dispatched with a token
     }
     assert ready(client, hub["reader"])["plan_run"]["id"] == new_id
     # the decision still open goes with the run that resumes, and may be answered there

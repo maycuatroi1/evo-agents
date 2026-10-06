@@ -18,7 +18,7 @@ import {
   WifiOff,
 } from "lucide-react";
 import { useFormatter, useTranslations } from "next-intl";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useId, useState } from "react";
 
 import { NoticeArea, type Notice, useNotice } from "@/components/admin/notice";
 import { WorkerRuns } from "@/components/runs/worker-runs";
@@ -28,6 +28,7 @@ import { NotFoundState, PageSkeleton } from "@/components/states/states";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Switch } from "@/components/ui/switch";
 import { browserApi } from "@/lib/api/browser";
 import type { ApiErrorInfo } from "@/lib/api/errors";
 import { whoamiQuery } from "@/lib/queries";
@@ -39,11 +40,19 @@ import { ConfirmByName } from "./confirm-by-name";
 import { HeartbeatStrip } from "./heartbeat-strip";
 import { useRecordPrefetched, useWorkerFailure, useWorkerWrite } from "./hooks";
 import { readCheckouts, readRuntimes, type RuntimeInfo, workerView } from "./model";
-import { changeWorker, type Worker, type WorkerAction, workerKeys, workerQuery } from "./queries";
+import {
+  changeWorker,
+  type DispatchFrom,
+  setDispatchFrom,
+  type Worker,
+  type WorkerAction,
+  workerKeys,
+  workerQuery,
+} from "./queries";
 
 /**
- * One worker: its runtimes, scope and checkouts, the last hour of heartbeats, its latest runs, and drain, resume and
- * revoke.
+ * One worker: its runtimes, scope and checkouts, the last hour of heartbeats, its latest runs, drain, resume and
+ * revoke, and, for its owner, the switch that keeps it to runs dispatched from the web.
  */
 export function WorkerDetail({ id, initialError }: { id: number; initialError: ApiErrorInfo | null }) {
   const t = useTranslations("workers.detail");
@@ -102,7 +111,7 @@ function WorkerPage({
       <StatusNote worker={worker} isOwner={isOwner} admin={Boolean(me?.admin)} />
       <div className="grid gap-4 lg:grid-cols-3">
         <Runtimes worker={worker} />
-        <Scope worker={worker} />
+        <Scope worker={worker} isOwner={isOwner} onNotice={onNotice} />
         <Checkouts worker={worker} />
       </div>
       <Card data-testid="worker-heartbeat">
@@ -259,8 +268,9 @@ function Runtimes({ worker }: { worker: Worker }) {
   );
 }
 
-function Scope({ worker }: { worker: Worker }) {
+function Scope({ worker, isOwner, onNotice }: { worker: Worker; isOwner: boolean; onNotice: (notice: Notice) => void }) {
   const t = useTranslations("workers.detail.scope");
+  const webOnly = worker.dispatch_from === "web";
   return (
     <SectionCard title={t("title")} description={t("description")} testId="worker-scope">
       <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2.5 text-sm">
@@ -280,11 +290,60 @@ function Scope({ worker }: { worker: Worker }) {
           <span>{t("permissionsValue", { owner: worker.owner })}</span>
         </dd>
         <dt className="text-muted-foreground">{t("dispatch")}</dt>
-        <dd>{t("dispatchValue", { owner: worker.owner })}</dd>
+        <dd data-testid="worker-dispatch" data-dispatch-from={worker.dispatch_from}>
+          {webOnly ? t("dispatchWeb", { owner: worker.owner }) : t("dispatchValue", { owner: worker.owner })}
+        </dd>
         <dt className="text-muted-foreground">{t("terminal")}</dt>
         <dd>{worker.allow_web_terminal ? t("terminalOn") : t("terminalOff")}</dd>
       </dl>
+      {isOwner && workerView(worker) !== "revoked" ? <DispatchFromSwitch worker={worker} onNotice={onNotice} /> : null}
     </SectionCard>
+  );
+}
+
+/**
+ * The owner's switch between runs dispatched with any of their credentials and runs dispatched from the web only. The
+ * hub takes the change from a web session alone, and the switch shows what the hub holds: it moves once the hub
+ * answers and the worker is read again.
+ */
+function DispatchFromSwitch({ worker, onNotice }: { worker: Worker; onNotice: (notice: Notice) => void }) {
+  const t = useTranslations("workers.dispatchFrom");
+  const id = useId();
+  const failure = useWorkerFailure();
+  const write = useWorkerWrite((api, value: DispatchFrom) => setDispatchFrom(api, worker.id, value));
+
+  const change = async (webOnly: boolean) => {
+    if (write.isPending) return;
+    try {
+      await write.mutateAsync(webOnly ? "web" : "any"); // resolves once the worker queries were reloaded
+    } catch (error) {
+      const failed = failure(error);
+      onNotice({ tone: "error", text: failed.text, detail: failed.detail, requestId: failed.requestId });
+      return;
+    }
+    onNotice({ tone: "success", text: t(webOnly ? "webSuccess" : "anySuccess", { name: worker.name }) });
+  };
+
+  return (
+    <div className="mt-4 flex items-start gap-3 border-t pt-4" data-testid="worker-dispatch-from">
+      <Switch
+        id={`${id}-switch`}
+        checked={worker.dispatch_from === "web"}
+        onCheckedChange={(on) => void change(on)}
+        aria-describedby={`${id}-hint`}
+        aria-busy={write.isPending || undefined}
+        className="mt-0.5"
+        data-testid="worker-dispatch-from-switch"
+      />
+      <div className="flex min-w-0 flex-col gap-1">
+        <label htmlFor={`${id}-switch`} className="cursor-pointer text-sm font-medium">
+          {t("label")}
+        </label>
+        <p id={`${id}-hint`} className="text-xs leading-snug text-pretty text-muted-foreground">
+          {t("hint")}
+        </p>
+      </div>
+    </div>
   );
 }
 

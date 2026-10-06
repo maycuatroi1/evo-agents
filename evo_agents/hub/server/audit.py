@@ -32,6 +32,8 @@ WORKER_REGISTER = "worker.register"  # a machine registered itself with its mach
 WORKER_DRAIN = "worker.drain"
 WORKER_UNDRAIN = "worker.undrain"
 WORKER_REVOKE = "worker.revoke"  # the worker and its token are revoked, its runs released
+# The owner set, on the web, who may hand the worker runs: "worker:<id> name=<n> owner=<login> dispatch_from=<any|web>"
+WORKER_DISPATCH_FROM = "worker.dispatch_from"
 # Runs happen in a project, which the caller names; a target is "<project>/<plan>#<step> run:<id>" ("<project>/<plan>
 # run:<id>" for a plan run), never a prompt or evidence.
 RUN_DISPATCH = "run.dispatch"  # a member queued a run of a ready step

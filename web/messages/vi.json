@@ -1240,6 +1240,7 @@
         "permissionsValue": "Toàn quyền, như {owner}",
         "dispatch": "Ai dispatch",
         "dispatchValue": "Chỉ {owner}",
+        "dispatchWeb": "Chỉ {owner}, từ web",
         "terminal": "Terminal trên web",
         "terminalOn": "Cho phép",
         "terminalOff": "Không cho phép",
@@ -1283,6 +1284,12 @@
       "revokeConfirm": "Thu hồi worker",
       "revokePending": "Đang thu hồi…",
       "revokeSuccess": "Đã thu hồi {name}. Token của worker không còn hiệu lực."
+    },
+    "dispatchFrom": {
+      "label": "Chỉ nhận run dispatch từ web",
+      "hint": "Bật: worker này chỉ nhận run bạn dispatch khi đăng nhập trên web. Run dispatch bằng token, từ dòng lệnh hay do agent, chờ worker khác, và token không gắn được run vào worker này, nên token bị lộ không giao được việc cho nó.",
+      "webSuccess": "{name} giờ chỉ nhận run dispatch từ web.",
+      "anySuccess": "{name} lại nhận run dispatch từ dòng lệnh và từ web."
     }
   },
   "runs": {
