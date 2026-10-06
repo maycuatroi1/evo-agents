@@ -9566,7 +9566,7 @@
             "runs"
           ],
           "summary": "Rerun",
-          "description": "Queue the step of a run that ended again, with the same runtime, mode, approval, timeout and worker, at the\nplan's current revision.",
+          "description": "Queue the step of a run that ended again, with the same runtime, model, mode, approval, timeout and worker, at\nthe plan's current revision.",
           "operationId": "rerun_v1_projects__project__runs__run_id__rerun_post",
           "parameters": [
             {
@@ -13091,6 +13091,21 @@
               "minimum": 5.0,
               "title": "Timeout Min",
               "default": 60
+            },
+            "model": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "pattern": "^[^\\x00-\\x1f\\x7f]+$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Model",
+              "description": "the model each run uses, as its runtime names it (opencode: provider/model); null: the runtime's own choice"
             }
           },
           "type": "object",
@@ -15711,7 +15726,7 @@
                 }
               ],
               "title": "Model",
-              "description": "the model to use; null: the runtime's"
+              "description": "the model to use, as its runtime names it (opencode: provider/model); null: the runtime's"
             },
             "mode": {
               "type": "string",
@@ -17990,6 +18005,25 @@
               ],
               "title": "Reason",
               "description": "why it is unavailable"
+            },
+            "models": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string",
+                    "maxLength": 200,
+                    "minLength": 1,
+                    "pattern": "^[^\\x00-\\x1f\\x7f]+$"
+                  },
+                  "type": "array",
+                  "maxItems": 200
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Models",
+              "description": "the models the runtime lists on the machine, for a dispatch to suggest; null when it lists none"
             }
           },
           "type": "object",
@@ -19315,7 +19349,7 @@
               "additionalProperties": true,
               "type": "object",
               "title": "Runtimes",
-              "description": "the runtimes its last heartbeat reported, keyed claude-code, opencode or codex, each {available, version, reason}"
+              "description": "the runtimes its last heartbeat reported, keyed claude-code, opencode or codex, each {available, version, reason, models}; models lists what the runtime offers there, null when it lists none"
             },
             "checkouts": {
               "additionalProperties": true,

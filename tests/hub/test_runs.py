@@ -380,6 +380,56 @@ def test_the_claimed_run_comes_with_its_spec_and_prompt(client, hub):
     assert "evo-agents@abc1234: 40 tests pass" in prompt  # the evidence of step 1, which it depends on
 
 
+def test_a_dispatch_of_steps_takes_a_model_the_claim_carries_and_a_rerun_keeps(client, hub, hub_db):
+    worker = add_worker(client, hub["owner"], "mac-mini")
+    for model in ("", "opus\nfast", "m" * (runs.MAX_MODEL_CHARS + 1), 4):
+        refused = dispatch(client, hub["owner"], [2], runtime="claude-code", model=model)
+        assert refused.status_code == 422, model
+    assert sql(hub_db, "SELECT count(*) FROM runs")[0][0] == 0
+    run = dispatched(client, hub["owner"], [2, 4], runtime="claude-code", model="claude-opus-4-1")
+    assert [(item["step_key"], item["model"]) for item in run] == [("2", "claude-opus-4-1"), ("4", "claude-opus-4-1")]
+    spec = claim(client, worker)
+    assert (spec["id"], spec["kind"], spec["runtime"], spec["model"]) == (
+        run[0]["id"],
+        "step",
+        "claude-code",
+        "claude-opus-4-1",
+    )
+    shown = client.get(f"/v1/projects/{PROJECT}/runs/{run[1]['id']}", headers=hub["reader"]).json()
+    assert shown["model"] == "claude-opus-4-1"
+
+    # a rerun keeps the model of the run it reruns, as it keeps its runtime
+    assert control(client, hub["owner"], run[1]["id"], "cancel").status_code == 200
+    again = control(client, hub["owner"], run[1]["id"], "rerun")
+    assert again.status_code == 201, again.text
+    assert (again.json()["model"], again.json()["requested_runtime"]) == ("claude-opus-4-1", "claude-code")
+
+    # without one the runtime chooses: the run and its claim say null
+    moved(client, worker, spec["id"], "cancelled")
+    assert control(client, hub["owner"], again.json()["id"], "cancel").status_code == 200
+    plain = dispatched(client, hub["owner"], [4])[0]
+    assert plain["model"] is None and claim(client, worker)["model"] is None
+
+
+def test_the_heartbeat_keeps_the_models_each_runtime_lists(client, hub):
+    listed = {"available": True, "version": "1.18.34", "models": ["zai-coding-plan/glm-5.3-flash", "openai/gpt-5.5"]}
+    worker = add_worker(client, hub["owner"], "mac-mini", runtimes={**RUNTIMES, "opencode": listed})
+    shown = client.get(f"/v1/workers/{worker['id']}", headers=hub["owner"]).json()
+    assert shown["runtimes"] == {
+        "claude-code": {"available": True, "version": "2.1.289", "reason": None, "models": None},
+        "opencode": {**listed, "reason": None},
+    }
+    too_many = [f"provider/model-{number}" for number in range(runs.MAX_RUNTIME_MODELS + 1)]
+    for models in (too_many, [""], ["opus\nfast"], ["m" * (runs.MAX_MODEL_CHARS + 1)], "opus"):
+        body = {"runtimes": {"opencode": {**listed, "models": models}}, "checkouts": CHECKOUTS, "free_slots": 1}
+        refused = client.post("/v1/worker/heartbeat", json=body, headers=worker["headers"])
+        assert refused.status_code == 422, models
+    most = [f"provider/model-{number}" for number in range(runs.MAX_RUNTIME_MODELS)]
+    beat(client, {**worker, "runtimes": {"opencode": {**listed, "models": most}}})
+    shown = client.get(f"/v1/workers/{worker['id']}", headers=hub["owner"]).json()
+    assert shown["runtimes"]["opencode"]["models"] == most and list(shown["runtimes"]) == ["opencode"]
+
+
 def test_a_worker_of_another_member_never_gets_my_run(client, hub):
     theirs = add_worker(client, hub["other"], "their-box")
     mine = add_worker(client, hub["owner"], "mac-mini")
@@ -509,7 +559,9 @@ def test_a_heartbeat_records_the_machine_extends_the_lease_and_carries_the_cance
     # the worker shows what the heartbeat reported, each runtime and checkout with every key
     shown = client.get(f"/v1/workers/{worker['id']}", headers=hub["owner"]).json()
     assert (shown["status"], shown["free_slots"]) == ("online", 0)
-    assert shown["runtimes"] == {"claude-code": {"available": True, "version": "2.1.289", "reason": None}}
+    assert shown["runtimes"] == {
+        "claude-code": {"available": True, "version": "2.1.289", "reason": None, "models": None}
+    }
     assert shown["checkouts"] == {f"{PROJECT}/evo-agents": {"path": "/src/evo-agents", "branch": "main"}}
     for runtimes, checkouts in (
         ({"claude-code": {"version": "2.1.289"}}, CHECKOUTS),  # available is required

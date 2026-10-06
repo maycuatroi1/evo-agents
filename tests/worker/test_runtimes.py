@@ -32,6 +32,7 @@ import pytest
 
 from evo_agents.worker import adapter as adapter_module
 from evo_agents.worker.adapter import Adapter, AgentEvent, Detection, Outcome, RunContext
+from evo_agents.worker.runtimes import codex as codex_module
 from evo_agents.worker.runtimes import common
 from evo_agents.worker.runtimes import opencode as opencode_module
 from evo_agents.worker.runtimes.claude_code import ClaudeCodeAdapter, events_of
@@ -502,6 +503,21 @@ def test_claude_resumes_the_runs_session_instead_of_making_one(tmp_path):
     assert adapter.options.resume == SESSION and adapter.options.session_id is None
 
 
+def test_claude_code_runs_on_the_model_of_the_run_else_the_environments(tmp_path):
+    from claude_agent_sdk._internal.transport.subprocess_cli import SubprocessCLITransport
+
+    def model_flag(adapter) -> tuple[str | None, str | None]:
+        options = adapter.build_options("/opt/bin/claude")
+        command = SubprocessCLITransport(prompt="", options=options)._build_command()
+        return options.model, command[command.index("--model") + 1] if "--model" in command else None
+
+    variable = {"EVO_WORKER_CLAUDE_CODE_MODEL": "sonnet"}
+    assert model_flag(_claude(tmp_path, _samples, model="opus", env=variable)) == ("opus", "opus")
+    assert model_flag(_claude(tmp_path, _samples, model=None, env=variable)) == ("sonnet", "sonnet")
+    none = {"EVO_WORKER_CLAUDE_CODE_MODEL": ""}
+    assert model_flag(_claude(tmp_path, _samples, env=none)) == (None, None), "Claude Code chooses, as it would"
+
+
 def test_claude_thinking_and_its_todo_list_come_out_as_thoughts_and_a_plan():
     sdk = needs("claude_agent_sdk")
     message = sdk.AssistantMessage(
@@ -831,6 +847,19 @@ def test_a_failed_codex_turn_fails_with_its_error_and_a_resumed_thread_is_the_ru
     events, outcome = asyncio.run(_collect(adapter))
     assert adapter.fake.log[0][:2] == ("thread/resume", THREAD)
     assert outcome == Outcome(False, "codex ended its turn failed: stream disconnected before completion", None, None)
+
+
+def test_codex_starts_its_thread_on_the_model_of_the_run_else_the_environments(tmp_path):
+    variable = {"EVO_WORKER_CODEX_MODEL": "gpt-5.6-luna"}
+    adapter = _codex(tmp_path, _codex_samples, model="gpt-6-astra", env=variable)
+    asyncio.run(_collect(adapter))
+    assert adapter.fake.log[0][0] == "thread/start" and adapter.fake.log[0][1]["model"] == "gpt-6-astra"
+    adapter = _codex(tmp_path, _codex_samples, env=variable)
+    asyncio.run(_collect(adapter))
+    assert adapter.fake.log[0][1]["model"] == "gpt-5.6-luna"
+    adapter = _codex(tmp_path, _codex_samples, model="gpt-6-astra", resume=THREAD)
+    asyncio.run(_collect(adapter))
+    assert adapter.fake.log[0][0] == "thread/resume" and adapter.fake.log[0][2]["model"] == "gpt-6-astra"
 
 
 # opencode
@@ -1184,6 +1213,24 @@ def test_opencode_takes_the_model_of_the_environment_or_its_config_and_refuses_o
     assert adapter.model == ("zai-coding-plan", "glm-5.3-flash")
 
 
+def test_opencode_splits_the_model_of_the_run_into_provider_and_model(tmp_path):
+    adapter = _opencode(
+        tmp_path, _opencode_samples, model="zai-coding-plan/glm-5.3-highspeed", env={"EVO_WORKER_OPENCODE_MODEL": MODEL}
+    )
+    events, outcome = asyncio.run(_collect(adapter))
+    assert adapter.model == ("zai-coding-plan", "glm-5.3-highspeed") and outcome.completed
+    prompt = next(request for request in adapter.fake.requests if request[0] == "prompt")
+    assert prompt[2]["model"] == {"providerID": "zai-coding-plan", "modelID": "glm-5.3-highspeed"}
+
+    # a model of the run that opencode does not list fails the start, and says it was the dispatch's
+    for name in ("zai-coding-plan/glm-9", "glm-5.3-flash"):
+        adapter = _opencode(tmp_path, _opencode_samples, model=name, env={"EVO_WORKER_OPENCODE_MODEL": MODEL})
+        hint = "dispatch it with a model as `opencode models` lists it, provider/model"
+        with pytest.raises(RuntimeError, match=f"opencode lists no model {name}: {hint}"):
+            asyncio.run(_collect(adapter))
+        assert not any(request[0] in ("create", "prompt") for request in adapter.fake.requests)
+
+
 def test_opencode_serve_starts_on_a_free_port_with_a_password_stdin_dev_null_and_its_own_session(tmp_path):
     needs("aiohttp")
     record = tmp_path / "serve.json"
@@ -1251,6 +1298,142 @@ def test_the_event_stream_reads_long_lines_and_events_cut_across_chunks():
 
     events = asyncio.run(read())
     assert [event["type"] for event in events] == ["x", "z"] and len(events[0]["properties"]["text"]) == 200_000
+
+
+# The models each runtime lists, for the heartbeat
+
+
+CLAUDE_HELP = """Usage: claude [options] [command] [prompt]
+
+Options:
+  --fallback-model <model>              Enable automatic fallback to the
+                                        specified model (e.g. 'haiku')
+  --model <model>                       Model for the current session. Provide
+                                        an alias for the latest model (e.g.
+                                        'fable', 'opus', or 'sonnet') or a
+                                        model's full name.
+  -n, --name <name>                     A name for the session, as in 'review'
+"""
+
+
+def _runtime_binary(tmp_path: Path, monkeypatch, name: str, body: str) -> None:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir(exist_ok=True)
+    _script(bin_dir / name, body)
+    monkeypatch.setenv("PATH", str(bin_dir))
+
+
+def test_claude_code_lists_the_model_aliases_its_help_names(tmp_path, monkeypatch):
+    help_text = f"import sys\nprint({CLAUDE_HELP!r} if sys.argv[1:] == ['--help'] else '2.1.289 (Claude Code)')\n"
+    _runtime_binary(tmp_path, monkeypatch, "claude", help_text)
+    assert ClaudeCodeAdapter.models() == ["fable", "opus", "sonnet"], "not the fallback model's, nor another option's"
+    _runtime_binary(tmp_path, monkeypatch, "claude", "print('Usage: claude [options]\\n  --name <name>  a name')\n")
+    assert ClaudeCodeAdapter.models() is None
+    _runtime_binary(tmp_path, monkeypatch, "claude", f"import sys\nprint({CLAUDE_HELP!r})\nsys.exit(1)\n")
+    assert ClaudeCodeAdapter.models() is None, "a help that fails says nothing"
+
+
+def test_opencode_lists_the_models_opencode_models_prints(tmp_path, monkeypatch):
+    printed = (
+        "\x1b]1337;SetUserVar=warp=1\x07zai-coding-plan/glm-5.3-flash\n"
+        "\x1b[2mINFO  loading providers\x1b[0m\n"
+        "openrouter/meta-llama/llama-3.1-8b-instruct:free\r\n"
+        "not a model\n"
+        "\n"
+    )
+    _runtime_binary(tmp_path, monkeypatch, "opencode", f"import sys\nsys.stdout.write({printed!r})\n")
+    assert OpencodeAdapter.models() == [
+        "zai-coding-plan/glm-5.3-flash",
+        "openrouter/meta-llama/llama-3.1-8b-instruct:free",
+    ]
+    _runtime_binary(tmp_path, monkeypatch, "opencode", f"import sys\nsys.stdout.write({printed!r})\nsys.exit(1)\n")
+    assert OpencodeAdapter.models() is None
+    monkeypatch.setenv("PATH", str(tmp_path / "nowhere"))
+    assert OpencodeAdapter.models() is None
+
+
+def test_codex_lists_the_models_of_its_config_then_of_its_model_picker(tmp_path, monkeypatch):
+    home = tmp_path / "codex"
+    home.mkdir()
+    monkeypatch.setenv("CODEX_HOME", str(home))
+    assert CodexAdapter.models() is None, "a codex home without a config names no model"
+    (home / "config.toml").write_text(
+        'model = "gpt-6-astra"\nmodel_reasoning_effort = "xhigh"\n\n'
+        "[profiles.fast]\nmodel = 'gpt-5.6-luna'\n\n"
+        '[projects."/src/demo"]\ntrust_level = "trusted"\n',
+        encoding="utf-8",
+    )
+    assert CodexAdapter.models() == ["gpt-6-astra", "gpt-5.6-luna"]
+    cache = {
+        "fetched_at": "2026-10-06T10:00:00Z",
+        "models": [
+            {"slug": "gpt-6-astra", "visibility": "list"},
+            {"slug": "gpt-reserve", "visibility": "hide"},
+            {"slug": "gpt-5.6-sol", "visibility": "list"},
+            {"visibility": "list"},
+            "gpt-5.5",
+        ],
+    }
+    (home / "models_cache.json").write_text(json.dumps(cache), encoding="utf-8")
+    assert CodexAdapter.models() == ["gpt-6-astra", "gpt-5.6-luna", "gpt-5.6-sol"]
+    monkeypatch.setattr(codex_module, "tomllib", None)  # Python 3.10: the config's model lines
+    assert CodexAdapter.models() == ["gpt-6-astra", "gpt-5.6-luna", "gpt-5.6-sol"]
+    (home / "models_cache.json").write_text("{", encoding="utf-8")
+    (home / "config.toml").write_text("model = [", encoding="utf-8")
+    monkeypatch.setattr(codex_module, "tomllib", pytest.importorskip("tomllib"))
+    assert CodexAdapter.models() is None, "files not in their shape add nothing"
+
+
+class _Listing(Adapter):
+    runtime = "opencode"
+    binary = "opencode"
+
+    @classmethod
+    def detect(cls) -> Detection:
+        return Detection(True, "1.18.34")
+
+    @classmethod
+    def models(cls):
+        return ["a/b", " a/b ", "", "x\ny", "m" * 201, 7, *[f"p/m{number}" for number in range(300)]]
+
+
+class _Unavailable(Adapter):
+    runtime = "codex"
+    binary = "codex"
+
+    @classmethod
+    def detect(cls) -> Detection:
+        return Detection(False, "0.150.0", "too old")
+
+    @classmethod
+    def models(cls):
+        raise AssertionError("the models of a runtime that is not available are not asked for")
+
+
+class _Failing(Adapter):
+    runtime = "claude-code"
+    binary = "claude"
+
+    @classmethod
+    def detect(cls) -> Detection:
+        return Detection(True, "2.1.289")
+
+    @classmethod
+    def models(cls):
+        raise RuntimeError("the help changed")
+
+
+def test_the_heartbeat_reports_the_models_of_available_runtimes_within_the_hubs_bounds(caplog):
+    found = adapter_module.detect_runtimes({"opencode": _Listing, "codex": _Unavailable, "claude-code": _Failing})
+    assert found["opencode"]["models"] == ["a/b", *[f"p/m{number}" for number in range(199)]]
+    assert found["codex"] == {"available": False, "version": "0.150.0", "reason": "too old"}
+    assert found["claude-code"] == {"available": True, "version": "2.1.289", "reason": None}
+    assert "listing the runtime's models failed" in caplog.text
+    long = [f"provider/{number:03d}-" + "m" * 140 for number in range(200)]
+    kept = adapter_module.clean_models(long)
+    assert kept == long[: len(kept)] and 0 < len(kept) < 200
+    assert len(json.dumps(kept).encode()) <= adapter_module.MAX_MODELS_BYTES
+    assert adapter_module.clean_models([]) is None and adapter_module.clean_models(["", " "]) is None
 
 
 # The selftest command
