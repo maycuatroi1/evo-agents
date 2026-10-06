@@ -781,6 +781,8 @@ page's own origin, under the CSP's `connect-src 'self'`.
 | `evo-agents worker ask --category C --question Q [--context-file F] --option KEY=LABEL[:DESCRIPTION] ... [--recommended KEY] [--step KEY]` | for the agent of a plan run: asks the run's owner a decision, 2 to 6 options, and prints its id |
 | `evo-agents worker notify --kind push_default_branch\|merge_default_branch --title T [--body B] [--repo R] [--branch B] [--commit SHA ...]` | for the agent of a plan run: sends the run's owner a notice of a push or merge into a default branch |
 | `evo-agents worker plan [--json]` | for the agent of a plan run: prints the run's plan as the hub holds it now |
+| `evo-agents worker git-credential --run N get\|store\|erase` | git's credential helper for run N, named by the run's git configuration: `get` answers from the run's leases through its socket, `store` and `erase` do nothing (see [docs/credentials.md](credentials.md)) |
+| `evo-agents worker env --run N` | prints what run N's leases add to its agent's environment as `export` lines; an interactive pane evaluates it |
 
 `join` and `register` refuse a machine that is a worker already, unless `--replace` is given. When the machine is
 signed in to the same hub, they keep the repos of the worker's projects as the hub lists them, and `run` reads them
@@ -794,9 +796,10 @@ projects; `worker.log` (0600) the daemon's JSON log lines, rotated at 10 MiB wit
 pairing codes and presigned signatures masked; `service.log` what the daemon printed under launchd before its log
 was open; `daemon.pid`, locked while a daemon runs, so a second one refuses to start; `spool/` the events not
 acknowledged yet; `runs/<id>/` what the daemon knows of each run and its whole event log (and, for a plan run, the
-decisions its agent asked, `decisions.jsonl`; and, until the run ends on this machine, `agent.json`: the pid and the
-process group of the agent the run started last, and when its leader started as `ps` prints it); `worktrees/` the
-runs' worktrees, and each plan run's directory.
+decisions its agent asked, `decisions.jsonl`; until the run ends on this machine, `agent.json`: the pid and the
+process group of the agent the run started last, and when its leader started as `ps` prints it; and, while the run
+holds leases, `cred.sock` (0600), the socket the daemon hands them through, to its own uid only); `worktrees/` the
+runs' worktrees, and each plan run's directory. No lease value is ever written under it.
 
 ### Runtimes and checkouts
 
@@ -867,7 +870,10 @@ hands it no run.
 
 ### A run on the machine
 
-1. The daemon fetches `origin` in the checkout and makes the worktree `~/.evo/worker/worktrees/<project>-<run>` on
+1. The daemon takes the run's leases from the hub (`POST /v1/worker/runs/{id}/credentials`, see
+   [docs/credentials.md](credentials.md)), so its fetch and push and its agent use them; each repo whose origin no
+   lease covers gets a `system` event "no leased credential for {origin}: {reason}; git uses this machine's own". It
+   fetches `origin` in the checkout and makes the worktree `~/.evo/worker/worktrees/<project>-<run>` on
    the plan's branch for the repo, from `origin/<branch>` when the remote has it, else the local branch, else the
    remote's default branch. When that branch is checked out in another worktree (the owner's checkout, say), or has
    local commits the start lacks, the worktree is on `evo-run/<run>` instead and the push still goes to the plan's
@@ -904,13 +910,14 @@ hands it no run.
 
 ### A plan run on the machine
 
-1. The daemon makes the directory `~/.evo/worker/worktrees/<project>-<run>` and, in it, a worktree of each repo of
-   the run, named as the repo, on the branch the plan names for that repo: from `origin/<branch>` when the remote has
-   it, else the local branch, else the remote's default branch, as for a run of one step. When that branch is checked
-   out elsewhere, or has local commits the start lacks, the worktree is on `evo-run/<run>/<repo>` and the pushes still
-   go to the plan's branch. A repo the plan names no branch for fails the run before the agent starts, and so does a
-   default branch of the repo the plan does not name for it. The plan as claimed goes to `.evo-run/plan.yaml` in the
-   directory.
+1. The daemon takes the run's leases for all its repos, as for a run of one step, so the agent's `evo-agents worker
+   step` pushes with them too. It makes the directory `~/.evo/worker/worktrees/<project>-<run>` and, in it, a worktree
+   of each repo of the run, named as the repo, on the branch the plan names for that repo: from `origin/<branch>` when
+   the remote has it, else the local branch, else the remote's default branch, as for a run of one step. When that
+   branch is checked out elsewhere, or has local commits the start lacks, the worktree is on `evo-run/<run>/<repo>` and
+   the pushes still go to the plan's branch. A repo the plan names no branch for fails the run before the agent starts,
+   and so does a default branch of the repo the plan does not name for it. The plan as claimed goes to
+   `.evo-run/plan.yaml` in the directory.
 2. The agent starts in that directory (not in a repo), with `EVO_RUN_ID`, `EVO_RUN_KIND=plan` and `EVO_WORKER_HOME`
    in its environment, and the daemon reports `running`. The agent works through four commands that read the run
    from those variables and its record under `EVO_WORKER_HOME`, call the hub with the worker's token, and refuse to
@@ -974,7 +981,9 @@ starts, and a takeover is noted as unsupported while the run goes on headless.
 - **The pane.** tmux runs the UI through a script in the run's directory (mode 0700, removed once read) that enters
   the worktree, sets the agent's environment over the tmux server's and executes the UI, so the UI has the run's
   variables whatever server it lands on: the default one, the one of `$TMUX` when the daemon runs inside tmux, or
-  `EVO_WORKER_TMUX_SOCKET`. `evo-agents worker attach N` reads the server from the run's record.
+  `EVO_WORKER_TMUX_SOCKET`. What the run's leases add to that environment is not in the script, which runs
+  `eval "$(evo-agents worker env --run N)"` instead, so no lease value is written to disk. `evo-agents worker attach N`
+  reads the server from the run's record.
 - **The log.** While a person drives the agent, the run's log follows the runtime's own record of the session, in the
   same event kinds: Claude Code's transcript (`<config>/projects/*/<ID>.jsonl`), Codex's rollout
   (`$CODEX_HOME/sessions/Y/M/D/rollout-*-<ID>.jsonl`, the one whose `session_meta` names the worktree for a new
@@ -1049,6 +1058,8 @@ command says so, and `evo-agents worker run` can go under a supervisor of your o
   the old file said; other variables are not kept.
 - Stopping the service, by `uninstall` or at logout, sends the daemon SIGTERM and kills what is left 60 seconds later
   (launchd `ExitTimeOut`, systemd `KillMode=mixed` and `TimeoutStopSec=60`).
+- The daemon, and so its agents, start with umask 077 (launchd `Umask` 63, systemd `UMask=0077`): what a run writes
+  is the user's alone.
 - The daemon writes `worker.log` itself. What it prints before that log is open goes to `service.log` in the state
   directory on macOS, and to `journalctl --user -u evo-agents-worker` on Linux.
 - systemd stops a user's services when the user logs out; `loginctl enable-linger` keeps them running, and the

@@ -129,8 +129,9 @@ while the run's row is locked; when the run ended in between, the tokens just ma
 ## Life of a lease
 
 1. **Ask.** The daemon asks right after its claim, before it prepares worktrees, so fetch already uses the lease.
-2. **Refresh.** A GitHub token with less than `GITHUB_TOKEN_REFRESH_SECONDS` (10 minutes) left is asked for again; a
-   push that fails to authenticate asks once more and retries. Runs of a plan may last 24 hours.
+2. **Refresh.** A GitHub token with less than `GITHUB_TOKEN_REFRESH_SECONDS` (10 minutes) left is asked for again
+   before git gets it, so a fetch or push never starts with a token about to end; while the hub does not answer, git
+   gets the token it has. Runs of a plan may last 24 hours.
 3. **Give back.** When the run ends, is parked, or the daemon stops, the daemon calls `DELETE` on the same route,
    whatever state the run is in by then (404 only for a run this worker never held). The hub marks the leases
    revoked, revokes each GitHub token (`DELETE /installation/token`), drops its sealed value, audits
@@ -144,16 +145,24 @@ while the run's row is locked; when the run ended in between, the tokens just ma
 
 ## How the daemon hands leases over
 
-- **Memory only.** Leases live in the daemon's memory, never in a file, a log line or an event: logs and the spool of
-  events mask every lease value.
-- **A socket per run.** The daemon listens on `cred.sock` in the run's directory (mode 0700), and answers only
-  processes of its own uid.
-- **git.** The env of the run's git and of its agent carries `GIT_CONFIG_COUNT` entries: for each leased origin an
-  empty `credential.{url}.helper` (which drops the machine's own helpers, such as `gh auth git-credential`, for that
-  URL) followed by `!evo-agents worker git-credential --run N`, `credential.useHttpPath=true`, and, when the origin is
-  SSH, `url.{https url}.insteadOf={ssh origin}`. The machine's git config is not touched.
+- **Memory only.** Leases live in the daemon's memory (`evo_agents/worker/credentials.py`), never in a file, a log
+  line or an event: worker.log masks every lease value, and so does the filter each event of the run goes through
+  before the spool.
+- **A socket per run.** The daemon listens on `runs/<id>/cred.sock` (mode 0600, in the run's directory, mode 0700) while
+  the run holds leases, and answers only processes of its own uid (`SO_PEERCRED` on Linux, `getpeereid` on macOS):
+  one JSON request a connection, git's credential for a URL or the variables of the agent's environment.
+- **git.** The env of the run's git (the daemon's fetch and push) and of its agent carries `GIT_CONFIG_COUNT` entries,
+  after any the daemon's own environment sets: for each origin of the run's checkouts that a `git` lease covers, keyed
+  by its https URL (the origin itself when it is http or https), an empty `credential.{url}.helper` (which drops the
+  machine's own helpers, such as osxkeychain or `gh auth git-credential`, for that URL) followed by `!evo-agents worker
+  git-credential --run N` (this evo-agents by absolute path), `credential.{url}.useHttpPath=true`, so the helper
+  learns which repo git asks for and picks the lease with the longest `url_prefix` covering it, and, when the origin
+  is SSH, `url.{https url}.insteadOf={ssh origin}`. Origins no lease covers keep the machine's helpers, and the
+  machine's git config is not touched. `git-credential` answers `get` from the socket and does nothing on `store` and
+  `erase`; once the run gave its leases back it answers nothing, so git fails to authenticate.
 - **Environment.** `env` leases go into the agent's environment. An interactive pane does not write them into its
-  script; it runs `eval "$(evo-agents worker env --run N)"`, which asks the socket.
+  script; it runs `eval "$(evo-agents worker env --run N)"`, which asks the socket and prints them as `export` lines.
+- **Umask.** The service starts the daemon, and so its agents, with umask 077.
 - **No lease, machine's own.** An origin in `missing` gets a system event "no leased credential for {origin}:
   {reason}; git uses this machine's own", and git falls back to the machine's credentials, as before 0.5.0. A
   laptop whose owner set no secret runs as it always did.

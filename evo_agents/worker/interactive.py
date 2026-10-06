@@ -19,7 +19,9 @@
   escape sequences removed.
 - ``Tmux`` runs tmux: the default server, or the one of ``$TMUX`` when the daemon runs inside tmux, or
   ``EVO_WORKER_TMUX_SOCKET``. A UI starts through a script of its own (0700, in the run's directory, removed once it
-  is read), which sets the agent's environment whatever the tmux server's is.
+  is read), which sets the agent's environment whatever the tmux server's is. The variables the run's leases add to
+  that environment are not in the script: it evaluates ``evo-agents worker env --run N`` instead, which asks the run's
+  socket for them (``credentials``), so no lease value is ever written to disk.
 - ``WebTerminal`` is the worker's end of the web terminal (``evo_agents.hub.terminal`` holds the frames): when the
   heartbeat says ``terminal_open`` for an interactive run, the daemon opens a websocket to the hub with aiohttp and
   joins it to ``tmux attach`` on a PTY of its own. The last RING_BYTES of what that terminal printed are kept for the
@@ -290,11 +292,13 @@ class Tmux:
         scratch: Path,
         drop: Iterable[str] = (),
         size: tuple[int, int] = WINDOW,
+        withheld: Iterable[str] = (),
+        env_command: str | None = None,
     ) -> None:
-        """A detached session ``name`` whose one pane runs ``argv`` in ``cwd`` with ``env``. A session of that name left
-        by an earlier daemon is killed first."""
+        """A detached session ``name`` whose one pane runs ``argv`` in ``cwd`` with ``env``, but for ``withheld``, which
+        ``env_command`` prints (``write_script``). A session of that name left by an earlier daemon is killed first."""
         await self.kill(name)
-        script = write_script(scratch / f"{name}.sh", argv, env, cwd, drop)
+        script = write_script(scratch / f"{name}.sh", argv, env, cwd, drop, withheld=withheld, env_command=env_command)
         try:
             code, out = await self.run(
                 "new-session",
@@ -367,16 +371,31 @@ def _locale(env: Mapping[str, str]) -> dict[str, str]:
     return {"LANG": "en_US.UTF-8" if sys.platform == "darwin" else "C.UTF-8"}
 
 
-def write_script(path: Path, argv: list[str], env: Mapping[str, str], cwd: Path, drop: Iterable[str] = ()) -> Path:
+def write_script(
+    path: Path,
+    argv: list[str],
+    env: Mapping[str, str],
+    cwd: Path,
+    drop: Iterable[str] = (),
+    *,
+    withheld: Iterable[str] = (),
+    env_command: str | None = None,
+) -> Path:
     """The script tmux runs in the pane: it removes itself, enters ``cwd``, exports ``env`` over what the tmux server
     gives a pane (but for what tmux sets per pane), unsets ``drop`` and executes ``argv``. Mode 0700, as the run's
-    directory it lies in."""
-    dropped = set(drop)
+    directory it lies in.
+
+    The variables in ``withheld``, which the run's leases set, are left out of the script: it evaluates the export
+    lines ``env_command`` prints instead (``evo-agents worker env --run N``), after the other variables and before the
+    unsets, so the values never touch the disk."""
+    dropped, hidden = set(drop), set(withheld)
     lines = ["#!/bin/sh", 'rm -f -- "$0"', f"cd -- {shlex.quote(str(cwd))} || exit 1"]
     for key, value in {**env, **_locale(env)}.items():
-        if key in KEPT_BY_TMUX or key in dropped or not _NAME.match(key) or "\0" in value:
+        if key in KEPT_BY_TMUX or key in dropped or key in hidden or not _NAME.match(key) or "\0" in value:
             continue
         lines.append(f"export {key}={shlex.quote(value)}")
+    if env_command:
+        lines.append(f'eval "$({env_command})"')
     for key in sorted(dropped):
         if _NAME.match(key):
             lines.append(f"unset {key}")

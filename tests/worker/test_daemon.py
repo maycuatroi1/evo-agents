@@ -12,7 +12,13 @@ status, drain and revoke.
 Step 6 of the plan-runs-and-decisions plan: the run's commit leaves out what hooks wrote (``.claude/skills/.learned/``)
 and copies of hub plans as the hub wrote them, and names them in the run's log; an agent a daemon killed with SIGKILL
 left running is stopped by the next daemon, which removes the run's worktree and evo-run branch once the hub no longer
-holds the run, and keeps the worktree of a run the hub parked."""
+holds the run, and keeps the worktree of a run the hub parked.
+
+Step 8 of the worker-credentials plan: a run whose owner set secrets fetches and pushes its origin, a ``git
+http-backend`` behind Basic auth, with its lease, its agent gets the env lease and the lease's token from ``git
+credential fill``, the machine's own helper is never asked, no event, log line or file under HOME holds a value, and
+the push fails once the run gave its leases back; a hub without secrets leaves the run to the machine's credentials,
+with a note saying so."""
 
 import asyncio
 import json
@@ -31,6 +37,7 @@ from pathlib import Path
 import pytest
 
 from tests.hub import live, pg
+from tests.worker.git_http import GitHttp
 
 if not pg.DSN:
     pytest.skip(pg.SKIP_REASON, allow_module_level=True)
@@ -416,6 +423,11 @@ def test_a_run_is_claimed_verified_committed_and_pushed_with_its_events_on_the_h
     texts = [event["body"].get("text", "") for event in events if event["kind"] == "system"]
     assert "verify: `test -f feature.txt` exited 0" in " ".join(texts)
     assert any(text.startswith("Pushed ") for text in texts)
+    assert any(
+        text.startswith(f"no leased credential for {stack.origin}: this hub keeps no secrets")
+        and text.endswith("; git uses this machine's own")
+        for text in texts
+    ), "a hub without secrets leaves the run to the machine's credentials, and the run's log says so"
     moves = [event["body"]["to"] for event in events if event["kind"] == "state"]
     assert moves == ["leased", "running", "verifying", "done"]
 
@@ -908,4 +920,92 @@ def test_an_orphan_agent_of_a_run_the_hub_still_holds_is_stopped_and_its_lease_r
 
     stack.scenarios({})  # the next attempt, which this daemon may claim, ends at once
     wait_until(lost, "the run's lease to run out: no heartbeat after the first names it", explain=stack.daemon_output)
+    finished_cleanly(stack, proc)
+
+
+def test_a_run_fetches_and_pushes_with_its_leases_which_it_gives_back_at_its_end(make_stack, hub_db, github):
+    import secrets as random
+
+    token, oauth = "glpat-" + random.token_hex(16), "oauth-" + random.token_hex(16)
+    stack = make_stack(secrets_key=random.token_bytes(32))
+    called = stack.tmp / "machine-helper-called"
+    helper = stack.tmp / "machine-helper.sh"
+    helper.write_text(f'#!/bin/sh\necho "$1" >> {called}\ncat > /dev/null\n', encoding="utf-8")
+    helper.chmod(0o755)
+    (stack.home / ".gitconfig").write_text(f"[credential]\n\thelper = !{helper}\n", encoding="utf-8")
+    cli_log, seen_config = stack.tmp / "cli.jsonl", stack.tmp / "git-config.env"
+    stack.env.update({"GIT_CONFIG_NOSYSTEM": "1", "EVO_FAKE_CLI": str(cli_log)})
+
+    with GitHttp(stack.tmp, "oauth2", token) as server:  # serves the bare origin.git of the stack
+        origin = server.repo_url("origin.git")
+        git("remote", "set-url", "origin", origin, cwd=stack.checkout, env=stack.env)
+        admin = bearer(live.sign_in(stack.client, github, ADMIN, 801)["token"])
+        body = registration()
+        body["repos"] = [{**repo, "origin": origin} if repo["name"] == REPO else repo for repo in body["repos"]]
+        assert stack.client.put(f"/v1/projects/{PROJECT}", json=body, headers=admin).status_code == 200
+        prefix = server.url.replace("http://", "https://")
+        for name, secret in {
+            "local-git": {"kind": "git", "url_prefix": prefix, "value": token},
+            "claude-oauth": {"kind": "env", "env_var": "CLAUDE_CODE_OAUTH_TOKEN", "value": oauth},
+        }.items():
+            response = stack.client.put(
+                f"/v1/secrets/{name}", json={**secret, "projects": [PROJECT]}, headers=stack.owner
+            )
+            assert response.status_code == 200, response.text
+        stack.scenarios(
+            {
+                "2": [
+                    {"sh": f'test "$CLAUDE_CODE_OAUTH_TOKEN" = "{oauth}"'},
+                    {"sh": f"printf 'url={origin}\\n\\n' | git credential fill"},
+                    {"sh": f"env | grep '^GIT_CONFIG_' > {seen_config}"},
+                    {"write": {"feature.txt": "leased\n"}},
+                    {"commit": "agent: leased"},
+                    {"result": {"verify_commands": ["test -f feature.txt"]}},
+                ]
+            }
+        )
+        stack.register()
+        proc = stack.start_daemon()
+        run_id = stack.dispatch([2])[0]["id"]
+        run = stack.wait_state(run_id, "done", "failed")
+        assert run["state"] == "done", (run["error"], stack.daemon_output()[-6000:])
+        wait_until(lambda: not (stack.state / "runs" / str(run_id) / "cred.sock").exists(), "the run's socket to go")
+
+        # The fetch and the push went with the lease; the agent had its token and its variable.
+        assert run["commit_sha"] == stack.origin_rev(f"refs/heads/{BRANCH}")
+        assert server.statuses("POST") and set(server.statuses("POST")) == {200}
+        commands = [json.loads(line) for line in cli_log.read_text(encoding="utf-8").splitlines()]
+        assert [item["exit"] for item in commands] == [0, 0, 0], commands
+        assert f"password={token}" in commands[1]["stdout"].splitlines(), "git credential fill answers the lease"
+        assert not called.exists(), "the machine's own helper was never asked"
+
+        # The leases went back at the end of the run, and git has no credential for the origin any more.
+        rows = live.sql(hub_db, "SELECT revoked_at IS NOT NULL FROM credential_leases WHERE run_id = %s", (run_id,))
+        assert rows and all(revoked for (revoked,) in rows)
+        config = dict(line.split("=", 1) for line in seen_config.read_text(encoding="utf-8").splitlines())
+        worktree = stack.worktree(run_id)
+        git("checkout", "--quiet", "-B", "after-the-run", cwd=worktree, env=stack.env)
+        (worktree / "late.txt").write_text("late\n", encoding="utf-8")
+        git("add", "late.txt", cwd=worktree, env=stack.env)
+        git("commit", "--quiet", "-m", "late", cwd=worktree, env=stack.env)
+        late = subprocess.run(
+            ["git", "-C", str(worktree), "push", "origin", "HEAD:refs/heads/late"],
+            capture_output=True,
+            text=True,
+            env={**stack.env, "GIT_TERMINAL_PROMPT": "0", **config},
+            timeout=120,
+        )
+        assert late.returncode != 0 and stack.origin_rev("refs/heads/late") is None, late.stderr
+        assert not called.exists()
+
+    # No value in the run's events, worker.log or any file under HOME.
+    events = json.dumps(stack.events(run_id))
+    assert token not in events and oauth not in events
+    assert 'test \\"$CLAUDE_CODE_OAUTH_TOKEN\\" = \\"***\\"' in events, "the agent's command, masked"
+    stored = [
+        path
+        for path in stack.home.rglob("*")
+        if path.is_file() and (token.encode() in path.read_bytes() or oauth.encode() in path.read_bytes())
+    ]
+    assert stored == [], stored
     finished_cleanly(stack, proc)
