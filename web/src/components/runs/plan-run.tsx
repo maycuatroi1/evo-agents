@@ -119,10 +119,10 @@ export function RunPlanButton({
 
 const BANNER_TONE = {
   queued: "border-border bg-card",
-  running: "border-primary/30 bg-accent",
-  waiting: "border-warning-foreground/30 bg-warning",
+  running: "border-running/30 bg-running-soft",
+  waiting: "border-attention/30 bg-attention-soft",
   parked: "border-border bg-muted/60",
-  review: "border-warning-foreground/30 bg-warning",
+  review: "border-review/30 bg-review-soft",
 } as const;
 
 /**
@@ -155,7 +155,7 @@ export function PlanRunBanner({ project, run, steps }: { project: string; run: R
   return (
     <section
       aria-labelledby={`${ids}-title`}
-      className={cn("flex flex-col gap-3 rounded-xl border p-4", BANNER_TONE[phase])}
+      className={cn("flex flex-col gap-3 rounded-md border p-4", BANNER_TONE[phase])}
       data-testid="plan-run-banner"
       data-run-id={run.id}
       data-phase={phase}
@@ -223,16 +223,16 @@ export function PlanRunBanner({ project, run, steps }: { project: string; run: R
           aria-valuenow={done}
           aria-label={t("progressLabel")}
         >
-          <div className="h-full rounded-full bg-primary transition-[width] duration-200 motion-reduce:transition-none" style={{ width: `${percent(done, total)}%` }} />
+          <div className="h-full rounded-full bg-running transition-[width] duration-slow motion-reduce:transition-none" style={{ width: `${percent(done, total)}%` }} />
         </div>
         {working.length > 0 ? (
           <ul className="flex flex-col gap-1 text-sm" aria-label={t("inProgress")} data-testid="plan-run-banner-working">
             {working.map((step) => (
               <li key={step.key} className="flex min-w-0 items-start gap-1.5">
-                <CircleDot className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden="true" />
+                <CircleDot className="mt-0.5 size-4 shrink-0 text-running" aria-hidden="true" />
                 <span className="min-w-0 [overflow-wrap:anywhere]">
                   <span className="text-muted-foreground">{t("now")}</span>{" "}
-                  <Link href={stepHref(project, run.plan_id, step.key)} className="text-primary underline-offset-4 hover:underline">
+                  <Link href={stepHref(project, run.plan_id, step.key)} className="text-brand underline-offset-4 hover:underline">
                     {t("step", { key: step.key, title: step.title ?? step.what?.split("\n")[0] ?? "" })}
                   </Link>
                 </span>

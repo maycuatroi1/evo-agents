@@ -196,11 +196,11 @@ function DispatchForm({
             {plans.isPending ? (
               <Skeleton className="h-9 w-full" />
             ) : plans.isError ? (
-              <p className="text-sm text-destructive" role="alert">
+              <p className="text-sm text-danger" role="alert">
                 {t("plansFailed")}
               </p>
             ) : choices.length === 0 ? (
-              <p className="rounded-lg border border-dashed px-3 py-2 text-sm text-muted-foreground" data-testid="dispatch-no-plans">
+              <p className="rounded-md border border-dashed px-3 py-2 text-sm text-muted-foreground" data-testid="dispatch-no-plans">
                 {t("noPlans")}
               </p>
             ) : (
@@ -315,7 +315,7 @@ function DispatchForm({
         </Section>
 
         {tooMany ? (
-          <p className="text-sm font-medium text-destructive" role="alert">
+          <p className="text-sm font-medium text-danger" role="alert">
             {t("tooMany", { max: MAX_DISPATCH_STEPS })}
           </p>
         ) : null}
@@ -361,7 +361,7 @@ export function PlanRunHoldNote({ project, hold, testId }: { project: string; ho
   const t = useTranslations("runs.planRun");
   const tState = useTranslations("runs.state");
   return (
-    <p className="flex items-start gap-2 rounded-lg border border-dashed px-3 py-2.5 text-sm text-pretty text-muted-foreground" data-testid={testId}>
+    <p className="flex items-start gap-2 rounded-md border border-dashed px-3 py-2.5 text-sm text-pretty text-muted-foreground" data-testid={testId}>
       <Info className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
       <span>
         {t.rich("holds", {
@@ -369,7 +369,7 @@ export function PlanRunHoldNote({ project, hold, testId }: { project: string; ho
           state: tState(hold.run.state),
           login: hold.run.dispatched_by,
           link: (chunks) => (
-            <Link href={runHref(project, hold.run.id)} className="font-medium text-primary underline-offset-4 hover:underline">
+            <Link href={runHref(project, hold.run.id)} className="font-medium text-brand underline-offset-4 hover:underline">
               {chunks}
             </Link>
           ),
@@ -409,7 +409,7 @@ function StepPicker({
           <Skeleton className="h-12 w-full" />
         </div>
       ) : state.isError && steps.length === 0 ? (
-        <p className="text-sm text-destructive" role="alert">
+        <p className="text-sm text-danger" role="alert">
           {t("stepsFailed")}
         </p>
       ) : (
@@ -426,7 +426,7 @@ function StepPicker({
             </div>
           ) : null}
           {open.length === 0 ? (
-            <p className="rounded-lg border border-dashed px-3 py-2.5 text-sm text-muted-foreground" data-testid="dispatch-no-open">
+            <p className="rounded-md border border-dashed px-3 py-2.5 text-sm text-muted-foreground" data-testid="dispatch-no-open">
               {t("noOpen")}
             </p>
           ) : (
@@ -445,8 +445,8 @@ function StepPicker({
             </p>
           ) : null}
           {settled.length > 0 ? (
-            <details className="group rounded-lg border" data-testid="dispatch-settled">
-              <summary className="flex min-h-10 cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm text-muted-foreground hover:bg-muted/50">
+            <details className="group rounded-md border" data-testid="dispatch-settled">
+              <summary className="flex min-h-10 cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-muted/50">
                 {t("settled", { count: settled.length })}
               </summary>
               <ul className="flex flex-col gap-2 border-t p-2">

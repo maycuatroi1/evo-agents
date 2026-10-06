@@ -68,11 +68,11 @@ function Stats({ stats }: { stats: Record<string, number> }) {
           <CardContent>
             <dl className="grid grid-cols-2 gap-3">
               {group.tables.map((table) => (
-                <div key={table} className="flex flex-col gap-1 rounded-lg border bg-background/60 px-3 py-2.5">
+                <div key={table} className="flex flex-col gap-1 rounded-md border bg-background/60 px-3 py-2.5">
                   <dt className="truncate text-xs text-muted-foreground">
                     {isKnown(table) ? t(`tables.${table}`) : <span className="font-mono">{table}</span>}
                   </dt>
-                  <dd className="font-mono text-xl font-semibold tabular-nums" aria-label={t("rows", { count: stats[table] })}>
+                  <dd className="font-mono text-xl font-medium tabular-nums" aria-label={t("rows", { count: stats[table] })}>
                     {format.number(stats[table])}
                   </dd>
                 </div>

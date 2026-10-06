@@ -42,7 +42,7 @@ export function Chip({ children, mono = true }: { children: ReactNode; mono?: bo
   return (
     <span
       className={cn(
-        "inline-flex max-w-full items-center rounded-md border px-1.5 py-px text-xs text-muted-foreground [overflow-wrap:anywhere]",
+        "inline-flex max-w-full items-center rounded-sm border px-1.5 py-px text-xs text-muted-foreground [overflow-wrap:anywhere]",
         mono && "font-mono",
       )}
     >

@@ -55,10 +55,10 @@ function NoticeBox({ notice, onDismiss }: { notice: Notice; onDismiss: () => voi
     <div
       data-tone={notice.tone}
       className={cn(
-        "flex items-start gap-3 rounded-lg border px-3 py-2.5 text-sm",
+        "flex items-start gap-3 rounded-md border px-3 py-2.5 text-sm",
         notice.tone === "success"
-          ? "border-success-foreground/20 bg-success text-success-foreground"
-          : "border-destructive/30 bg-card text-destructive",
+          ? "border-success/20 bg-success-soft text-success"
+          : "border-danger/30 bg-card text-danger",
       )}
     >
       <Icon className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
@@ -90,7 +90,7 @@ export function InlineError({ text, detail, requestId }: { text: string; detail?
     <div
       role="alert"
       data-testid="admin-dialog-error"
-      className="flex items-start gap-2.5 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2.5 text-sm text-destructive"
+      className="flex items-start gap-2.5 rounded-md border border-danger/30 bg-danger-soft px-3 py-2.5 text-sm text-danger"
     >
       <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
       <div className="flex min-w-0 flex-col gap-1">

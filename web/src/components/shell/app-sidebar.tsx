@@ -43,7 +43,7 @@ export function AppSidebar() {
         <Link
           href="/"
           onClick={closeOnMobile}
-          className="flex items-center gap-2.5 rounded-md px-1.5 py-1 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0"
+          className="flex items-center gap-2.5 rounded-sm px-1.5 py-1 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0"
         >
           <BrandMark className="size-7" />
           <span className="truncate text-sm font-semibold tracking-tight group-data-[collapsible=icon]:hidden">

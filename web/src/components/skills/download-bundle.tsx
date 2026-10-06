@@ -84,7 +84,7 @@ export function DownloadBundle({
             : kind === "network"
               ? t("network")
               : t("failed", { status: error.status, requestId: error.requestId ?? "-" });
-    message = <span className="text-destructive">{text}</span>;
+    message = <span className="text-danger">{text}</span>;
   }
 
   const label = compact ? t("short") : t("button", { version });

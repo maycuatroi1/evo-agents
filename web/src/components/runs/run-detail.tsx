@@ -88,7 +88,7 @@ function RunPage({ run }: { run: Run }) {
   const plan = run.kind === "plan";
   const title = run.title ?? (plan ? run.plan_id : t("untitled"));
   const planLink = (chunks: ReactNode) => (
-    <Link href={planHref(run.project, run.plan_id)} className="font-mono text-primary underline-offset-4 hover:underline" data-testid="run-plan-link">
+    <Link href={planHref(run.project, run.plan_id)} className="font-mono text-brand underline-offset-4 hover:underline" data-testid="run-plan-link">
       {chunks}
     </Link>
   );
@@ -117,7 +117,7 @@ function RunPage({ run }: { run: Run }) {
                 stepLink: (chunks) => (
                   <Link
                     href={stepHref(run.project, run.plan_id, run.step_key ?? "")}
-                    className="text-primary underline-offset-4 hover:underline"
+                    className="text-brand underline-offset-4 hover:underline"
                     data-testid="run-step-link"
                   >
                     {chunks}

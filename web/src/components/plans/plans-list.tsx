@@ -39,7 +39,7 @@ function PlanRunLink({ project, run }: { project: string; run: Run }) {
   return (
     <Link
       href={runHref(project, run.id)}
-      className="w-fit rounded-md underline-offset-4 hover:underline"
+      className="w-fit rounded-sm underline-offset-4 hover:underline"
       aria-label={t("listLink", { id: run.id, state: t(`phase.${phase}Long`) })}
       data-testid="plan-run-link"
       data-run-id={run.id}
@@ -106,7 +106,7 @@ function PlansTable({
             <div className="flex min-w-0 flex-col items-start gap-0.5">
               <Link
                 href={planHref(project, plan.plan_id)}
-                className="font-medium text-pretty text-primary underline-offset-4 hover:underline"
+                className="font-medium text-pretty text-brand underline-offset-4 hover:underline"
                 data-testid="plan-link"
               >
                 {plan.title ?? plan.plan_id}
@@ -187,7 +187,7 @@ function AreaSection({
         </Badge>
       </h2>
       {plans.length === 0 ? (
-        <p className="rounded-xl border border-dashed bg-card px-4 py-6 text-center text-sm text-muted-foreground">
+        <p className="rounded-md border border-dashed bg-card px-4 py-6 text-center text-sm text-muted-foreground">
           {t(area === "active" ? "noActive" : "noCompleted")}
         </p>
       ) : (

@@ -7,13 +7,13 @@ import { cn } from "@/lib/utils";
 
 import { STEP_LOOK, useStepStatusText } from "./status";
 
-/** The chart colours of web/DESIGN.md: emerald done, blue in progress, amber blocked, slate the rest. */
+/** The state marks of web/DESIGN.md: green done, cobalt in progress, amber blocked, neutral the rest. */
 const SEGMENT: Record<StepGroup, string> = {
-  done: "bg-chart-3",
-  in_progress: "bg-chart-1",
-  blocked: "bg-chart-2",
+  done: "bg-success-solid",
+  in_progress: "bg-running",
+  blocked: "bg-attention-solid",
   pending: "bg-transparent",
-  other: "bg-chart-5",
+  other: "bg-neutral-solid",
 };
 
 /**
@@ -64,7 +64,7 @@ export function PlanProgress({ counts }: { counts: StepCounts }) {
   const format = useFormatter();
   const shown = STEP_GROUPS.filter((group) => group !== "other" || counts.other > 0);
   return (
-    <section aria-labelledby="plan-progress-title" className="flex flex-col gap-3 rounded-xl border bg-card p-4">
+    <section aria-labelledby="plan-progress-title" className="flex flex-col gap-3 rounded-md border bg-card shadow-raised p-4">
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
         <h2 id="plan-progress-title" className="text-base font-medium">
           {t("title")}

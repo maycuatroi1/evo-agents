@@ -83,7 +83,7 @@ function MarkdownLink({ node: _node, href, children, className, ...props }: Prop
     <a
       {...props}
       href={target}
-      className={cn("font-medium text-primary underline underline-offset-4 hover:no-underline", className)}
+      className={cn("font-medium text-brand underline underline-offset-4 hover:no-underline", className)}
       {...(external ? { rel: "noopener noreferrer nofollow", target: "_blank" } : {})}
     >
       {children}
@@ -104,7 +104,7 @@ function MarkdownImage({ src, alt }: Props<"img">) {
   );
   const chip = "inline-flex items-center gap-1 rounded border border-dashed px-1.5 py-0.5 text-xs";
   return target && /^https?:/i.test(target) ? (
-    <a href={target} rel="noopener noreferrer nofollow" target="_blank" className={cn(chip, "text-primary")}>
+    <a href={target} rel="noopener noreferrer nofollow" target="_blank" className={cn(chip, "text-brand")}>
       {content}
       <span className="sr-only"> {t("newTab")}</span>
     </a>
@@ -131,7 +131,7 @@ function Pre({ node: _node, className, ...props }: Props<"pre">) {
       tabIndex={0}
       aria-label={t("codeBlock")}
       className={cn(
-        "my-4 overflow-x-auto rounded-lg border bg-muted/50 p-3 font-mono text-xs leading-relaxed text-foreground",
+        "my-4 overflow-x-auto rounded-md border bg-muted/50 p-3 font-mono text-xs leading-relaxed text-foreground",
         className,
       )}
       {...props}
@@ -142,7 +142,7 @@ function Pre({ node: _node, className, ...props }: Props<"pre">) {
 function MarkdownTable({ node: _node, className, ...props }: Props<"table">) {
   const t = useTranslations("memories.markdown");
   return (
-    <div role="region" aria-label={t("table")} tabIndex={0} className="my-4 overflow-x-auto rounded-lg border">
+    <div role="region" aria-label={t("table")} tabIndex={0} className="my-4 overflow-x-auto rounded-md border">
       {/* Words stay whole in a table: it scrolls in its region rather than breaking them. */}
       <table className={cn("w-full border-collapse text-sm [overflow-wrap:normal]", className)} {...props} />
     </div>
@@ -172,7 +172,7 @@ const COMPONENTS: Components = {
   ),
   li: ({ node: _node, ...props }) => <li className="leading-relaxed" {...props} />,
   blockquote: ({ node: _node, ...props }) => (
-    <blockquote className="my-4 border-l-2 border-primary/40 pl-4 text-muted-foreground" {...props} />
+    <blockquote className="my-4 border-l-2 border-brand/40 pl-4 text-muted-foreground" {...props} />
   ),
   pre: Pre,
   code: ({ node: _node, className, ...props }) => (

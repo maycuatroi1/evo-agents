@@ -187,7 +187,7 @@ function PlanRunForm({
             <Skeleton className="h-16 w-full" />
           </div>
         ) : loadFailed ? (
-          <p className="text-sm text-destructive" role="alert" data-testid="plan-run-load-failed">
+          <p className="text-sm text-danger" role="alert" data-testid="plan-run-load-failed">
             {t("loadFailed")}
           </p>
         ) : scope ? (
@@ -323,7 +323,7 @@ function Blockers({ project, blockers }: { project: string; blockers: Blocker[] 
     }
   };
   return (
-    <div role="alert" className="flex flex-col gap-1.5 rounded-lg border border-warning-foreground/30 bg-warning px-3 py-2.5 text-sm text-warning-foreground" data-testid="plan-run-blockers">
+    <div role="alert" className="flex flex-col gap-1.5 rounded-md border border-attention/30 bg-attention-soft px-3 py-2.5 text-sm text-attention" data-testid="plan-run-blockers">
       {blockers.map((blocker) => (
         <p key={blocker.kind} className="flex items-start gap-2 text-pretty" data-testid={`plan-run-blocker-${blocker.kind}`}>
           <CircleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
@@ -350,7 +350,7 @@ function ScopeSummary({ scope }: { scope: PlanRunScope }) {
   const titled = new Map(scope.checkpoints.map((step) => [step.key, step.title]));
 
   return (
-    <section aria-labelledby="plan-run-summary-title" className="flex flex-col gap-3 rounded-lg border bg-muted/30 p-3 sm:p-4" data-testid="plan-run-summary">
+    <section aria-labelledby="plan-run-summary-title" className="flex flex-col gap-3 rounded-md border bg-muted/30 p-3 sm:p-4" data-testid="plan-run-summary">
       <h3 id="plan-run-summary-title" className="flex items-center gap-2 text-sm font-medium">
         <ListChecks className="size-4 text-muted-foreground" aria-hidden="true" />
         {t("title")}
@@ -387,7 +387,7 @@ function ScopeSummary({ scope }: { scope: PlanRunScope }) {
                     {repo.branch}
                   </span>
                 ) : (
-                  <span className="text-xs text-destructive">{t("noBranch")}</span>
+                  <span className="text-xs text-danger">{t("noBranch")}</span>
                 )}
                 {repo.defaultBranch ? (
                   <Badge variant="warning" data-testid="plan-run-default-branch">
@@ -425,8 +425,8 @@ function ScopeSummary({ scope }: { scope: PlanRunScope }) {
       </dl>
       <p
         className={cn(
-          "flex items-start gap-2 rounded-md border px-3 py-2 text-xs text-pretty",
-          defaults.length ? "border-warning-foreground/30 bg-warning text-warning-foreground" : "bg-card text-muted-foreground",
+          "flex items-start gap-2 rounded-sm border px-3 py-2 text-xs text-pretty",
+          defaults.length ? "border-attention/30 bg-attention-soft text-attention" : "bg-card text-muted-foreground",
         )}
         data-testid="plan-run-push"
         data-default={defaults.length > 0}

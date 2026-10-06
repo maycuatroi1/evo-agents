@@ -78,7 +78,7 @@ function MemoryTable({
             <div className="flex min-w-0 flex-col gap-0.5 py-0.5">
               <Link
                 href={memoryHref(scope, row.id)}
-                className="w-fit font-medium text-primary underline-offset-4 [overflow-wrap:anywhere] hover:underline"
+                className="w-fit font-medium text-brand underline-offset-4 [overflow-wrap:anywhere] hover:underline"
                 data-memory-name={row.name}
               >
                 {title}
@@ -398,7 +398,7 @@ function Results({
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-col gap-2.5 rounded-xl border bg-card p-3" data-testid="memories-facets">
+      <div className="flex flex-col gap-2.5 rounded-md border bg-card shadow-raised p-3" data-testid="memories-facets">
         {locations.length > 2 || filters.location ? (
           <FacetGroup
             label={t("facets.location")}

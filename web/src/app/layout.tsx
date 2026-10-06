@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Be_Vietnam_Pro, JetBrains_Mono } from "next/font/google";
+import { IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
 import { headers } from "next/headers";
 import { NextIntlClientProvider } from "next-intl";
 import { getLocale, getTranslations } from "next-intl/server";
@@ -9,16 +9,19 @@ import { Providers } from "@/components/providers";
 
 import "./globals.css";
 
-const sans = Be_Vietnam_Pro({
-  subsets: ["latin", "vietnamese"],
-  weight: ["400", "500", "600", "700"],
-  variable: "--font-be-vietnam-pro",
+// IBM Plex for the interface (Sans) and for data, logs and the terminal (Mono). Both carry the Vietnamese subset, so
+// the Vietnamese people write in plans, evidence and memories renders in the same faces as the English around it.
+const sans = IBM_Plex_Sans({
+  subsets: ["latin", "latin-ext", "vietnamese"],
+  weight: ["400", "500", "600"],
+  variable: "--font-plex-sans",
   display: "swap",
 });
 
-const mono = JetBrains_Mono({
-  subsets: ["latin", "vietnamese"],
-  variable: "--font-jetbrains-mono",
+const mono = IBM_Plex_Mono({
+  subsets: ["latin", "latin-ext", "vietnamese"],
+  weight: ["400", "500"],
+  variable: "--font-plex-mono",
   display: "swap",
 });
 
@@ -36,8 +39,8 @@ export const viewport: Viewport = {
   initialScale: 1,
   colorScheme: "light dark",
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#f8fafc" },
-    { media: "(prefers-color-scheme: dark)", color: "#020617" },
+    { media: "(prefers-color-scheme: light)", color: "#f5f6f8" },
+    { media: "(prefers-color-scheme: dark)", color: "#0a0c10" },
   ],
 };
 

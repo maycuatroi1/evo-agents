@@ -98,7 +98,7 @@ function StepCell({ run, showProject }: { run: Run; showProject: boolean }) {
       {plan ? (
         <Link
           href={planHref(run.project, run.plan_id)}
-          className="w-fit text-sm font-medium text-primary underline-offset-4 hover:underline"
+          className="w-fit text-sm font-medium text-brand underline-offset-4 hover:underline"
           data-testid="run-plan-link"
         >
           {run.title ?? run.plan_id}
@@ -106,7 +106,7 @@ function StepCell({ run, showProject }: { run: Run; showProject: boolean }) {
       ) : (
         <Link
           href={stepHref(run.project, run.plan_id, run.step_key ?? "")}
-          className="w-fit text-sm font-medium text-primary underline-offset-4 hover:underline"
+          className="w-fit text-sm font-medium text-brand underline-offset-4 hover:underline"
           data-testid="run-step-link"
         >
           {run.title ?? t("untitled")}
@@ -144,7 +144,7 @@ function WorkerCell({ run, viewer }: { run: Run; viewer: Viewer | null }) {
   return mayOpen ? (
     <Link
       href={workerHref(run.worker_id)}
-      className="font-mono text-xs text-primary underline-offset-4 [overflow-wrap:anywhere] hover:underline"
+      className="font-mono text-xs text-brand underline-offset-4 [overflow-wrap:anywhere] hover:underline"
     >
       {run.worker}
     </Link>
@@ -177,7 +177,7 @@ export function RunsTable({
       cell: (info) => (
         <Link
           href={runHref(info.row.original.project, info.row.original.id)}
-          className="font-mono text-sm font-medium text-primary tabular-nums underline-offset-4 hover:underline"
+          className="font-mono text-sm font-medium text-brand tabular-nums underline-offset-4 hover:underline"
           aria-label={t("openRun", { id: info.row.original.id })}
           data-run-id={info.row.original.id}
           data-testid="run-link"

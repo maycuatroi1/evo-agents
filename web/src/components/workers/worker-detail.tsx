@@ -145,9 +145,9 @@ function Note({ tone, icon: Icon, children, testId }: { tone: "info" | "warning"
   return (
     <p
       className={cn(
-        "flex items-start gap-2.5 rounded-lg border px-3 py-2.5 text-sm",
-        tone === "info" && "border-info-foreground/15 bg-info text-info-foreground",
-        tone === "warning" && "border-warning-foreground/20 bg-warning text-warning-foreground",
+        "flex items-start gap-2.5 rounded-md border px-3 py-2.5 text-sm",
+        tone === "info" && "bg-muted text-foreground",
+        tone === "warning" && "border-attention/20 bg-attention-soft text-attention",
         tone === "muted" && "bg-card text-muted-foreground",
       )}
       data-testid={testId}
@@ -209,7 +209,7 @@ function StatusNote({ worker, isOwner, admin }: { worker: Worker; isOwner: boole
 }
 
 function RuntimeIcon({ runtime }: { runtime: RuntimeInfo }) {
-  if (runtime.available === true) return <CircleCheck className="mt-0.5 size-4 shrink-0 text-chart-3" aria-hidden="true" />;
+  if (runtime.available === true) return <CircleCheck className="mt-0.5 size-4 shrink-0 text-success" aria-hidden="true" />;
   if (runtime.available === false) return <CircleMinus className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />;
   return <CircleHelp className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />;
 }
@@ -275,7 +275,7 @@ function Scope({ worker }: { worker: Worker }) {
           <ChipList items={worker.labels} empty={t("noLabels")} />
         </dd>
         <dt className="text-muted-foreground">{t("permissions")}</dt>
-        <dd className="flex items-start gap-1.5 text-warning-foreground">
+        <dd className="flex items-start gap-1.5 text-attention">
           <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
           <span>{t("permissionsValue", { owner: worker.owner })}</span>
         </dd>
@@ -376,7 +376,7 @@ function WorkerActions({ worker, isOwner, onNotice }: { worker: Worker; isOwner:
           type="button"
           variant="outline"
           size="lg"
-          className="text-destructive hover:text-destructive"
+          className="text-danger hover:text-danger"
           onClick={() => open("revoke")}
           data-testid="worker-revoke"
         >

@@ -20,9 +20,9 @@ import {
 } from "./heartbeats";
 
 const CELL: Record<CellState, string> = {
-  received: "h-full bg-chart-3",
+  received: "h-full bg-success-solid",
   missed: "h-2/5 bg-destructive",
-  unknown: "h-1 bg-muted-foreground/40",
+  unknown: "h-1 bg-neutral-solid",
   before: "h-px bg-border",
 };
 

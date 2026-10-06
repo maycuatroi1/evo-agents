@@ -102,7 +102,7 @@ export function SourceLink({
       href={url}
       target="_blank"
       rel="noopener noreferrer"
-      className="font-mono text-xs text-primary underline-offset-4 hover:underline"
+      className="font-mono text-xs text-brand underline-offset-4 hover:underline"
       title={`${repo}@${commit}`}
       data-testid="source-link"
     >

@@ -11,7 +11,8 @@ import { cn } from "@/lib/utils";
 /**
  * The terminal itself: wterm's DOM renderer over libghostty's VT core (WebAssembly, fetched from the web's own
  * origin), sized to its box. Loaded only when a person connects (`next/dynamic` in run-terminal.tsx), so the run page
- * does not carry it otherwise. The colours are the log's terminal surface (`hub-terminal` in globals.css).
+ * does not carry it otherwise. The colours are the kit's terminal surface, the log's too (`term-*` tokens and
+ * `hub-terminal` in globals.css).
  *
  * The worker replays up to 256 KiB of what the terminal printed when a browser connects, so each session gets a
  * fresh view; the core goes with it.

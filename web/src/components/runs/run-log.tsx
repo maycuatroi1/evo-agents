@@ -47,16 +47,16 @@ import type { LogStatus, RunLog } from "./use-run-log";
  */
 
 const KIND_TONE: Record<RunEventKind, string> = {
-  agent_message_chunk: "text-log-agent",
-  agent_thought_chunk: "text-log-agent",
-  plan: "text-log-agent",
-  user_message: "text-log-user",
-  tool_call: "text-log-tool",
-  tool_call_update: "text-log-tool",
-  output: "text-log-muted",
-  system: "text-log-system",
-  state: "text-log-system",
-  usage_update: "text-log-muted",
+  agent_message_chunk: "text-term-agent",
+  agent_thought_chunk: "text-term-agent",
+  plan: "text-term-agent",
+  user_message: "text-term-user",
+  tool_call: "text-term-tool",
+  tool_call_update: "text-term-tool",
+  output: "text-term-muted",
+  system: "text-term-system",
+  state: "text-term-system",
+  usage_update: "text-term-muted",
 };
 
 const GROUP_ICON: Record<LogGroup, LucideIcon> = {
@@ -72,11 +72,11 @@ const END_SLACK = 32;
 const ROW_ESTIMATE = 22;
 
 function textTone(line: LogLine): string {
-  if (line.tone === "error") return "text-log-error";
-  if (line.tone === "ok") return "text-log-ok";
-  if (line.kind === "user_message") return "text-log-user";
-  if (line.kind === "agent_thought_chunk" || line.kind === "output") return "text-log-muted";
-  return "text-log-foreground";
+  if (line.tone === "error") return "text-term-error";
+  if (line.tone === "ok") return "text-term-ok";
+  if (line.kind === "user_message") return "text-term-user";
+  if (line.kind === "agent_thought_chunk" || line.kind === "output") return "text-term-muted";
+  return "text-term-fg";
 }
 
 function Highlighted({ text, query }: { text: string; query: string }) {
@@ -86,7 +86,7 @@ function Highlighted({ text, query }: { text: string; query: string }) {
     <>
       {parts.map((part, index) =>
         index % 2 === 1 ? (
-          <mark key={index} className="rounded-sm bg-log-mark px-0.5 text-log-mark-foreground">
+          <mark key={index} className="rounded-xs bg-term-mark px-0.5 text-term-bg">
             {part}
           </mark>
         ) : (
@@ -100,18 +100,18 @@ function Highlighted({ text, query }: { text: string; query: string }) {
 const LogRow = memo(function LogRow({ line, query, time, kind, notes }: { line: LogLine; query: string; time: string; kind: string; notes: string[] }) {
   return (
     <div
-      className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-2.5 px-3 py-px hover:bg-log-row sm:grid-cols-[4.75rem_6.75rem_minmax(0,1fr)] sm:px-3.5"
+      className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-2.5 px-3 py-px hover:bg-term-row sm:grid-cols-[4.75rem_6.75rem_minmax(0,1fr)] sm:px-3.5"
       data-seq={line.seq}
       data-kind={line.kind}
       data-testid="log-line"
     >
-      <time dateTime={line.at} className="text-log-muted tabular-nums">
+      <time dateTime={line.at} className="text-term-muted tabular-nums">
         {time}
       </time>
       <span className={cn("truncate font-medium", KIND_TONE[line.kind])}>{kind}</span>
       <span className={cn("col-span-2 break-words whitespace-pre-wrap [overflow-wrap:anywhere] sm:col-span-1", textTone(line))}>
         <Highlighted text={line.text} query={query} />
-        {notes.length ? <span className="text-log-muted"> [{notes.join("; ")}]</span> : null}
+        {notes.length ? <span className="text-term-muted"> [{notes.join("; ")}]</span> : null}
       </span>
     </div>
   );
@@ -322,7 +322,7 @@ export function RunLogCard({
             size="lg"
             aria-pressed={follow}
             onClick={() => setFollow((value) => !value)}
-            className="aria-pressed:border-primary aria-pressed:bg-accent aria-pressed:text-accent-foreground"
+            className="aria-pressed:border-brand aria-pressed:bg-surface-selected aria-pressed:text-foreground"
             data-testid="log-follow"
           >
             <ArrowDownToLine aria-hidden="true" />
@@ -350,12 +350,12 @@ export function RunLogCard({
         aria-busy={log.status === "connecting" || undefined}
         tabIndex={0}
         onScroll={onScroll}
-        className="h-[min(60vh,32rem)] min-h-64 overflow-y-auto overscroll-contain bg-log py-2 font-mono text-[12.5px] leading-[1.6] text-log-foreground [font-variant-ligatures:none] focus-visible:outline-offset-[-2px]"
+        className="h-[min(60vh,32rem)] min-h-64 overflow-y-auto overscroll-contain bg-term-bg py-2 font-mono text-[12.5px] leading-[1.6] text-term-fg [font-variant-ligatures:none] focus-visible:outline-offset-[-2px]"
         data-testid="log-lines"
         data-virtual={virtual || undefined}
       >
         {empty ? (
-          <p className="px-4 py-2 text-log-muted" data-testid="log-empty">
+          <p className="px-4 py-2 text-term-muted" data-testid="log-empty">
             {filtered ? t("noMatch") : active || log.status === "connecting" ? t("waiting") : t("none")}
           </p>
         ) : virtual ? (
@@ -376,7 +376,7 @@ export function RunLogCard({
 
   if (!terminal) {
     return (
-      <section aria-labelledby={`${ids}-title`} className="flex min-w-0 flex-col rounded-xl border bg-card" data-testid="run-log">
+      <section aria-labelledby={`${ids}-title`} className="flex min-w-0 flex-col rounded-md border bg-card shadow-raised" data-testid="run-log">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b px-4 py-3">
           <h2 id={`${ids}-title`} className="text-base font-medium">
             {t("title")}
@@ -392,7 +392,7 @@ export function RunLogCard({
     <Tabs value={tab} onValueChange={(value) => setTab(value === "terminal" ? "terminal" : "log")} className="gap-0" asChild>
       <section
         aria-labelledby={`${ids}-title`}
-        className="flex min-w-0 flex-col rounded-xl border bg-card"
+        className="flex min-w-0 flex-col rounded-md border bg-card shadow-raised"
         data-testid="run-log"
         data-tab={tab}
       >

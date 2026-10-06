@@ -27,8 +27,8 @@ type StateProps = {
 
 const TONES = {
   neutral: "bg-muted text-muted-foreground",
-  danger: "bg-destructive/10 text-destructive",
-  warning: "bg-warning text-warning-foreground",
+  danger: "bg-danger-soft text-danger",
+  warning: "bg-attention-soft text-attention",
 } as const;
 
 export function StatePanel({ icon: Icon, title, description, tone = "neutral", children, className, testId }: StateProps) {
@@ -36,7 +36,7 @@ export function StatePanel({ icon: Icon, title, description, tone = "neutral", c
     <section
       data-testid={testId}
       className={cn(
-        "mx-auto flex w-full max-w-xl flex-col items-center gap-4 rounded-xl border border-dashed bg-card px-6 py-10 text-center",
+        "mx-auto flex w-full max-w-xl flex-col items-center gap-4 rounded-md border border-dashed bg-card px-6 py-10 text-center",
         className,
       )}
     >
@@ -162,7 +162,7 @@ export function PageSkeleton() {
       </div>
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {Array.from({ length: 3 }, (_, i) => (
-          <Skeleton key={i} className="h-32 w-full rounded-xl" />
+          <Skeleton key={i} className="h-32 w-full rounded-md" />
         ))}
       </div>
       <TableSkeleton rows={5} />
@@ -172,7 +172,7 @@ export function PageSkeleton() {
 
 export function TableSkeleton({ rows = 5 }: { rows?: number }) {
   return (
-    <div className="flex flex-col gap-2 rounded-xl border bg-card p-4">
+    <div className="flex flex-col gap-2 rounded-md border bg-card shadow-raised p-4">
       <Skeleton className="h-5 w-40" />
       {Array.from({ length: rows }, (_, i) => (
         <Skeleton key={i} className="h-9 w-full" />

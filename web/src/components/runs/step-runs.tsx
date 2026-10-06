@@ -45,7 +45,7 @@ export function StepRuns({ project, planId, stepKey }: { project: string; planId
   const planRun = ready.data?.plan_run ? { planId: ready.data.plan_id, run: ready.data.plan_run } : null;
 
   return (
-    <section className="flex flex-col gap-3 rounded-xl border bg-card p-4" aria-labelledby={`${ids}-title`} data-testid="step-runs">
+    <section className="flex flex-col gap-3 rounded-md border bg-card shadow-raised p-4" aria-labelledby={`${ids}-title`} data-testid="step-runs">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex min-w-0 flex-col gap-1">
           <h2 id={`${ids}-title`} className="text-base font-medium">
@@ -56,7 +56,7 @@ export function StepRuns({ project, planId, stepKey }: { project: string; planId
           ) : readiness ? (
             <p
               id={`${ids}-readiness`}
-              className={cn("flex items-start gap-1.5 text-sm", isReady ? "text-success-foreground" : "text-muted-foreground")}
+              className={cn("flex items-start gap-1.5 text-sm", isReady ? "text-success" : "text-muted-foreground")}
               data-testid="step-readiness"
               data-ready={isReady}
             >
@@ -93,11 +93,11 @@ export function StepRuns({ project, planId, stepKey }: { project: string; planId
       {runs.isPending ? (
         <Skeleton className="h-24 w-full" />
       ) : runs.isError ? (
-        <p className="text-sm text-destructive" role="alert">
+        <p className="text-sm text-danger" role="alert">
           {t("failed")}
         </p>
       ) : runs.data.runs.length === 0 ? (
-        <p className="rounded-lg border border-dashed px-3 py-2.5 text-sm text-muted-foreground" data-testid="step-runs-empty">
+        <p className="rounded-md border border-dashed px-3 py-2.5 text-sm text-muted-foreground" data-testid="step-runs-empty">
           {t("empty")}
         </p>
       ) : (
@@ -113,7 +113,7 @@ export function StepRuns({ project, planId, stepKey }: { project: string; planId
             {runs.data.total > runs.data.runs.length ? (
               <span>{t("more", { shown: runs.data.runs.length, total: runs.data.total })}</span>
             ) : null}
-            <Link href={runsHref(project)} className="font-medium text-primary underline-offset-4 hover:underline">
+            <Link href={runsHref(project)} className="font-medium text-brand underline-offset-4 hover:underline">
               {t("all")}
             </Link>
           </p>

@@ -163,7 +163,7 @@ function DecisionPanel({
     );
   }
   return (
-    <div className="min-w-0 rounded-xl border bg-card p-4 md:p-5" data-testid="decision-panel" data-decision-id={id}>
+    <div className="min-w-0 rounded-md border bg-card shadow-raised p-4 md:p-5" data-testid="decision-panel" data-decision-id={id}>
       {body}
     </div>
   );
@@ -285,7 +285,7 @@ export function InboxPage({ initialError }: { initialError: ApiErrorInfo | null 
           <h2 id="inbox-list-title" className="sr-only">
             {t("listTitle")}
           </h2>
-          <div className="flex flex-col gap-3 rounded-xl border bg-card p-4" role="search" aria-label={t("filters.label")} data-testid="inbox-filters">
+          <div className="flex flex-col gap-3 rounded-md border bg-card shadow-raised p-4" role="search" aria-label={t("filters.label")} data-testid="inbox-filters">
             <FacetGroup
               label={t("filters.show")}
               options={[

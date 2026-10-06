@@ -57,8 +57,8 @@ function isSectionName(key: string): key is SectionName {
 
 function Disclosure({ summary, count, children, testId }: { summary: ReactNode; count?: number; children: ReactNode; testId?: string }) {
   return (
-    <details className="group rounded-xl border bg-card" data-testid={testId}>
-      <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium hover:bg-muted/50 [&::-webkit-details-marker]:hidden">
+    <details className="group rounded-md border bg-card shadow-raised" data-testid={testId}>
+      <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 rounded-md px-4 py-2.5 text-sm font-medium hover:bg-muted/50 [&::-webkit-details-marker]:hidden">
         <ChevronRight
           className="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-90"
           aria-hidden="true"
@@ -78,7 +78,7 @@ function Intro({ view }: { view: PlanView }) {
   const format = useFormatter();
   if (!view.goal && !view.context && !view.createdAt && !view.status) return null;
   return (
-    <section aria-labelledby="plan-goal-title" className="flex flex-col gap-3 rounded-xl border bg-card p-4">
+    <section aria-labelledby="plan-goal-title" className="flex flex-col gap-3 rounded-md border bg-card shadow-raised p-4">
       <h2 id="plan-goal-title" className="text-base font-medium">
         {t("goal")}
       </h2>
@@ -101,7 +101,7 @@ function Intro({ view }: { view: PlanView }) {
       ) : null}
       {view.context ? (
         <details className="group">
-          <summary className="inline-flex min-h-9 cursor-pointer list-none items-center gap-1.5 rounded-md text-sm font-medium text-primary [&::-webkit-details-marker]:hidden">
+          <summary className="inline-flex min-h-9 cursor-pointer list-none items-center gap-1.5 rounded-sm text-sm font-medium text-brand [&::-webkit-details-marker]:hidden">
             <ChevronRight className="size-4 transition-transform group-open:rotate-90" aria-hidden="true" />
             {t("context")}
           </summary>
@@ -121,7 +121,7 @@ function Repos({ repos }: { repos: PlanRepo[] }) {
       <h2 id="plan-repos-title" className="text-base font-medium">
         {t("title")}
       </h2>
-      <div className="overflow-hidden rounded-xl border bg-card">
+      <div className="overflow-hidden rounded-md border bg-card shadow-raised">
         <Table scrollLabel={t("title")}>
           <TableCaption className="sr-only">{t("caption")}</TableCaption>
           <TableHeader className="bg-muted/50">

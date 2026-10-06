@@ -66,9 +66,9 @@ export function Choice({
     <label
       htmlFor={id}
       className={cn(
-        "flex min-h-11 items-start gap-2.5 rounded-lg border px-3 py-2 transition-colors",
+        "flex min-h-11 items-start gap-2.5 rounded-md border px-3 py-2 transition-colors",
         disabled ? "cursor-not-allowed border-dashed bg-muted/40" : "cursor-pointer hover:bg-muted/50",
-        checked && !disabled && "border-primary/40 bg-accent",
+        checked && !disabled && "border-brand/40 bg-surface-selected",
       )}
       data-testid={testId}
       data-disabled={disabled || undefined}
@@ -186,10 +186,10 @@ export function WorkerPicker({
         </div>
       ) : null}
       {none ? (
-        <p className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-dashed px-3 py-2 text-sm text-muted-foreground" data-testid="dispatch-no-workers">
+        <p className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md border border-dashed px-3 py-2 text-sm text-muted-foreground" data-testid="dispatch-no-workers">
           <Server className="size-4 shrink-0" aria-hidden="true" />
           <span>{t("noWorkers", { project })}</span>
-          <Link href={WORKERS_HREF} className="font-medium text-primary underline-offset-4 hover:underline">
+          <Link href={WORKERS_HREF} className="font-medium text-brand underline-offset-4 hover:underline">
             {t("registerWorker")}
           </Link>
         </p>
@@ -260,7 +260,7 @@ export function ModelField({
         {hint}
       </p>
       {message ? (
-        <p id={`${ids}-error`} className="flex items-start gap-1.5 text-xs font-medium text-destructive" data-testid="plan-run-model-error">
+        <p id={`${ids}-error`} className="flex items-start gap-1.5 text-xs font-medium text-danger" data-testid="plan-run-model-error">
           <TriangleAlert className="mt-px size-3.5 shrink-0" aria-hidden="true" />
           {message}
         </p>
@@ -337,7 +337,7 @@ export function Outlook({ outlook, project, subject = "runs" }: { outlook: Dispa
     <p
       className={cn(
         "flex min-w-0 flex-1 items-start gap-2 text-sm text-pretty",
-        tone === "ok" ? "text-success-foreground" : tone === "warn" ? "text-warning-foreground" : "text-muted-foreground",
+        tone === "ok" ? "text-success" : tone === "warn" ? "text-attention" : "text-muted-foreground",
       )}
       role="status"
       aria-live="polite"

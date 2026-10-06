@@ -27,18 +27,18 @@ type Theme = {
   foreground: string;
   muted: string;
   surface: string;
-  primary: string;
+  brand: string;
   ring: string;
   font: string;
 };
 
 const FALLBACK: Theme = {
-  tones: { 1: "#2563eb", 2: "#f59e0b", 3: "#059669", 4: "#7c3aed", 5: "#64748b" },
-  foreground: "#0f172a",
-  muted: "#475569",
-  surface: "#f8fafc",
-  primary: "#1e40af",
-  ring: "#2563eb",
+  tones: { 1: "#2f4bd8", 2: "#bc7800", 3: "#0f8c80", 4: "#7c4de8", 5: "#858c99" },
+  foreground: "#0e1116",
+  muted: "#4b5362",
+  surface: "#f5f6f8",
+  brand: "#2f4bd8",
+  ring: "#2f4bd8",
   font: "sans-serif",
 };
 
@@ -56,7 +56,7 @@ function readTheme(): Theme {
     foreground: token("--foreground", FALLBACK.foreground),
     muted: token("--muted-foreground", FALLBACK.muted),
     surface: token("--background", FALLBACK.surface),
-    primary: token("--primary", FALLBACK.primary),
+    brand: token("--brand", FALLBACK.brand),
     ring: token("--ring", FALLBACK.ring),
     font: getComputedStyle(document.body).fontFamily || FALLBACK.font,
   };
@@ -110,7 +110,7 @@ function stylesheet(theme: Theme): cytoscape.StylesheetJson {
     { selector: "node.hub", style: { "border-width": 2, "border-style": "dashed", "border-color": theme.muted } },
     {
       selector: "node.focus",
-      style: { width: 26, height: 26, "border-width": 3, "border-color": theme.primary, "font-weight": 600 },
+      style: { width: 26, height: 26, "border-width": 3, "border-color": theme.brand, "font-weight": 600 },
     },
     {
       selector: "node:selected",
@@ -139,8 +139,8 @@ function stylesheet(theme: Theme): cytoscape.StylesheetJson {
       selector: "edge.near",
       style: {
         width: 2,
-        "line-color": theme.primary,
-        "target-arrow-color": theme.primary,
+        "line-color": theme.brand,
+        "target-arrow-color": theme.brand,
         "line-opacity": 1,
         label: (edge: cytoscape.EdgeSingular) => String(edge.data("rel")),
         "font-family": theme.font,
@@ -328,10 +328,10 @@ export function GraphCanvas({
   };
 
   return (
-    <div className="relative h-[28rem] overflow-hidden rounded-lg border bg-background xl:h-[32rem]">
+    <div className="relative h-[28rem] overflow-hidden rounded-md border bg-background xl:h-[32rem]">
       {!cy ? (
         <div className="absolute inset-0 p-4" aria-hidden="true">
-          <Skeleton className="h-full w-full rounded-md" />
+          <Skeleton className="h-full w-full rounded-sm" />
         </div>
       ) : null}
       <div
@@ -341,12 +341,12 @@ export function GraphCanvas({
         aria-describedby={describedBy}
         tabIndex={0}
         onKeyDown={onKeyDown}
-        className="h-full w-full cursor-grab rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+        className="h-full w-full cursor-grab rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
         data-testid="kg-canvas"
         data-ready={cy ? "true" : "false"}
         data-selected={selected}
       />
-      <div className="absolute top-2 right-2 flex gap-1 rounded-lg border bg-card/95 p-0.5 shadow-xs">
+      <div className="absolute top-2 right-2 flex gap-1 rounded-md border bg-card/95 p-0.5 shadow-raised">
         <Button type="button" variant="ghost" size="icon-sm" className="cursor-pointer" aria-label={t("zoomIn")} title={t("zoomIn")} onClick={() => zoom(1.25)} disabled={!cy}>
           <Plus aria-hidden="true" />
         </Button>

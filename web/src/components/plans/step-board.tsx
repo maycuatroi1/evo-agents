@@ -57,7 +57,7 @@ export function DependsOn({ step, context, compact = false }: { step: PlanStep; 
           <Link
             key={key}
             href={stepHref(context.project, context.planId, key)}
-            className="relative z-10 inline-flex items-center gap-1 rounded font-mono text-primary underline-offset-4 hover:underline"
+            className="relative z-10 inline-flex items-center gap-1 rounded font-mono text-brand underline-offset-4 hover:underline"
             aria-label={t("dependencyLink", { key, title: stepLabel(target) })}
           >
             <StepStatusIcon group={target.group} raw={target.rawStatus} className="[&_svg]:size-3.5" />
@@ -75,7 +75,7 @@ function StepCard({ step, context }: { step: PlanStep; context: Context }) {
   const label = stepLabel(step);
   return (
     <li
-      className="group relative flex flex-col gap-2 rounded-lg border bg-card p-3 transition-colors hover:border-primary/40 hover:bg-accent/40"
+      className="group relative flex flex-col gap-2 rounded-md border bg-card p-3 transition-colors hover:border-brand/40 hover:bg-accent/40"
       data-testid="step-card"
       data-step={step.key}
     >
@@ -85,7 +85,7 @@ function StepCard({ step, context }: { step: PlanStep; context: Context }) {
         </span>
         <Link
           href={stepHref(context.project, context.planId, step.key)}
-          className="min-w-0 flex-1 text-sm leading-snug font-medium text-pretty [overflow-wrap:anywhere] after:absolute after:inset-0 after:rounded-lg after:content-[''] focus-visible:outline-none focus-visible:after:outline-2 focus-visible:after:outline-offset-2 focus-visible:after:outline-ring"
+          className="min-w-0 flex-1 text-sm leading-snug font-medium text-pretty [overflow-wrap:anywhere] after:absolute after:inset-0 after:rounded-md after:content-[''] focus-visible:outline-none focus-visible:after:outline-2 focus-visible:after:outline-offset-2 focus-visible:after:outline-ring"
           aria-label={t("open", { key: step.key, title: label })}
         >
           <span className="line-clamp-3">{label || t("untitled")}</span>
@@ -94,7 +94,7 @@ function StepCard({ step, context }: { step: PlanStep; context: Context }) {
       {step.group === "other" ? <StepStatusBadge group="other" raw={step.rawStatus} /> : null}
       <div className="flex flex-wrap items-center gap-1.5">
         {step.repo ? (
-          <span className="inline-flex max-w-full items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 font-mono text-xs text-muted-foreground">
+          <span className="inline-flex max-w-full items-center gap-1 rounded-sm bg-muted px-1.5 py-0.5 font-mono text-xs text-muted-foreground">
             <FolderGit2 className="size-3 shrink-0" aria-hidden="true" />
             <span className="truncate">{step.repo}</span>
           </span>
@@ -132,7 +132,7 @@ function Column({ group, steps, context }: { group: StepGroup; steps: PlanStep[]
   return (
     <section
       aria-labelledby={headingId}
-      className="flex min-w-0 flex-col gap-2 rounded-xl border bg-muted/30 p-2.5"
+      className="flex min-w-0 flex-col gap-2 rounded-md border bg-muted/30 p-2.5"
       data-testid={`board-column-${group}`}
     >
       <h3 id={headingId} className="flex items-center gap-2 px-1 text-sm font-medium">
@@ -183,7 +183,7 @@ function StepTable({ steps, context }: { steps: PlanStep[]; context: Context }) 
               <span className="mt-0.5 font-mono text-xs text-muted-foreground tabular-nums">{step.key}</span>
               <Link
                 href={stepHref(context.project, context.planId, step.key)}
-                className="font-medium text-pretty text-primary underline-offset-4 [overflow-wrap:anywhere] hover:underline"
+                className="font-medium text-pretty text-brand underline-offset-4 [overflow-wrap:anywhere] hover:underline"
               >
                 {stepLabel(step) || step.key}
               </Link>
@@ -290,7 +290,7 @@ export function StepBoard({ project, planId, steps }: { project: string; planId:
                 id={repoId}
                 value={repo}
                 onChange={(event) => setRepo(event.target.value)}
-                className="h-10 min-w-0 flex-1 rounded-lg border border-input bg-background px-2.5 font-mono text-sm sm:flex-none"
+                className="h-10 min-w-0 flex-1 rounded-md border border-input bg-background px-2.5 font-mono text-sm sm:flex-none"
                 data-testid="steps-repo"
               >
                 <option value="">{t("allRepos")}</option>
@@ -302,7 +302,7 @@ export function StepBoard({ project, planId, steps }: { project: string; planId:
               </select>
             </div>
           ) : null}
-          <div role="group" aria-label={t("view")} className="inline-flex w-fit rounded-lg border bg-muted/40 p-0.5">
+          <div role="group" aria-label={t("view")} className="inline-flex w-fit rounded-md border bg-muted/40 p-0.5">
             {(
               [
                 ["board", Columns3],
@@ -315,8 +315,8 @@ export function StepBoard({ project, planId, steps }: { project: string; planId:
                 aria-pressed={view === id}
                 onClick={() => setView(id)}
                 className={cn(
-                  "inline-flex min-h-9 items-center gap-1.5 rounded-md px-3 text-sm font-medium transition-colors",
-                  view === id ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+                  "inline-flex min-h-9 items-center gap-1.5 rounded-sm px-3 text-sm font-medium transition-colors",
+                  view === id ? "bg-card text-foreground shadow-raised" : "text-muted-foreground hover:text-foreground",
                 )}
                 data-testid={`steps-view-${id}`}
               >

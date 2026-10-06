@@ -42,7 +42,7 @@ function FoldedText({ text }: { text: string }) {
           onClick={() => setOpen(!open)}
           data-testid="notification-body-toggle"
         >
-          <ChevronDown className={cn("transition-transform duration-150 motion-reduce:transition-none", open && "rotate-180")} aria-hidden="true" />
+          <ChevronDown className={cn("transition-transform duration-base motion-reduce:transition-none", open && "rotate-180")} aria-hidden="true" />
           {open ? t("showLess") : t("showMore")}
         </Button>
       ) : null}
@@ -149,9 +149,9 @@ export function NotificationItem({
   return (
     <li
       className={cn(
-        "relative flex min-w-0 gap-3 rounded-xl border bg-card px-3.5 py-3 transition-colors sm:px-4",
-        selected && "border-primary/50 ring-1 ring-primary/30",
-        !selected && unread && "border-primary/25",
+        "relative flex min-w-0 gap-3 rounded-md border bg-card shadow-raised px-3.5 py-3 transition-colors sm:px-4",
+        selected && "border-brand/50 bg-surface-selected ring-1 ring-brand/30",
+        !selected && unread && "border-brand/25",
       )}
       aria-current={selected ? "true" : undefined}
       data-testid="notification"
@@ -165,7 +165,7 @@ export function NotificationItem({
       <span
         className={cn(
           "mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full",
-          open ? "bg-warning text-warning-foreground" : "bg-muted text-muted-foreground",
+          open ? "bg-attention-soft text-attention" : "bg-muted text-muted-foreground",
         )}
         aria-hidden="true"
       >
@@ -174,8 +174,8 @@ export function NotificationItem({
       <div className="flex min-w-0 flex-1 flex-col gap-1.5">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
           {unread ? (
-            <span className="inline-flex items-center gap-1.5 font-medium text-primary" data-testid="notification-unread">
-              <span className="size-2 rounded-full bg-primary" aria-hidden="true" />
+            <span className="inline-flex items-center gap-1.5 font-medium text-brand" data-testid="notification-unread">
+              <span className="size-2 rounded-full bg-brand" aria-hidden="true" />
               {t("unread")}
             </span>
           ) : null}
@@ -189,7 +189,7 @@ export function NotificationItem({
             href={href}
             onClick={follow}
             className={cn(
-              "text-sm text-pretty text-foreground underline-offset-4 [overflow-wrap:anywhere] hover:text-primary hover:underline",
+              "text-sm text-pretty text-foreground underline-offset-4 [overflow-wrap:anywhere] hover:text-brand hover:underline",
               unread ? "font-semibold" : "font-medium",
             )}
             data-testid="notification-open"
@@ -219,7 +219,7 @@ export function NotificationItem({
               onClick={() => {
                 if (unread) onRead(notification.id);
               }}
-              className="inline-flex min-h-7 items-center gap-1 text-sm font-medium text-primary underline-offset-4 hover:underline"
+              className="inline-flex min-h-7 items-center gap-1 text-sm font-medium text-brand underline-offset-4 hover:underline"
               data-testid="notification-run-link"
             >
               {t("openRun", { id: notification.run_id })}
@@ -229,7 +229,7 @@ export function NotificationItem({
           {decision && notification.run_id !== null && notification.project ? (
             <Link
               href={runHref(notification.project, notification.run_id)}
-              className="inline-flex min-h-7 items-center gap-1 text-sm text-primary underline-offset-4 hover:underline"
+              className="inline-flex min-h-7 items-center gap-1 text-sm text-brand underline-offset-4 hover:underline"
               data-testid="notification-run-link"
             >
               {t("openRun", { id: notification.run_id })}

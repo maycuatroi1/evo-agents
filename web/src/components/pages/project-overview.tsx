@@ -44,8 +44,8 @@ function Ladder({ project }: { project: Project }) {
               <li
                 key={level}
                 className={cn(
-                  "flex items-center justify-between gap-3 rounded-lg border px-3 py-2",
-                  visible ? "border-primary/30 bg-accent text-accent-foreground" : "bg-muted/40 text-muted-foreground",
+                  "flex items-center justify-between gap-3 rounded-md border px-3 py-2",
+                  visible ? "border-brand/30 bg-surface-selected text-foreground" : "bg-muted/40 text-muted-foreground",
                 )}
               >
                 <span className="flex items-center gap-2 font-mono text-xs font-medium">
@@ -90,7 +90,7 @@ function SimpleTable({
 }) {
   if (rows.length === 0) return <p className="text-sm text-muted-foreground">{empty}</p>;
   return (
-    <div className="overflow-hidden rounded-lg border">
+    <div className="overflow-hidden rounded-md border">
       <Table scrollLabel={caption}>
         <TableCaption className="sr-only">{caption}</TableCaption>
         <TableHeader className="bg-muted/50">

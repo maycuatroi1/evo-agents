@@ -29,7 +29,7 @@ export function RunPlanSteps({ run }: { run: Run }) {
   const counts = view ? countSteps(view.steps) : null;
 
   return (
-    <section className="flex min-w-0 flex-col rounded-xl border bg-card" aria-labelledby={`${ids}-title`} data-testid="run-plan-steps">
+    <section className="flex min-w-0 flex-col rounded-md border bg-card shadow-raised" aria-labelledby={`${ids}-title`} data-testid="run-plan-steps">
       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 border-b px-4 py-3">
         <h2 id={`${ids}-title`} className="text-base font-medium">
           {t("title")}
@@ -59,7 +59,7 @@ export function RunPlanSteps({ run }: { run: Run }) {
               <li
                 key={step.key}
                 className={cn(
-                  "flex min-w-0 flex-col gap-1 rounded-lg px-2 py-1.5",
+                  "flex min-w-0 flex-col gap-1 rounded-md px-2 py-1.5",
                   step.group === "in_progress" ? "bg-accent" : "hover:bg-muted/50",
                 )}
                 aria-current={step.group === "in_progress" ? "step" : undefined}
@@ -70,7 +70,7 @@ export function RunPlanSteps({ run }: { run: Run }) {
                   <span className="mt-0.5 w-6 shrink-0 text-right font-mono text-xs text-muted-foreground tabular-nums">{step.key}</span>
                   <Link
                     href={stepHref(run.project, run.plan_id, step.key)}
-                    className="min-w-0 flex-1 text-primary underline-offset-4 [overflow-wrap:anywhere] hover:underline"
+                    className="min-w-0 flex-1 text-brand underline-offset-4 [overflow-wrap:anywhere] hover:underline"
                   >
                     {stepLabel(step) || t("untitled")}
                   </Link>

@@ -48,7 +48,7 @@ function SkillsTable({ skills, place, repos }: { skills: Skill[]; place: SkillPl
             <Link
               href={skillHref(place, info.getValue())}
               className={cn(
-                "w-fit font-mono text-sm font-medium text-primary underline-offset-4 [overflow-wrap:anywhere]",
+                "w-fit font-mono text-sm font-medium text-brand underline-offset-4 [overflow-wrap:anywhere]",
                 "hover:underline",
               )}
               data-skill-name={info.getValue()}

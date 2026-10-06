@@ -98,7 +98,7 @@ function ConfirmForm({
     <form onSubmit={submit} noValidate className="flex flex-col gap-4" aria-busy={pending || undefined}>
       <AlertDialogHeader>
         <AlertDialogMedia
-          className={tone === "danger" ? "bg-destructive/10 text-destructive" : "bg-warning text-warning-foreground"}
+          className={tone === "danger" ? "bg-danger-soft text-danger" : "bg-attention-soft text-attention"}
         >
           <Icon aria-hidden="true" />
         </AlertDialogMedia>
@@ -109,7 +109,7 @@ function ConfirmForm({
       </AlertDialogHeader>
       <div className="flex flex-col gap-1.5">
         <Label htmlFor={`${ids}-name`} className="block leading-normal">
-          {t.rich("typeName", { name, code: (chunks) => <code className="font-mono font-semibold break-all">{chunks}</code> })}
+          {t.rich("typeName", { name, code: (chunks) => <code className="font-mono font-medium break-all">{chunks}</code> })}
         </Label>
         <Input
           id={`${ids}-name`}
@@ -129,7 +129,7 @@ function ConfirmForm({
           data-testid={`${testId}-name`}
         />
         {tried && !matches ? (
-          <p id={`${ids}-error`} className="text-xs font-medium text-destructive">
+          <p id={`${ids}-error`} className="text-xs font-medium text-danger">
             {t("mismatch", { name })}
           </p>
         ) : null}
@@ -149,8 +149,8 @@ function ConfirmForm({
           size="lg"
           className={cn(
             tone === "danger"
-              ? "bg-destructive text-primary-foreground hover:bg-destructive/90"
-              : "bg-warning-foreground text-warning hover:bg-warning-foreground/90",
+              ? "bg-destructive text-on-danger hover:brightness-94"
+              : "bg-primary text-primary-foreground hover:bg-action-hover",
           )}
           aria-disabled={pending || undefined}
           data-testid={`${testId}-confirm`}

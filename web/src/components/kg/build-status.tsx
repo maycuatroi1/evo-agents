@@ -265,7 +265,7 @@ export function BuildQueue({ data, now }: { data: KgBuilds; now: number | null }
             {t("empty")}
           </p>
         ) : (
-          <ul className="flex flex-col divide-y rounded-lg border" aria-label={t("title")}>
+          <ul className="flex flex-col divide-y rounded-md border" aria-label={t("title")}>
             {data.jobs.map((job) => {
               const build = job.build_id !== null ? builds.get(job.build_id) : undefined;
               const { wait } = build ? buildDurations(build, now) : { wait: null };
@@ -380,7 +380,7 @@ export function BuildHistory({ builds, now }: { builds: KgBuild[]; now: number |
         enableSorting: false,
         cell: (info) =>
           info.getValue() ? (
-            <span className="flex max-w-xs items-start gap-1.5 text-xs whitespace-normal text-destructive">
+            <span className="flex max-w-xs items-start gap-1.5 text-xs whitespace-normal text-danger">
               <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
               <span className="line-clamp-2 [overflow-wrap:anywhere]" title={info.getValue()}>
                 {info.getValue()}

@@ -197,7 +197,7 @@ export function RunTerminalPanel({
           role={message.tone === "error" ? "alert" : "status"}
           className={cn(
             "flex items-start gap-2.5 border-b px-4 py-2.5 text-sm",
-            message.tone === "error" ? "bg-card text-destructive" : "bg-accent text-accent-foreground",
+            message.tone === "error" ? "bg-card text-danger" : "bg-accent text-accent-foreground",
           )}
           data-testid="terminal-message"
           data-kind={end?.kind}
@@ -213,7 +213,7 @@ export function RunTerminalPanel({
           </div>
         </div>
       ) : null}
-      <div className="h-[min(60vh,32rem)] min-h-64 bg-log">
+      <div className="h-[min(60vh,32rem)] min-h-64 bg-term-bg">
         {showScreen ? (
           <div className={cn("h-full", shown === "closed" && "opacity-70")} data-testid="terminal-view">
             <TerminalView
@@ -230,8 +230,8 @@ export function RunTerminalPanel({
             />
           </div>
         ) : (
-          <div className="flex h-full flex-col gap-3 overflow-y-auto px-4 py-3 font-mono text-[12.5px] leading-[1.6] text-log-muted" data-testid="terminal-intro">
-            <p className="text-log-foreground">
+          <div className="flex h-full flex-col gap-3 overflow-y-auto px-4 py-3 font-mono text-[12.5px] leading-[1.6] text-term-muted" data-testid="terminal-intro">
+            <p className="text-term-fg">
               {takeover ? t("intro.headless", { id: run.id, worker }) : t("intro.interactive", { worker })}
             </p>
             <p>{t("intro.limits")}</p>

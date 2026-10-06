@@ -57,7 +57,7 @@ function useFilters(): [WorkerFilters, (next: WorkerFilters) => void] {
 
 function Stat({ icon: Icon, label, value, hint, testId }: { icon: LucideIcon; label: string; value: number; hint: string; testId: string }) {
   return (
-    <div className="flex flex-col gap-1 rounded-xl border bg-card px-4 py-3.5" data-testid={testId}>
+    <div className="flex flex-col gap-1 rounded-md border bg-card shadow-raised px-4 py-3.5" data-testid={testId}>
       <dt className="flex items-center gap-1.5 text-sm text-muted-foreground">
         <Icon className="size-4 shrink-0" aria-hidden="true" />
         {label}
@@ -116,7 +116,7 @@ function WorkersTable({ workers, caption }: { workers: Worker[]; caption: string
             <div className="flex min-w-0 flex-col gap-0.5 py-0.5 whitespace-normal">
               <Link
                 href={workerHref(worker.id)}
-                className="w-fit font-mono text-sm font-medium text-primary underline-offset-4 [overflow-wrap:anywhere] hover:underline"
+                className="w-fit font-mono text-sm font-medium text-brand underline-offset-4 [overflow-wrap:anywhere] hover:underline"
                 data-worker-name={worker.name}
               >
                 {worker.name}
@@ -229,7 +229,7 @@ function WorkerList({ workers, onRegister }: { workers: Worker[]; onRegister: ()
       <h2 id="workers-list-title" className="sr-only">
         {t("caption")}
       </h2>
-      <div className="flex flex-col gap-3 rounded-xl border bg-card p-4">
+      <div className="flex flex-col gap-3 rounded-md border bg-card shadow-raised p-4">
         <SearchField
           value={filters.q}
           onCommit={(q) => setFilters({ ...filters, q })}
