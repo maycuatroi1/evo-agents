@@ -1300,6 +1300,7 @@
         "kind": "object",
         "keys": [
           "id",
+          "kind",
           "project",
           "plan_id",
           "step_key",
@@ -1311,9 +1312,11 @@
           "pinned_worker_id",
           "requested_runtime",
           "runtime",
+          "model",
           "mode",
           "approval",
           "timeout_min",
+          "run_seconds",
           "attempt",
           "max_attempts",
           "parent_run_id",
@@ -1322,6 +1325,7 @@
           "session_id",
           "repo",
           "branch",
+          "repos",
           "commit_sha",
           "diffstat",
           "verify",
@@ -1374,6 +1378,7 @@
         "kind": "object",
         "keys": [
           "id",
+          "kind",
           "project",
           "plan_id",
           "step_key",
@@ -1385,9 +1390,11 @@
           "pinned_worker_id",
           "requested_runtime",
           "runtime",
+          "model",
           "mode",
           "approval",
           "timeout_min",
+          "run_seconds",
           "attempt",
           "max_attempts",
           "parent_run_id",
@@ -1396,6 +1403,7 @@
           "session_id",
           "repo",
           "branch",
+          "repos",
           "commit_sha",
           "diffstat",
           "verify",
@@ -1511,6 +1519,7 @@
         "kind": "array",
         "keys": [
           "id",
+          "kind",
           "project",
           "plan_id",
           "step_key",
@@ -1522,9 +1531,11 @@
           "pinned_worker_id",
           "requested_runtime",
           "runtime",
+          "model",
           "mode",
           "approval",
           "timeout_min",
+          "run_seconds",
           "attempt",
           "max_attempts",
           "parent_run_id",
@@ -1533,6 +1544,7 @@
           "session_id",
           "repo",
           "branch",
+          "repos",
           "commit_sha",
           "diffstat",
           "verify",
@@ -1585,6 +1597,7 @@
         "kind": "object",
         "keys": [
           "id",
+          "kind",
           "project",
           "plan_id",
           "step_key",
@@ -1596,9 +1609,11 @@
           "pinned_worker_id",
           "requested_runtime",
           "runtime",
+          "model",
           "mode",
           "approval",
           "timeout_min",
+          "run_seconds",
           "attempt",
           "max_attempts",
           "parent_run_id",
@@ -1607,6 +1622,7 @@
           "session_id",
           "repo",
           "branch",
+          "repos",
           "commit_sha",
           "diffstat",
           "verify",
@@ -1848,6 +1864,7 @@
         "kind": "object",
         "keys": [
           "id",
+          "kind",
           "project",
           "plan_id",
           "step_key",
@@ -1859,9 +1876,11 @@
           "pinned_worker_id",
           "requested_runtime",
           "runtime",
+          "model",
           "mode",
           "approval",
           "timeout_min",
+          "run_seconds",
           "attempt",
           "max_attempts",
           "parent_run_id",
@@ -1870,6 +1889,7 @@
           "session_id",
           "repo",
           "branch",
+          "repos",
           "commit_sha",
           "diffstat",
           "verify",
@@ -1971,6 +1991,7 @@
         "kind": "object",
         "keys": [
           "id",
+          "kind",
           "project",
           "plan_id",
           "step_key",
@@ -1982,9 +2003,11 @@
           "pinned_worker_id",
           "requested_runtime",
           "runtime",
+          "model",
           "mode",
           "approval",
           "timeout_min",
+          "run_seconds",
           "attempt",
           "max_attempts",
           "parent_run_id",
@@ -1993,6 +2016,7 @@
           "session_id",
           "repo",
           "branch",
+          "repos",
           "commit_sha",
           "diffstat",
           "verify",
@@ -2045,6 +2069,7 @@
         "kind": "object",
         "keys": [
           "id",
+          "kind",
           "project",
           "plan_id",
           "step_key",
@@ -2056,9 +2081,11 @@
           "pinned_worker_id",
           "requested_runtime",
           "runtime",
+          "model",
           "mode",
           "approval",
           "timeout_min",
+          "run_seconds",
           "attempt",
           "max_attempts",
           "parent_run_id",
@@ -2067,6 +2094,7 @@
           "session_id",
           "repo",
           "branch",
+          "repos",
           "commit_sha",
           "diffstat",
           "verify",
@@ -9037,6 +9065,100 @@
           }
         }
       },
+      "/v1/projects/{project}/plan-runs": {
+        "post": {
+          "tags": [
+            "runs"
+          ],
+          "summary": "Dispatch Plan",
+          "description": "Queue a plan run: one run, on a worker of the caller's, that does every step of the plan not done yet.",
+          "operationId": "dispatch_plan_v1_projects__project__plan_runs_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanRunDispatch"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Run"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
       "/v1/projects/{project}/runs/{run_id}/cancel": {
         "post": {
           "tags": [
@@ -9734,6 +9856,199 @@
                   }
                 }
               }
+            }
+          }
+        }
+      },
+      "/v1/worker/runs/{run_id}/plan": {
+        "get": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Read Run Plan",
+          "description": "The plan of a plan run this worker holds, as the hub holds it now, read as the member who dispatched the run.",
+          "operationId": "read_run_plan_v1_worker_runs__run_id__plan_get",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Plan"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/worker/runs/{run_id}/steps/{key}": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Report Step",
+          "description": "Write a step of the plan of a plan run this worker holds, as the member who dispatched the run.",
+          "operationId": "report_step_v1_worker_runs__run_id__steps__key__post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            },
+            {
+              "name": "key",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200,
+                "description": "the step's id, or its order",
+                "title": "Key"
+              },
+              "description": "the step's id, or its order"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StepReport"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/StepWritten"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
             }
           }
         }
@@ -13548,6 +13863,26 @@
           "type": "object",
           "title": "PlanComplete"
         },
+        "PlanCopy": {
+          "properties": {
+            "revision": {
+              "type": "integer",
+              "title": "Revision"
+            },
+            "body": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Body"
+            }
+          },
+          "type": "object",
+          "required": [
+            "revision",
+            "body"
+          ],
+          "title": "PlanCopy",
+          "description": "A plan as the hub holds it at one revision."
+        },
         "PlanDiff": {
           "properties": {
             "plan_id": {
@@ -13801,6 +14136,82 @@
             "body"
           ],
           "title": "PlanPut"
+        },
+        "PlanRunDispatch": {
+          "properties": {
+            "plan_id": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+              "title": "Plan Id"
+            },
+            "worker_id": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 9.223372036854776e+18,
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Worker Id",
+              "description": "pin the run to this worker of yours"
+            },
+            "runtime": {
+              "type": "string",
+              "enum": [
+                "any",
+                "claude-code",
+                "opencode",
+                "codex"
+              ],
+              "title": "Runtime",
+              "description": "any: the claiming worker picks one it has",
+              "default": "any"
+            },
+            "model": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "pattern": "^[^\\x00-\\x1f\\x7f]+$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Model",
+              "description": "the model to use; null: the runtime's"
+            },
+            "mode": {
+              "type": "string",
+              "enum": [
+                "headless",
+                "interactive"
+              ],
+              "title": "Mode",
+              "default": "headless"
+            },
+            "timeout_h": {
+              "type": "integer",
+              "enum": [
+                2,
+                4,
+                8,
+                24
+              ],
+              "title": "Timeout H",
+              "description": "hours of agent time the run may take; waiting for a decision and parked do not count",
+              "default": 4
+            }
+          },
+          "type": "object",
+          "required": [
+            "plan_id"
+          ],
+          "title": "PlanRunDispatch"
         },
         "PlanSummary": {
           "properties": {
@@ -14197,6 +14608,17 @@
             "revision": {
               "type": "integer",
               "title": "Revision"
+            },
+            "plan_run": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ActiveRun"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "the plan's active plan run: while there is one, no step of the plan is dispatched"
             },
             "steps": {
               "items": {
@@ -14700,6 +15122,15 @@
               "type": "integer",
               "title": "Id"
             },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "step",
+                "plan"
+              ],
+              "title": "Kind",
+              "description": "step: one step of the plan; plan: every step not done yet"
+            },
             "project": {
               "type": "string",
               "title": "Project"
@@ -14709,8 +15140,16 @@
               "title": "Plan Id"
             },
             "step_key": {
-              "type": "string",
-              "title": "Step Key"
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Step Key",
+              "description": "null for a plan run"
             },
             "title": {
               "anyOf": [
@@ -14722,7 +15161,7 @@
                 }
               ],
               "title": "Title",
-              "description": "the step's title when the run was dispatched"
+              "description": "the step's title when the run was dispatched; the plan's for a plan run"
             },
             "plan_revision": {
               "type": "integer",
@@ -14790,6 +15229,18 @@
               "title": "Runtime",
               "description": "any until a worker claims the run"
             },
+            "model": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Model",
+              "description": "the model the dispatch asked for; null: the runtime's own choice"
+            },
             "mode": {
               "type": "string",
               "enum": [
@@ -14809,6 +15260,11 @@
             "timeout_min": {
               "type": "integer",
               "title": "Timeout Min"
+            },
+            "run_seconds": {
+              "type": "integer",
+              "title": "Run Seconds",
+              "description": "the agent time the run has used of its timeout, as the hub last counted it"
             },
             "attempt": {
               "type": "integer",
@@ -14872,8 +15328,16 @@
               "title": "Session Id"
             },
             "repo": {
-              "type": "string",
-              "title": "Repo"
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Repo",
+              "description": "null for a plan run, which has repos"
             },
             "branch": {
               "anyOf": [
@@ -14885,6 +15349,21 @@
                 }
               ],
               "title": "Branch"
+            },
+            "repos": {
+              "anyOf": [
+                {
+                  "items": {
+                    "$ref": "#/components/schemas/RunRepo"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Repos",
+              "description": "a plan run's repos; null for a run of one step"
             },
             "commit_sha": {
               "anyOf": [
@@ -15067,6 +15546,7 @@
           "type": "object",
           "required": [
             "id",
+            "kind",
             "project",
             "plan_id",
             "step_key",
@@ -15078,9 +15558,11 @@
             "pinned_worker_id",
             "requested_runtime",
             "runtime",
+            "model",
             "mode",
             "approval",
             "timeout_min",
+            "run_seconds",
             "attempt",
             "max_attempts",
             "parent_run_id",
@@ -15089,6 +15571,7 @@
             "session_id",
             "repo",
             "branch",
+            "repos",
             "commit_sha",
             "diffstat",
             "verify",
@@ -15501,11 +15984,45 @@
           ],
           "title": "RunPush"
         },
+        "RunRepo": {
+          "properties": {
+            "repo": {
+              "type": "string",
+              "title": "Repo"
+            },
+            "branch": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch",
+              "description": "null when the plan names none: the branch checked out"
+            }
+          },
+          "type": "object",
+          "required": [
+            "repo"
+          ],
+          "title": "RunRepo",
+          "description": "A repo of a plan run, with the branch the plan names for it."
+        },
         "RunSpec": {
           "properties": {
             "id": {
               "type": "integer",
               "title": "Id"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "step",
+                "plan"
+              ],
+              "title": "Kind"
             },
             "project": {
               "type": "string",
@@ -15516,8 +16033,16 @@
               "title": "Plan Id"
             },
             "step_key": {
-              "type": "string",
-              "title": "Step Key"
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Step Key",
+              "description": "null for a plan run"
             },
             "title": {
               "anyOf": [
@@ -15532,7 +16057,8 @@
             },
             "plan_revision": {
               "type": "integer",
-              "title": "Plan Revision"
+              "title": "Plan Revision",
+              "description": "the plan revision the run was dispatched from"
             },
             "attempt": {
               "type": "integer",
@@ -15562,6 +16088,18 @@
               ],
               "title": "Runtime"
             },
+            "model": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Model",
+              "description": "the model the dispatch asked for; null: the runtime's own choice"
+            },
             "mode": {
               "type": "string",
               "enum": [
@@ -15583,8 +16121,16 @@
               "title": "Timeout Min"
             },
             "repo": {
-              "type": "string",
-              "title": "Repo"
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Repo",
+              "description": "null for a plan run"
             },
             "branch": {
               "anyOf": [
@@ -15597,6 +16143,21 @@
               ],
               "title": "Branch"
             },
+            "repos": {
+              "anyOf": [
+                {
+                  "items": {
+                    "$ref": "#/components/schemas/RunRepo"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Repos",
+              "description": "a plan run's repos, each with a checkout on this worker"
+            },
             "lease_expires_at": {
               "type": "string",
               "format": "date-time",
@@ -15605,11 +16166,23 @@
             "prompt": {
               "type": "string",
               "title": "Prompt"
+            },
+            "plan": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/PlanCopy"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "a plan run's plan at the hub's current revision, for .evo-run/plan.yaml; null for a run of one step"
             }
           },
           "type": "object",
           "required": [
             "id",
+            "kind",
             "project",
             "plan_id",
             "step_key",
@@ -15619,13 +16192,16 @@
             "max_attempts",
             "parent_run_id",
             "runtime",
+            "model",
             "mode",
             "approval",
             "timeout_min",
             "repo",
             "branch",
+            "repos",
             "lease_expires_at",
-            "prompt"
+            "prompt",
+            "plan"
           ],
           "title": "RunSpec"
         },
@@ -16277,6 +16853,132 @@
             "active_run"
           ],
           "title": "StepReadiness"
+        },
+        "StepReport": {
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "in_progress",
+                "done",
+                "pending"
+              ],
+              "title": "Status",
+              "description": "in_progress when the agent starts the step, done once verified, pending to hand it back"
+            },
+            "repo": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "pattern": "^[^\\x00-\\x1f\\x7f]+$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Repo",
+              "description": "the run's repo the step was done in"
+            },
+            "evidence": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 16384,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Evidence",
+              "description": "what the agent did and how it checked it"
+            },
+            "verify": {
+              "anyOf": [
+                {
+                  "items": {
+                    "$ref": "#/components/schemas/VerifyResult"
+                  },
+                  "type": "array",
+                  "maxItems": 50
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Verify",
+              "description": "each verify command the worker ran again; done needs one, every one exit 0"
+            },
+            "commit_sha": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Commit Sha",
+              "description": "the repo's commit the step ends on"
+            }
+          },
+          "type": "object",
+          "required": [
+            "status"
+          ],
+          "title": "StepReport",
+          "description": "What a plan run's worker reports of one step of the plan."
+        },
+        "StepWritten": {
+          "properties": {
+            "run_id": {
+              "type": "integer",
+              "title": "Run Id"
+            },
+            "plan_id": {
+              "type": "string",
+              "title": "Plan Id"
+            },
+            "step_key": {
+              "type": "string",
+              "title": "Step Key"
+            },
+            "status": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status",
+              "description": "the step's status as the plan holds it after the report"
+            },
+            "revision": {
+              "type": "integer",
+              "title": "Revision",
+              "description": "the plan's revision after the report"
+            },
+            "written": {
+              "type": "boolean",
+              "title": "Written",
+              "description": "whether the report wrote a revision; false for a resend that changed nothing"
+            }
+          },
+          "type": "object",
+          "required": [
+            "run_id",
+            "plan_id",
+            "step_key",
+            "status",
+            "revision",
+            "written"
+          ],
+          "title": "StepWritten"
         },
         "TokenInfo": {
           "properties": {

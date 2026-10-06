@@ -50,6 +50,7 @@ RAW_CHARS = 300  # of an event body shown as JSON
 # The keys of the hub's answers these commands print with --json (the contract, `evo-agents hub contract print`).
 RUN_KEYS = (
     "id",
+    "kind",
     "project",
     "plan_id",
     "step_key",
@@ -61,9 +62,11 @@ RUN_KEYS = (
     "pinned_worker_id",
     "requested_runtime",
     "runtime",
+    "model",
     "mode",
     "approval",
     "timeout_min",
+    "run_seconds",
     "attempt",
     "max_attempts",
     "parent_run_id",
@@ -72,6 +75,7 @@ RUN_KEYS = (
     "session_id",
     "repo",
     "branch",
+    "repos",
     "commit_sha",
     "diffstat",
     "verify",
