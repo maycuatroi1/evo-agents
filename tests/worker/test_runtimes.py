@@ -513,6 +513,7 @@ def test_claude_resumes_the_runs_session_instead_of_making_one(tmp_path):
 
 
 def test_claude_code_runs_on_the_model_of_the_run_else_the_environments(tmp_path):
+    needs("claude_agent_sdk")
     from claude_agent_sdk._internal.transport.subprocess_cli import SubprocessCLITransport
 
     def model_flag(adapter) -> tuple[str | None, str | None]:
