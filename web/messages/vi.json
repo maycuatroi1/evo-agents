@@ -31,7 +31,8 @@
     "myMemories": "Memory cá nhân",
     "globalSkills": "Skill dùng chung",
     "workers": "Worker",
-    "runDiff": "Diff"
+    "runDiff": "Diff",
+    "inbox": "Inbox"
   },
   "projectSwitcher": {
     "label": "Dự án",
@@ -1645,8 +1646,13 @@
         "parkedYou": "Tạm gác{since, select, none {} other { từ {since}}}: quyết định chưa được trả lời sau 24 giờ. Câu trả lời của bạn sẽ chạy tiếp run trên cùng worker.",
         "open": "Agent đã hỏi {login} một quyết định và làm tiếp các việc khác trong lúc chờ.",
         "openYou": "Agent đã hỏi bạn một quyết định và làm tiếp các việc khác trong lúc chờ.",
-        "answer": "Trả lời quyết định",
-        "openLink": "Mở quyết định"
+        "titleYou": "Đang chờ bạn quyết định",
+        "titleOther": "Đang chờ {login} quyết định",
+        "titleAnswered": "Đã gửi câu trả lời",
+        "count": "{count} đang mở",
+        "inInbox": "Mở trong Inbox",
+        "loading": "Đang đọc quyết định…",
+        "failed": "Không đọc được quyết định ở đây. Bạn cũng xem được nó trong Inbox."
       },
       "log": {
         "title": "Log",
@@ -1931,6 +1937,152 @@
         "title": "Không đọc được diff",
         "description": "Blob store không trả lời yêu cầu của web. Hãy tải diff về, hoặc tải lại trang sau."
       }
+    }
+  },
+  "inbox": {
+    "title": "Inbox",
+    "description": "Các quyết định agent của plan run bạn giao cần bạn trả lời, và những điều agent báo cho bạn: push hay merge vào nhánh mặc định, plan đã xong, run thất bại. Quyết định đang chờ bạn trả lời nằm trên cùng.",
+    "listTitle": "Thông báo",
+    "unreadCount": "{count, plural, =0 {Không có mục chưa đọc} other {# chưa đọc}}",
+    "openCount": "{count, plural, other {# quyết định chờ bạn}}",
+    "markAll": "Đánh dấu tất cả đã đọc",
+    "markShown": "Đánh dấu các mục này đã đọc",
+    "markedAll": "{count, plural, =0 {Không còn thông báo nào chưa đọc.} other {Đã đánh dấu # thông báo là đã đọc.}}",
+    "count": "{count, plural, other {# thông báo}}",
+    "waitingTitle": "Đang chờ bạn trả lời",
+    "restTitle": "Thông báo và quyết định đã xong",
+    "allTitle": "Thông báo",
+    "pagerLabel": "thông báo",
+    "summary": {
+      "all": "{count, plural, =0 {Chưa có thông báo nào.} other {# thông báo.}}",
+      "filtered": "{count, plural, =0 {Không có thông báo nào khớp.} other {# thông báo khớp.}}"
+    },
+    "filters": {
+      "label": "Lọc thông báo",
+      "show": "Hiện",
+      "everything": "Tất cả",
+      "unread": "Chưa đọc",
+      "kind": "Loại",
+      "allKinds": "Mọi loại",
+      "decisions": "Quyết định",
+      "notices": "Thông báo",
+      "project": "Dự án",
+      "allProjects": "Mọi dự án"
+    },
+    "empty": {
+      "title": "Inbox đang trống",
+      "description": "Khi agent của một plan run bạn giao hỏi bạn một quyết định, hay push hoặc merge vào nhánh mặc định, thông báo sẽ hiện ở đây và trên chuông ở thanh trên cùng."
+    },
+    "noResults": {
+      "title": "Không có thông báo nào khớp",
+      "description": "Thử loại hoặc dự án khác, hoặc hiện cả các thông báo bạn đã đọc.",
+      "clear": "Xoá bộ lọc"
+    },
+    "bell": {
+      "label": "Inbox: {unread, plural, =0 {không có thông báo chưa đọc} other {# thông báo chưa đọc}}{decisions, plural, =0 {} other {, # quyết định chờ bạn trả lời}}",
+      "labelUnknown": "Inbox",
+      "arrived": "{count, plural, other {Có # thông báo mới trong inbox.}}"
+    },
+    "kind": {
+      "decision": "Quyết định",
+      "notice": "Thông báo"
+    },
+    "decisionState": {
+      "open": "Đang mở",
+      "answered": "Đã trả lời",
+      "expired": "Hết hạn",
+      "cancelled": "Đã huỷ"
+    },
+    "category": {
+      "deploy": "Triển khai",
+      "delete_data": "Xoá dữ liệu",
+      "live_migration": "Đổi dữ liệu thật",
+      "external_send": "Gửi ra ngoài",
+      "spend_money": "Tốn tiền",
+      "architecture": "Kiến trúc",
+      "scope": "Phạm vi"
+    },
+    "noticeKind": {
+      "push_default_branch": "Đã push lên nhánh mặc định",
+      "merge_default_branch": "Đã merge vào nhánh mặc định",
+      "plan_finished": "Plan đã xong",
+      "run_failed": "Run thất bại"
+    },
+    "item": {
+      "unread": "Chưa đọc",
+      "answer": "Trả lời",
+      "answerLabel": "Trả lời quyết định #{id}",
+      "view": "Xem",
+      "viewLabel": "Xem quyết định #{id}",
+      "openRun": "Mở run #{id}",
+      "markRead": "Đánh dấu đã đọc",
+      "markReadLabel": "Đánh dấu đã đọc: {title}",
+      "showMore": "Xem toàn bộ",
+      "showLess": "Thu gọn",
+      "repo": "Repo",
+      "branch": "Nhánh",
+      "commits": "{count, plural, other {# commit}}",
+      "commitFull": "commit {sha}",
+      "moreCommits": "và {count} commit nữa",
+      "fewerCommits": "Thu gọn"
+    },
+    "panel": {
+      "back": "Mọi thông báo",
+      "close": "Đóng",
+      "notFoundTitle": "Không tìm thấy quyết định #{id}",
+      "notFoundDescription": "Quyết định thuộc một dự án hay plan bạn không xem được, hoặc đường dẫn bị sai."
+    },
+    "decision": {
+      "number": "Quyết định #{id}",
+      "project": "Dự án",
+      "run": "Run",
+      "runLink": "#{id}",
+      "plan": "Plan",
+      "step": "Bước",
+      "stepLink": "Bước {key}",
+      "asked": "Hỏi lúc",
+      "owner": "Người được hỏi",
+      "context": "Bối cảnh agent đưa ra",
+      "options": "Các phương án",
+      "chosen": "Đã chọn",
+      "recommended": "Nên chọn",
+      "answerTitle": "Câu trả lời",
+      "answeredBy": "<who>{login}</who> đã trả lời",
+      "answerOption": "Phương án:",
+      "answerText": "Lời nhắn kèm:",
+      "delivered": "Agent đã nhận câu trả lời",
+      "notDelivered": "Đang chờ worker chuyển câu trả lời cho agent ở lượt kế tiếp.",
+      "resumed": "Run #{run} đang tạm gác: câu trả lời đã cho run chạy tiếp thành <link>run #{next}</link>.",
+      "onlyOwner": "Chỉ {owner}, người đã giao run #{run}, mới trả lời được quyết định này.",
+      "runGone": "Run #{run} đang ở trạng thái {state}: không còn agent nào nhận câu trả lời.",
+      "expired": "Không ai trả lời trong 7 ngày run #{run} tạm gác, nên run đã bị huỷ và quyết định hết hạn.",
+      "cancelled": "Run #{run} đã kết thúc trước khi có câu trả lời, nên quyết định bị huỷ."
+    },
+    "answer": {
+      "title": "Trả lời quyết định #{id}",
+      "options": "Chọn một phương án",
+      "optionsHint": "Agent đề xuất một phương án; không phương án nào được chọn sẵn cho bạn.",
+      "clearOption": "Bỏ chọn",
+      "text": "Câu trả lời của bạn",
+      "textHint": "Không bắt buộc khi đã chọn phương án: điều agent cần biết thêm. Nếu không chọn phương án, lời bạn viết chính là câu trả lời.",
+      "placeholder": "Ví dụ: triển khai sau 18:00, khi bản sao lưu đã xong",
+      "bytes": "{count} trên {max} byte",
+      "empty": "Hãy chọn một phương án hoặc viết câu trả lời trước.",
+      "long": "Lời trả lời tối đa {max} byte UTF-8. Hãy rút ngắn lại.",
+      "hint": "Câu trả lời tới agent của run #{run} qua inbox của run. Đã gửi thì không sửa được.",
+      "hintParked": "Run #{run} đang tạm gác: câu trả lời sẽ cho run chạy tiếp thành một run mới trên cùng worker, trong cùng phiên. Đã gửi thì không sửa được.",
+      "send": "Gửi câu trả lời",
+      "sending": "Đang gửi…",
+      "sent": "Đã gửi câu trả lời tới run #{run}. Worker chuyển cho agent ở lượt kế tiếp.",
+      "sentResumed": "Đã gửi câu trả lời. Run #{run} đang tạm gác nên chạy tiếp thành run #{next} trên cùng worker."
+    },
+    "errors": {
+      "forbidden": "Hub từ chối: chỉ {owner}, người đã giao run #{run}, mới trả lời được, và chỉ khi còn quyền ghi trên {project}.",
+      "notFound": "Không đọc được quyết định nữa: plan của nó đã rời hub, hoặc bạn đã mất quyền vào dự án.",
+      "conflict": "Quyết định đã được trả lời hoặc đã đóng trong lúc đó, hoặc run của nó đã kết thúc. Trang đang hiện quyết định đúng như trên hub.",
+      "apiMessage": "Hub báo: {message}",
+      "readForbidden": "Hub từ chối đánh dấu các thông báo này là đã đọc. Tải lại trang rồi thử lại.",
+      "readGone": "Các thông báo này đã thay đổi trong lúc đó. Danh sách vừa được tải lại."
     }
   }
 }

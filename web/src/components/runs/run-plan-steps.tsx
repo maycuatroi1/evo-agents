@@ -1,21 +1,19 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { MessageCircleQuestionMark } from "lucide-react";
 import Link from "next/link";
-import { useFormatter, useTranslations } from "next-intl";
+import { useTranslations } from "next-intl";
 import { useId } from "react";
 
 import { stepHref } from "@/components/plans/links";
 import { StepStatusBadge } from "@/components/plans/status";
-import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { browserApi } from "@/lib/api/browser";
 import { planQuery } from "@/lib/plan-queries";
 import { countSteps, parsePlan, percent, stepLabel } from "@/lib/plans";
 import { cn } from "@/lib/utils";
 
-import { decisionHref, isActiveState, LIVE_REFRESH_MS, openDecisionsQuery, type Run } from "./queries";
+import { isActiveState, LIVE_REFRESH_MS, type Run } from "./queries";
 
 /**
  * The steps of a plan run's plan, as the hub holds the plan now: each with its status, the step in progress marked,
@@ -88,56 +86,5 @@ export function RunPlanSteps({ run }: { run: Run }) {
         <p className="mt-3 text-xs text-pretty text-muted-foreground">{t("hint")}</p>
       </div>
     </section>
-  );
-}
-
-/**
- * A plan run that waits for its owner's answer, or was parked for want of one: since when, and a link to the open
- * decision in the inbox, where the owner answers it.
- */
-export function RunDecisionNote({ run, owner }: { run: Run; owner: boolean }) {
-  const t = useTranslations("runs.detail.decision");
-  const format = useFormatter();
-  const waiting = run.state === "waiting" || run.state === "parked";
-  const decisions = useQuery({
-    ...openDecisionsQuery(browserApi, run.project, run.id),
-    enabled: run.kind === "plan" && isActiveState(run.state),
-    refetchInterval: LIVE_REFRESH_MS,
-  });
-  const latest = decisions.data?.decisions[0] ?? null;
-  if (!latest && !waiting) return null;
-  const since = run.state === "waiting" ? run.waiting_since : run.state === "parked" ? run.parked_at : null;
-  const when = since ? format.dateTime(new Date(since), { dateStyle: "medium", timeStyle: "short" }) : "none";
-  const key =
-    run.state === "parked" ? (owner ? "parkedYou" : "parked") : waiting ? (owner ? "waitingYou" : "waiting") : owner ? "openYou" : "open";
-  return (
-    <div
-      className={cn(
-        "flex flex-col gap-2 rounded-lg border px-3 py-2.5 text-sm sm:flex-row sm:items-center sm:justify-between",
-        waiting ? "border-warning-foreground/20 bg-warning text-warning-foreground" : "bg-card text-muted-foreground",
-      )}
-      data-testid="run-decision-note"
-      data-state={run.state}
-    >
-      <p className="flex min-w-0 items-start gap-2.5">
-        <MessageCircleQuestionMark className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-        <span className="min-w-0 text-pretty [overflow-wrap:anywhere]">
-          {t(key, { since: when, login: run.dispatched_by })}
-          {latest ? (
-            <>
-              {" "}
-              <span className="font-medium">{latest.question}</span>
-            </>
-          ) : null}
-        </span>
-      </p>
-      {latest ? (
-        <Button asChild size="lg" variant={owner ? "default" : "outline"} className="shrink-0">
-          <Link href={decisionHref(latest.id)} data-testid="run-decision-link">
-            {owner ? t("answer") : t("openLink")}
-          </Link>
-        </Button>
-      ) : null}
-    </div>
   );
 }
