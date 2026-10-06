@@ -70,6 +70,7 @@ RUN_KEYS = (
     "attempt",
     "max_attempts",
     "parent_run_id",
+    "resume_of_run_id",
     "state",
     "lease_expires_at",
     "session_id",
@@ -91,6 +92,8 @@ RUN_KEYS = (
     "queued_at",
     "leased_at",
     "started_at",
+    "waiting_since",
+    "parked_at",
     "finished_at",
 )
 RUN_LIST_KEYS = ("runs", "total", "counts", "limit", "offset")

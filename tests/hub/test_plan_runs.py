@@ -573,7 +573,7 @@ def test_a_lost_plan_run_is_tried_again_as_a_plan_run_and_the_last_attempt_gives
     first = run["id"]
     reported(client, worker, first, 2, "in_progress")
     expire(hub_db, first)
-    assert recover(client) == {"lost": 1, "failed": 0, "cancelled": 0}
+    assert recover(client) == {"lost": 1, "failed": 0, "cancelled": 0, "parked": 0}
     ((second,),) = sql(hub_db, "SELECT id FROM runs WHERE parent_run_id = %s", (first,))
     again = client.get(f"/v1/projects/{PROJECT}/runs/{second}", headers=hub["owner"]).json()
     assert {key: again[key] for key in ("kind", "step_key", "repos", "model", "attempt", "state", "timeout_min")} == {
@@ -594,7 +594,7 @@ def test_a_lost_plan_run_is_tried_again_as_a_plan_run_and_the_last_attempt_gives
     ((third,),) = sql(hub_db, "SELECT id FROM runs WHERE parent_run_id = %s", (second,))
     assert claim(client, worker)["attempt"] == 3
     expire(hub_db, third)
-    assert recover(client) == {"lost": 0, "failed": 1, "cancelled": 0}
+    assert recover(client) == {"lost": 0, "failed": 1, "cancelled": 0, "parked": 0}
     ((error,),) = sql(hub_db, "SELECT error FROM runs WHERE id = %s", (third,))
     back = fleet_step(client, hub["owner"], 2)  # reported by the first attempt, given back by the last
     assert (back["status"], back["note"]) == ("pending", f"run #{third} failed: {error}")

@@ -14,7 +14,9 @@ lists the repos it works in, 1 to 50 objects each with a repo name and the branc
 null when the plan names none). A run of one step has a step key and a repo and no repos, so each column says which
 kind it belongs to. model is the model the dispatch asked for, NULL for the runtime's own choice. run_seconds is the
 time the run's agent has run, which the hub adds up at each move and heartbeat and compares with timeout_s: waiting
-for an answer and being parked do not count (``runs.run_seconds``). A run of one step keeps the timeout of 5 to 240
+for an answer and being parked do not count (``runs.run_seconds``). counted_at is the time run_seconds counts up to
+while the run is in a state whose time counts, and NULL otherwise; a run that has none there counts from when its agent
+started, or from its claim. A run of one step keeps the timeout of 5 to 240
 minutes; a plan run may take up to 24 hours. waiting_since is set while the run is 'waiting', from when its agent's
 turn ended with a decision open, and parked_at once it is 'parked'; the reaper reads both through indexes of their
 own. resume_of_run_id is the parked plan run that a plan run goes on from, in the same session and worktrees.
@@ -29,7 +31,7 @@ with a key (letters, digits, _ and -, at most 32 characters), a label of one lin
 optional flag recommended, at most one option with it set. state is 'open' until the owner answers ('answered', with
 an option of the decision, text of their own or both, who answered and when), or the parked run's time runs out
 ('expired'), or the run ends another way ('cancelled'). delivered_at is when the worker handed the answer to the agent.
-A decision goes with its run.
+A decision goes with its run. run_inbox.decision_id names the decision an inbox message answers, and goes with it.
 
 notifications is one decision or notice for one member: kind 'decision' names the decision, kind 'notice' the
 notice's kind (``runs.NOTICE_KINDS``) and its details (an object such as the repo, branch and commits of a push), with
@@ -116,6 +118,7 @@ UPGRADE = (
                                       AND NOT jsonb_path_exists(repos, '{BAD_REPO}')),
         ADD COLUMN model text CHECK ({_line("model", 200)}),
         ADD COLUMN run_seconds integer NOT NULL DEFAULT 0 CHECK (run_seconds >= 0),
+        ADD COLUMN counted_at timestamptz,
         ADD COLUMN waiting_since timestamptz,
         ADD COLUMN parked_at timestamptz,
         ADD COLUMN resume_of_run_id bigint REFERENCES runs (id) ON DELETE RESTRICT,
@@ -179,6 +182,7 @@ UPGRADE = (
     "CREATE INDEX decisions_project_idx ON decisions (project_id, id DESC)",
     "CREATE INDEX decisions_run_idx ON decisions (run_id, id)",
     "CREATE INDEX decisions_open_idx ON decisions (run_id) WHERE state = 'open'",
+    "ALTER TABLE run_inbox ADD COLUMN decision_id bigint REFERENCES decisions (id) ON DELETE CASCADE",
     f"""
     CREATE TABLE notifications (
         id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -236,6 +240,7 @@ UPGRADE = (
 )
 
 DOWNGRADE = (
+    "ALTER TABLE run_inbox DROP COLUMN decision_id",
     "DROP TABLE notification_deliveries, notification_channels, notifications, decisions",
     "DELETE FROM runs WHERE kind = 'plan'",
     "UPDATE runs SET state = 'running' WHERE state = 'waiting'",
@@ -255,6 +260,7 @@ DOWNGRADE = (
         DROP COLUMN repos,
         DROP COLUMN model,
         DROP COLUMN run_seconds,
+        DROP COLUMN counted_at,
         DROP COLUMN waiting_since,
         DROP COLUMN parked_at,
         DROP COLUMN resume_of_run_id,

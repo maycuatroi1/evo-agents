@@ -144,9 +144,10 @@ pinned to it, since no other worker may claim either. Each of these moves writes
 `reaper`. Cancelling a held run sets `cancel_requested_at`; the next heartbeat tells the worker, which stops the agent
 and reports `cancelled`.
 
-The reaper also ends a held run that ran past its timeout, counted from when the agent started, or from the claim
-while it has not (from 0.4.0, only the time a run spends `leased`, `running`, `interactive` or `verifying` counts,
-which `run_seconds` in `runs.py` adds up, so waiting for a decision and being parked never time a run out): such a run ends `failed` with the error `it ran past its timeout of N minutes` (or `cancelled`, when
+The reaper also ends a held run that ran past its timeout. From 0.4.0 only the time a run spends `leased`, `running`,
+`interactive` or `verifying` counts: the hub adds it up in `run_seconds` at each move and heartbeat, from `counted_at`
+(or, before the first count, from when the agent started, or from the claim), so waiting for a decision and being
+parked never time a run out. Such a run ends `failed` with the error `it ran past its timeout of N minutes` (or `cancelled`, when
 its cancel was asked for) and is not tried again, and the next heartbeat tells the worker to stop it. The reaper looks at
 timeouts before leases, so a run both past its timeout and without a lease fails rather than coming back.
 
@@ -305,7 +306,14 @@ A run that waits 24 hours (`DECISION_WAIT_SECONDS`) is `parked`: the next heartb
 at the end of its turn, the slot is free, and the worker keeps the agent's session and the worktrees. An answer then
 queues a new plan run pinned to the same worker, with `resume_of_run_id` naming the parked run, which goes on in the
 same session and worktrees; the parked run is `done`. A run parked for 7 days (`PARKED_DAYS`) is `cancelled` and its
-decisions expire.
+decisions expire. A waiting run whose cancel was asked for is cancelled instead of parked, and revoking a worker cancels
+the runs parked on it, since no other worker has their session.
+
+The worker reports `waiting` (`POST /v1/worker/runs/{id}/state`) when the agent's turn ended with a decision open;
+the hub answers 409 unless the run has a decision that is open or whose answer the worker has not taken yet, since the
+time a run waits does not count toward its timeout. It reports `running` once the answer reached the agent. A run
+that ends any other way cancels its decisions still open. The decision and notice routes are in
+`docs/notifications.md`.
 
 A push or merge into a repo's default branch, a plan finished and a plan run failed are notices: the owner reads them
 in the Inbox and answers nothing. Decisions and notices both reach the owner as notifications, through the channels
@@ -407,21 +415,26 @@ same `EVO_HUB_RUN_LEASE_SECONDS`), and answers with control:
 {
   "drain": false,
   "runs": [{"id": 12, "held": true, "state": "running", "lease_expires_at": "...", "cancel": false,
-            "takeover": false, "handback": false, "terminal_open": false, "inbox": 0}]
+            "takeover": false, "handback": false, "terminal_open": false, "park": false, "inbox": 0,
+            "decisions": 0}]
 }
 ```
 
 For each run: whether to `cancel` (the owner asked for it), `takeover`, `handback` or open the terminal
-(`terminal_open`), and how many `inbox` messages wait; for the worker, whether to `drain`. A run the worker reports
-but no longer holds (lost, cancelled, or another worker's now) comes back with `held: false`, `state: null` and
-`cancel: true`. `takeover` stays true from the owner's ask until the worker reports `interactive`, and `handback`
+(`terminal_open`), how many `inbox` messages wait, and how many `decisions` of the run are open; for the worker,
+whether to `drain`. A run the worker reports but no longer holds (lost, cancelled, or another worker's now) comes back
+with `held: false`, `state: null` and `cancel: true`. A plan run the reaper parked, or one that is done because a new
+run resumes it, comes back with `held: false`, its state, `cancel: false` and `park: true`: the worker stops the agent
+at the end of its turn, keeps the session and the worktrees, and frees the slot. The heartbeat also settles the agent
+time of each run it extends (`run_seconds`). `takeover` stays true from the owner's ask until the worker reports `interactive`, and `handback`
 until it reports `running` (see [Takeover and handback](#takeover-and-handback)); `terminal_open` is true while a
 browser waits for the worker's end of the run's terminal (see [Terminal](#terminal)).
 
 ### State
 
 `POST /v1/worker/runs/{id}/state` reports a move of a run the worker holds, with the commit, diffstat, verify results
-and usage when it has them:
+and usage when it has them (a plan run also reports `waiting` and `running`, see
+[Decisions and notices](#decisions-and-notices)):
 
 ```json
 {"state": "done", "from": "verifying", "commit_sha": "<40 or 64 hex>", "session_id": "...",
@@ -472,8 +485,9 @@ The hub's own `state` events are written past the limit, since a move must never
 The owner's messages wait in the run's inbox until the worker takes them: the heartbeat counts them (`inbox`), and
 `POST /v1/worker/runs/{id}/inbox` with `{"ack": ID}` marks the messages up to `ID` delivered, the ones the daemon
 handed to the agent, and answers with those still waiting, oldest first, at most 100 (`{"messages": [{id, text,
-sent_by, created_at}]}`). The body may be left out to read without acknowledging. Only the worker holding the run
-reads its inbox (404 otherwise).
+sent_by, created_at, decision_id}]}`). The body may be left out to read without acknowledging. Only the worker holding
+the run reads its inbox (404 otherwise). The owner's answer to a decision comes as one of these messages, with the
+decision's id in `decision_id` (null for any other message); acknowledging it sets the decision's `delivered_at`.
 
 ### Log and diff
 
@@ -504,6 +518,8 @@ For the worker, with an `evw_` token and the version header:
 | `POST /v1/worker/runs/{id}/state` | reports a move |
 | `GET /v1/worker/runs/{id}/plan` | reads the plan of a plan run it holds, as the hub holds it now |
 | `POST /v1/worker/runs/{id}/steps/{key}` | reports a step of a plan run it holds |
+| `POST /v1/worker/runs/{id}/decisions` | asks the plan run's owner a decision; answers its id |
+| `POST /v1/worker/runs/{id}/notices` | sends the plan run's owner a notice, such as a push to a default branch |
 | `POST /v1/worker/runs/{id}/events` | sends a batch of events |
 | `POST /v1/worker/runs/{id}/inbox` | acknowledges messages handed to the agent, takes the waiting ones |
 | `POST /v1/worker/runs/{id}/uploads`, `/blobs` | uploads the run's log and diff, records them on the run |

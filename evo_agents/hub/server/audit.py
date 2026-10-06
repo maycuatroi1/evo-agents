@@ -43,6 +43,10 @@ RUN_RERUN = "run.rerun"  # the owner queued the step again after a run that ende
 RUN_MESSAGE = "run.message"  # the owner sent the run's agent a message; the target names the message, not its text
 RUN_TAKEOVER = "run.takeover"  # the owner asked to drive the run's agent in a terminal
 RUN_HANDBACK = "run.handback"  # the owner asked to let the run's agent go on headless
+# Decisions and notifications; a target names the decision or the notifications by id, and an answer's option, never
+# the question, the answer's text or a notification's title.
+DECISION_ANSWER = "decision.answer"  # the owner answered: "<project>/<plan>[#<step>] decision:<id> run:<id> option=<k>"
+NOTIFICATION_READ = "notification.read"  # a member marked notifications read: "notifications:<id>,<id>" or ":all"
 # The web terminal of a run; the target names the run as above, and on close the bytes relayed each way and how it
 # ended ("... to_worker=<n> to_browser=<n> end=<idle|timeout|browser|worker|protocol|shutdown>"), never the bytes.
 TERMINAL_OPEN = "terminal.open"  # the owner opened the run's terminal in a browser

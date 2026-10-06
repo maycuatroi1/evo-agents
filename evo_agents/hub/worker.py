@@ -19,7 +19,10 @@ Jobs (names in ``evo_agents.hub.jobs``):
 - ``hub.prune_kg_artifacts``, hourly: the artifacts of each project's graphs beyond its EVO_HUB_KG_KEEP_ARTIFACTS
   newest leave the bucket (``evo_agents.hub.kg_prune``).
 - ``hub.recover_runs``, every minute: runs whose worker stopped extending the lease become lost, and the next attempt
-  of their step is queued, or fail on their last attempt (``evo_agents.hub.server.run_state``).
+  of their step is queued, or fail on their last attempt; runs past their timeout fail; a plan run that waited 24
+  hours for an answer is parked, and one parked for 7 days cancelled (``evo_agents.hub.server.run_state``).
+- ``hub.deliver_notifications``, every minute: the notification deliveries that are due, each handed to its
+  channel's class, tried again with a backoff and failed after 5 tries (``evo_agents.hub.server.notifications``).
 - ``hub.prune_run_events``, daily: the events of runs that ended more than EVO_HUB_RUN_LOG_DAYS ago.
 
 procrastinate allows one App per process; ``queue`` is that App here. ``run`` gives it a connector of its own for
@@ -133,6 +136,15 @@ async def recover_runs(context: JobContext, timestamp: int | None = None) -> dic
     from evo_agents.hub.server.run_state import recover_runs as recover
 
     return await recover(hub(context).pool)
+
+
+@queue.periodic(cron="* * * * *")
+@queue.task(name=jobs.DELIVER_NOTIFICATIONS, pass_context=True, queueing_lock=jobs.DELIVER_NOTIFICATIONS)
+async def deliver_notifications(context: JobContext, timestamp: int | None = None) -> dict:
+    from evo_agents.hub.server.notifications import deliver_notifications as deliver
+
+    found = hub(context)
+    return await deliver(found.pool, config=found.config)
 
 
 @queue.periodic(cron="13 4 * * *")
