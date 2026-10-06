@@ -81,14 +81,9 @@ function WorkerPage({
   return (
     <div className="flex flex-col gap-6" data-testid="worker-detail" data-worker-id={worker.id}>
       <PageHeader
-        eyebrow={t("eyebrow")}
-        title={
-          <span className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-            <span className="font-mono [overflow-wrap:anywhere]">{worker.name}</span>
-            <StatusBadge kind="worker" status={view} size="lg" />
-          </span>
-        }
-        description={t("facts", {
+        title={worker.name}
+        status={<StatusBadge kind="worker" status={view} size="lg" />}
+        sub={t("facts", {
           os: worker.os,
           arch: worker.arch,
           hostname: worker.hostname,
@@ -96,7 +91,7 @@ function WorkerPage({
           version: worker.agent_version,
           date: registered,
         })}
-        meta={<WorkerActions worker={worker} isOwner={isOwner} onNotice={onNotice} />}
+        actions={<WorkerActions worker={worker} isOwner={isOwner} onNotice={onNotice} />}
       />
       <NoticeArea notice={notice} onDismiss={onDismiss} />
       <StatusNote worker={worker} isOwner={isOwner} admin={Boolean(me?.admin)} />

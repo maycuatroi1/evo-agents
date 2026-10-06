@@ -285,17 +285,13 @@ export function WorkersPage({ initialError }: { initialError: ApiErrorInfo | nul
   return (
     <>
       <PageHeader
-        eyebrow={t("eyebrow")}
         title={t("title")}
-        description={t("description")}
-        meta={
-          <>
-            {live !== null ? <Badge variant="secondary">{t("count", { count: live })}</Badge> : null}
-            <Button onClick={() => setRegistering(true)} data-testid="workers-register">
-              <Plus aria-hidden="true" />
-              {t("registerButton")}
-            </Button>
-          </>
+        tags={live !== null ? <Badge variant="secondary">{t("count", { count: live })}</Badge> : null}
+        actions={
+          <Button onClick={() => setRegistering(true)} data-testid="workers-register">
+            <Plus aria-hidden="true" />
+            {t("registerButton")}
+          </Button>
         }
       />
       <NoticeArea notice={notice} onDismiss={clear} />

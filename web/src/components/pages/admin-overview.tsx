@@ -90,7 +90,7 @@ export function AdminOverview({ initialError }: { initialError: ApiErrorInfo | n
   const state = useHubQuery(adminStatsQuery(browserApi), initialError);
   return (
     <>
-      <PageHeader title={t("title")} description={t("description")} />
+      <PageHeader title={t("title")} />
       <QueryView state={state} loading={<PageSkeleton />}>
         {(stats) => <Stats stats={stats} />}
       </QueryView>

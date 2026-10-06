@@ -239,40 +239,39 @@ export function InboxPage({ initialError }: { initialError: ApiErrorInfo | null 
     <>
       <PageHeader
         title={t("title")}
-        description={t("description")}
-        meta={
-          <>
-            {counts ? (
-              <>
-                <Badge variant={counts.unread > 0 ? "info" : "secondary"} className="h-7 px-2.5" data-testid="inbox-unread-count" data-count={counts.unread}>
-                  <Bell aria-hidden="true" />
-                  {t("unreadCount", { count: counts.unread })}
+        tags={
+          counts ? (
+            <>
+              <Badge variant={counts.unread > 0 ? "info" : "secondary"} data-testid="inbox-unread-count" data-count={counts.unread}>
+                <Bell aria-hidden="true" />
+                {t("unreadCount", { count: counts.unread })}
+              </Badge>
+              {counts.open_decisions > 0 ? (
+                <Badge variant="warning" data-testid="inbox-open-count" data-count={counts.open_decisions}>
+                  <MessageCircleQuestionMark aria-hidden="true" />
+                  {t("openCount", { count: counts.open_decisions })}
                 </Badge>
-                {counts.open_decisions > 0 ? (
-                  <Badge variant="warning" className="h-7 px-2.5" data-testid="inbox-open-count" data-count={counts.open_decisions}>
-                    <MessageCircleQuestionMark aria-hidden="true" />
-                    {t("openCount", { count: counts.open_decisions })}
-                  </Badge>
-                ) : null}
-              </>
-            ) : null}
-            <Button
-              type="button"
-              variant="outline"
-              className="aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
-              aria-disabled={nothingToRead || reading !== null || undefined}
-              busy={reading === "all"}
-              onClick={() => {
-                if (nothingToRead || reading !== null) return;
-                if (filtered) read({ ids: pageUnread }, "all");
-                else read({ all: true }, "all");
-              }}
-              data-testid="inbox-mark-all"
-            >
-              <CheckCheck aria-hidden="true" />
-              {filtered ? t("markShown") : t("markAll")}
-            </Button>
-          </>
+              ) : null}
+            </>
+          ) : null
+        }
+        actions={
+          <Button
+            type="button"
+            variant="outline"
+            className="aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
+            aria-disabled={nothingToRead || reading !== null || undefined}
+            busy={reading === "all"}
+            onClick={() => {
+              if (nothingToRead || reading !== null) return;
+              if (filtered) read({ ids: pageUnread }, "all");
+              else read({ all: true }, "all");
+            }}
+            data-testid="inbox-mark-all"
+          >
+            <CheckCheck aria-hidden="true" />
+            {filtered ? t("markShown") : t("markAll")}
+          </Button>
         }
       />
       <NoticeArea notice={notice} onDismiss={clear} />

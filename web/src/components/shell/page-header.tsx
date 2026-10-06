@@ -3,37 +3,50 @@ import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
 /**
- * The page's one h1, its summary, and what sits beside them (badges, counts, actions). `metaBelow` is for a page whose
- * meta holds several actions (a run's controls): it sits under the title, wrapping as it needs, until the xl
- * breakpoint, where there is room for both on one line.
+ * The head of a page, one row as the UI kit draws it (web/DESIGN.md, Layout): the page's one h1, the state of what it
+ * names (`status`, a `StatusBadge`), its tags and chips (`tags`: a kind, a role, an identifier, a count), then the
+ * page's actions on the right. `sub` is one optional line under the row that links the parent objects (a run's plan
+ * and step, a step's plan) or says where the object stands. There is no eyebrow, no description paragraph and no rule
+ * under the head: what a page is for is said once, in its empty state.
+ *
+ * The row wraps instead of squeezing: when the actions do not fit beside the title they move to a line of their own,
+ * still on the right, and a long title wraps inside its own group; so nothing pushes the page sideways at 375 px.
  */
 export function PageHeader({
   title,
-  description,
-  meta,
-  eyebrow,
-  metaBelow = false,
+  status,
+  tags,
+  actions,
+  sub,
+  className,
+  testId,
 }: {
   title: ReactNode;
-  description?: ReactNode;
-  meta?: ReactNode;
-  eyebrow?: ReactNode;
-  metaBelow?: boolean;
+  status?: ReactNode;
+  tags?: ReactNode;
+  actions?: ReactNode;
+  sub?: ReactNode;
+  className?: string;
+  testId?: string;
 }) {
   return (
-    <header
-      className={cn(
-        "flex flex-col gap-3 border-b pb-5",
-        metaBelow ? "xl:flex-row xl:items-end xl:justify-between" : "sm:flex-row sm:items-end sm:justify-between",
-      )}
-    >
-      <div className="flex min-w-0 flex-col gap-1.5">
-        {eyebrow ? <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">{eyebrow}</p> : null}
-        <h1 className="text-2xl font-semibold tracking-tight break-words text-balance">{title}</h1>
-        {description ? <p className="max-w-3xl text-sm text-pretty text-muted-foreground">{description}</p> : null}
+    <header className={cn("flex flex-col gap-1.5", className)} data-testid={testId}>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
+        <div className="flex max-w-full min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
+          <h1 className="min-w-0 text-xl font-semibold tracking-tight text-balance [overflow-wrap:anywhere]">{title}</h1>
+          {status}
+          {tags}
+        </div>
+        {actions ? (
+          <div className="ml-auto flex max-w-full min-w-0 flex-wrap items-center justify-end gap-2" data-slot="page-actions">
+            {actions}
+          </div>
+        ) : null}
       </div>
-      {meta ? (
-        <div className={cn("flex flex-wrap items-center gap-2", metaBelow ? "min-w-0 xl:shrink-0 xl:justify-end" : "shrink-0")}>{meta}</div>
+      {sub ? (
+        <p className="text-[13px] leading-[18px] text-pretty text-muted-foreground [overflow-wrap:anywhere]" data-slot="page-sub">
+          {sub}
+        </p>
       ) : null}
     </header>
   );

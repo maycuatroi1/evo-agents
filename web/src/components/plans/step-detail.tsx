@@ -171,9 +171,10 @@ function Detail({ project, plan, stepKey }: { project: string; plan: Plan; stepK
         current={null}
         title={
           <>
-            <span className="font-mono text-muted-foreground">{step.key}</span> {label || t("untitled")}
+            <span className="text-muted-foreground tabular-nums">{step.key}</span> {label || t("untitled")}
           </>
         }
+        status={<StepStatusBadge group={step.group} raw={step.rawStatus} size="lg" testId="step-header-status" />}
       />
       <ReadOnlyNotice />
       <div className="grid gap-6 lg:grid-cols-[18rem_minmax(0,1fr)]">

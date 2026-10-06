@@ -3,10 +3,10 @@
 import { Eye } from "lucide-react";
 import { useTranslations } from "next-intl";
 
+import { Tag } from "@/components/data/identifier";
 import { PageHeader } from "@/components/shell/page-header";
 import { QueryView, useHubQuery } from "@/components/states/query-view";
 import { ApiErrorState, NotFoundState, TableSkeleton } from "@/components/states/states";
-import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { browserApi } from "@/lib/api/browser";
@@ -138,14 +138,12 @@ export function KgOverview({
   if (builds.status === "error" && builds.error.status === 403) return <ApiErrorState error={builds.error} />;
   const header = (
     <PageHeader
-      eyebrow={<span className="font-mono normal-case">{project}</span>}
       title={t("title")}
-      description={t("description")}
-      meta={
-        <Badge variant="outline" data-testid="kg-read-only">
+      tags={
+        <Tag data-testid="kg-read-only">
           <Eye aria-hidden="true" />
           {t("readOnly")}
-        </Badge>
+        </Tag>
       }
     />
   );

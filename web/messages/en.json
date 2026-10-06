@@ -48,7 +48,7 @@
     "trigger": "Account {login}",
     "hubAdmin": "Hub administrator",
     "member": "Member",
-    "projectRole": "{project}: {role}, up to {level}",
+    "projectRole": "{project}: {role}, {level} visibility",
     "projectRoleNone": "{project}: no role",
     "grants": "{count, plural, =0 {No project grants yet} one {Granted on # project} other {Granted on # projects}}",
     "theme": "Theme",
@@ -124,31 +124,37 @@
     "copied": "{value} copied to the clipboard",
     "selected": "Selected: press Ctrl+C or Cmd+C to copy it"
   },
+  "visibility": {
+    "value": "Visibility: {level}",
+    "levels": {
+      "public": "Public",
+      "internal": "Internal",
+      "customer": "Customer",
+      "secret": "Secret"
+    }
+  },
   "home": {
     "title": "My projects",
-    "description": "The projects the hub returns for your account, with your role and the highest label level you may see.",
     "count": "{count, plural, =0 {No projects} one {# project} other {# projects}}",
     "emptyTitle": "No project has been granted to you yet",
     "emptyDescription": "Ask a hub administrator to grant a role to {login}, then reload this page.",
     "columns": {
       "name": "Project",
       "role": "Role",
-      "maxLevel": "Max label level",
+      "visibility": "Visibility",
       "repos": "Repos",
       "updated": "Updated"
     },
     "open": "Open project {name}"
   },
   "project": {
-    "title": "Project overview",
     "harness": "Harness",
     "noHarness": "The project was registered without its harness paths.",
     "role": "Your role",
-    "maxLevel": "Max label level",
     "adminWithoutGrant": "You are a hub administrator without a role in this project: you can manage it but cannot read its content.",
     "ladder": {
       "title": "Label ladder",
-      "description": "Levels from lowest to highest. You see content labelled up to your max level.",
+      "description": "Lowest first. You see content labelled up to your visibility.",
       "visible": "Visible",
       "hidden": "Not visible",
       "default": "Default label",
@@ -165,7 +171,7 @@
     },
     "sinks": {
       "title": "Sinks",
-      "description": "Where the project's content may go, with the highest label level allowed there.",
+      "description": "Where the project's content may go, with the highest level each one may receive.",
       "empty": "The project declares no sinks.",
       "id": "Sink",
       "kind": "Kind",
@@ -181,7 +187,6 @@
   },
   "admin": {
     "title": "Hub administration",
-    "description": "The number of rows in each hub table. Only hub administrators can see this page.",
     "groups": {
       "access": "Users and access",
       "projects": "Projects",
@@ -244,7 +249,6 @@
     },
     "members": {
       "title": "Members",
-      "description": "People who signed in or were granted access ahead of time, with their role and highest label level in each project. Every grant and revocation is audited.",
       "count": "{count, plural, one {# user} other {# users}}",
       "shown": "Showing {shown} of {total} users",
       "search": "Search by login",
@@ -267,24 +271,24 @@
         "actions": "Actions"
       },
       "noGrants": "No project access yet",
-      "grantSummary": "{project}: {role}, level {level}",
+      "grantSummary": "{project}: {role}, {level} visibility",
       "hubAdmin": "Hub admin",
       "notSignedIn": "Not signed in yet",
       "never": "Never"
     },
     "member": {
-      "eyebrow": "Member",
+      "metaTitle": "Member",
       "notFoundTitle": "No user {login}",
       "notFoundDescription": "The hub has no such user. The login may be misspelled, or the person has neither signed in nor been granted access.",
       "summary": "On the hub since {created}. Last seen: {lastSeen}.",
       "grantsTitle": "Project access",
-      "grantsDescription": "The role and the highest label level this person can see in each project.",
+      "grantsDescription": "The role and visibility of this person in each project.",
       "grantsEmptyTitle": "No project access yet",
       "grantsEmptyDescription": "{login} sees no project on the hub. Grant a role so they can read or write a project's content.",
       "columns": {
         "project": "Project",
         "role": "Role",
-        "maxLevel": "Highest level",
+        "visibility": "Visibility",
         "grantedBy": "Granted by",
         "grantedAt": "Granted at",
         "actions": "Actions"
@@ -303,7 +307,7 @@
     },
     "grant": {
       "title": "Grant project access",
-      "description": "Pick the user, the project, the role and the highest label level they may see. You confirm on the next step.",
+      "description": "Pick the user, the project, the role and the visibility. You confirm on the next step.",
       "login": "GitHub login",
       "loginHint": "You can grant access to someone who has never signed in; it takes effect at their first sign-in.",
       "loginRequired": "Enter a GitHub login.",
@@ -313,15 +317,15 @@
       "noProjects": "The hub has no project yet. Register one with evo-agents hub project register, then come back here.",
       "role": "Role",
       "roleHints": {
-        "reader": "Reads the project's memories, plans, skills and knowledge graph, up to the highest level.",
+        "reader": "Reads the project's memories, plans, skills and knowledge graph, up to their visibility.",
         "writer": "Reader, plus pushing memories, plans, skills and the knowledge graph to the hub.",
         "admin": "Writer, plus registering the project again from its harness."
       },
-      "maxLevel": "Highest label level",
-      "maxLevelHint": "The project's label ladder, lowest first. This person sees content labelled up to this level.",
-      "maxLevelRequired": "Pick a label level.",
-      "existing": "{login} is {role}, level {level} on this project. Saving replaces that with the new choice.",
-      "unchanged": "{login} already has exactly this role and level. Nothing to change.",
+      "visibility": "Visibility",
+      "visibilityHint": "The levels of the project's label ladder, lowest first. This person sees content labelled up to the one picked.",
+      "visibilityRequired": "Pick a visibility.",
+      "existing": "{login} is {role} with {level} visibility on this project. Saving replaces that with the new choice.",
+      "unchanged": "{login} already has exactly this role and visibility. Nothing to change.",
       "continue": "Continue",
       "cancel": "Cancel",
       "close": "Close",
@@ -332,15 +336,15 @@
         "login": "User",
         "project": "Project",
         "role": "Role",
-        "maxLevel": "Highest level",
+        "visibility": "Visibility",
         "previous": "Replaces"
       },
-      "previous": "{role}, level {level}",
+      "previous": "{role}, {level} visibility",
       "back": "Back",
       "confirm": "Confirm the grant",
       "saving": "Saving…",
       "notFound": "Project {project} is no longer on the hub. Close this dialog and pick another project.",
-      "success": "Granted {role}, level {level}, to {login} on project {project}."
+      "success": "Granted {role} with {level} visibility to {login} on project {project}."
     },
     "revokeGrant": {
       "title": "Revoke the access of {login} to project {project}?",
@@ -353,7 +357,6 @@
     },
     "tokens": {
       "title": "Tokens and sessions",
-      "description": "CLI machine tokens and web sessions of every user. Revoking one makes the next request made with it get a 401, from any machine.",
       "caption": "Tokens and sessions",
       "login": "User",
       "loginPlaceholder": "All users",
@@ -405,7 +408,6 @@
     },
     "audit": {
       "title": "Audit trail",
-      "description": "Every action that changed something on the hub: who, with which token, what, on which target and in which project. The trail holds no content and no credential.",
       "caption": "Audit trail, newest first",
       "actor": "Actor",
       "actorPlaceholder": "All users",
@@ -450,16 +452,18 @@
     }
   },
   "plans": {
-    "planEyebrow": "Plan",
-    "stepEyebrow": "Plan step",
-    "backToPlans": "All plans of the project",
-    "backToPlan": "Back to plan {name}",
     "revision": "Revision {revision}",
+    "copyId": "Copy the plan id {id}",
     "updated": "Last changed by <who>{login}</who> at {time}",
+    "stepOf": "In plan <plan>{name}</plan>, last changed by <who>{login}</who> at {time}",
     "emptyList": "Empty list",
     "readOnly": {
-      "label": "Read-only page",
-      "text": "The plan's content is read-only here: it changes with <code>evo harness step</code> or <code>evo-agents hub plan</code>, and every change adds a revision to the history. To have one of your workers carry the plan out, a writer uses Run plan."
+      "label": "Read-only",
+      "title": "Read-only.",
+      "text": "Plans change from the CLI with <code>evo harness step</code>; each change adds a revision.",
+      "copy": "Copy",
+      "copyLabel": "Copy the command {command}",
+      "copied": "Copied"
     },
     "tabs": {
       "label": "Parts of the plan",
@@ -477,7 +481,6 @@
     "list": {
       "metaTitle": "Plans of {project}",
       "title": "Plans",
-      "description": "The project's plans as the hub holds them, with progress counted in steps done.",
       "activeCount": "{count, plural, other {# active}}",
       "completedCount": "{count, plural, other {# completed}}",
       "active": "Active",
@@ -485,7 +488,7 @@
       "noActive": "The project has no active plan.",
       "noCompleted": "The project has no completed plan yet.",
       "emptyTitle": "The project has no plan on the hub yet",
-      "emptyDescription": "Push the harness's plans with evo-agents hub plan import, then reload this page. Plans labelled above your level do not show here.",
+      "emptyDescription": "Plans show here once a member pushes the harness's plans with evo-agents hub plan import; plans labelled above your visibility stay hidden.",
       "search": "Search plans by title or id",
       "searchPlaceholder": "Search plans…",
       "shown": "Showing {shown} of {total} plans",
@@ -592,7 +595,7 @@
     },
     "notFound": {
       "title": "Plan {plan} not found",
-      "description": "The plan is not in project {project}, or its label is above the level you may read.",
+      "description": "The plan is not in project {project}, or its label is above your visibility.",
       "stepTitle": "Plan {plan} has no step {step}",
       "stepDescription": "Check the step id in the address, or open the plan to see its steps."
     },
@@ -665,14 +668,10 @@
     "sortBy": "Sort by {column}"
   },
   "memories": {
-    "projectEyebrow": "Project {project}",
-    "personalEyebrow": "Yours only",
     "projectTitle": "Memories",
     "personalTitle": "My memories",
-    "projectDescription": "Claude Code memory files that members pushed to the hub from the project's harness and repos.",
-    "personalDescription": "Memories in directories outside every hub project, kept in step across your machines.",
     "count": "{count, plural, one {# memory} other {# memories}}",
-    "projectVisibility": "You see memories labelled up to <code>{level}</code>, as your grant allows. User and Feedback memories are visible to their author only.",
+    "projectVisibility": "Your visibility is <level></level>: you see memories labelled up to it. User and Feedback memories are visible to their author only.",
     "personalVisibility": "Only you see these memories.",
     "adminWithoutGrant": "You are a hub admin without a grant on this project, so its memories are not readable to you. Ask a project admin for a grant if you need them.",
     "search": {
@@ -696,7 +695,7 @@
     },
     "label": {
       "label": "Label",
-      "level": "Label level",
+      "level": "Visibility",
       "location": "Data location",
       "anyLocation": "Unrestricted",
       "integrity": "Integrity",
@@ -721,9 +720,9 @@
     "truncated": "There are more memories than this page loads: showing the first {count}. Use search to find the others.",
     "empty": {
       "projectTitle": "This project has no memories yet",
-      "projectDescription": "Memories appear here once members run <code>evo-agents hub memory push</code> in the project's harness or one of its repos.",
+      "projectDescription": "Members' Claude Code memory files show here once they run <code>evo-agents hub memory push</code> in the project's harness or one of its repos.",
       "personalTitle": "You have no personal memories yet",
-      "personalDescription": "Memories in directories outside the hub's projects are pushed with <code>evo-agents hub memory push --all</code>."
+      "personalDescription": "Memories in directories outside every hub project are pushed with <code>evo-agents hub memory push --all</code> and kept in step across your machines."
     },
     "noResults": {
       "searchTitle": "No memories found for “{q}”",
@@ -746,8 +745,6 @@
       "title": "Memory",
       "notFoundTitle": "Memory not found",
       "notFoundDescription": "This memory does not exist, belongs elsewhere, or is not yours to see.",
-      "backProject": "Project memories",
-      "backPersonal": "My memories",
       "deletedTitle": "This memory was deleted at revision {revision}",
       "deletedDescription": "What it held before is still in the revision history.",
       "revisionNotFoundTitle": "Revision {revision} not found",
@@ -792,12 +789,8 @@
     }
   },
   "skills": {
-    "projectEyebrow": "Project {project}",
-    "globalEyebrow": "Shared across the hub",
     "projectTitle": "Project skills",
     "globalTitle": "Shared skills",
-    "projectDescription": "Skills the project's members published; evo-agents hub skills sync installs them into every runtime on a machine.",
-    "globalDescription": "Skills the hub admins published for every member.",
     "count": "{count, plural, one {# skill} other {# skills}}",
     "bytes": "{count, number} bytes",
     "copyHash": "Copy SHA-256",
@@ -817,10 +810,10 @@
     },
     "empty": {
       "projectTitle": "This project has no skills yet",
-      "projectDescription": "Members with the writer role publish one with <code>evo-agents hub skills publish DIR --scope project:{project}</code>.",
+      "projectDescription": "Writers publish one with <code>evo-agents hub skills publish DIR --scope project:{project}</code>, and <code>evo-agents hub skills sync</code> installs it into every runtime on a machine.",
       "toGlobal": "See shared skills",
       "globalTitle": "The hub has no shared skills yet",
-      "globalDescription": "Hub admins publish one with <code>evo-agents hub skills publish DIR</code>."
+      "globalDescription": "Hub admins publish one for every member with <code>evo-agents hub skills publish DIR</code>."
     },
     "filter": {
       "label": "Filter skills",
@@ -857,8 +850,6 @@
     "detail": {
       "notFoundTitle": "Skill {name} not found",
       "notFoundDescription": "This skill has not been published here, or its name is spelled differently.",
-      "backProject": "Project skills",
-      "backGlobal": "Shared skills",
       "noVersions": "This skill has no versions yet.",
       "latestTitle": "Latest version: v{version}",
       "latestDescription": "A bundle is the tar.gz of the skill directory, exactly as it was published.",
@@ -876,7 +867,6 @@
   },
   "kg": {
     "title": "Knowledge graph",
-    "description": "The graph the hub builds from the project's pushes: build status, queue and node search. You only see nodes labelled within your maximum level.",
     "readOnly": "Read-only",
     "copied": "Copied to the clipboard",
     "status": {
@@ -967,7 +957,7 @@
     },
     "search": {
       "title": "Find a node",
-      "description": "Search by name, id, path, code or words in the content. Results only include nodes labelled within your level.",
+      "description": "Search by name, id, path, code or words in the content. Results only include nodes labelled within your visibility.",
       "query": "Search for",
       "placeholder": "For example: runbook, KB-01, src/app.py",
       "kind": "Node kind",
@@ -977,12 +967,12 @@
       "hint": "Up to 25 results, best match first.",
       "visible": "{count, plural, =0 {You cannot see any node of this graph yet.} one {You can see # node of this graph, by kind:} other {You can see # nodes of this graph, by kind:}}",
       "byKind": "Nodes by kind",
-      "nothingVisible": "Every node of the graph is labelled above your level.",
+      "nothingVisible": "Every node of the graph is labelled above your visibility.",
       "seeLevels": "See the project's label ladder",
       "count": "{count, plural, =0 {No results} one {# result} other {# results}} for “{query}”",
       "countKind": "{kind} nodes matching “{query}”: {count}",
       "emptyTitle": "No node matches “{query}”",
-      "emptyDescription": "Try a shorter word, a node's full id, or clear the kind filter. Nodes labelled above your level never show here.",
+      "emptyDescription": "Try a shorter word, a node's full id, or clear the kind filter. Nodes labelled above your visibility never show here.",
       "clearKind": "Search all kinds",
       "columns": {
         "node": "Node",
@@ -993,7 +983,6 @@
       }
     },
     "node": {
-      "back": "Back to the knowledge graph",
       "facts": "Node details",
       "id": "Id",
       "copyId": "Copy the node id",
@@ -1008,7 +997,7 @@
       "confidence": "Confidence",
       "aliases": "Aliases",
       "notFoundTitle": "Node not found",
-      "notFoundDescription": "The node is not in the current graph, or its label is above your level.",
+      "notFoundDescription": "The node is not in the current graph, or its label is above your visibility.",
       "searchInstead": "Search the graph",
       "olderBuild": "The blob store did not answer, so this page reads build #{id}, older than the latest one."
     },
@@ -1074,8 +1063,6 @@
   },
   "workers": {
     "title": "Workers",
-    "eyebrow": "Hub",
-    "description": "Laptops and desktops registered to run plan steps for their owner. A worker sends a heartbeat every 15 seconds; after 5 minutes without one it is offline, and the runs it held go back to the queue.",
     "registerButton": "Register worker",
     "register": {
       "title": "Register a worker",
@@ -1235,7 +1222,6 @@
     },
     "detail": {
       "title": "Worker",
-      "eyebrow": "Worker",
       "facts": "{os} {arch} on {hostname}. Owner {owner}. Daemon evo-agents {version}, registered {date}.",
       "notFoundTitle": "Worker not found",
       "notFoundDescription": "This worker does not exist, or it belongs to another member.",
@@ -1316,7 +1302,6 @@
   "runs": {
     "title": "Runs",
     "metaTitle": "Runs of {project}",
-    "description": "Each run is one plan step, or a whole plan (a plan run), dispatched to one of your workers. Its state, log and evidence come back to the hub while it runs.",
     "dispatchButton": "Dispatch",
     "liveBadge": "Live",
     "live": "Updates every 5 seconds while a run is active.",
@@ -1333,7 +1318,8 @@
     "summary": {
       "label": "Summary",
       "running": "Running",
-      "runningHint": "{workers, plural, =0 {no worker holds a run} one {on # worker} other {on # workers}}",
+      "runningHint": "{workers, plural, one {on # worker} other {on # workers}}",
+      "runningIdle": "Idle",
       "queued": "Queued",
       "queuedSince": "oldest queued {time}",
       "queuedMany": "{count, plural, one {# run waits for a worker} other {# runs wait for a worker}}",
@@ -1343,7 +1329,7 @@
       "reviewMany": "waiting for approval",
       "reviewNone": "nothing to approve",
       "failed": "Failed",
-      "failedHint": "{lost, plural, =0 {no lost lease} one {plus # lost lease} other {plus # lost leases}}, {cancelled, plural, =0 {none cancelled} other {# cancelled}}"
+      "failedHint": "{lost, plural, =0 {None lost} other {and # lost}}"
     },
     "facets": {
       "label": "State",
@@ -1390,7 +1376,7 @@
     },
     "empty": {
       "title": "No run yet",
-      "description": "A run is one ready step of a plan, dispatched to one of your workers. Dispatch one to start.",
+      "description": "Dispatch a ready step of a plan to one of your workers. Its log and result come back here.",
       "readerDescription": "Writers of this project dispatch runs to their workers; each one shows here with its state."
     },
     "noResults": {
@@ -1618,8 +1604,8 @@
       "title": "Run",
       "planTitle": "Plan run",
       "untitled": "Untitled step",
-      "description": "Plan <planLink>{plan}</planLink>, <stepLink>step {step}: {title}</stepLink>",
-      "planDescription": "Plan <planLink>{plan}</planLink>: {title}. Every step not done yet, in one session.",
+      "sub": "Plan <planLink>{plan}</planLink>, <stepLink>step {step}: {title}</stepLink>",
+      "planSub": "Plan <planLink>{plan}</planLink>: {title}. Every step not done yet, in one session.",
       "notFoundTitle": "Run #{id} not found",
       "notFoundDescription": "The run does not exist in this project, or it belongs to a plan you cannot read.",
       "stepper": {
@@ -1908,7 +1894,7 @@
     "diff": {
       "metaTitle": "Diff of run #{id} of {project}",
       "title": "Diff of run",
-      "description": "{title}: {files, plural, one {# file} other {# files}}, {size} KiB.",
+      "sub": "{title}: {files, plural, one {# file} other {# files}}, {size} KiB.",
       "back": "Back to the run",
       "download": "Download .diff",
       "downloadStarted": "Downloading {file}.",
@@ -1952,7 +1938,6 @@
   },
   "inbox": {
     "title": "Inbox",
-    "description": "Decisions the agents of your plan runs ask you, and what they tell you: pushes and merges into a default branch, plans finished, runs failed. Decisions that wait for your answer come first.",
     "listTitle": "Notifications",
     "unreadCount": "{count, plural, =0 {Nothing unread} other {# unread}}",
     "openCount": "{count, plural, one {# decision waits for you} other {# decisions wait for you}}",

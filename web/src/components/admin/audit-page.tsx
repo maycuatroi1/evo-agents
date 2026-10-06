@@ -90,7 +90,7 @@ export function AdminAudit({ initialError }: { initialError: ApiErrorInfo | null
 
   return (
     <>
-      <PageHeader title={t("title")} description={t("description")} />
+      <PageHeader title={t("title")} />
       {/* Keyed by the URL's filters, so Back and Clear put the fields back to what the list shows. */}
       <FilterBar
         key={filterKey(view)}

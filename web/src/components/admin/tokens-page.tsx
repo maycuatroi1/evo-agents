@@ -67,7 +67,7 @@ export function AdminTokens({ initialError }: { initialError: ApiErrorInfo | nul
 
   return (
     <>
-      <PageHeader title={t("title")} description={t("description")} />
+      <PageHeader title={t("title")} />
       <NoticeArea notice={notice} onDismiss={dismiss} />
       <FilterBar
         key={filterKey(view)}

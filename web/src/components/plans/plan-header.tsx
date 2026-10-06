@@ -1,51 +1,65 @@
 "use client";
 
-import { ArrowLeft, History, ListChecks, PencilOff } from "lucide-react";
+import { Check, Copy, History, ListChecks, Lock } from "lucide-react";
 import Link from "next/link";
 import { useFormatter, useTranslations } from "next-intl";
-import type { ReactNode } from "react";
+import { type ReactNode, useRef } from "react";
 
-import { Identifier } from "@/components/data/identifier";
+import { CopyAnnouncement, Identifier, useClipboard } from "@/components/data/identifier";
+import { PageHeader } from "@/components/shell/page-header";
 import { StatusBadge } from "@/components/status/status-badge";
+import { Button } from "@/components/ui/button";
 import { countSteps, type Plan, parsePlan, planState } from "@/lib/plans";
 import { cn } from "@/lib/utils";
 
-import { planHref, plansHref, revisionsHref } from "./links";
+import { planHref, revisionsHref } from "./links";
+
+/** The command the read-only banner names and copies. */
+export const PLAN_CLI_COMMAND = "evo harness step";
 
 /**
- * A plan's content is read-only on the web (decision of 2026-10-04): every plan page says how a plan is changed, and
- * that running it is Run plan's job (writers only).
+ * A plan's content is read-only on the web (decision of 2026-10-04). Every plan page says so in one sentence, the kit's
+ * info banner, with the command that changes a plan and a button that copies it.
  */
 export function ReadOnlyNotice({ className }: { className?: string }) {
-  const t = useTranslations("plans");
+  const t = useTranslations("plans.readOnly");
+  const command = useRef<HTMLElement>(null);
+  const { state, copy } = useClipboard(PLAN_CLI_COMMAND, command);
   return (
-    <aside
-      aria-label={t("readOnly.label")}
+    <div
+      role="note"
+      aria-label={t("label")}
       data-testid="plans-read-only"
       className={cn(
-        "flex items-start gap-2.5 rounded-md border border-dashed bg-card px-3 py-2.5 text-sm text-muted-foreground",
+        "flex flex-wrap items-center gap-x-3 gap-y-2 rounded-md border bg-surface-sunken px-4 py-2.5 text-[13px] leading-[18px] text-muted-foreground",
         className,
       )}
     >
-      <PencilOff className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-      <p className="text-pretty">
-        {t.rich("readOnly.text", {
-          code: (chunks) => <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs text-foreground">{chunks}</code>,
+      <Lock className="size-4 shrink-0 self-start sm:self-center" aria-hidden="true" />
+      <p className="min-w-0 flex-1 text-pretty">
+        <span className="font-semibold text-foreground">{t("title")}</span>{" "}
+        {t.rich("text", {
+          code: (chunks) => (
+            <code ref={command} className="rounded-xs bg-card px-1 py-px font-mono text-xs text-foreground">
+              {chunks}
+            </code>
+          ),
         })}
       </p>
-    </aside>
-  );
-}
-
-export function BackLink({ href, children }: { href: string; children: ReactNode }) {
-  return (
-    <Link
-      href={href as "/"}
-      className="inline-flex w-fit items-center gap-1.5 rounded-sm text-sm text-brand underline-offset-4 hover:underline"
-    >
-      <ArrowLeft className="size-4" aria-hidden="true" />
-      {children}
-    </Link>
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className="ml-auto"
+        onClick={() => void copy()}
+        aria-label={t("copyLabel", { command: PLAN_CLI_COMMAND })}
+        data-testid="plans-read-only-copy"
+      >
+        {state === "copied" ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
+        {state === "copied" ? t("copied") : t("copy")}
+      </Button>
+      <CopyAnnouncement state={state} value={PLAN_CLI_COMMAND} />
+    </div>
   );
 }
 
@@ -84,23 +98,27 @@ function PlanTabs({ project, planId, current }: { project: string; planId: strin
 }
 
 /**
- * The header of every page of one plan: its title, id, area, revision and last change, then the plan's tabs. It
- * follows `PageHeader` (one h1, the same type scale); the tabs' rule takes the place of the header's own. `actions`
- * sit in the right-hand cluster under the badges (the plan page's Run plan).
+ * The head of every page of one plan, on `PageHeader`'s one row. On the plan's own pages (`current` names the tab) the
+ * h1 is the plan's title in the interface face, beside the plan's state, its id and its revision as chips, with Run
+ * plan on the right (`actions`); the line under it says who changed the plan last, and the plan's tabs follow. On a
+ * step's page `title` is the step's own h1 and `status` its state; the line under it links the plan.
  */
 export function PlanHeader({
   project,
   plan,
   current,
   title: pageTitle,
+  status,
   actions,
   planRunActive = false,
 }: {
   project: string;
   plan: Plan;
   current: PlanTab | null;
-  /** The page's own h1 (a step's title); the plan's title becomes the line above it. */
+  /** The page's own h1 (a step's title), in place of the plan's. */
   title?: ReactNode;
+  /** The state of what `title` names (a step's status), in place of the plan's state. */
+  status?: ReactNode;
   actions?: ReactNode;
   /** A plan run holds the plan: its pill says Plan run active instead of pending or blocked. */
   planRunActive?: boolean;
@@ -110,47 +128,51 @@ export function PlanHeader({
   const planTitle = typeof plan.body.title === "string" && plan.body.title.trim() ? plan.body.title : null;
   const name = planTitle ?? plan.plan_id;
   const state = planState(plan.area, countSteps(parsePlan(plan.body, plan.plan_id).steps), planRunActive);
+  const changed = {
+    login: plan.updated_by,
+    time: format.dateTime(new Date(plan.updated_at), { dateStyle: "medium", timeStyle: "short" }),
+    who: (chunks: ReactNode) => <span className="font-mono text-foreground">{chunks}</span>,
+  };
+  const revision = <Identifier value={t("revision", { revision: plan.revision })} testId="plan-revision" />;
   return (
-    <header className={cn("flex flex-col gap-4", current ? null : "border-b pb-5")}>
-      <BackLink href={pageTitle ? planHref(project, plan.plan_id) : plansHref(project)}>
-        {pageTitle ? t("backToPlan", { name }) : t("backToPlans")}
-      </BackLink>
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div className="flex min-w-0 flex-col gap-1.5">
-          <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-            {pageTitle ? t("stepEyebrow") : t("planEyebrow")}
-          </p>
-          <h1 className="text-2xl font-semibold tracking-tight break-words text-balance">
-            {pageTitle ?? (planTitle ? planTitle : <span className="font-mono">{plan.plan_id}</span>)}
-          </h1>
-          <p className="flex flex-col gap-0.5 text-xs text-muted-foreground">
-            {planTitle || pageTitle ? (
-              <span className="font-mono [overflow-wrap:anywhere]" data-testid="plan-id">
-                {pageTitle && planTitle ? `${plan.plan_id}: ${planTitle}` : plan.plan_id}
-              </span>
-            ) : null}
-            <span>
-              {t.rich("updated", {
-                login: plan.updated_by,
-                time: format.dateTime(new Date(plan.updated_at), { dateStyle: "medium", timeStyle: "short" }),
-                who: (chunks) => <span className="font-mono text-foreground">{chunks}</span>,
-              })}
-            </span>
-          </p>
-        </div>
-        <div className="flex shrink-0 flex-col items-start gap-3 sm:items-end">
-          <div className="flex flex-wrap items-center gap-2">
-            <StatusBadge kind="plan" status={state} size="lg" />
-            <Identifier value={t("revision", { revision: plan.revision })} testId="plan-revision" />
-          </div>
-          {actions ? (
-            <div className="flex flex-wrap items-start gap-2 sm:justify-end" data-testid="plan-actions">
-              {actions}
-            </div>
-          ) : null}
-        </div>
-      </div>
+    <div className="flex flex-col gap-4">
+      {pageTitle ? (
+        <PageHeader
+          title={pageTitle}
+          status={status}
+          tags={revision}
+          actions={actions}
+          sub={t.rich("stepOf", {
+            ...changed,
+            name,
+            plan: (chunks) => (
+              <Link
+                href={planHref(project, plan.plan_id)}
+                className="font-medium text-brand underline-offset-4 hover:text-brand-hover hover:underline"
+                data-testid="step-plan-link"
+              >
+                {chunks}
+              </Link>
+            ),
+          })}
+        />
+      ) : (
+        <PageHeader
+          title={name}
+          status={<StatusBadge kind="plan" status={state} size="lg" />}
+          tags={
+            <>
+              {planTitle ? (
+                <Identifier value={plan.plan_id} copy copyLabel={t("copyId", { id: plan.plan_id })} testId="plan-id" />
+              ) : null}
+              {revision}
+            </>
+          }
+          actions={actions ? <div className="contents" data-testid="plan-actions">{actions}</div> : null}
+          sub={t.rich("updated", changed)}
+        />
+      )}
       {current ? <PlanTabs project={project} planId={plan.plan_id} current={current} /> : null}
-    </header>
+    </div>
   );
 }

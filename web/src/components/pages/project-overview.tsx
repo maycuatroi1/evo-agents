@@ -4,6 +4,7 @@ import { Check, Info, Lock } from "lucide-react";
 import { useFormatter, useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 
+import { VisibilityLevel, VisibilityTag } from "@/components/data/visibility";
 import { PageHeader } from "@/components/shell/page-header";
 import { RoleBadge } from "@/components/shell/role-badge";
 import { QueryView, useHubQuery } from "@/components/states/query-view";
@@ -48,9 +49,9 @@ function Ladder({ project }: { project: Project }) {
                   visible ? "border-brand/30 bg-surface-selected text-foreground" : "bg-muted/40 text-muted-foreground",
                 )}
               >
-                <span className="flex items-center gap-2 font-mono text-xs font-medium">
-                  <span className="w-4 text-right tabular-nums opacity-70">{index + 1}</span>
-                  {level}
+                <span className="flex items-center gap-2 text-sm font-medium">
+                  <span className="w-4 text-right text-xs tabular-nums opacity-70">{index + 1}</span>
+                  <VisibilityLevel level={level} />
                 </span>
                 <span className="flex items-center gap-1.5 text-xs">
                   {visible ? <Check className="size-3.5" aria-hidden="true" /> : <Lock className="size-3.5" aria-hidden="true" />}
@@ -229,16 +230,11 @@ function Overview({ project }: { project: Project }) {
   return (
     <>
       <PageHeader
-        eyebrow={t("title")}
-        title={<span className="font-mono">{project.name}</span>}
-        meta={
+        title={project.name}
+        tags={
           <>
             <RoleBadge role={project.role} />
-            {project.max_level ? (
-              <Badge variant="outline" className="font-mono" aria-label={`${t("maxLevel")}: ${project.max_level}`}>
-                {project.max_level}
-              </Badge>
-            ) : null}
+            {project.max_level ? <VisibilityTag level={project.max_level} testId="project-visibility" /> : null}
           </>
         }
       />

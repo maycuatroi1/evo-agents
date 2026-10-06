@@ -5,6 +5,7 @@ import { ArrowLeft, Info, ShieldPlus } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { type FormEvent, useEffect, useId, useRef, useState } from "react";
 
+import { useVisibilityName, VisibilityLevel } from "@/components/data/visibility";
 import { RoleBadge } from "@/components/shell/role-badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -118,6 +119,7 @@ function GrantSteps({
   const unchanged = existing !== undefined && existing.role === role && existing.max_level === maxLevel;
   const pending = write.isPending;
   const roleName = (value: string) => tRoles(isRole(value) ? value : "none");
+  const levelName = useVisibilityName();
 
   const changeProject = (next: string) => {
     setProject(next);
@@ -134,7 +136,7 @@ function GrantSteps({
     if (!name) found.login = t("loginRequired");
     else if (!LOGIN_NAME.test(name)) found.login = tFilters("invalidLogin");
     if (!selected) found.project = t("projectRequired");
-    else if (!selected.levels.includes(maxLevel)) found.maxLevel = t("maxLevelRequired");
+    else if (!selected.levels.includes(maxLevel)) found.maxLevel = t("visibilityRequired");
     setErrors(found);
     const first = (["login", "project", "maxLevel"] as const).find((key) => found[key]);
     if (first) {
@@ -155,7 +157,7 @@ function GrantSteps({
     }
     onDone({
       tone: "success",
-      text: t("success", { role: roleName(grant.role), level: grant.max_level, login: grant.login, project: grant.project }),
+      text: t("success", { role: roleName(grant.role), level: levelName(grant.max_level), login: grant.login, project: grant.project }),
     });
     onClose();
   };
@@ -187,12 +189,14 @@ function GrantSteps({
           <dd>
             <RoleBadge role={role} />
           </dd>
-          <dt className="text-muted-foreground">{t("summary.maxLevel")}</dt>
-          <dd className="font-mono font-medium">{maxLevel}</dd>
+          <dt className="text-muted-foreground">{t("summary.visibility")}</dt>
+          <dd className="font-medium">
+            <VisibilityLevel level={maxLevel} />
+          </dd>
           {existing ? (
             <>
               <dt className="text-muted-foreground">{t("summary.previous")}</dt>
-              <dd className="text-muted-foreground">{t("previous", { role: roleName(existing.role), level: existing.max_level })}</dd>
+              <dd className="text-muted-foreground">{t("previous", { role: roleName(existing.role), level: levelName(existing.max_level) })}</dd>
             </>
           ) : null}
         </dl>
@@ -351,7 +355,7 @@ function GrantSteps({
       </fieldset>
 
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor={`${ids}-maxLevel`}>{t("maxLevel")}</Label>
+        <Label htmlFor={`${ids}-maxLevel`}>{t("visibility")}</Label>
         <NativeSelect
           id={`${ids}-maxLevel`}
           name="max_level"
@@ -361,19 +365,19 @@ function GrantSteps({
             setErrors((e) => ({ ...e, maxLevel: undefined }));
           }}
           disabled={!selected}
-          className="w-full [&_select]:h-9 [&_select]:font-mono"
+          className="w-full [&_select]:h-9"
           aria-invalid={errors.maxLevel ? true : undefined}
           aria-describedby={describedBy("maxLevel", true)}
           data-testid="grant-max-level"
         >
           {(selected?.levels ?? []).map((level) => (
             <NativeSelectOption key={level} value={level}>
-              {level}
+              {levelName(level)}
             </NativeSelectOption>
           ))}
         </NativeSelect>
         <p id={`${ids}-maxLevel-hint`} className="text-xs text-muted-foreground">
-          {t("maxLevelHint")}
+          {t("visibilityHint")}
         </p>
         {errors.maxLevel ? (
           <p id={`${ids}-maxLevel-error`} className="text-xs font-medium text-danger">
@@ -387,7 +391,7 @@ function GrantSteps({
           <Info className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
           {unchanged
             ? t("unchanged", { login: grantee?.login ?? name })
-            : t("existing", { login: grantee?.login ?? name, role: roleName(existing.role), level: existing.max_level })}
+            : t("existing", { login: grantee?.login ?? name, role: roleName(existing.role), level: levelName(existing.max_level) })}
         </p>
       ) : null}
 

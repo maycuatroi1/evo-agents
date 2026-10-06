@@ -48,7 +48,7 @@
     "trigger": "Tài khoản {login}",
     "hubAdmin": "Quản trị viên hub",
     "member": "Thành viên",
-    "projectRole": "{project}: {role}, mức tối đa {level}",
+    "projectRole": "{project}: {role}, mức hiển thị {level}",
     "projectRoleNone": "{project}: không có vai trò",
     "grants": "{count, plural, =0 {Chưa có quyền ở dự án nào} other {Có quyền ở # dự án}}",
     "theme": "Giao diện",
@@ -124,31 +124,37 @@
     "copied": "Đã chép {value} vào clipboard",
     "selected": "Đã chọn sẵn: bấm Ctrl+C hoặc Cmd+C để chép"
   },
+  "visibility": {
+    "value": "Mức hiển thị: {level}",
+    "levels": {
+      "public": "Public",
+      "internal": "Internal",
+      "customer": "Customer",
+      "secret": "Secret"
+    }
+  },
   "home": {
     "title": "Dự án của tôi",
-    "description": "Các dự án hub trả về cho tài khoản của bạn, kèm vai trò và mức nhãn cao nhất bạn được xem.",
     "count": "{count, plural, =0 {Không có dự án} other {# dự án}}",
     "emptyTitle": "Bạn chưa được cấp dự án nào",
     "emptyDescription": "Nhờ quản trị viên hub cấp vai trò cho tài khoản {login}, rồi tải lại trang này.",
     "columns": {
       "name": "Dự án",
       "role": "Vai trò",
-      "maxLevel": "Mức nhãn tối đa",
+      "visibility": "Mức hiển thị",
       "repos": "Kho mã",
       "updated": "Cập nhật"
     },
     "open": "Mở dự án {name}"
   },
   "project": {
-    "title": "Tổng quan dự án",
     "harness": "Harness",
     "noHarness": "Dự án được đăng ký không kèm đường dẫn harness.",
     "role": "Vai trò của bạn",
-    "maxLevel": "Mức nhãn tối đa",
     "adminWithoutGrant": "Bạn là quản trị viên hub nhưng chưa có vai trò trong dự án này: bạn quản lý được dự án nhưng không đọc nội dung của nó.",
     "ladder": {
       "title": "Thang nhãn",
-      "description": "Các mức từ thấp tới cao. Bạn xem được nội dung có nhãn tới mức tối đa của mình.",
+      "description": "Từ thấp tới cao. Bạn xem được nội dung có nhãn tới mức hiển thị của mình.",
       "visible": "Xem được",
       "hidden": "Không xem được",
       "default": "Nhãn mặc định",
@@ -165,7 +171,7 @@
     },
     "sinks": {
       "title": "Sink",
-      "description": "Nơi nội dung của dự án được phép đi tới, kèm mức nhãn tối đa.",
+      "description": "Nơi nội dung của dự án được phép đi tới, kèm mức cao nhất mỗi nơi được nhận.",
       "empty": "Dự án chưa khai sink nào.",
       "id": "Sink",
       "kind": "Loại",
@@ -181,7 +187,6 @@
   },
   "admin": {
     "title": "Quản trị hub",
-    "description": "Số dòng trong từng bảng của hub. Chỉ quản trị viên hub xem được trang này.",
     "groups": {
       "access": "Người dùng và quyền",
       "projects": "Dự án",
@@ -244,7 +249,6 @@
     },
     "members": {
       "title": "Thành viên",
-      "description": "Người dùng đã đăng nhập hoặc được cấp quyền trước, cùng vai trò và mức nhãn tối đa của họ trong từng dự án. Mỗi lần cấp hay thu hồi được ghi vào audit.",
       "count": "{count, plural, other {# người dùng}}",
       "shown": "Hiển thị {shown} trên {total} người dùng",
       "search": "Tìm theo tên đăng nhập",
@@ -267,24 +271,24 @@
         "actions": "Thao tác"
       },
       "noGrants": "Chưa có quyền ở dự án nào",
-      "grantSummary": "{project}: {role}, mức {level}",
+      "grantSummary": "{project}: {role}, mức hiển thị {level}",
       "hubAdmin": "Quản trị viên hub",
       "notSignedIn": "Chưa đăng nhập",
       "never": "Chưa bao giờ"
     },
     "member": {
-      "eyebrow": "Thành viên",
+      "metaTitle": "Thành viên",
       "notFoundTitle": "Không tìm thấy người dùng {login}",
       "notFoundDescription": "Hub không có người dùng này. Có thể tên đăng nhập bị gõ sai, hoặc người đó chưa đăng nhập và chưa được cấp quyền.",
       "summary": "Có trên hub từ {created}. Hoạt động lần cuối: {lastSeen}.",
       "grantsTitle": "Quyền theo dự án",
-      "grantsDescription": "Vai trò và mức nhãn cao nhất người này xem được trong từng dự án.",
+      "grantsDescription": "Vai trò và mức hiển thị của người này trong từng dự án.",
       "grantsEmptyTitle": "Chưa có quyền ở dự án nào",
       "grantsEmptyDescription": "{login} chưa thấy dự án nào trên hub. Cấp vai trò để họ đọc hoặc ghi nội dung của một dự án.",
       "columns": {
         "project": "Dự án",
         "role": "Vai trò",
-        "maxLevel": "Mức nhãn tối đa",
+        "visibility": "Mức hiển thị",
         "grantedBy": "Cấp bởi",
         "grantedAt": "Cấp lúc",
         "actions": "Thao tác"
@@ -303,7 +307,7 @@
     },
     "grant": {
       "title": "Cấp quyền theo dự án",
-      "description": "Chọn người dùng, dự án, vai trò và mức nhãn cao nhất họ được xem. Bạn sẽ xác nhận ở bước sau.",
+      "description": "Chọn người dùng, dự án, vai trò và mức hiển thị. Bạn sẽ xác nhận ở bước sau.",
       "login": "Tên đăng nhập GitHub",
       "loginHint": "Có thể cấp cho người chưa đăng nhập lần nào; quyền có hiệu lực từ lần đăng nhập đầu tiên của họ.",
       "loginRequired": "Nhập tên đăng nhập GitHub.",
@@ -313,15 +317,15 @@
       "noProjects": "Hub chưa có dự án nào. Đăng ký dự án bằng lệnh evo-agents hub project register, rồi quay lại đây.",
       "role": "Vai trò",
       "roleHints": {
-        "reader": "Xem memories, plans, skills và knowledge graph của dự án, tới mức nhãn tối đa.",
+        "reader": "Xem memories, plans, skills và knowledge graph của dự án, tới mức hiển thị được cấp.",
         "writer": "Như Đọc, và đẩy memories, plans, skills, knowledge graph lên hub.",
         "admin": "Như Ghi, và đăng ký lại dự án từ harness của nó."
       },
-      "maxLevel": "Mức nhãn tối đa",
-      "maxLevelHint": "Thang nhãn của dự án, từ thấp tới cao. Người này xem được nội dung có nhãn tới mức này.",
-      "maxLevelRequired": "Chọn một mức nhãn.",
-      "existing": "{login} đang có vai trò {role}, mức {level} trong dự án này. Lưu sẽ thay bằng lựa chọn mới.",
-      "unchanged": "{login} đã có đúng vai trò và mức nhãn này. Không có gì để thay đổi.",
+      "visibility": "Mức hiển thị",
+      "visibilityHint": "Các mức trong thang nhãn của dự án, từ thấp tới cao. Người này xem được nội dung có nhãn tới mức được chọn.",
+      "visibilityRequired": "Chọn một mức hiển thị.",
+      "existing": "{login} đang có vai trò {role}, mức hiển thị {level} trong dự án này. Lưu sẽ thay bằng lựa chọn mới.",
+      "unchanged": "{login} đã có đúng vai trò và mức hiển thị này. Không có gì để thay đổi.",
       "continue": "Tiếp tục",
       "cancel": "Huỷ",
       "close": "Đóng",
@@ -332,15 +336,15 @@
         "login": "Người dùng",
         "project": "Dự án",
         "role": "Vai trò",
-        "maxLevel": "Mức nhãn tối đa",
+        "visibility": "Mức hiển thị",
         "previous": "Thay cho"
       },
-      "previous": "{role}, mức {level}",
+      "previous": "{role}, mức hiển thị {level}",
       "back": "Quay lại",
       "confirm": "Xác nhận cấp quyền",
       "saving": "Đang lưu…",
       "notFound": "Dự án {project} không còn trên hub. Đóng hộp thoại rồi chọn dự án khác.",
-      "success": "Đã cấp vai trò {role}, mức {level}, cho {login} trong dự án {project}."
+      "success": "Đã cấp vai trò {role}, mức hiển thị {level}, cho {login} trong dự án {project}."
     },
     "revokeGrant": {
       "title": "Thu hồi quyền của {login} trong dự án {project}?",
@@ -353,7 +357,6 @@
     },
     "tokens": {
       "title": "Token và phiên đăng nhập",
-      "description": "Token máy của CLI và phiên web của mọi người dùng. Thu hồi một token thì yêu cầu kế tiếp dùng nó nhận 401, từ mọi máy.",
       "caption": "Token và phiên đăng nhập",
       "login": "Người dùng",
       "loginPlaceholder": "Tất cả người dùng",
@@ -405,7 +408,6 @@
     },
     "audit": {
       "title": "Nhật ký audit",
-      "description": "Mỗi thao tác thay đổi dữ liệu trên hub: ai làm, bằng token nào, việc gì, với đối tượng nào và trong dự án nào. Nhật ký không chứa nội dung hay thông tin xác thực.",
       "caption": "Nhật ký audit, mới nhất trước",
       "actor": "Người thực hiện",
       "actorPlaceholder": "Tất cả người dùng",
@@ -450,16 +452,18 @@
     }
   },
   "plans": {
-    "planEyebrow": "Plan",
-    "stepEyebrow": "Bước của plan",
-    "backToPlans": "Tất cả plan của dự án",
-    "backToPlan": "Về plan {name}",
     "revision": "Revision {revision}",
+    "copyId": "Sao chép mã plan {id}",
     "updated": "Sửa lần cuối bởi <who>{login}</who> lúc {time}",
+    "stepOf": "Thuộc plan <plan>{name}</plan>, sửa lần cuối bởi <who>{login}</who> lúc {time}",
     "emptyList": "Danh sách trống",
     "readOnly": {
-      "label": "Trang chỉ để đọc",
-      "text": "Nội dung plan ở đây chỉ để đọc: plan được sửa bằng <code>evo harness step</code> hoặc <code>evo-agents hub plan</code>, và mỗi lần sửa thêm một revision vào lịch sử. Muốn một worker của bạn làm plan này thì người có quyền ghi dùng Chạy plan."
+      "label": "Chỉ đọc",
+      "title": "Chỉ đọc.",
+      "text": "Plan được sửa từ CLI bằng <code>evo harness step</code>; mỗi lần sửa thêm một revision.",
+      "copy": "Sao chép",
+      "copyLabel": "Sao chép lệnh {command}",
+      "copied": "Đã chép"
     },
     "tabs": {
       "label": "Các phần của plan",
@@ -477,7 +481,6 @@
     "list": {
       "metaTitle": "Plans của {project}",
       "title": "Plans",
-      "description": "Các plan của dự án mà hub đang giữ, kèm tiến độ tính theo số bước đã xong.",
       "activeCount": "{count, plural, other {# đang chạy}}",
       "completedCount": "{count, plural, other {# đã hoàn tất}}",
       "active": "Đang chạy",
@@ -485,7 +488,7 @@
       "noActive": "Dự án không có plan nào đang chạy.",
       "noCompleted": "Dự án chưa có plan nào hoàn tất.",
       "emptyTitle": "Dự án chưa có plan nào trên hub",
-      "emptyDescription": "Đẩy các plan trong harness lên bằng evo-agents hub plan import, rồi tải lại trang. Plan có nhãn cao hơn mức của bạn sẽ không hiện ở đây.",
+      "emptyDescription": "Plan hiện ở đây khi một thành viên đẩy các plan trong harness lên bằng evo-agents hub plan import; plan có nhãn cao hơn mức hiển thị của bạn không hiện.",
       "search": "Tìm plan theo tên hoặc mã",
       "searchPlaceholder": "Tìm plan…",
       "shown": "Hiện {shown} trên {total} plan",
@@ -592,7 +595,7 @@
     },
     "notFound": {
       "title": "Không tìm thấy plan {plan}",
-      "description": "Plan không có trong dự án {project}, hoặc nhãn của nó cao hơn mức bạn được xem.",
+      "description": "Plan không có trong dự án {project}, hoặc nhãn của nó cao hơn mức hiển thị của bạn.",
       "stepTitle": "Plan {plan} không có bước {step}",
       "stepDescription": "Kiểm lại mã bước trong đường dẫn, hoặc mở plan để xem danh sách bước."
     },
@@ -665,14 +668,10 @@
     "sortBy": "Xếp theo {column}"
   },
   "memories": {
-    "projectEyebrow": "Dự án {project}",
-    "personalEyebrow": "Của riêng bạn",
     "projectTitle": "Memory",
     "personalTitle": "Memory cá nhân",
-    "projectDescription": "Các tệp memory của Claude Code mà thành viên đẩy lên hub từ harness và các repo của dự án.",
-    "personalDescription": "Memory ở các thư mục không thuộc dự án hub nào, đồng bộ giữa các máy của bạn.",
     "count": "{count, plural, other {# memory}}",
-    "projectVisibility": "Bạn thấy memory có nhãn tới mức <code>{level}</code> theo grant của bạn. Memory loại Người dùng và Góp ý chỉ người tạo ra nó thấy.",
+    "projectVisibility": "Mức hiển thị của bạn là <level></level>: bạn thấy memory có nhãn tới mức này. Memory loại Người dùng và Góp ý chỉ người tạo ra nó thấy.",
     "personalVisibility": "Chỉ bạn thấy các memory này.",
     "adminWithoutGrant": "Bạn là quản trị viên hub nhưng chưa có grant trên dự án này, nên không đọc được memory của nó. Nhờ quản trị viên dự án cấp grant nếu cần.",
     "search": {
@@ -696,7 +695,7 @@
     },
     "label": {
       "label": "Nhãn",
-      "level": "Mức nhãn",
+      "level": "Mức hiển thị",
       "location": "Vùng dữ liệu",
       "anyLocation": "Không giới hạn",
       "integrity": "Độ tin cậy",
@@ -721,9 +720,9 @@
     "truncated": "Có nhiều memory hơn mức trang này tải: đang hiện {count} memory đầu tiên. Dùng ô tìm kiếm để tìm memory khác.",
     "empty": {
       "projectTitle": "Dự án chưa có memory nào",
-      "projectDescription": "Memory xuất hiện ở đây khi thành viên chạy <code>evo-agents hub memory push</code> trong harness hoặc một repo của dự án.",
+      "projectDescription": "Tệp memory của Claude Code do thành viên đẩy lên hiện ở đây khi họ chạy <code>evo-agents hub memory push</code> trong harness hoặc một repo của dự án.",
       "personalTitle": "Bạn chưa có memory cá nhân nào",
-      "personalDescription": "Memory ở thư mục ngoài các dự án hub được đẩy lên bằng <code>evo-agents hub memory push --all</code>."
+      "personalDescription": "Memory ở thư mục ngoài mọi dự án hub được đẩy lên bằng <code>evo-agents hub memory push --all</code> và đồng bộ giữa các máy của bạn."
     },
     "noResults": {
       "searchTitle": "Không tìm thấy memory nào cho “{q}”",
@@ -746,8 +745,6 @@
       "title": "Memory",
       "notFoundTitle": "Không tìm thấy memory",
       "notFoundDescription": "Memory này không tồn tại, thuộc chỗ khác, hoặc bạn không được xem nó.",
-      "backProject": "Memory của dự án",
-      "backPersonal": "Memory cá nhân",
       "deletedTitle": "Memory này đã bị xoá ở revision {revision}",
       "deletedDescription": "Nội dung trước đó vẫn còn trong lịch sử revision.",
       "revisionNotFoundTitle": "Không tìm thấy revision {revision}",
@@ -792,12 +789,8 @@
     }
   },
   "skills": {
-    "projectEyebrow": "Dự án {project}",
-    "globalEyebrow": "Dùng chung toàn hub",
     "projectTitle": "Skill của dự án",
     "globalTitle": "Skill dùng chung",
-    "projectDescription": "Skill do thành viên dự án xuất bản; lệnh evo-agents hub skills sync cài chúng vào các runtime trên máy.",
-    "globalDescription": "Skill quản trị viên hub xuất bản cho mọi thành viên.",
     "count": "{count, plural, other {# skill}}",
     "bytes": "{count, number} byte",
     "copyHash": "Chép SHA-256",
@@ -817,10 +810,10 @@
     },
     "empty": {
       "projectTitle": "Dự án chưa có skill nào",
-      "projectDescription": "Người có vai trò Ghi xuất bản skill bằng <code>evo-agents hub skills publish DIR --scope project:{project}</code>.",
+      "projectDescription": "Người có vai trò Ghi xuất bản skill bằng <code>evo-agents hub skills publish DIR --scope project:{project}</code>, và <code>evo-agents hub skills sync</code> cài nó vào các runtime trên máy.",
       "toGlobal": "Xem skill dùng chung",
       "globalTitle": "Hub chưa có skill dùng chung nào",
-      "globalDescription": "Quản trị viên hub xuất bản bằng <code>evo-agents hub skills publish DIR</code>."
+      "globalDescription": "Quản trị viên hub xuất bản skill cho mọi thành viên bằng <code>evo-agents hub skills publish DIR</code>."
     },
     "filter": {
       "label": "Lọc skill",
@@ -857,8 +850,6 @@
     "detail": {
       "notFoundTitle": "Không tìm thấy skill {name}",
       "notFoundDescription": "Skill này chưa được xuất bản ở đây, hoặc tên được viết khác.",
-      "backProject": "Skill của dự án",
-      "backGlobal": "Skill dùng chung",
       "noVersions": "Skill chưa có phiên bản nào.",
       "latestTitle": "Phiên bản mới nhất: v{version}",
       "latestDescription": "Bundle là tệp tar.gz của thư mục skill, đúng như lúc xuất bản.",
@@ -876,7 +867,6 @@
   },
   "kg": {
     "title": "Đồ thị tri thức",
-    "description": "Đồ thị hub dựng từ các lượt đẩy của dự án: trạng thái build, hàng đợi và tìm node. Bạn chỉ thấy node có nhãn trong mức tối đa của mình.",
     "readOnly": "Chỉ đọc",
     "copied": "Đã chép vào bộ nhớ tạm",
     "status": {
@@ -967,7 +957,7 @@
     },
     "search": {
       "title": "Tìm node",
-      "description": "Tìm theo tên, id, đường dẫn, mã hoặc từ trong nội dung. Kết quả chỉ gồm node có nhãn trong mức bạn được xem.",
+      "description": "Tìm theo tên, id, đường dẫn, mã hoặc từ trong nội dung. Kết quả chỉ gồm node có nhãn trong mức hiển thị của bạn.",
       "query": "Từ khoá",
       "placeholder": "Ví dụ: runbook, KB-01, src/app.py",
       "kind": "Loại node",
@@ -977,12 +967,12 @@
       "hint": "Tối đa 25 kết quả, xếp theo độ khớp.",
       "visible": "{count, plural, =0 {Bạn chưa xem được node nào trong đồ thị này.} other {Bạn xem được # node trong đồ thị này, theo loại:}}",
       "byKind": "Số node theo loại",
-      "nothingVisible": "Mọi node của đồ thị đều có nhãn cao hơn mức của bạn.",
+      "nothingVisible": "Mọi node của đồ thị đều có nhãn cao hơn mức hiển thị của bạn.",
       "seeLevels": "Xem thang nhãn của dự án",
       "count": "{count, plural, =0 {Không có kết quả} other {# kết quả}} cho “{query}”",
       "countKind": "Node {kind} khớp “{query}”: {count}",
       "emptyTitle": "Không có node nào khớp “{query}”",
-      "emptyDescription": "Thử từ khoá ngắn hơn, id đầy đủ của node, hoặc bỏ lọc loại. Node có nhãn cao hơn mức của bạn không bao giờ hiện ở đây.",
+      "emptyDescription": "Thử từ khoá ngắn hơn, id đầy đủ của node, hoặc bỏ lọc loại. Node có nhãn cao hơn mức hiển thị của bạn không bao giờ hiện ở đây.",
       "clearKind": "Tìm trong mọi loại",
       "columns": {
         "node": "Node",
@@ -993,7 +983,6 @@
       }
     },
     "node": {
-      "back": "Về đồ thị tri thức",
       "facts": "Thông tin node",
       "id": "Id",
       "copyId": "Chép id của node",
@@ -1008,7 +997,7 @@
       "confidence": "Độ tin cậy",
       "aliases": "Bí danh",
       "notFoundTitle": "Không tìm thấy node",
-      "notFoundDescription": "Node không có trong đồ thị hiện tại, hoặc nhãn của nó cao hơn mức bạn được xem.",
+      "notFoundDescription": "Node không có trong đồ thị hiện tại, hoặc nhãn của nó cao hơn mức hiển thị của bạn.",
       "searchInstead": "Tìm trong đồ thị",
       "olderBuild": "Kho blob chưa trả lời nên trang đang đọc build #{id}, cũ hơn build mới nhất."
     },
@@ -1074,8 +1063,6 @@
   },
   "workers": {
     "title": "Worker",
-    "eyebrow": "Hub",
-    "description": "Laptop và máy bàn đã đăng ký để chạy các bước plan cho chủ máy. Worker gửi heartbeat mỗi 15 giây; quá 5 phút không có heartbeat thì worker offline, và các run nó đang giữ quay lại queue.",
     "registerButton": "Đăng ký worker",
     "register": {
       "title": "Đăng ký worker",
@@ -1235,7 +1222,6 @@
     },
     "detail": {
       "title": "Worker",
-      "eyebrow": "Worker",
       "facts": "{os} {arch} trên {hostname}. Chủ {owner}. Daemon evo-agents {version}, đăng ký {date}.",
       "notFoundTitle": "Không tìm thấy worker",
       "notFoundDescription": "Worker này không tồn tại, hoặc thuộc về thành viên khác.",
@@ -1316,7 +1302,6 @@
   "runs": {
     "title": "Run",
     "metaTitle": "Run của {project}",
-    "description": "Mỗi run là một bước của plan, hoặc cả một plan (plan run), được giao cho một worker của bạn. Trạng thái, log và bằng chứng của run gửi về hub trong lúc chạy.",
     "dispatchButton": "Dispatch",
     "liveBadge": "Trực tiếp",
     "live": "Cập nhật mỗi 5 giây khi còn run đang hoạt động.",
@@ -1333,7 +1318,8 @@
     "summary": {
       "label": "Tóm tắt",
       "running": "Đang chạy",
-      "runningHint": "{workers, plural, =0 {không worker nào đang giữ run} other {trên # worker}}",
+      "runningHint": "{workers, plural, other {trên # worker}}",
+      "runningIdle": "Rảnh",
       "queued": "Đang chờ",
       "queuedSince": "run chờ lâu nhất từ {time}",
       "queuedMany": "{count, plural, other {# run đang chờ worker}}",
@@ -1343,7 +1329,7 @@
       "reviewMany": "đang chờ bạn duyệt",
       "reviewNone": "không có gì cần duyệt",
       "failed": "Thất bại",
-      "failedHint": "{lost, plural, =0 {không mất lease nào} other {thêm # lần mất lease}}, {cancelled, plural, =0 {không run nào bị huỷ} other {# run đã huỷ}}"
+      "failedHint": "{lost, plural, =0 {Không run nào mất lease} other {và # run mất lease}}"
     },
     "facets": {
       "label": "Trạng thái",
@@ -1390,7 +1376,7 @@
     },
     "empty": {
       "title": "Chưa có run nào",
-      "description": "Một run là một bước plan đã sẵn sàng, được dispatch tới một worker của bạn. Dispatch một run để bắt đầu.",
+      "description": "Dispatch một bước plan đã sẵn sàng tới một worker của bạn. Log và kết quả của nó gửi về đây.",
       "readerDescription": "Người có quyền ghi trên dự án này dispatch run tới worker của họ; mỗi run hiện ở đây kèm trạng thái."
     },
     "noResults": {
@@ -1618,8 +1604,8 @@
       "title": "Run",
       "planTitle": "Plan run",
       "untitled": "Bước chưa có tên",
-      "description": "Plan <planLink>{plan}</planLink>, <stepLink>bước {step}: {title}</stepLink>",
-      "planDescription": "Plan <planLink>{plan}</planLink>: {title}. Mọi bước chưa xong, trong một phiên.",
+      "sub": "Plan <planLink>{plan}</planLink>, <stepLink>bước {step}: {title}</stepLink>",
+      "planSub": "Plan <planLink>{plan}</planLink>: {title}. Mọi bước chưa xong, trong một phiên.",
       "notFoundTitle": "Không tìm thấy run #{id}",
       "notFoundDescription": "Run này không có trong dự án, hoặc thuộc một plan bạn không được đọc.",
       "stepper": {
@@ -1908,7 +1894,7 @@
     "diff": {
       "metaTitle": "Diff của run #{id} thuộc {project}",
       "title": "Diff của run",
-      "description": "{title}: {files, plural, other {# file}}, {size} KiB.",
+      "sub": "{title}: {files, plural, other {# file}}, {size} KiB.",
       "back": "Quay lại run",
       "download": "Tải .diff",
       "downloadStarted": "Đang tải {file}.",
@@ -1952,7 +1938,6 @@
   },
   "inbox": {
     "title": "Inbox",
-    "description": "Các quyết định agent của plan run bạn giao cần bạn trả lời, và những điều agent báo cho bạn: push hay merge vào nhánh mặc định, plan đã xong, run thất bại. Quyết định đang chờ bạn trả lời nằm trên cùng.",
     "listTitle": "Thông báo",
     "unreadCount": "{count, plural, =0 {Không có mục chưa đọc} other {# chưa đọc}}",
     "openCount": "{count, plural, other {# quyết định chờ bạn}}",

@@ -1,11 +1,13 @@
 "use client";
 
-import { ArrowLeft, Archive, Code, Eye, History } from "lucide-react";
+import { Archive, Code, Eye, History } from "lucide-react";
 import type { Route } from "next";
 import Link from "next/link";
 import { useFormatter, useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
 
+import { Identifier } from "@/components/data/identifier";
+import { VisibilityLevel } from "@/components/data/visibility";
 import { PageHeader } from "@/components/shell/page-header";
 import { QueryView, useHubQuery } from "@/components/states/query-view";
 import { ApiErrorState, LoadingState, NotFoundState, PageSkeleton } from "@/components/states/states";
@@ -20,7 +22,7 @@ import { cn } from "@/lib/utils";
 
 import { DeletedBadge, LabelBadge, MemoryTypeBadge } from "./badges";
 import { SafeMarkdown } from "./markdown";
-import { memoriesHref, memoryHref } from "./memory-browser";
+import { memoryHref } from "./memory-browser";
 import { labelNames, parseFrontmatter, SHARED_TYPES } from "./memory-meta";
 import { type Memory, memoryQuery, memoryRevisionQuery, type MemoryScope } from "./queries";
 import { RevisionHistory } from "./revision-history";
@@ -101,29 +103,20 @@ function Detail({
   const unrestricted = project.status === "success" ? project.data.locations[0] : undefined;
   const { fields } = parseFrontmatter(memory.body);
   const title = fields.name || memory.name;
-  const back = memoriesHref(scope);
 
   return (
     <>
-      <div>
-        <Button asChild variant="ghost" size="sm" className="-ml-2.5">
-          <Link href={back}>
-            <ArrowLeft aria-hidden="true" />
-            {scope.kind === "project" ? t("detail.backProject") : t("detail.backPersonal")}
-          </Link>
-        </Button>
-      </div>
       <PageHeader
-        eyebrow={<span className="font-mono normal-case">{memory.name}</span>}
         title={title}
-        description={fields.description}
-        meta={
+        tags={
           <>
             <MemoryTypeBadge type={memory.type} />
             {memory.scope === "project" ? <LabelBadge label={memory.label} unrestricted={unrestricted} /> : null}
             {memory.deleted ? <DeletedBadge /> : null}
+            {title !== memory.name ? <Identifier value={memory.name} testId="memory-file" /> : null}
           </>
         }
+        sub={fields.description}
       />
       {memory.deleted && viewing === null ? (
         <Alert role="note">
@@ -354,7 +347,7 @@ function Details({ memory, unrestricted }: { memory: Memory; unrestricted?: stri
           {memory.scope === "project" ? (
             <>
               <Field label={tLabel("level")}>
-                <Mono>{label.level ?? "-"}</Mono>
+                <VisibilityLevel level={label.level} />
               </Field>
               <Field label={tLabel("location")}>
                 {label.location === null || label.location === unrestricted ? (

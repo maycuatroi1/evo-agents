@@ -89,7 +89,7 @@ function Summary({ summary }: { summary: RunsSummary }) {
           spin
           label={t("running")}
           value={summary.held}
-          hint={t("runningHint", { workers: summary.holdingWorkers })}
+          hint={summary.holdingWorkers === 0 ? t("runningIdle") : t("runningHint", { workers: summary.holdingWorkers })}
           testId="summary-running"
         />
         <Stat icon={Clock} label={t("queued")} value={summary.queued} hint={queuedHint} testId="summary-queued" />
@@ -98,7 +98,7 @@ function Summary({ summary }: { summary: RunsSummary }) {
           icon={CircleX}
           label={t("failed")}
           value={summary.failed}
-          hint={t("failedHint", { lost: summary.lost, cancelled: summary.cancelled })}
+          hint={t("failedHint", { lost: summary.lost })}
           testId="summary-failed"
         />
       </dl>
@@ -208,24 +208,22 @@ export function RunsPage({ project, initialError }: { project: string; initialEr
   return (
     <>
       <PageHeader
-        eyebrow={<span className="font-mono normal-case">{project}</span>}
         title={t("title")}
-        description={t("description")}
-        meta={
-          <>
-            {live ? (
-              <Badge variant="info" data-testid="runs-live">
-                <Loader2 className="animate-spin motion-reduce:animate-none" aria-hidden="true" />
-                {t("liveBadge")}
-              </Badge>
-            ) : null}
-            {canDispatch ? (
-              <Button onClick={() => setDispatching(true)} data-testid="runs-dispatch">
-                <Send aria-hidden="true" />
-                {t("dispatchButton")}
-              </Button>
-            ) : null}
-          </>
+        tags={
+          live ? (
+            <Badge variant="info" data-testid="runs-live">
+              <Loader2 className="animate-spin motion-reduce:animate-none" aria-hidden="true" />
+              {t("liveBadge")}
+            </Badge>
+          ) : null
+        }
+        actions={
+          canDispatch ? (
+            <Button onClick={() => setDispatching(true)} data-testid="runs-dispatch">
+              <Send aria-hidden="true" />
+              {t("dispatchButton")}
+            </Button>
+          ) : null
         }
       />
       <NoticeArea notice={notice} onDismiss={clear} />

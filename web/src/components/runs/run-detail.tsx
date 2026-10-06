@@ -97,20 +97,17 @@ function RunPage({ run }: { run: Run }) {
   return (
     <div className="flex flex-col gap-6" data-testid="run-detail" data-run-id={run.id} data-state={run.state} data-kind={run.kind}>
       <PageHeader
-        eyebrow={<span className="font-mono normal-case">{run.project}</span>}
         title={
-          <span className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-            <span>
-              {plan ? t("planTitle") : t("title")} <span className="font-mono tabular-nums">#{run.id}</span>
-            </span>
-            <StatusBadge kind="run" status={run.state} size="lg" />
-            {plan ? <PlanRunKindBadge className="h-6 px-2 text-xs" /> : null}
-          </span>
+          <>
+            {plan ? t("planTitle") : t("title")} <span className="tabular-nums">#{run.id}</span>
+          </>
         }
-        description={
+        status={<StatusBadge kind="run" status={run.state} size="lg" />}
+        tags={plan ? <PlanRunKindBadge /> : null}
+        sub={
           plan || run.step_key === null
-            ? t.rich("planDescription", { plan: run.plan_id, title, planLink })
-            : t.rich("description", {
+            ? t.rich("planSub", { plan: run.plan_id, title, planLink })
+            : t.rich("sub", {
                 plan: run.plan_id,
                 step: run.step_key,
                 title,
@@ -126,8 +123,7 @@ function RunPage({ run }: { run: Run }) {
                 ),
               })
         }
-        meta={<RunActions run={run} controls={controls} onNotice={show} />}
-        metaBelow
+        actions={<RunActions run={run} controls={controls} onNotice={show} />}
       />
       <NoticeArea notice={notice} onDismiss={clear} />
       {plan ? <RunDecisions run={run} owner={controls.owner} /> : null}

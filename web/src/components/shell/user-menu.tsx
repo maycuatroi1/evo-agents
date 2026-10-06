@@ -7,6 +7,7 @@ import { useLocale, useTranslations } from "next-intl";
 import { useTheme } from "next-themes";
 import { useState } from "react";
 
+import { useVisibilityName } from "@/components/data/visibility";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -46,6 +47,7 @@ async function signOut(): Promise<void> {
 export function UserMenu() {
   const t = useTranslations("userMenu");
   const tRoles = useTranslations("roles");
+  const levelName = useVisibilityName();
   const tLocales = useTranslations("locales");
   const locale = useLocale();
   const router = useRouter();
@@ -129,7 +131,7 @@ export function UserMenu() {
                     ? t("projectRole", {
                         project: current.name,
                         role: tRoles(roleLabelKey(current.role)),
-                        level: current.max_level ?? "",
+                        level: current.max_level ? levelName(current.max_level) : "-",
                       })
                     : t("projectRoleNone", { project: current.name })}
                 </span>

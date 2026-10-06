@@ -87,10 +87,14 @@ describe("PlansList", () => {
     const completed = within(screen.getByTestId("plans-completed"));
     expect(completed.getByRole("link", { name: "kg-prototype" })).toBeInTheDocument();
     expect(completed.getByText("13/13 bước xong")).toBeInTheDocument();
-    expect(screen.getByTestId("plans-read-only")).toHaveTextContent("evo harness step");
-    expect(screen.getByTestId("plans-read-only")).toHaveTextContent("evo-agents hub plan");
-    // The only buttons are the tables' sort buttons: nothing on the page changes a plan.
-    const buttons = screen.getAllByRole("button").map((button) => button.textContent ?? "");
+    const banner = screen.getByTestId("plans-read-only");
+    expect(banner).toHaveTextContent("Chỉ đọc. Plan được sửa từ CLI bằng evo harness step; mỗi lần sửa thêm một revision.");
+    expect(within(banner).getByRole("button", { name: "Sao chép lệnh evo harness step" })).toHaveTextContent("Sao chép");
+    // Besides the banner's Copy, the only buttons are the tables' sort buttons: nothing on the page changes a plan.
+    const buttons = screen
+      .getAllByRole("button")
+      .filter((button) => !banner.contains(button))
+      .map((button) => button.textContent ?? "");
     expect(buttons.length).toBeGreaterThan(0);
     for (const name of buttons) expect(name).toMatch(/^(Plan|Tiến độ|Revision|Sửa lần cuối)/);
   });

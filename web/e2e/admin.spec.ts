@@ -72,16 +72,16 @@ test.describe("members and grants", () => {
     await expect(dialog.getByLabel("Tên đăng nhập GitHub")).toHaveValue(account.login);
     await dialog.getByLabel("Dự án").selectOption(project);
     await dialog.getByRole("radio", { name: "Đọc" }).click();
-    await dialog.getByLabel("Mức nhãn tối đa").selectOption("internal");
+    await dialog.getByLabel("Mức hiển thị").selectOption("internal");
     await dialog.getByRole("button", { name: "Tiếp tục" }).click();
 
     const confirm = page.getByRole("dialog", { name: "Xác nhận cấp quyền" });
     await expect(confirm.getByTestId("grant-summary")).toContainText(project);
-    await expect(confirm.getByTestId("grant-summary")).toContainText("internal");
+    await expect(confirm.getByTestId("grant-summary")).toContainText("Internal");
     await confirm.getByRole("button", { name: "Xác nhận cấp quyền" }).click();
     await expect(confirm).toBeHidden();
     await expect(page.getByTestId("admin-notice-status")).toHaveText(
-      `Đã cấp vai trò Đọc, mức internal, cho ${account.login} trong dự án ${project}.`,
+      `Đã cấp vai trò Đọc, mức hiển thị Internal, cho ${account.login} trong dự án ${project}.`,
     );
     const row = page.getByTestId("members-table").getByRole("row").filter({ hasText: account.login });
     await expect(row).toContainText(project);
@@ -132,15 +132,15 @@ test.describe("members and grants", () => {
     await admin.grant(project, account.login, "writer", "customer");
     await signInAs(ADMIN_ACCOUNT);
     await page.goto(`/admin/members/${account.login}`);
-    await expect(page.getByTestId("member-grants")).toContainText("customer");
+    await expect(page.getByTestId("member-grants")).toContainText("Customer");
     await page.getByRole("button", { name: `Đổi quyền của ${account.login} trong dự án ${project}` }).click();
     const dialog = page.getByRole("dialog", { name: "Cấp quyền theo dự án" });
-    await expect(dialog.getByTestId("grant-existing")).toContainText("đã có đúng vai trò và mức nhãn này");
+    await expect(dialog.getByTestId("grant-existing")).toContainText("đã có đúng vai trò và mức hiển thị này");
     await expect(dialog.getByRole("button", { name: "Tiếp tục" })).toBeDisabled();
-    await dialog.getByLabel("Mức nhãn tối đa").selectOption("secret");
+    await dialog.getByLabel("Mức hiển thị").selectOption("secret");
     await dialog.getByRole("button", { name: "Tiếp tục" }).click();
     const confirm = page.getByRole("dialog", { name: "Xác nhận đổi quyền" });
-    await expect(confirm.getByTestId("grant-summary")).toContainText("Ghi, mức customer");
+    await expect(confirm.getByTestId("grant-summary")).toContainText("Ghi, mức hiển thị Customer");
 
     // Meanwhile the project drops its top level, so the API refuses "secret" with 422.
     await admin.grant(project, account.login, "writer", "internal");
@@ -152,15 +152,15 @@ test.describe("members and grants", () => {
     await expect(confirm).toBeVisible();
 
     await confirm.getByRole("button", { name: "Quay lại" }).click();
-    const levels = dialog.getByLabel("Mức nhãn tối đa");
-    await expect(levels.locator("option")).toHaveText(["public", "internal", "customer"]); // the reloaded ladder
+    const levels = dialog.getByLabel("Mức hiển thị");
+    await expect(levels.locator("option")).toHaveText(["Public", "Internal", "Customer"]); // the reloaded ladder
     await levels.selectOption("customer");
     await dialog.getByRole("button", { name: "Tiếp tục" }).click();
     await page.getByRole("dialog", { name: "Xác nhận đổi quyền" }).getByRole("button", { name: "Xác nhận cấp quyền" }).click();
     await expect(page.getByTestId("admin-notice-status")).toHaveText(
-      `Đã cấp vai trò Ghi, mức customer, cho ${account.login} trong dự án ${project}.`,
+      `Đã cấp vai trò Ghi, mức hiển thị Customer, cho ${account.login} trong dự án ${project}.`,
     );
-    await expect(page.getByTestId("member-grants")).toContainText("customer");
+    await expect(page.getByTestId("member-grants")).toContainText("Customer");
   });
 });
 
