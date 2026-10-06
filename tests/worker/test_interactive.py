@@ -518,6 +518,34 @@ def test_tmux_runs_the_ui_through_a_script_that_sets_the_agents_environment(tmp_
     assert not asyncio.run(tmuxed.alive("evo-run-7"))
 
 
+def test_the_panes_script_evaluates_the_runs_leases_and_never_holds_their_values(tmp_path):
+    token = "sk-lease-" + "0123456789abcdef" * 2
+    printer = _script(tmp_path / "print-env", f"echo \"export OPENAI_API_KEY='{token}'\"")  # stands for `worker env`
+    env = {"PATH": os.environ["PATH"], "EVO_RUN_ID": "7", "OPENAI_API_KEY": token, "GIT_CONFIG_COUNT": "1"}
+    script = interactive.write_script(
+        tmp_path / "runs" / "7" / "evo-run-7.sh",
+        ["/bin/sh", "-c", 'echo "key=$OPENAI_API_KEY count=${GIT_CONFIG_COUNT:-none} run=$EVO_RUN_ID"'],
+        env,
+        tmp_path,
+        ("CLAUDECODE",),
+        withheld={"OPENAI_API_KEY", "GIT_CONFIG_COUNT"},
+        env_command=str(printer),
+    )
+    text = script.read_text(encoding="utf-8")
+    assert token not in text, "a lease's value is never written into the pane's script"
+    assert "export OPENAI_API_KEY" not in text and "export GIT_CONFIG_COUNT" not in text
+    lines = text.splitlines()
+    evaluated = lines.index(f'eval "$({printer})"')
+    assert lines.index("export EVO_RUN_ID=7") < evaluated < lines.index("unset CLAUDECODE"), (
+        "after exports, before unsets"
+    )
+    done = subprocess.run(["/bin/sh", str(script)], capture_output=True, text=True, timeout=30)
+    assert done.stdout.strip() == f"key={token} count=none run=7", done.stderr
+    assert not script.exists(), "the script removes itself once it runs"
+    without = interactive.write_script(tmp_path / "plain.sh", ["true"], env, tmp_path)
+    assert 'eval "$(' not in without.read_text(encoding="utf-8"), "a run without leases evaluates nothing"
+
+
 # Against a hub, with the daemon
 
 

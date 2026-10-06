@@ -162,6 +162,19 @@ class WorkerHub:
         answer = await self.call("POST", f"/v1/worker/runs/{int(run_id)}/inbox", body)
         return list(answer.get("messages") or []) if isinstance(answer, dict) else []
 
+    # The leases of a run (docs/credentials.md): the answer holds their values, which no caller logs
+
+    async def credentials(self, run_id: int) -> dict:
+        """``{leases, missing}`` of a run this worker holds; asked again, the same leases, a GitHub token near its end
+        replaced."""
+        answer = await self.call("POST", f"/v1/worker/runs/{int(run_id)}/credentials")
+        return answer if isinstance(answer, dict) else {}
+
+    async def release_credentials(self, run_id: int) -> dict:
+        """Give back every lease this worker holds of the run, in whatever state it is; ``{revoked}``."""
+        answer = await self.call("DELETE", f"/v1/worker/runs/{int(run_id)}/credentials")
+        return answer if isinstance(answer, dict) else {}
+
     # A plan run: its plan, its steps, its decisions and its notices
 
     async def plan(self, run_id: int) -> dict:

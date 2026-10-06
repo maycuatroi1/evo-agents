@@ -5,7 +5,7 @@ with a decision open or an answer not taken, a step done only with verify result
 
 The test drives the rest: it queues runs, answers decisions (an answer to a parked run queues the run that resumes it,
 pinned, with ``resume_of_run_id`` and the session, as ``decisions._resume`` does), parks a waiting run as the reaper
-would, and reads what the worker sent.
+would, sets what a run's ask for credentials gets (``leases``, nothing by default), and reads what the worker sent.
 """
 
 from __future__ import annotations
@@ -37,6 +37,8 @@ class FakeHub:
         self.inbox: dict[int, list[dict]] = {}
         self.notices: list[dict] = []
         self.step_reports: list[dict] = []
+        self.leases: dict[int, dict] = {}  # run id -> the {leases, missing} its ask for credentials gets
+        self.credential_calls: list[tuple[str, int]] = []  # ("ask" or "give back", run id), in order
         self.heartbeats = 0
         self._ids = itertools.count(101)
         self._messages = itertools.count(1)
@@ -62,6 +64,8 @@ class FakeHub:
                 post("/v1/worker/runs/{id}/steps/{key}", self._step),
                 post("/v1/worker/runs/{id}/decisions", self._decision),
                 post("/v1/worker/runs/{id}/notices", self._notice),
+                post("/v1/worker/runs/{id}/credentials", self._credentials),
+                web.delete("/v1/worker/runs/{id}/credentials", self._give_back),
             ]
         )
         self._runner = web.AppRunner(app, access_log=None)
@@ -397,6 +401,18 @@ class FakeHub:
             return _error(422, "invalid", "not a notice kind")
         self.notices.append({"run_id": run_id, **body})
         return web.json_response({"id": len(self.notices), "kind": "notice", **body}, status=201)
+
+    async def _credentials(self, request: web.Request) -> web.Response:
+        run_id, run = self._run(request)
+        if run["state"] not in runs.HELD_STATES:
+            return _error(404, "not_found", f"run {run_id} is not held by this worker")
+        self.credential_calls.append(("ask", run_id))
+        return web.json_response(self.leases.get(run_id) or {"leases": [], "missing": []})
+
+    async def _give_back(self, request: web.Request) -> web.Response:
+        run_id, _ = self._run(request)
+        self.credential_calls.append(("give back", run_id))
+        return web.json_response({"revoked": len((self.leases.get(run_id) or {}).get("leases") or [])})
 
 
 def _error(status: int, code: str, message: str) -> web.Response:

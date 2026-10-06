@@ -15,7 +15,9 @@ where the daemon looks for claude, opencode, codex, tmux and git, and pins EVO_W
 Install again after a runtime moves to another directory. Installing again keeps every other EVO_WORKER_* variable
 the installed plist or unit sets (``EVO_WORKER_OPENCODE_MODEL``, ``EVO_WORKER_CLAUDE_CODE_EFFORT`` and the like, which
 the owner may have added by hand), and writes PATH, EVO_WORKER_HOME and EVO_WORKER_REVOKED_EXIT as a first install
-does. Stopping the service sends the daemon SIGTERM and kills what is left 60 seconds later.
+does. Stopping the service sends the daemon SIGTERM and kills what is left 60 seconds later. The daemon, and so its
+agents, start with umask 077 (``Umask`` 63 in the plist, ``UMask=0077`` in the unit): what a run writes is its
+owner's alone.
 
 The daemon writes ``worker.log`` itself (``logs``: rotated at 10 MiB, five old files kept). What it prints before that
 log is open, such as a missing extra or a machine that is not a worker, goes to ``service.log`` in the state directory
@@ -48,6 +50,7 @@ LABEL = "io.github.maycuatroi1.evo-agents.worker"
 UNIT = "evo-agents-worker.service"
 RUN_ARGS = ("worker", "run", "--quiet")
 RESTART_SECONDS = 10
+UMASK = 0o077  # files the daemon and its agents create are the user's alone
 STOP_SECONDS = 60
 POLL_SECONDS = 0.5
 START_WAIT_SECONDS = 10.0
@@ -162,6 +165,7 @@ def build_plist(spec: Spec) -> dict:
         "ProgramArguments": list(spec.program),
         "EnvironmentVariables": environment,
         "WorkingDirectory": str(spec.home),
+        "Umask": UMASK,
         "RunAtLoad": True,
         "KeepAlive": {"SuccessfulExit": False},
         "ThrottleInterval": RESTART_SECONDS,
@@ -211,6 +215,7 @@ def build_unit(spec: Spec) -> str:
         "Type=simple",
         f"ExecStart={command}",
         f"Environment={environment}",
+        f"UMask={UMASK:04o}",
         "Restart=on-failure",
         f"RestartSec={RESTART_SECONDS}",
         # A daemon that is no longer a worker: starting it again changes nothing.

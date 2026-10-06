@@ -11,6 +11,11 @@
   verify commands run again, the repo committed and pushed), ask the run's owner a decision, send the owner a notice,
   and print the plan as the hub holds it now. They read the run from EVO_RUN_ID, EVO_WORKER_HOME and the run's record
   there, call the hub with the worker's token, and refuse to run outside a plan run of this worker.
+- ``git-credential --run N get|store|erase``: git's credential helper for run N, which the run's git configuration
+  names; ``get`` answers from the run's leases through its socket, ``store`` and ``erase`` do nothing.
+  ``env --run N``: the variables run N's leases add to its agent's environment, as export lines, for the script of an
+  interactive pane to evaluate (``credentials``). Both need the core package only, and print nothing of a run that
+  holds no socket here.
 
 The worker token goes to ``~/.evo/worker/token`` (0600) and is never printed. A failure is one ``error:`` line on
 stderr and exit status 1; a command that needs the worker extra and lacks it says how to install it (status 2).
@@ -300,6 +305,20 @@ def cmd_attach(args) -> int:
     sys.stdout.flush()
     os.execvpe(argv[0], argv, env)
     return 0  # pragma: no cover - execvpe does not return
+
+
+@_worker_command
+def cmd_git_credential(args) -> int:
+    from evo_agents.worker import credentials
+
+    return credentials.git_credential(args.run, args.action, sys.stdin, sys.stdout, sys.stderr)
+
+
+@_worker_command
+def cmd_env(args) -> int:
+    from evo_agents.worker import credentials
+
+    return credentials.print_env(args.run, sys.stdout, sys.stderr)
 
 
 @_worker_command
@@ -819,6 +838,22 @@ def register(sub) -> None:
         "--force", action="store_true", help="delete the token here even when the hub cannot revoke the worker"
     )
     revoke.set_defaults(func=cmd_revoke)
+
+    # git and an interactive pane of a run run these, with the run's socket.
+    helper = wsub.add_parser(
+        "git-credential",
+        help="git's credential helper for a run of this worker: get answers from the run's leases; store and erase "
+        "do nothing",
+    )
+    helper.add_argument("--run", type=int, required=True, help="the run's id")
+    helper.add_argument("action", help="get, store or erase, as git calls its helper")
+    helper.set_defaults(func=cmd_git_credential)
+
+    env = wsub.add_parser(
+        "env", help="print what a run's leases add to its agent's environment, as export lines for a shell to eval"
+    )
+    env.add_argument("--run", type=int, required=True, help="the run's id")
+    env.set_defaults(func=cmd_env)
 
     # The agent of a plan run runs these; outside one they refuse.
     step = wsub.add_parser(

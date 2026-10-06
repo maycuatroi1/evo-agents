@@ -4,6 +4,10 @@ Every command runs with ``GIT_TERMINAL_PROMPT=0`` (a push that would ask for a p
 and ``LC_ALL=C`` (messages the daemon reads are in English), with a timeout, and fails with ``GitError`` carrying the
 end of git's own message. Nothing here forces a push, rewrites a branch that has commits of its own, or merges.
 
+``git``, ``fetch``, ``remote_tip`` and ``push`` take the environment to run git in (``env``): a run passes its own,
+whose ``GIT_CONFIG_*`` entries hand its leased origins to its credential helper (``credentials.git_config``); without
+one, git gets the environment of this process.
+
 ``push`` refuses a repo's default branch (``PushRefused``), except in a plan run whose plan names that very branch for
 the repo: there the push goes ahead, never forced, and the answer says it was a default branch with the commits it
 added, for the notice ``push_default_branch`` the caller sends the run's owner (``push_notice``). A run of one step
@@ -22,7 +26,7 @@ import asyncio
 import contextlib
 import os
 import re
-from collections.abc import Collection
+from collections.abc import Collection, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -135,8 +139,8 @@ def folder_name(repo: str, taken: Collection[str] = ()) -> str:
     return name
 
 
-def _env() -> dict[str, str]:
-    env = dict(os.environ)
+def _env(base: Mapping[str, str] | None = None) -> dict[str, str]:
+    env = dict(os.environ if base is None else base)
     env.update({"GIT_TERMINAL_PROMPT": "0", "LC_ALL": "C", "GIT_OPTIONAL_LOCKS": "0"})
     return env
 
@@ -146,8 +150,11 @@ def _tail(text: str, limit: int = MAX_MESSAGE) -> str:
     return text if len(text) <= limit else "..." + text[-limit:]
 
 
-async def git(cwd: Path, *args: str, timeout: float = TIMEOUT, check: bool = True) -> tuple[int, str, str]:
-    """(exit code, stdout, stderr) of ``git -C cwd ARGS``; GitError on a failure when ``check``."""
+async def git(
+    cwd: Path, *args: str, timeout: float = TIMEOUT, check: bool = True, env: Mapping[str, str] | None = None
+) -> tuple[int, str, str]:
+    """(exit code, stdout, stderr) of ``git -C cwd ARGS`` in ``env`` (this process's environment when None); GitError
+    on a failure when ``check``."""
     proc = await asyncio.create_subprocess_exec(
         "git",
         "-C",
@@ -156,7 +163,7 @@ async def git(cwd: Path, *args: str, timeout: float = TIMEOUT, check: bool = Tru
         stdin=asyncio.subprocess.DEVNULL,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
-        env=_env(),
+        env=_env(env),
         start_new_session=True,
     )
     try:
@@ -183,8 +190,18 @@ async def has_remote(cwd: Path, name: str = "origin") -> bool:
     return code == 0 and name in out.split()
 
 
-async def fetch(cwd: Path, remote: str = "origin") -> None:
-    await git(cwd, "fetch", "--prune", "--quiet", remote, timeout=NETWORK_TIMEOUT)
+async def fetch(cwd: Path, remote: str = "origin", *, env: Mapping[str, str] | None = None) -> None:
+    await git(cwd, "fetch", "--prune", "--quiet", remote, timeout=NETWORK_TIMEOUT, env=env)
+
+
+async def remote_urls(cwd: Path, remote: str = "origin") -> list[str]:
+    """The URLs of the remote as its configuration writes them (``url``, then ``pushurl``), before any ``insteadOf``
+    rewrites them; empty when it has none."""
+    found: list[str] = []
+    for key in ("url", "pushurl"):
+        _, out, _ = await git(cwd, "config", "--get-all", f"remote.{remote}.{key}", check=False)
+        found += [line.strip() for line in out.splitlines() if line.strip() and line.strip() not in found]
+    return found
 
 
 async def remote_default_branch(cwd: Path, remote: str = "origin") -> str | None:
@@ -318,9 +335,11 @@ def check_push(branch: str, protected: Collection[str], *, kind: str, plan_branc
     raise PushRefused(f"{branch} is a default branch: the worker never pushes it in a run of one step")
 
 
-async def remote_tip(cwd: Path, branch: str, remote: str = "origin") -> str | None:
+async def remote_tip(
+    cwd: Path, branch: str, remote: str = "origin", *, env: Mapping[str, str] | None = None
+) -> str | None:
     """The commit ``branch`` points at on the remote now, or None when the remote has no such branch."""
-    _, out, _ = await git(cwd, "ls-remote", "--heads", remote, f"refs/heads/{branch}", timeout=NETWORK_TIMEOUT)
+    _, out, _ = await git(cwd, "ls-remote", "--heads", remote, f"refs/heads/{branch}", timeout=NETWORK_TIMEOUT, env=env)
     for line in out.splitlines():
         sha, _, ref = line.partition("\t")
         if ref.strip() == f"refs/heads/{branch}" and sha.strip():
@@ -344,19 +363,22 @@ async def push(
     protected: Collection[str] = (),
     kind: str = "step",
     plan_branch: str | None = None,
+    env: Mapping[str, str] | None = None,
 ) -> Pushed:
-    """Push HEAD to ``branch`` of the remote: a fast-forward or nothing, never forced. A default branch of the repo
-    (one of ``protected``) only as ``check_push`` allows, PushRefused before anything is sent otherwise. A branch that
-    points at HEAD already is left alone."""
+    """Push HEAD to ``branch`` of the remote, with git in ``env``: a fast-forward or nothing, never forced. A default
+    branch of the repo (one of ``protected``) only as ``check_push`` allows, PushRefused before anything is sent
+    otherwise. A branch that points at HEAD already is left alone."""
     default = check_push(branch, protected, kind=kind, plan_branch=plan_branch)
     head = await rev(cwd, "HEAD")
     if head is None:
         raise GitError("HEAD names no commit: there is nothing to push")
-    before = await remote_tip(cwd, branch, remote)
+    before = await remote_tip(cwd, branch, remote, env=env)
     if before == head:
         return Pushed(branch, head, default, False)
     commits = tuple(await new_commits(cwd, before, remote))
-    await git(cwd, "push", "--quiet", "--porcelain", remote, f"HEAD:refs/heads/{branch}", timeout=NETWORK_TIMEOUT)
+    await git(
+        cwd, "push", "--quiet", "--porcelain", remote, f"HEAD:refs/heads/{branch}", timeout=NETWORK_TIMEOUT, env=env
+    )
     return Pushed(branch, head, default, True, commits)
 
 
