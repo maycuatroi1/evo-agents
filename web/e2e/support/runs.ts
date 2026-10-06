@@ -347,6 +347,17 @@ export async function reportStep(live: LiveWorker, runId: number, key: string, s
   await workerCall(live, `/v1/worker/runs/${runId}/steps/${key}`, { status, repo });
 }
 
+/** The agent's `evo-agents worker step KEY STATUS` with the report's other fields: a done step carries its verify results. */
+export async function reportStepWith(live: LiveWorker, runId: number, key: string, report: Record<string, unknown>): Promise<void> {
+  await workerCall(live, `/v1/worker/runs/${runId}/steps/${key}`, report);
+}
+
+/** The agent's `evo-agents worker ask` with every field given (category, question, context, options, ...). Returns its id. */
+export async function askDecisionWith(live: LiveWorker, runId: number, ask: Record<string, unknown>): Promise<number> {
+  const decision = (await workerCall(live, `/v1/worker/runs/${runId}/decisions`, ask)) as { id: number };
+  return decision.id;
+}
+
 /** The agent's `evo-agents worker ask`: a decision of the run, answered by its owner. Returns its id. */
 export async function askDecision(live: LiveWorker, runId: number, question: string, step = "3"): Promise<number> {
   const decision = (await workerCall(live, `/v1/worker/runs/${runId}/decisions`, {

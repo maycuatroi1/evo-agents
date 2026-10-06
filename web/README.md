@@ -28,6 +28,12 @@ Sign-in is GitHub's web flow on the API (`/v1/auth/web/login`), so the API needs
 `EVO_HUB_PUBLIC_URL` set to the address the browser uses for the web, plus the client secret and session
 secret. The session cookie is the API's, httpOnly; server components forward it to the API and keep nothing.
 
+A page whose server component waits on the API streams in behind `(app)/loading.tsx`: React puts the streamed page in
+place, then hydrates it, in animation frames. A tab that paints no frame (a background tab, or an automated browser
+whose window is hidden) shows Loading…, or the server's render with nothing live (log Connecting, decisions still
+being read), until it paints again. That is not a failure of the page: check `document.visibilityState` and the
+`first-paint` entry of `performance` before debugging it.
+
 ## Scripts
 
 | Command | What it does |
@@ -70,7 +76,8 @@ and page included) in light and dark (the memories, skills and runs ones also at
 
 The runs specs are the worker themselves: they claim runs, report states and send events, messages and diffs with a
 worker token, as the daemon does (`e2e/support/runs.ts`), and `e2e/run-detail.spec.ts` checks the run page's live log
-against them. `e2e/inbox.spec.ts` asks decisions and sends notices the same way, then checks the bell, the Inbox and
+against them. `e2e/run-real-events.spec.ts` replays the events of a real Claude Code plan run, up to its wait for a
+decision (`src/test/fixtures/plan-run-waiting.json`, taken from a hub), and checks its page. `e2e/inbox.spec.ts` asks decisions and sends notices the same way, then checks the bell, the Inbox and
 the answers from the Inbox and from a plan run's page against what reaches the run's inbox. For the terminal the stack plays the worker's end (`FakeTerminal` in `e2e/hub_stack.py`, driven through
 `e2e/support/terminal.ts`): once a browser waits on a run it connects with the worker's token over a real PTY, whose line
 discipline echoes what is typed and whose program answers each line with `echo: <line>` and each resize with
