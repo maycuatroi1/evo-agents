@@ -387,3 +387,44 @@ export async function planRunUnderway(
   }
   return { live, run: await runOf(owner, project, run.id), decision };
 }
+
+// The Inbox: notices of a plan run, and answers through the API (docs/notifications.md).
+
+/** A notice of a push or merge, as `evo-agents worker notify` sends it. */
+export type NoticeIn = {
+  kind: "push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed";
+  title: string;
+  body?: string;
+  repo?: string;
+  branch?: string;
+  commits?: string[];
+};
+
+/** The worker's notice for the owner of a plan run it holds. Returns the notification's id. */
+export async function sendNotice(live: LiveWorker, runId: number, notice: NoticeIn): Promise<number> {
+  const answer = (await workerCall(live, `/v1/worker/runs/${runId}/notices`, notice)) as { id: number };
+  return answer.id;
+}
+
+/** The member's unread notifications and open decisions, as the bell reads them. */
+export async function notificationCount(account: Account): Promise<{ unread: number; open_decisions: number }> {
+  const api = bearerClient(await machineToken(account));
+  return call(api.GET("/v1/me/notifications/count"));
+}
+
+/** Answer a decision through the API as `account`, the way `evo-agents hub decision answer` does; the HTTP status. */
+export async function answerByApi(account: Account, project: string, decision: number, body: { option?: string; text?: string }): Promise<number> {
+  const token = await machineToken(account);
+  const response = await fetch(`${API_URL}/v1/projects/${project}/decisions/${decision}/answer`, {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+    body: JSON.stringify(body),
+  });
+  return response.status;
+}
+
+/** A decision as `account` reads it through the API. */
+export async function decisionOf(account: Account, project: string, decision: number) {
+  const api = bearerClient(await machineToken(account));
+  return call(api.GET("/v1/projects/{project}/decisions/{decision_id}", { params: { path: { project, decision_id: decision } } }));
+}

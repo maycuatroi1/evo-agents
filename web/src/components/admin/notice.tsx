@@ -21,13 +21,22 @@ export function useNotice() {
   return { notice, show: setNotice, clear };
 }
 
-export function NoticeArea({ notice, onDismiss }: { notice: Notice | null; onDismiss: () => void }) {
+export function NoticeArea({
+  notice,
+  onDismiss,
+  emptyClassName = "empty:-mt-6",
+}: {
+  notice: Notice | null;
+  onDismiss: () => void;
+  /** Gives back the gap of the column it sits in while empty: a page's 24 px by default. */
+  emptyClassName?: string;
+}) {
   const success = notice?.tone === "success" ? notice : null;
   const failure = notice?.tone === "error" ? notice : null;
   return (
     <>
       {/* Always in the page, so a success is announced; while empty it gives back the gap the column put above it. */}
-      <div role="status" aria-live="polite" aria-atomic="true" className="empty:-mt-6" data-testid="admin-notice-status">
+      <div role="status" aria-live="polite" aria-atomic="true" className={emptyClassName} data-testid="admin-notice-status">
         {success ? <NoticeBox notice={success} onDismiss={onDismiss} /> : null}
       </div>
       {failure ? (
