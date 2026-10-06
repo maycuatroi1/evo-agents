@@ -15,14 +15,17 @@
   ``credential.<url>.helper`` empty, which empties the list of helpers for that URL and so drops the machine's own
   (osxkeychain, ``gh auth git-credential``, a store), then this run's helper (``!evo-agents worker git-credential --run
   N``, by absolute path), ``credential.<url>.useHttpPath`` true, so the helper learns which repo git asks for, and for
-  an SSH origin ``url.<url>.insteadOf`` the origin, so the run reaches it over https. Other origins keep the machine's
-  helpers, and the machine's git configuration is not touched. Leases of kind ``env`` go into the agent's environment.
+  an SSH or a plain http origin ``url.<url>.insteadOf`` the origin, so the run reaches it over https. The hub compares
+  origins in their https form, so a lease covers an http origin too; the run's git never sends it over plain http.
+  Other origins keep the machine's helpers, and the machine's git configuration is not touched. Leases of kind ``env``
+  go into the agent's environment.
 - The run's socket ``runs/<run>/cred.sock`` (mode 0600, in the run's directory, mode 0700) answers processes of the
   daemon's own uid alone (``peer_uid``: SO_PEERCRED on Linux, getpeereid elsewhere), one JSON request a connection.
   ``{"op": "git", "protocol", "host", "path"}`` gets the username and value of the git lease whose url_prefix covers
-  that URL, the longest one, a GitHub token with less than GITHUB_TOKEN_REFRESH_SECONDS left asked for again first, so
-  git never gets a token about to end; ``{"op": "env"}`` gets what the run's leases add to its agent's environment, for
-  ``evo-agents worker env``, which an interactive pane evaluates rather than holding the values in its script.
+  that URL, the longest one, for protocol https alone, a GitHub token with less than GITHUB_TOKEN_REFRESH_SECONDS left
+  asked for again first, so git never gets a token about to end; ``{"op": "env"}`` gets what the run's leases add to
+  its agent's environment, for ``evo-agents worker env``, which an interactive pane evaluates rather than holding the
+  values in its script.
 - ``with_renewal`` runs a push of the daemon; when it fails to authenticate (``gitops.GitAuthError``) on an origin a
   lease of the run covers, ``renew`` gives the run's leases back and takes them again, which makes new GitHub tokens
   even when the ones held had time left, and the push runs once more. A second failure is the run's failure.
@@ -118,8 +121,9 @@ def env_command(run_id: int) -> str:
 
 
 def https_url(origin: str) -> str:
-    """The URL the run's git reaches ``origin`` at: an http(s) origin as it is, without a user; an SSH origin
-    (``git@host:path``, ``ssh://git@host[:port]/path``) as ``https://host/path``, its path as written."""
+    """The URL the run's git reaches ``origin`` at: an https origin as it is, without a user; an http origin as the
+    same URL over https, since a leased credential never goes over plain http; an SSH origin (``git@host:path``,
+    ``ssh://git@host[:port]/path``) as ``https://host/path``, its path as written."""
     text = (origin or "").strip()
     scp = _SCP.match(text) if "://" not in text else None
     if scp:
@@ -129,8 +133,13 @@ def https_url(origin: str) -> str:
         return f"https://{parts.hostname.lower()}/{parts.path.lstrip('/')}"
     if parts.scheme in ("https", "http") and parts.hostname:
         port = f":{parts.port}" if parts.port else ""
-        return f"{parts.scheme}://{parts.hostname.lower()}{port}{parts.path}"
+        return f"https://{parts.hostname.lower()}{port}{parts.path}"
     return text
+
+
+def _rewritten(origin: str) -> bool:
+    """Whether the run's git reaches ``origin`` at another URL than its own: an SSH or a plain http origin."""
+    return is_ssh_origin(origin) or urlsplit((origin or "").strip()).scheme == "http"
 
 
 def covering(leases: Iterable[Lease], url: str) -> Lease | None:
@@ -155,7 +164,7 @@ def git_config(origins: Iterable[str], leases: Sequence[Lease], helper: str) -> 
                 (f"credential.{url}.helper", helper),
                 (f"credential.{url}.useHttpPath", "true"),
             ]
-        if is_ssh_origin(origin):
+        if _rewritten(origin):
             entries.append((f"url.{url}.insteadOf", origin))
     return entries
 
@@ -507,7 +516,7 @@ class RunCredentials:
         near its end."""
         protocol, host = str(request.get("protocol") or ""), str(request.get("host") or "")
         path = str(request.get("path") or "")
-        if protocol not in ("https", "http") or not host:
+        if protocol != "https" or not host:  # a lease never goes over plain http, whatever the hub's prefix covers
             return None
         lease = self._choose(protocol, host, path)
         if lease is not None and lease.needs_refresh(_now()):

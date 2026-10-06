@@ -196,6 +196,9 @@ def test_the_git_configuration_resets_the_helpers_of_leased_origins_and_rewrites
     assert credentials.https_url("ssh://git@gitlab.m1ops.com:2222/fis-gb-m1/m1-kb-docs") == (
         "https://gitlab.m1ops.com/fis-gb-m1/m1-kb-docs"
     )
+    assert credentials.https_url("http://me@Git.example.org:8080/group/repo.git") == (
+        "https://git.example.org:8080/group/repo.git"
+    ), "a lease never goes over plain http: an http origin is reached over https"
     leases = [
         Lease.from_json(git_lease(1, "https://gitlab.m1ops.com/fis-gb-m1", "a" * 20)),
         Lease.from_json(git_lease(2, "https://gitlab.m1ops.com/fis-gb-m1/m1-kb-docs", "b" * 20)),
@@ -231,6 +234,21 @@ def test_the_git_configuration_resets_the_helpers_of_leased_origins_and_rewrites
         "GIT_CONFIG_COUNT": "3",
     }, "after the entries the daemon's own environment sets"
     assert credentials.config_env({}, []) == {}
+
+
+def test_an_http_origin_a_lease_covers_is_rewritten_to_https_and_its_helper_keyed_for_https_alone():
+    lease = Lease.from_json(git_lease(1, "https://git.example.org/group", "a" * 20))
+    http, https = "http://git.example.org/group/repo.git", "https://git.example.org/group/repo.git"
+    helper = "!evo-agents worker git-credential --run 7"
+    assert credentials.git_config([http], [lease], helper) == [
+        (f"credential.{https}.helper", ""),
+        (f"credential.{https}.helper", helper),
+        (f"credential.{https}.useHttpPath", "true"),
+        (f"url.{https}.insteadOf", http),
+    ]
+    assert not any(key.startswith("credential.http://") for key, _ in credentials.git_config([http], [lease], helper))
+    # an https origin is not rewritten
+    assert credentials.git_config([https], [lease], helper) == credentials.git_config([http], [lease], helper)[:3]
 
 
 def test_git_reads_the_attributes_its_helper_gets_and_the_helper_is_this_evo_agents():
@@ -313,15 +331,15 @@ def served_checkout(machine: Machine) -> tuple[Path, Path]:
 
 
 @needs_worker
-def test_a_push_over_http_with_basic_auth_works_with_the_lease_and_fails_once_it_is_given_back(machine):
+def test_a_push_of_an_http_origin_goes_over_https_with_the_lease_and_fails_once_it_is_given_back(machine):
     token = sample("glpat-")
     served, checkout = served_checkout(machine)
 
     with GitHttp(served, "oauth2", token) as server:
-        origin = server.repo_url("origin.git")
+        machine.env.update(server.env)
+        origin = server.repo_url("origin.git", "http")  # the server answers https alone
         git("remote", "set-url", "origin", origin, cwd=checkout, env=machine.env)
-        prefix = server.url.replace("http://", "https://")  # the hub keeps an https prefix; it covers http too
-        hub = StubHub({"leases": [git_lease(1, prefix, token)], "missing": []})
+        hub = StubHub({"leases": [git_lease(1, server.url, token)], "missing": []})  # an https prefix covers it
 
         async def go():
             from evo_agents.worker import gitops
@@ -344,7 +362,7 @@ def test_a_push_over_http_with_basic_auth_works_with_the_lease_and_fails_once_it
         statuses = server.statuses()
 
     assert first.changed and git("--git-dir", str(served / "origin.git"), "rev-parse", "feat/leased") == first.head
-    assert 200 in statuses and 401 in statuses, "git authenticated after the challenge, with the lease"
+    assert 200 in statuses and 401 in statuses, "git authenticated after the challenge, with the lease, over https"
     assert refused is not None, "once the lease is given back, the push has no credential"
     assert "could not read Username" in refused or "Authentication failed" in refused, refused
     assert git("--git-dir", str(served / "origin.git"), "rev-parse", "feat/leased") == first.head
@@ -369,6 +387,7 @@ def test_the_socket_answers_processes_of_its_own_uid_only_and_lives_as_long_as_t
         )
         request = {"op": "git", "protocol": "https", "host": "git.example.org", "path": "group/repo.git"}
         own = await asyncio.to_thread(credentials.ask, machine.worker, RUN, request)
+        plain = await asyncio.to_thread(credentials.ask, machine.worker, RUN, {**request, "protocol": "http"})
         monkeypatch.setattr(credentials, "peer_uid", lambda sock: os.getuid() + 1)
         stranger = await asyncio.to_thread(credentials.ask, machine.worker, RUN, request)
         monkeypatch.undo()
@@ -376,11 +395,12 @@ def test_the_socket_answers_processes_of_its_own_uid_only_and_lives_as_long_as_t
         unknown = await asyncio.to_thread(credentials.ask, machine.worker, RUN, {"op": "nothing"})
         await leases.release()
         after = await asyncio.to_thread(credentials.ask, machine.worker, RUN, request)
-        return modes, own, stranger, env, unknown, path.exists(), after, leases
+        return modes, own, plain, stranger, env, unknown, path.exists(), after, leases
 
-    modes, own, stranger, env, unknown, exists, after, leases = asyncio.run(go())
+    modes, own, plain, stranger, env, unknown, exists, after, leases = asyncio.run(go())
     assert modes == (0o600, 0o700, True)
     assert own == {"username": "oauth2", "password": token}
+    assert plain == {}, "the lease covers the URL's https form, and never goes over plain http"
     assert stranger is None, "a process of another uid gets nothing"
     assert set(env["env"]) >= {"OPENAI_API_KEY", "GIT_CONFIG_COUNT"}
     assert "error" in unknown
@@ -434,9 +454,10 @@ def test_a_push_whose_token_the_origin_refuses_takes_the_leases_again_once_and_p
     refused, taken = sample("glpat-revoked"), sample("glpat-good")
     served, checkout = served_checkout(machine)
     with GitHttp(served, "oauth2", taken) as server:
+        machine.env.update(server.env)
         origin = server.repo_url("origin.git")
         git("remote", "set-url", "origin", origin, cwd=checkout, env=machine.env)
-        prefix = server.url.replace("http://", "https://")
+        prefix = server.url
         hub = StubHub(
             {"leases": [git_lease(1, prefix, refused)], "missing": []},
             {"leases": [git_lease(2, prefix, taken)], "missing": []},
@@ -468,9 +489,10 @@ def test_a_second_refusal_is_not_tried_again_and_an_origin_without_a_lease_is_no
 
     served, checkout = served_checkout(machine)
     with GitHttp(served, "oauth2", sample("glpat-good")) as server:
+        machine.env.update(server.env)
         origin = server.repo_url("origin.git")
         git("remote", "set-url", "origin", origin, cwd=checkout, env=machine.env)
-        prefix = server.url.replace("http://", "https://")
+        prefix = server.url
         hub = StubHub(
             {"leases": [git_lease(1, prefix, sample("glpat-bad"))], "missing": []},
             {"leases": [git_lease(2, prefix, sample("glpat-worse"))], "missing": []},

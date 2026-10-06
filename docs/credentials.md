@@ -212,13 +212,16 @@ Credentials card.
   one JSON request a connection, git's credential for a URL or the variables of the agent's environment.
 - **git.** The env of the run's git (the daemon's fetch and push) and of its agent carries `GIT_CONFIG_COUNT` entries,
   after any the daemon's own environment sets: for each origin of the run's checkouts that a `git` lease covers, keyed
-  by its https URL (the origin itself when it is http or https), an empty `credential.{url}.helper` (which drops the
-  machine's own helpers, such as osxkeychain or `gh auth git-credential`, for that URL) followed by `!evo-agents worker
-  git-credential --run N` (this evo-agents by absolute path), `credential.{url}.useHttpPath=true`, so the helper
-  learns which repo git asks for and picks the lease with the longest `url_prefix` covering it, and, when the origin
-  is SSH, `url.{https url}.insteadOf={ssh origin}`. Origins no lease covers keep the machine's helpers, and the
-  machine's git config is not touched. `git-credential` answers `get` from the socket and does nothing on `store` and
-  `erase`; once the run gave its leases back it answers nothing, so git fails to authenticate.
+  by its https URL (an https origin as it is, an SSH or plain http one as the same repo over https), an empty
+  `credential.{url}.helper` (which drops the machine's own helpers, such as osxkeychain or `gh auth git-credential`,
+  for that URL) followed by `!evo-agents worker git-credential --run N` (this evo-agents by absolute path),
+  `credential.{url}.useHttpPath=true`, so the helper learns which repo git asks for and picks the lease with the
+  longest `url_prefix` covering it, and, when the origin is SSH or plain http, `url.{https url}.insteadOf={origin}`.
+  The hub compares origins in their https form, so a lease covers an http origin too; the rewrite makes the run reach
+  it over https, and the socket answers protocol `https` alone, so a lease never goes over plain http. Origins no
+  lease covers keep the machine's helpers, and the machine's git config is not touched. `git-credential` answers `get`
+  from the socket and does nothing on `store` and `erase`; once the run gave its leases back it answers nothing, so git
+  fails to authenticate.
 - **Environment.** `env` leases go into the agent's environment. An interactive pane does not write them into its
   script; it runs `eval "$(evo-agents worker env --run N)"`, which asks the socket and prints them as `export` lines.
 - **Umask.** The service starts the daemon, and so its agents, with umask 077.

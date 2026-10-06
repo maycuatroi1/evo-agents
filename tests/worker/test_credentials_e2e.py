@@ -240,6 +240,7 @@ class Machine:
             "GIT_CONFIG_NOSYSTEM": "1",
             "GIT_TERMINAL_PROMPT": "0",
             "EVO_WORKER_HEARTBEAT_SECONDS": "1",
+            **world.git_http.env,  # git trusts the CA of the git http-backend, which answers https alone
             **GIT_IDENTITY,
             **fake_adapter.environment(self.scenarios_path, starts=self.starts_path, cli=self.commands_path),
         }
@@ -351,7 +352,7 @@ class World:
         self.machines: list[Machine] = []
         self.bare = {REPO: git_http.root / f"{REPO}.git", APP_REPO: tmp / f"{APP_REPO}.git"}
         self.origins = {
-            REPO: git_http.repo_url(f"{REPO}.git"),
+            REPO: git_http.repo_url(f"{REPO}.git", "http"),  # an http origin: the server answers https alone
             APP_REPO: f"https://github.com/{GITHUB_OWNER}/{APP_REPO}.git",
         }
         env = setup_env(tmp)
@@ -389,7 +390,7 @@ class World:
         """The owner's two secrets, bound to project evo-agents on ``worker``."""
         bound = {"projects": [PROJECT], "workers": [worker]}
         env = {"kind": "env", "env_var": "CLAUDE_CODE_OAUTH_TOKEN", "value": self.oauth, **bound}
-        prefix = self.git_http.url.replace("http://", "https://", 1)  # the form of normalize_origin
+        prefix = self.git_http.url  # https, the form of normalize_origin, which covers the http origin
         bodies = {"claude-oauth": env, "git-http": {"kind": "git", "url_prefix": prefix, "value": self.glpat, **bound}}
         for name, body in bodies.items():
             response = self.client.put(f"/v1/secrets/{name}", json=body, headers=self.owner)
@@ -622,11 +623,16 @@ def test_a_worker_without_credentials_of_its_own_runs_on_leases_and_gives_them_b
     assert (seen["EVO_RUN_ID"], seen["EVO_RUN_PROJECT"]) == (str(run_id), PROJECT)
     assert world.glpat not in json.dumps(seen), "a git lease goes to git through the helper, never into the env"
     entries = config_entries(seen)
-    helpers = [value for key, value in entries if key == f"credential.{world.origins[REPO]}.helper"]
+    # the origin is plain http on the hub and in the checkout: the run's git reaches it over https, with the helper
+    # keyed for https alone, so the lease never goes over plain http
+    https = world.origins[REPO].replace("http://", "https://", 1)
+    helpers = [value for key, value in entries if key == f"credential.{https}.helper"]
     assert helpers[0] == "" and helpers[1].endswith(f" worker git-credential --run {run_id}"), entries
-    assert {key for key, _ in entries} <= {
-        f"credential.{world.origins[REPO]}.helper",
-        f"credential.{world.origins[REPO]}.useHttpPath",
+    assert (f"url.{https}.insteadOf", world.origins[REPO]) in entries
+    assert {key for key, _ in entries} == {
+        f"credential.{https}.helper",
+        f"credential.{https}.useHttpPath",
+        f"url.{https}.insteadOf",
     }, "the origin of evo-cli is no leased one"
     assert not {"SSH_AUTH_SOCK", "GH_TOKEN", "GITHUB_TOKEN", "ANTHROPIC_API_KEY"} & seen.keys()
 
