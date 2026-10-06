@@ -207,6 +207,33 @@ Only the worker's owner, signed in on the web, flips it.
   nothing is queued. Runs that were queued for it with a token before the switch was turned on stay queued until the
   owner cancels them or turns the switch off again.
 
+## Checking a worker machine
+
+`evo-agents worker doctor [--json]` (`evo_agents/worker/doctor.py`) reads the machine, changes nothing, and lists
+what it still holds or allows that a worker should not. Each finding has a `code`, a `severity` (`high`, `medium` or
+`low`), the `subject` it is about (an account, a path, a host, a runtime), a `detail` and a `fix`. The command exits 0
+when no finding is high and 2 when one is. A check that cannot run, its tool missing from PATH for one, is listed
+under `skipped` with the reason and changes no exit status. No secret is printed: a token or a key is named by its
+file or keychain item.
+
+| Code | Severity | What it finds |
+| --- | --- | --- |
+| `other-admin` | high | another account of the admin group: `dscl . read /Groups/admin GroupMembership` on macOS, the groups `sudo` and `wheel` on Linux; root and macOS's system accounts (`_name`) do not count |
+| `home-readable` | high, medium, low | the home, `~/.evo` or `~/github` readable by group or other: high when every account reads it, medium when other members of its group do, low when only the mode of the home keeps them out |
+| `machine-token-on-worker` | high, medium, low | `~/.evo/hub/token`: high when the hub's `GET /v1/auth/whoami` says its login is an admin of the hub, medium for a member or when the hub does not say, low when the hub refuses it as revoked or expired |
+| `gh-token-file` | high | an `oauth_token` in gh's `hosts.yml` (`GH_CONFIG_DIR`, else `~/.config/gh`); the host and login are named, never the token |
+| `ssh-private-key` | high | a private key under `~/.ssh` that opens without a passphrase (`ssh-keygen -y -P "" -f KEY`), or one ssh-keygen refuses because group or other can read it |
+| `runtime-login-stored` | medium | Claude Code still signed in (the keychain item `Claude Code-credentials`, asked with `security find-generic-password` for its attributes only, or `~/.claude/.credentials.json`), Codex's `~/.codex/auth.json` |
+| `path-not-owned` | high, medium | a directory on the service's PATH, a runtime's binary (`claude`, `opencode`, `codex`, `tmux`, `git`) or its directory, owned by an account other than the user and root, or writable by group or other; medium when only administrators can write it, since `other-admin` names them already |
+
+The service's PATH is the one the installed LaunchAgent or systemd unit sets, or else PATH as `evo-agents worker
+service install` would keep it. Asking the hub whose `~/.evo/hub/token` it is sends that token to the hub it came
+from, as `evo-agents hub whoami` does. On a machine another administrator shares, `other-admin` stays high however
+the rest is fixed: the design limits what that administrator gets to the leases of the runs in progress.
+
+`evo-agents worker service install` runs the doctor with the PATH it writes into the service and prints its high and
+medium findings as `warning:` lines; they never stop the install.
+
 ## What is still a risk
 
 - Root on the worker reads the leases a run is using: the agent's environment, the daemon's memory, the run's

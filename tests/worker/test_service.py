@@ -32,6 +32,7 @@ def home(tmp_path, monkeypatch):
     monkeypatch.setattr(sys, "argv", [EVO])
     monkeypatch.setattr(service, "missing_extra", lambda: None)
     monkeypatch.setattr(service.time, "sleep", lambda seconds: None)
+    monkeypatch.setattr(service, "doctor_warnings", lambda spec: [])  # tests/worker/test_doctor.py covers it
     return path
 
 

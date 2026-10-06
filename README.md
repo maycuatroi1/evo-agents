@@ -161,6 +161,7 @@ uv tool install 'evo-ak[worker]'    # or: pip install 'evo-ak[worker]'; with gra
 evo-agents worker join --url https://hub.example.org --code K7QM-4XPD   # the code from the hub's Workers page
 evo-agents worker register --name mac-mini --project demo --slots 1    # or this, once signed in with hub login
 evo-agents worker service install   # keep the daemon running in the background
+evo-agents worker doctor            # what the machine still holds that a worker should not; exit 2 on a high finding
 ```
 
 Then, from any machine signed in to the hub:
