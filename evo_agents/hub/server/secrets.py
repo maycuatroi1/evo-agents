@@ -18,9 +18,10 @@ none. DELETE /v1/secrets/{name} deletes softly: the row stays, for the leases an
 its sealed value and its bindings go, and the leases of it that are not given back yet are marked revoked. The name
 is free again at once.
 
-Each write adds one audit row, secret.put or secret.delete, whose target is the secret's name; no audit row, log line
-or error holds a value. A write made with a web session needs X-Evo-CSRF, as every write does
-(``evo_agents.hub.server.security``).
+Each write adds one audit row, secret.put or secret.delete, whose target is the secret's id (``secret:<id>``), never
+its name: the audit is for hub admins, and a secret's name is for its owner alone, as GET /v1/secrets and a run's
+credentials are. No audit row, log line or error holds a value. A write made with a web session needs X-Evo-CSRF, as
+every write does (``evo_agents.hub.server.security``).
 """
 
 from __future__ import annotations
@@ -212,6 +213,12 @@ def _url_prefix(text: str) -> str:
     return prefix
 
 
+def audit_target(secret_id: int) -> str:
+    """How an audit row names a secret: by its id, never its name, which is its owner's to see; the audit is read by
+    hub admins."""
+    return f"secret:{secret_id}"
+
+
 def _target(body: SecretWrite) -> tuple[str | None, str | None, str | None]:
     """(env_var, url_prefix, username) as the secrets table keeps them; 422 for fields of the other kind."""
     if body.kind == "env":
@@ -357,7 +364,8 @@ async def put_secret(
         except psycopg.errors.CheckViolation:  # what the checks above let through and the table does not take
             raise HTTPException(422, "the secrets table refused this secret's kind, target or username") from None
         await _bind(conn, secret_id, project_ids, worker_ids)
-        await audit.record(conn, actor_id=user.user_id, token_id=user.token_id, action=audit.SECRET_PUT, target=name)
+        target = audit_target(secret_id)
+        await audit.record(conn, actor_id=user.user_id, token_id=user.token_id, action=audit.SECRET_PUT, target=target)
         (secret,) = await _secrets(conn, user.user_id, name)
     extra = {"secret": name, "kind": body.kind, "login": user.login, "replaced": not created, "key_id": sealed.key_id}
     log.info("secret written", extra=extra)
@@ -385,6 +393,9 @@ async def delete_secret(request: Request, name: SecretName, user: CurrentUser) -
             "UPDATE credential_leases SET revoked_at = now() WHERE secret_id = %s AND revoked_at IS NULL", (secret_id,)
         )
         revoked = cursor.rowcount
-        await audit.record(conn, actor_id=user.user_id, token_id=user.token_id, action=audit.SECRET_DELETE, target=name)
+        target = audit_target(secret_id)
+        await audit.record(
+            conn, actor_id=user.user_id, token_id=user.token_id, action=audit.SECRET_DELETE, target=target
+        )
     log.info("secret deleted", extra={"secret": name, "login": user.login, "leases_revoked": revoked})
     return Response(status_code=204)
