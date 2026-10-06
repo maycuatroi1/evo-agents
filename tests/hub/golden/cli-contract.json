@@ -133,6 +133,211 @@
       "options": [],
       "json": null
     },
+    "hub decision answer": {
+      "positionals": [
+        {
+          "name": "decision",
+          "metavar": "DECISION",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--option"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--text"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "project",
+          "run_id",
+          "run_state",
+          "plan_id",
+          "step_key",
+          "category",
+          "question",
+          "context",
+          "options",
+          "recommended",
+          "state",
+          "owner",
+          "answer_option",
+          "answer_text",
+          "answered_by",
+          "answer_run_id",
+          "asked_at",
+          "answered_at",
+          "delivered_at"
+        ],
+        "schema": "Decision"
+      }
+    },
+    "hub decision list": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--state"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true,
+          "choices": [
+            "open",
+            "answered",
+            "expired",
+            "cancelled"
+          ]
+        },
+        {
+          "flags": [
+            "--run"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--plan"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--limit"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false,
+          "minimum": 1,
+          "maximum": 200
+        },
+        {
+          "flags": [
+            "--offset"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "decisions",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "schema": "DecisionList"
+      }
+    },
+    "hub decision show": {
+      "positionals": [
+        {
+          "name": "decision",
+          "metavar": "DECISION",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "project",
+          "run_id",
+          "run_state",
+          "plan_id",
+          "step_key",
+          "category",
+          "question",
+          "context",
+          "options",
+          "recommended",
+          "state",
+          "owner",
+          "answer_option",
+          "answer_text",
+          "answered_by",
+          "answer_run_id",
+          "asked_at",
+          "answered_at",
+          "delivered_at"
+        ],
+        "schema": "Decision"
+      }
+    },
     "hub hook session-start": {
       "positionals": [],
       "options": [],
@@ -595,6 +800,93 @@
         }
       ],
       "json": null
+    },
+    "hub notifications": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--unread"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--kind"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "decision",
+            "notice"
+          ]
+        },
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--limit"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false,
+          "minimum": 1,
+          "maximum": 200
+        },
+        {
+          "flags": [
+            "--offset"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--read"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "notifications",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "schema": "NotificationList",
+        "with": {
+          "--read": {
+            "kind": "object",
+            "keys": [
+              "read",
+              "unread"
+            ],
+            "schema": "ReadResult"
+          }
+        }
+      }
     },
     "hub openapi": {
       "positionals": [],
@@ -1300,6 +1592,7 @@
         "kind": "object",
         "keys": [
           "id",
+          "kind",
           "project",
           "plan_id",
           "step_key",
@@ -1311,17 +1604,21 @@
           "pinned_worker_id",
           "requested_runtime",
           "runtime",
+          "model",
           "mode",
           "approval",
           "timeout_min",
+          "run_seconds",
           "attempt",
           "max_attempts",
           "parent_run_id",
+          "resume_of_run_id",
           "state",
           "lease_expires_at",
           "session_id",
           "repo",
           "branch",
+          "repos",
           "commit_sha",
           "diffstat",
           "verify",
@@ -1337,6 +1634,8 @@
           "queued_at",
           "leased_at",
           "started_at",
+          "waiting_since",
+          "parked_at",
           "finished_at"
         ],
         "schema": "Run"
@@ -1374,6 +1673,7 @@
         "kind": "object",
         "keys": [
           "id",
+          "kind",
           "project",
           "plan_id",
           "step_key",
@@ -1385,17 +1685,21 @@
           "pinned_worker_id",
           "requested_runtime",
           "runtime",
+          "model",
           "mode",
           "approval",
           "timeout_min",
+          "run_seconds",
           "attempt",
           "max_attempts",
           "parent_run_id",
+          "resume_of_run_id",
           "state",
           "lease_expires_at",
           "session_id",
           "repo",
           "branch",
+          "repos",
           "commit_sha",
           "diffstat",
           "verify",
@@ -1411,6 +1715,8 @@
           "queued_at",
           "leased_at",
           "started_at",
+          "waiting_since",
+          "parked_at",
           "finished_at"
         ],
         "schema": "Run"
@@ -1500,6 +1806,14 @@
         },
         {
           "flags": [
+            "--model"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
             "--json"
           ],
           "value": null,
@@ -1511,6 +1825,7 @@
         "kind": "array",
         "keys": [
           "id",
+          "kind",
           "project",
           "plan_id",
           "step_key",
@@ -1522,17 +1837,21 @@
           "pinned_worker_id",
           "requested_runtime",
           "runtime",
+          "model",
           "mode",
           "approval",
           "timeout_min",
+          "run_seconds",
           "attempt",
           "max_attempts",
           "parent_run_id",
+          "resume_of_run_id",
           "state",
           "lease_expires_at",
           "session_id",
           "repo",
           "branch",
+          "repos",
           "commit_sha",
           "diffstat",
           "verify",
@@ -1548,6 +1867,8 @@
           "queued_at",
           "leased_at",
           "started_at",
+          "waiting_since",
+          "parked_at",
           "finished_at"
         ],
         "schema": "Run"
@@ -1585,6 +1906,7 @@
         "kind": "object",
         "keys": [
           "id",
+          "kind",
           "project",
           "plan_id",
           "step_key",
@@ -1596,17 +1918,21 @@
           "pinned_worker_id",
           "requested_runtime",
           "runtime",
+          "model",
           "mode",
           "approval",
           "timeout_min",
+          "run_seconds",
           "attempt",
           "max_attempts",
           "parent_run_id",
+          "resume_of_run_id",
           "state",
           "lease_expires_at",
           "session_id",
           "repo",
           "branch",
+          "repos",
           "commit_sha",
           "diffstat",
           "verify",
@@ -1622,6 +1948,8 @@
           "queued_at",
           "leased_at",
           "started_at",
+          "waiting_since",
+          "parked_at",
           "finished_at"
         ],
         "schema": "Run"
@@ -1651,7 +1979,9 @@
             "running",
             "interactive",
             "verifying",
+            "waiting",
             "review",
+            "parked",
             "done",
             "failed",
             "lost",
@@ -1814,6 +2144,143 @@
         "schema": "RunEvents"
       }
     },
+    "hub run plan": {
+      "positionals": [
+        {
+          "name": "plan",
+          "metavar": "PLAN",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--worker"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--runtime"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "any",
+            "claude-code",
+            "opencode",
+            "codex"
+          ]
+        },
+        {
+          "flags": [
+            "--model"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--mode"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "headless",
+            "interactive"
+          ]
+        },
+        {
+          "flags": [
+            "--timeout-h"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            2,
+            4,
+            8,
+            24
+          ]
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "kind",
+          "project",
+          "plan_id",
+          "step_key",
+          "title",
+          "plan_revision",
+          "dispatched_by",
+          "worker_id",
+          "worker",
+          "pinned_worker_id",
+          "requested_runtime",
+          "runtime",
+          "model",
+          "mode",
+          "approval",
+          "timeout_min",
+          "run_seconds",
+          "attempt",
+          "max_attempts",
+          "parent_run_id",
+          "resume_of_run_id",
+          "state",
+          "lease_expires_at",
+          "session_id",
+          "repo",
+          "branch",
+          "repos",
+          "commit_sha",
+          "diffstat",
+          "verify",
+          "evidence",
+          "usage",
+          "error",
+          "log_sha256",
+          "diff_sha256",
+          "last_seq",
+          "cancel_requested_at",
+          "takeover_requested_at",
+          "handback_requested_at",
+          "queued_at",
+          "leased_at",
+          "started_at",
+          "waiting_since",
+          "parked_at",
+          "finished_at"
+        ],
+        "schema": "Run"
+      }
+    },
     "hub run rerun": {
       "positionals": [
         {
@@ -1846,6 +2313,7 @@
         "kind": "object",
         "keys": [
           "id",
+          "kind",
           "project",
           "plan_id",
           "step_key",
@@ -1857,17 +2325,21 @@
           "pinned_worker_id",
           "requested_runtime",
           "runtime",
+          "model",
           "mode",
           "approval",
           "timeout_min",
+          "run_seconds",
           "attempt",
           "max_attempts",
           "parent_run_id",
+          "resume_of_run_id",
           "state",
           "lease_expires_at",
           "session_id",
           "repo",
           "branch",
+          "repos",
           "commit_sha",
           "diffstat",
           "verify",
@@ -1883,6 +2355,8 @@
           "queued_at",
           "leased_at",
           "started_at",
+          "waiting_since",
+          "parked_at",
           "finished_at"
         ],
         "schema": "Run"
@@ -1969,6 +2443,7 @@
         "kind": "object",
         "keys": [
           "id",
+          "kind",
           "project",
           "plan_id",
           "step_key",
@@ -1980,17 +2455,21 @@
           "pinned_worker_id",
           "requested_runtime",
           "runtime",
+          "model",
           "mode",
           "approval",
           "timeout_min",
+          "run_seconds",
           "attempt",
           "max_attempts",
           "parent_run_id",
+          "resume_of_run_id",
           "state",
           "lease_expires_at",
           "session_id",
           "repo",
           "branch",
+          "repos",
           "commit_sha",
           "diffstat",
           "verify",
@@ -2006,6 +2485,8 @@
           "queued_at",
           "leased_at",
           "started_at",
+          "waiting_since",
+          "parked_at",
           "finished_at"
         ],
         "schema": "Run"
@@ -2043,6 +2524,7 @@
         "kind": "object",
         "keys": [
           "id",
+          "kind",
           "project",
           "plan_id",
           "step_key",
@@ -2054,17 +2536,21 @@
           "pinned_worker_id",
           "requested_runtime",
           "runtime",
+          "model",
           "mode",
           "approval",
           "timeout_min",
+          "run_seconds",
           "attempt",
           "max_attempts",
           "parent_run_id",
+          "resume_of_run_id",
           "state",
           "lease_expires_at",
           "session_id",
           "repo",
           "branch",
+          "repos",
           "commit_sha",
           "diffstat",
           "verify",
@@ -2080,6 +2566,8 @@
           "queued_at",
           "leased_at",
           "started_at",
+          "waiting_since",
+          "parked_at",
           "finished_at"
         ],
         "schema": "Run"
@@ -2380,13 +2868,213 @@
         }
       ],
       "json": null
+    },
+    "worker ask": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--category"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false,
+          "choices": [
+            "deploy",
+            "delete_data",
+            "live_migration",
+            "external_send",
+            "spend_money",
+            "architecture",
+            "scope"
+          ]
+        },
+        {
+          "flags": [
+            "--question"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--context-file"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--option"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--recommended"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--step"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": null
+    },
+    "worker notify": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--kind"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false,
+          "choices": [
+            "push_default_branch",
+            "merge_default_branch"
+          ]
+        },
+        {
+          "flags": [
+            "--title"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--body"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--repo"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--branch"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--commit"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        }
+      ],
+      "json": null
+    },
+    "worker plan": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "plan_id",
+          "area",
+          "revision",
+          "digest",
+          "label",
+          "body",
+          "created_at",
+          "updated_at",
+          "updated_by"
+        ],
+        "schema": "Plan"
+      }
+    },
+    "worker step": {
+      "positionals": [
+        {
+          "name": "key",
+          "metavar": "KEY",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "name": "status",
+          "metavar": "STATUS",
+          "value": "string",
+          "required": true,
+          "repeatable": false,
+          "choices": [
+            "in_progress",
+            "done",
+            "pending"
+          ]
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--repo"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--evidence"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--verify"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        }
+      ],
+      "json": null
     }
   },
   "openapi": {
     "openapi": "3.1.0",
     "info": {
       "title": "evo-agents hub",
-      "version": "0.3.0"
+      "version": "0.4.0"
     },
     "paths": {
       "/v1/health": {
@@ -8633,7 +9321,9 @@
                     "running",
                     "interactive",
                     "verifying",
+                    "waiting",
                     "review",
+                    "parked",
                     "done",
                     "failed",
                     "lost",
@@ -9033,6 +9723,100 @@
           }
         }
       },
+      "/v1/projects/{project}/plan-runs": {
+        "post": {
+          "tags": [
+            "runs"
+          ],
+          "summary": "Dispatch Plan",
+          "description": "Queue a plan run: one run, on a worker of the caller's, that does every step of the plan not done yet.",
+          "operationId": "dispatch_plan_v1_projects__project__plan_runs_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanRunDispatch"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Run"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
       "/v1/projects/{project}/runs/{run_id}/cancel": {
         "post": {
           "tags": [
@@ -9419,7 +10203,7 @@
             "runs"
           ],
           "summary": "Rerun",
-          "description": "Queue the step of a run that ended again, with the same runtime, mode, approval, timeout and worker, at the\nplan's current revision.",
+          "description": "Queue the step of a run that ended again, with the same runtime, model, mode, approval, timeout and worker, at\nthe plan's current revision.",
           "operationId": "rerun_v1_projects__project__runs__run_id__rerun_post",
           "parameters": [
             {
@@ -9730,6 +10514,199 @@
                   }
                 }
               }
+            }
+          }
+        }
+      },
+      "/v1/worker/runs/{run_id}/plan": {
+        "get": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Read Run Plan",
+          "description": "The plan of a plan run this worker holds, as the hub holds it now, read as the member who dispatched the run.",
+          "operationId": "read_run_plan_v1_worker_runs__run_id__plan_get",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Plan"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/worker/runs/{run_id}/steps/{key}": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Report Step",
+          "description": "Write a step of the plan of a plan run this worker holds, as the member who dispatched the run.",
+          "operationId": "report_step_v1_worker_runs__run_id__steps__key__post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            },
+            {
+              "name": "key",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200,
+                "description": "the step's id, or its order",
+                "title": "Key"
+              },
+              "description": "the step's id, or its order"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StepReport"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/StepWritten"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
             }
           }
         }
@@ -10672,6 +11649,774 @@
             }
           }
         }
+      },
+      "/v1/projects/{project}/decisions": {
+        "get": {
+          "tags": [
+            "decisions"
+          ],
+          "summary": "List Decisions",
+          "description": "The project's decisions, newest first, of the plans the caller may read.",
+          "operationId": "list_decisions_v1_projects__project__decisions_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "state",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "array",
+                "items": {
+                  "enum": [
+                    "open",
+                    "answered",
+                    "expired",
+                    "cancelled"
+                  ],
+                  "type": "string"
+                },
+                "description": "any of these states; repeat it",
+                "default": [],
+                "title": "State"
+              },
+              "description": "any of these states; repeat it"
+            },
+            {
+              "name": "run_id",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "maximum": 9223372036854775807,
+                    "minimum": 1
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Run Id"
+              }
+            },
+            {
+              "name": "plan_id",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^[a-z0-9][a-z0-9-]{0,99}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Plan Id"
+              }
+            },
+            {
+              "name": "limit",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 200,
+                "minimum": 1,
+                "default": 50,
+                "title": "Limit"
+              }
+            },
+            {
+              "name": "offset",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 100000,
+                "minimum": 0,
+                "default": 0,
+                "title": "Offset"
+              }
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/DecisionList"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/decisions/{decision_id}": {
+        "get": {
+          "tags": [
+            "decisions"
+          ],
+          "summary": "Show Decision",
+          "operationId": "show_decision_v1_projects__project__decisions__decision_id__get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "decision_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Decision Id"
+              }
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Decision"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/decisions/{decision_id}/answer": {
+        "post": {
+          "tags": [
+            "decisions"
+          ],
+          "summary": "Answer",
+          "description": "Answer a decision of a run one dispatched: the answer goes to the agent through the run's inbox, and a parked\nrun is resumed on its worker in its session.",
+          "operationId": "answer_v1_projects__project__decisions__decision_id__answer_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "decision_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Decision Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnswerIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Decision"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/worker/runs/{run_id}/decisions": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Ask",
+          "description": "Ask the owner of a plan run this worker holds a decision, and notify them.",
+          "operationId": "ask_v1_worker_runs__run_id__decisions_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DecisionAsk"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Decision"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/me/notifications": {
+        "get": {
+          "tags": [
+            "notifications"
+          ],
+          "summary": "List Notifications",
+          "description": "The caller's notifications, open decisions first, then newest first.",
+          "operationId": "list_notifications_v1_me_notifications_get",
+          "parameters": [
+            {
+              "name": "unread",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "boolean",
+                "description": "only the notifications not read yet",
+                "default": false,
+                "title": "Unread"
+              },
+              "description": "only the notifications not read yet"
+            },
+            {
+              "name": "kind",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "decision",
+                      "notice"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Kind"
+              }
+            },
+            {
+              "name": "project",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^[a-z0-9][a-z0-9-]{0,99}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "only this project's",
+                "title": "Project"
+              },
+              "description": "only this project's"
+            },
+            {
+              "name": "limit",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 200,
+                "minimum": 1,
+                "default": 50,
+                "title": "Limit"
+              }
+            },
+            {
+              "name": "offset",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 100000,
+                "minimum": 0,
+                "default": 0,
+                "title": "Offset"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/NotificationList"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/me/notifications/count": {
+        "get": {
+          "tags": [
+            "notifications"
+          ],
+          "summary": "Count Notifications",
+          "description": "How many of the caller's notifications are unread, and how many decisions wait for their answer.",
+          "operationId": "count_notifications_v1_me_notifications_count_get",
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/NotificationCount"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/me/notifications/read": {
+        "post": {
+          "tags": [
+            "notifications"
+          ],
+          "summary": "Read Notifications",
+          "description": "Mark the caller's notifications read: those named, or all of them.",
+          "operationId": "read_notifications_v1_me_notifications_read_post",
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ReadResult"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "422": {
+              "description": "Unprocessable Entity",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/worker/runs/{run_id}/notices": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Send Notice",
+          "description": "Notify the owner of a plan run this worker holds: a push or merge into a default branch, say.",
+          "operationId": "send_notice_v1_worker_runs__run_id__notices_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoticeIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Notification"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
       }
     },
     "components": {
@@ -10690,7 +12435,9 @@
                 "running",
                 "interactive",
                 "verifying",
-                "review"
+                "waiting",
+                "review",
+                "parked"
               ],
               "title": "State"
             },
@@ -10802,6 +12549,40 @@
             "current"
           ],
           "title": "AdminToken"
+        },
+        "AnswerIn": {
+          "properties": {
+            "option": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$",
+                  "description": "letters, digits, _ and -, at most 32"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Option",
+              "description": "the key of one of the decision's options"
+            },
+            "text": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 4096,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Text",
+              "description": "the owner's own words, at most 4 KiB"
+            }
+          },
+          "type": "object",
+          "title": "AnswerIn"
         },
         "AuditPage": {
           "properties": {
@@ -11443,6 +13224,370 @@
           ],
           "title": "Csrf"
         },
+        "Decision": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "run_id": {
+              "type": "integer",
+              "title": "Run Id",
+              "description": "the plan run the decision belongs to"
+            },
+            "run_state": {
+              "type": "string",
+              "enum": [
+                "queued",
+                "leased",
+                "running",
+                "interactive",
+                "verifying",
+                "waiting",
+                "review",
+                "parked",
+                "done",
+                "failed",
+                "lost",
+                "cancelled"
+              ],
+              "title": "Run State"
+            },
+            "plan_id": {
+              "type": "string",
+              "title": "Plan Id"
+            },
+            "step_key": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Step Key",
+              "description": "the step it is about, when the agent named one"
+            },
+            "category": {
+              "type": "string",
+              "enum": [
+                "deploy",
+                "delete_data",
+                "live_migration",
+                "external_send",
+                "spend_money",
+                "architecture",
+                "scope"
+              ],
+              "title": "Category"
+            },
+            "question": {
+              "type": "string",
+              "title": "Question"
+            },
+            "context": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Context",
+              "description": "markdown"
+            },
+            "options": {
+              "items": {
+                "$ref": "#/components/schemas/DecisionOption"
+              },
+              "type": "array",
+              "title": "Options"
+            },
+            "recommended": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Recommended",
+              "description": "the key of the option the agent recommends"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "open",
+                "answered",
+                "expired",
+                "cancelled"
+              ],
+              "title": "State"
+            },
+            "owner": {
+              "type": "string",
+              "title": "Owner",
+              "description": "the login of the run's owner, the one member who may answer"
+            },
+            "answer_option": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Answer Option"
+            },
+            "answer_text": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Answer Text"
+            },
+            "answered_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Answered By"
+            },
+            "answer_run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Answer Run Id",
+              "description": "the run whose inbox the answer went to: the decision's run, or the run that resumed it"
+            },
+            "asked_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Asked At"
+            },
+            "answered_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Answered At"
+            },
+            "delivered_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Delivered At",
+              "description": "when the worker handed the answer to the agent"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "project",
+            "run_id",
+            "run_state",
+            "plan_id",
+            "step_key",
+            "category",
+            "question",
+            "context",
+            "options",
+            "recommended",
+            "state",
+            "owner",
+            "answer_option",
+            "answer_text",
+            "answered_by",
+            "answer_run_id",
+            "asked_at",
+            "answered_at",
+            "delivered_at"
+          ],
+          "title": "Decision"
+        },
+        "DecisionAsk": {
+          "properties": {
+            "category": {
+              "type": "string",
+              "enum": [
+                "deploy",
+                "delete_data",
+                "live_migration",
+                "external_send",
+                "spend_money",
+                "architecture",
+                "scope"
+              ],
+              "title": "Category",
+              "description": "the agent asks only about these"
+            },
+            "question": {
+              "type": "string",
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Question"
+            },
+            "context": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 16384,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Context",
+              "description": "markdown, at most 16 KiB of UTF-8"
+            },
+            "options": {
+              "items": {
+                "$ref": "#/components/schemas/OptionIn"
+              },
+              "type": "array",
+              "maxItems": 6,
+              "minItems": 2,
+              "title": "Options"
+            },
+            "recommended": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$",
+                  "description": "letters, digits, _ and -, at most 32"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Recommended",
+              "description": "the key of the option the agent recommends"
+            },
+            "step_key": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "pattern": "^[^\\x00-\\x1f\\x7f]+$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Step Key",
+              "description": "the step of the plan it is about"
+            }
+          },
+          "type": "object",
+          "required": [
+            "category",
+            "question",
+            "options"
+          ],
+          "title": "DecisionAsk"
+        },
+        "DecisionList": {
+          "properties": {
+            "decisions": {
+              "items": {
+                "$ref": "#/components/schemas/Decision"
+              },
+              "type": "array",
+              "title": "Decisions",
+              "description": "newest first"
+            },
+            "total": {
+              "type": "integer",
+              "title": "Total",
+              "description": "decisions that match the filters"
+            },
+            "limit": {
+              "type": "integer",
+              "title": "Limit"
+            },
+            "offset": {
+              "type": "integer",
+              "title": "Offset"
+            }
+          },
+          "type": "object",
+          "required": [
+            "decisions",
+            "total",
+            "limit",
+            "offset"
+          ],
+          "title": "DecisionList"
+        },
+        "DecisionOption": {
+          "properties": {
+            "key": {
+              "type": "string",
+              "title": "Key"
+            },
+            "label": {
+              "type": "string",
+              "title": "Label"
+            },
+            "description": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Description"
+            },
+            "recommended": {
+              "type": "boolean",
+              "title": "Recommended"
+            }
+          },
+          "type": "object",
+          "required": [
+            "key",
+            "label",
+            "description",
+            "recommended"
+          ],
+          "title": "DecisionOption"
+        },
         "DiffLink": {
           "properties": {
             "sha256": {
@@ -11583,6 +13728,21 @@
               "minimum": 5.0,
               "title": "Timeout Min",
               "default": 60
+            },
+            "model": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "pattern": "^[^\\x00-\\x1f\\x7f]+$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Model",
+              "description": "the model each run uses, as its runtime names it (opencode: provider/model); null: the runtime's own choice"
             }
           },
           "type": "object",
@@ -12428,6 +14588,18 @@
               "type": "string",
               "format": "date-time",
               "title": "Created At"
+            },
+            "decision_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Decision Id",
+              "description": "the decision this message answers; null for any other message"
             }
           },
           "type": "object",
@@ -13223,6 +15395,335 @@
           ],
           "title": "NodeSearch"
         },
+        "NoticeIn": {
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "push_default_branch",
+                "merge_default_branch",
+                "plan_finished",
+                "run_failed"
+              ],
+              "title": "Kind"
+            },
+            "title": {
+              "type": "string",
+              "maxLength": 200,
+              "minLength": 1,
+              "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+              "title": "Title"
+            },
+            "body": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 16384,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Body",
+              "description": "at most 16 KiB of UTF-8"
+            },
+            "repo": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "pattern": "^[^\\x00-\\x1f\\x7f]+$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Repo",
+              "description": "one of the run's repos"
+            },
+            "branch": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 255,
+                  "minLength": 1,
+                  "pattern": "^[^\\x00-\\x1f\\x7f]+$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch"
+            },
+            "commits": {
+              "items": {
+                "type": "string",
+                "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$"
+              },
+              "type": "array",
+              "maxItems": 100,
+              "title": "Commits",
+              "description": "the commits pushed or merged"
+            }
+          },
+          "type": "object",
+          "required": [
+            "kind",
+            "title"
+          ],
+          "title": "NoticeIn"
+        },
+        "Notification": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "decision",
+                "notice"
+              ],
+              "title": "Kind"
+            },
+            "notice_kind": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "push_default_branch",
+                    "merge_default_branch",
+                    "plan_finished",
+                    "run_failed"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Notice Kind",
+              "description": "a notice's kind; null for a decision"
+            },
+            "project": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project"
+            },
+            "run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id"
+            },
+            "decision_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Decision Id"
+            },
+            "decision_state": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "open",
+                    "answered",
+                    "expired",
+                    "cancelled"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Decision State",
+              "description": "the state of the decision now, for a notification of kind decision"
+            },
+            "title": {
+              "type": "string",
+              "title": "Title"
+            },
+            "body": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Body"
+            },
+            "details": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Details",
+              "description": "a notice's facts, such as the repo, branch and commits of a push"
+            },
+            "link": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Link",
+              "description": "the hub web's page that shows it, a path of the hub's own site"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "read_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Read At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "kind",
+            "notice_kind",
+            "project",
+            "run_id",
+            "decision_id",
+            "decision_state",
+            "title",
+            "body",
+            "details",
+            "link",
+            "created_at",
+            "read_at"
+          ],
+          "title": "Notification"
+        },
+        "NotificationCount": {
+          "properties": {
+            "unread": {
+              "type": "integer",
+              "title": "Unread",
+              "description": "notifications not read yet: the bell's number"
+            },
+            "open_decisions": {
+              "type": "integer",
+              "title": "Open Decisions",
+              "description": "decisions that still wait for the member's answer, read or not"
+            }
+          },
+          "type": "object",
+          "required": [
+            "unread",
+            "open_decisions"
+          ],
+          "title": "NotificationCount"
+        },
+        "NotificationList": {
+          "properties": {
+            "notifications": {
+              "items": {
+                "$ref": "#/components/schemas/Notification"
+              },
+              "type": "array",
+              "title": "Notifications",
+              "description": "open decisions first, then newest first"
+            },
+            "total": {
+              "type": "integer",
+              "title": "Total",
+              "description": "notifications that match the filters"
+            },
+            "limit": {
+              "type": "integer",
+              "title": "Limit"
+            },
+            "offset": {
+              "type": "integer",
+              "title": "Offset"
+            }
+          },
+          "type": "object",
+          "required": [
+            "notifications",
+            "total",
+            "limit",
+            "offset"
+          ],
+          "title": "NotificationList"
+        },
+        "OptionIn": {
+          "properties": {
+            "key": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$",
+              "title": "Key",
+              "description": "letters, digits, _ and -, at most 32"
+            },
+            "label": {
+              "type": "string",
+              "maxLength": 200,
+              "minLength": 1,
+              "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+              "title": "Label",
+              "description": "one line"
+            },
+            "description": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 1000,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Description"
+            }
+          },
+          "type": "object",
+          "required": [
+            "key",
+            "label"
+          ],
+          "title": "OptionIn"
+        },
         "Page": {
           "properties": {
             "items": {
@@ -13542,6 +16043,26 @@
           "type": "object",
           "title": "PlanComplete"
         },
+        "PlanCopy": {
+          "properties": {
+            "revision": {
+              "type": "integer",
+              "title": "Revision"
+            },
+            "body": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Body"
+            }
+          },
+          "type": "object",
+          "required": [
+            "revision",
+            "body"
+          ],
+          "title": "PlanCopy",
+          "description": "A plan as the hub holds it at one revision."
+        },
         "PlanDiff": {
           "properties": {
             "plan_id": {
@@ -13795,6 +16316,82 @@
             "body"
           ],
           "title": "PlanPut"
+        },
+        "PlanRunDispatch": {
+          "properties": {
+            "plan_id": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+              "title": "Plan Id"
+            },
+            "worker_id": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 9.223372036854776e+18,
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Worker Id",
+              "description": "pin the run to this worker of yours"
+            },
+            "runtime": {
+              "type": "string",
+              "enum": [
+                "any",
+                "claude-code",
+                "opencode",
+                "codex"
+              ],
+              "title": "Runtime",
+              "description": "any: the claiming worker picks one it has",
+              "default": "any"
+            },
+            "model": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "pattern": "^[^\\x00-\\x1f\\x7f]+$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Model",
+              "description": "the model to use, as its runtime names it (opencode: provider/model); null: the runtime's"
+            },
+            "mode": {
+              "type": "string",
+              "enum": [
+                "headless",
+                "interactive"
+              ],
+              "title": "Mode",
+              "default": "headless"
+            },
+            "timeout_h": {
+              "type": "integer",
+              "enum": [
+                2,
+                4,
+                8,
+                24
+              ],
+              "title": "Timeout H",
+              "description": "hours of agent time the run may take; waiting for a decision and parked do not count",
+              "default": 4
+            }
+          },
+          "type": "object",
+          "required": [
+            "plan_id"
+          ],
+          "title": "PlanRunDispatch"
         },
         "PlanSummary": {
           "properties": {
@@ -14178,6 +16775,57 @@
           ],
           "title": "Queued"
         },
+        "ReadRequest": {
+          "properties": {
+            "ids": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "integer",
+                    "maximum": 9.223372036854776e+18,
+                    "minimum": 1.0
+                  },
+                  "type": "array",
+                  "maxItems": 500,
+                  "minItems": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ids",
+              "description": "the notifications to mark read"
+            },
+            "all": {
+              "type": "boolean",
+              "title": "All",
+              "description": "mark every notification of the caller read",
+              "default": false
+            }
+          },
+          "type": "object",
+          "title": "ReadRequest"
+        },
+        "ReadResult": {
+          "properties": {
+            "read": {
+              "type": "integer",
+              "title": "Read",
+              "description": "notifications this request marked read"
+            },
+            "unread": {
+              "type": "integer",
+              "title": "Unread",
+              "description": "notifications left unread"
+            }
+          },
+          "type": "object",
+          "required": [
+            "read",
+            "unread"
+          ],
+          "title": "ReadResult"
+        },
         "ReadySteps": {
           "properties": {
             "project": {
@@ -14191,6 +16839,17 @@
             "revision": {
               "type": "integer",
               "title": "Revision"
+            },
+            "plan_run": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ActiveRun"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "the plan's active plan run: while there is one, no step of the plan is dispatched"
             },
             "steps": {
               "items": {
@@ -14694,6 +17353,15 @@
               "type": "integer",
               "title": "Id"
             },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "step",
+                "plan"
+              ],
+              "title": "Kind",
+              "description": "step: one step of the plan; plan: every step not done yet"
+            },
             "project": {
               "type": "string",
               "title": "Project"
@@ -14703,8 +17371,16 @@
               "title": "Plan Id"
             },
             "step_key": {
-              "type": "string",
-              "title": "Step Key"
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Step Key",
+              "description": "null for a plan run"
             },
             "title": {
               "anyOf": [
@@ -14716,7 +17392,7 @@
                 }
               ],
               "title": "Title",
-              "description": "the step's title when the run was dispatched"
+              "description": "the step's title when the run was dispatched; the plan's for a plan run"
             },
             "plan_revision": {
               "type": "integer",
@@ -14784,6 +17460,18 @@
               "title": "Runtime",
               "description": "any until a worker claims the run"
             },
+            "model": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Model",
+              "description": "the model the dispatch asked for; null: the runtime's own choice"
+            },
             "mode": {
               "type": "string",
               "enum": [
@@ -14803,6 +17491,11 @@
             "timeout_min": {
               "type": "integer",
               "title": "Timeout Min"
+            },
+            "run_seconds": {
+              "type": "integer",
+              "title": "Run Seconds",
+              "description": "the agent time the run has used of its timeout, as the hub last counted it"
             },
             "attempt": {
               "type": "integer",
@@ -14824,6 +17517,18 @@
               "title": "Parent Run Id",
               "description": "the run this one retries or reruns"
             },
+            "resume_of_run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Resume Of Run Id",
+              "description": "the parked plan run this one goes on from, in its session"
+            },
             "state": {
               "type": "string",
               "enum": [
@@ -14832,7 +17537,9 @@
                 "running",
                 "interactive",
                 "verifying",
+                "waiting",
                 "review",
+                "parked",
                 "done",
                 "failed",
                 "lost",
@@ -14864,8 +17571,16 @@
               "title": "Session Id"
             },
             "repo": {
-              "type": "string",
-              "title": "Repo"
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Repo",
+              "description": "null for a plan run, which has repos"
             },
             "branch": {
               "anyOf": [
@@ -14877,6 +17592,21 @@
                 }
               ],
               "title": "Branch"
+            },
+            "repos": {
+              "anyOf": [
+                {
+                  "items": {
+                    "$ref": "#/components/schemas/RunRepo"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Repos",
+              "description": "a plan run's repos; null for a run of one step"
             },
             "commit_sha": {
               "anyOf": [
@@ -15043,6 +17773,32 @@
               ],
               "title": "Started At"
             },
+            "waiting_since": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Waiting Since",
+              "description": "when the agent's turn ended with a decision open, while waiting"
+            },
+            "parked_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Parked At",
+              "description": "when the run was parked, for want of an answer"
+            },
             "finished_at": {
               "anyOf": [
                 {
@@ -15059,6 +17815,7 @@
           "type": "object",
           "required": [
             "id",
+            "kind",
             "project",
             "plan_id",
             "step_key",
@@ -15070,17 +17827,21 @@
             "pinned_worker_id",
             "requested_runtime",
             "runtime",
+            "model",
             "mode",
             "approval",
             "timeout_min",
+            "run_seconds",
             "attempt",
             "max_attempts",
             "parent_run_id",
+            "resume_of_run_id",
             "state",
             "lease_expires_at",
             "session_id",
             "repo",
             "branch",
+            "repos",
             "commit_sha",
             "diffstat",
             "verify",
@@ -15096,6 +17857,8 @@
             "queued_at",
             "leased_at",
             "started_at",
+            "waiting_since",
+            "parked_at",
             "finished_at"
           ],
           "title": "Run"
@@ -15245,7 +18008,9 @@
                     "running",
                     "interactive",
                     "verifying",
+                    "waiting",
                     "review",
+                    "parked",
                     "done",
                     "failed",
                     "lost",
@@ -15293,10 +18058,22 @@
               "description": "a browser waits for the run's terminal: connect WS /v1/worker/runs/{id}/terminal once the run is interactive",
               "default": false
             },
+            "park": {
+              "type": "boolean",
+              "title": "Park",
+              "description": "the run is parked (it waited too long for an answer), or done because a new run resumes it: stop the agent at the end of its turn, keep the session and the worktrees, free the slot",
+              "default": false
+            },
             "inbox": {
               "type": "integer",
               "title": "Inbox",
               "description": "messages from the owner waiting for the agent: POST .../runs/{id}/inbox",
+              "default": 0
+            },
+            "decisions": {
+              "type": "integer",
+              "title": "Decisions",
+              "description": "decisions of the run still open, waiting for the owner's answer",
               "default": 0
             }
           },
@@ -15373,7 +18150,9 @@
                 "running",
                 "interactive",
                 "verifying",
+                "waiting",
                 "review",
+                "parked",
                 "done",
                 "failed",
                 "lost",
@@ -15489,11 +18268,45 @@
           ],
           "title": "RunPush"
         },
+        "RunRepo": {
+          "properties": {
+            "repo": {
+              "type": "string",
+              "title": "Repo"
+            },
+            "branch": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch",
+              "description": "null when the plan names none: the branch checked out"
+            }
+          },
+          "type": "object",
+          "required": [
+            "repo"
+          ],
+          "title": "RunRepo",
+          "description": "A repo of a plan run, with the branch the plan names for it."
+        },
         "RunSpec": {
           "properties": {
             "id": {
               "type": "integer",
               "title": "Id"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "step",
+                "plan"
+              ],
+              "title": "Kind"
             },
             "project": {
               "type": "string",
@@ -15504,8 +18317,16 @@
               "title": "Plan Id"
             },
             "step_key": {
-              "type": "string",
-              "title": "Step Key"
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Step Key",
+              "description": "null for a plan run"
             },
             "title": {
               "anyOf": [
@@ -15520,7 +18341,8 @@
             },
             "plan_revision": {
               "type": "integer",
-              "title": "Plan Revision"
+              "title": "Plan Revision",
+              "description": "the plan revision the run was dispatched from"
             },
             "attempt": {
               "type": "integer",
@@ -15541,6 +18363,30 @@
               ],
               "title": "Parent Run Id"
             },
+            "resume_of_run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Resume Of Run Id",
+              "description": "the parked plan run this one goes on from: reuse its worktrees and resume its session"
+            },
+            "session_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Session Id",
+              "description": "the agent session to resume; null for a new one"
+            },
             "runtime": {
               "type": "string",
               "enum": [
@@ -15549,6 +18395,18 @@
                 "codex"
               ],
               "title": "Runtime"
+            },
+            "model": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Model",
+              "description": "the model the dispatch asked for; null: the runtime's own choice"
             },
             "mode": {
               "type": "string",
@@ -15571,8 +18429,16 @@
               "title": "Timeout Min"
             },
             "repo": {
-              "type": "string",
-              "title": "Repo"
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Repo",
+              "description": "null for a plan run"
             },
             "branch": {
               "anyOf": [
@@ -15585,6 +18451,21 @@
               ],
               "title": "Branch"
             },
+            "repos": {
+              "anyOf": [
+                {
+                  "items": {
+                    "$ref": "#/components/schemas/RunRepo"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Repos",
+              "description": "a plan run's repos, each with a checkout on this worker"
+            },
             "lease_expires_at": {
               "type": "string",
               "format": "date-time",
@@ -15593,11 +18474,23 @@
             "prompt": {
               "type": "string",
               "title": "Prompt"
+            },
+            "plan": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/PlanCopy"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "a plan run's plan at the hub's current revision, for .evo-run/plan.yaml; null for a run of one step"
             }
           },
           "type": "object",
           "required": [
             "id",
+            "kind",
             "project",
             "plan_id",
             "step_key",
@@ -15607,13 +18500,16 @@
             "max_attempts",
             "parent_run_id",
             "runtime",
+            "model",
             "mode",
             "approval",
             "timeout_min",
             "repo",
             "branch",
+            "repos",
             "lease_expires_at",
-            "prompt"
+            "prompt",
+            "plan"
           ],
           "title": "RunSpec"
         },
@@ -15746,6 +18642,25 @@
               ],
               "title": "Reason",
               "description": "why it is unavailable"
+            },
+            "models": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string",
+                    "maxLength": 200,
+                    "minLength": 1,
+                    "pattern": "^[^\\x00-\\x1f\\x7f]+$"
+                  },
+                  "type": "array",
+                  "maxItems": 200
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Models",
+              "description": "the models the runtime lists on the machine, for a dispatch to suggest; null when it lists none"
             }
           },
           "type": "object",
@@ -15993,10 +18908,22 @@
               "title": "Verifying",
               "default": 0
             },
+            "waiting": {
+              "type": "integer",
+              "minimum": 0.0,
+              "title": "Waiting",
+              "default": 0
+            },
             "review": {
               "type": "integer",
               "minimum": 0.0,
               "title": "Review",
+              "default": 0
+            },
+            "parked": {
+              "type": "integer",
+              "minimum": 0.0,
+              "title": "Parked",
               "default": 0
             },
             "done": {
@@ -16038,7 +18965,9 @@
                 "running",
                 "interactive",
                 "verifying",
+                "waiting",
                 "review",
+                "parked",
                 "done",
                 "failed",
                 "lost",
@@ -16057,7 +18986,9 @@
                     "running",
                     "interactive",
                     "verifying",
+                    "waiting",
                     "review",
+                    "parked",
                     "done",
                     "failed",
                     "lost",
@@ -16249,6 +19180,132 @@
             "active_run"
           ],
           "title": "StepReadiness"
+        },
+        "StepReport": {
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "in_progress",
+                "done",
+                "pending"
+              ],
+              "title": "Status",
+              "description": "in_progress when the agent starts the step, done once verified, pending to hand it back"
+            },
+            "repo": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "pattern": "^[^\\x00-\\x1f\\x7f]+$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Repo",
+              "description": "the run's repo the step was done in"
+            },
+            "evidence": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 16384,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Evidence",
+              "description": "what the agent did and how it checked it"
+            },
+            "verify": {
+              "anyOf": [
+                {
+                  "items": {
+                    "$ref": "#/components/schemas/VerifyResult"
+                  },
+                  "type": "array",
+                  "maxItems": 50
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Verify",
+              "description": "each verify command the worker ran again; done needs one, every one exit 0"
+            },
+            "commit_sha": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Commit Sha",
+              "description": "the repo's commit the step ends on"
+            }
+          },
+          "type": "object",
+          "required": [
+            "status"
+          ],
+          "title": "StepReport",
+          "description": "What a plan run's worker reports of one step of the plan."
+        },
+        "StepWritten": {
+          "properties": {
+            "run_id": {
+              "type": "integer",
+              "title": "Run Id"
+            },
+            "plan_id": {
+              "type": "string",
+              "title": "Plan Id"
+            },
+            "step_key": {
+              "type": "string",
+              "title": "Step Key"
+            },
+            "status": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status",
+              "description": "the step's status as the plan holds it after the report"
+            },
+            "revision": {
+              "type": "integer",
+              "title": "Revision",
+              "description": "the plan's revision after the report"
+            },
+            "written": {
+              "type": "boolean",
+              "title": "Written",
+              "description": "whether the report wrote a revision; false for a resend that changed nothing"
+            }
+          },
+          "type": "object",
+          "required": [
+            "run_id",
+            "plan_id",
+            "step_key",
+            "status",
+            "revision",
+            "written"
+          ],
+          "title": "StepWritten"
         },
         "TokenInfo": {
           "properties": {
@@ -16929,7 +19986,7 @@
               "additionalProperties": true,
               "type": "object",
               "title": "Runtimes",
-              "description": "the runtimes its last heartbeat reported, keyed claude-code, opencode or codex, each {available, version, reason}"
+              "description": "the runtimes its last heartbeat reported, keyed claude-code, opencode or codex, each {available, version, reason, models}; models lists what the runtime offers there, null when it lists none"
             },
             "checkouts": {
               "additionalProperties": true,

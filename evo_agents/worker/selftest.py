@@ -6,6 +6,12 @@ in its directory with the permissions of a run and that its events come through.
 then a summary: the versions checked, how many events of each kind, the session id and how the turn ended. The exit
 status is 0 when the turn completed, at least one event came and the file holds ``ok``; 1 otherwise.
 
+``--background`` (Claude Code only) checks instead that a session waits for a command the agent runs in the
+background: the agent is asked to start ``sleep 20 && date -u`` with ``run_in_background``, end its turn without
+waiting, and write ``selftest.txt`` only once it is told the command finished. It passes when, on top of the above,
+the agent's turn ended while the command ran, the command's end came, and the file was written after it; it then
+prints ``Run done``.
+
 A real call spends the owner's quota, so the prompt is short and the reasoning effort of Claude Code and Codex is
 ``low`` unless ``--effort`` says otherwise; ``--model`` names the model (opencode needs one when its configured
 default does not exist). The scratch repository is removed unless ``--keep`` is given.
@@ -21,6 +27,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 from evo_agents.hub import runs
@@ -32,6 +39,15 @@ PROMPT = (
     "containing exactly the word ok, then reply with the single word DONE."
 )
 RESULT_FILE = "selftest.txt"
+BACKGROUND_COMMAND = "sleep 20 && date -u"
+BACKGROUND_PROMPT = (
+    f"This is a self-test of an evo-agents worker. With the Bash tool, run the command `{BACKGROUND_COMMAND}` with "
+    "run_in_background set to true. Do not wait for it and do not check on it: once it has started, end your turn by "
+    "replying STARTED, without creating any file. When you are told that it has finished, create a file named "
+    f"{RESULT_FILE} in the current directory, containing exactly the word ok, then reply with the single word DONE."
+)
+BACKGROUND_RUNTIMES = ("claude-code",)  # the runtimes whose agent runs commands in the background
+WRITE_SLACK = 1.0  # seconds a file's time may be earlier than the end of the command it waited for
 DEFAULT_EFFORT = {"claude-code": "low", "codex": "low"}
 PACKAGES = {"claude-code": "claude-agent-sdk", "codex": "openai-codex", "opencode": "aiohttp"}
 DEFAULT_TIMEOUT = 300
@@ -53,6 +69,68 @@ def scratch_repo() -> Path:
     for command in (["init", "--quiet"], ["add", "README.md"], ["commit", "--quiet", "-m", "selftest"]):
         subprocess.run(["git", "-C", str(path), *command], check=True, capture_output=True, env=env)
     return path
+
+
+class BackgroundWatch:
+    """What the events of ``--background`` tell of its command: the agent's call that starts it in the background, a
+    turn of the agent that ends while it runs, and its end, as Claude Code reports them."""
+
+    def __init__(self) -> None:
+        self.call_id: str | None = None
+        self.started_at: float | None = None
+        self.turn_ended = False  # a turn ended while the command ran
+        self.ended_at: float | None = None  # wall-clock time its end came
+        self.status: str | None = None
+
+    def see(self, event: AgentEvent) -> str | None:
+        """Follow ``event``; a line to print when it says something of the command."""
+        body = event.body
+        if event.kind == "tool_call" and self.call_id is None:
+            given = body.get("rawInput")
+            if (
+                isinstance(given, dict)
+                and given.get("run_in_background") in (True, "true")
+                and BACKGROUND_COMMAND in str(given.get("command") or "")
+            ):
+                self.call_id = str(body.get("toolCallId") or "")
+                self.started_at = time.time()
+                return f"The agent started `{BACKGROUND_COMMAND}` in the background."
+        elif self.call_id is None or self.ended_at is not None:
+            return None
+        elif event.kind == "usage_update" and not self.turn_ended:
+            self.turn_ended = True
+            return "The agent's turn ended while the command runs: the session waits for it."
+        elif event.kind == "output":
+            found = body.get("raw")
+            if (
+                isinstance(found, dict)
+                and found.get("subtype") == "task_notification"
+                and found.get("tool_use_id") == self.call_id
+            ):
+                self.ended_at = time.time()
+                self.status = str(found.get("status") or "")
+                took = self.ended_at - (self.started_at or self.ended_at)
+                return f"The background command ended ({self.status}) {took:.0f}s after it started."
+        return None
+
+    def problems(self, repo: Path) -> list[str]:
+        if self.call_id is None:
+            return [f"the agent did not start `{BACKGROUND_COMMAND}` in the background"]
+        found = []
+        if not self.turn_ended:
+            found.append("no turn of the agent ended while the command ran, so the wait for it was not checked")
+        if self.ended_at is None:
+            found.append("the end of the background command never came")
+            return found
+        if self.status != "completed":
+            found.append(f"the background command ended {self.status or 'without a status'}")
+        try:
+            written_at = (repo / RESULT_FILE).stat().st_mtime
+        except OSError:
+            return found
+        if written_at < self.ended_at - WRITE_SLACK:
+            found.append(f"the agent wrote {RESULT_FILE} before the background command ended")
+        return found
 
 
 def describe(event: AgentEvent) -> str:
@@ -77,17 +155,29 @@ def describe(event: AgentEvent) -> str:
     return f"  {event.kind}: {text}"
 
 
-async def selftest(cls, runtime: str, *, model: str | None, effort: str | None, timeout: float, keep: bool) -> int:
+async def selftest(
+    cls,
+    runtime: str,
+    *,
+    model: str | None,
+    effort: str | None,
+    timeout: float,
+    keep: bool,
+    background: bool = False,
+) -> int:
     repo = scratch_repo()
     run = {"id": 0, "project": "selftest", "plan_id": "selftest", "step_key": "selftest", "title": "worker selftest"}
     run.update({"runtime": runtime, "mode": "headless", "model": model, "effort": effort})
     env = {**os.environ, "EVO_RUN_ID": "0", "EVO_RUN_PROJECT": "selftest", "EVO_RUN_PLAN": "selftest"}
-    adapter = cls(RunContext(run=run, worktree=repo, prompt=PROMPT, env=env))
+    prompt = BACKGROUND_PROMPT if background else PROMPT
+    adapter = cls(RunContext(run=run, worktree=repo, prompt=prompt, env=env))
     counts: collections.Counter = collections.Counter()
+    watch = BackgroundWatch() if background else None
     print(
         f"Self-test of {runtime} in {repo}"
         + (f", model {model}" if model else "")
         + (f", effort {effort}" if effort else "")
+        + (f", with `{BACKGROUND_COMMAND}` in the background" if background else "")
     )
     try:
         try:
@@ -101,6 +191,9 @@ async def selftest(cls, runtime: str, *, model: str | None, effort: str | None, 
             async for event in adapter.events():
                 counts[event.kind] += 1
                 print(describe(event), flush=True)
+                said = watch.see(event) if watch is not None else None
+                if said:
+                    print(said, flush=True)
 
         reader = asyncio.create_task(pump())
         done, _ = await asyncio.wait({reader}, timeout=timeout)
@@ -114,7 +207,7 @@ async def selftest(cls, runtime: str, *, model: str | None, effort: str | None, 
             outcome = await asyncio.wait_for(adapter.wait(), END_GRACE)
         except asyncio.TimeoutError:
             outcome = Outcome(False, f"{runtime} did not end within {END_GRACE:g}s")
-        return report(cls, runtime, adapter, outcome, counts, repo)
+        return report(cls, runtime, adapter, outcome, counts, repo, watch)
     finally:
         if keep:
             print(f"Kept {repo}.")
@@ -122,7 +215,7 @@ async def selftest(cls, runtime: str, *, model: str | None, effort: str | None, 
             shutil.rmtree(repo, ignore_errors=True)
 
 
-def report(cls, runtime, adapter, outcome: Outcome, counts, repo: Path) -> int:
+def report(cls, runtime, adapter, outcome: Outcome, counts, repo: Path, watch: BackgroundWatch | None = None) -> int:
     detection = cls.detect()
     versions = [f"{runtime} {detection.version or 'unknown'}"]
     package = PACKAGES.get(runtime)
@@ -150,9 +243,16 @@ def report(cls, runtime, adapter, outcome: Outcome, counts, repo: Path) -> int:
         problems.append("no event came")
     if not written:
         problems.append(f"the agent did not write {RESULT_FILE} with ok")
+    if watch is not None:
+        problems.extend(watch.problems(repo))
     if problems:
         print(f"Self-test of {runtime} failed: {'; '.join(problems)}.", file=sys.stderr)
         return 1
+    if watch is not None:
+        print(
+            f"Run done: the session waited for `{BACKGROUND_COMMAND}`, which ran in the background, and the agent "
+            f"wrote {RESULT_FILE} after it ended."
+        )
     print(f"Self-test of {runtime} passed: the turn completed and {RESULT_FILE} holds ok.")
     return 0
 
@@ -162,13 +262,28 @@ def cmd_selftest(args) -> int:
     if cls is None:
         print(f"error: this worker has no adapter for {args.runtime}", file=sys.stderr)
         return 1
+    if args.background and args.runtime not in BACKGROUND_RUNTIMES:
+        print(
+            f"error: --background checks the background commands of {', '.join(BACKGROUND_RUNTIMES)}; "
+            f"{args.runtime} runs none",
+            file=sys.stderr,
+        )
+        return 2
     detection = cls.detect()
     if not detection.available:
         print(f"error: {args.runtime} is unavailable here: {detection.reason}", file=sys.stderr)
         return 1
     effort = args.effort if args.effort is not None else DEFAULT_EFFORT.get(args.runtime)
     return asyncio.run(
-        selftest(cls, args.runtime, model=args.model, effort=effort or None, timeout=args.timeout, keep=args.keep)
+        selftest(
+            cls,
+            args.runtime,
+            model=args.model,
+            effort=effort or None,
+            timeout=args.timeout,
+            keep=args.keep,
+            background=args.background,
+        )
     )
 
 
@@ -189,4 +304,12 @@ def add_parser(wsub) -> None:
         help=f"seconds before the agent is interrupted ({DEFAULT_TIMEOUT})",
     )
     parser.add_argument("--keep", action="store_true", help="keep the scratch repository")
+    parser.add_argument(
+        "--background",
+        action="store_true",
+        help=(
+            "check that the session waits for a command run in the background: the agent starts "
+            f"`{BACKGROUND_COMMAND}` that way, ends its turn, and writes the file once it ended (claude-code only)"
+        ),
+    )
     parser.set_defaults(func=cmd_selftest)

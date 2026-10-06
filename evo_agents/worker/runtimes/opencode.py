@@ -14,8 +14,10 @@ run`` prints is parsed here.
   (``POST /permission/:id/reply``), which is what ``opencode run --auto`` does ("auto-approve permissions that are
   not explicitly denied"): a rule of the owner's config that denies something still denies it.
 - The model is the run's ``model``, else ``EVO_WORKER_OPENCODE_MODEL``, else the ``model`` of the owner's opencode
-  config, as ``provider/model``; a model the server does not list fails the start with that reason, since opencode
-  would only answer with an unknown error. The run's ``effort`` goes as the model ``variant``.
+  config, as ``provider/model``, split at its first ``/`` into the ``providerID`` and ``modelID`` of each prompt; a
+  model the server does not list fails the start with that reason, since opencode would only answer with an unknown
+  error. The run's ``effort`` goes as the model ``variant``. For the heartbeat, ``models`` lists what ``opencode
+  models`` prints: ``provider/model``, one a line, for the providers the owner set up.
 - The turn is over when the session goes idle (``session.status`` ``idle``) and every prompt sent has reached the
   session; ``session.error`` (``MessageAbortedError`` after an abort, a provider error) fails it. The exit code of
   nothing is read.
@@ -35,7 +37,7 @@ import signal
 import socket
 from collections.abc import AsyncIterator, Mapping
 
-from evo_agents.worker.adapter import AgentEvent, Detection, Outcome, RunContext
+from evo_agents.worker.adapter import AgentEvent, Detection, Outcome, RunContext, command_output
 from evo_agents.worker.runtimes.common import (
     HEADLESS_NOTE,
     INTERRUPT_TIMEOUT,
@@ -61,6 +63,10 @@ log = logging.getLogger("evo_agents.worker")
 MIN_VERSION = "1.18.34"
 AIOHTTP = ("aiohttp", "3.9")
 LISTENING = re.compile(rb"listening on (https?://[^\s\x07\x1b]+)[\r\n]")
+# What a terminal would read as control rather than text (CSI, OSC and two-character escapes): a plugin of the owner's
+# may write some into what opencode prints.
+ESCAPES = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[@-Z\\-_]")
+MODEL_LINE = re.compile(r"^[^\s/]+/\S+$")  # provider/model, as `opencode models` prints each
 START_TIMEOUT = 60.0  # seconds for `opencode serve` to listen
 STOP_GRACE = 5.0  # seconds between SIGTERM and SIGKILL to the server's process group
 REQUEST_TIMEOUT = 60.0
@@ -92,6 +98,14 @@ TOOL_KINDS = {
     "todowrite": "think",
     "todoread": "think",
 }
+
+
+def parse_models(output: str | None) -> list[str] | None:
+    """The ``provider/model`` lines of what ``opencode models`` printed, escapes left out, in order."""
+    if not output:
+        return None
+    lines = (ESCAPES.sub("", line).strip() for line in output.splitlines())
+    return [line for line in lines if MODEL_LINE.match(line)] or None
 
 
 def free_port() -> int:
@@ -222,6 +236,11 @@ class OpencodeAdapter(QueueAdapter):
         return detect_runtime(cls.runtime, cls.binary, MIN_VERSION, packages=(AIOHTTP,))
 
     @classmethod
+    def models(cls) -> list[str] | None:
+        """``provider/model`` for each line of ``opencode models``; None when it fails or lists none."""
+        return parse_models(command_output(cls.binary, "models"))
+
+    @classmethod
     def tui(cls, context: RunContext, session_id: str | None):
         from evo_agents.worker.interactive import OpencodeTui
 
@@ -278,10 +297,12 @@ class OpencodeAdapter(QueueAdapter):
 
     async def _resolve_model(self) -> tuple[str, str]:
         name = run_setting(self.context, self.runtime, "model")
+        hint = "set EVO_WORKER_OPENCODE_MODEL to provider/model (the selftest takes --model)"
+        if self._run_model():
+            hint = "dispatch it with a model as `opencode models` lists it, provider/model"
         if not name:
             config = await self._request("GET", "/config") or {}
             name = config.get("model") if isinstance(config.get("model"), str) else None
-        hint = "set EVO_WORKER_OPENCODE_MODEL to provider/model (the selftest takes --model)"
         if not name:
             raise RuntimeError(f"opencode has no model to use: {hint}")
         provider, _, model = name.partition("/")
@@ -294,6 +315,11 @@ class OpencodeAdapter(QueueAdapter):
         if model not in models.get(provider, set()):
             raise RuntimeError(f"opencode lists no model {name}: {hint}")
         return provider, model
+
+    def _run_model(self) -> bool:
+        """Whether the model is the run's own, which the dispatch named."""
+        value = self.context.run.get("model") if isinstance(self.context.run, Mapping) else None
+        return isinstance(value, str) and bool(value.strip())
 
     async def _prompt(self, text: str) -> None:
         provider, model = self.model

@@ -121,8 +121,8 @@ Hooks:
   off.
 
 The plugin needs [uv](https://docs.astral.sh/uv/) on `PATH` and pins the release it runs: the server
-starts with `uvx --from evo-ak==0.3.0 evo-agents`, which downloads and caches that version on first start. The hooks
-run `uvx --offline --from evo-ak==0.3.0 evo-agents`, so they never wait on the network; they stay silent when `uvx`
+starts with `uvx --from evo-ak==0.4.0 evo-agents`, which downloads and caches that version on first start. The hooks
+run `uvx --offline --from evo-ak==0.4.0 evo-agents`, so they never wait on the network; they stay silent when `uvx`
 is missing or until the server has cached the package.
 
 ### The team hub
@@ -171,8 +171,22 @@ evo-agents hub run logs 41 --follow --project demo
 evo-agents hub run approve 41 --project demo
 ```
 
+A worker can also take a whole plan as one plan run: its agent does every step not done yet in the order
+`depends_on` allows, in a worktree of each repo those steps name, and reports each step as it goes, verified, committed
+and pushed on the plan's branch. It stops for you only on a decision it may not take alone (a deploy, deleting data,
+a migration on real data, sending outside, spending money, or an architectural or scope choice the plan leaves open),
+which waits in the Inbox on the web or on the command line:
+
+```sh
+evo-agents hub run plan rollout --worker mac-mini --timeout-h 8 --project demo
+evo-agents hub decision list --state open --project demo
+evo-agents hub decision answer 7 --option postgres --project demo
+evo-agents hub notifications --unread
+```
+
 The agent on a worker runs with the full rights of the machine's owner, and only that owner dispatches runs to it.
-[docs/workers.md](docs/workers.md) describes the protocol and [docs/hub.md](docs/hub.md) every `hub run` command.
+[docs/workers.md](docs/workers.md) describes the protocol and plan runs, [docs/hub.md](docs/hub.md) every `hub run`
+and `hub decision` command, and [docs/notifications.md](docs/notifications.md) decisions, notices and notifications.
 
 ### Running a hub
 
@@ -222,7 +236,8 @@ evo_agents/
 plugins/      Claude Code marketplace (plugins evo-kg and evo-hub)
 web/          the hub's web interface (Next.js, its own image)
 deploy/hub/   the hub's Dockerfile and compose files
-docs/         hub.md: running and using the hub; workers.md: workers, runs and the daemon
+docs/         hub.md: running and using the hub; workers.md: workers, runs, plan runs and the daemon;
+              notifications.md: decisions, notices and notifications
 ```
 
 ## License

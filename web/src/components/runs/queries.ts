@@ -20,9 +20,13 @@ export type StateCounts = Schemas["StateCounts"];
 export type ReadySteps = Schemas["ReadySteps"];
 export type StepReadiness = Schemas["StepReadiness"];
 export type DispatchRequest = Schemas["Dispatch"];
+export type PlanRunRequest = Schemas["PlanRunDispatch"];
 export type RequestedRuntime = DispatchRequest["runtime"];
 export type RunMode = DispatchRequest["mode"];
 export type Approval = DispatchRequest["approval"];
+export type RunKind = Run["kind"];
+export type ActiveRun = Schemas["ActiveRun"];
+export type PlanTimeout = PlanRunRequest["timeout_h"];
 
 /** `runs.RUN_STATES` of the API, in its order; `satisfies` keeps the list inside the generated type. */
 export const RUN_STATES = [
@@ -31,16 +35,18 @@ export const RUN_STATES = [
   "running",
   "interactive",
   "verifying",
+  "waiting",
   "review",
+  "parked",
   "done",
   "failed",
   "lost",
   "cancelled",
 ] as const satisfies readonly RunState[];
-/** A worker holds the run and extends its lease. */
-export const HELD_STATES = ["leased", "running", "interactive", "verifying"] as const satisfies readonly RunState[];
-/** At most one run of a step is in one of these (`runs.ACTIVE_STATES`). */
-export const ACTIVE_STATES = ["queued", ...HELD_STATES, "review"] as const satisfies readonly RunState[];
+/** A worker holds the run and extends its lease (`runs.HELD_STATES`); a plan run waiting for a decision included. */
+export const HELD_STATES = ["leased", "running", "interactive", "verifying", "waiting"] as const satisfies readonly RunState[];
+/** At most one run of a step, or plan run of a plan, is in one of these (`runs.ACTIVE_STATES`). */
+export const ACTIVE_STATES = ["queued", ...HELD_STATES, "review", "parked"] as const satisfies readonly RunState[];
 export const RUNTIMES = ["claude-code", "opencode", "codex"] as const satisfies readonly RequestedRuntime[];
 export const MODES = ["headless", "interactive"] as const satisfies readonly RunMode[];
 export const APPROVALS = ["review", "auto"] as const satisfies readonly Approval[];
@@ -55,6 +61,11 @@ export const SUMMARY_LIMIT = 200;
 /** `timeout_min` of a dispatch: 5 to 240 minutes, 60 by default. */
 export const TIMEOUT_CHOICES = [30, 60, 120, 240] as const;
 export const DEFAULT_TIMEOUT = 60;
+/** `runs.PLAN_TIMEOUT_CHOICES`: hours of agent time a plan run may take; 4 by default. */
+export const PLAN_TIMEOUT_CHOICES = [2, 4, 8, 24] as const satisfies readonly PlanTimeout[];
+export const DEFAULT_PLAN_TIMEOUT: PlanTimeout = 4;
+/** `runs.MAX_MODEL_CHARS`: a model name is one line of at most 200 characters. */
+export const MAX_MODEL_CHARS = 200;
 /** `MAX_DISPATCH_STEPS` of the API. */
 export const MAX_DISPATCH_STEPS = 50;
 /** `max_length` of the list's q. */
@@ -170,6 +181,20 @@ export const readyStepsQuery = (api: ApiSource, project: string, plan: string) =
 export async function dispatchRuns(api: ApiClient, project: string, body: DispatchRequest): Promise<Run[]> {
   const headers = await csrfHeaders(api);
   return call(api.POST("/v1/projects/{project}/runs", { params: { path: { project } }, body, headers }));
+}
+
+/**
+ * Queue a plan run: one run on a worker of the caller's that does every step of the plan not done yet (409 when the plan
+ * has an active run or no pending step), with the session's CSRF header.
+ */
+export async function dispatchPlanRun(api: ApiClient, project: string, body: PlanRunRequest): Promise<Run> {
+  const headers = await csrfHeaders(api);
+  return call(api.POST("/v1/projects/{project}/plan-runs", { params: { path: { project } }, body, headers }));
+}
+
+/** The active runs of one plan (its plan run, or the runs of its steps), for the plan page's banner and Run plan. */
+export function planActiveRunsQuery(planId: string): RunQuery {
+  return { planId, states: ACTIVE_STATES, limit: SUMMARY_LIMIT };
 }
 
 /** Runs of one step listed on its page; the full history is on the project's Runs page. */
@@ -290,3 +315,32 @@ export function runDiffLink(api: ApiClient, project: string, id: number, downloa
     }),
   );
 }
+
+// The decisions a plan run's agent asks its owner (docs/notifications.md); the inbox answers them.
+
+export type Decision = Schemas["Decision"];
+export type DecisionList = Schemas["DecisionList"];
+
+/** Where the web shows a decision and its answer form, as the hub's notifications link to it (`decision_link`). */
+export function decisionHref(id: number): Route {
+  return `/inbox?decision=${id}` as Route;
+}
+
+/** `MAX_OPEN_DECISIONS` of the API: a run's agent has at most 20 decisions open at once. */
+export const MAX_OPEN_DECISIONS = 20;
+
+/**
+ * The open decisions of one run, newest first, all of them: the plan's banner links to the latest, and the run's page
+ * shows each with its answer form.
+ */
+export const openDecisionsQuery = (api: ApiSource, project: string, runId: number) =>
+  queryOptions({
+    queryKey: ["projects", project, "decisions", { run: runId, state: "open" }] as const,
+    queryFn: ({ signal }) =>
+      call(
+        api().GET("/v1/projects/{project}/decisions", {
+          params: { path: { project }, query: { state: ["open"], run_id: runId, limit: MAX_OPEN_DECISIONS } },
+          signal,
+        }),
+      ),
+  });

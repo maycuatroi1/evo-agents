@@ -327,6 +327,108 @@ def test_install_status_and_uninstall_against_a_fake_systemctl(home, joined, mon
     assert "evo-agents-worker.service (systemd) is not installed" in capsys.readouterr().out
 
 
+# Installing again keeps the worker's own variables
+
+
+OLD_ENVIRONMENT = {
+    "PATH": "/old/bin",
+    "EVO_WORKER_HOME": "/old/state",
+    "EVO_WORKER_REVOKED_EXIT": "5",
+    "EVO_WORKER_OPENCODE_MODEL": "zai-coding-plan/glm-5.3-flash",
+    "EVO_WORKER_CLAUDE_CODE_EFFORT": "high",
+    "EVO_WORKER_TMUX_SOCKET": "/tmp/evo 50%/tmux",
+    "HTTPS_PROXY": "http://proxy.local:3128",
+}
+KEPT = {
+    "EVO_WORKER_CLAUDE_CODE_EFFORT": "high",
+    "EVO_WORKER_OPENCODE_MODEL": "zai-coding-plan/glm-5.3-flash",
+    "EVO_WORKER_TMUX_SOCKET": "/tmp/evo 50%/tmux",
+}
+
+
+def test_install_keeps_env_variables_of_the_worker_from_the_installed_launch_agent(home, joined, monkeypatch, capsys):
+    forbid_real_commands(monkeypatch)
+    monkeypatch.setattr(sys, "platform", "darwin")
+    fake = FakeLaunchctl()
+    monkeypatch.setattr(subprocess, "run", fake)
+    plist_path = home / "Library" / "LaunchAgents" / f"{service.LABEL}.plist"
+    plist_path.parent.mkdir(parents=True)
+    old = service.build_plist(service.build_spec(joined, argv0=EVO, path="/old/bin"))
+    plist_path.write_bytes(plistlib.dumps({**old, "EnvironmentVariables": {**OLD_ENVIRONMENT, "COUNT": 3}}))
+
+    assert main(["worker", "service", "install"]) == 0
+    out = capsys.readouterr().out
+    environment = plistlib.loads(plist_path.read_bytes())["EnvironmentVariables"]
+    assert environment == {
+        "PATH": service.service_path(),
+        "EVO_WORKER_HOME": str(joined.root),
+        "EVO_WORKER_REVOKED_EXIT": "0",
+        **KEPT,
+    }, "PATH, the state directory and the revoked exit are written as by a first install, the others kept"
+    kept_line = "  kept from the service installed before: " + ", ".join(sorted(KEPT))
+    assert kept_line in out.splitlines()
+    assert "zai-coding-plan/glm-5.3-flash" not in out, "the install names the variables, never their values"
+
+    # installing again keeps them again, and a first install keeps nothing
+    assert main(["worker", "service", "install"]) == 0
+    assert plistlib.loads(plist_path.read_bytes())["EnvironmentVariables"] == environment
+    capsys.readouterr()
+    assert main(["worker", "service", "uninstall"]) == 0
+    assert main(["worker", "service", "install"]) == 0
+    assert "kept from the service installed before" not in capsys.readouterr().out
+    assert set(plistlib.loads(plist_path.read_bytes())["EnvironmentVariables"]) == {
+        "PATH",
+        "EVO_WORKER_HOME",
+        "EVO_WORKER_REVOKED_EXIT",
+    }
+
+
+def test_install_keeps_env_variables_of_the_worker_from_the_installed_systemd_unit(home, joined, monkeypatch, capsys):
+    forbid_real_commands(monkeypatch)
+    monkeypatch.setattr(sys, "platform", "linux")
+    fake = FakeSystemctl()
+    monkeypatch.setattr(subprocess, "run", fake)
+    unit_path = home / ".config" / "systemd" / "user" / service.UNIT
+    fake.unit_file = unit_path
+    unit_path.parent.mkdir(parents=True)
+    old = service.Spec(program=(EVO, "worker", "run", "--quiet"), path="/old/bin", home=Path("/old/state"))
+    lines = service.build_unit(old).splitlines()
+    at = next(index for index, line in enumerate(lines) if line.startswith("Environment="))
+    by_hand = [  # what an owner adds by hand, in the forms systemd reads
+        "Environment=EVO_WORKER_REVOKED_EXIT=5 EVO_WORKER_CLAUDE_CODE_EFFORT=low",
+        'Environment="EVO_WORKER_OPENCODE_MODEL=zai-coding-plan/glm-5.3-flash" EVO_WORKER_CLAUDE_CODE_EFFORT=high',
+        'Environment="EVO_WORKER_TMUX_SOCKET=/tmp/evo 50%%/tmux" HTTPS_PROXY=http://proxy.local:3128',
+    ]
+    unit_path.write_text("\n".join([*lines[: at + 1], *by_hand, *lines[at + 1 :]]) + "\n", encoding="utf-8")
+    assert service.Systemd().installed_environment() == {
+        **{key: value for key, value in OLD_ENVIRONMENT.items() if key != "EVO_WORKER_REVOKED_EXIT"},
+        "EVO_WORKER_REVOKED_EXIT": "5",
+    }
+
+    assert main(["worker", "service", "install"]) == 0
+    out = capsys.readouterr().out
+    unit = unit_path.read_text(encoding="utf-8")
+    assert [line for line in unit.splitlines() if line.startswith("Environment=")] == [
+        "Environment="
+        + " ".join(
+            [
+                service._unit_quote(f"PATH={service.service_path()}"),
+                f"EVO_WORKER_HOME={joined.root}",
+                "EVO_WORKER_CLAUDE_CODE_EFFORT=high",
+                "EVO_WORKER_OPENCODE_MODEL=zai-coding-plan/glm-5.3-flash",
+                '"EVO_WORKER_TMUX_SOCKET=/tmp/evo 50%%/tmux"',
+            ]
+        )
+    ]
+    assert "EVO_WORKER_REVOKED_EXIT" not in unit, "systemd tells the exit statuses apart, as on a first install"
+    assert service.Systemd().installed_environment() == {
+        "PATH": service.service_path(),
+        "EVO_WORKER_HOME": str(joined.root),
+        **KEPT,
+    }
+    assert "  kept from the service installed before: " + ", ".join(sorted(KEPT)) in out.splitlines()
+
+
 def test_install_refuses_a_machine_that_is_not_a_worker_or_lacks_the_extra(home, monkeypatch, capsys):
     forbid_real_commands(monkeypatch)
     monkeypatch.setattr(sys, "platform", "darwin")

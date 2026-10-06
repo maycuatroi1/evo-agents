@@ -7,7 +7,8 @@
 - It claims a run whenever it has a free slot and is neither draining nor stopping, one long poll of up to 25
   seconds at a time, and runs each run it gets (``run.Run``) next to the others.
 - The answer's ``takeover`` and ``handback`` hand a run's agent to a person in tmux and back (``interactive``), and
-  ``terminal_open`` connects the worker's end of the run's web terminal.
+  ``terminal_open`` connects the worker's end of the run's web terminal. For a plan run, ``inbox`` also wakes a run
+  that waits for its owner's answer, and ``park`` lets go of a run the hub parked, its session and worktrees kept.
 - A call the hub does not answer is sent again with a backoff from 1 to 60 seconds; runs go on meanwhile.
 - SIGTERM or SIGINT: no new claim; the runs held go on until they end or reach their timeout, then the daemon exits
   0. A second signal stops the agents now and fails their runs.
@@ -18,6 +19,12 @@
 - At the start, the events a previous daemon left in the spool are sent, and runs it left unfinished are marked
   ended, their tmux sessions closed. At the start and every hour, the worktrees of runs that ended more than 7 days
   ago are removed.
+- A previous daemon that died with an agent started (``runs/<run>/agent.json``, ``orphans``) left it running. The
+  first heartbeat that gets an answer also names those runs, and before any claim the daemon stops the process group
+  of each one's agent, SIGTERM then SIGKILL. The run's worktree and its evo-run branch are removed when the hub no
+  longer holds the run for this worker; a run parked, or done because a new run resumes it, keeps its worktree for
+  that run. A run the hub still holds keeps it too: this daemon cannot go on with it, its lease runs out (a heartbeat
+  after the first no longer names it), and the hub tries it again or fails it; its worktree ages as any other.
 """
 
 from __future__ import annotations
@@ -35,11 +42,11 @@ from pathlib import Path
 from evo_agents import __version__
 from evo_agents.hub import runs
 from evo_agents.isotime import parse_iso
-from evo_agents.worker import checkouts, gitops, interactive
+from evo_agents.worker import checkouts, gitops, interactive, orphans
 from evo_agents.worker.adapter import Adapter, detect_runtimes
 from evo_agents.worker.home import WorkerConfig, WorkerHome, revoked_exit
 from evo_agents.worker.hubapi import Backoff, HubProblem, Outdated, Refused, Unreachable, WorkerHub, new_session
-from evo_agents.worker.run import Run, Sender
+from evo_agents.worker.run import Run, Sender, run_class
 from evo_agents.worker.spool import Spool, SpoolBudget, leftover_runs
 
 log = logging.getLogger("evo_agents.worker")
@@ -51,6 +58,7 @@ CHECKOUTS_EVERY = 60.0  # and at the checkouts
 CLEANUP_EVERY = 3600.0
 KEEP_WORKTREES = timedelta(days=7)
 LEFTOVER_GRACE = 30.0  # seconds the daemon waits at its end for leftover events to go
+MAX_HEARTBEAT_RUNS = 64  # run ids in one heartbeat, as the hub takes them
 
 
 def heartbeat_seconds(env: Mapping[str, str]) -> float:
@@ -80,6 +88,7 @@ class Daemon:
         self.budget = SpoolBudget()
         self.runs: dict[int, Run] = {}
         self.run_tasks: dict[int, asyncio.Task] = {}
+        self.orphans: dict[int, dict] = {}  # run id -> {"agent": agent.json, "record": run.json}, until the hub answers
         self.runtimes: dict[str, dict] = {}
         self.checkouts: dict[str, dict] = {}
         self.draining = False
@@ -148,6 +157,7 @@ class Daemon:
         self.hub = WorkerHub(self.config.url, self.token, session)
         background: list[asyncio.Task] = []
         try:
+            self.orphans = self._find_orphans()
             self._close_abandoned_runs()
             await self._look_at_machine(force=True)
             available = sorted(name for name, report in self.runtimes.items() if report.get("available"))
@@ -241,11 +251,13 @@ class Daemon:
             await self._look_at_machine()
         except Exception:
             log.exception("looking at the runtimes and checkouts failed")
+        held = self._held()[:MAX_HEARTBEAT_RUNS]
+        asked = sorted(self.orphans)[: MAX_HEARTBEAT_RUNS - len(held)]
         body = {
             "runtimes": self.runtimes,
             "checkouts": self.checkouts,
             "free_slots": min(self.free_slots, 8),
-            "runs": self._held()[:64],
+            "runs": held + asked,
             "agent_version": __version__,
         }
         try:
@@ -264,23 +276,31 @@ class Daemon:
         if self._beat_failures:
             log.info("heartbeat sent again", extra={"after_failures": self._beat_failures})
             self._beat_failures = 0
+        listed = answer.get("runs") if isinstance(answer, dict) else None
+        controls = [item for item in listed or [] if isinstance(item, dict)]
+        if asked:  # before any claim, so a new run never starts next to an agent a dead daemon left
+            await self._settle_orphans({item.get("id"): item for item in controls if item.get("id") in asked})
         self.beat_ok.set()
         drain = bool(answer.get("drain")) if isinstance(answer, dict) else False
         if drain != self.draining:
             log.info("draining: no new claims" if drain else "drain ended: claiming again")
             self.draining = drain
             self.slot_free.set()
-        for control in (answer.get("runs") if isinstance(answer, dict) else None) or []:
+        for control in controls:
             run = self.runs.get(control.get("id"))
             if run is None or run.ended:
                 continue
-            if not control.get("held"):
+            if control.get("park"):  # parked, or done because a new run resumes it: not held, and not cancelled
+                run.request_park()
+            elif not control.get("held"):
                 run.request_stop("gone")
             elif control.get("cancel"):
                 run.request_stop("cancel")
             else:
+                decisions = control.get("decisions")
+                run.open_decisions = decisions if isinstance(decisions, int) else 0
                 if control.get("inbox"):
-                    run._spawn(run.deliver_inbox())
+                    run.inbox_waits()
                 if control.get("takeover"):
                     run.request_takeover()
                 if control.get("handback"):
@@ -334,7 +354,7 @@ class Daemon:
             await self.hub.report(int(spec["id"]), {"state": "failed", "error": error})
 
     def _start(self, spec: dict) -> None:
-        run = Run(self, spec)
+        run = run_class(spec)(self, spec)
         log.info(
             "run claimed",
             extra={
@@ -342,8 +362,10 @@ class Daemon:
                 "project": run.project,
                 "plan_id": spec.get("plan_id"),
                 "step": spec.get("step_key"),
+                "kind": spec.get("kind") or "step",
                 "runtime": run.runtime,
                 "repo": run.repo,
+                "repos": [entry.get("repo") for entry in spec.get("repos") or [] if isinstance(entry, dict)] or None,
                 "branch": run.branch,
             },
         )
@@ -359,6 +381,64 @@ class Daemon:
         task.add_done_callback(ended)
 
     # What earlier daemons left
+
+    def _find_orphans(self) -> dict[int, dict]:
+        """The runs a previous daemon left with an agent started (agent.json), and their records; before
+        ``_close_abandoned_runs`` marks those records ended. A file of a run whose record says it ended is a leftover
+        of a crash at the very end, and goes."""
+        found: dict[int, dict] = {}
+        for run_id, agent in self.home.load_agents().items():
+            record = self.home.load_run(run_id)
+            if record is not None and record.get("finished_at"):
+                with contextlib.suppress(OSError):
+                    self.home.remove_agent(run_id)
+                continue
+            found[run_id] = {"agent": agent, "record": record}
+        if found:
+            log.warning(
+                "a previous daemon left runs with their agents: the first heartbeat asks the hub about them",
+                extra={"runs": sorted(found)},
+            )
+        return found
+
+    async def _settle_orphans(self, controls: Mapping[int, dict]) -> None:
+        """Deal with the orphans the hub answered for (``controls``, by run id), each at once; the others are asked
+        again at the next heartbeat."""
+        jobs = [self._settle_orphan(run_id, self.orphans.pop(run_id), control) for run_id, control in controls.items()]
+        for outcome in await asyncio.gather(*jobs, return_exceptions=True):
+            if isinstance(outcome, BaseException):
+                log.error("an orphan of a previous daemon was not dealt with", exc_info=outcome)
+
+    async def _settle_orphan(self, run_id: int, orphan: dict, control: dict) -> None:
+        """Stop the agent of an orphan run, then remove its worktree and evo-run branch unless the hub parked the run
+        (it keeps its session and worktree for the run that resumes it) or still holds it for this worker (its lease
+        runs out, and its worktree ages)."""
+        stopped = await orphans.stop(orphan["agent"])
+        record = self.home.load_run(run_id) or orphan.get("record")  # as _close_abandoned_runs left it
+        if control.get("held"):
+            what = "kept: the hub still holds the run for this worker, which cannot go on with it; its lease runs out"
+        elif control.get("park"):
+            what = "kept for the run that resumes it: the hub parked the run"
+            if record is not None:
+                record["state"] = "parked"
+                with contextlib.suppress(OSError):
+                    self.home.save_run(record)
+        else:
+            what = "removed with its evo-run branch: the hub no longer holds the run for this worker"
+            if record is not None:
+                await self._remove_worktree(record)
+        with contextlib.suppress(OSError):
+            self.home.remove_agent(run_id)
+        log.warning(
+            "the agent a previous daemon left was dealt with",
+            extra={
+                "run_id": run_id,
+                "agent": stopped,
+                "worktree": what,
+                "hub_state": control.get("state"),
+                "pgid": orphan["agent"].get("pgid"),
+            },
+        )
 
     def _close_abandoned_runs(self) -> None:
         """Runs a previous daemon left without an end: their leases ran out on the hub; their worktrees age now, and
@@ -419,15 +499,26 @@ class Daemon:
         return removed
 
     async def _remove_worktree(self, record: dict) -> None:
-        path = Path(record["worktree"]) if record.get("worktree") else None
-        checkout = Path(record["checkout"]) if record.get("checkout") else None
+        """Remove a run's worktree and its evo-run branch; for a plan run, each repo's, then the run's directory. A
+        plan run whose worktrees a resumed run took over names none of them any more."""
+        if record.get("kind") == "plan":
+            for item in record.get("repos") or []:
+                if isinstance(item, dict):
+                    await self._remove_one(item)
+            await self._remove_one({"worktree": record.get("dir")})
+        else:
+            await self._remove_one(record)
+
+    async def _remove_one(self, item: dict) -> None:
+        path = Path(item["worktree"]) if item.get("worktree") else None
+        checkout = Path(item["checkout"]) if item.get("checkout") else None
         if checkout is not None and checkout.is_dir():
             async with self.repo_lock(checkout):
                 if path is not None and path.exists():
                     with contextlib.suppress(gitops.GitError):
                         await gitops.remove_worktree(checkout, path)
                 await gitops.prune_worktrees(checkout)
-                branch = record.get("local_branch")
+                branch = item.get("local_branch")
                 if isinstance(branch, str) and branch.startswith("evo-run/"):
                     await gitops.delete_branch(checkout, branch)
         if path is not None and path.exists() and path.resolve().is_relative_to(self.home.worktrees_dir.resolve()):

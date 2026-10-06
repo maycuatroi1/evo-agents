@@ -380,6 +380,56 @@ def test_the_claimed_run_comes_with_its_spec_and_prompt(client, hub):
     assert "evo-agents@abc1234: 40 tests pass" in prompt  # the evidence of step 1, which it depends on
 
 
+def test_a_dispatch_of_steps_takes_a_model_the_claim_carries_and_a_rerun_keeps(client, hub, hub_db):
+    worker = add_worker(client, hub["owner"], "mac-mini")
+    for model in ("", "opus\nfast", "m" * (runs.MAX_MODEL_CHARS + 1), 4):
+        refused = dispatch(client, hub["owner"], [2], runtime="claude-code", model=model)
+        assert refused.status_code == 422, model
+    assert sql(hub_db, "SELECT count(*) FROM runs")[0][0] == 0
+    run = dispatched(client, hub["owner"], [2, 4], runtime="claude-code", model="claude-opus-4-1")
+    assert [(item["step_key"], item["model"]) for item in run] == [("2", "claude-opus-4-1"), ("4", "claude-opus-4-1")]
+    spec = claim(client, worker)
+    assert (spec["id"], spec["kind"], spec["runtime"], spec["model"]) == (
+        run[0]["id"],
+        "step",
+        "claude-code",
+        "claude-opus-4-1",
+    )
+    shown = client.get(f"/v1/projects/{PROJECT}/runs/{run[1]['id']}", headers=hub["reader"]).json()
+    assert shown["model"] == "claude-opus-4-1"
+
+    # a rerun keeps the model of the run it reruns, as it keeps its runtime
+    assert control(client, hub["owner"], run[1]["id"], "cancel").status_code == 200
+    again = control(client, hub["owner"], run[1]["id"], "rerun")
+    assert again.status_code == 201, again.text
+    assert (again.json()["model"], again.json()["requested_runtime"]) == ("claude-opus-4-1", "claude-code")
+
+    # without one the runtime chooses: the run and its claim say null
+    moved(client, worker, spec["id"], "cancelled")
+    assert control(client, hub["owner"], again.json()["id"], "cancel").status_code == 200
+    plain = dispatched(client, hub["owner"], [4])[0]
+    assert plain["model"] is None and claim(client, worker)["model"] is None
+
+
+def test_the_heartbeat_keeps_the_models_each_runtime_lists(client, hub):
+    listed = {"available": True, "version": "1.18.34", "models": ["zai-coding-plan/glm-5.3-flash", "openai/gpt-5.5"]}
+    worker = add_worker(client, hub["owner"], "mac-mini", runtimes={**RUNTIMES, "opencode": listed})
+    shown = client.get(f"/v1/workers/{worker['id']}", headers=hub["owner"]).json()
+    assert shown["runtimes"] == {
+        "claude-code": {"available": True, "version": "2.1.289", "reason": None, "models": None},
+        "opencode": {**listed, "reason": None},
+    }
+    too_many = [f"provider/model-{number}" for number in range(runs.MAX_RUNTIME_MODELS + 1)]
+    for models in (too_many, [""], ["opus\nfast"], ["m" * (runs.MAX_MODEL_CHARS + 1)], "opus"):
+        body = {"runtimes": {"opencode": {**listed, "models": models}}, "checkouts": CHECKOUTS, "free_slots": 1}
+        refused = client.post("/v1/worker/heartbeat", json=body, headers=worker["headers"])
+        assert refused.status_code == 422, models
+    most = [f"provider/model-{number}" for number in range(runs.MAX_RUNTIME_MODELS)]
+    beat(client, {**worker, "runtimes": {"opencode": {**listed, "models": most}}})
+    shown = client.get(f"/v1/workers/{worker['id']}", headers=hub["owner"]).json()
+    assert shown["runtimes"]["opencode"]["models"] == most and list(shown["runtimes"]) == ["opencode"]
+
+
 def test_a_worker_of_another_member_never_gets_my_run(client, hub):
     theirs = add_worker(client, hub["other"], "their-box")
     mine = add_worker(client, hub["owner"], "mac-mini")
@@ -502,12 +552,16 @@ def test_a_heartbeat_records_the_machine_extends_the_lease_and_carries_the_cance
         "takeover": False,
         "handback": False,
         "terminal_open": False,
+        "park": False,
         "inbox": 0,
+        "decisions": 0,
     }
     # the worker shows what the heartbeat reported, each runtime and checkout with every key
     shown = client.get(f"/v1/workers/{worker['id']}", headers=hub["owner"]).json()
     assert (shown["status"], shown["free_slots"]) == ("online", 0)
-    assert shown["runtimes"] == {"claude-code": {"available": True, "version": "2.1.289", "reason": None}}
+    assert shown["runtimes"] == {
+        "claude-code": {"available": True, "version": "2.1.289", "reason": None, "models": None}
+    }
     assert shown["checkouts"] == {f"{PROJECT}/evo-agents": {"path": "/src/evo-agents", "branch": "main"}}
     for runtimes, checkouts in (
         ({"claude-code": {"version": "2.1.289"}}, CHECKOUTS),  # available is required
@@ -717,11 +771,11 @@ def test_the_plan_write_gives_up_after_five_conflicts_and_the_move_stays(client,
 def test_an_expired_lease_loses_the_run_and_the_third_attempt_fails_back_to_pending(client, hub, hub_db):
     worker = add_worker(client, hub["owner"], "mac-mini")
     first = dispatched(client, hub["owner"], [2], approval="auto")[0]["id"]
-    assert recover(client) == {"lost": 0, "failed": 0, "cancelled": 0}
+    assert recover(client) == {"lost": 0, "failed": 0, "cancelled": 0, "parked": 0}
     assert claim(client, worker)["attempt"] == 1
     moved(client, worker, first, "running")
     expire(hub_db, first)
-    assert recover(client) == {"lost": 1, "failed": 0, "cancelled": 0}
+    assert recover(client) == {"lost": 1, "failed": 0, "cancelled": 0, "parked": 0}
     assert sql(hub_db, "SELECT state, error FROM runs WHERE id = %s", (first,)) == [
         ("lost", "its worker mac-mini stopped extending the lease")
     ]
@@ -740,7 +794,9 @@ def test_an_expired_lease_loses_the_run_and_the_third_attempt_fails_back_to_pend
         "takeover": False,
         "handback": False,
         "terminal_open": False,
+        "park": False,
         "inbox": 0,
+        "decisions": 0,
     }
 
     spec = claim(client, worker)
@@ -752,7 +808,7 @@ def test_an_expired_lease_loses_the_run_and_the_third_attempt_fails_back_to_pend
     ((third,),) = sql(hub_db, "SELECT id FROM runs WHERE parent_run_id = %s", (second,))
     assert claim(client, worker)["attempt"] == 3
     expire(hub_db, third)
-    assert recover(client) == {"lost": 0, "failed": 1, "cancelled": 0}
+    assert recover(client) == {"lost": 0, "failed": 1, "cancelled": 0, "parked": 0}
     ((state, error),) = sql(hub_db, "SELECT state, error FROM runs WHERE id = %s", (third,))
     assert state == "failed" and error == "its worker mac-mini stopped extending the lease, and it was attempt 3 of 3"
     assert sql(hub_db, "SELECT count(*) FROM runs WHERE parent_run_id = %s", (third,)) == [(0,)]
@@ -795,7 +851,7 @@ def test_a_heartbeat_keeps_the_reaper_away_and_an_asked_cancel_ends_cancelled(cl
     assert recover(client)["lost"] == 0 and state_of(hub_db, run_id) == "running"
     assert control(client, hub["owner"], run_id, "cancel").status_code == 200
     expire(hub_db, run_id)
-    assert recover(client) == {"lost": 0, "failed": 0, "cancelled": 1}
+    assert recover(client) == {"lost": 0, "failed": 0, "cancelled": 1, "parked": 0}
     assert state_of(hub_db, run_id) == "cancelled"
     assert sql(hub_db, "SELECT count(*) FROM runs WHERE parent_run_id = %s", (run_id,)) == [(0,)]
     assert step(client, hub["owner"], 2)["status"] == "pending"
@@ -806,10 +862,11 @@ def test_a_run_past_its_timeout_fails_and_is_not_tried_again(client, hub, hub_db
     run_id = dispatched(client, hub["owner"], [2], timeout_min=5)[0]["id"]
     claim(client, worker)
     moved(client, worker, run_id, "running")
-    assert recover(client) == {"lost": 0, "failed": 0, "cancelled": 0}
-    sql(hub_db, "UPDATE runs SET started_at = now() - interval '301 seconds' WHERE id = %s", (run_id,))
+    assert recover(client) == {"lost": 0, "failed": 0, "cancelled": 0, "parked": 0}
+    # the agent has run 301 seconds since its time was last counted
+    sql(hub_db, "UPDATE runs SET counted_at = now() - interval '301 seconds' WHERE id = %s", (run_id,))
     beat(client, worker, runs_held=[run_id])  # a lease the worker keeps extending does not keep the timeout away
-    assert recover(client) == {"lost": 0, "failed": 1, "cancelled": 0}
+    assert recover(client) == {"lost": 0, "failed": 1, "cancelled": 0, "parked": 0}
     reason = "it ran past its timeout of 5 minutes"
     assert sql(hub_db, "SELECT state, error FROM runs WHERE id = %s", (run_id,)) == [("failed", reason)]
     assert moves(hub_db, run_id)[-1] == (3, "running", "failed", "reaper")
@@ -821,9 +878,9 @@ def test_a_run_past_its_timeout_fails_and_is_not_tried_again(client, hub, hub_db
     second = dispatched(client, hub["owner"], [4], timeout_min=5)[0]["id"]
     claim(client, worker)
     assert control(client, hub["owner"], second, "cancel").status_code == 200
-    assert recover(client) == {"lost": 0, "failed": 0, "cancelled": 0}
-    sql(hub_db, "UPDATE runs SET leased_at = now() - interval '301 seconds' WHERE id = %s", (second,))
-    assert recover(client) == {"lost": 0, "failed": 0, "cancelled": 1}
+    assert recover(client) == {"lost": 0, "failed": 0, "cancelled": 0, "parked": 0}
+    sql(hub_db, "UPDATE runs SET counted_at = now() - interval '301 seconds' WHERE id = %s", (second,))
+    assert recover(client) == {"lost": 0, "failed": 0, "cancelled": 1, "parked": 0}
     assert state_of(hub_db, second) == "cancelled"
     assert moves(hub_db, second)[-1] == (2, "leased", "cancelled", "reaper")
 
@@ -898,7 +955,12 @@ def test_events_of_runs_that_ended_long_ago_are_pruned(client, hub, hub_db):
     left = dict(sql(hub_db, "SELECT run_id, count(*) FROM run_events GROUP BY run_id"))
     assert left == {recent: 1, running: 1}
     assert sql(hub_db, "SELECT count(*) FROM runs") == [(3,)]  # the runs stay; only their events go
-    assert client.portal.call(queue.tasks[jobs.RECOVER_RUNS].func, context) == {"lost": 0, "failed": 0, "cancelled": 0}
+    assert client.portal.call(queue.tasks[jobs.RECOVER_RUNS].func, context) == {
+        "lost": 0,
+        "failed": 0,
+        "cancelled": 0,
+        "parked": 0,
+    }
 
 
 def test_the_reaper_runs_every_minute_and_the_pruning_daily_each_queued_at_most_once():

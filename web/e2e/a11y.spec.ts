@@ -7,16 +7,24 @@ import { graphReady, grantOn, HUB_NODE, kgPath, nodePath, sharedKg } from "./sup
 import { apiOf, memoryFile, putMemory } from "./support/memories";
 import { ACTIVE_PLAN, EVIDENCE_STEP, open, seedPlans } from "./support/plans";
 import {
+  askDecision,
   claimRun,
+  COMMIT,
   dispatch,
+  HARNESS_REPO,
   liveWorker,
+  PLAN_RUN_PLAN,
+  planRunUnderway,
+  planRunWorker,
   reportState,
   RUN_PLAN,
   runPath,
   runToReview,
   say,
+  seedPlanRunPlan,
   seedRunPlan,
   sendEvents,
+  sendNotice,
   startRun,
   tool,
   uploadDiff,
@@ -460,6 +468,157 @@ const PAGES: Entry[] = [
       await page.setViewportSize({ width: 375, height: 812 });
       await open(page, runPath(project, run.id));
       await expect(page.locator("#main").getByTestId("log-line").first()).toBeVisible();
+    },
+  },
+  {
+    name: "plans list with a plan run waiting and Run plan",
+    open: async ({ page, me }) => {
+      const project = me.projects[0];
+      await seedPlanRunPlan(me, project);
+      await planRunUnderway(me, project, uniqueName("a11y"), { waiting: true });
+      await seedRunPlan(me, project);
+      await open(page, `/p/${project}/plans`);
+      await expect(page.locator("#main").getByTestId("plan-run-link")).toBeVisible();
+      await expect(page.locator("#main").getByTestId("plans-run-plan")).toHaveCount(2);
+    },
+  },
+  {
+    name: "plan page with Run plan and its plan run waiting for a decision",
+    open: async ({ page, me }) => {
+      const project = me.projects[0];
+      await seedPlanRunPlan(me, project);
+      await planRunUnderway(me, project, uniqueName("a11y"), { waiting: true });
+      await open(page, `/p/${project}/plans/${PLAN_RUN_PLAN}`);
+      await expect(page.locator("#main").getByTestId("plan-run-banner")).toHaveAttribute("data-phase", "waiting");
+      await expect(page.locator("#main").getByTestId("plan-run-banner-decision")).toBeVisible();
+      await expect(page.locator("#main").getByTestId("run-plan-lock")).toBeVisible();
+    },
+  },
+  {
+    name: "Run plan dialog, and a model that needs a runtime",
+    open: async ({ page, me }) => {
+      const project = me.projects[0];
+      await seedPlanRunPlan(me, project);
+      await planRunWorker(me, project, uniqueName("a11y"));
+      await open(page, `/p/${project}/plans/${PLAN_RUN_PLAN}`);
+      await page.locator("#main").getByTestId("run-plan").click();
+      const dialog = page.getByTestId("plan-run-dialog");
+      await expect(dialog.getByTestId("plan-run-summary")).toBeVisible();
+      await expect(dialog.getByTestId("dispatch-outlook")).toHaveAttribute("data-kind", "now");
+      await expectNoSeriousViolations(page, "run plan dialog");
+      await dialog.getByTestId("plan-run-model-input").fill("sonnet");
+      await expect(dialog.getByTestId("plan-run-model-error")).toBeVisible();
+    },
+  },
+  {
+    name: "plan run page with its plan's steps and the decision it waits on",
+    open: async ({ page, me }) => {
+      const project = me.projects[0];
+      await seedPlanRunPlan(me, project);
+      const { run } = await planRunUnderway(me, project, uniqueName("a11y"), { waiting: true });
+      await open(page, runPath(project, run.id));
+      await expect(page.locator("#main").getByTestId("run-plan-step")).toHaveCount(4);
+      await expect(page.locator("#main").getByTestId("run-decision-link")).toBeVisible();
+    },
+  },
+  {
+    name: "plan run pages on a small screen",
+    open: async ({ page, me }) => {
+      const project = me.projects[0];
+      await seedPlanRunPlan(me, project);
+      const { run } = await planRunUnderway(me, project, uniqueName("a11y"), { waiting: true });
+      await page.setViewportSize({ width: 375, height: 812 });
+      await open(page, `/p/${project}/plans/${PLAN_RUN_PLAN}`);
+      await expect(page.locator("#main").getByTestId("plan-run-banner")).toBeVisible();
+      await expectNoSeriousViolations(page, "plan page with a plan run at 375 px");
+      await open(page, runPath(project, run.id));
+      await expect(page.locator("#main").getByTestId("run-plan-steps")).toBeVisible();
+    },
+  },
+  {
+    name: "inbox with open decisions first, a push notice and its filters",
+    open: async ({ page, me }) => {
+      const project = me.projects[0];
+      await seedPlanRunPlan(me, project);
+      const { live, run } = await planRunUnderway(me, project, uniqueName("a11y"), { waiting: true });
+      await sendNotice(live, run.id, {
+        kind: "push_default_branch",
+        title: `Pushed to ${HARNESS_REPO} main`,
+        body: "The catalog of use cases now lists plan runs.\n\nSecond paragraph.\nThird line.\nFourth line.",
+        repo: HARNESS_REPO,
+        branch: "main",
+        commits: [COMMIT],
+      });
+      await open(page, "/inbox");
+      await expect(page.locator("#main").getByTestId("inbox-waiting").getByTestId("notification")).toHaveCount(1);
+      await expect(page.locator("#main").getByTestId("notice-commits")).toBeVisible();
+      await expect(page.getByTestId("inbox-bell")).toHaveAttribute("data-unread", "2");
+      await page.locator("#main").getByTestId("notification-body-toggle").click();
+      await expect(page.locator("#main").getByTestId("notification-body-toggle")).toHaveAttribute("aria-expanded", "true");
+    },
+  },
+  {
+    name: "inbox with no notification",
+    open: async ({ page }) => {
+      await open(page, "/inbox");
+      await expect(page.locator("#main").getByTestId("state-empty")).toBeVisible();
+    },
+  },
+  {
+    name: "decision in the inbox with its answer form and a refused empty answer",
+    open: async ({ page, me }) => {
+      const project = me.projects[0];
+      await seedPlanRunPlan(me, project);
+      const { decision } = await planRunUnderway(me, project, uniqueName("a11y"), { waiting: true });
+      await open(page, `/inbox?decision=${decision}`);
+      const panel = page.locator("#main").getByTestId("decision-panel");
+      await expect(panel.getByTestId("decision-form")).toBeVisible();
+      await expect(panel.getByTestId("decision-context-markdown")).toBeVisible();
+      await expectNoSeriousViolations(page, "decision with its answer form");
+      await panel.getByTestId("decision-send").click();
+      await expect(panel.getByTestId("decision-problem")).toBeVisible();
+    },
+  },
+  {
+    name: "decision answered, with the answer and the options it chose",
+    open: async ({ page, me }) => {
+      const project = me.projects[0];
+      await seedPlanRunPlan(me, project);
+      const { decision } = await planRunUnderway(me, project, uniqueName("a11y"), { waiting: true });
+      await open(page, `/inbox?decision=${decision}`);
+      const panel = page.locator("#main").getByTestId("decision-panel");
+      await panel.getByRole("radio").first().check();
+      await panel.getByTestId("decision-text").fill("After the backup.");
+      await panel.getByTestId("decision-send").click();
+      await expect(panel.getByTestId("decision-answer")).toBeVisible();
+      await expect(panel.getByTestId("admin-notice-status")).not.toBeEmpty();
+    },
+  },
+  {
+    name: "plan run page waiting for a decision, with the answer form in its banner",
+    open: async ({ page, me }) => {
+      const project = me.projects[0];
+      await seedPlanRunPlan(me, project);
+      const { live, run } = await planRunUnderway(me, project, uniqueName("a11y"), { waiting: true });
+      await askDecision(live, run.id, "Drop the old staging bucket after the deploy?", "4");
+      await open(page, runPath(project, run.id));
+      await expect(page.locator("#main").getByTestId("run-decisions").getByTestId("decision-form")).toHaveCount(2);
+      await expect(page.locator("#main").getByTestId("run-decisions-count")).toBeVisible();
+    },
+  },
+  {
+    name: "inbox and a decision on a small screen",
+    open: async ({ page, me }) => {
+      const project = me.projects[0];
+      await seedPlanRunPlan(me, project);
+      const { decision } = await planRunUnderway(me, project, uniqueName("a11y"), { waiting: true });
+      await page.setViewportSize({ width: 375, height: 812 });
+      await open(page, "/inbox");
+      await expect(page.locator("#main").getByTestId("notification")).toHaveCount(1);
+      await expectNoSeriousViolations(page, "inbox at 375 px");
+      await open(page, `/inbox?decision=${decision}`);
+      await expect(page.locator("#main").getByTestId("decision-back")).toBeVisible();
+      await expect(page.locator("#main").getByTestId("inbox-list")).toBeHidden();
     },
   },
   {

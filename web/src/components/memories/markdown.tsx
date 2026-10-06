@@ -199,9 +199,18 @@ const COMPONENTS: Components = {
   ),
 };
 
-export function SafeMarkdown({ children, className }: { children: string; className?: string }): ReactNode {
+export function SafeMarkdown({
+  children,
+  className,
+  testId = "memory-markdown",
+}: {
+  children: string;
+  className?: string;
+  /** Other pages that render people's or agents' Markdown (a decision's context) name it for their own tests. */
+  testId?: string;
+}): ReactNode {
   return (
-    <div className={cn("text-sm text-foreground [overflow-wrap:anywhere]", className)} data-testid="memory-markdown">
+    <div className={cn("text-sm text-foreground [overflow-wrap:anywhere]", className)} data-testid={testId}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={COMPONENTS}

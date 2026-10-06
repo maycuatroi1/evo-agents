@@ -7,7 +7,17 @@ GET /v1/projects/{p}/plans/{plan}/ready-steps (reader) lists every step of the p
 (``runs.unready_reason``, or the active run it has). POST /v1/projects/{p}/runs (writer) queues one run per step
 named: every step must be ready and without an active run (409 otherwise, and nothing is queued), and a worker named
 must be one of the caller's own (403 for any other id, a hub admin's included), live and serving the project (409).
-Each run is notified on RUNS_CHANNEL and audited (run.dispatch), and keeps the step's title.
+Each run is notified on RUNS_CHANNEL and audited (run.dispatch), and keeps the step's title. ``model`` is optional,
+one line of at most ``runs.MAX_MODEL_CHARS``, as the runtime names it; without one the runtime chooses as it would.
+
+POST /v1/projects/{p}/plan-runs (writer) queues a plan run (``runs.RUN_KINDS``): one run, on one worker of the
+caller's, that does every step of the plan not done yet. It is refused with 409 when the plan has no pending step,
+when the plan has an active run of any kind, or when a step not done names no repo and the plan does not list exactly
+one; the run's repos are those of the steps not done, each with the branch the plan's repos name. A dispatch of steps
+and a dispatch of a plan run take the same transaction-scoped advisory lock of the plan (``plan_lock_key``) before
+they look at its active runs, so the two exclude each other: a step of a plan with an active plan run gets 409 ("plan X
+has plan run #N"), and a plan run waits until no run of the plan's steps is active. Each plan run is audited
+(run.dispatch_plan). ready-steps names the plan's active plan run (``plan_run``), and no step is ready while it is.
 
 GET /v1/projects/{p}/runs (reader) lists the project's runs newest first, filtered by state, plan, step, worker,
 dispatcher and text, a page at a time, with how many runs each state has under the other filters; GET .../runs/{id}
@@ -22,30 +32,48 @@ worker serves and on which the owner still holds writer, asking for a runtime th
 first of runs.RUNTIMES it has), of a repo it has a checkout of, pinned to no other worker, while the worker is
 neither draining nor revoked and holds fewer runs than its slots. A worker has one claim waiting at a time: a newer
 claim answers the older one with no run. The claimed run is leased for EVO_HUB_RUN_LEASE_SECONDS (LEASE_SECONDS by
-default) and comes with its prompt (``runs.build_prompt`` over the plan revision it was dispatched from). A claim
+default) and comes with its prompt (``runs.build_prompt`` over the plan revision it was dispatched from). A plan run
+needs a checkout of every repo in its repos, and comes with ``runs.build_plan_prompt`` and the plan at the hub's
+current revision, which the daemon writes to ``runs.PLAN_FILE``. A claim
 whose worker hung up (a daemon stopping drops the claim it waits on) takes nothing: it ends before it looks at the
 queue again, and a run it leased in the meantime is rolled back before the transaction commits, so the run stays
 queued for the next claim instead of waiting out a lease nobody holds.
 
-POST /v1/worker/heartbeat records the machine (runtimes, checkouts keyed ``<project>/<repo>``, free slots), extends
-the lease of every run the worker names and still holds by the same time, and answers with control: per run, whether
-to cancel (asked by the owner, or a run the worker no longer holds), takeover, handback, terminal_open (a browser
-waits for the worker's end of the run's terminal, ``terminal.Terminals.waiting``) and how many inbox messages wait;
-for the worker, whether to drain.
+POST /v1/worker/heartbeat records the machine (runtimes, each with the models it lists when it lists any, checkouts
+keyed ``<project>/<repo>``, free slots), extends the lease of every run the worker names and still holds by the same
+time, settles their agent time (``run_state.SETTLE``), and answers with control: per run, whether to cancel (asked by
+the owner, or a run the worker no longer holds), takeover, handback, terminal_open (a browser waits for the worker's
+end of the run's terminal, ``terminal.Terminals.waiting``), how many inbox messages wait and how many decisions of the
+run are open; for the worker, whether to drain. A run the reaper parked, or one done because a new run resumes it,
+comes back with held false, cancel false and park true: the worker stops its agent at the end of the turn, keeps the
+session and the worktrees, and frees the slot.
 
 POST /v1/worker/runs/{id}/state reports a move of a run the worker holds (404 otherwise), checked against
 ``runs.TRANSITIONS`` with the worker as actor (409 otherwise): ``done`` only for approval auto with every verify
-command exited 0, ``review`` only for approval review. Reporting the state the run is in already changes nothing but
-the session id, commit, diffstat, verify results and usage given, so a resend is safe.
+command exited 0, ``review`` only for approval review. A plan run ends ``done`` without verify results, since each of
+its steps was verified when it was reported, and never in review. Reporting the state the run is in already changes
+nothing but the session id, commit, diffstat, verify results and usage given, so a resend is safe. A plan run reports
+``waiting`` when its agent's turn ended with a decision open, which needs a decision of the run that is open or whose
+answer the worker has not taken yet (409 otherwise: waiting does not count toward the timeout), and ``running`` once
+the answer reached the agent.
+
+The worker holding a plan run reads the plan as the hub holds it now with GET /v1/worker/runs/{id}/plan, and reports
+each step with POST /v1/worker/runs/{id}/steps/{key}: ``in_progress``, ``done`` (with at least one verify result,
+every one exited 0; 422 otherwise) or ``pending``, with evidence, the repo, the verify results and the commit. The hub
+writes the step as the member who dispatched the run (``run_state.write_step``), answers with the error the plan's
+write gets when it cannot, never sets a done step back (409), keeps the report as a ``system`` event of the run, and
+audits it (run.step_report). A step the plan does not have, a run of one step, or a run the worker does not hold gets
+404. A plan run that ends ``done`` writes no step; one that fails or is cancelled sets the steps it left
+``in_progress`` back to ``pending`` (``run_state.release_plan_steps``).
 
 The owner of a run is the member who dispatched it. Cancel moves a queued run or one in review to ``cancelled`` and
 asks the worker holding a held run to stop it (the next heartbeat says cancel); approve moves a run in review to
-``done``; rerun queues the step again, at the plan's current revision, after a run that ended. Takeover asks the
-worker holding a leased or running run to let a person drive the agent in a terminal, and handback asks it to let
-an interactive run's agent go on headless: the next heartbeat says takeover or handback until the worker reports
-interactive or running, and any other move drops the ask. Each one is audited (run.cancel, run.approve, run.rerun,
-run.takeover, run.handback; an ask repeated is not); another member gets 403, someone without a grant on the
-project 404.
+``done``; rerun queues the step again, at the plan's current revision, with the run's model, after a run that ended.
+Takeover asks the worker holding a leased or running run to let a person drive the agent in a terminal, and handback
+asks it to let an interactive run's agent go on headless: the next heartbeat says takeover or handback until the
+worker reports interactive or running, and any other move drops the ask. Each one is audited (run.cancel,
+run.approve, run.rerun, run.takeover, run.handback; an ask repeated is not); another member gets 403, someone without
+a grant on the project 404.
 """
 
 from __future__ import annotations
@@ -55,7 +83,7 @@ import json
 import logging
 import re
 from collections.abc import Awaitable, Callable
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from typing import Annotated, Literal
 
@@ -74,13 +102,19 @@ from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.listen import Listener
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.run_state import (
+    MAX_EVIDENCE_BYTES,
     RUNS_CHANNEL,
+    SETTLE,
+    StepNotWritten,
     evidence,
     move_run,
     notify_queued,
+    report_updates,
     run_step,
+    write_event,
+    write_step,
 )
-from evo_agents.hub.server.security import CurrentUser, Principal
+from evo_agents.hub.server.security import MACHINE, CurrentUser, Principal
 
 log = logging.getLogger(__name__)
 
@@ -96,12 +130,16 @@ STEP_KEY_CHARS = 200
 REQUESTED_RUNTIMES = ("any", *runs.RUNTIMES)
 WRITER_ROLES = [role for role in ("reader", "writer", "admin") if has_role(role, "writer")]
 NOT_HELD = "this worker does not hold run {id}: it may have been lost, cancelled or taken by another attempt"
+STEP_REPORT_STATUSES = ("in_progress", "done", "pending")  # what a plan run's worker reports of a step
+MAX_STEP_EVIDENCE_CHARS = MAX_EVIDENCE_BYTES  # the agent's evidence of one step; the hub's adds to it, within the bytes
+PLAN_LOCK = "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))"
 
 router = APIRouter(prefix="/v1/projects", tags=["runs"], responses={401: {"model": ErrorBody}})
 worker_router = APIRouter(prefix="/v1/worker", tags=["worker protocol"], responses={401: {"model": ErrorBody}})
 
 RunId = Annotated[int, Path(ge=1, le=MAX_ID)]
 RuntimeName = Literal[runs.RUNTIMES]  # an alias: a model with a field named runs cannot say runs.RUNTIMES
+ModelName = Annotated[str, Field(min_length=1, max_length=runs.MAX_MODEL_CHARS, pattern=LINE)]
 REFUSALS = {403: {"model": ErrorBody}, 404: {"model": ErrorBody}, 409: {"model": ErrorBody}}
 
 
@@ -128,6 +166,9 @@ class ReadySteps(BaseModel):
     project: str
     plan_id: str
     revision: int
+    plan_run: ActiveRun | None = Field(
+        None, description="the plan's active plan run: while there is one, no step of the plan is dispatched"
+    )
     steps: list[StepReadiness] = Field(description="every step of the plan, in plan order")
 
 
@@ -141,14 +182,40 @@ class Dispatch(BaseModel):
     worker_id: int | None = Field(None, ge=1, le=MAX_ID, description="pin the runs to this worker of yours")
     approval: Literal[runs.APPROVALS] = Field("review", description="auto: verified runs mark the step done")
     timeout_min: int = Field(60, ge=5, le=240)
+    model: ModelName | None = Field(
+        None,
+        description="the model each run uses, as its runtime names it (opencode: provider/model); null: the "
+        "runtime's own choice",
+    )
+
+
+class PlanRunDispatch(BaseModel):
+    plan_id: str = Field(pattern=plan_routes.PLAN_ID)
+    worker_id: int | None = Field(None, ge=1, le=MAX_ID, description="pin the run to this worker of yours")
+    runtime: Literal[REQUESTED_RUNTIMES] = Field("any", description="any: the claiming worker picks one it has")
+    model: ModelName | None = Field(
+        None, description="the model to use, as its runtime names it (opencode: provider/model); null: the runtime's"
+    )
+    mode: Literal[runs.MODES] = "headless"
+    timeout_h: Literal[runs.PLAN_TIMEOUT_CHOICES] = Field(
+        4, description="hours of agent time the run may take; waiting for a decision and parked do not count"
+    )
+
+
+class RunRepo(BaseModel):
+    """A repo of a plan run, with the branch the plan names for it."""
+
+    repo: str
+    branch: str | None = Field(None, description="null when the plan names none: the branch checked out")
 
 
 class Run(BaseModel):
     id: int
+    kind: Literal[runs.RUN_KINDS] = Field(description="step: one step of the plan; plan: every step not done yet")
     project: str
     plan_id: str
-    step_key: str
-    title: str | None = Field(description="the step's title when the run was dispatched")
+    step_key: str | None = Field(description="null for a plan run")
+    title: str | None = Field(description="the step's title when the run was dispatched; the plan's for a plan run")
     plan_revision: int = Field(description="the plan revision the run was dispatched from")
     dispatched_by: str = Field(description="the login of the member who dispatched it, its owner")
     worker_id: int | None = Field(description="the worker that claimed it")
@@ -156,17 +223,21 @@ class Run(BaseModel):
     pinned_worker_id: int | None
     requested_runtime: Literal[REQUESTED_RUNTIMES]
     runtime: Literal[REQUESTED_RUNTIMES] = Field(description="any until a worker claims the run")
+    model: str | None = Field(description="the model the dispatch asked for; null: the runtime's own choice")
     mode: Literal[runs.MODES]
     approval: Literal[runs.APPROVALS]
     timeout_min: int
+    run_seconds: int = Field(description="the agent time the run has used of its timeout, as the hub last counted it")
     attempt: int
     max_attempts: int
     parent_run_id: int | None = Field(description="the run this one retries or reruns")
+    resume_of_run_id: int | None = Field(description="the parked plan run this one goes on from, in its session")
     state: Literal[runs.RUN_STATES]
     lease_expires_at: datetime | None
     session_id: str | None
-    repo: str
+    repo: str | None = Field(description="null for a plan run, which has repos")
     branch: str | None
+    repos: list[RunRepo] | None = Field(description="a plan run's repos; null for a run of one step")
     commit_sha: str | None
     diffstat: dict | None
     verify: list | None
@@ -182,6 +253,10 @@ class Run(BaseModel):
     queued_at: datetime
     leased_at: datetime | None
     started_at: datetime | None
+    waiting_since: datetime | None = Field(
+        description="when the agent's turn ended with a decision open, while waiting"
+    )
+    parked_at: datetime | None = Field(description="when the run was parked, for want of an answer")
     finished_at: datetime | None
 
 
@@ -191,24 +266,41 @@ class ClaimRequest(BaseModel):
     )
 
 
+class PlanCopy(BaseModel):
+    """A plan as the hub holds it at one revision."""
+
+    revision: int
+    body: dict
+
+
 class RunSpec(BaseModel):
     id: int
+    kind: Literal[runs.RUN_KINDS]
     project: str
     plan_id: str
-    step_key: str
+    step_key: str | None = Field(description="null for a plan run")
     title: str | None
-    plan_revision: int
+    plan_revision: int = Field(description="the plan revision the run was dispatched from")
     attempt: int
     max_attempts: int
     parent_run_id: int | None
+    resume_of_run_id: int | None = Field(
+        None, description="the parked plan run this one goes on from: reuse its worktrees and resume its session"
+    )
+    session_id: str | None = Field(None, description="the agent session to resume; null for a new one")
     runtime: Literal[runs.RUNTIMES]
+    model: str | None = Field(description="the model the dispatch asked for; null: the runtime's own choice")
     mode: Literal[runs.MODES]
     approval: Literal[runs.APPROVALS]
     timeout_min: int
-    repo: str
+    repo: str | None = Field(description="null for a plan run")
     branch: str | None
+    repos: list[RunRepo] | None = Field(description="a plan run's repos, each with a checkout on this worker")
     lease_expires_at: datetime
     prompt: str
+    plan: PlanCopy | None = Field(
+        description=f"a plan run's plan at the hub's current revision, for {runs.PLAN_FILE}; null for a run of one step"
+    )
 
 
 class Claim(BaseModel):
@@ -225,6 +317,11 @@ class RuntimeReport(BaseModel):
     available: bool = Field(description="whether runs may use it; false with a reason when it is installed but not")
     version: str | None = Field(None, min_length=1, max_length=100, pattern=LINE)
     reason: str | None = Field(None, min_length=1, max_length=500, pattern=LINE, description="why it is unavailable")
+    models: list[ModelName] | None = Field(
+        None,
+        max_length=runs.MAX_RUNTIME_MODELS,
+        description="the models the runtime lists on the machine, for a dispatch to suggest; null when it lists none",
+    )
 
 
 class CheckoutReport(BaseModel):
@@ -286,7 +383,13 @@ class RunControl(BaseModel):
         description="a browser waits for the run's terminal: connect WS /v1/worker/runs/{id}/terminal once the run "
         "is interactive",
     )
+    park: bool = Field(
+        False,
+        description="the run is parked (it waited too long for an answer), or done because a new run resumes it: stop "
+        "the agent at the end of its turn, keep the session and the worktrees, free the slot",
+    )
     inbox: int = Field(0, description="messages from the owner waiting for the agent: POST .../runs/{id}/inbox")
+    decisions: int = Field(0, description="decisions of the run still open, waiting for the owner's answer")
 
 
 class HeartbeatAnswer(BaseModel):
@@ -328,15 +431,42 @@ class StateReport(BaseModel):
         return self
 
 
+class StepReport(BaseModel):
+    """What a plan run's worker reports of one step of the plan."""
+
+    status: Literal[STEP_REPORT_STATUSES] = Field(
+        description="in_progress when the agent starts the step, done once verified, pending to hand it back"
+    )
+    repo: str | None = Field(
+        None, min_length=1, max_length=STEP_KEY_CHARS, pattern=LINE, description="the run's repo the step was done in"
+    )
+    evidence: str | None = Field(
+        None, min_length=1, max_length=MAX_STEP_EVIDENCE_CHARS, description="what the agent did and how it checked it"
+    )
+    verify: list[VerifyResult] | None = Field(
+        None, max_length=50, description="each verify command the worker ran again; done needs one, every one exit 0"
+    )
+    commit_sha: str | None = Field(None, pattern=OBJECT_NAME, description="the repo's commit the step ends on")
+
+
+class StepWritten(BaseModel):
+    run_id: int
+    plan_id: str
+    step_key: str
+    status: str | None = Field(description="the step's status as the plan holds it after the report")
+    revision: int = Field(description="the plan's revision after the report")
+    written: bool = Field(description="whether the report wrote a revision; false for a resend that changed nothing")
+
+
 # Reading runs
 
 RUN_COLUMNS = """
-SELECT r.id, p.name, r.plan_id, r.step_key, r.title, r.plan_revision, u.login, r.worker_id, w.name,
-       r.pinned_worker_id, r.requested_runtime, r.runtime, r.mode, r.approval, r.timeout_s / 60, r.attempt,
-       r.max_attempts, r.parent_run_id, r.state, r.lease_expires_at, r.session_id, r.repo, r.branch, r.commit_sha,
-       r.diffstat, r.verify, r.evidence, r.usage, r.error, r.log_sha256, r.diff_sha256, r.event_seq,
-       r.cancel_requested_at, r.takeover_requested_at, r.handback_requested_at, r.queued_at, r.leased_at,
-       r.started_at, r.finished_at
+SELECT r.id, r.kind, p.name, r.plan_id, r.step_key, r.title, r.plan_revision, u.login, r.worker_id, w.name,
+       r.pinned_worker_id, r.requested_runtime, r.runtime, r.model, r.mode, r.approval, r.timeout_s / 60,
+       r.run_seconds, r.attempt, r.max_attempts, r.parent_run_id, r.resume_of_run_id, r.state, r.lease_expires_at,
+       r.session_id, r.repo, r.branch, r.repos, r.commit_sha, r.diffstat, r.verify, r.evidence, r.usage, r.error,
+       r.log_sha256, r.diff_sha256, r.event_seq, r.cancel_requested_at, r.takeover_requested_at,
+       r.handback_requested_at, r.queued_at, r.leased_at, r.started_at, r.waiting_since, r.parked_at, r.finished_at
   FROM runs r JOIN projects p ON p.id = r.project_id JOIN users u ON u.id = r.dispatched_by
   LEFT JOIN workers w ON w.id = r.worker_id
 """
@@ -357,15 +487,42 @@ async def run_view(conn, run_id: int) -> Run:
 
 
 ACTIVE_RUNS = """
-SELECT r.step_key, r.id, r.state, u.login
+SELECT r.kind, r.step_key, r.id, r.state, u.login
   FROM runs r JOIN users u ON u.id = r.dispatched_by
  WHERE r.project_id = %s AND r.plan_id = %s AND r.state = ANY(%s)
+ ORDER BY r.id
 """
 
 
-async def _active_runs(conn, project_id: int, plan_id: str) -> dict[str, ActiveRun]:
+@dataclass
+class Activity:
+    """The active runs of a plan: those of its steps by step key, and its plan run."""
+
+    steps: dict[str, ActiveRun]
+    plan_run: ActiveRun | None
+
+
+async def _activity(conn, project_id: int, plan_id: str) -> Activity:
     rows = await (await conn.execute(ACTIVE_RUNS, (project_id, plan_id, list(runs.ACTIVE_STATES)))).fetchall()
-    return {key: ActiveRun(id=run_id, state=state, dispatched_by=login) for key, run_id, state, login in rows}
+    activity = Activity(steps={}, plan_run=None)
+    for kind, key, run_id, state, login in rows:
+        active = ActiveRun(id=run_id, state=state, dispatched_by=login)
+        if kind == "plan":
+            activity.plan_run = active
+        else:
+            activity.steps[key] = active
+    return activity
+
+
+def plan_lock_key(project_id: int, plan_id: str) -> str:
+    """The text whose hash names the advisory lock a dispatch of a plan's steps or of its plan run takes."""
+    return f"evo-runs:{project_id}:{plan_id}"
+
+
+async def _lock_plan(conn, project_id: int, plan_id: str) -> None:
+    """Take the plan's dispatch lock until the caller's transaction ends: a dispatch of its steps and one of its plan
+    run then each see the other's run, never both none."""
+    await conn.execute(PLAN_LOCK, (plan_lock_key(project_id, plan_id),))
 
 
 def _text_or_none(value) -> str | None:
@@ -376,6 +533,10 @@ def _text_or_none(value) -> str | None:
 
 def _busy(active: ActiveRun) -> str:
     return f"it has run #{active.id}, {active.state}, dispatched by {active.dispatched_by}"
+
+
+def _plan_busy(plan_id: str, active: ActiveRun) -> str:
+    return f"plan {plan_id} has plan run #{active.id}, {active.state}, dispatched by {active.dispatched_by}"
 
 
 @router.get(
@@ -395,16 +556,18 @@ async def ready_steps(
         access = await project_access(conn, user, project)
         plan_routes._reader(access)
         held = await plan_routes._visible(conn, access, plan_id, sink)
-        active = await _active_runs(conn, access.project_id, plan_id)
+        activity = await _activity(conn, access.project_id, plan_id)
     body = held.body
     steps = body.get("steps") if isinstance(body.get("steps"), list) else []
     shown = []
     for index, step in enumerate(steps):
         key = step_key(step, index)
         reason = runs.unready_reason(body, step)
-        running = active.get(key)
+        running = activity.steps.get(key)
         if reason is None and running is not None:
             reason = _busy(running)
+        if reason is None and activity.plan_run is not None:
+            reason = _plan_busy(plan_id, activity.plan_run)
         mapping = step if isinstance(step, dict) else {}
         repo = runs.plan_repo(body, mapping) if isinstance(step, dict) else None
         shown.append(
@@ -418,7 +581,7 @@ async def ready_steps(
                 active_run=running,
             )
         )
-    return ReadySteps(project=project, plan_id=plan_id, revision=held.revision, steps=shown)
+    return ReadySteps(project=project, plan_id=plan_id, revision=held.revision, plan_run=activity.plan_run, steps=shown)
 
 
 # Listing and showing runs
@@ -604,9 +767,9 @@ async def _pinnable(conn, user: Principal, access: ProjectAccess, worker_id: int
 
 INSERT_RUN = """
 INSERT INTO runs (project_id, plan_id, step_key, title, plan_revision, dispatched_by, pinned_worker_id,
-                  requested_runtime, runtime, mode, approval, timeout_s, parent_run_id, repo, branch)
+                  requested_runtime, runtime, model, mode, approval, timeout_s, parent_run_id, repo, branch)
 VALUES (%(project)s, %(plan)s, %(step)s, %(title)s, %(revision)s, %(user)s, %(pinned)s, %(runtime)s, %(runtime)s,
-        %(mode)s, %(approval)s, %(timeout)s, %(parent)s, %(repo)s, %(branch)s)
+        %(model)s, %(mode)s, %(approval)s, %(timeout)s, %(parent)s, %(repo)s, %(branch)s)
 RETURNING id
 """
 
@@ -624,6 +787,7 @@ async def _queue_run(
     active: dict[str, ActiveRun],
     *,
     runtime: str,
+    model: str | None,
     mode: str,
     approval: str,
     timeout_s: int,
@@ -657,6 +821,7 @@ async def _queue_run(
         "user": user.user_id,
         "pinned": pinned,
         "runtime": runtime,
+        "model": model,
         "mode": mode,
         "approval": approval,
         "timeout": timeout_s,
@@ -676,8 +841,18 @@ async def _queue_run(
     return run_id
 
 
-def _run_target(project: str, plan_id: str, key: str, run_id: int) -> str:
-    return f"{project}/{plan_id}#{key} run:{run_id}"
+def _run_target(project: str, plan_id: str, key: str | None, run_id: int) -> str:
+    """How an audit row names a run: its project, plan and step, or no step for a plan run."""
+    return f"{project}/{plan_id}{'' if key is None else f'#{key}'} run:{run_id}"
+
+
+def _no_plan_run(activity: Activity, plan_id: str) -> None:
+    """409 while the plan has an active plan run: its steps are that run's until it ends."""
+    if activity.plan_run is not None:
+        raise HTTPException(
+            409,
+            f"{_plan_busy(plan_id, activity.plan_run)}: its steps are that run's until it ends; nothing was dispatched",
+        )
 
 
 @router.post(
@@ -695,7 +870,9 @@ async def dispatch(request: Request, project: ProjectName, body: Dispatch, user:
         held = await plan_routes._visible(conn, access, body.plan_id, None)
         if body.worker_id is not None:
             await _pinnable(conn, user, access, body.worker_id)
-        active = await _active_runs(conn, access.project_id, body.plan_id)
+        await _lock_plan(conn, access.project_id, body.plan_id)
+        activity = await _activity(conn, access.project_id, body.plan_id)
+        _no_plan_run(activity, body.plan_id)
         queued = []
         for key in keys:
             run_id = await _queue_run(
@@ -704,8 +881,9 @@ async def dispatch(request: Request, project: ProjectName, body: Dispatch, user:
                 user,
                 held,
                 key,
-                active,
+                activity.steps,
                 runtime=body.runtime,
+                model=body.model,
                 mode=body.mode,
                 approval=body.approval,
                 timeout_s=body.timeout_min * 60,
@@ -729,11 +907,114 @@ async def dispatch(request: Request, project: ProjectName, body: Dispatch, user:
     return views
 
 
+INSERT_PLAN_RUN = """
+INSERT INTO runs (kind, project_id, plan_id, title, plan_revision, dispatched_by, pinned_worker_id, requested_runtime,
+                  runtime, model, mode, approval, timeout_s, repos)
+VALUES ('plan', %(project)s, %(plan)s, %(title)s, %(revision)s, %(user)s, %(pinned)s, %(runtime)s, %(runtime)s,
+        %(model)s, %(mode)s, 'auto', %(timeout)s, %(repos)s)
+RETURNING id
+"""
+
+
+def _pending(step) -> bool:
+    """Whether a step counts as pending: a status of pending or none, or a bare string, which has none."""
+    return not isinstance(step, dict) or step.get("status") in (None, "pending")
+
+
+def _plan_run_repos(held) -> list[dict]:
+    """The repos of a plan run of the plan ``held``: the repo of each step not done, in plan order, each once with the
+    branch the plan's repos name for it. 409 when no step is pending, or a step not done names no repo and the plan
+    does not list exactly one."""
+    body = held.body
+    steps = body.get("steps") if isinstance(body.get("steps"), list) else []
+    open_steps = [
+        (step_key(step, index), step)
+        for index, step in enumerate(steps)
+        if not (isinstance(step, dict) and step.get("status") == "done")
+    ]
+    if not any(_pending(step) for _, step in open_steps):
+        raise HTTPException(
+            409, f"plan {held.plan_id} has no pending step, so a plan run has nothing to do; nothing was dispatched"
+        )
+    repos: dict[str, dict] = {}
+    for key, step in open_steps:
+        entry = runs.plan_repo(body, step if isinstance(step, dict) else {}) or {}
+        name = _short(entry.get("repo"))
+        if name is None:
+            raise HTTPException(
+                409,
+                f"step {key} of plan {held.plan_id} is not done and names no repo, and the plan does not list exactly "
+                "one: give the step a repo; nothing was dispatched",
+            )
+        repos.setdefault(name, {"repo": name, "branch": _short(entry.get("branch"))})
+    return list(repos.values())
+
+
+@router.post(
+    "/{project}/plan-runs",
+    status_code=201,
+    response_model=Run,
+    responses={**REFUSALS, 422: {"model": ErrorBody}},
+)
+async def dispatch_plan(request: Request, project: ProjectName, body: PlanRunDispatch, user: CurrentUser) -> Run:
+    """Queue a plan run: one run, on a worker of the caller's, that does every step of the plan not done yet."""
+    async with request.app.state.pool.connection() as conn:
+        access = await project_access(conn, user, project)
+        _dispatcher(access)
+        held = await plan_routes._visible(conn, access, body.plan_id, None)
+        if body.worker_id is not None:
+            await _pinnable(conn, user, access, body.worker_id)
+        await _lock_plan(conn, access.project_id, body.plan_id)
+        activity = await _activity(conn, access.project_id, body.plan_id)
+        if activity.plan_run is not None:
+            raise HTTPException(409, f"{_plan_busy(body.plan_id, activity.plan_run)}; nothing was dispatched")
+        if activity.steps:
+            key, active = min(activity.steps.items(), key=lambda item: item[1].id)
+            busy = f"has run #{active.id}, {active.state}, dispatched by {active.dispatched_by}"
+            raise HTTPException(
+                409,
+                f"step {key} of plan {body.plan_id} {busy}: a plan run waits until no run of the plan's steps is "
+                "active; nothing was dispatched",
+            )
+        params = {
+            "project": access.project_id,
+            "plan": held.plan_id,
+            "title": runs.step_title(held.body),
+            "revision": held.revision,
+            "user": user.user_id,
+            "pinned": body.worker_id,
+            "runtime": body.runtime,
+            "model": body.model,
+            "mode": body.mode,
+            "timeout": body.timeout_h * 3600,
+            "repos": Jsonb(_plan_run_repos(held)),
+        }
+        try:
+            async with conn.transaction():
+                run_id = (await (await conn.execute(INSERT_PLAN_RUN, params)).fetchone())[0]
+        except psycopg.errors.UniqueViolation:  # another plan run of the plan got in first
+            busy = f"plan {held.plan_id} has an active plan run already; nothing was dispatched"
+            raise HTTPException(409, busy) from None
+        except psycopg.errors.CheckViolation:
+            raise HTTPException(
+                422, f"plan {held.plan_id}: a repo or branch name, or the number of repos, is not one a run can hold"
+            ) from None
+        await notify_queued(conn, run_id)
+        target = _run_target(project, held.plan_id, None, run_id)
+        await _audit_run(conn, user, access, audit.RUN_DISPATCH_PLAN, target)
+        view = await run_view(conn, run_id)
+    log.info(
+        "plan run dispatched",
+        extra={"project": project, "plan_id": held.plan_id, "run_id": run_id, "repos": len(view.repos or [])},
+    )
+    return view
+
+
 # The owner's controls
 
 OWNED_RUN = """
 SELECT r.dispatched_by, u.login, r.state, r.plan_id, r.step_key, r.cancel_requested_at, r.requested_runtime, r.mode,
-       r.approval, r.timeout_s, r.pinned_worker_id
+       r.approval, r.timeout_s, r.pinned_worker_id, r.kind, r.model
   FROM runs r JOIN users u ON u.id = r.dispatched_by
  WHERE r.id = %s AND r.project_id = %s
    FOR UPDATE OF r
@@ -843,26 +1124,33 @@ async def approve(request: Request, project: ProjectName, run_id: RunId, user: C
 
 @router.post("/{project}/runs/{run_id}/rerun", status_code=201, response_model=Run, responses=REFUSALS)
 async def rerun(request: Request, project: ProjectName, run_id: RunId, user: CurrentUser) -> Run:
-    """Queue the step of a run that ended again, with the same runtime, mode, approval, timeout and worker, at the
-    plan's current revision."""
+    """Queue the step of a run that ended again, with the same runtime, model, mode, approval, timeout and worker, at
+    the plan's current revision."""
     async with request.app.state.pool.connection() as conn:
         access, row = await _owned_run(conn, user, project, run_id, "rerun")
         _dispatcher(access)
-        _, _, state, plan_id, key, _, runtime, mode, approval, timeout_s, pinned = row
+        _, _, state, plan_id, key, _, runtime, mode, approval, timeout_s, pinned, kind, model = row
+        if kind == "plan":
+            raise HTTPException(
+                409, f"run {run_id} is a plan run: dispatch the plan again with POST /v1/projects/{project}/plan-runs"
+            )
         if state not in runs.TERMINAL_STATES:
             raise HTTPException(409, f"run {run_id} is still {state}: a run is rerun once it has ended")
         held = await plan_routes._visible(conn, access, plan_id, None)
         if pinned is not None:
             await _pinnable(conn, user, access, pinned)
-        active = await _active_runs(conn, access.project_id, plan_id)
+        await _lock_plan(conn, access.project_id, plan_id)
+        activity = await _activity(conn, access.project_id, plan_id)
+        _no_plan_run(activity, plan_id)
         new_id = await _queue_run(
             conn,
             access,
             user,
             held,
             key,
-            active,
+            activity.steps,
             runtime=runtime,
+            model=model,
             mode=mode,
             approval=approval,
             timeout_s=timeout_s,
@@ -946,19 +1234,27 @@ SELECT wp.project_id, p.name
    AND EXISTS (SELECT 1 FROM grants g
                 WHERE g.user_id = %(owner)s AND g.project_id = wp.project_id AND g.role = ANY(%(writers)s))
 """
+# A run of one step needs a checkout of its repo, and a plan run one of every repo in its repos.
 CLAIMABLE = """
+WITH checkouts (project_id, repo) AS (SELECT * FROM unnest(%(pids)s::bigint[], %(repos)s::text[]))
 SELECT r.id, r.runtime
   FROM runs r
  WHERE r.state = 'queued' AND r.project_id = ANY(%(projects)s) AND r.dispatched_by = %(owner)s
    AND (r.pinned_worker_id IS NULL OR r.pinned_worker_id = %(worker)s)
    AND (r.runtime = 'any' OR r.runtime = ANY(%(runtimes)s))
-   AND (r.project_id, r.repo) IN (SELECT * FROM unnest(%(pids)s::bigint[], %(repos)s::text[]))
+   AND CASE WHEN r.kind = 'plan'
+            THEN NOT EXISTS (SELECT 1 FROM jsonb_array_elements(r.repos) AS needed (entry)
+                              WHERE NOT EXISTS (SELECT 1 FROM checkouts c WHERE c.project_id = r.project_id
+                                                                             AND c.repo = needed.entry ->> 'repo'))
+            ELSE EXISTS (SELECT 1 FROM checkouts c WHERE c.project_id = r.project_id AND c.repo = r.repo)
+       END
  ORDER BY r.id
  LIMIT 1
-   FOR UPDATE SKIP LOCKED
+   FOR UPDATE OF r SKIP LOCKED
 """
 HELD_COUNT = "SELECT count(*) FROM runs WHERE worker_id = %s AND state = ANY(%s)"
 REVISION_BODY = "SELECT body FROM plan_revisions WHERE project_id = %s AND plan_id = %s AND revision = %s"
+CURRENT_PLAN = "SELECT body, revision FROM plans WHERE project_id = %s AND plan_id = %s"
 
 
 class ClaimAbandoned(Exception):
@@ -1034,31 +1330,46 @@ async def _run_spec(conn, run_id: int) -> RunSpec:
     project_id = (await (await conn.execute("SELECT project_id FROM runs WHERE id = %s", (run_id,))).fetchone())[0]
     row = await (await conn.execute(REVISION_BODY, (project_id, view.plan_id, view.plan_revision))).fetchone()
     plan = row[0] if row else {"id": view.plan_id, "steps": []}
-    try:
-        step = plan["steps"][step_index(plan, view.step_key)]
-    except (PlanProblem, KeyError, TypeError):
-        step = None
-    if not isinstance(step, dict):
-        step = {"id": view.step_key}
-    prompt = runs.build_prompt(plan, step, {"repo": view.repo, "branch": view.branch})
+    copy = None
+    if view.kind == "plan":
+        current = await (await conn.execute(CURRENT_PLAN, (project_id, view.plan_id))).fetchone()
+        body, revision = current if current else (plan, view.plan_revision)  # the plan gone: as dispatched
+        copy = PlanCopy(body=body, revision=revision)
+        prompt = runs.build_plan_prompt(copy.body, [repo.model_dump() for repo in view.repos or []])
+        title = view.title
+    else:
+        try:
+            step = plan["steps"][step_index(plan, view.step_key)]
+        except (PlanProblem, KeyError, TypeError):
+            step = None
+        if not isinstance(step, dict):
+            step = {"id": view.step_key}
+        prompt = runs.build_prompt(plan, step, {"repo": view.repo, "branch": view.branch})
+        title = _text_or_none(step.get("title"))
     return RunSpec(
         id=view.id,
+        kind=view.kind,
         project=view.project,
         plan_id=view.plan_id,
         step_key=view.step_key,
-        title=_text_or_none(step.get("title")),
+        title=title,
         plan_revision=view.plan_revision,
         attempt=view.attempt,
         max_attempts=view.max_attempts,
         parent_run_id=view.parent_run_id,
+        resume_of_run_id=view.resume_of_run_id,
+        session_id=view.session_id,
         runtime=view.runtime,
+        model=view.model,
         mode=view.mode,
         approval=view.approval,
         timeout_min=view.timeout_min,
         repo=view.repo,
         branch=view.branch,
+        repos=view.repos,
         lease_expires_at=view.lease_expires_at,
         prompt=prompt,
+        plan=copy,
     )
 
 
@@ -1097,15 +1408,24 @@ async def claim(request: Request, user: CurrentUser, body: ClaimRequest | None =
         wakeups.done(worker_id, number)
 
 
-EXTEND = """
-UPDATE runs SET lease_expires_at = now() + %(lease)s
+EXTEND = f"""
+UPDATE runs SET lease_expires_at = now() + %(lease)s, {SETTLE}
  WHERE worker_id = %(worker)s AND id = ANY(%(ids)s) AND state = ANY(%(held)s)
 RETURNING id, state, cancel_requested_at IS NOT NULL, lease_expires_at, takeover_requested_at IS NOT NULL,
           handback_requested_at IS NOT NULL
 """
+# Runs of the worker it should let go of without cancelling: parked, or done because a new run resumes them, which
+# needs their session and worktrees on this worker.
+PARKED_HERE = """
+SELECT r.id, r.state
+  FROM runs r
+ WHERE r.worker_id = %s AND r.id = ANY(%s)
+   AND (r.state = 'parked' OR (r.state = 'done' AND EXISTS (SELECT 1 FROM runs n WHERE n.resume_of_run_id = r.id)))
+"""
 INBOX = """
 SELECT run_id, count(*) FROM run_inbox WHERE run_id = ANY(%s) AND delivered_at IS NULL GROUP BY run_id
 """
+OPEN_DECISIONS = "SELECT run_id, count(*) FROM decisions WHERE run_id = ANY(%s) AND state = 'open' GROUP BY run_id"
 RECORD_HEARTBEAT = """
 UPDATE workers SET last_heartbeat_at = now(), runtimes = %(runtimes)s, checkouts = %(checkouts)s,
        free_slots = least(%(free)s, slots), agent_version = coalesce(%(version)s, agent_version)
@@ -1130,9 +1450,19 @@ async def heartbeat(request: Request, body: HeartbeatRequest, user: CurrentUser)
                 "version": body.agent_version,
             },
         )
-        params = {"lease": lease_of(request), "worker": worker_id, "ids": reported, "held": list(runs.HELD_STATES)}
+        params = {
+            "lease": lease_of(request),
+            "worker": worker_id,
+            "ids": reported,
+            "held": list(runs.HELD_STATES),
+            "clock": list(runs.CLOCK_STATES),
+        }
         extended = {row[0]: row[1:] for row in await (await conn.execute(EXTEND, params)).fetchall()}
+        others = [run_id for run_id in reported if run_id not in extended]
+        parked = dict(await (await conn.execute(PARKED_HERE, (worker_id, others))).fetchall()) if others else {}
+        known = [*extended, *parked]
         waiting = dict(await (await conn.execute(INBOX, (list(extended),))).fetchall()) if extended else {}
+        open_decisions = dict(await (await conn.execute(OPEN_DECISIONS, (known,))).fetchall()) if known else {}
     terminals = request.app.state.terminals
     controls = []
     for run_id in reported:
@@ -1149,6 +1479,19 @@ async def heartbeat(request: Request, body: HeartbeatRequest, user: CurrentUser)
                     handback=handback,
                     terminal_open=terminals.waiting(run_id),
                     inbox=waiting.get(run_id, 0),
+                    decisions=open_decisions.get(run_id, 0),
+                )
+            )
+        elif run_id in parked:  # let go of it without cancelling: its session goes on, or will, on this worker
+            controls.append(
+                RunControl(
+                    id=run_id,
+                    held=False,
+                    state=parked[run_id],
+                    lease_expires_at=None,
+                    cancel=False,
+                    park=True,
+                    decisions=open_decisions.get(run_id, 0),
                 )
             )
         else:
@@ -1163,7 +1506,12 @@ UPDATE runs SET session_id = coalesce(%(session_id)s, session_id), commit_sha = 
        usage = coalesce(%(usage)s, usage)
  WHERE id = %(id)s
 """
-REPORTED_RUN = "SELECT state, approval, worker_id, cancel_requested_at FROM runs WHERE id = %s FOR UPDATE"
+REPORTED_RUN = "SELECT state, approval, worker_id, cancel_requested_at, kind FROM runs WHERE id = %s FOR UPDATE"
+# What a run may wait for: a decision still open, or an answer the worker has not taken for the agent yet.
+WAITS_FOR = """
+SELECT EXISTS (SELECT 1 FROM decisions WHERE run_id = %(id)s AND state = 'open')
+    OR EXISTS (SELECT 1 FROM run_inbox WHERE run_id = %(id)s AND decision_id IS NOT NULL AND delivered_at IS NULL)
+"""
 
 
 def _reported_columns(body: StateReport) -> dict:
@@ -1185,7 +1533,7 @@ async def report_state(request: Request, run_id: RunId, body: StateReport, user:
         row = await (await conn.execute(REPORTED_RUN, (run_id,))).fetchone()
         if row is None or row[2] != worker_id:
             raise HTTPException(404, NOT_HELD.format(id=run_id))
-        state, approval, _, cancel_requested_at = row
+        state, approval, _, cancel_requested_at, kind = row
         columns = _reported_columns(body)
         if state == body.state:  # a resend, or news without a move: kept, and nothing moves
             values = {
@@ -1201,7 +1549,13 @@ async def report_state(request: Request, run_id: RunId, body: StateReport, user:
             runs.check_transition(state, body.state, "worker")
         except runs.TransitionRefused as exc:
             raise HTTPException(409, f"run {run_id}: {exc}") from None
-        _check_verdict(run_id, approval, body)
+        _check_verdict(run_id, kind, approval, body)
+        if body.state == "waiting" and not (await (await conn.execute(WAITS_FOR, {"id": run_id})).fetchone())[0]:
+            raise HTTPException(
+                409,
+                f"run {run_id} has no open decision and no answer waiting for the agent: a run waits only for the "
+                "answer to a decision of its own, and the time it waits does not count toward its timeout",
+            )
         error = body.error
         if body.state == "failed" and error is None:
             error = f"worker {name} reported that the run failed"
@@ -1236,8 +1590,15 @@ async def report_state(request: Request, run_id: RunId, body: StateReport, user:
     return view
 
 
-def _check_verdict(run_id: int, approval: str, body: StateReport) -> None:
-    """409 for a verdict the run's approval does not allow."""
+def _check_verdict(run_id: int, kind: str, approval: str, body: StateReport) -> None:
+    """409 for a verdict the run's approval, or its kind, does not allow. A plan run ends done without verify
+    results, since each of its steps was verified when it was reported, and never waits in review."""
+    if kind == "plan":
+        if body.state == "review":
+            raise HTTPException(409, f"run {run_id} is a plan run: report done or failed, not review")
+        if body.state == "done" and any(item.exit_code != 0 for item in body.verify or []):
+            raise HTTPException(409, f"run {run_id} is done only when every verify command it reports exited 0")
+        return
     if body.state == "done":
         if approval != "auto":
             raise HTTPException(409, f"run {run_id} waits for its owner's approval: report review, not done")
@@ -1248,3 +1609,158 @@ def _check_verdict(run_id: int, approval: str, body: StateReport) -> None:
             )
     if body.state == "review" and approval != "review":
         raise HTTPException(409, f"run {run_id} has approval auto: report done or failed, not review")
+
+
+# A plan run's plan and its steps
+
+StepKey = Annotated[str, Path(min_length=1, max_length=STEP_KEY_CHARS, description="the step's id, or its order")]
+HELD_PLAN_RUN = """
+SELECT r.state, r.worker_id, r.kind, r.project_id, p.name, r.plan_id, r.dispatched_by, u.login, r.repos
+  FROM runs r JOIN projects p ON p.id = r.project_id JOIN users u ON u.id = r.dispatched_by
+ WHERE r.id = %s
+"""
+
+
+async def _held_plan_run(conn, user: Principal, run_id: int, *, lock: bool = False):
+    """(worker name, row of HELD_PLAN_RUN) of a plan run the worker of ``user`` holds, its row locked with ``lock``;
+    404 for any other run, a run of one step included."""
+    worker_id, _, name, *_ = await _worker_of(conn, user)
+    statement = HELD_PLAN_RUN + ("   FOR UPDATE OF r" if lock else "")
+    row = await (await conn.execute(statement, (run_id,))).fetchone()
+    if row is None or row[1] != worker_id or row[0] not in runs.HELD_STATES:
+        raise HTTPException(404, NOT_HELD.format(id=run_id))
+    if row[2] != "plan":
+        raise HTTPException(
+            404,
+            f"run {run_id} is a run of one step, which has no plan to read or steps to report: report its state with "
+            f"POST /v1/worker/runs/{run_id}/state",
+        )
+    return name, row
+
+
+async def _dispatcher_access(conn, row, user: Principal) -> ProjectAccess:
+    """The access to the run's project of the member who dispatched it, as whom the worker reads and writes the plan."""
+    actor = Principal(row[6], row[7], False, user.token_id, MACHINE, "")
+    access = await project_access(conn, actor, row[4])
+    plan_routes._reader(access)
+    return access
+
+
+@worker_router.get("/runs/{run_id}/plan", response_model=plan_routes.Plan, responses=REFUSALS)
+async def read_run_plan(request: Request, run_id: RunId, user: CurrentUser):
+    """The plan of a plan run this worker holds, as the hub holds it now, read as the member who dispatched the run."""
+    async with request.app.state.pool.connection() as conn:
+        _, row = await _held_plan_run(conn, user, run_id)
+        access = await _dispatcher_access(conn, row, user)
+        held = await plan_routes._visible(conn, access, row[5], None)
+    return held.view(row[4])
+
+
+def _check_step_report(run_id: int, key: str, body: StepReport) -> None:
+    """422 for a step reported done without verify results, or with one that exited other than 0."""
+    if body.status != "done":
+        return
+    if not body.verify:
+        raise HTTPException(
+            422,
+            f"run {run_id}: step {key} is done only with the verify commands the worker ran again, each with its exit "
+            "code; report them, or report the step pending",
+        )
+    failed = [item for item in body.verify if item.exit_code != 0]
+    if failed:
+        shown = "; ".join(f"`{' '.join(item.command.split())}` exited {item.exit_code}" for item in failed)
+        raise HTTPException(
+            422, f"run {run_id}: step {key} is not done, since {shown}; fix it and verify again, or report it pending"
+        )
+
+
+def _report_repo(run_id: int, body: StepReport, plan: dict, step, repos: list | None) -> dict | None:
+    """The run's repo the step was done in: the one the report names (422 when the run has no such repo), else the
+    one the plan gives the step, when the run has it."""
+    by_name = {entry["repo"]: entry for entry in repos or [] if isinstance(entry, dict)}
+    if body.repo is not None:
+        if body.repo not in by_name:
+            raise HTTPException(422, f"run {run_id} works in {', '.join(by_name) or 'no repo'}, not in {body.repo}")
+        return by_name[body.repo]
+    name = (runs.plan_repo(plan, step if isinstance(step, dict) else {}) or {}).get("repo")
+    return by_name.get(name) if isinstance(name, str) else None
+
+
+def _step_status(plan: dict, key: str) -> str | None:
+    try:
+        step = plan["steps"][step_index(plan, key)]
+    except (PlanProblem, KeyError, TypeError):
+        return None
+    return _text_or_none(step.get("status", "pending")) if isinstance(step, dict) else None
+
+
+@worker_router.post(
+    "/runs/{run_id}/steps/{key}", response_model=StepWritten, responses={**REFUSALS, 422: {"model": ErrorBody}}
+)
+async def report_step(request: Request, run_id: RunId, key: StepKey, body: StepReport, user: CurrentUser):
+    """Write a step of the plan of a plan run this worker holds, as the member who dispatched the run."""
+    async with request.app.state.pool.connection() as conn:
+        _, row = await _held_plan_run(conn, user, run_id, lock=True)
+        _, _, _, project_id, project, plan_id, dispatcher_id, _, repos = row
+        _check_step_report(run_id, key, body)
+        current = await (await conn.execute(CURRENT_PLAN, (project_id, plan_id))).fetchone()
+        if current is None:
+            raise HTTPException(404, f"plan {plan_id} of run {run_id} is not on the hub any more")
+        plan = current[0]
+        try:
+            index = step_index(plan, key)
+        except PlanProblem as exc:
+            raise HTTPException(404, f"{exc}: run {run_id} reports only the steps of its plan") from None
+        step = plan["steps"][index]
+        repo = _report_repo(run_id, body, plan, step, repos) or {}
+        verify = [item.model_dump(exclude_none=True) for item in body.verify or []]
+        found = replace(
+            await run_step(conn, run_id),
+            step_key=key,
+            repo=repo.get("repo"),
+            branch=repo.get("branch"),
+            commit_sha=body.commit_sha,
+            diffstat=None,
+            verify=verify,
+        )
+        updates = report_updates(found, body.status, body.evidence)
+
+        def updates_for(held_step):
+            if held_step.get("status") != "done":
+                return updates
+            if body.status == "done":  # a resend: the step is done already
+                return None
+            raise HTTPException(409, f"step {key} of plan {plan_id} is done already, and the hub never sets it back")
+
+        try:
+            revision = await write_step(conn, found, updates_for, token_id=user.token_id, strict=True)
+        except StepNotWritten as exc:
+            raise HTTPException(exc.status, f"step {key} of plan {plan_id} was not written: {exc.message}") from None
+        if revision is not None:
+            shown = f"step {key}: {body.status}"
+            if body.commit_sha and repo:
+                shown += f" ({repo['repo']}@{body.commit_sha[:12]})"
+            report = {"step": key, "status": body.status, "repo": repo.get("repo"), "commit_sha": body.commit_sha}
+            await write_event(conn, run_id, {"text": shown, "step_report": report})
+            target = f"{_run_target(project, plan_id, key, run_id)} status={body.status}"
+            await audit.record(
+                conn,
+                actor_id=dispatcher_id,
+                token_id=user.token_id,
+                action=audit.RUN_STEP_REPORT,
+                target=target,
+                project_id=project_id,
+            )
+        after = await (await conn.execute(CURRENT_PLAN, (project_id, plan_id))).fetchone()
+    log.info(
+        "plan run step reported",
+        extra={"run_id": run_id, "step": key, "status": body.status, "written": revision is not None},
+    )
+    return StepWritten(
+        run_id=run_id,
+        plan_id=plan_id,
+        step_key=key,
+        status=_step_status(after[0], key),
+        revision=after[1],
+        written=revision is not None,
+    )

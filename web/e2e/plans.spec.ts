@@ -20,7 +20,8 @@ test.use({ uiLocale: "vi" }); // the assertions below read the Vietnamese copy o
 /**
  * The plan pages against the real API (step 26 of the agent-hub plan): the list shows each plan's steps done of
  * total, a step shows its evidence verbatim, the diff between two revisions shows exactly the lines that changed,
- * and no page ever asks the API to change a plan.
+ * and no page asks the API to change a plan: until a writer opens a dialog (Run plan, Run this step), every request
+ * the pages make is a GET. e2e/plan-runs.spec.ts covers what those dialogs send.
  */
 test.skip(Boolean(process.env.PLAYWRIGHT_BASE_URL), "seeds plans through the local stack");
 
@@ -199,7 +200,7 @@ test.describe("plans", () => {
     expect(writes.map((r) => `${r.method()} ${r.url()}`)).toEqual([]);
   });
 
-  test("no plan page sends a write, and the plan is unchanged after visiting all of them", async ({ page, member }) => {
+  test("plan pages send only GETs while no dialog is open, and the plan is unchanged after visiting all of them", async ({ page, member }) => {
     const writes = watchPlanWrites(page);
     const methods = new Map<string, number>();
     page.on("request", (request) => {
@@ -209,6 +210,12 @@ test.describe("plans", () => {
     });
     const { project, revisions } = await seeded(member);
     const base = `/p/${project}/plans`;
+    // The writer is offered Chạy plan on an active plan's page, not on a completed one's; neither sends anything.
+    await open(page, `${base}/${ACTIVE_PLAN}`);
+    await expect(page.locator("#main").getByRole("button", { name: "Chạy plan" })).toBeVisible();
+    await open(page, `${base}/${COMPLETED_PLAN}`);
+    await expect(page.locator("#main").getByRole("heading", { level: 1 })).toBeVisible();
+    await expect(page.locator("#main").getByRole("button", { name: "Chạy plan" })).toHaveCount(0);
     for (const path of [
       base,
       `${base}/${COMPLETED_PLAN}`,
@@ -221,10 +228,12 @@ test.describe("plans", () => {
       await open(page, path);
       await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
       await expect(page.getByTestId("plans-read-only")).toBeVisible();
-      // No control on the page edits, deletes or completes a plan.
-      // ("Sửa lần cuối", last changed, is a column header of the list.)
+      await expect(page.getByTestId("plans-read-only")).toContainText("Chạy plan");
+      // No control on the page edits, deletes or completes a plan; the writer's Chạy plan (Run plan) and Chạy bước này
+      // (Run this step) only open a dialog. ("Sửa lần cuối", last changed, is a column header of the list.)
       await expect(page.getByRole("button", { name: /^(Sửa(?! lần cuối)|Xoá|Lưu|Hoàn tất|Đánh dấu)/ })).toHaveCount(0);
     }
+
     // Client-side moves too: tabs, a step, back, the board's list view, a search.
     await page.getByTestId("plan-tab-steps").click();
     await page.getByTestId("steps-view-list").click();

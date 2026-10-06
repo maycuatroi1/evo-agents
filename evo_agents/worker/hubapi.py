@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import json
 import random
+from urllib.parse import quote
 
 import aiohttp
 
@@ -160,6 +161,20 @@ class WorkerHub:
         body = {} if ack is None else {"ack": ack}
         answer = await self.call("POST", f"/v1/worker/runs/{int(run_id)}/inbox", body)
         return list(answer.get("messages") or []) if isinstance(answer, dict) else []
+
+    # A plan run: its plan, its steps, its decisions and its notices
+
+    async def plan(self, run_id: int) -> dict:
+        return await self.call("GET", f"/v1/worker/runs/{int(run_id)}/plan")
+
+    async def step(self, run_id: int, key: str, body: dict) -> dict:
+        return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/steps/{quote(str(key), safe='')}", body)
+
+    async def decision(self, run_id: int, body: dict) -> dict:
+        return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/decisions", body)
+
+    async def notice(self, run_id: int, body: dict) -> dict:
+        return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/notices", body)
 
     async def uploads(self, run_id: int, items: list[dict]) -> dict:
         return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/uploads", {"items": items})

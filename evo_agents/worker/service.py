@@ -12,8 +12,10 @@ revoke``), which exits ``home.EXIT_REVOKED``: the systemd unit lists that status
 since launchd tells exits apart only as 0 or not, the LaunchAgent sets EVO_WORKER_REVOKED_EXIT to 0. A service
 manager starts a job with almost no environment, so the service keeps PATH as it was when ``install`` ran, which is
 where the daemon looks for claude, opencode, codex, tmux and git, and pins EVO_WORKER_HOME to the state directory.
-Install again after a runtime moves to another directory. Stopping the service sends the daemon SIGTERM and kills
-what is left 60 seconds later.
+Install again after a runtime moves to another directory. Installing again keeps every other EVO_WORKER_* variable
+the installed plist or unit sets (``EVO_WORKER_OPENCODE_MODEL``, ``EVO_WORKER_CLAUDE_CODE_EFFORT`` and the like, which
+the owner may have added by hand), and writes PATH, EVO_WORKER_HOME and EVO_WORKER_REVOKED_EXIT as a first install
+does. Stopping the service sends the daemon SIGTERM and kills what is left 60 seconds later.
 
 The daemon writes ``worker.log`` itself (``logs``: rotated at 10 MiB, five old files kept). What it prints before that
 log is open, such as a missing extra or a machine that is not a worker, goes to ``service.log`` in the state directory
@@ -34,7 +36,8 @@ import shutil
 import subprocess
 import sys
 import time
-from dataclasses import asdict, dataclass
+from collections.abc import Mapping
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from evo_agents.hub.client import write_atomic
@@ -56,6 +59,8 @@ FILE_MODE = 0o644
 EXIT_FAILED = 1
 EXIT_USAGE = 2
 SYSTEMD_PROPERTIES = ("LoadState", "ActiveState", "SubState", "MainPID", "ExecMainStatus", "NRestarts")
+KEPT_PREFIX = "EVO_WORKER_"  # the variables of the installed service that installing again keeps
+WRITTEN = ("PATH", HOME_VARIABLE, REVOKED_EXIT_VARIABLE)  # what each install writes, whatever the old file said
 _PRINT_LINE = re.compile(r"^\t([a-z][a-z ]*?) = (.*)$")
 
 
@@ -65,11 +70,13 @@ class ServiceError(Exception):
 
 @dataclass(frozen=True)
 class Spec:
-    """What the service runs: the command, the PATH it gets and the worker's state directory."""
+    """What the service runs: the command, the PATH it gets, the worker's state directory, and the EVO_WORKER_*
+    variables kept from the service installed before."""
 
     program: tuple[str, ...]
     path: str
     home: Path
+    kept: dict[str, str] = field(default_factory=dict)
 
     @property
     def output(self) -> Path:
@@ -78,7 +85,7 @@ class Spec:
 
     @property
     def environment(self) -> dict[str, str]:
-        return {"PATH": self.path, HOME_VARIABLE: str(self.home)}
+        return {"PATH": self.path, HOME_VARIABLE: str(self.home), **kept_variables(self.kept)}
 
 
 @dataclass
@@ -112,12 +119,30 @@ def service_path(path: str | None = None) -> str:
     return os.pathsep.join(entries)
 
 
-def build_spec(home: WorkerHome | None = None, argv0: str | None = None, path: str | None = None) -> Spec:
+def kept_variables(environment: Mapping | None) -> dict[str, str]:
+    """The EVO_WORKER_* variables of ``environment`` that installing again keeps: all of them, sorted, except those
+    each install writes (WRITTEN)."""
+    return {
+        key: value
+        for key, value in sorted((environment or {}).items())
+        if isinstance(key, str) and key.startswith(KEPT_PREFIX) and key not in WRITTEN and isinstance(value, str)
+    }
+
+
+def build_spec(
+    home: WorkerHome | None = None,
+    argv0: str | None = None,
+    path: str | None = None,
+    kept: Mapping[str, str] | None = None,
+) -> Spec:
+    """The service of ``home``; ``kept`` is the environment of the service installed before, whose EVO_WORKER_*
+    variables it keeps."""
     home = home or WorkerHome()
     return Spec(
         program=(*executable(argv0), *RUN_ARGS),
         path=service_path(path),
         home=Path(os.path.abspath(home.root)),
+        kept=kept_variables(kept),
     )
 
 
@@ -234,9 +259,15 @@ class Manager:
         """The command line in the installed file, for people to read."""
         raise NotImplementedError
 
+    def installed_environment(self) -> dict[str, str]:
+        """The environment the installed file gives the daemon; empty when no file is installed or it cannot be
+        read."""
+        raise NotImplementedError
+
     def installed_home(self) -> Path | None:
         """EVO_WORKER_HOME in the installed file."""
-        raise NotImplementedError
+        value = self.installed_environment().get(HOME_VARIABLE)
+        return Path(value) if value else None
 
     def _base_args(self) -> list[str]:
         return [self.tool]
@@ -366,10 +397,11 @@ class Launchd(Manager):
         args = data.get("ProgramArguments")
         return shlex.join(str(arg) for arg in args) if isinstance(args, list) else None
 
-    def installed_home(self) -> Path | None:
+    def installed_environment(self) -> dict[str, str]:
         env = (self._plist() or {}).get("EnvironmentVariables")
-        value = env.get(HOME_VARIABLE) if isinstance(env, dict) else None
-        return Path(value) if isinstance(value, str) and value else None
+        if not isinstance(env, dict):
+            return {}
+        return {key: value for key, value in env.items() if isinstance(key, str) and isinstance(value, str)}
 
 
 class Systemd(Manager):
@@ -445,17 +477,19 @@ class Systemd(Manager):
         lines = self._lines("ExecStart")
         return lines[0].replace("%%", "%").replace("$$", "$") if lines else None
 
-    def installed_home(self) -> Path | None:
+    def installed_environment(self) -> dict[str, str]:
+        """The variables of the unit's Environment= lines, unquoted as systemd reads them, a later one winning."""
+        found: dict[str, str] = {}
         for line in self._lines("Environment"):
             try:
                 words = shlex.split(line)
             except ValueError:
                 continue
             for word in words:
-                key, _, value = word.partition("=")
-                if key == HOME_VARIABLE and value:
-                    return Path(value.replace("%%", "%"))
-        return None
+                key, sep, value = word.partition("=")
+                if key and sep:
+                    found[key] = value.replace("%%", "%")
+        return found
 
     @staticmethod
     def lingering() -> bool:
@@ -548,7 +582,7 @@ def cmd_install(args) -> int:
         )
         return EXIT_USAGE
     _refuse_foreign_daemon(home, service)
-    spec = build_spec(home)
+    spec = build_spec(home, kept=service.installed_environment())
     home.ensure()
     status = service.install(spec)
     found = runtimes_on(spec.path)
@@ -562,6 +596,8 @@ def cmd_install(args) -> int:
     absent = [name for name, path in found.items() if not path]
     if absent:
         print(f"  not on that PATH: {', '.join(absent)}; install again once they are, so the daemon finds them")
+    if spec.kept:
+        print(f"  kept from the service installed before: {', '.join(spec.kept)}")
     print(f"  state: {spec.home}")
     print(f"  log: {_logs(service, spec.home)}")
     if isinstance(service, Systemd) and not Systemd.lingering():
@@ -624,7 +660,8 @@ def register(wsub) -> None:
     ssub = service.add_subparsers(dest="service_command", required=True)
     install = ssub.add_parser(
         "install",
-        help="run the daemon now and at each login, again after it exits with an error, with PATH as it is now",
+        help="run the daemon now and at each login, again after it exits with an error, with PATH as it is now; "
+        "installing again keeps the EVO_WORKER_* variables the installed service sets",
     )
     install.set_defaults(func=cmd_install)
     uninstall = ssub.add_parser("uninstall", help="stop the daemon and remove the service")
