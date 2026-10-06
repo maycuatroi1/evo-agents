@@ -1105,6 +1105,44 @@ async def _owned_run(conn, user: Principal, project: str, run_id: int, action: s
     return access, row
 
 
+# The worker set to take runs dispatched from the web only that a run is on, or may go to: the one holding it (or that
+# parked it), the one it is pinned to, or, for a run queued without a pin and dispatched from the web, one of its
+# owner's workers set so, which may claim it.
+WEB_ONLY_WORKER = """
+SELECT w.name,
+       CASE WHEN w.id = r.worker_id AND r.state = 'parked' THEN 'was parked on'
+            WHEN w.id = r.worker_id THEN 'is held by'
+            WHEN w.id = r.pinned_worker_id THEN 'is pinned to'
+            ELSE 'may go to' END
+  FROM runs r
+  JOIN workers w ON w.dispatch_from = 'web' AND w.revoked_at IS NULL
+   AND (w.id = r.worker_id OR w.id = r.pinned_worker_id
+        OR (r.state = 'queued' AND r.pinned_worker_id IS NULL AND r.dispatched_via = 'web'
+            AND w.owner_id = r.dispatched_by))
+ WHERE r.id = %s
+ ORDER BY w.id = r.worker_id DESC, w.id = r.pinned_worker_id DESC, w.name
+ LIMIT 1
+"""
+
+
+async def web_only_steering(conn, user: Principal, run_id: int, doing: str, instead: str, undone: str) -> None:
+    """403 when ``user`` is a token, not a web session, and run ``run_id`` is on, or may go to, a worker whose owner
+    set it to take runs dispatched from the web only (``WEB_ONLY_WORKER``): a token that cannot hand such a worker
+    work cannot steer the work it has either, by a message to its agent or the answer to a decision, which can resume
+    a parked run on it. The refusal says ``doing`` was refused, what to do ``instead``, and that nothing was
+    ``undone``."""
+    if user.kind == WEB:
+        return
+    row = await (await conn.execute(WEB_ONLY_WORKER, (run_id,))).fetchone()
+    if row is not None:
+        name, relation = row
+        raise HTTPException(
+            403,
+            f"run {run_id} {relation} worker {name}, which takes only runs dispatched from a web session, as its owner "
+            f"set it, so a token cannot {doing}: {instead}; nothing was {undone}",
+        )
+
+
 async def _audit_run(conn, user: Principal, access: ProjectAccess, action: str, target: str) -> None:
     await audit.record(
         conn, actor_id=user.user_id, token_id=user.token_id, action=action, target=target, project_id=access.project_id
