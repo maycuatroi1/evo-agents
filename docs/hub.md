@@ -59,10 +59,10 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | blobs | `POST /v1/blobs/uploads`, `POST /v1/blobs/commit` |
 | knowledge graphs | `/v1/kg/{project}/config`, `.../runs`, `.../blobs/check`, `.../builds`, `.../tools/{tool}`, and the web's `.../graph`, `.../nodes`, `.../node`, `.../neighbourhood` |
 | workers | `POST /v1/workers/pairings`, `GET /v1/workers/pairings/{id}`, `POST /v1/worker/join`, `GET` and `POST /v1/workers`, `GET /v1/workers/{id}`, `POST /v1/workers/{id}/{drain,undrain,revoke}` |
-| runs | `/v1/projects/{project}/plans/{plan_id}/ready-steps`, `GET` and `POST /v1/projects/{project}/runs`, `.../runs/{id}`, `.../events`, `.../stream`, `.../diff`, `.../messages`, `.../{cancel,approve,rerun,takeover,handback}` |
+| runs | `/v1/projects/{project}/plans/{plan_id}/ready-steps`, `GET` and `POST /v1/projects/{project}/runs`, `POST /v1/projects/{project}/plan-runs`, `.../runs/{id}`, `.../events`, `.../stream`, `.../diff`, `.../messages`, `.../{cancel,approve,rerun,takeover,handback}` |
 | decisions | `GET /v1/projects/{project}/decisions`, `.../decisions/{id}`, `POST .../decisions/{id}/answer` |
 | notifications | `GET /v1/me/notifications`, `GET /v1/me/notifications/count`, `POST /v1/me/notifications/read` |
-| worker protocol | `/v1/worker/{claim,heartbeat}`, `/v1/worker/runs/{id}/{state,events,inbox,uploads,blobs,decisions,notices}` |
+| worker protocol | `/v1/worker/{claim,heartbeat}`, `/v1/worker/runs/{id}/{state,events,inbox,uploads,blobs,plan,decisions,notices}`, `/v1/worker/runs/{id}/steps/{key}` |
 
 `/mcp` speaks MCP's Streamable HTTP transport, statelessly: each POST carries one JSON-RPC message and gets one JSON
 answer. It takes machine tokens only, and the `Host` header must be the host of `EVO_HUB_PUBLIC_URL` or a loopback
@@ -81,15 +81,18 @@ what that script generates.
 ### The command line contract
 
 `evo-agents hub contract print` prints `{"version": 1, "commands": {...}, "openapi": {...}}`: every `evo-agents hub`
-command with its arguments, options and the keys its `--json` output holds, plus the OpenAPI document. This is the
-owner's side of the seam `hub-cli-v1`: a consumer, such as evo-cli running `evo-agents hub plan ...`, checks the
-argv it builds and the keys it reads against this document. `tests/hub/golden/cli-contract.json` holds the expected
-copy, so any change to a command, an option, a `--json` key or the API shows up as a diff in review.
+command, and the four commands the agent of a plan run uses (`evo-agents worker step`, `ask`, `notify` and `plan`,
+keyed `worker step` and so on), with its arguments, options and the keys its `--json` output holds, plus the OpenAPI
+document. This is the owner's side of the seam `hub-cli-v1`: a consumer, such as evo-cli running `evo-agents hub
+plan ...` or a skill of agent-skills that tells an agent to run `evo-agents worker step`, checks the argv it builds
+and the keys it reads against this document. `tests/hub/golden/cli-contract.json` holds the expected copy, so any
+change to a command, an option, a `--json` key or the API shows up as a diff in review.
 
-`evo-agents hub contract check README.md docs/hub.md` reads every `evo-agents hub ...` command in the code spans and
-fenced code blocks of markdown files and reports a subcommand or option that does not exist, an option without its
-value, or a value outside an option's choices. It needs only the core package; `--contract FILE` checks against a
-saved `contract print` output instead.
+`evo-agents hub contract check README.md docs/hub.md` reads every `evo-agents hub ...` command, and every one of the
+four `evo-agents worker` commands above, in the code spans and fenced code blocks of markdown files and reports a
+subcommand or option that does not exist, an option without its value, or a value outside an option's choices. The
+other `evo-agents worker` commands are not in the contract and are not read. It needs only the core package;
+`--contract FILE` checks against a saved `contract print` output instead.
 
 ## Signing in
 
@@ -243,6 +246,8 @@ Runs are driven from any machine signed in to the hub:
 ```sh
 evo-agents hub run dispatch rollout 2 4 --approval auto       # one run per step, all of them queued or none
 evo-agents hub run dispatch rollout 5 --worker mac-mini --runtime codex --mode interactive --timeout 90
+evo-agents hub run dispatch rollout 6 --runtime claude-code --model opus
+evo-agents hub run plan rollout --worker mac-mini --timeout-h 8  # one plan run: every step not done yet
 evo-agents hub run list --state running --state review        # newest first, with the runs in each state
 evo-agents hub run show 41
 evo-agents hub run logs 41 --follow                           # the live log, until the run ends
@@ -254,14 +259,25 @@ evo-agents hub run cancel 41
 evo-agents hub run rerun 41                                   # the step again, after a run that ended
 ```
 
-Every command after `dispatch` and `list` takes the id of a run, as `list` shows it, and finds its project as the plan
-commands do: `--project`, or `hub.project` in the harness around the current directory. `dispatch` takes `--runtime`
-(`any` by default: the first runtime the claiming worker has), `--mode` (`headless` by default, or `interactive`),
-`--worker` (the id or the name of one of your workers, which pins the runs to it), `--approval` (`review` by default,
-which waits for `run approve`; `auto` marks the step done once every verify command the worker runs again exits 0)
-and `--timeout` in minutes (5 to 240, 60 by default). `list` filters by `--state` (repeat it for several), `--plan`,
-`--step`, `--worker`, `--by` (the login that dispatched) and `--search`, a page at a time with `--limit` and
-`--offset`.
+Every command after `dispatch`, `plan` and `list` takes the id of a run, as `list` shows it, and finds its project as
+the plan commands do: `--project`, or `hub.project` in the harness around the current directory. `dispatch` takes
+`--runtime` (`any` by default: the first runtime the claiming worker has), `--model` (the model as the runtime names
+it, `provider/model` for opencode; the runtime's own choice by default), `--mode` (`headless` by default, or
+`interactive`), `--worker` (the id or the name of one of your workers, which pins the runs to it), `--approval`
+(`review` by default, which waits for `run approve`; `auto` marks the step done once every verify command the worker
+runs again exits 0) and `--timeout` in minutes (5 to 240, 60 by default). A model belongs to one runtime, so the
+command line takes `--model` only with `--runtime` naming that runtime and refuses it with `any`, before it asks the
+hub; the hub itself does not check the pair.
+
+`run plan` queues a plan run (`POST /v1/projects/{project}/plan-runs`): one run, on one of your workers, whose agent
+does every step of the plan not done yet, in a worktree of each repo those steps name, and reports each step as it
+goes (`docs/workers.md`, Plan runs). It takes `--worker`, `--runtime`, `--model` and `--mode` as `dispatch` does, and
+`--timeout-h`, the hours of agent time the run may use: 2, 4, 8 or 24 (4 by default); the time it waits for your
+answer to a decision, or parked, does not count. The hub refuses a plan with no pending step, a plan with an active
+run of any kind, and a step not done that names no repo when the plan lists more than one. `list` shows each run's
+KIND, `step` or `plan`, and filters by `--state` (repeat it for several), `--plan`, `--step`, `--worker`, `--by` (the
+login that dispatched) and `--search`, a page at a time with `--limit` and `--offset`; `show` of a plan run names its
+repos, the agent time it used, and when it waited or was parked.
 
 `run logs` prints one line per event: its number, its time in UTC, its kind and what it says. With `--follow` it reads
 the run's server-sent events (`GET .../runs/{id}/stream`) until the hub sends `end` once the run is final, and stops
@@ -271,6 +287,29 @@ on that bring nothing, not even the hub's ping, the command gives up and names t
 since. `--json` prints what the hub answered, with the keys the command line contract declares; for `logs` that is
 every event read as one object, so it does not go with `--follow`. `send`, `cancel`, `approve`, `takeover`,
 `handback` and `rerun` belong to the member who dispatched the run: another member gets 403.
+
+The agent of a plan run asks its owner the decisions it may not take alone (`docs/notifications.md`), and the hub
+tells the owner of them, and of pushes to a default branch, in notifications:
+
+```sh
+evo-agents hub decision list --state open                     # newest first; --run, --plan, --limit, --offset
+evo-agents hub decision show 7                                # the question, its context, the options, the answer
+evo-agents hub decision answer 7 --option postgres            # or --text "...", or both; --text - reads stdin
+evo-agents hub notifications --unread                         # yours, open decisions first, then newest first
+evo-agents hub notifications --read all                       # or --read 12,14
+```
+
+`decision list` and `decision show` read the decisions of the plans you may read (`GET /v1/projects/{project}/decisions`,
+`.../decisions/{id}`), and find the project as `run` does. `decision answer` (`POST .../decisions/{id}/answer`)
+belongs to the member who dispatched the run: another member gets 403, and a decision that is no longer open 409. The
+answer names an option of the decision, gives words of your own (at most 4 KiB), or both. It goes to the run's inbox,
+which the worker hands to the agent; a parked run is resumed on its worker in its session, as a new run that the
+answer names. `notifications` lists your own (`GET /v1/me/notifications`), filtered by `--unread`, `--kind`
+(`decision` or `notice`) and `--project`, with `--limit` and `--offset`, and says how many are unread and how many
+decisions wait for your answer (`GET /v1/me/notifications/count`). `--read all`, or `--read` with ids, marks them
+read (`POST /v1/me/notifications/read`) and lists none, so it takes none of the filters; answering a decision reads
+its notification too. Each of these prints the hub's answer with `--json`, `notifications --read` its count of read
+and unread.
 
 ## Memories, skills and knowledge graphs
 

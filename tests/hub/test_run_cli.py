@@ -7,6 +7,10 @@ its ``end`` event and does not open it again after that. Around them: the SSE pa
 broke off with Last-Event-ID, giving up after tries that bring nothing, the refusals the hub answers, and a command
 without a project or a sign-in.
 
+Step 9 of the plan-runs-and-decisions plan adds ``run plan`` (a plan run, its model and its timeout in hours), the
+KIND column of ``run list``, ``--model`` for ``run dispatch`` (only with a runtime named), ``hub decision list|show|
+answer`` and ``hub notifications [--unread] [--read all]``, each ``--json`` with the keys the contract declares.
+
 The SSE parsing, the reconnects (with a fake stream) and the usage errors run without Postgres; everything that needs
 the hub skips without EVO_HUB_TEST_DSN."""
 
@@ -251,6 +255,41 @@ def test_a_run_is_named_by_its_number():
         main(["hub", "run", "show", "first", "--project", "demo"])
     with pytest.raises(SystemExit):
         main(["hub", "run", "dispatch", "rollout", "2", "--timeout", "300", "--project", "demo"])
+    with pytest.raises(SystemExit):
+        main(["hub", "run", "plan", "rollout", "--timeout-h", "3", "--project", "demo"])
+    with pytest.raises(SystemExit):
+        main(["hub", "decision", "show", "first", "--project", "demo"])
+
+
+@pytest.mark.parametrize(
+    "args",
+    [
+        ("run", "dispatch", "rollout", "2", "--model", "opus"),
+        ("run", "dispatch", "rollout", "2", "--runtime", "any", "--model", "opus"),
+        ("run", "plan", "rollout", "--model", "opus"),
+    ],
+)
+def test_a_model_needs_the_runtime_that_names_it(monkeypatch, capsys, tmp_path, args):
+    home = write_credentials(tmp_path / "home", HUB_URL, "owner", "evh_unused")
+    result = cli(monkeypatch, capsys, home, "hub", *args, "--project", "demo")
+    assert result.code == 2 and result.out == ""
+    assert result.err.startswith("error: --model names a model as one runtime names it, so it needs --runtime")
+
+
+@pytest.mark.parametrize(
+    "args, problem",
+    [
+        (("decision", "answer", "7"), "an answer names an option with --option KEY, gives words with --text TEXT"),
+        (("notifications", "--read", "all", "--unread"), "--read marks notifications read and lists none"),
+        (("notifications", "--read", "all", "--offset", "0"), "so it does not go with --offset"),
+        (("notifications", "--read", "12,x"), "--read takes all, or notification ids such as 12,14, not '12,x'"),
+    ],
+)
+def test_answers_and_reads_that_say_nothing_are_usage_errors(monkeypatch, capsys, tmp_path, args, problem):
+    home = write_credentials(tmp_path / "home", HUB_URL, "owner", "evh_unused")
+    result = cli(monkeypatch, capsys, home, "hub", *args)
+    assert result.code == 2 and result.out == ""
+    assert result.err.startswith("error: ") and problem in result.err
 
 
 # Against a hub
@@ -259,6 +298,10 @@ if pg.DSN:
     import httpx
 
     from evo_agents.hub.server.app import create_app
+    from tests.hub.test_decisions import ANSWER_TEXT, OPTIONS, QUESTION, asked
+    from tests.hub.test_plan_runs import PLAN as FLEET
+    from tests.hub.test_plan_runs import REPOS, dispatched_plan, fleet_worker, push
+    from tests.hub.test_plan_runs import plan_body as fleet_body
     from tests.hub.test_run_stream import event, members, sent, serving
     from tests.hub.test_runs import (
         OTHER,
@@ -373,9 +416,20 @@ def test_dispatch_list_and_show_print_what_the_hub_answered(hub, monkeypatch, ca
 
     table = ok(runs_of(hub, monkeypatch, capsys, "reader", "list", "--limit", "2"))
     lines = table.out.splitlines()
-    assert lines[0].split() == ["RUN", "STATE", "PLAN", "STEP", "TITLE", "RUNTIME", "WORKER", "BY", "QUEUED", "(UTC)"]
-    assert lines[1].split()[:8] == [f"#{two}", "queued", PLAN, "2", "Queue", "any", "-", OWNER]
-    assert lines[2].split()[:8] == [f"#{queued[1]['id']}", "queued", PLAN, "5", "Web", "claude-code", "-", OWNER]
+    header = ["RUN", "KIND", "STATE", "PLAN", "STEP", "TITLE", "RUNTIME", "WORKER", "BY", "QUEUED", "(UTC)"]
+    assert lines[0].split() == header
+    assert lines[1].split()[:9] == [f"#{two}", "step", "queued", PLAN, "2", "Queue", "any", "-", OWNER]
+    assert lines[2].split()[:9] == [
+        f"#{queued[1]['id']}",
+        "step",
+        "queued",
+        PLAN,
+        "5",
+        "Web",
+        "claude-code",
+        "-",
+        OWNER,
+    ]
     assert lines[3:] == [f"2 of 3 run(s) of project {PROJECT}; by state: 3 queued", "More with --offset 2."]
 
     shown = ok(runs_of(hub, monkeypatch, capsys, "reader", "show", str(queued[0]["id"]))).out.splitlines()
@@ -568,3 +622,248 @@ def test_the_owner_steers_and_ends_a_run_and_others_are_refused(hub, monkeypatch
     assert after["cancel_requested_at"] is not None and after["state"] == "running"
     finished = runs_of(hub, monkeypatch, capsys, "owner", "rerun", run)
     assert finished.code == 1 and "step 2 of plan rollout is not ready: " in finished.err
+
+
+# Plan runs, decisions and notifications
+
+
+def hub_of(hub, monkeypatch, capsys, who: str, *args: str) -> SimpleNamespace:
+    return cli(monkeypatch, capsys, hub.homes[who], "hub", *args)
+
+
+def decisions_of(hub, monkeypatch, capsys, who: str, *args: str, stdin: str | None = None) -> SimpleNamespace:
+    return cli(monkeypatch, capsys, hub.homes[who], "hub", "decision", *args, "--project", PROJECT, stdin=stdin)
+
+
+def fields_of(out: str) -> dict:
+    """The ``  label  text`` lines of ``run show`` or ``decision show``, by their first word."""
+    return {line.split()[0]: " ".join(line.split()[1:]) for line in out.splitlines() if line.startswith("  ")}
+
+
+@needs_pg
+def test_a_plan_run_is_dispatched_listed_and_shown(hub, monkeypatch, capsys):
+    push(hub.client, hub.headers["owner"], fleet_body())
+    worker = fleet_worker(hub.client, hub.headers["owner"], "mac-plan")
+    refused = runs_of(hub, monkeypatch, capsys, "owner", "plan", FLEET, "--model", "opus")
+    assert refused.code == 2 and "needs --runtime with that runtime" in refused.err
+
+    flags = ["--runtime", "claude-code", "--model", "opus", "--mode", "headless", "--timeout-h", "8"]
+    run = as_json(runs_of(hub, monkeypatch, capsys, "owner", "plan", FLEET, *flags, "--worker", "mac-plan", "--json"))
+    assert_json_keys("hub run plan", run)
+    assert (run["kind"], run["plan_id"], run["step_key"], run["title"], run["state"]) == (
+        "plan",
+        FLEET,
+        None,
+        "Run the fleet",
+        "queued",
+    )
+    assert (run["requested_runtime"], run["model"], run["mode"], run["timeout_min"]) == (
+        "claude-code",
+        "opus",
+        "headless",
+        480,
+    )
+    assert (run["pinned_worker_id"], run["dispatched_by"], run["repos"]) == (worker["id"], OWNER, REPOS)
+    busy = runs_of(hub, monkeypatch, capsys, "owner", "plan", FLEET)
+    assert busy.code == 1 and busy.err == (
+        f"error: plan {FLEET} has plan run #{run['id']}, queued, dispatched by {OWNER}; nothing was dispatched\n"
+    )
+    reader = runs_of(hub, monkeypatch, capsys, "reader", "plan", FLEET)
+    assert reader.code == 1 and "needs the writer role" in reader.err
+
+    table = ok(runs_of(hub, monkeypatch, capsys, "reader", "list", "--plan", FLEET)).out.splitlines()
+    assert table[0].split()[:3] == ["RUN", "KIND", "STATE"]
+    assert table[1].split()[:8] == [f"#{run['id']}", "plan", "queued", FLEET, "-", "Run", "the", "fleet"]
+    assert table[2] == f"1 of 1 run(s) of project {PROJECT}; by state: 1 queued"
+
+    assert claim(hub.client, worker)["id"] == run["id"]
+    moved(hub.client, worker, run["id"], "running")
+    shown = ok(runs_of(hub, monkeypatch, capsys, "reader", "show", str(run["id"]))).out
+    fields = fields_of(shown)
+    assert fields["kind"] == "plan run: every step of the plan not done yet, in one session"
+    assert fields["title"] == "Run the fleet"
+    assert fields["plan"] == f"{FLEET} of project {PROJECT}, revision 1"
+    assert fields["repos"] == "evo-agents (feat/plan-runs), agent-skills (main)"
+    assert fields["worker"] == f"mac-plan (#{worker['id']}), pinned to worker #{worker['id']}"
+    assert fields["runtime"] == "claude-code, model opus, headless, timeout 8 h"
+    assert shown.splitlines()[-1] == (
+        f"Its decisions: `evo-agents hub decision list --run {run['id']} --project {PROJECT}`."
+    )
+
+    cancelled = ok(runs_of(hub, monkeypatch, capsys, "owner", "cancel", str(run["id"])))
+    assert cancelled.out.startswith(f"Asked the worker of run #{run['id']} (running) to stop it")
+    moved(hub.client, worker, run["id"], "cancelled")
+    printed = ok(runs_of(hub, monkeypatch, capsys, "owner", "plan", FLEET)).out.splitlines()
+    second = run["id"] + 1
+    assert printed == [
+        f"Queued plan run #{second}: plan {FLEET} (Run the fleet), every step not done yet, in evo-agents "
+        "(feat/plan-runs), agent-skills (main); runtime any, headless, timeout 4 h of agent time.",
+        f"Follow it with `evo-agents hub run logs {second} --follow --project {PROJECT}`; the decisions its agent "
+        f"asks you: `evo-agents hub decision list --run {second} --project {PROJECT}`.",
+    ]
+
+
+@needs_pg
+def test_dispatch_passes_the_model_with_its_runtime(hub, monkeypatch, capsys):
+    flags = ["--runtime", "opencode", "--model", "anthropic/claude-sonnet"]
+    queued = as_json(runs_of(hub, monkeypatch, capsys, "owner", "dispatch", PLAN, "2", *flags, "--json"))
+    assert [(run["requested_runtime"], run["model"]) for run in queued] == [("opencode", "anthropic/claude-sonnet")]
+    printed = ok(
+        runs_of(hub, monkeypatch, capsys, "owner", "dispatch", PLAN, "4", "--runtime", "codex", "--model", "o3")
+    )
+    assert printed.out.splitlines()[0].endswith(
+        "repo evo-agents; runtime codex (model o3), headless, approval review, timeout 60 min."
+    )
+    shown = fields_of(ok(runs_of(hub, monkeypatch, capsys, "owner", "show", str(queued[0]["id"]))).out)
+    assert shown["runtime"] == "opencode, model anthropic/claude-sonnet, headless, approval review, timeout 60 min"
+
+
+def notice(hub, worker: dict, run_id: int) -> dict:
+    body = {
+        "kind": "push_default_branch",
+        "title": "Pushed main of agent-skills",
+        "repo": "agent-skills",
+        "branch": "main",
+        "commits": [SHA],
+    }
+    response = hub.client.post(f"/v1/worker/runs/{run_id}/notices", json=body, headers=worker["headers"])
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
+@needs_pg
+def test_the_owner_reads_and_answers_the_decisions_of_a_plan_run(hub, monkeypatch, capsys):
+    push(hub.client, hub.headers["owner"], fleet_body())
+    worker = fleet_worker(hub.client, hub.headers["owner"], "mac-plan")
+    run_id = dispatched_plan(hub.client, hub.headers["owner"])["id"]
+    assert claim(hub.client, worker)["id"] == run_id
+    moved(hub.client, worker, run_id, "running")
+    decision = asked(hub.client, worker, run_id)
+    number = str(decision["id"])
+
+    listed = as_json(decisions_of(hub, monkeypatch, capsys, "reader", "list", "--json"))
+    assert_json_keys("hub decision list", listed)
+    assert_json_keys("hub decision show", listed["decisions"][0])
+    assert (listed["total"], listed["limit"], listed["offset"]) == (1, 50, 0)
+    filtered = as_json(
+        decisions_of(hub, monkeypatch, capsys, "reader", "list", "--state", "answered", "--run", str(run_id), "--json")
+    )
+    assert filtered["total"] == 0
+    table = ok(decisions_of(hub, monkeypatch, capsys, "reader", "list", "--state", "open", "--plan", FLEET))
+    lines = table.out.splitlines()
+    assert lines[0].split() == [
+        "DECISION",
+        "STATE",
+        "CATEGORY",
+        "RUN",
+        "PLAN",
+        "STEP",
+        "OWNER",
+        "QUESTION",
+        "ASKED",
+        "(UTC)",
+    ]
+    assert lines[1].split()[:8] == [f"#{number}", "open", "architecture", f"#{run_id}", FLEET, "2", OWNER, "Which"]
+    assert lines[2:] == [
+        f"1 of 1 decision(s) of project {PROJECT}",
+        f"Read one with `evo-agents hub decision show ID --project {PROJECT}`, and answer it with "
+        f"`evo-agents hub decision answer ID --option KEY --project {PROJECT}`.",
+    ]
+
+    shown = ok(decisions_of(hub, monkeypatch, capsys, "reader", "show", number)).out
+    assert shown.splitlines()[0] == f"Decision #{number}: architecture, open"
+    fields = fields_of(shown.split("Question:")[0])
+    assert fields["run"] == f"#{run_id} (running) of plan {FLEET}, step 2"
+    assert fields["owner"] == f"{OWNER}, who alone answers it"
+    assert shown.split("Question:\n")[1].split("Options:\n")[0] == (
+        f"  {QUESTION}\nContext:\n  ## Why\n  The plan leaves it open.\n"
+    )
+    assert shown.split("Options:\n")[1].splitlines() == [
+        f"  sqlite    {OPTIONS[0]['label']}",
+        f"  postgres  {OPTIONS[1]['label']} (recommended)",
+        f"            {OPTIONS[1]['description']}",
+        f"Answer it with `evo-agents hub decision answer {number} --option KEY --project {PROJECT}`; --text adds "
+        "words of your own, or stands for an option.",
+    ]
+    missing = decisions_of(hub, monkeypatch, capsys, "reader", "show", "999999")
+    assert missing.code == 1 and missing.err.startswith(f"error: project {PROJECT} has no decision 999999")
+
+    # the owner's notifications: the decision, then a notice of a push
+    pushed = notice(hub, worker, run_id)
+    inbox = as_json(hub_of(hub, monkeypatch, capsys, "owner", "notifications", "--unread", "--json"))
+    assert_json_keys("hub notifications", inbox)
+    assert [(n["kind"], n["decision_id"], n["read_at"]) for n in inbox["notifications"]] == [
+        ("decision", decision["id"], None),
+        ("notice", None, None),
+    ]
+    printed = ok(hub_of(hub, monkeypatch, capsys, "owner", "notifications")).out.splitlines()
+    assert printed[0].split() == ["ID", "READ", "KIND", "PROJECT", "RUN", "TITLE", "WHEN", "(UTC)"]
+    assert printed[1].split()[:6] == [
+        f"#{inbox['notifications'][0]['id']}",
+        "unread",
+        "decision",
+        f"#{number}",
+        "(open)",
+        PROJECT,
+    ]
+    assert printed[2].split()[:7] == [
+        f"#{pushed['id']}",
+        "unread",
+        "push_default_branch",
+        PROJECT,
+        f"#{run_id}",
+        "Pushed",
+        "main",
+    ]
+    assert printed[3:] == [
+        "2 of 2 notification(s); 2 unread in all, 1 decision(s) waiting for your answer",
+        "Mark them read with `evo-agents hub notifications --read all`, or --read with their ids.",
+    ]
+    assert as_json(hub_of(hub, monkeypatch, capsys, "reader", "notifications", "--json"))["total"] == 0
+    notices = as_json(hub_of(hub, monkeypatch, capsys, "owner", "notifications", "--kind", "notice", "--json"))
+    assert [n["id"] for n in notices["notifications"]] == [pushed["id"]]
+    marked = as_json(hub_of(hub, monkeypatch, capsys, "owner", "notifications", "--read", str(pushed["id"]), "--json"))
+    assert_json_keys("hub notifications", marked, "--read")
+    assert marked == {"read": 1, "unread": 1}
+
+    # answering: another member, an option the decision does not have, then the owner
+    other = decisions_of(hub, monkeypatch, capsys, "other", "answer", number, "--option", "postgres")
+    assert other.code == 1 and f"only {OWNER}, who dispatched its run, may answer decision {number}" in other.err
+    wrong = decisions_of(hub, monkeypatch, capsys, "owner", "answer", number, "--option", "mysql")
+    assert wrong.code == 1 and "has no option 'mysql'" in wrong.err
+    answered = ok(
+        decisions_of(
+            hub,
+            monkeypatch,
+            capsys,
+            "owner",
+            "answer",
+            number,
+            "--option",
+            "postgres",
+            "--text",
+            "-",
+            stdin=ANSWER_TEXT,
+        )
+    )
+    assert answered.out.splitlines() == [
+        f"Answered decision #{number} with option postgres (Move to Postgres) and your words.",
+        f"The answer went to the inbox of run #{run_id}; its worker hands it to the agent.",
+    ]
+    again = decisions_of(hub, monkeypatch, capsys, "owner", "answer", number, "--text", "and keep it")
+    assert again.code == 1 and f"decision {number} is answered, not open" in again.err
+    after = as_json(decisions_of(hub, monkeypatch, capsys, "owner", "show", number, "--json"))
+    assert_json_keys("hub decision answer", after)
+    assert (after["state"], after["answer_option"], after["answer_text"], after["answered_by"]) == (
+        "answered",
+        "postgres",
+        ANSWER_TEXT,
+        OWNER,
+    )
+    assert after["answer_run_id"] == run_id
+    fields = fields_of(ok(decisions_of(hub, monkeypatch, capsys, "owner", "show", number)).out.split("Question:")[0])
+    assert fields["option"] == "postgres, Move to Postgres"
+    assert fields["text"] == ANSWER_TEXT
+    assert fields["delivered"] == "not to the agent yet"
+    left = ok(hub_of(hub, monkeypatch, capsys, "owner", "notifications", "--read", "all"))
+    assert left.out == "Marked 0 notification(s) read; 0 left unread.\n"  # answering read the decision's

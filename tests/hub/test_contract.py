@@ -13,7 +13,7 @@ import pytest
 
 from evo_agents import __version__
 from evo_agents.hub import contract, kg_cli, memory, skill_sync
-from evo_agents.hub.contract import check_command, commands, find_commands, hub_parsers
+from evo_agents.hub.contract import check_command, commands, contract_parsers, find_commands, hub_parsers
 from evo_agents.hub.mirror import ExportResult
 from evo_agents.hub.plan_cli import ImportResult
 from evo_agents.hub.registry import PullResult
@@ -85,7 +85,9 @@ def test_print_without_the_server_extra_names_the_pip_command(monkeypatch, capsy
 
 def test_every_hub_command_is_in_the_contract_with_its_options():
     printed = commands()
-    for path, parser in hub_parsers().items():
+    assert set(printed) == set(contract_parsers())
+    assert set(hub_parsers()) == {path for path in printed if path.startswith("hub ")}
+    for path, parser in contract_parsers().items():
         flags = {flag for action in parser._actions for flag in action.option_strings} - {"-h", "--help"}
         assert {flag for option in printed[path]["options"] for flag in option["flags"]} == flags
     assert printed["hub plan step"]["positionals"][2] == {
@@ -103,7 +105,7 @@ def test_every_hub_command_is_in_the_contract_with_its_options():
 
 
 def test_a_command_prints_json_exactly_when_it_declares_the_keys():
-    for path, parser in hub_parsers().items():
+    for path, parser in contract_parsers().items():
         has_flag = any("--json" in action.option_strings for action in parser._actions)
         declared = parser.get_default("json_output")
         assert has_flag == (declared is not None), path
@@ -117,7 +119,7 @@ def test_keys_passed_on_from_the_hub_are_the_properties_of_its_answer():
 
     schemas = document()["components"]["schemas"]
     checked = 0
-    for path, parser in hub_parsers().items():
+    for path, parser in contract_parsers().items():
         output = parser.get_default("json_output")
         for declared in [output] + [variant for _, variant in output.variants] if output else []:
             if declared.schema is None:
@@ -127,7 +129,85 @@ def test_keys_passed_on_from_the_hub_are_the_properties_of_its_answer():
             assert not set(declared.added) & properties, path
             assert set(declared.keys) == properties | set(declared.added), path
             checked += 1
-    assert checked >= 16
+    assert checked >= 21
+
+
+def test_the_commands_of_plan_runs_decisions_and_notifications():
+    printed = commands()
+    assert {
+        "hub run plan",
+        "hub decision list",
+        "hub decision show",
+        "hub decision answer",
+        "hub notifications",
+    } <= set(printed)
+    flags = {o["flags"][0]: o for o in printed["hub run plan"]["options"]}
+    assert flags["--timeout-h"]["choices"] == [2, 4, 8, 24]
+    assert flags["--runtime"]["choices"] == ["any", "claude-code", "opencode", "codex"]
+    assert {"--worker", "--model", "--mode", "--project", "--json"} <= set(flags)
+    assert printed["hub run plan"]["json"]["schema"] == printed["hub run dispatch"]["json"]["schema"] == "Run"
+    assert "--model" in {o["flags"][0] for o in printed["hub run dispatch"]["options"]}
+    answer = {o["flags"][0] for o in printed["hub decision answer"]["options"]}
+    assert answer == {"--option", "--text", "--project", "--json"}
+    notifications = printed["hub notifications"]
+    assert notifications["positionals"] == []
+    assert {o["flags"][0] for o in notifications["options"]} == {
+        "--unread",
+        "--kind",
+        "--project",
+        "--limit",
+        "--offset",
+        "--read",
+        "--json",
+    }
+    assert notifications["json"] == {
+        "kind": "object",
+        "keys": ["notifications", "total", "limit", "offset"],
+        "schema": "NotificationList",
+        "with": {"--read": {"kind": "object", "keys": ["read", "unread"], "schema": "ReadResult"}},
+    }
+
+
+def test_the_commands_of_a_plan_runs_agent_are_in_the_contract():
+    printed = commands()
+    assert sorted(key for key in printed if not key.startswith("hub ")) == [
+        "worker ask",
+        "worker notify",
+        "worker plan",
+        "worker step",
+    ]
+    step = printed["worker step"]
+    assert [(p["name"], p.get("choices")) for p in step["positionals"]] == [
+        ("key", None),
+        ("status", ["in_progress", "done", "pending"]),
+    ]
+    verify = next(o for o in step["options"] if o["flags"] == ["--verify"])
+    assert verify["repeatable"] and not verify["required"]
+    ask = {o["flags"][0]: o for o in printed["worker ask"]["options"]}
+    assert ask["--category"]["required"] and ask["--option"]["required"] and ask["--option"]["repeatable"]
+    assert ask["--category"]["choices"] == [
+        "deploy",
+        "delete_data",
+        "live_migration",
+        "external_send",
+        "spend_money",
+        "architecture",
+        "scope",
+    ]
+    notify = {o["flags"][0]: o for o in printed["worker notify"]["options"]}
+    assert notify["--kind"]["choices"] == ["push_default_branch", "merge_default_branch"]
+    assert printed["worker plan"]["json"]["schema"] == "Plan"
+    assert all(printed[f"worker {name}"]["json"] is None for name in ("step", "ask", "notify"))
+
+
+def test_the_commands_the_prompt_of_a_plan_run_names_are_in_the_contract():
+    from evo_agents.hub.runs import build_plan_prompt
+
+    plan = {"id": "fleet", "repos": [{"repo": "evo-agents"}], "steps": [{"id": 1, "what": "x", "repo": "evo-agents"}]}
+    prompt = build_plan_prompt(plan, [{"repo": "evo-agents", "branch": None}])
+    found = [f.text for f in find_commands(prompt, "prompt")]
+    assert {text.split()[2] for text in found if text.split()[1] == "worker"} == {"plan", "step", "ask", "notify"}
+    assert {text: check_command(commands(), text) for text in found} == {text: [] for text in found}
 
 
 def test_admin_stats_is_a_map_of_counts():
@@ -140,7 +220,7 @@ def test_admin_stats_is_a_map_of_counts():
 
 
 def test_keys_built_here_are_what_the_code_builds():
-    for path, parser in hub_parsers().items():
+    for path, parser in contract_parsers().items():
         output = parser.get_default("json_output")
         if output is None or output.schema is not None or output.kind == "map":
             continue
@@ -192,6 +272,13 @@ def test_find_commands_reads_code_spans_and_fenced_blocks_with_their_lines():
     assert all(not check_command(commands(), text) for _, text in found)
 
 
+def test_only_the_worker_commands_of_the_contract_are_read():
+    text = (
+        "`evo-agents worker join --url x`, `evo-agents worker step 2 done --verify 'ruff check .'`, `evo-agents worker`"
+    )
+    assert [f.text for f in find_commands(text)] == ["evo-agents worker step 2 done --verify 'ruff check .'"]
+
+
 @pytest.mark.parametrize(
     "text",
     [
@@ -209,6 +296,12 @@ def test_find_commands_reads_code_spans_and_fenced_blocks_with_their_lines():
         "evo-agents hub serve --help",
         "evo-agents hub token revoke $ID",
         "evo-agents hub contract check a.md b.md c.md",
+        "evo-agents hub run plan fleet --worker mac-mini --runtime codex --model o3 --timeout-h 8",
+        "evo-agents hub decision answer 7 --option postgres --text '...'",
+        "evo-agents hub notifications --read all",
+        "evo-agents worker step KEY done --repo REPO --evidence TEXT --verify COMMAND",
+        "evo-agents worker ask --category scope --question '?' --option a=A --option b=B --recommended a",
+        r"evo-agents worker notify --kind push_default_branch\|merge_default_branch --title T",
     ],
 )
 def test_commands_the_command_line_takes_pass(text):
@@ -231,6 +324,11 @@ def test_commands_the_command_line_takes_pass(text):
         ("evo-agents hub token list all", "takes at most 0 argument(s); 'all' is too many"),
         ("evo-agents hub memory search q --limit 99", "--limit '99' is not a whole number from 1 to 50"),
         ("evo-agents hub plan step x 1 done --evidence 'unclosed", "cannot be read as a shell command"),
+        ("evo-agents hub run plan fleet --timeout-h 3", "--timeout-h '3' is not one of 2, 4, 8, 24"),
+        ("evo-agents hub decision answer 7 --choice", "`evo-agents hub decision answer` has no option --choice"),
+        ("evo-agents worker step 3 finished", "STATUS 'finished' is not one of in_progress, done, pending"),
+        ("evo-agents worker notify --kind plan_finished --title t", "--kind 'plan_finished' is not one of"),
+        ("evo-agents hub plan list --area 'active|archived'", "--area 'archived' is not one of active, completed"),
     ],
 )
 def test_commands_the_command_line_does_not_take_are_reported(text, problem):
@@ -256,7 +354,7 @@ def test_check_prints_each_problem_with_file_and_line(tmp_path):
     assert failed.stdout.splitlines() == [
         f"{bad}:4: evo-agents hub plan list --all: `evo-agents hub plan list` has no option --all",
         f"{bad}:7: evo-agents hub nope: `evo-agents hub` has no subcommand 'nope'; it has "
-        + ", ".join(sorted({key.split()[1] for key in commands()})),
+        + ", ".join(sorted({key.split()[1] for key in commands() if key.startswith("hub ")})),
         "2 problem(s) in the 8 hub command(s) of 2 file(s)",
     ]
 
@@ -283,7 +381,14 @@ def test_check_of_a_missing_file_is_a_usage_error(tmp_path):
 
 
 def test_the_docs_of_this_repository_pass():
-    files = [str(ROOT / "README.md"), str(ROOT / "docs" / "hub.md"), str(ROOT / "web" / "README.md")]
-    count, problems = contract.check_files(commands(), files)
+    docs = ROOT / "docs"
+    files = [
+        ROOT / "README.md",
+        docs / "hub.md",
+        ROOT / "web" / "README.md",
+        docs / "workers.md",
+        docs / "notifications.md",
+    ]
+    count, problems = contract.check_files(commands(), [str(path) for path in files])
     assert problems == []
-    assert count >= 30
+    assert count >= 90
