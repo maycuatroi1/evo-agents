@@ -302,12 +302,13 @@ answer, and when none is left it ends its turn: the run is `waiting`, the worker
 the owner sees the decision in the Inbox on the web. The answer goes to the run's inbox as a message naming the
 decision, the worker hands it to the agent in the same session, and the run is `running` again.
 
-A run that waits 24 hours (`DECISION_WAIT_SECONDS`) is `parked`: the next heartbeat tells the worker to stop the agent
-at the end of its turn, the slot is free, and the worker keeps the agent's session and the worktrees. An answer then
-queues a new plan run pinned to the same worker, with `resume_of_run_id` naming the parked run, which goes on in the
-same session and worktrees; the parked run is `done`. A run parked for 7 days (`PARKED_DAYS`) is `cancelled` and its
-decisions expire. A waiting run whose cancel was asked for is cancelled instead of parked, and revoking a worker cancels
-the runs parked on it, since no other worker has their session.
+A run that waits 24 hours (`DECISION_WAIT_SECONDS`; `EVO_HUB_DECISION_WAIT_SECONDS` of the hub's job worker changes
+it) is `parked`: the next heartbeat tells the worker to stop the agent at the end of its turn, the slot is free, and the
+worker keeps the agent's session and the worktrees. An answer then queues a new plan run pinned to the same worker,
+with `resume_of_run_id` naming the parked run, which goes on in the same session and worktrees; the parked run is
+`done`. A run parked for 7 days (`PARKED_DAYS`) is `cancelled` and its decisions expire. A waiting run whose cancel
+was asked for is cancelled instead of parked, and revoking a worker cancels the runs parked on it, since no other
+worker has their session.
 
 The worker reports `waiting` (`POST /v1/worker/runs/{id}/state`) when the agent's turn ended with a decision open;
 the hub answers 409 unless the run has a decision that is open or whose answer the worker has not taken yet, since the
@@ -761,7 +762,7 @@ page's own origin, under the CSP's `connect-src 'self'`.
 | `evo-agents worker service status [--json]` | whether the service is installed and the daemon runs, its pid and last exit |
 | `evo-agents worker status [--json]` | the worker as this machine and the hub see it: runtimes, tmux and whether the web terminal is allowed, checkouts, the daemon's pid, runs kept, the spool |
 | `evo-agents worker attach N` | puts this terminal on the tmux session `evo-run-N` of an interactive run (`tmux attach`, or `switch-client` from inside tmux on the same server) |
-| `evo-agents worker selftest --runtime NAME [--model M] [--effort E] [--keep]` | runs the runtime's adapter for real on a tiny prompt in a scratch git repository, prints each event and how many of each kind came, and exits 0 when the turn completed and the agent wrote the file it was asked for (it spends a little of the owner's quota; Claude Code and Codex run at effort `low` unless `--effort` says otherwise) |
+| `evo-agents worker selftest --runtime NAME [--model M] [--effort E] [--timeout S] [--keep] [--background]` | runs the runtime's adapter for real on a tiny prompt in a scratch git repository, prints each event and how many of each kind came, and exits 0 when the turn completed and the agent wrote the file it was asked for (it spends a little of the owner's quota; Claude Code and Codex run at effort `low` unless `--effort` says otherwise); `--background` (claude-code only) checks that the session waits for a command run in the background: the agent starts `sleep 20 && date -u` that way, ends its turn, and writes the file once the command ended |
 | `evo-agents worker drain [--resume]` | stops claims (or resumes them) through `POST /v1/workers/{id}/drain` or `/undrain`, with the machine token |
 | `evo-agents worker revoke [--force]` | revokes the worker on the hub and deletes its token here; `--force` deletes it even when the hub cannot be reached; a background service stays installed, does not start the daemon again, and is named with the command that removes it |
 | `evo-agents worker step KEY STATUS [--repo R] [--evidence TEXT] [--verify CMD ...]` | for the agent of a plan run: reports a step `in_progress`, `done` or `pending`; `done` runs each verify command again in the repo's worktree, refuses on a non-zero exit, commits what is left there, pushes the repo's branch and reports the commit (see [A plan run on the machine](#a-plan-run-on-the-machine)) |
@@ -810,7 +811,7 @@ killed once the agent has ended, or 20 seconds after an interrupt it did not end
 
 | Runtime | Through | Full permissions | A message of the owner | Interrupt | The turn ends |
 | --- | --- | --- | --- | --- | --- |
-| `claude-code` | `claude-agent-sdk`: `ClaudeSDKClient` over `claude` on PATH, session id made by the daemon (`--session-id`, or `--resume` for a run that goes on with a session) | `permission_mode="bypassPermissions"` (`--dangerously-skip-permissions`) | `query()`; Claude Code takes it at the next tool boundary and may fold it into the same `result` | the SDK's `interrupt()`, then the input stream ends | at its `result`: the input stream ends and the CLI exits once it has done what it was given; `stop_at_turn_boundary` ends the input stream at once, and the turn in progress still finishes |
+| `claude-code` | `claude-agent-sdk`: `ClaudeSDKClient` over `claude` on PATH, session id made by the daemon (`--session-id`, or `--resume` for a run that goes on with a session) | `permission_mode="bypassPermissions"` (`--dangerously-skip-permissions`) | `query()`; Claude Code takes it at the next tool boundary and may fold it into the same `result` | the SDK's `interrupt()`, then the input stream ends | at its `result`, unless a command the agent started in the background still runs: then the input stays open and the CLI's own turn after the command ends goes on with the agent (the adapter writes to it when no turn opens within 15 seconds), up to 30 minutes after the turn ended; otherwise, and once the agent wrote `.evo-run/result.json`, the input stream ends and the CLI exits once it has done what it was given; `stop_at_turn_boundary` ends the input stream at once, and the turn in progress still finishes |
 | `codex` | `openai-codex` over `codex app-server --listen stdio://`, with `codex` on PATH | sandbox `danger-full-access` and approval policy `never` (`--dangerously-bypass-approvals-and-sandbox`) | `turn/steer` during the turn; a new turn on the same thread when the turn no longer takes it | `turn/interrupt` | at `turn/completed`, with its status |
 | `opencode` | HTTP and the event stream of `opencode serve`, started per run on 127.0.0.1 at a free port, with a random `OPENCODE_SERVER_PASSWORD` and stdin `/dev/null` | each `permission.asked` of the session answered `once`, as `opencode run --auto` does, so the owner's explicit denials still hold; sessions get `opencode run`'s rules (no question, no plan mode) | `POST /session/:id/prompt_async`, taken at the next step boundary | `POST /session/:id/abort` | when the session goes idle with every prompt it was sent |
 

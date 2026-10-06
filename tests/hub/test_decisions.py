@@ -15,6 +15,7 @@ if not pg.DSN:
 from fastapi.testclient import TestClient
 
 from evo_agents.hub import runs
+from evo_agents.hub.config import ConfigError, load_config
 from evo_agents.hub.server.app import create_app
 from tests.hub.live import sql
 from tests.hub.test_plan_runs import (
@@ -528,3 +529,13 @@ def test_revoking_a_worker_cancels_the_runs_parked_on_it(client, hub, hub_db):
 
 def test_the_decision_limits_are_the_models():
     assert (runs.DECISION_WAIT_SECONDS, runs.PARKED_DAYS, runs.MAX_ANSWER_BYTES) == (24 * 3600, 7, 4 * 1024)
+
+
+def test_evo_hub_decision_wait_seconds_sets_how_long_a_run_waits_before_the_reaper_parks_it():
+    env = {"EVO_HUB_DSN": "postgresql://hub@db/hub"}
+    assert load_config(env).decision_wait_seconds == runs.DECISION_WAIT_SECONDS
+    assert load_config({**env, "EVO_HUB_DECISION_WAIT_SECONDS": "3"}).decision_wait_seconds == 3
+    for value in ("0", "604801", "soon"):
+        with pytest.raises(ConfigError) as caught:
+            load_config({**env, "EVO_HUB_DECISION_WAIT_SECONDS": value})
+        assert caught.value.variable == "EVO_HUB_DECISION_WAIT_SECONDS"
