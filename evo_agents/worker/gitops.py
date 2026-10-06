@@ -8,6 +8,12 @@ end of git's own message. Nothing here forces a push, rewrites a branch that has
 the repo: there the push goes ahead, never forced, and the answer says it was a default branch with the commits it
 added, for the notice ``push_default_branch`` the caller sends the run's owner (``push_notice``). A run of one step
 never pushes a default branch.
+
+A commit of a run (``commit_run``) holds only the run's own work. It leaves out, at any depth, the paths under
+RUN_COMMIT_EXCLUDES (what hooks of the owner's runtime write in a session's directory, such as the learned skills of
+``.claude/skills/.learned/``, and the worker's own ``.evo-run/``), and every copy of a hub plan as the hub wrote it
+(``evo_agents.hub.mirror.hub_copy``): an export wrote it, not the agent, while a copy the agent edited stays in. Those
+paths are put back in the index as HEAD has them, whoever staged them, and named in the answer.
 """
 
 from __future__ import annotations
@@ -27,6 +33,10 @@ NETWORK_TIMEOUT = 600.0  # fetch and push
 MAX_MESSAGE = 2000
 PROTECTED = ("main", "master")  # never pushed, whatever the remote's default branch is
 EXCLUDE_RESULT = f":(exclude){RESULT_DIR}"  # the agent's result file stays out of every commit
+# Directories no commit of a run holds, at any depth: learned skills a Stop hook of the owner's Claude Code writes in
+# the session's directory, and the worker's own files beside the agent's work.
+RUN_COMMIT_EXCLUDES = (".claude/skills/.learned/", f"{RESULT_DIR}/")
+PATHS_PER_CALL = 200  # paths in one `git reset`, well within any argv limit
 _SHORTSTAT = re.compile(r"(\d+) files? changed(?:, (\d+) insertions?\(\+\))?(?:, (\d+) deletions?\(-\))?")
 
 
@@ -213,19 +223,50 @@ async def current_branch(cwd: Path) -> str | None:
     return out.strip() if code == 0 and out.strip() else None
 
 
-async def has_changes(cwd: Path) -> bool:
-    """Whether the work tree has changes to commit, the agent's result file aside."""
-    _, out, _ = await git(cwd, "status", "--porcelain", "--untracked-files=all", "--", ".", EXCLUDE_RESULT)
-    return bool(out.strip())
+@dataclass(frozen=True)
+class Committed:
+    """What ``commit_run`` did."""
+
+    made: bool  # a commit was made
+    left_out: tuple[str, ...] = ()  # paths with changes kept out of it, relative to the work tree, sorted
+
+
+def excluded(path: str) -> bool:
+    """Whether ``path`` (relative to the work tree, with /) lies under one of RUN_COMMIT_EXCLUDES, at any depth."""
+    where = f"/{path}"
+    return any(f"/{prefix}" in where for prefix in RUN_COMMIT_EXCLUDES)
+
+
+def _left_out(cwd: Path, paths: list[str]) -> list[str]:
+    from evo_agents.hub.mirror import hub_copy
+
+    return [path for path in paths if excluded(path) or hub_copy(cwd / path)]
+
+
+async def staged_paths(cwd: Path) -> list[str]:
+    """The paths whose index entry differs from HEAD, each side of a rename on its own."""
+    _, out, _ = await git(cwd, "diff", "--cached", "--name-only", "--no-renames", "-z")
+    return [path for path in out.split("\0") if path]
+
+
+async def commit_run(cwd: Path, message: str) -> Committed:
+    """Stage every change of the work tree but the result directory, put the paths a run never commits back as HEAD
+    has them (see the module's docstring), and commit what is left as ``message``."""
+    await git(cwd, "add", "--all", "--", ".", EXCLUDE_RESULT)
+    staged = await staged_paths(cwd)
+    left = sorted(await asyncio.to_thread(_left_out, cwd, staged))
+    for start in range(0, len(left), PATHS_PER_CALL):
+        chunk = left[start : start + PATHS_PER_CALL]
+        await git(cwd, "reset", "--quiet", "--", *(f":(literal){path}" for path in chunk))
+    if len(left) == len(staged):
+        return Committed(False, tuple(left))
+    await git(cwd, "commit", "--quiet", "-m", message)
+    return Committed(True, tuple(left))
 
 
 async def commit_all(cwd: Path, message: str) -> bool:
-    """Commit every change but the result file; whether there was one."""
-    if not await has_changes(cwd):
-        return False
-    await git(cwd, "add", "--all", "--", ".", EXCLUDE_RESULT)
-    await git(cwd, "commit", "--quiet", "-m", message)
-    return True
+    """``commit_run``; whether it made a commit."""
+    return (await commit_run(cwd, message)).made
 
 
 async def diffstat(cwd: Path, base: str, head: str = "HEAD") -> dict:

@@ -13,6 +13,11 @@ did and the skills to sync. Stop does ``hub memory push`` for the directory, so 
 next session. Stop runs after every turn, so it asks the hub only when a memory file differs from what the last sync
 left in memory-state.json (``MemorySync.pending``): a turn that wrote no memory sends no request.
 
+The agent of a run on an evo-agents worker has EVO_RUN_ID in its environment (``evo_agents.worker.run``). There
+SessionStart exports no plan copy, since the worker commits what the run leaves in its worktree and a run's commits hold
+only its own work, Stop pushes no memory, since nobody watches the unattended session, and the line of SessionStart
+says both and why.
+
 A hook never fails the session and never holds it long:
 
 - the exit status is 0 whatever happens, and the output one line at most: the hub's URL, the project, counts and why
@@ -64,6 +69,7 @@ MAX_PAYLOAD = 1 << 20  # characters of the JSON Claude Code writes to a hook's s
 MAX_LINE = 600  # characters of the line a hook prints
 LOGIN_HINT = "`evo-agents hub login --url URL` signs in"
 PULLED = ("pulled", "updated", "restored")  # what a pull wrote here
+RUN_VARIABLE = "EVO_RUN_ID"  # set by the worker daemon for the agent of a run
 
 
 class OutOfTime(BaseException):
@@ -113,6 +119,20 @@ def session_dir(payload: dict) -> Path:
 
 def _now() -> float:
     return time.time()
+
+
+def worker_run() -> int | None:
+    """The run of an evo-agents worker this session is the agent of (EVO_RUN_ID), or None."""
+    value = os.environ.get(RUN_VARIABLE, "").strip()
+    return int(value) if value.isascii() and value.isdigit() else None
+
+
+def run_note(run_id: int) -> str:
+    """What SessionStart says in a worker run, and why."""
+    return (
+        f"run #{run_id} on an evo-agents worker: no plan copy exported (the worker commits what the run leaves, and a "
+        "run's commits hold only its own work) and no memory pushed at Stop (nobody reviews this unattended session)"
+    )
 
 
 def one_line(text: str) -> str:
@@ -297,6 +317,9 @@ def _check_skills(hub: Hub, line: Line) -> None:
 
 def session_start(payload: dict, line: Line) -> None:
     """The SessionStart hook's work, its outcome told in ``line``."""
+    run_id = worker_run()
+    if run_id is not None:
+        line.add(run_note(run_id))
     try:
         credentials = load_credentials()
     except NotSignedIn:
@@ -312,7 +335,7 @@ def session_start(payload: dict, line: Line) -> None:
     state = HookState(hub_dir())
     try:
         _pull_memories(hub, credentials.login, where, line)
-        if harness is not None:
+        if harness is not None and run_id is None:
             _export_plans(hub, *harness, line)
         _check_skills(hub, line)
     except Unreachable as exc:
@@ -343,9 +366,12 @@ class Outcome:
 
 
 def stop(payload: dict, outcome: Outcome) -> None:
-    """The Stop hook's work: push the memory files of the session's directory that changed."""
+    """The Stop hook's work: push the memory files of the session's directory that changed; nothing in a worker run,
+    whose SessionStart line says so."""
     from evo_agents.hub.memory import MemorySync
 
+    if worker_run() is not None:
+        return
     try:
         credentials = load_credentials()
     except NotSignedIn:

@@ -50,6 +50,12 @@ MIRROR_HEADER = (
 )
 DIGEST = re.compile(r"sha256:[0-9a-f]{64}")
 PLAN_ID = re.compile(r"[a-z0-9][a-z0-9-]{0,99}")  # also the file name, so nothing else reaches a path
+# The first line of a copy, as MIRROR_HEADER writes it for any plan and revision.
+HEADER_LINE = re.compile(
+    re.escape(MIRROR_HEADER)
+    .replace(re.escape("{plan_id}"), f"(?P<plan_id>{PLAN_ID.pattern})")
+    .replace(re.escape("{revision}"), r"(?P<revision>[1-9][0-9]*)")
+)
 WIDTH = 110
 LONG_TEXT = 100
 SHORT_ITEM = 60  # a list whose scalars are all at most this long is written [a, b, c]
@@ -306,6 +312,34 @@ def _intact_copy(path: Path, project: str) -> bool:
         return False
     hub = found.hub or {}
     return hub.get("project") == project and hub.get("digest") == found.digest
+
+
+def hub_copy(path: Path) -> bool:
+    """Whether ``path`` holds a copy of a hub plan exactly as the hub wrote it, of any project: a regular file whose
+    first line is MIRROR_HEADER for the plan it holds at the revision of its hub key, and whose hub key's digest is
+    the digest of what it holds now, so a copy edited by hand is not one. The first line is read before the YAML, so
+    any other file costs one line. A worker leaves such a file out of a run's commits (``worker.gitops.commit_run``):
+    the export wrote it, not the run's agent."""
+    try:
+        if path.is_symlink() or not path.is_file():
+            return False
+        with open(path, encoding="utf-8") as handle:
+            first = handle.readline().rstrip("\r\n")
+    except (OSError, UnicodeDecodeError):
+        return False
+    match = HEADER_LINE.fullmatch(first)
+    if match is None:
+        return False
+    try:
+        found = read_plan(path)
+        hub = found.hub or {}
+        return (
+            found.plan_id == match["plan_id"]
+            and hub.get("revision") == int(match["revision"])
+            and hub.get("digest") == found.digest
+        )
+    except (HubError, TypeError, ValueError):  # not YAML, or values no copy holds: not the hub's
+        return False
 
 
 def _edited_note(relative: str, path: Path, project: str) -> str:
