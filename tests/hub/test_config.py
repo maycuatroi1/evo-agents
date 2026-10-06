@@ -9,6 +9,7 @@ import secrets
 import subprocess
 import sys
 from pathlib import Path
+from urllib.parse import quote
 
 import pytest
 
@@ -19,7 +20,7 @@ if not pg.DSN:
 
 from evo_agents.hub import log as hub_log
 from evo_agents.hub.config import ConfigError, HubConfig, load_config, load_dsn, load_log_level
-from evo_agents.hub.log import JsonFormatter, dsn_password, redact_dsn, register_secret, scrub
+from evo_agents.hub.log import JsonFormatter, dsn_password, redact_dsn, register_secret, scrub, unregister_secret
 
 SERVER_MODULES = (
     "fastapi",
@@ -260,6 +261,22 @@ def test_redact_dsn_hides_the_password_in_both_forms(dsn, password, redacted):
         assert out == redacted
     if password:
         assert password not in out
+
+
+def test_a_secret_stays_masked_until_each_registration_of_it_is_undone():
+    value = "Held Secret/" + secrets.token_hex(8)  # its URL-encoded form is masked with it
+    encoded = quote(value, safe="")
+    register_secret(value)
+    register_secret(value)  # two runs of a worker hold the same lease
+    unregister_secret(value)
+    assert scrub(f"a {value} b {encoded}") == "a *** b ***", "the other registration still masks it"
+    unregister_secret(value)
+    assert scrub(f"a {value} b {encoded}") == f"a {value} b {encoded}"
+    unregister_secret(value)  # once more than registered: nothing to undo, nothing breaks
+    register_secret(value)
+    assert scrub(value) == "***"
+    unregister_secret(value)
+    assert scrub(value) == value
 
 
 def test_json_lines_carry_no_secret(caplog):
