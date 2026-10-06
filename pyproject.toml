@@ -33,6 +33,8 @@ hub-server = [
     "sentry-sdk>=2.20",
     "httpx>=0.27",
     "boto3==1.42.91",
+    # AES-256-GCM of the credentials the hub keeps for runs (evo_agents.hub.server.sealing).
+    "cryptography>=44",
     # Pinned: migration 0004 creates the schema of exactly this release (evo_agents/hub/migrations/sql).
     "procrastinate==3.10.0",
     # The worker builds knowledge graphs with the graphify code backend, as the machines that push to it do.

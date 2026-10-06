@@ -441,6 +441,8 @@ the variables in the platform's environment, never in a committed file. `deploy/
 | `EVO_HUB_BLOB_CONCURRENCY` | api | uploads one process checks and copies in the blob store at once, every commit together; default `32`, at most `256` |
 | `EVO_HUB_KG_KEEP_ARTIFACTS` | api, worker | newest built graphs of each project whose artifact stays in the bucket; older ones are deleted every hour; default `3`, at least `1` |
 | `EVO_HUB_RUN_LOG_DAYS` | worker | days the events of a finished run are kept before the daily pruning deletes them; default `30`, from `1` to `3650` |
+| `EVO_HUB_SECRETS_KEY` | api, worker | 32 random bytes in base64url that seal the credentials of worker runs (`docs/credentials.md`); without it writing a secret answers 503 and runs get no lease. It is not in the database or its dumps |
+| `EVO_HUB_GITHUB_APP_ID`, `EVO_HUB_GITHUB_APP_PRIVATE_KEY` | api, worker | the GitHub App that makes each run a token for its repos only: its ID or client ID, and its private key in PEM, where `\n` may stand for each line break; both or neither |
 | `EVO_HUB_FORWARDED_ALLOW_IPS` | api | the reverse proxies whose `X-Forwarded-For` the api believes: IP addresses or networks, comma-separated, or `*`; unset keeps uvicorn's default, the loopback addresses (or its own `FORWARDED_ALLOW_IPS`) |
 | `EVO_HUB_WORKER_CPUS`, `EVO_HUB_WORKER_MEMORY` | compose | worker limits, default `2` and `4g` |
 | `EVO_HUB_API_INTERNAL_URL` | web | where the web server reaches the api, default `http://evo-agents-hub-api:8080` (the api's network alias) |
@@ -507,6 +509,10 @@ Dump first, then copy the bucket, with a copy that never deletes from the backup
 Blobs never change, and the only ones the hub deletes are artifacts of old graphs, so a bucket copy taken after the
 dump holds every blob the dump refers to, as long as no prune ran in between: the hourly prune runs at minute 31. Skip
 `uploads/` (transient) and the cache volumes.
+
+The dump holds the secrets of worker runs sealed, and never `EVO_HUB_SECRETS_KEY`. Keep the key in the operator's
+secret store, apart from the dumps: a dump restored without it keeps every secret sealed, so their owners set them
+again, and a dump and the key together open every secret.
 
 In a live database every hash that `blobs`, `skill_versions`, `kg_builds.artifact_sha256` and `kg_ingests.log_sha256`
 name has its object in the bucket, prunes included: a prune drops the references in one transaction, then deletes the
