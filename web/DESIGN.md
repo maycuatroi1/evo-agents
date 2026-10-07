@@ -734,7 +734,10 @@ so the server renders a page the same way for everyone who has not picked a lang
 1. Add the query to `src/lib/queries.ts`, or to `queries.ts` in the section's own components folder (memories,
    skills); it takes `() => ApiClient`, so the server and the browser share it.
 2. Make the route a server component that calls `prefetch` and wraps a client component in
-   `HydrationBoundary`; the client component reads with `useHubQuery` and renders through `QueryView`.
+   `HydrationBoundary` from `src/lib/api/hydration-boundary.tsx` (ESLint refuses TanStack's own: the shell reads
+   some of the page's queries before the page renders, and TanStack's would hold those back, so the server would
+   send a skeleton; `e2e/server-render.spec.ts` checks Home, Workers and Runs); the client component reads with
+   `useHubQuery` and renders through `QueryView`.
 3. Add the sidebar entry to `PROJECT_NAV` or `HUB_NAV` in `components/shell/nav.ts`, and its label under
    `nav` in both `messages/vi.json` and `messages/en.json` (a unit test keeps the two files in step).
 4. Add the page to `PAGES` in `e2e/a11y.spec.ts`. Seed data with the `admin`, `member` and `signInAs`

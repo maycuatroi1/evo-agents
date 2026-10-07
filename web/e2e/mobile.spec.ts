@@ -75,15 +75,20 @@ test("the runs list starts on the first screen, and its filters apply from a she
   await claimRun(live);
   await reportState(live, failing.id, { state: "failed", error: "verify failed: pnpm test exited 1" });
 
-  // The server already sends a phone the list (and a desktop the table), so nothing swaps once the scripts run. The
-  // plans list shows it: the runs page renders its lists once the browser has the shell's run counts.
+  // The server already sends a phone the list (and a desktop the table), so nothing swaps once the scripts run.
   await seedPlans(me, project);
   for (const [agent, layout] of [
     [IPHONE_UA, "list"],
     [DESKTOP_UA, "table"],
   ]) {
-    const html = await (await page.request.get(`/p/${project}/plans`, { headers: { "user-agent": agent } })).text();
-    expect(html, `the server's plans page for a ${layout}`).toMatch(new RegExp(`data-testid="plans-table-active"[^>]*data-layout="${layout}"`));
+    for (const [path, testId] of [
+      [`/p/${project}/runs`, "runs-table"],
+      [`/p/${project}/plans`, "plans-table-active"],
+    ]) {
+      const html = await (await page.request.get(path, { headers: { "user-agent": agent } })).text();
+      const sent = new RegExp(`data-testid="${testId}"[^>]*data-layout="${layout}"`).test(html);
+      expect(sent, `the server's ${path} for a ${layout}`).toBe(true);
+    }
   }
 
   await open(page, `/p/${project}/runs`);

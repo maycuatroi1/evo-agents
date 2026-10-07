@@ -11,7 +11,24 @@ export default defineConfig([
       "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }],
       "@typescript-eslint/consistent-type-imports": ["error", { fixStyle: "inline-type-imports" }],
       "no-console": ["error", { allow: ["warn", "error"] }],
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            {
+              name: "@tanstack/react-query",
+              importNames: ["HydrationBoundary"],
+              message:
+                "Use HydrationBoundary from @/lib/api/hydration-boundary: it fills the entries the shell created empty during render, so the page renders its data on the server.",
+            },
+          ],
+        },
+      ],
     },
+  },
+  {
+    files: ["src/lib/api/hydration-boundary.tsx", "src/lib/api/hydration-boundary.test.tsx"],
+    rules: { "no-restricted-imports": "off" },
   },
   {
     files: ["scripts/**", "e2e/**", "playwright.config.ts"],
