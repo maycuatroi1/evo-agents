@@ -12417,6 +12417,38 @@
             }
           }
         }
+      },
+      "/v1/me/overview": {
+        "get": {
+          "tags": [
+            "overview"
+          ],
+          "summary": "Overview",
+          "description": "What waits for you, what runs and what ended lately, over the projects you hold a grant on.",
+          "operationId": "overview_v1_me_overview_get",
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Overview"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        }
       }
     },
     "components": {
@@ -13223,6 +13255,27 @@
             "csrf"
           ],
           "title": "Csrf"
+        },
+        "DayCount": {
+          "properties": {
+            "day": {
+              "type": "string",
+              "format": "date",
+              "title": "Day",
+              "description": "a day in UTC"
+            },
+            "done": {
+              "type": "integer",
+              "title": "Done",
+              "description": "runs that ended done that day"
+            }
+          },
+          "type": "object",
+          "required": [
+            "day",
+            "done"
+          ],
+          "title": "DayCount"
         },
         "Decision": {
           "properties": {
@@ -15723,6 +15776,502 @@
             "label"
           ],
           "title": "OptionIn"
+        },
+        "Overview": {
+          "properties": {
+            "counts": {
+              "$ref": "#/components/schemas/OverviewCounts"
+            },
+            "done_by_day": {
+              "items": {
+                "$ref": "#/components/schemas/DayCount"
+              },
+              "type": "array",
+              "maxItems": 7,
+              "minItems": 7,
+              "title": "Done By Day",
+              "description": "the last 7 days in UTC, oldest first, today last"
+            },
+            "active_runs": {
+              "items": {
+                "$ref": "#/components/schemas/OverviewRun"
+              },
+              "type": "array",
+              "maxItems": 20,
+              "title": "Active Runs",
+              "description": "at most 20 runs in leased, running, interactive, verifying, waiting, parked, queued: those whose agent works first, then waiting, parked and queued, the newest first within each"
+            },
+            "recent_runs": {
+              "items": {
+                "$ref": "#/components/schemas/OverviewRun"
+              },
+              "type": "array",
+              "maxItems": 10,
+              "title": "Recent Runs",
+              "description": "the 10 runs that ended last, the last first"
+            },
+            "open_decisions": {
+              "items": {
+                "$ref": "#/components/schemas/OverviewDecision"
+              },
+              "type": "array",
+              "maxItems": 20,
+              "title": "Open Decisions",
+              "description": "at most 20: yours first, then the oldest first"
+            },
+            "projects": {
+              "items": {
+                "$ref": "#/components/schemas/OverviewProject"
+              },
+              "type": "array",
+              "title": "Projects",
+              "description": "the projects you hold a grant on, by name"
+            }
+          },
+          "type": "object",
+          "required": [
+            "counts",
+            "done_by_day",
+            "active_runs",
+            "recent_runs",
+            "open_decisions",
+            "projects"
+          ],
+          "title": "Overview"
+        },
+        "OverviewCounts": {
+          "properties": {
+            "waiting_on_you": {
+              "type": "integer",
+              "title": "Waiting On You",
+              "description": "open decisions of the runs you dispatched, which only you may answer"
+            },
+            "running": {
+              "type": "integer",
+              "title": "Running",
+              "description": "runs whose agent works: leased, running, interactive, verifying"
+            },
+            "queued": {
+              "type": "integer",
+              "title": "Queued",
+              "description": "runs no worker has claimed yet"
+            },
+            "done_7d": {
+              "type": "integer",
+              "title": "Done 7D",
+              "description": "runs that ended done in the last 7 days in UTC, today included"
+            },
+            "failed_7d": {
+              "type": "integer",
+              "title": "Failed 7D",
+              "description": "runs that ended failed in the same days"
+            },
+            "lost_7d": {
+              "type": "integer",
+              "title": "Lost 7D",
+              "description": "runs whose worker stopped extending the lease, in the same days"
+            }
+          },
+          "type": "object",
+          "required": [
+            "waiting_on_you",
+            "running",
+            "queued",
+            "done_7d",
+            "failed_7d",
+            "lost_7d"
+          ],
+          "title": "OverviewCounts"
+        },
+        "OverviewDecision": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "run_id": {
+              "type": "integer",
+              "title": "Run Id",
+              "description": "the plan run the decision belongs to"
+            },
+            "run_state": {
+              "type": "string",
+              "enum": [
+                "queued",
+                "leased",
+                "running",
+                "interactive",
+                "verifying",
+                "waiting",
+                "review",
+                "parked",
+                "done",
+                "failed",
+                "lost",
+                "cancelled"
+              ],
+              "title": "Run State"
+            },
+            "plan_id": {
+              "type": "string",
+              "title": "Plan Id"
+            },
+            "plan_title": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Plan Title"
+            },
+            "step_key": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Step Key",
+              "description": "the step it is about, when the agent named one"
+            },
+            "category": {
+              "type": "string",
+              "enum": [
+                "deploy",
+                "delete_data",
+                "live_migration",
+                "external_send",
+                "spend_money",
+                "architecture",
+                "scope"
+              ],
+              "title": "Category"
+            },
+            "question": {
+              "type": "string",
+              "title": "Question"
+            },
+            "owner": {
+              "type": "string",
+              "title": "Owner",
+              "description": "the login of the run's owner, the one member who may answer"
+            },
+            "yours": {
+              "type": "boolean",
+              "title": "Yours",
+              "description": "whether you are that owner"
+            },
+            "asked_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Asked At"
+            },
+            "parks_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Parks At",
+              "description": "when the run parks for want of an answer: EVO_HUB_DECISION_WAIT_SECONDS after it started waiting, or when it parked; null while its agent still works"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "project",
+            "run_id",
+            "run_state",
+            "plan_id",
+            "plan_title",
+            "step_key",
+            "category",
+            "question",
+            "owner",
+            "yours",
+            "asked_at",
+            "parks_at"
+          ],
+          "title": "OverviewDecision"
+        },
+        "OverviewProject": {
+          "properties": {
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "role": {
+              "type": "string",
+              "title": "Role",
+              "description": "your role on the project"
+            },
+            "max_level": {
+              "type": "string",
+              "title": "Max Level",
+              "description": "the highest label level your grant reaches"
+            },
+            "repos": {
+              "type": "integer",
+              "title": "Repos",
+              "description": "the repos registered for the project"
+            },
+            "active_plans": {
+              "type": "integer",
+              "title": "Active Plans",
+              "description": "its plans in the active area that you can see"
+            },
+            "open_decisions": {
+              "type": "integer",
+              "title": "Open Decisions",
+              "description": "open decisions of the plans you can see, yours or not"
+            }
+          },
+          "type": "object",
+          "required": [
+            "name",
+            "role",
+            "max_level",
+            "repos",
+            "active_plans",
+            "open_decisions"
+          ],
+          "title": "OverviewProject"
+        },
+        "OverviewRun": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "step",
+                "plan"
+              ],
+              "title": "Kind"
+            },
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "plan_id": {
+              "type": "string",
+              "title": "Plan Id"
+            },
+            "plan_title": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Plan Title",
+              "description": "the plan's title as the hub holds it now"
+            },
+            "step_key": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Step Key",
+              "description": "null for a plan run"
+            },
+            "title": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Title",
+              "description": "the step's title when the run was dispatched; the plan's for a plan run"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "queued",
+                "leased",
+                "running",
+                "interactive",
+                "verifying",
+                "waiting",
+                "review",
+                "parked",
+                "done",
+                "failed",
+                "lost",
+                "cancelled"
+              ],
+              "title": "State"
+            },
+            "dispatched_by": {
+              "type": "string",
+              "title": "Dispatched By",
+              "description": "the login of the member who dispatched it, its owner"
+            },
+            "worker_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Worker Id",
+              "description": "the worker that claimed it; null while it is queued"
+            },
+            "worker": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Worker",
+              "description": "that worker's name"
+            },
+            "runtime": {
+              "type": "string",
+              "enum": [
+                "any",
+                "claude-code",
+                "opencode",
+                "codex"
+              ],
+              "title": "Runtime",
+              "description": "any until a worker claims the run"
+            },
+            "model": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Model"
+            },
+            "steps_total": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Steps Total",
+              "description": "the steps of a plan run's plan; null for a run of one step"
+            },
+            "steps_done": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Steps Done",
+              "description": "a plan run's steps the plan holds done now; null for a run of one step"
+            },
+            "run_seconds": {
+              "type": "integer",
+              "title": "Run Seconds",
+              "description": "the agent time the run has used, as the hub last counted it"
+            },
+            "queued_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Queued At"
+            },
+            "started_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Started At"
+            },
+            "finished_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Finished At"
+            },
+            "error": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error",
+              "description": "why the run failed, was lost or ended"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "kind",
+            "project",
+            "plan_id",
+            "plan_title",
+            "step_key",
+            "title",
+            "state",
+            "dispatched_by",
+            "worker_id",
+            "worker",
+            "runtime",
+            "model",
+            "steps_total",
+            "steps_done",
+            "run_seconds",
+            "queued_at",
+            "started_at",
+            "finished_at",
+            "error"
+          ],
+          "title": "OverviewRun"
         },
         "Page": {
           "properties": {
