@@ -87,6 +87,9 @@ ALLOWED_SQL: dict[str, re.Pattern] = {
     "evo_agents/hub/server/listen.py": re.compile(r"^LISTEN\b"),
     # A test's database and its owner role, made and dropped by a superuser outside any hub database.
     "tests/hub/pg.py": re.compile(r"^(?:CREATE|DROP)\s+(?:DATABASE|ROLE)\b"),
+    # A trigger counting the writes of a token's expiry, with its plpgsql function: SQLAlchemy has no construct for
+    # either.
+    "tests/hub/test_auth.py": re.compile(r"^CREATE FUNCTION count_expiry_write\(\)"),
 }
 ALLOWED_PSYCOPG_SQL = frozenset({"evo_agents/hub/server/listen.py", "tests/hub/pg.py"})  # quotes their identifiers
 ALLOWED_DRIVER = frozenset(
@@ -109,7 +112,6 @@ LEGACY: dict[str, int] = {
     "evo_agents/hub/migrate.py": 8,
     "evo_agents/hub/server/admin.py": 17,
     "evo_agents/hub/server/admin_console.py": 10,
-    "evo_agents/hub/server/auth.py": 10,
     "evo_agents/hub/server/blobs.py": 9,
     "evo_agents/hub/server/credentials.py": 21,
     "evo_agents/hub/server/decisions.py": 18,
@@ -133,7 +135,6 @@ LEGACY: dict[str, int] = {
     "tests/hub/pg.py": 4,
     "tests/hub/test_admin_api.py": 17,
     "tests/hub/test_admin_overview.py": 13,
-    "tests/hub/test_auth.py": 23,
     "tests/hub/test_blobs.py": 10,
     "tests/hub/test_credentials_api.py": 10,
     "tests/hub/test_decisions.py": 16,
@@ -160,7 +161,6 @@ LEGACY: dict[str, int] = {
     "tests/hub/test_skills.py": 11,
     "tests/hub/test_skills_api.py": 1,
     "tests/hub/test_terminal.py": 5,
-    "tests/hub/test_web_auth.py": 8,
     "tests/hub/test_wheel.py": 2,
     "tests/hub/test_worker.py": 8,
     "tests/hub/test_workers.py": 32,

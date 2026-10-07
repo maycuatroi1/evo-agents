@@ -9,6 +9,7 @@ import hashlib
 import io
 import json
 import logging
+from datetime import timedelta
 from urllib.parse import parse_qsl, urlencode, urlsplit
 
 import pytest
@@ -20,8 +21,10 @@ if not pg.DSN:
 
 import httpx
 from fastapi.testclient import TestClient
+from sqlalchemy import func, select, update
 
 from evo_agents.hub import log as hub_log
+from evo_agents.hub import tables
 from evo_agents.hub.server.app import create_app
 from evo_agents.hub.server.security import SESSION_COOKIE, TOKEN_TTL, hash_token, sign
 from evo_agents.hub.server.web_auth import LOGIN_COOKIE, LOGIN_PURPOSE
@@ -30,6 +33,10 @@ from tests.hub.live import bearer, sql
 
 OCTO = Account("octo", 101)
 CALLBACK = "/v1/auth/web/callback"
+
+
+def count(db, table) -> int:
+    return sql(db, select(func.count()).select_from(table))[0][0]
 
 
 @pytest.fixture
@@ -118,7 +125,7 @@ def test_web_login_redirects_to_github_with_state_and_pkce_in_a_signed_cookie(cl
     assert set_cookie(response, SESSION_COOKIE) is None
     _, again = start_login(client)
     assert again["state"] != query["state"] and again["code_challenge"] != query["code_challenge"]
-    assert sql(hub_db, "SELECT count(*) FROM tokens")[0][0] == 0
+    assert count(hub_db, tables.tokens) == 0
 
 
 def test_a_web_sign_in_sets_a_secure_session_cookie_that_works(client, github, hub_db):
@@ -146,7 +153,8 @@ def test_a_web_sign_in_sets_a_secure_session_cookie_that_works(client, github, h
     assert challenge.decode() == query["code_challenge"]
     assert all(github.client_secret not in json.dumps(r.query) for r in github.requests)
 
-    (row,) = sql(hub_db, "SELECT id, kind, host, token_hash FROM tokens")
+    tokens = tables.tokens
+    (row,) = sql(hub_db, select(tokens.c.id, tokens.c.kind, tokens.c.host, tokens.c.token_hash))
     assert row[1:] == ("web", None, hash_token(session))
     stored = live.table_dump(hub_db)
     assert session not in stored and not any(token in stored for token in github.tokens)
@@ -155,7 +163,8 @@ def test_a_web_sign_in_sets_a_secure_session_cookie_that_works(client, github, h
     me = client.get("/v1/auth/whoami", headers=cookie(session))
     assert me.status_code == 200, me.text
     assert me.json()["login"] == "octo" and me.json()["token"]["kind"] == "web"
-    assert sql(hub_db, "SELECT action, target, token_id FROM audit") == [("auth.login", "web", row[0])]
+    audit = tables.audit
+    assert sql(hub_db, select(audit.c.action, audit.c.target, audit.c.token_id)) == [("auth.login", "web", row[0])]
 
     # The callback cannot be replayed: the code is spent at GitHub and the login cookie in the browser.
     replay = client.get(CALLBACK, params=back, follow_redirects=False)
@@ -205,8 +214,8 @@ def test_a_callback_with_a_wrong_state_is_400_and_creates_no_session(client, git
 
     _, query = start_login(client)
     refused({"code": "not-a-code", "state": query["state"]}, reason="GitHub refused the sign-in code")
-    assert sql(hub_db, "SELECT count(*) FROM tokens")[0][0] == 0
-    assert sql(hub_db, "SELECT count(*) FROM users")[0][0] == 0
+    assert count(hub_db, tables.tokens) == 0
+    assert count(hub_db, tables.users) == 0
 
 
 def test_writes_with_the_session_cookie_need_the_csrf_header(client, github, hub_db):
@@ -258,16 +267,18 @@ def test_the_session_cookie_is_401_after_logout(client, github, hub_db):
     assert is_deleted(set_cookie(after, SESSION_COOKIE))  # the browser is told to drop it
     again = client.post("/v1/auth/web/logout", headers={**cookie(session), "X-Evo-CSRF": token})
     assert again.status_code == 401
-    assert sql(hub_db, "SELECT revoked_at IS NOT NULL FROM tokens WHERE id = %s", (token_id,)) == [(True,)]
-    assert sql(hub_db, "SELECT action, target FROM audit ORDER BY id")[-1] == ("auth.logout", f"token:{token_id}")
+    tokens, audit = tables.tokens, tables.audit
+    assert sql(hub_db, select(tokens.c.revoked_at.is_not(None)).where(tokens.c.id == token_id)) == [(True,)]
+    trail = select(audit.c.action, audit.c.target).order_by(audit.c.id)
+    assert sql(hub_db, trail)[-1] == ("auth.logout", f"token:{token_id}")
 
     # Expiry works for web sessions as for machine tokens.
     expiring = web_sign_in(client, github)
     sql(
         hub_db,
-        "UPDATE tokens SET created_at = now() - interval '100 days', expires_at = now() - interval '1 day' "
-        "WHERE token_hash = %s",
-        (hash_token(expiring),),
+        update(tokens)
+        .values(created_at=func.now() - timedelta(days=100), expires_at=func.now() - timedelta(days=1))
+        .where(tokens.c.token_hash == hash_token(expiring)),
     )
     assert client.get("/v1/auth/whoami", headers=cookie(expiring)).status_code == 401
 
