@@ -26,7 +26,11 @@ has plan run #N"), and a plan run waits until no run of the plan's steps is acti
 GET /v1/projects/{p}/runs (reader) lists the project's runs newest first, filtered by state, plan, step, worker,
 dispatcher and text, a page at a time, with how many runs each state has under the other filters; GET .../runs/{id}
 shows one. A reader sees the runs of the plans it may read through the sink it names (``visible_plans``), and a run
-of another plan reads as no run (``readable_run``).
+of another plan reads as no run (``readable_run``). GET .../runs/stats counts the runs of the same plans that ended on
+each of the last ``days`` UTC days (MIN_STATS_DAYS to MAX_STATS_DAYS, STATS_DAYS by default) in each end state, with
+the 50th and 90th percentile of how long they ran (started, else leased, to finished, as the runs pages count it) and
+the tokens of their usage, read as the run page's usage card reads it (``_usage_parts``); a day without a run has
+zeros.
 
 A worker claims with POST /v1/worker/claim, which waits up to CLAIM_WAIT_SECONDS: ``RunWakeups`` wakes it when
 RUNS_CHANNEL is notified, on the api process's one LISTEN connection (``listen``, opened by the first claim or stream),
@@ -90,7 +94,7 @@ import logging
 import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, replace
-from datetime import datetime, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Annotated, Literal
 
 import psycopg
@@ -724,6 +728,229 @@ async def list_runs(
         counts=StateCounts(**counts),
         limit=limit,
         offset=offset,
+    )
+
+
+# Run stats by day, for the web's charts
+
+STATS_DAYS = 30  # the days GET .../runs/stats covers without ?days, today in UTC the last of them
+MIN_STATS_DAYS, MAX_STATS_DAYS = 7, 90
+UTC_TODAY = "SELECT (now() AT TIME ZONE 'UTC')::date"
+
+
+class RunFigures(BaseModel):
+    """The runs that ended in a span of UTC days, of the plans the caller may read."""
+
+    done: int = Field(description="runs that ended done")
+    failed: int = Field(description="runs that ended failed")
+    lost: int = Field(description="runs whose worker stopped extending the lease")
+    cancelled: int = Field(description="runs that ended cancelled, queued or not")
+    p50_seconds: float | None = Field(
+        description="the median time the runs that ended ran, from started (else leased) to finished, as the runs "
+        "pages count it; null when none of them started"
+    )
+    p90_seconds: float | None = Field(description="the 90th percentile of that time; null when none of them started")
+    input_tokens: int = Field(
+        description="input tokens not read from the cache, added up from the runs' usage as the run page's usage "
+        "card reads it"
+    )
+    output_tokens: int = Field(description="output tokens, reasoning left out")
+    cache_read_tokens: int = Field(description="input tokens read from the cache")
+    reasoning_tokens: int = Field(description="reasoning (thinking) tokens")
+    runs_with_usage: int = Field(
+        description="the runs whose usage the hub could read: a run without usage, or with usage of no shape the "
+        "card knows (Claude Code, Codex, opencode), adds no token"
+    )
+
+
+class RunDay(RunFigures):
+    day: date = Field(description="a day in UTC")
+
+
+class RunStats(BaseModel):
+    project: str
+    days: int = Field(description="the days counted, today in UTC the last")
+    first_day: date = Field(description="the oldest day counted, in UTC")
+    last_day: date = Field(description="today in UTC")
+    by_day: list[RunDay] = Field(
+        description="every day counted, the oldest first: a day without a run has zeros and null percentiles"
+    )
+    total: RunFigures = Field(
+        description="the whole span: its counts and tokens are by_day's added up, its percentiles over every run"
+    )
+
+
+# The keys of a run's usage the usage card reads (web/src/components/runs/usage-model.ts), each runtime's own
+USAGE_KEYS = (
+    *("input_tokens", "cache_read_input_tokens", "output_tokens", "output_tokens_details"),  # Claude Code
+    *("inputTokens", "cachedInputTokens", "outputTokens", "reasoningOutputTokens"),  # Codex, as it streams them
+    *("cached_input_tokens", "reasoning_output_tokens"),  # Codex, as its worker reports the run's total
+    *("input", "output", "reasoning", "cache_read", "cache"),  # opencode
+)
+
+
+def _usage_number(value: str) -> str:
+    """``value`` (a jsonb expression) when it is a positive number, else 0, as the usage card reads a number."""
+    return f"CASE WHEN jsonb_typeof({value}) = 'number' THEN greatest(({value})::numeric, 0) ELSE 0 END"
+
+
+def _usage_either(first: str, second: str) -> str:
+    """The number of ``first`` when it holds a value, null or missing being none, else the number of ``second``: the
+    card's ``first ?? second``."""
+    return f"CASE WHEN {first} IS NOT NULL THEN {_usage_number(first)} ELSE {_usage_number(second)} END"
+
+
+def _usage_parts() -> dict[str, str]:
+    """A run's usage read as the usage card's readTokens reads it, from the keys of USAGE_KEYS taken apart once per
+    run (``k``): the shape that reported it, null for none the card knows, then the whole input, the part of it read
+    from the cache, the whole output and the reasoning part of it. Codex counts the cache in its input and reasoning in
+    its output, Claude Code counts thinking in its output, and opencode keeps the four apart."""
+
+    def key(name: str) -> str:
+        return f'k."{name}"'
+
+    def has(*names: str) -> str:
+        return " OR ".join(f"jsonb_typeof({key(name)}) = 'number'" for name in names)
+
+    def by_shape(claude: str, codex: str, opencode: str) -> str:
+        return (
+            f"CASE s.shape WHEN 'claude' THEN {claude} WHEN 'codex' THEN {codex} WHEN 'opencode' THEN {opencode} "
+            "ELSE 0 END"
+        )
+
+    number, either = _usage_number, _usage_either
+    codex = has("inputTokens", "outputTokens", "cachedInputTokens", "cached_input_tokens", "reasoning_output_tokens")
+    claude = has("input_tokens", "output_tokens", "cache_read_input_tokens")
+    opencode = has("input", "output", "reasoning", "cache_read") + f" OR jsonb_typeof({key('cache')}) = 'object'"
+    return {
+        "keys": ", ".join(f'"{name}" jsonb' for name in USAGE_KEYS),
+        "shape": f"CASE WHEN {codex} THEN 'codex' WHEN {claude} THEN 'claude' WHEN {opencode} THEN 'opencode' END",
+        "whole_input": by_shape(
+            number(key("input_tokens")), either(key("inputTokens"), key("input_tokens")), number(key("input"))
+        ),
+        "cached": by_shape(
+            number(key("cache_read_input_tokens")),
+            either(key("cachedInputTokens"), key("cached_input_tokens")),
+            either(key("cache_read"), f"({key('cache')} -> 'read')"),
+        ),
+        "whole_output": by_shape(
+            number(key("output_tokens")), either(key("outputTokens"), key("output_tokens")), number(key("output"))
+        ),
+        "thought": by_shape(
+            number(f"({key('output_tokens_details')} -> 'thinking_tokens')"),
+            either(key("reasoningOutputTokens"), key("reasoning_output_tokens")),
+            number(key("reasoning")),
+        ),
+    }
+
+
+def _run_stats_query() -> str:
+    parts = _usage_parts()
+    counts = ", ".join(f"count(*) FILTER (WHERE e.state = '{state}')" for state in runs.TERMINAL_STATES)
+    return f"""
+WITH ended AS (
+    SELECT (r.finished_at AT TIME ZONE 'UTC')::date AS day, r.state,
+           CASE WHEN coalesce(r.started_at, r.leased_at) IS NOT NULL
+                THEN greatest(extract(epoch FROM r.finished_at - coalesce(r.started_at, r.leased_at)), 0)::float8
+           END AS seconds,
+           s.shape,
+           CASE WHEN s.shape = 'codex' THEN least(u.cached, u.whole_input) ELSE u.cached END AS cache_read,
+           CASE WHEN s.shape = 'codex' THEN u.whole_input - least(u.cached, u.whole_input) ELSE u.whole_input END
+               AS input,
+           CASE WHEN s.shape = 'opencode' THEN u.thought ELSE least(u.thought, u.whole_output) END AS reasoning,
+           CASE WHEN s.shape = 'opencode' THEN u.whole_output ELSE u.whole_output - least(u.thought, u.whole_output) END
+               AS output
+      FROM runs r
+     CROSS JOIN LATERAL jsonb_to_record(CASE WHEN jsonb_typeof(r.usage) = 'object' THEN r.usage END)
+           AS k({parts["keys"]})
+     CROSS JOIN LATERAL (SELECT {parts["shape"]} AS shape) s
+     CROSS JOIN LATERAL (
+         SELECT {parts["whole_input"]} AS whole_input,
+                {parts["cached"]} AS cached,
+                {parts["whole_output"]} AS whole_output,
+                {parts["thought"]} AS thought
+     ) u
+     WHERE r.project_id = %(project)s AND r.plan_id = ANY(%(plans)s) AND r.state = ANY(%(ended)s)
+       AND r.finished_at >= %(since)s AND r.finished_at < %(until)s
+)
+SELECT e.day, grouping(e.day) = 1, {counts},
+       percentile_cont(0.5) WITHIN GROUP (ORDER BY e.seconds), percentile_cont(0.9) WITHIN GROUP (ORDER BY e.seconds),
+       sum(e.input), sum(e.output), sum(e.cache_read), sum(e.reasoning), count(e.shape)
+  FROM ended e
+ GROUP BY ROLLUP (e.day)
+"""
+
+
+RUN_STATS = _run_stats_query()
+
+
+def _seconds(value: float | None) -> float | None:
+    return None if value is None else round(value, 3)
+
+
+def _figures(row) -> RunFigures:
+    """A row of RUN_STATS after its day and grouping: a sum over no run (null) is 0, a percentile kept to the
+    millisecond."""
+    *counts, p50, p90, input_tokens, output_tokens, cache_read, reasoning, with_usage = row
+    return RunFigures(
+        **dict(zip(runs.TERMINAL_STATES, counts, strict=True)),
+        p50_seconds=_seconds(p50),
+        p90_seconds=_seconds(p90),
+        input_tokens=int(input_tokens or 0),
+        output_tokens=int(output_tokens or 0),
+        cache_read_tokens=int(cache_read or 0),
+        reasoning_tokens=int(reasoning or 0),
+        runs_with_usage=with_usage,
+    )
+
+
+NO_RUN = _figures([0] * len(runs.TERMINAL_STATES) + [None, None, 0, 0, 0, 0, 0])
+
+
+@router.get(
+    "/{project}/runs/stats",
+    response_model=RunStats,
+    responses={403: {"model": ErrorBody}, 404: {"model": ErrorBody}},
+)
+async def run_stats(
+    request: Request,
+    project: ProjectName,
+    user: CurrentUser,
+    days: Annotated[
+        int,
+        Query(ge=MIN_STATS_DAYS, le=MAX_STATS_DAYS, description="the last days in UTC to count, today included"),
+    ] = STATS_DAYS,
+    sink: Annotated[str | None, Header(alias=plan_routes.SINK_HEADER)] = None,
+) -> RunStats:
+    """The runs of the plans the caller may read that ended on each of the last ``days`` days in UTC: how many in
+    each end state, how long they ran and the tokens they used."""
+    async with request.app.state.pool.connection() as conn:
+        access = await project_access(conn, user, project)
+        plans = await visible_plans(conn, access, sink)
+        today: date = (await (await conn.execute(UTC_TODAY)).fetchone())[0]
+        first = today - timedelta(days=days - 1)
+        params = {
+            "project": access.project_id,
+            "plans": plans,
+            "ended": list(runs.TERMINAL_STATES),
+            "since": datetime.combine(first, time.min, tzinfo=timezone.utc),
+            "until": datetime.combine(today + timedelta(days=1), time.min, tzinfo=timezone.utc),
+        }
+        rows = await (await conn.execute(RUN_STATS, params)).fetchall()
+    by_day, total = {}, NO_RUN
+    for day, whole_span, *values in rows:
+        if whole_span:
+            total = _figures(values)
+        else:
+            by_day[day] = _figures(values)
+    shown = [first + timedelta(days=back) for back in range(days)]
+    return RunStats(
+        project=access.name,
+        days=days,
+        first_day=first,
+        last_day=today,
+        by_day=[RunDay(day=day, **by_day.get(day, NO_RUN).model_dump()) for day in shown],
+        total=total,
     )
 
 
