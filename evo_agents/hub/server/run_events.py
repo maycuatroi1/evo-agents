@@ -263,7 +263,7 @@ class Wakeup:
         notification after this moment wakes the next wait."""
         try:
             await asyncio.wait_for(self._event.wait(), timeout)
-        except TimeoutError:  # not TimeoutError itself before Python 3.11
+        except TimeoutError:
             pass
         self._event.clear()
 

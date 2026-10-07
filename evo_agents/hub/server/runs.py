@@ -1529,7 +1529,7 @@ class RunWakeups:
             return
         try:
             await asyncio.wait_for(self._event.wait(), timeout)
-        except TimeoutError:  # not TimeoutError itself before Python 3.11
+        except TimeoutError:
             pass
 
     async def ticket(self, worker_id: int) -> int:
