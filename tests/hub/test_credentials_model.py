@@ -82,6 +82,14 @@ def test_lease_repr_leaves_out_the_value():
     assert Lease.from_json(lease.to_json()) == lease
 
 
+def test_a_lease_from_the_hub_is_read_with_a_trailing_z():
+    """The hub's JSON writes a UTC time as ``...Z``, which datetime.fromisoformat of Python 3.10 refuses."""
+    sent = {"id": 2, "kind": "git", "provider": "github-app", "expires_at": "2026-10-07T00:41:08Z"}
+    assert Lease.from_json(sent).expires_at == datetime(2026, 10, 7, 0, 41, 8, tzinfo=timezone.utc)
+    sent["expires_at"] = "2026-10-07T00:41:08.123Z"
+    assert Lease.from_json(sent).expires_at == datetime(2026, 10, 7, 0, 41, 8, 123000, tzinfo=timezone.utc)
+
+
 def test_github_lease_needs_refresh_near_its_end():
     now = datetime(2026, 10, 6, 12, 0, tzinfo=timezone.utc)
     left = timedelta(seconds=credentials.GITHUB_TOKEN_REFRESH_SECONDS)

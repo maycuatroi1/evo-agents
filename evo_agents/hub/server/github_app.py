@@ -47,6 +47,7 @@ from cryptography.hazmat.primitives.asymmetric import padding, rsa
 from evo_agents.hub.config import GITHUB_APP_VARIABLES, LOGIN, ConfigError, HubConfig
 from evo_agents.hub.credentials import GITHUB_PERMISSIONS
 from evo_agents.hub.server.github import API_HEADERS, GitHubClient, GitHubRefused, GitHubUnavailable
+from evo_agents.isotime import parse_iso
 
 JWT_BACKDATE_SECONDS = 60  # iat this far back, for a hub clock ahead of GitHub's
 JWT_LIFETIME_SECONDS = 9 * 60  # exp this far ahead; GitHub refuses a JWT ending more than 10 minutes from its now
@@ -120,7 +121,7 @@ def _timestamp(value) -> datetime | None:
     if not isinstance(value, str):
         return None
     try:
-        moment = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        moment = parse_iso(value)
     except ValueError:
         return None
     return moment if moment.tzinfo else None
