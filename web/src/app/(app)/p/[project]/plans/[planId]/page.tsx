@@ -1,9 +1,10 @@
-import { dehydrate, HydrationBoundary } from "@tanstack/react-query";
+import { dehydrate } from "@tanstack/react-query";
 import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
 
 import { PlanOverview } from "@/components/plans/plan-overview";
 import { planActiveRunsQuery, runsQuery } from "@/components/runs/queries";
+import { HydrationBoundary } from "@/lib/api/hydration-boundary";
 import { getQueryClient, prefetch } from "@/lib/api/prefetch";
 import { serverApi } from "@/lib/api/server";
 import { planQuery } from "@/lib/plan-queries";
