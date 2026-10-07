@@ -47,10 +47,12 @@ from typing import Annotated
 import psycopg
 from fastapi import Depends, HTTPException, Request
 from sqlalchemy import exc as sa_exc
+from sqlalchemy import exists, func, insert, or_, select, update
+from sqlalchemy.ext.asyncio import AsyncConnection
 from starlette.responses import Response
 from starlette.websockets import WebSocketClose
 
-from evo_agents.hub.db import legacy
+from evo_agents.hub import tables
 from evo_agents.hub.runs import PROTOCOL_HEADER, PROTOCOL_VERSION
 from evo_agents.hub.server.errors import error_response
 
@@ -92,24 +94,41 @@ WWW_AUTHENTICATE = {"WWW-Authenticate": 'Bearer realm="evo-agents hub"'}
 
 _TOKEN = re.compile(r"ev[hsw]_[A-Za-z0-9_-]{43}")  # a prefix and 32 bytes of base64url without padding
 
-# One statement: find a live token of the given kind, and when it was last written more than TOUCH_EVERY ago, push
-# its expiry and mark the user seen. Two requests racing over a stale token write once: the second UPDATE waits
-# for the first, then finds last_used_at fresh and changes nothing.
-AUTHENTICATE = """
-WITH found AS (
-    SELECT t.id, t.user_id, u.login
-      FROM tokens t JOIN users u ON u.id = t.user_id
-     WHERE t.token_hash = %(hash)s AND t.kind = %(kind)s AND t.revoked_at IS NULL AND t.expires_at > now()
-), touched AS (
-    UPDATE tokens SET last_used_at = now(), expires_at = now() + %(ttl)s
-     WHERE id = (SELECT id FROM found) AND (last_used_at IS NULL OR last_used_at <= now() - %(every)s)
-    RETURNING id
-), seen AS (
-    UPDATE users SET last_seen_at = now()
-     WHERE id = (SELECT user_id FROM found) AND EXISTS (SELECT 1 FROM touched)
-)
-SELECT id, user_id, login FROM found
-"""
+
+def _authenticate(digest: str, kind: str):
+    """One statement: find a live token of ``kind`` with hash ``digest``, and when it was last written more than
+    TOUCH_EVERY ago, push its expiry and mark the user seen. Two requests racing over a stale token write once: the
+    second UPDATE waits for the first, then finds last_used_at fresh and changes nothing."""
+    tokens, users = tables.tokens, tables.users
+    found = (
+        select(tokens.c.id, tokens.c.user_id, users.c.login)
+        .join_from(tokens, users, users.c.id == tokens.c.user_id)
+        .where(
+            tokens.c.token_hash == digest,
+            tokens.c.kind == kind,
+            tokens.c.revoked_at.is_(None),
+            tokens.c.expires_at > func.now(),
+        )
+        .cte("found")
+    )
+    touched = (
+        update(tokens)
+        .values(last_used_at=func.now(), expires_at=func.now() + TOKEN_TTL)
+        .where(
+            tokens.c.id == select(found.c.id).scalar_subquery(),
+            or_(tokens.c.last_used_at.is_(None), tokens.c.last_used_at <= func.now() - TOUCH_EVERY),
+        )
+        .returning(tokens.c.id)
+        .cte("touched")
+    )
+    seen = (
+        update(users)
+        .values(last_seen_at=func.now())
+        .where(users.c.id == select(found.c.user_id).scalar_subquery(), exists(select(touched.c.id)))
+        .returning(users.c.id)
+        .cte("seen")
+    )
+    return select(found.c.id, found.c.user_id, found.c.login).add_cte(touched, seen)
 
 
 @dataclass(frozen=True)
@@ -226,26 +245,34 @@ def delete_session_cookie(response: Response) -> None:
     response.delete_cookie(SESSION_COOKIE, path="/", secure=True, httponly=True, samesite="lax")
 
 
-async def issue_token(conn, user_id: int, kind: str, host: str | None) -> Issued:
+async def issue_token(conn: AsyncConnection, user_id: int, kind: str, host: str | None) -> Issued:
     token = new_token(kind)
-    cursor = await legacy(
-        conn,
-        "INSERT INTO tokens (user_id, kind, token_hash, host, expires_at) VALUES (%s, %s, %s, %s, now() + %s) "
-        "RETURNING id, expires_at",
-        (user_id, kind, hash_token(token), host, TOKEN_TTL),
+    tokens = tables.tokens
+    inserted = await conn.execute(
+        insert(tokens)
+        .values(
+            user_id=user_id,
+            kind=kind,
+            token_hash=hash_token(token),
+            host=host,
+            expires_at=func.now() + TOKEN_TTL,
+        )
+        .returning(tokens.c.id, tokens.c.expires_at)
     )
-    token_id, expires_at = await cursor.fetchone()
+    token_id, expires_at = inserted.one()
     return Issued(token, token_id, expires_at)
 
 
-async def revoke_token(conn, token_id: int, user_id: int) -> bool:
+async def revoke_token(conn: AsyncConnection, token_id: int, user_id: int) -> bool:
     """Revoke a token of ``user_id``; False when it has none by that id that is not revoked already."""
-    cursor = await legacy(
-        conn,
-        "UPDATE tokens SET revoked_at = now() WHERE id = %s AND user_id = %s AND revoked_at IS NULL RETURNING id",
-        (token_id, user_id),
+    tokens = tables.tokens
+    revoked = await conn.execute(
+        update(tokens)
+        .values(revoked_at=func.now())
+        .where(tokens.c.id == token_id, tokens.c.user_id == user_id, tokens.c.revoked_at.is_(None))
+        .returning(tokens.c.id)
     )
-    return await cursor.fetchone() is not None
+    return revoked.one_or_none() is not None
 
 
 async def authenticate(engine, token: str, kind: str, config) -> Principal | None:
@@ -253,9 +280,8 @@ async def authenticate(engine, token: str, kind: str, config) -> Principal | Non
     if not _TOKEN.fullmatch(token) or not token.startswith(PREFIXES[kind]):
         return None
     digest = hash_token(token)
-    params = {"hash": digest, "kind": kind, "ttl": TOKEN_TTL, "every": TOUCH_EVERY}
     async with engine.begin() as conn:
-        row = await (await legacy(conn, AUTHENTICATE, params)).fetchone()
+        row = (await conn.execute(_authenticate(digest, kind))).one_or_none()
     if row is None:
         return None
     token_id, user_id, login = row
