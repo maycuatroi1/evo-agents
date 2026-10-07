@@ -1,6 +1,7 @@
 import type { Page } from "@playwright/test";
 
 import { expectNoSeriousViolations } from "./support/a11y";
+import { signOut } from "./support/auth";
 import { expect, isDeployed, type Member, test } from "./support/fixtures";
 import { newAccount, uniqueName } from "./support/hub";
 import { open } from "./support/plans";
@@ -141,7 +142,7 @@ test("someone other than the owner sees no Terminal tab, and the hub closes thei
   const { project, run } = await interactiveRun(me);
   const other = newAccount("colleague");
   await admin.grant(project, other.login, "writer", "internal");
-  await page.context().clearCookies();
+  await signOut(page);
   await signInAs(other);
   const violations = await watchCsp(page);
 

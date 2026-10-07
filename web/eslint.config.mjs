@@ -35,6 +35,20 @@ export default defineConfig([
     // Playwright fixtures call `use`, which is not React's hook.
     rules: { "no-console": "off", "react-hooks/rules-of-hooks": "off" },
   },
+  {
+    files: ["e2e/**"],
+    ignores: ["e2e/support/auth.ts"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: "CallExpression[callee.property.name='clearCookies']",
+          message:
+            "Sign out with signOut(page) from e2e/support/auth.ts: a page of the app left open answers its first 401 with a navigation to /login, which aborts the spec's next page.goto.",
+        },
+      ],
+    },
+  },
   globalIgnores([
     ".next/**",
     "out/**",

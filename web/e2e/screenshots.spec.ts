@@ -1,5 +1,6 @@
 import path from "node:path";
 
+import { signOut } from "./support/auth";
 import { expect, test } from "./support/fixtures";
 import { newAccount, registration, uniqueName } from "./support/hub";
 import { open } from "./support/plans";
@@ -46,10 +47,7 @@ test.describe("screenshots", () => {
       await page.goto("/");
       await expect(page.locator("#main").getByTestId("home-projects")).toBeVisible();
       await page.screenshot({ path: path.join(dir!, `shell-home-mobile-${scheme}.png`) });
-      // Leave the app before signing out: a page of the app still polling (the inbox bell, the fleet line) answers
-      // its first 401 with window.location.assign("/login"), which would abort a page.goto("/login") under way.
-      await page.goto("about:blank");
-      await page.context().clearCookies();
+      await signOut(page);
       await page.goto("/login");
       await page.setViewportSize({ width: 1440, height: 900 });
       await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
