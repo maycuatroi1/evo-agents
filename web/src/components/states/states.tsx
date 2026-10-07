@@ -284,14 +284,17 @@ export function TableSkeleton({ rows = 5, toolbar = false }: { rows?: number; to
   );
 }
 
-/** A list page while it loads: the row of counts above the list (`metrics` tiles), then the list's card. */
+/**
+ * A list page while it loads: the strip of counts above the list (`metrics` cells of MetricStrip, the same 78 px: a
+ * 16 px label, a 30 px figure and a 16 px line), then the list's card.
+ */
 export function ListSkeleton({ rows = 6, metrics = 0 }: { rows?: number; metrics?: number }) {
   return (
     <div className="flex flex-col gap-6">
       {metrics > 0 ? (
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <div className="grid grid-cols-2 gap-px overflow-hidden rounded-md border bg-border shadow-raised lg:grid-cols-4">
           {Array.from({ length: metrics }, (_, i) => (
-            <div key={i} className="flex h-[104px] flex-col gap-2.5 rounded-md border bg-card px-4 py-3.5 shadow-raised">
+            <div key={i} className="flex h-[78px] flex-col justify-between bg-card px-4 py-3">
               <Skeleton className="h-3 w-20 rounded-xs" />
               <Skeleton className="h-6 w-10 rounded-xs" />
               <Skeleton className="h-2.5 w-28 rounded-xs" />

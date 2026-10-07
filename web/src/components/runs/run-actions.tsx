@@ -7,7 +7,9 @@ import { useFormatter, useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
 
 import { ConfirmAction } from "@/components/admin/confirm-action";
-import { InlineError, type Notice, type WriteFailure } from "@/components/admin/notice";
+import { InlineError, type WriteFailure } from "@/components/admin/notice";
+import { notify, notifyFailure } from "@/components/feedback/toast";
+import { stepHref } from "@/components/plans/links";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -118,9 +120,10 @@ function TakeoverDialog({
 /**
  * The run's actions in its header, as the state and the visitor's rights allow (`runControls`): Cancel (asked to
  * confirm), Take over (a dialog with the attach command and Remote Control), Hand back, Approve, Rerun, and the diff
- * once the worker uploaded one. Each control waits for the hub's answer, then says what happened in the page's notice.
+ * once the worker uploaded one. Each control waits for the hub's answer, then says what happened in a toast; a failure
+ * inside a dialog stays there, any other stays as a toast until dismissed.
  */
-export function RunActions({ run, controls, onNotice }: { run: Run; controls: RunControls; onNotice: (notice: Notice) => void }) {
+export function RunActions({ run, controls }: { run: Run; controls: RunControls }) {
   const t = useTranslations("runs.detail.actions");
   const router = useRouter();
   const control = useRunControl(run);
@@ -137,26 +140,39 @@ export function RunActions({ run, controls, onNotice }: { run: Run; controls: Ru
       onSuccess: (answer) => {
         setConfirming(null);
         if (action === "rerun") {
+          notify({
+            tone: "success",
+            text: t("toast.rerun", { id: answer.id }),
+            description: t("toast.rerunText", { of: run.id }),
+            link: { label: t("toast.openRun"), href: runHref(answer.project, answer.id) },
+          });
           router.push(runHref(answer.project, answer.id));
           return;
         }
         const held = (HELD_STATES as readonly string[]).includes(answer.state);
-        const text =
-          action === "cancel"
-            ? held
-              ? t("notice.cancelAsked", { id: run.id })
-              : t("notice.cancelled", { id: run.id })
-            : action === "approve"
-              ? t("notice.approved", { id: run.id, step: run.step_key ?? "", plan: run.plan_id })
-              : action === "takeover"
-                ? t("notice.takeover", { id: run.id, name: sessionName(run.id) })
-                : t("notice.handback", { id: run.id });
-        onNotice({ tone: "success", text });
+        if (action === "cancel") {
+          notify(
+            held
+              ? { tone: "success", text: t("toast.cancelAsked", { id: run.id }), description: t("toast.cancelAskedText") }
+              : { tone: "success", text: t("toast.cancelled", { id: run.id }) },
+          );
+        } else if (action === "approve") {
+          notify({
+            tone: "success",
+            text: t("toast.approved", { id: run.id }),
+            description: t("toast.approvedText", { step: run.step_key ?? "", plan: run.plan_id }),
+            link: run.step_key ? { label: t("toast.openStep"), href: stepHref(run.project, run.plan_id, run.step_key) } : null,
+          });
+        } else if (action === "takeover") {
+          notify({ tone: "success", text: t("toast.takeover", { id: run.id }), description: t("toast.takeoverText", { name: sessionName(run.id) }) });
+        } else {
+          notify({ tone: "success", text: t("toast.handback", { id: run.id }), description: t("toast.handbackText") });
+        }
       },
       onError: (error) => {
         const result = failure(error);
         if (confirming) setDialogError(result);
-        else onNotice({ tone: "error", ...result });
+        else notifyFailure(t(`toast.failed.${action}`, { id: run.id }), result);
       },
       onSettled: () => setActing(null),
     });

@@ -118,7 +118,11 @@ describe("DecisionView", () => {
     await user.click(screen.getByRole("radio", { name: /Wait until tomorrow/ }));
     await user.type(screen.getByTestId("decision-text"), "  after the backup ");
     await user.click(screen.getByTestId("decision-send"));
-    await waitFor(() => expect(screen.getByTestId("admin-notice-status")).toHaveTextContent("Đã gửi câu trả lời tới run #12."));
+    const toast = await screen.findByTestId("toast");
+    expect(toast).toHaveAttribute("data-tone", "success");
+    expect(toast).toHaveTextContent("Đã gửi câu trả lời tới run #12");
+    // The toast links back to the run, unless the run's page is the one shown, as here.
+    expect(within(toast).queryByRole("link")).toBeNull();
     const post = api.seen.find((request) => request.method === "POST");
     expect(post?.url).toBe("http://hub.test/v1/projects/demo/decisions/7/answer");
     expect(post?.headers.get("X-Evo-CSRF")).toBe("csrf-1");
@@ -131,7 +135,9 @@ describe("DecisionView", () => {
     const { user } = setup();
     await user.click(screen.getByRole("radio", { name: /Deploy to staging now/ }));
     await user.click(screen.getByTestId("decision-send"));
-    const alert = await screen.findByTestId("admin-notice-alert");
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveAttribute("data-testid", "toast");
+    expect(alert).toHaveTextContent("Không gửi được câu trả lời");
     expect(alert).toHaveTextContent("Quyết định đã được trả lời hoặc đã đóng trong lúc đó");
     expect(alert).toHaveTextContent("Hub báo: decision 7 is answered, not open");
     expect(alert).toHaveTextContent("rid-4");

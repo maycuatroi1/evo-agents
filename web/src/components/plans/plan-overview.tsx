@@ -5,9 +5,8 @@ import { ChevronRight } from "lucide-react";
 import { useFormatter, useTranslations } from "next-intl";
 import { type ReactNode, useEffect, useRef } from "react";
 
-import { NoticeArea, useNotice } from "@/components/admin/notice";
 import { Identifier } from "@/components/data/identifier";
-import { useCanDispatch, usePlanRunNotice } from "@/components/runs/hooks";
+import { useCanDispatch, usePlanRunToast } from "@/components/runs/hooks";
 import { PlanRunBanner, RunPlanButton, usePlanActivity } from "@/components/runs/plan-run";
 import { LIVE_REFRESH_MS } from "@/components/runs/queries";
 import { QueryView, useHubQuery } from "@/components/states/query-view";
@@ -215,8 +214,7 @@ type Activity = ReturnType<typeof usePlanActivity>;
 function Overview({ project, plan, activity }: { project: string; plan: Plan; activity: Activity }) {
   const view = parsePlan(plan.body, plan.plan_id);
   const counts = countSteps(view.steps);
-  const { notice, show, clear } = useNotice();
-  const dispatched = usePlanRunNotice();
+  const dispatched = usePlanRunToast();
   const canDispatch = useCanDispatch(project);
   return (
     <>
@@ -233,13 +231,12 @@ function Overview({ project, plan, activity }: { project: string; plan: Plan; ac
               pending={counts.pending}
               runs={activity.active}
               loaded={activity.loaded}
-              onDispatched={(run) => show(dispatched(run))}
+              onDispatched={dispatched}
             />
           ) : null
         }
       />
       <ReadOnlyNotice />
-      <NoticeArea notice={notice} onDismiss={clear} />
       {activity.planRun ? <PlanRunBanner project={project} run={activity.planRun} steps={view.steps} /> : null}
       <div className="grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <Intro view={view} />
@@ -270,6 +267,7 @@ export function PlanOverview({
   const state = useHubQuery(
     { ...planQuery(browserApi, project, planId), enabled: !invalid, refetchInterval: runId !== null ? LIVE_REFRESH_MS : false },
     initialError,
+    { live: true }, // the top bar follows it while it polls, that is while a plan run works on the plan
   );
   // Once the run ends, read the plan once more for what it wrote last.
   const previous = useRef<number | null>(null);

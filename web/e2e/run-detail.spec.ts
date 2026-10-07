@@ -24,6 +24,7 @@ import {
   uploadDiff,
   workerInbox,
 } from "./support/runs";
+import { toast } from "./support/toast";
 
 /**
  * The run page against the real API, with the spec as the worker: it claims the run, reports its states and sends its
@@ -230,7 +231,7 @@ test("Approve turns a run in review done, and the plan shows its step done", asy
   await expect(main(page).getByTestId("run-takeover")).toHaveCount(0);
 
   await main(page).getByTestId("run-approve").click();
-  await expect(page.getByTestId("admin-notice-status")).toContainText(`Run #${run.id} approved: step 2 of ${RUN_PLAN} is done.`);
+  await expect(toast(page, `Run #${run.id} approved`)).toContainText(`Step 2 of ${RUN_PLAN} is done.`);
   await expect(main(page).getByTestId("run-state")).toHaveText("Done");
   await expect(main(page).locator('[data-testid="run-phase"][data-phase="done"]')).toHaveAttribute("data-status", "done");
   await expect(main(page).getByTestId("log-status")).toHaveAttribute("data-status", "ended");
@@ -255,7 +256,7 @@ test("Cancel stops a queued run at once, and asks the worker to stop a running o
   await expect(dialog).toContainText("stops at once");
   await dialog.getByTestId("cancel-run-dialog-confirm").click();
   await expect(dialog).toBeHidden();
-  await expect(page.getByTestId("admin-notice-status")).toContainText(`Run #${queued.id} is cancelled.`);
+  await expect(toast(page, `Run #${queued.id} cancelled`)).toBeVisible();
   await expect(main(page).getByTestId("run-state")).toHaveText("Cancelled");
   await expect(main(page).locator('[data-testid="run-phase"][data-status="stopped"]')).toHaveAttribute("data-phase", "queued");
 
@@ -264,7 +265,7 @@ test("Cancel stops a queued run at once, and asks the worker to stop a running o
   dialog = page.getByTestId("cancel-run-dialog");
   await expect(dialog).toContainText("next heartbeat");
   await dialog.getByTestId("cancel-run-dialog-confirm").click();
-  await expect(page.getByTestId("admin-notice-status")).toContainText(`Cancel of run #${run.id} asked`);
+  await expect(toast(page, `Cancel of run #${run.id} asked`)).toContainText("next heartbeat");
   await expect(main(page).getByTestId("run-note-cancel")).toBeVisible();
   await expect(main(page).getByTestId("run-cancel")).toHaveCount(0);
   await expect(main(page).getByTestId("run-composer")).toHaveCount(0);
@@ -311,7 +312,7 @@ test("Take over shows the attach command and Remote Control, and Hand back follo
   await expect(dialog.getByTestId("takeover-remote-control")).toContainText(`evo-run-${run.id}`);
   await dialog.getByTestId("takeover-confirm").click();
   await expect(dialog).toBeHidden();
-  await expect(page.getByTestId("admin-notice-status")).toContainText(`Takeover of run #${run.id} asked`);
+  await expect(toast(page, `Takeover of run #${run.id} asked`)).toBeVisible();
   await expect(main(page).getByTestId("run-note-takeover")).toBeVisible();
   await expect(main(page).getByTestId("run-takeover")).toHaveCount(0);
   expect(await runControl(live, run.id)).toMatchObject({ takeover: true });
@@ -320,7 +321,7 @@ test("Take over shows the attach command and Remote Control, and Hand back follo
   await expect(main(page).getByTestId("run-state")).toHaveText("Interactive", { timeout: 4_000 });
   await expect(main(page).getByTestId("run-note-interactive")).toContainText(`evo-agents worker attach ${run.id}`);
   await main(page).getByTestId("run-handback").click();
-  await expect(page.getByTestId("admin-notice-status")).toContainText(`Hand back of run #${run.id} asked`);
+  await expect(toast(page, `Hand back of run #${run.id} asked`)).toBeVisible();
   await expect(main(page).getByTestId("run-note-handback")).toBeVisible();
   expect(await runControl(live, run.id)).toMatchObject({ handback: true });
   await reportState(live, run.id, { state: "running" });

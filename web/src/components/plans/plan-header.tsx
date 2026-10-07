@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useFormatter, useTranslations } from "next-intl";
 import { type ReactNode, useRef } from "react";
 
-import { CopyAnnouncement, Identifier, useClipboard } from "@/components/data/identifier";
+import { Identifier, useClipboard } from "@/components/data/identifier";
 import { PageHeader } from "@/components/shell/page-header";
 import { StatusBadge } from "@/components/status/status-badge";
 import { Button } from "@/components/ui/button";
@@ -58,7 +58,6 @@ export function ReadOnlyNotice({ className }: { className?: string }) {
         {state === "copied" ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
         {state === "copied" ? t("copied") : t("copy")}
       </Button>
-      <CopyAnnouncement state={state} value={PLAN_CLI_COMMAND} />
     </div>
   );
 }

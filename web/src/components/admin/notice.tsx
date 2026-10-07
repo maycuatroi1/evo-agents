@@ -1,87 +1,15 @@
 "use client";
 
-import { CircleCheck, TriangleAlert, X } from "lucide-react";
+import { TriangleAlert } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { useCallback, useState } from "react";
+import { useCallback } from "react";
 
-import { Button } from "@/components/ui/button";
 import { errorKind, isApiError } from "@/lib/api/errors";
-import { cn } from "@/lib/utils";
 
 /**
- * The result of an admin write, shown on the page that made it. A success goes into a live region that is always in
- * the page, so screen readers announce it; a failure is an alert. Either stays until dismissed or replaced, so
- * nobody has to read it against a timer.
+ * Failures of writes. A write's result is a toast (components/feedback/toast.tsx); a failure inside a dialog that stays
+ * open is said here instead, next to the action that failed, until the dialog closes or the action is tried again.
  */
-export type Notice = { tone: "success" | "error"; text: string; detail?: string | null; requestId?: string | null };
-
-export function useNotice() {
-  const [notice, setNotice] = useState<Notice | null>(null);
-  const clear = useCallback(() => setNotice(null), []);
-  return { notice, show: setNotice, clear };
-}
-
-export function NoticeArea({
-  notice,
-  onDismiss,
-  emptyClassName = "empty:-mt-6",
-}: {
-  notice: Notice | null;
-  onDismiss: () => void;
-  /** Gives back the gap of the column it sits in while empty: a page's 24 px by default. */
-  emptyClassName?: string;
-}) {
-  const success = notice?.tone === "success" ? notice : null;
-  const failure = notice?.tone === "error" ? notice : null;
-  return (
-    <>
-      {/* Always in the page, so a success is announced; while empty it gives back the gap the column put above it. */}
-      <div role="status" aria-live="polite" aria-atomic="true" className={emptyClassName} data-testid="admin-notice-status">
-        {success ? <NoticeBox notice={success} onDismiss={onDismiss} /> : null}
-      </div>
-      {failure ? (
-        <div role="alert" data-testid="admin-notice-alert">
-          <NoticeBox notice={failure} onDismiss={onDismiss} />
-        </div>
-      ) : null}
-    </>
-  );
-}
-
-function NoticeBox({ notice, onDismiss }: { notice: Notice; onDismiss: () => void }) {
-  const t = useTranslations("admin.notice");
-  const Icon = notice.tone === "success" ? CircleCheck : TriangleAlert;
-  return (
-    <div
-      data-tone={notice.tone}
-      className={cn(
-        "flex items-start gap-3 rounded-md border px-3 py-2.5 text-sm",
-        notice.tone === "success"
-          ? "border-success/20 bg-success-soft text-success"
-          : "border-danger/30 bg-card text-danger",
-      )}
-    >
-      <Icon className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-      <div className="flex min-w-0 flex-1 flex-col gap-1">
-        <p className="font-medium text-pretty">{notice.text}</p>
-        {notice.detail ? <p className="text-xs break-words opacity-90">{notice.detail}</p> : null}
-        {notice.requestId ? (
-          <p className="font-mono text-xs break-all opacity-90">{t("requestId", { id: notice.requestId })}</p>
-        ) : null}
-      </div>
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon-sm"
-        className="-my-1 -mr-1 shrink-0 text-current hover:bg-black/5 dark:hover:bg-white/10"
-        onClick={onDismiss}
-        aria-label={t("dismiss")}
-      >
-        <X aria-hidden="true" />
-      </Button>
-    </div>
-  );
-}
 
 /** An inline error inside a dialog, next to the action that failed. */
 export function InlineError({ text, detail, requestId }: { text: string; detail?: string | null; requestId?: string | null }) {

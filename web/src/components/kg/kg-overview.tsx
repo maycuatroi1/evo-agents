@@ -126,7 +126,8 @@ export function KgOverview({
 }) {
   const t = useTranslations("kg");
   const tStates = useTranslations("states");
-  const builds = useHubQuery(kgBuildsQuery(browserApi, project), errors.builds);
+  // Builds in progress are the page's live work: the top bar follows their query while it polls.
+  const builds = useHubQuery(kgBuildsQuery(browserApi, project), errors.builds, { live: true });
   if (builds.status === "error" && builds.error.status === 404) {
     return (
       <NotFoundState

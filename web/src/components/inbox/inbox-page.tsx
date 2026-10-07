@@ -7,7 +7,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 
-import { NoticeArea, useNotice } from "@/components/admin/notice";
+import { notify, notifyFailure } from "@/components/feedback/toast";
 import { Pager } from "@/components/admin/pager";
 import { usePagedQuery } from "@/components/admin/use-paged-query";
 import { FacetGroup } from "@/components/data/facet-group";
@@ -179,11 +179,11 @@ export function InboxPage({ initialError }: { initialError: ApiErrorInfo | null 
   const t = useTranslations("inbox");
   const { filters, href, replace, push } = useInboxUrl();
   const viewer = useInboxViewer();
-  const { state, stale } = usePagedQuery(notificationsQuery(browserApi, inboxQuery(filters)), initialError);
+  // The page's main query: the top bar says from it whether the Inbox is current (every 10 seconds).
+  const { state, stale } = usePagedQuery(notificationsQuery(browserApi, inboxQuery(filters)), initialError, { live: true });
   const count = useQuery(notificationCountQuery(browserApi));
   const markRead = useMarkRead();
   const readFailure = useReadFailure();
-  const { notice, show, clear } = useNotice();
   const [reading, setReading] = useState<number | "all" | null>(null);
   const [focusDecision, setFocusDecision] = useState<number | null>(null);
   const [returnTo, setReturnTo] = useState<number | null>(null);
@@ -195,10 +195,9 @@ export function InboxPage({ initialError }: { initialError: ApiErrorInfo | null 
     setReading(marker);
     markRead.mutate(target, {
       onSettled: () => setReading(null),
-      onSuccess: (result) => {
-        if (marker === "all") show({ tone: "success", text: t("markedAll", { count: result.read }) });
-      },
-      onError: (error) => show({ tone: "error", ...readFailure(error) }),
+      onSuccess: (result) =>
+        void notify({ tone: "success", text: marker === "all" ? t("markedAll", { count: result.read }) : t("markedOne") }),
+      onError: (error) => void notifyFailure(t("markFailed"), readFailure(error)),
     });
   };
 
@@ -274,7 +273,6 @@ export function InboxPage({ initialError }: { initialError: ApiErrorInfo | null 
           </Button>
         }
       />
-      <NoticeArea notice={notice} onDismiss={clear} />
       <div className={selected !== null ? "grid items-start gap-6 lg:grid-cols-[minmax(0,26rem)_minmax(0,1fr)]" : "flex flex-col gap-6"}>
         <section
           aria-labelledby="inbox-list-title"

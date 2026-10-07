@@ -133,7 +133,8 @@
   "identifier": {
     "copy": "Copy {value}",
     "copied": "{value} copied to the clipboard",
-    "selected": "Selected: press Ctrl+C or Cmd+C to copy it"
+    "selected": "Selected: press Ctrl+C or Cmd+C to copy it",
+    "refused": "The browser refused the clipboard. Select the text and press Ctrl+C or Cmd+C."
   },
   "visibility": {
     "value": "Visibility: {level}",
@@ -246,7 +247,6 @@
       "loading": "Loading the page…"
     },
     "notice": {
-      "dismiss": "Dismiss",
       "requestId": "Request id: {id}"
     },
     "errors": {
@@ -356,7 +356,9 @@
       "confirm": "Confirm the grant",
       "saving": "Saving…",
       "notFound": "Project {project} is no longer on the hub. Close this dialog and pick another project.",
-      "success": "Granted {role} with {level} visibility to {login} on project {project}."
+      "success": "{role} with {level} visibility for {login} on project {project}.",
+      "successTitle": "Access granted to {login}",
+      "openMember": "Open member"
     },
     "revokeGrant": {
       "title": "Revoke the access of {login} to project {project}?",
@@ -365,7 +367,10 @@
       "confirm": "Revoke access",
       "pending": "Revoking…",
       "notFound": "This access was revoked already. The list was reloaded.",
-      "success": "Revoked the access of {login} to project {project}."
+      "success": "{login} no longer reaches project {project}.",
+      "successTitle": "Access of {login} revoked",
+      "failed": "Couldn't revoke the access of {login} to {project}",
+      "openMember": "Open member"
     },
     "tokens": {
       "title": "Tokens and sessions",
@@ -418,7 +423,10 @@
       "pending": "Revoking…",
       "notFound": "The hub no longer has this token. The list was reloaded.",
       "conflict": "This token was revoked already. The list was reloaded.",
-      "success": "Revoked token {id} of {login}. The next request made with it gets a 401."
+      "success": "The next request made with it gets a 401.",
+      "successTitle": "Token {id} of {login} revoked",
+      "failed": "Couldn't revoke token {id}",
+      "openMember": "Open member"
     },
     "audit": {
       "title": "Audit trail",
@@ -1146,7 +1154,7 @@
       "newCode": "Create a new code",
       "openWorker": "Open worker",
       "joinedTitle": "<strong>{name}</strong> joined at {time}.",
-      "joinedNotice": "Worker {name} joined the hub.",
+      "joinedNotice": "{name} joined the hub",
       "hostValue": "{hostname}, {os} {arch}",
       "firstHeartbeat": "Reported with its first heartbeat",
       "cliIntro": "A machine already signed in with <code>evo-agents hub login</code> registers with your own token. No pairing code is needed.",
@@ -1310,27 +1318,30 @@
       "drainNotOwner": "Only {owner} can resume it afterwards.",
       "drainConfirm": "Drain worker",
       "drainPending": "Draining…",
-      "drainSuccess": "{name} is draining: it finishes the runs it holds, then claims no new ones.",
-      "undrainSuccess": "{name} claims runs again.",
+      "drainSuccess": "{name} is draining",
+      "undrainSuccess": "{name} resumed",
       "revokeTitle": "Revoke worker {name}?",
       "revokeBody": "Its token stops working at once and its name becomes free. Runs it holds go back to the queue, or fail if they were pinned to it or on their last attempt.",
       "revokeHeld": "{count, plural, one {It holds # run now.} other {It holds # runs now.}}",
       "audit": "This cannot be undone, and it is audited.",
       "revokeConfirm": "Revoke worker",
       "revokePending": "Revoking…",
-      "revokeSuccess": "Revoked {name}. Its token no longer works."
+      "revokeSuccess": "{name} revoked",
+      "drainSuccessText": "It finishes the runs it holds, then claims no new ones.",
+      "undrainSuccessText": "It claims runs again.",
+      "revokeSuccessText": "Its token no longer works.",
+      "drainFailed": "Couldn't drain {name}",
+      "undrainFailed": "Couldn't resume {name}",
+      "revokeFailed": "Couldn't revoke {name}"
     }
   },
   "runs": {
     "title": "Runs",
     "metaTitle": "Runs of {project}",
     "dispatchButton": "Dispatch",
-    "liveBadge": "Live",
-    "live": "Updates every 5 seconds while a run is active.",
     "count": "{count, plural, one {# run} other {# runs}}",
     "caption": "Runs of project {project}",
     "pagerLabel": "runs",
-    "dispatched": "{count, plural, one {Queued run {ids}.} other {Queued # runs: {ids}.}}",
     "runtime": {
       "any": "Any",
       "claude-code": "Claude Code",
@@ -1351,7 +1362,9 @@
       "reviewMany": "waiting for approval",
       "reviewNone": "nothing to approve",
       "failed": "Failed",
-      "failedHint": "{lost, plural, =0 {None lost} other {and # lost}}"
+      "failedHint": "{lost, plural, =0 {None lost} other {and # lost}}",
+      "quietTitle": "All quiet.",
+      "quietText": "No run is in progress, queued or waiting for review."
     },
     "facets": {
       "label": "State",
@@ -1527,7 +1540,6 @@
       "timeoutHint": "Agent time the run may take. Time spent waiting for your answer, or parked, does not count.",
       "submit": "Run plan",
       "submitting": "Queuing…",
-      "dispatched": "Queued plan run #{id} of {plan}.",
       "holds": "<link>Plan run #{id}</link> ({state}, dispatched by {login}) holds every step of this plan until it ends.",
       "listLink": "Plan run #{id}: {state}",
       "phase": {
@@ -1616,6 +1628,11 @@
           "parked": "parked",
           "review": "in review"
         }
+      },
+      "toast": {
+        "dispatched": "Plan run #{id} dispatched",
+        "dispatchedText": "It does every step of {plan} not done yet, on one worker.",
+        "openRun": "Open run"
       }
     },
     "openRun": "Open run #{id}",
@@ -1872,12 +1889,27 @@
           "pending": "Cancelling…",
           "keep": "Keep it"
         },
-        "notice": {
-          "cancelled": "Run #{id} is cancelled.",
-          "cancelAsked": "Cancel of run #{id} asked: the worker stops the agent at its next heartbeat.",
-          "approved": "Run #{id} approved: step {step} of {plan} is done.",
-          "takeover": "Takeover of run #{id} asked: the worker stops the agent at the end of its turn and opens {name}.",
-          "handback": "Hand back of run #{id} asked: the agent goes on headless in the same session."
+        "toast": {
+          "rerun": "Run #{id} dispatched",
+          "rerunText": "A rerun of #{of}, waiting in the queue for a worker.",
+          "openRun": "Open run",
+          "cancelled": "Run #{id} cancelled",
+          "cancelAsked": "Cancel of run #{id} asked",
+          "cancelAskedText": "The worker stops the agent at its next heartbeat.",
+          "approved": "Run #{id} approved",
+          "approvedText": "Step {step} of {plan} is done.",
+          "openStep": "Open step",
+          "takeover": "Takeover of run #{id} asked",
+          "takeoverText": "The worker stops the agent at the end of its turn and opens {name}.",
+          "handback": "Hand back of run #{id} asked",
+          "handbackText": "The agent goes on headless in the same session.",
+          "failed": {
+            "cancel": "Couldn't cancel run #{id}",
+            "takeover": "Couldn't take over run #{id}",
+            "handback": "Couldn't hand back run #{id}",
+            "approve": "Couldn't approve run #{id}",
+            "rerun": "Couldn't rerun #{id}"
+          }
         }
       },
       "takeover": {
@@ -1954,6 +1986,12 @@
         "title": "The diff could not be read",
         "description": "The blob store did not answer the web's request. Download the diff instead, or reload the page later."
       }
+    },
+    "toast": {
+      "dispatched": "{count, plural, one {Run {ids} dispatched} other {# runs dispatched: {ids}}}",
+      "dispatchedText": "{count, plural, one {It waits in the queue for a worker.} other {They wait in the queue for a worker.}}",
+      "openRun": "Open run",
+      "openRuns": "Open active runs"
     }
   },
   "inbox": {
@@ -1963,7 +2001,7 @@
     "openCount": "{count, plural, one {# decision waits for you} other {# decisions wait for you}}",
     "markAll": "Mark all as read",
     "markShown": "Mark these as read",
-    "markedAll": "{count, plural, =0 {Nothing was left to mark read.} one {Marked # notification read.} other {Marked # notifications read.}}",
+    "markedAll": "{count, plural, =0 {Nothing was left to mark as read} one {# notification marked as read} other {# notifications marked as read}}",
     "count": "{count, plural, one {# notification} other {# notifications}}",
     "waitingTitle": "Waiting for your answer",
     "restTitle": "Notices and past decisions",
@@ -2083,8 +2121,12 @@
       "hintParked": "Run #{run} is parked: your answer resumes it as a new run on the same worker, in the same session. It cannot be changed once sent.",
       "send": "Send answer",
       "sending": "Sending…",
-      "sent": "Answer sent to run #{run}. The worker hands it to the agent at its next turn.",
-      "sentResumed": "Answer sent. Run #{run} was parked; it resumes as run #{next} on the same worker."
+      "sentResumed": "Run #{run} was parked; it resumes as run #{next} on the same worker.",
+      "sentTitle": "Answer sent to run #{run}",
+      "sentText": "The worker hands it to the agent at its next turn.",
+      "sentResumedTitle": "Answer sent",
+      "openRun": "Open run #{id}",
+      "failed": "Couldn't send the answer"
     },
     "errors": {
       "forbidden": "The hub refused: only {owner}, who dispatched run #{run}, can answer, and only while they hold the writer role on {project}.",
@@ -2093,6 +2135,44 @@
       "apiMessage": "The hub says: {message}",
       "readForbidden": "The hub refused to mark these notifications read. Reload the page and try again.",
       "readGone": "These notifications changed meanwhile. The list was read again."
-    }
+    },
+    "markedOne": "Notification marked as read",
+    "markFailed": "Couldn't mark as read"
+  },
+  "toast": {
+    "region": "Notifications",
+    "dismiss": "Dismiss",
+    "requestId": "Request id: {id}"
+  },
+  "live": {
+    "label": "Updates:",
+    "state": {
+      "live": "Live",
+      "reconnecting": "Reconnecting",
+      "paused": "Paused",
+      "offline": "Offline"
+    },
+    "detail": {
+      "updated": "updated {ago}",
+      "lastUpdate": "last update {ago}",
+      "noUpdate": "no update yet",
+      "paused": "by you",
+      "retryIn": "retry in {retry}, polling every {poll}",
+      "retryingNow": "retrying now, polling every {poll}",
+      "streamRetry": "stream retry in {retry}, polling every {poll} meanwhile",
+      "streamReconnecting": "reconnecting the stream"
+    },
+    "ago": {
+      "now": "just now",
+      "seconds": "{count}s ago",
+      "minutes": "{count} min ago",
+      "hours": "{count} h ago"
+    },
+    "duration": {
+      "seconds": "{value}s",
+      "minutes": "{value} min"
+    },
+    "retry": "Retry now",
+    "resume": "Resume"
   }
 }

@@ -7,13 +7,14 @@ import { useCallback, useMemo, useState } from "react";
 
 import { DataTable, dataTableColumns } from "@/components/data/data-table";
 import { NAME_LINK } from "@/components/data/identifier";
+import type { Notice } from "@/components/feedback/toast";
 import { Button } from "@/components/ui/button";
 import { LOGIN_PATH } from "@/lib/config";
 
 import { CurrentSessionBadge, TokenKindBadge, TokenStateBadge } from "./badges";
 import { ConfirmAction } from "./confirm-action";
 import { type AdminToken, memberHref, revokeToken } from "./data";
-import { type Notice, useWriteFailure } from "./notice";
+import { useWriteFailure } from "./notice";
 import { useAdminWrite } from "./use-admin-write";
 import { When } from "./when";
 
@@ -154,8 +155,8 @@ export function TokensTable({ tokens, caption, showLogin = true, onNotice, testI
     } catch (error) {
       const failed = failure(error, { 404: tRevoke("notFound"), 409: tRevoke("conflict") });
       if (failed.status === 404 || failed.status === 409) {
-        setOpen(false); // nothing left to do here: say so on the page, over the reloaded list
-        onNotice({ tone: "error", text: failed.text });
+        setOpen(false); // nothing left to do here: say so in a toast, over the reloaded list
+        onNotice({ tone: "error", text: tRevoke("failed", { id: target.id }), description: failed.text, requestId: failed.requestId });
       }
       return; // anything else is shown in the dialog, which stays open
     }
@@ -164,7 +165,12 @@ export function TokensTable({ tokens, caption, showLogin = true, onNotice, testI
       window.location.assign(LOGIN_PATH); // the admin revoked the session this page runs on
       return;
     }
-    onNotice({ tone: "success", text: tRevoke("success", { id: target.id, login: target.login }) });
+    onNotice({
+      tone: "success",
+      text: tRevoke("successTitle", { id: target.id, login: target.login }),
+      description: tRevoke("success"),
+      link: { label: tRevoke("openMember"), href: memberHref(target.login) },
+    });
   };
 
   const error = write.isError && open ? failure(write.error, { 404: tRevoke("notFound"), 409: tRevoke("conflict") }) : null;

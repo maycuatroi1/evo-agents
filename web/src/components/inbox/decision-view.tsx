@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useFormatter, useTranslations } from "next-intl";
 import { type FormEvent, type ReactNode, type Ref, useId, useRef, useState } from "react";
 
-import { type Notice, NoticeArea, useNotice } from "@/components/admin/notice";
+import { notify, notifyFailure } from "@/components/feedback/toast";
 import { SafeMarkdown } from "@/components/memories/markdown";
 import { Prose } from "@/components/plans/prose";
 import { planHref, stepHref } from "@/components/plans/links";
@@ -224,9 +224,10 @@ function AnswerSummary({ decision, level }: { decision: Decision; level: Heading
 /**
  * The owner's answer: one of the options as a radio card (the recommended one badged, none picked for them), words of
  * their own, or both, then Send answer. Nothing chosen or written, or words over 4 KiB of UTF-8, is refused here with
- * the reason next to the field; what the hub says goes to the decision's notice area through `onNotice`.
+ * the reason next to the field. What the hub says is a toast: the answer sent, with a link to the run that takes it, or
+ * why the hub refused it, which stays until dismissed.
  */
-export function AnswerForm({ decision, onNotice, onAnswered }: { decision: Decision; onNotice: (notice: Notice) => void; onAnswered?: (decision: Decision) => void }) {
+export function AnswerForm({ decision, onAnswered }: { decision: Decision; onAnswered?: (decision: Decision) => void }) {
   const t = useTranslations("inbox.answer");
   const format = useFormatter();
   const ids = useId();
@@ -234,13 +235,24 @@ export function AnswerForm({ decision, onNotice, onAnswered }: { decision: Decis
   const answer = useAnswerDecision(decision, {
     onAnswered: (answered) => {
       const next = answered.answer_run_id !== null && answered.answer_run_id !== answered.run_id ? answered.answer_run_id : null;
-      onNotice({
-        tone: "success",
-        text: next !== null ? t("sentResumed", { run: answered.run_id, next }) : t("sent", { run: answered.run_id }),
-      });
+      notify(
+        next !== null
+          ? {
+              tone: "success",
+              text: t("sentResumedTitle"),
+              description: t("sentResumed", { run: answered.run_id, next }),
+              link: { label: t("openRun", { id: next }), href: runHref(answered.project, next) },
+            }
+          : {
+              tone: "success",
+              text: t("sentTitle", { run: answered.run_id }),
+              description: t("sentText"),
+              link: { label: t("openRun", { id: answered.run_id }), href: runHref(answered.project, answered.run_id) },
+            },
+      );
       onAnswered?.(answered);
     },
-    onFailed: (error) => onNotice({ tone: "error", ...failure(error, decision) }),
+    onFailed: (error) => notifyFailure(t("failed"), failure(error, decision)),
   });
   const [option, setOption] = useState<string | null>(null);
   const [text, setText] = useState("");
@@ -397,7 +409,6 @@ export function DecisionView({
   const t = useTranslations("inbox.decision");
   const ids = useId();
   const { login } = useInboxViewer();
-  const { notice, show, clear } = useNotice();
   const access = answerAccess(decision, login);
   const level: HeadingLevel = where === "inbox" ? 2 : 3;
 
@@ -441,12 +452,10 @@ export function DecisionView({
           </div>
         </section>
       ) : null}
-      {/* Next to the form and the answer, where the visitor's eyes are when the hub answers. */}
-      <NoticeArea notice={notice} onDismiss={clear} emptyClassName="empty:-mt-4" />
       {decision.state === "answered" ? <AnswerSummary decision={decision} level={level} /> : null}
       <ClosedNote decision={decision} />
       {access === "answer" ? (
-        <AnswerForm key={decision.id} decision={decision} onNotice={show} onAnswered={onAnswered} />
+        <AnswerForm key={decision.id} decision={decision} onAnswered={onAnswered} />
       ) : (
         <>
           {access === "notOwner" || access === "runGone" ? <NoFormNote decision={decision} access={access} /> : null}

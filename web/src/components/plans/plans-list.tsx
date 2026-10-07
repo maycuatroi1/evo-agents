@@ -7,12 +7,11 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { useFormatter, useTranslations } from "next-intl";
 import { useMemo, useState } from "react";
 
-import { NoticeArea, useNotice } from "@/components/admin/notice";
 import { DataCard, DataToolbar } from "@/components/data/data-card";
 import { CellMain, DataTable, dataTableColumns } from "@/components/data/data-table";
 import { Identifier, NAME_LINK } from "@/components/data/identifier";
 import { SearchField } from "@/components/data/search-field";
-import { useCanDispatch, usePlanRunNotice } from "@/components/runs/hooks";
+import { useCanDispatch, usePlanRunToast } from "@/components/runs/hooks";
 import { activePlanRun, planRunPhase } from "@/components/runs/model";
 import { RunPlanButton } from "@/components/runs/plan-run";
 import { type Run, runHref, runsSummaryQuery } from "@/components/runs/queries";
@@ -229,9 +228,7 @@ function Plans({ project, plans }: { project: string; plans: PlanSummary[] }) {
   const summary = useQuery(runsSummaryQuery(browserApi, project));
   const runs = summary.data?.runs;
   const activity = useMemo<Activity>(() => ({ runs: runs ?? [], loaded: !summary.isPending }), [runs, summary.isPending]);
-  const { notice, show, clear } = useNotice();
-  const dispatched = usePlanRunNotice();
-  const onDispatched = useMemo(() => (run: Run) => show(dispatched(run)), [show, dispatched]);
+  const onDispatched = usePlanRunToast();
   const needle = query.toLocaleLowerCase("vi");
   if (plans.length === 0) {
     return <EmptyState icon={ClipboardList} title={t("emptyTitle")} description={t("emptyDescription")} />;
@@ -258,7 +255,6 @@ function Plans({ project, plans }: { project: string; plans: PlanSummary[] }) {
   );
   return (
     <>
-      <NoticeArea notice={notice} onDismiss={clear} />
       <DataCard toolbar={toolbar}>
         {shown.length === 0 ? (
           <NoResults

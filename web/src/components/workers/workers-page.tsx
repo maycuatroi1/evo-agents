@@ -1,16 +1,17 @@
 "use client";
 
-import { CircleCheck, Layers, Loader2, type LucideIcon, Plus, Server, WifiOff } from "lucide-react";
+import { Activity, CircleCheck, Layers, Plus, Server, WifiOff } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useFormatter, useTranslations } from "next-intl";
 import { useMemo, useState } from "react";
 
-import { NoticeArea, useNotice } from "@/components/admin/notice";
 import { DataCard, DataToolbar } from "@/components/data/data-card";
 import { CellMain, DataTable, dataTableColumns } from "@/components/data/data-table";
 import { FacetGroup, type FacetOption } from "@/components/data/facet-group";
 import { NAME_LINK } from "@/components/data/identifier";
+import { MetricStrip } from "@/components/data/metric-strip";
+import { notify } from "@/components/feedback/toast";
 import { SearchField } from "@/components/data/search-field";
 import { useNow } from "@/components/kg/use-now";
 import { PageHeader } from "@/components/shell/page-header";
@@ -59,21 +60,6 @@ function useFilters(): [WorkerFilters, (next: WorkerFilters) => void] {
   return [filters, set];
 }
 
-function Stat({ icon: Icon, label, value, hint, testId }: { icon: LucideIcon; label: string; value: number; hint: string; testId: string }) {
-  return (
-    <div className="flex flex-col gap-1 rounded-md border bg-card shadow-raised px-4 py-3.5" data-testid={testId}>
-      <dt className="flex items-center gap-1.5 text-sm text-muted-foreground">
-        <Icon className="size-4 shrink-0" aria-hidden="true" />
-        {label}
-      </dt>
-      <dd className="text-2xl font-semibold tabular-nums" data-value={value}>
-        {value}
-      </dd>
-      <dd className="text-xs text-muted-foreground">{hint}</dd>
-    </div>
-  );
-}
-
 function Summary({ summary }: { summary: WorkerSummary }) {
   const t = useTranslations("workers.summary");
   const format = useFormatter();
@@ -88,21 +74,32 @@ function Summary({ summary }: { summary: WorkerSummary }) {
     : summary.neverSeen > 0
       ? t("offlineNever", { count: summary.neverSeen })
       : t("offlineNone");
+  // The fleet's state, not work in flight: the strip stays even when no worker is busy, so offline machines still show.
   return (
-    <section aria-label={t("label")}>
-      <dl className="grid grid-cols-2 gap-3 lg:grid-cols-4" data-testid="workers-summary">
-        <Stat icon={CircleCheck} label={t("idle")} value={summary.idle} hint={t("idleHint")} testId="summary-idle" />
-        <Stat icon={Loader2} label={t("busy")} value={summary.busy} hint={t("busyHint", { runs: summary.heldRuns })} testId="summary-busy" />
-        <Stat
-          icon={Layers}
-          label={t("freeSlots")}
-          value={summary.freeSlots}
-          hint={t("freeSlotsHint", { total: summary.totalSlots })}
-          testId="summary-free-slots"
-        />
-        <Stat icon={WifiOff} label={t("offline")} value={summary.offline} hint={offlineHint} testId="summary-offline" />
-      </dl>
-    </section>
+    <MetricStrip
+      label={t("label")}
+      testId="workers-summary"
+      metrics={[
+        { id: "idle", label: t("idle"), icon: CircleCheck, value: summary.idle, meta: t("idleHint") },
+        {
+          id: "busy",
+          label: t("busy"),
+          icon: Activity,
+          live: true,
+          tone: "running",
+          value: summary.busy,
+          meta: t("busyHint", { runs: summary.heldRuns }),
+        },
+        {
+          id: "free-slots",
+          label: t("freeSlots"),
+          icon: Layers,
+          value: summary.freeSlots,
+          meta: t("freeSlotsHint", { total: summary.totalSlots }),
+        },
+        { id: "offline", label: t("offline"), icon: WifiOff, value: summary.offline, meta: offlineHint },
+      ]}
+    />
   );
 }
 
@@ -287,9 +284,9 @@ function WorkerList({ workers, onRegister }: { workers: Worker[]; onRegister: ()
 /** The workers the visitor owns (every worker for a hub admin), refreshed every 10 seconds. */
 export function WorkersPage({ initialError }: { initialError: ApiErrorInfo | null }) {
   const t = useTranslations("workers");
-  const state = useHubQuery(workersQuery(browserApi), initialError);
+  // The page's main query: the top bar says from it whether the page is current (every 10 seconds).
+  const state = useHubQuery(workersQuery(browserApi), initialError, { live: true });
   const [registering, setRegistering] = useState(false);
-  const { notice, show, clear } = useNotice();
   useRecordPrefetched(workerKeys.list, (data) => data as Worker[]);
   const live = state.status === "success" ? state.data.filter((worker) => worker.status !== "revoked").length : null;
 
@@ -305,7 +302,6 @@ export function WorkersPage({ initialError }: { initialError: ApiErrorInfo | nul
           </Button>
         }
       />
-      <NoticeArea notice={notice} onDismiss={clear} />
       <QueryView state={state} loading={<ListSkeleton metrics={4} />}>
         {(workers) => (
           <div className="flex flex-col gap-6">
@@ -314,7 +310,7 @@ export function WorkersPage({ initialError }: { initialError: ApiErrorInfo | nul
           </div>
         )}
       </QueryView>
-      <RegisterDialog open={registering} onOpenChange={setRegistering} onJoined={show} />
+      <RegisterDialog open={registering} onOpenChange={setRegistering} onJoined={notify} />
     </>
   );
 }

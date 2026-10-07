@@ -19,7 +19,7 @@ import {
 import { useFormatter, useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
 
-import { NoticeArea, type Notice, useNotice } from "@/components/admin/notice";
+import { notify, notifyFailure } from "@/components/feedback/toast";
 import { WorkerRuns } from "@/components/runs/worker-runs";
 import { PageHeader } from "@/components/shell/page-header";
 import { QueryView, useHubQuery } from "@/components/states/query-view";
@@ -47,30 +47,20 @@ import { changeWorker, type Worker, type WorkerAction, workerKeys, workerQuery }
  */
 export function WorkerDetail({ id, initialError }: { id: number; initialError: ApiErrorInfo | null }) {
   const t = useTranslations("workers.detail");
-  const state = useHubQuery(workerQuery(browserApi, id), initialError);
-  const { notice, show, clear } = useNotice();
+  // The page's main query: the top bar says from it whether the page is current (every 10 seconds).
+  const state = useHubQuery(workerQuery(browserApi, id), initialError, { live: true });
   useRecordPrefetched(workerKeys.one(id), (data) => [data as Worker]);
   if (state.status === "error" && state.error.status === 404) {
     return <NotFoundState title={t("notFoundTitle")} description={t("notFoundDescription")} />;
   }
   return (
     <QueryView state={state} loading={<PageSkeleton />}>
-      {(worker) => <WorkerPage worker={worker} notice={notice} onNotice={show} onDismiss={clear} />}
+      {(worker) => <WorkerPage worker={worker} />}
     </QueryView>
   );
 }
 
-function WorkerPage({
-  worker,
-  notice,
-  onNotice,
-  onDismiss,
-}: {
-  worker: Worker;
-  notice: Notice | null;
-  onNotice: (notice: Notice) => void;
-  onDismiss: () => void;
-}) {
+function WorkerPage({ worker }: { worker: Worker }) {
   const t = useTranslations("workers.detail");
   const format = useFormatter();
   const { data: me } = useQuery(whoamiQuery(browserApi));
@@ -91,9 +81,8 @@ function WorkerPage({
           version: worker.agent_version,
           date: registered,
         })}
-        actions={<WorkerActions worker={worker} isOwner={isOwner} onNotice={onNotice} />}
+        actions={<WorkerActions worker={worker} isOwner={isOwner} />}
       />
-      <NoticeArea notice={notice} onDismiss={onDismiss} />
       <StatusNote worker={worker} isOwner={isOwner} admin={Boolean(me?.admin)} />
       <div className="grid gap-4 lg:grid-cols-3">
         <Runtimes worker={worker} />
@@ -313,7 +302,11 @@ function Checkouts({ worker }: { worker: Worker }) {
 
 const ACTION_ICONS = { drain: Pause, undrain: Play, revoke: Power } as const;
 
-function WorkerActions({ worker, isOwner, onNotice }: { worker: Worker; isOwner: boolean; onNotice: (notice: Notice) => void }) {
+/**
+ * Drain, Resume and Revoke. Each waits for the hub, then says what happened in a toast; a failure the confirm dialog can
+ * not help with (Resume has none, a 404 or 409 means the worker changed) closes it and stays as a toast until dismissed.
+ */
+function WorkerActions({ worker, isOwner }: { worker: Worker; isOwner: boolean }) {
   const t = useTranslations("workers.actions");
   const failure = useWorkerFailure();
   const write = useWorkerWrite((api, action: WorkerAction) => changeWorker(api, worker.id, action));
@@ -328,13 +321,13 @@ function WorkerActions({ worker, isOwner, onNotice }: { worker: Worker; isOwner:
     } catch (error) {
       const failed = failure(error);
       if (action === "undrain" || failed.status === 404 || failed.status === 409) {
-        setConfirming(null); // the page shows what the hub holds now; the reason goes above it
-        onNotice({ tone: "error", text: failed.text, detail: failed.detail, requestId: failed.requestId });
+        setConfirming(null); // the page shows what the hub holds now; the reason stays in a toast
+        notifyFailure(t(`${action}Failed`, { name: worker.name }), failed);
       }
       return; // anything else stays in the dialog
     }
     setConfirming(null);
-    onNotice({ tone: "success", text: t(`${action}Success`, { name: worker.name }) });
+    notify({ tone: "success", text: t(`${action}Success`, { name: worker.name }), description: t(`${action}SuccessText`) });
   };
 
   const open = (action: "drain" | "revoke") => {

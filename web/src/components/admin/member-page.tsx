@@ -9,6 +9,7 @@ import { type ReactNode, useCallback, useMemo, useState } from "react";
 import { DataTable, dataTableColumns } from "@/components/data/data-table";
 import { NAME_LINK } from "@/components/data/identifier";
 import { VisibilityLevel } from "@/components/data/visibility";
+import { type Notice, notify } from "@/components/feedback/toast";
 import { projectHref } from "@/components/shell/nav";
 import { PageHeader } from "@/components/shell/page-header";
 import { RoleBadge } from "@/components/shell/role-badge";
@@ -41,7 +42,7 @@ import {
   type UserGrant,
 } from "./data";
 import { GrantDialog, type GrantPreset } from "./grant-dialog";
-import { type Notice, NoticeArea, useNotice, useWriteFailure } from "./notice";
+import { useWriteFailure } from "./notice";
 import { TokensTable } from "./tokens-table";
 import { useAdminWrite } from "./use-admin-write";
 import { When } from "./when";
@@ -214,12 +215,17 @@ function RevokeGrant({
       const failed = failure(error, { 404: t("notFound") });
       if (failed.status === 404) {
         onOpenChange(false);
-        onNotice({ tone: "error", text: failed.text });
+        onNotice({ tone: "error", text: t("failed", names), description: failed.text, requestId: failed.requestId });
       }
       return;
     }
     onOpenChange(false);
-    onNotice({ tone: "success", text: t("success", names) });
+    onNotice({
+      tone: "success",
+      text: t("successTitle", names),
+      description: t("success", names),
+      link: { label: t("openMember"), href: memberHref(login) },
+    });
   };
   return (
     <ConfirmAction
@@ -241,7 +247,7 @@ function RevokeGrant({
 function MemberView({ user, projects }: { user: AdminUser; projects: Project[] }) {
   const t = useTranslations("admin.member");
   const format = useFormatter();
-  const { notice, show: onNotice, clear } = useNotice();
+  const onNotice = notify;
   const tMembers = useTranslations("admin.members");
   const tTokens = useTranslations("admin.tokens");
   const tAudit = useTranslations("admin.audit");
@@ -301,7 +307,6 @@ function MemberView({ user, projects }: { user: AdminUser; projects: Project[] }
           </Button>
         }
       />
-      <NoticeArea notice={notice} onDismiss={clear} />
       <Section
         id="member-grants-section"
         icon={FolderLock}
