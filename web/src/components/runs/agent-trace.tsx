@@ -3,7 +3,6 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   ArrowDown,
-  ArrowLeftRight,
   Bot,
   Braces,
   Brain,
@@ -12,20 +11,12 @@ import {
   CircleCheck,
   CircleDot,
   CircleX,
-  FileText,
-  FilePen,
-  FolderInput,
-  Globe,
   Info,
   ListChecks,
   LoaderCircle,
   type LucideIcon,
   MessageSquare,
-  Search,
-  Terminal,
-  Trash2,
   User,
-  Wrench,
 } from "lucide-react";
 import Link from "next/link";
 import { useFormatter, useTranslations } from "next-intl";
@@ -41,13 +32,13 @@ import { decisionAnchor, decisionHref, type RunEvent } from "./queries";
 import {
   buildTrace,
   cutOutput,
-  durationParts,
   openByDefault,
   type ToolCall,
-  type ToolKind,
+  toolLabel,
   TRACE_VIRTUAL_THRESHOLD,
   type TraceItem,
 } from "./trace-model";
+import { KIND_ICON, useTraceDuration } from "./trace-look";
 import type { LogStatus } from "./use-run-log";
 
 /**
@@ -60,21 +51,6 @@ import type { LogStatus } from "./use-run-log";
  * Tool rows are `details`, so they open and close without script.
  */
 
-const KIND_ICON: Record<ToolKind, LucideIcon> = {
-  read: FileText,
-  edit: FilePen,
-  delete: Trash2,
-  move: FolderInput,
-  search: Search,
-  execute: Terminal,
-  think: Brain,
-  fetch: Globe,
-  switch_mode: ArrowLeftRight,
-  other: Wrench,
-};
-
-/** A tool's own name, as opposed to a command or a path some runtimes give as its title. */
-const TOOL_NAME = /^[A-Za-z][A-Za-z0-9_:-]{0,47}$/;
 /** How close to the end (px) still counts as at the end. */
 const END_SLACK = 32;
 /** An item's height before it is measured. */
@@ -94,17 +70,6 @@ export type TraceContext = {
   /** The run may still write events. */
   active: boolean;
 };
-
-function useShortDuration() {
-  const t = useTranslations("runs.detail.trace.duration");
-  return (ms: number) => {
-    const { hours, minutes, seconds, tenths } = durationParts(ms);
-    if (ms < 100) return t("under");
-    if (hours > 0) return t("hours", { hours, minutes });
-    if (minutes > 0) return t("minutes", { minutes, seconds });
-    return t("seconds", { seconds, tenths });
-  };
-}
 
 function useTimes() {
   const format = useFormatter();
@@ -194,7 +159,7 @@ function TermBlock({ text, diff = false, label, testId }: { text: string; diff?:
 
 function ToolMeta({ tool, active, now }: { tool: ToolCall; active: boolean; now: number | null }) {
   const t = useTranslations("runs.detail.trace");
-  const short = useShortDuration();
+  const short = useTraceDuration();
   const running = tool.status === "pending" || tool.status === "in_progress";
   return (
     <span className="ml-auto flex shrink-0 items-center gap-2 font-mono text-xs leading-4 whitespace-nowrap text-fg-subtle tabular-nums">
@@ -232,11 +197,8 @@ function ToolRow({ tool, at, open, onToggle, active }: { tool: ToolCall; at: str
   const running = tool.status === "pending" || tool.status === "in_progress";
   const now = useNow(running && active);
   const failed = tool.status === "failed" || (tool.exitCode !== null && tool.exitCode !== 0);
-  // A tool's own name ("Bash", "TodoWrite", "mcp__hub__search") heads the row; a title that is a command or a path
-  // (Codex, opencode) is what the call did, under the name of its kind.
-  const named = tool.title !== null && TOOL_NAME.test(tool.title) ? tool.title : null;
+  const { name: named, arg } = toolLabel(tool);
   const name = named ?? t(`kind.${tool.kind}`);
-  const arg = tool.arg ?? (named ? null : tool.title);
   const nothing = !tool.output && !tool.change && !tool.input;
   return (
     <Row
@@ -291,7 +253,7 @@ function ToolRow({ tool, at, open, onToggle, active }: { tool: ToolCall; at: str
 
 function AgentRow({ item }: { item: Extract<TraceItem, { type: "agent" }> }) {
   const t = useTranslations("runs.detail.trace");
-  const short = useShortDuration();
+  const short = useTraceDuration();
   const thought = item.thought;
   return (
     <Row icon={Bot} look="agent" at={item.at} head={<Who>{t("agent")}</Who>}>

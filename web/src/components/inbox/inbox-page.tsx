@@ -87,8 +87,8 @@ function ListSection({
  * The member's Inbox: the decisions the agents of their plan runs ask them, open ones first, then the notices (a push or
  * merge into a default branch with its repo, branch and commits, a plan finished, a run failed) and the decisions
  * already answered, expired or cancelled, newest first. Filters by kind, project and unread live in the URL; a decision
- * opens in a sheet over the list (`/inbox?decision=ID`) with its answer form, and closes back to the list where it
- * was. The list and the bell are read every 10 seconds.
+ * opens in a sheet over the list (`/inbox?decision=ID`) with its answer form, a screen of its own on a phone (the kit's
+ * MobileDecision), and closes back to the list where it was. The list and the bell are read every 10 seconds.
  */
 export function InboxPage({ initialError }: { initialError: ApiErrorInfo | null }) {
   const t = useTranslations("inbox");
@@ -238,6 +238,7 @@ export function InboxPage({ initialError }: { initialError: ApiErrorInfo | null 
       <DecisionSheet
         target={selected !== null ? { id: selected, project: selectedNotification?.project ?? null } : null}
         onClose={closeDecision}
+        screen
         returnFocus={(id) => document.querySelector<HTMLElement>(`[data-decision-link="${id}"]`)}
       />
     </>

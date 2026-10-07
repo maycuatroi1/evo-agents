@@ -3,12 +3,13 @@ import path from "node:path";
 import { expect, test } from "./support/fixtures";
 import { uniqueName } from "./support/hub";
 import { open } from "./support/plans";
-import { askDecision, planRunUnderway, reportState, runPath, seedPlanRunPlan } from "./support/runs";
+import { askDecision, planRunUnderway, reportState, runPath, say, seedPlanRunPlan, sendEvents, tool } from "./support/runs";
 
 /**
- * Review screenshots of the kit's DecisionCard: in the Inbox's sheet (open, its context unfolded, answered) and in the
- * side column of a plan run's page, light and dark, desktop and 375 px, written to E2E_SCREENSHOT_DIR. Skipped unless
- * it is set; like screenshots.spec.ts it asserts nothing beyond the page being ready.
+ * Review screenshots of the kit's DecisionCard: in the Inbox's sheet (open, its context unfolded, answered), at 375 px
+ * the kit's MobileDecision screen instead (also with what the agent did so far unfolded, scrolled to its foot), and in
+ * the side column of a plan run's page, light and dark, desktop and 375 px, written to E2E_SCREENSHOT_DIR. Skipped
+ * unless it is set; like screenshots.spec.ts it asserts nothing beyond the page being ready.
  */
 const dir = process.env.E2E_SCREENSHOT_DIR;
 
@@ -31,6 +32,7 @@ test.describe("decision screenshots", () => {
       const project = me.projects[0];
       await seedPlanRunPlan(me, project);
       const { live, run } = await planRunUnderway(me, project, uniqueName("studio"));
+      await sendEvents(live, run.id, [say("Bumped the version to **0.4.0** and ran the tests."), tool("Bash", "uv build")]);
       const decision = await askDecision(live, run.id, "Publish evo-agents 0.4.0 to PyPI now?", "3", {
         context: CONTEXT,
         options: [
@@ -54,6 +56,13 @@ test.describe("decision screenshots", () => {
         await page.screenshot({ path: path.join(dir!, `decision-sheet${suffix}-${scheme}.png`) });
         await sheet.getByTestId("decision-context-toggle").click();
         await page.screenshot({ path: path.join(dir!, `decision-sheet-context${suffix}-${scheme}.png`) });
+        if (width === 375) {
+          const soFar = sheet.getByTestId("decision-so-far");
+          await soFar.locator("summary").click();
+          await expect(soFar.getByTestId("decision-so-far-item").first()).toBeVisible();
+          await sheet.getByTestId("decision-panel").evaluate((element) => element.scrollTo({ top: element.scrollHeight }));
+          await page.screenshot({ path: path.join(dir!, `decision-screen-so-far-375-${scheme}.png`) });
+        }
         await open(page, runPath(project, run.id));
         await expect(page.locator("#main").getByTestId("run-decisions").getByTestId("decision-form")).toBeVisible();
         await page.screenshot({ path: path.join(dir!, `decision-run-page${suffix}-${scheme}.png`), fullPage: true });
@@ -65,6 +74,10 @@ test.describe("decision screenshots", () => {
       await sheet.getByTestId("decision-send").click();
       await expect(sheet.getByTestId("decision-answer")).toBeVisible();
       await page.screenshot({ path: path.join(dir!, `decision-answered-${scheme}.png`) });
+      await page.setViewportSize({ width: 375, height: 812 });
+      await open(page, `/inbox?decision=${decision}`);
+      await expect(sheet.getByTestId("decision-answer")).toBeVisible();
+      await page.screenshot({ path: path.join(dir!, `decision-answered-375-${scheme}.png`) });
     });
   }
 });

@@ -1,38 +1,28 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
 import { SearchX, X } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
+import { type ReactNode, type RefObject, useRef, useState } from "react";
 
 import { InFrame } from "@/components/data/data-card";
 import { ApiErrorState, LoadingState, StatePanel } from "@/components/states/states";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetClose, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
-import { browserApi } from "@/lib/api/browser";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { cn } from "@/lib/utils";
 
 import { DecisionCard } from "./decision-view";
-import { useInboxViewer } from "./hooks";
-import { decisionQuery, locateDecisionQuery } from "./queries";
+import { DecisionScreen } from "./mobile-decision";
+import { type DecisionTarget, useTargetDecision } from "./target-decision";
 
-/** The decision a sheet shows: its id, and its project when the caller knows it (Home, a notification on the page). */
-export type DecisionTarget = {
-  id: number;
-  project: string | null;
-  /** When its run parks, if the caller holds it already (the Home's overview). */
-  parksAt?: string | null;
-};
+export type { DecisionTarget };
 
 function sameTarget(a: DecisionTarget | null, b: DecisionTarget | null): boolean {
   return a?.id === b?.id && a?.project === b?.project && a?.parksAt === b?.parksAt;
 }
 
-/**
- * The sheet's content: the decision read from its project, or, for a link that names only the decision, asked of each
- * project the visitor holds a grant on at once. The question's heading takes focus once it shows, unless the visitor
- * has already moved on inside the sheet.
- */
+/** The sheet's content: the kit's DecisionCard edge to edge, or why it is not there. */
 function SheetBody({
   target,
   headingRef,
@@ -43,28 +33,7 @@ function SheetBody({
   contentRef: RefObject<HTMLDivElement | null>;
 }) {
   const t = useTranslations("inbox.sheet");
-  const viewer = useInboxViewer();
-  const located = useQuery({
-    ...locateDecisionQuery(browserApi, target.id, viewer.projects),
-    enabled: target.project === null && viewer.login !== null,
-  });
-  const project = target.project ?? located.data?.project ?? null;
-  const decision = useQuery({
-    ...decisionQuery(browserApi, project ?? "-", target.id),
-    enabled: project !== null,
-    initialData: located.data && located.data.project === project ? located.data.decision : undefined,
-  });
-  const loaded = decision.data !== undefined;
-  useEffect(() => {
-    if (!loaded) return;
-    const active = document.activeElement;
-    if (active === null || active === document.body || active === contentRef.current) headingRef.current?.focus();
-  }, [loaded, headingRef, contentRef]);
-
-  const notFound =
-    (target.project === null && located.isSuccess && located.data === null) ||
-    (decision.isError && decision.error.info.status === 404) ||
-    (target.project === null && viewer.login !== null && viewer.projects.length === 0);
+  const { decision, notFound, error, retry } = useTargetDecision(target, headingRef, contentRef);
 
   let body: ReactNode;
   if (notFound) {
@@ -73,9 +42,8 @@ function SheetBody({
     );
   } else if (decision.data) {
     body = <DecisionCard decision={decision.data} where="inbox" headingRef={headingRef} parksAt={target.parksAt} flush />;
-  } else if (decision.isError || located.isError) {
-    const error = decision.error ?? located.error;
-    body = error ? <ApiErrorState error={error.info} onRetry={() => void (decision.isError ? decision.refetch() : located.refetch())} /> : null;
+  } else if (error) {
+    body = <ApiErrorState error={error.info} onRetry={retry} />;
   } else {
     body = (
       <LoadingState className="p-4">
@@ -104,17 +72,24 @@ function SheetBody({
  * edge, its answer form's footer kept in view at the foot. Esc, the close button or a click outside call `onClose`;
  * focus then goes back to what held it when the sheet opened, or, when that is gone or the sheet opened from the URL,
  * to what `returnFocus` names.
+ *
+ * With `screen` (the Inbox), under 768 px the sheet is the kit's MobileDecision instead: a screen of its own, as tall as
+ * what the phone shows, with Back to Inbox in its top bar and the answer's buttons in a bar at its foot.
  */
 export function DecisionSheet({
   target,
   onClose,
   returnFocus,
+  screen = false,
 }: {
   target: DecisionTarget | null;
   onClose: () => void;
   returnFocus?: (id: number) => HTMLElement | null;
+  screen?: boolean;
 }) {
   const t = useTranslations("inbox.sheet");
+  const phone = useIsMobile();
+  const asScreen = screen && phone;
   // The decision stays on screen while the sheet slides out.
   const [shown, setShown] = useState<DecisionTarget | null>(target);
   if (target !== null && !sameTarget(target, shown)) setShown(target);
@@ -129,7 +104,12 @@ export function DecisionSheet({
         side="right"
         showCloseButton={false}
         aria-describedby={undefined}
-        className="gap-0 p-0 data-[side=right]:w-full data-[side=right]:sm:max-w-xl"
+        className={cn(
+          "gap-0 p-0 data-[side=right]:w-full",
+          asScreen
+            ? "bg-background data-[side=right]:h-dvh data-[side=right]:max-w-none data-[side=right]:border-l-0 data-[side=right]:sm:max-w-none"
+            : "data-[side=right]:sm:max-w-xl",
+        )}
         onOpenAutoFocus={(event) => {
           event.preventDefault();
           const active = document.activeElement;
@@ -145,18 +125,29 @@ export function DecisionSheet({
         }}
         data-testid="decision-sheet"
         data-decision-id={shown?.id}
+        data-layout={asScreen ? "screen" : "sheet"}
       >
-        <div className="flex h-13 shrink-0 items-center gap-2 border-b px-4">
-          <SheetTitle asChild>
-            <p className="min-w-0 truncate text-[15px] leading-[22px] font-semibold">{shown ? t("title", { id: shown.id }) : t("titleUnknown")}</p>
-          </SheetTitle>
-          <SheetClose asChild>
-            <Button type="button" variant="ghost" size="icon" className="ml-auto" aria-label={t("close")} data-testid="decision-close">
-              <X aria-hidden="true" />
-            </Button>
-          </SheetClose>
-        </div>
-        {shown ? <SheetBody key={shown.id} target={shown} headingRef={heading} contentRef={content} /> : null}
+        {asScreen ? (
+          shown ? (
+            <DecisionScreen key={shown.id} target={shown} headingRef={heading} contentRef={content} />
+          ) : (
+            <SheetTitle className="sr-only">{t("titleUnknown")}</SheetTitle>
+          )
+        ) : (
+          <>
+            <div className="flex h-13 shrink-0 items-center gap-2 border-b px-4">
+              <SheetTitle asChild>
+                <p className="min-w-0 truncate text-[15px] leading-[22px] font-semibold">{shown ? t("title", { id: shown.id }) : t("titleUnknown")}</p>
+              </SheetTitle>
+              <SheetClose asChild>
+                <Button type="button" variant="ghost" size="icon" className="ml-auto" aria-label={t("close")} data-testid="decision-close">
+                  <X aria-hidden="true" />
+                </Button>
+              </SheetClose>
+            </div>
+            {shown ? <SheetBody key={shown.id} target={shown} headingRef={heading} contentRef={content} /> : null}
+          </>
+        )}
       </SheetContent>
     </Sheet>
   );

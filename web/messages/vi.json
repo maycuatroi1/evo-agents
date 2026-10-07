@@ -2492,6 +2492,15 @@
       "notFoundTitle": "Không tìm thấy quyết định #{id}",
       "notFoundDescription": "Quyết định thuộc một dự án hay plan bạn không xem được, hoặc đường dẫn bị sai."
     },
+    "screen": {
+      "back": "Về Inbox",
+      "soFar": "Agent đã làm gì đến giờ",
+      "soFarList": "Những việc agent làm gần nhất, cũ trước mới sau",
+      "soFarEmpty": "Agent chưa báo việc gì.",
+      "soFarError": "Không đọc được agent đã làm gì.",
+      "soFarRetry": "Thử lại",
+      "soFarOpen": "Mở trace của run"
+    },
     "decision": {
       "runLink": "Run #{id}",
       "stepLink": "bước {key}",

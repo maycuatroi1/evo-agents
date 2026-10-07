@@ -780,11 +780,13 @@ const PAGES: Entry[] = [
       await expect(page.locator("#main").getByTestId("notification")).toHaveCount(1);
       await expectNoSeriousViolations(page, "inbox at 375 px");
       await open(page, `/inbox?decision=${decision}`);
-      // The sheet takes the phone's whole width, its close button at hand.
-      const sheet = page.getByTestId("decision-sheet");
-      await expect(sheet.getByTestId("decision-form")).toBeVisible();
-      await expect(sheet.getByTestId("decision-close")).toBeVisible();
-      expect((await sheet.boundingBox())?.width).toBe(375);
+      // The decision is a screen of its own: the phone's whole width, Back to Inbox at hand, the answer's bar at its foot.
+      const screen = page.getByTestId("decision-sheet");
+      await expect(screen).toHaveAttribute("data-layout", "screen");
+      await expect(screen.getByTestId("decision-form")).toBeVisible();
+      await expect(screen.getByTestId("decision-back")).toBeVisible();
+      await expect(screen.getByTestId("decision-bar")).toBeInViewport();
+      expect((await screen.boundingBox())?.width).toBe(375);
     },
   },
   {

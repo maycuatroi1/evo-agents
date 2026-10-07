@@ -6,7 +6,9 @@ import { ADMIN_ACCOUNT, machineToken, uniqueName } from "./support/hub";
 import { apiOf, memoryFile, putMemory } from "./support/memories";
 import { ACTIVE_PLAN, open, seedPlans } from "./support/plans";
 import {
+  askDecision,
   claimRun,
+  decisionOf,
   dispatch,
   liveWorker,
   planRunUnderway,
@@ -19,13 +21,14 @@ import {
   tool,
 } from "./support/runs";
 import { packSkill, publishSkill } from "./support/skills";
+import { toast } from "./support/toast";
 import { heartbeat, registerWorker, RUNTIMES } from "./support/workers";
 
 /**
- * The hub on a phone (step 14 of hub-ui-kit): a 375 x 812 screen with a phone's user agent and touch, so the server
- * renders the phone layout itself. Lists are rows that open the object's page, filters live in a sheet behind
- * "Filters (n)", every control is at least 44 px with 16 px text in fields, and a run's page puts its decision and
- * side column before the trace.
+ * The hub on a phone (steps 14 and 15 of hub-ui-kit): a 375 x 812 screen with a phone's user agent and touch, so the
+ * server renders the phone layout itself. Lists are rows that open the object's page, filters live in a sheet behind
+ * "Filters (n)", every control is at least 44 px with 16 px text in fields, a run's page puts its decision and side
+ * column before the trace, and a decision from the Inbox is a screen of its own with its answer in a bar at the foot.
  */
 const PHONE = { width: 375, height: 812 };
 const IPHONE_UA =
@@ -258,4 +261,98 @@ test("the admin lists are rows, and their filter forms apply from the sheet", as
   await expect(page).toHaveURL(/[?&]kind=machine\b/);
   await expect(filters).toHaveText("Filters (1)");
   await expect(tokens.first()).toContainText("Machine token");
+});
+
+test("a decision is answered on a screen of its own, its bar in reach while the screen scrolls", async ({ page, member }) => {
+  const me = await member([{ role: "writer", maxLevel: "internal" }]);
+  const project = me.projects[0];
+  await seedPlanRunPlan(me, project);
+  // The agent asks while it works, on a worker that allows the web terminal: Take over is offered beside Send answer.
+  const { live, run } = await planRunUnderway(me, project, uniqueName("phone"), { terminal: true });
+  await sendEvents(live, run.id, [say("Reading the plan."), tool("Bash", "pnpm test")]);
+  const question = "Publish evo-agents 0.4.0 to PyPI now?";
+  const decision = await askDecision(live, run.id, question, "3", {
+    options: [
+      { key: "publish", label: "Publish now", description: "Upload 0.4.0, tag v0.4.0, then go on with step 14." },
+      { key: "hold", label: "Hold until step 14 is done", description: "Keep the build, skip the upload." },
+      { key: "stop", label: "Stop the plan run", description: "You publish by hand." },
+    ],
+    recommended: "publish",
+  });
+
+  await open(page, `/inbox?decision=${decision}`);
+  const screen = page.getByTestId("decision-sheet");
+  await expect(screen).toHaveAttribute("data-layout", "screen");
+  await expect(screen).toHaveAccessibleName(question);
+  const frame = await box(screen);
+  expect([frame.x, frame.width, frame.height], "the screen is the whole phone").toEqual([0, PHONE.width, PHONE.height]);
+
+  // The 52 px top bar: Back to Inbox, the run, whether the page is current, and the bell.
+  const top = screen.getByTestId("decision-screen-top");
+  expect((await box(top)).height).toBe(52);
+  await touchSized(top.getByRole("button", { name: "Back to Inbox" }), "Back to Inbox");
+  await expect(top.getByTestId("decision-screen-run")).toHaveText(`Run #${run.id}`);
+  await expect(top.getByTestId("live-indicator")).toBeVisible();
+  await touchSized(top.getByTestId("inbox-bell"), "the bell");
+
+  // The question is the screen's h1, the options have 14 px of padding with the agent's pick chosen, the note 16 px text.
+  await expect(screen.getByRole("heading", { level: 1 })).toHaveText(question);
+  const choice = screen.getByTestId("decision-choice-publish");
+  expect(await choice.evaluate((element) => getComputedStyle(element).padding)).toBe("14px");
+  await expect(screen.getByRole("radio", { checked: true })).toHaveAccessibleName("Publish now Agent's pick");
+  const note = screen.getByTestId("decision-text");
+  expect(await fieldText(note)).toBe("16px");
+
+  // The bar at the foot, on the screen's bottom edge: Take over and Send answer side by side, 44 px, no key on a phone.
+  const bar = screen.getByTestId("decision-bar");
+  const send = bar.getByTestId("decision-send");
+  const takeOver = bar.getByTestId("decision-takeover");
+  await touchSized(send, "Send answer");
+  await touchSized(takeOver, "Take over");
+  expect((await box(send)).height).toBe(44);
+  expect(Math.abs((await box(send)).y - (await box(takeOver)).y), "Take over beside Send answer").toBeLessThan(1);
+  await expect(bar.getByTestId("decision-send-kbd")).toHaveCount(0);
+  const docked = async () => {
+    const edge = await box(bar);
+    expect(Math.round(edge.y + edge.height), "the bar sits on the bottom edge").toBe(PHONE.height);
+  };
+  await docked();
+
+  // What the agent did so far: folded, and once opened its last things, oldest first.
+  const soFar = screen.getByTestId("decision-so-far");
+  await expect(soFar).not.toHaveAttribute("open", "");
+  await soFar.getByText("What the agent did so far").click();
+  const items = soFar.getByTestId("decision-so-far-item");
+  await expect(items.last()).toContainText("Bash pnpm test");
+  await expect(items.nth(-2)).toContainText("Agent Reading the plan.");
+  expect(await items.count()).toBeLessThanOrEqual(5);
+  await expectNoSeriousViolations(page, "decision screen at 375 px");
+
+  // Scrolled to the end and back to the top, the bar stays on the bottom edge.
+  const panel = screen.getByTestId("decision-panel");
+  await note.fill(Array.from({ length: 8 }, (_, index) => `Line ${index + 1} of the note.`).join("\n"));
+  expect(await panel.evaluate((element) => element.scrollHeight - element.clientHeight), "the screen's middle scrolls").toBeGreaterThan(0);
+  await panel.evaluate((element) => element.scrollTo({ top: element.scrollHeight }));
+  await expect.poll(() => panel.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+  await expect(bar).toBeInViewport({ ratio: 1 });
+  await docked();
+  await expect(soFar).toBeInViewport();
+  await panel.evaluate((element) => element.scrollTo({ top: 0 }));
+  await expect(bar).toBeInViewport({ ratio: 1 });
+  await docked();
+
+  // Send answer answers with the agent's pick and the note; the bar goes with the form.
+  await note.fill("After the backup.");
+  await send.click();
+  await expect(toast(page, `Answer sent to run #${run.id}`)).toBeVisible();
+  await expect(screen.getByTestId("decision-answer")).toContainText("Publish now");
+  await expect(bar).toHaveCount(0);
+  const answered = await decisionOf(me, project, decision);
+  expect([answered.state, answered.answer_option, answered.answer_text]).toEqual(["answered", "publish", "After the backup."]);
+
+  // Back to Inbox: the list, with focus on the decision's link.
+  await screen.getByTestId("decision-back").click();
+  await expect(page).toHaveURL(/\/inbox$/);
+  await expect(page.getByTestId("decision-sheet")).toHaveCount(0);
+  await expect(main(page).locator(`[data-decision-link="${decision}"]`)).toBeFocused();
 });

@@ -307,6 +307,21 @@ export function runEvents(api: ApiClient, project: string, id: number, after: nu
   );
 }
 
+/** The run's latest events the decision screen reads for "What the agent did so far". */
+export const RECENT_EVENTS = 200;
+
+/**
+ * The run's events up to `lastSeq` (the run's `last_seq`, which numbers its events from 1 without gaps), at most the
+ * last RECENT_EVENTS of them. A newer `lastSeq` is a new read; the summary it made stays on screen until it lands.
+ */
+export const recentEventsQuery = (api: ApiSource, project: string, id: number, lastSeq: number) =>
+  queryOptions({
+    queryKey: [...runKey(project, id), "recent", lastSeq] as const,
+    queryFn: ({ signal }) => runEvents(api(), project, id, Math.max(0, lastSeq - RECENT_EVENTS), signal),
+    staleTime: Infinity, // the events before a seq never change
+    placeholderData: keepPreviousData,
+  });
+
 export type RunControl = "cancel" | "takeover" | "handback" | "approve" | "rerun";
 
 /** One of the owner's controls, with the session's CSRF header; rerun answers the new run. */
