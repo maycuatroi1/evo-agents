@@ -2,6 +2,7 @@ import {
   Activity,
   BookOpen,
   Brain,
+  ChartColumn,
   FolderKanban,
   Inbox,
   LayoutDashboard,
@@ -27,6 +28,7 @@ export type NavLabel =
   | "overview"
   | "plans"
   | "runs"
+  | "insights"
   | "memories"
   | "skills"
   | "kg"
@@ -68,6 +70,7 @@ export const PROJECT_NAV: readonly ProjectNavItem[] = [
   { label: "overview", icon: FolderKanban, segment: "" },
   { label: "plans", icon: ListChecks, segment: "plans" },
   { label: "runs", icon: Activity, segment: "runs", count: "activeRuns" },
+  { label: "insights", icon: ChartColumn, segment: "insights" },
   { label: "memories", icon: BookOpen, segment: "memories" },
   { label: "skills", icon: Sparkles, segment: "skills" },
   { label: "kg", icon: Network, segment: "kg" },

@@ -107,6 +107,7 @@ describe("AppSidebar", () => {
       "nav-overview",
       "nav-plans",
       "nav-runs",
+      "nav-insights",
       "nav-memories",
       "nav-skills",
       "nav-kg",

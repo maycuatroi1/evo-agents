@@ -22,6 +22,7 @@
     "overview": "Overview",
     "plans": "Plans",
     "runs": "Runs",
+    "insights": "Insights",
     "kg": "Knowledge graph",
     "admin": "Administration",
     "toggleSidebar": "Show or hide the sidebar",
@@ -2403,6 +2404,85 @@
       "dispatchedText": "{count, plural, one {It waits in the queue for a worker.} other {They wait in the queue for a worker.}}",
       "openRun": "Open run",
       "openRuns": "Open active runs"
+    }
+  },
+  "insights": {
+    "title": "Insights",
+    "metaTitle": "Insights of {project}",
+    "range": {
+      "label": "Range",
+      "days": "{days} days",
+      "span": "{first} to {last}, UTC days"
+    },
+    "view": {
+      "label": "Show {chart} as",
+      "chart": "Chart",
+      "table": "Table"
+    },
+    "chartKeys": "{chart} per day. Use the left and right arrow keys to read each day.",
+    "legend": "Legend of {chart}",
+    "day": "Day",
+    "allDays": "All {days} days",
+    "none": "None",
+    "caption": "{chart} per UTC day, {first} to {last}",
+    "tableRegion": "{chart}, table",
+    "empty": {
+      "title": "No run ended in the last {days} days",
+      "description": "Runs count on the UTC day they ended done, failed, lost or cancelled. Dispatch a step from the runs page to see them here.",
+      "runs": "Open runs",
+      "longer": "Show 90 days"
+    },
+    "outcomes": {
+      "title": "Runs by outcome",
+      "headline": "{ended, plural, one {# run ended} other {# runs ended}}: {done} done, {failed} failed, {lost} lost, {cancelled} cancelled",
+      "series": {
+        "done": "Done",
+        "failed": "Failed",
+        "stopped": "Lost or cancelled",
+        "lost": "Lost",
+        "cancelled": "Cancelled",
+        "total": "Total"
+      }
+    },
+    "failure": {
+      "title": "Failure rate",
+      "headline": "{rate} of {counted, plural, one {# run} other {# runs}} failed or were lost; cancelled runs are left out",
+      "headlineNone": "No run ended done, failed or lost",
+      "series": {
+        "rate": "Failure rate",
+        "failing": "Failed or lost",
+        "counted": "Done, failed or lost"
+      }
+    },
+    "duration": {
+      "title": "Run duration",
+      "headline": "Median {p50}, 90th percentile {p90}, from start to end",
+      "headlineNone": "No run that started has ended",
+      "series": {
+        "p50": "Median",
+        "p90": "90th percentile"
+      }
+    },
+    "tokens": {
+      "title": "Tokens by type",
+      "headline": "{count, plural, one {# token} other {# tokens}} from {runs, plural, one {# run} other {# runs}} that reported usage",
+      "headlineNone": "No run reported its usage",
+      "series": {
+        "cacheRead": "Cache read",
+        "input": "Input",
+        "output": "Output",
+        "reasoning": "Reasoning",
+        "total": "Total"
+      }
+    },
+    "format": {
+      "under": "under 1s",
+      "seconds": "{seconds}s",
+      "minutes": "{minutes}m {seconds}s",
+      "hours": "{hours}h {minutes}m",
+      "tickSeconds": "{seconds}s",
+      "tickMinutes": "{minutes}m",
+      "tickHours": "{hours}h"
     }
   },
   "inbox": {

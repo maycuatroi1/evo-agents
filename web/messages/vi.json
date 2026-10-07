@@ -22,6 +22,7 @@
     "overview": "Tổng quan",
     "plans": "Plans",
     "runs": "Run",
+    "insights": "Thống kê",
     "kg": "Đồ thị tri thức",
     "admin": "Quản trị",
     "toggleSidebar": "Ẩn hoặc hiện thanh bên",
@@ -2403,6 +2404,85 @@
       "dispatchedText": "{count, plural, =1 {Run chờ trong queue tới khi có worker nhận.} other {Các run chờ trong queue tới khi có worker nhận.}}",
       "openRun": "Mở run",
       "openRuns": "Mở các run đang hoạt động"
+    }
+  },
+  "insights": {
+    "title": "Thống kê",
+    "metaTitle": "Thống kê của {project}",
+    "range": {
+      "label": "Khoảng thời gian",
+      "days": "{days} ngày",
+      "span": "{first} đến {last}, theo ngày UTC"
+    },
+    "view": {
+      "label": "Xem {chart} dạng",
+      "chart": "Biểu đồ",
+      "table": "Bảng"
+    },
+    "chartKeys": "{chart} theo ngày. Dùng phím mũi tên trái và phải để đọc từng ngày.",
+    "legend": "Chú giải của {chart}",
+    "day": "Ngày",
+    "allDays": "Cả {days} ngày",
+    "none": "Không có",
+    "caption": "{chart} theo ngày UTC, từ {first} đến {last}",
+    "tableRegion": "{chart}, dạng bảng",
+    "empty": {
+      "title": "Không run nào kết thúc trong {days} ngày qua",
+      "description": "Run được đếm vào ngày UTC nó kết thúc: xong, thất bại, mất lease hay đã huỷ. Dispatch một bước từ trang run để thấy chúng ở đây.",
+      "runs": "Mở trang run",
+      "longer": "Xem 90 ngày"
+    },
+    "outcomes": {
+      "title": "Run theo kết quả",
+      "headline": "{ended, plural, other {# run đã kết thúc}}: {done} xong, {failed} thất bại, {lost} mất lease, {cancelled} đã huỷ",
+      "series": {
+        "done": "Xong",
+        "failed": "Thất bại",
+        "stopped": "Mất lease hoặc đã huỷ",
+        "lost": "Mất lease",
+        "cancelled": "Đã huỷ",
+        "total": "Tổng"
+      }
+    },
+    "failure": {
+      "title": "Tỉ lệ lỗi",
+      "headline": "{rate} trong {counted, plural, other {# run}} thất bại hoặc mất lease; run đã huỷ không được tính",
+      "headlineNone": "Không run nào kết thúc xong, thất bại hay mất lease",
+      "series": {
+        "rate": "Tỉ lệ lỗi",
+        "failing": "Thất bại hoặc mất lease",
+        "counted": "Xong, thất bại hoặc mất lease"
+      }
+    },
+    "duration": {
+      "title": "Thời lượng run",
+      "headline": "Trung vị {p50}, phân vị 90 là {p90}, từ lúc bắt đầu tới lúc kết thúc",
+      "headlineNone": "Chưa run nào đã bắt đầu rồi kết thúc",
+      "series": {
+        "p50": "Trung vị",
+        "p90": "Phân vị 90"
+      }
+    },
+    "tokens": {
+      "title": "Token theo loại",
+      "headline": "{count, plural, other {# token}} từ {runs, plural, other {# run}} có báo mức dùng",
+      "headlineNone": "Không run nào báo mức dùng",
+      "series": {
+        "cacheRead": "Đọc cache",
+        "input": "Input",
+        "output": "Output",
+        "reasoning": "Suy luận",
+        "total": "Tổng"
+      }
+    },
+    "format": {
+      "under": "dưới 1 giây",
+      "seconds": "{seconds} giây",
+      "minutes": "{minutes} phút {seconds} giây",
+      "hours": "{hours} giờ {minutes} phút",
+      "tickSeconds": "{seconds} giây",
+      "tickMinutes": "{minutes} phút",
+      "tickHours": "{hours} giờ"
     }
   },
   "inbox": {

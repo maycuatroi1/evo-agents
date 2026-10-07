@@ -205,6 +205,7 @@ states and the phone top bar. Icons sit before their label and inherit its colou
 | Diff | `FileDiff` |
 | Decision, waiting for you | `MessageSquare` |
 | Runs | `Activity` |
+| Insights | `ChartColumn` |
 | Plans | `ListChecks` |
 | Workers | `Server` |
 | Secrets | `LockKeyhole` |
@@ -371,7 +372,7 @@ Shared pieces built on them:
   `brand` on hover.
 - `components/shell`: the kit's AppShell. The sidebar (`app-sidebar.tsx`, links in `nav.ts`) carries the mark and
   "evo-agents hub" (Plex Sans 600, the mark at 24 px), the project switcher, then Home and Inbox, the current project
-  (Overview, Plans, Runs, Memories, Skills, Knowledge graph), the hub (Workers, My memories, Shared skills,
+  (Overview, Plans, Runs, Insights, Memories, Skills, Knowledge graph), the hub (Workers, My memories, Shared skills,
   Administration for a hub admin), and at the foot the fleet line and the account. Inbox counts the decisions waiting
   for the visitor's answer in `attention`, Runs the project's active runs in `running` (`nav-counts.ts`, through the
   same queries as the bell and the runs pages); a count is a round pill drawn for the eye, said in words to screen
@@ -723,6 +724,29 @@ Shared pieces built on them:
 - The diff page (`/p/{project}/runs/{id}/diff`) reads the run's diff on the web's server through the presigned GET
   the API signs (`diff-blob.ts`), so the blob store needs no CORS rule and connect-src stays `'self'`; the download is
   a navigation to the presigned URL, as for skill bundles. It renders up to 20,000 lines, file by file.
+- `components/insights`, a project's Insights (`/p/{project}/insights`, in the sidebar's project group after Runs): the
+  runs that ended on each UTC day of the last 7, 30 or 90 days, from `GET /v1/projects/{p}/runs/stats` (prefetched on the
+  server for the range the URL names). The range is the kit's segmented control in one row under the page head, with
+  the days it spans ("Oct 1 to Oct 7, UTC days"), kept in the URL (`?days=7`, `?days=90`, none for 30) through
+  `history.replaceState`; while the next range loads the cards keep the last one at 60 % opacity. Four cards, two
+  columns from lg: Runs by outcome (columns stacked done, failed, and lost or cancelled in `success-solid`,
+  `danger-solid` and `neutral-solid`, the two neutral states sharing one segment), Failure rate (failed or lost of the
+  runs that ended done, failed or lost, a `danger-solid` line, cancelled runs left out), Run duration (the median and
+  90th percentile from start to end, `chart-1` and `chart-2` lines on round duration ticks), and Tokens by type
+  (stacked cache read, input, output and reasoning in the UsageMeter's `chart-5`, `chart-1`, `chart-3`, `chart-4`).
+  Each card has its title, one line of what the range adds up to, Chart or Table (a segmented control), a legend for
+  two series or more (a swatch for bars, a line key for lines), and a 224 px plot. Marks follow the dataviz rules:
+  columns at most 24 px wide with a 4 px rounded end on the top segment of the day and square at the baseline, 2 px of
+  the card between stacked segments, 2 px lines with a gap where a day has no value (a lone day gets an 8 px dot ringed
+  in `card`), hairline `chart-grid` rules, no axis line, ticks in `fg-muted`. The tooltip, on `popover` with
+  `shadow-popover`, names the day and every series of it (each keyed by a short mark in its colour, the value in
+  tabular figures, the total last); it is a polite status region. The plot is Recharts' keyboard surface: Tab reaches
+  it (the 2 px `ring` outline, put back on the surface shadcn's container clears), the left and right arrow keys move
+  the tooltip from day to day. Every chart keeps its table in the document for screen readers (`sr-only`), and Table
+  shows it instead: a row per day, the newest first, the whole range in its foot, a day without a value saying None,
+  inside its own focusable region of at most 352 px whose head stays in view. The charts are one chunk loaded with
+  `next/dynamic` behind skeletons of the plot's height, so Recharts is in no page's first load. With no run ended in the
+  range the cards give way to the EmptyState, with the runs page and, under 90 days, Show 90 days.
 - `components/memories/markdown.tsx`: Markdown written by people (memory bodies) through react-markdown without
   raw HTML: tags show as text, only listed elements render, links keep http(s), mailto and anchors, images are
   never loaded, headings move under the page's h1 and the card's h2.

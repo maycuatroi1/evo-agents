@@ -3,6 +3,7 @@ import type { Page } from "@playwright/test";
 import { expectNoSeriousViolations } from "./support/a11y";
 import { expect, isDeployed, type Member, test } from "./support/fixtures";
 import { ADMIN_ACCOUNT, machineToken, newAccount, uniqueName } from "./support/hub";
+import { seedInsights } from "./support/insights";
 import { graphReady, grantOn, HUB_NODE, kgPath, nodePath, sharedKg } from "./support/kg";
 import { apiOf, memoryFile, putMemory } from "./support/memories";
 import { ACTIVE_PLAN, EVIDENCE_STEP, open, seedPlans } from "./support/plans";
@@ -541,6 +542,41 @@ const PAGES: Entry[] = [
       await expectNoSeriousViolations(page, "runs at 375 px");
       await open(page, `/workers/${live.worker.id}`);
       await expect(page.locator("#main").getByTestId("worker-runs-table")).toBeVisible();
+    },
+  },
+  {
+    name: "insights with no run ended yet",
+    open: async ({ page, me }) => {
+      await open(page, `/p/${me.projects[0]}/insights`);
+      await expect(page.locator("#main").getByTestId("state-empty")).toBeVisible();
+    },
+  },
+  {
+    name: "insights with its four charts, a chart's table and a tooltip",
+    open: async ({ page, me }) => {
+      await seedInsights(me, me.projects[0]);
+      await open(page, `/p/${me.projects[0]}/insights`);
+      const main = page.locator("#main");
+      for (const chart of ["outcomes", "failure", "duration", "tokens"]) {
+        await expect(main.getByTestId(`insights-${chart}-chart`).locator("svg.recharts-surface")).toBeVisible();
+      }
+      await expectNoSeriousViolations(page, "insights, charts");
+      await main.getByTestId("insights-outcomes-view-table").click();
+      await expect(main.getByTestId("insights-outcomes-table-region")).toBeVisible();
+      await main.getByTestId("insights-duration-chart").locator("svg.recharts-surface").focus();
+      await expect(main.getByTestId("insights-duration").getByTestId("insights-tooltip")).toBeVisible();
+    },
+  },
+  {
+    name: "insights on a small screen",
+    open: async ({ page, me }) => {
+      await seedInsights(me, me.projects[0]);
+      await page.setViewportSize({ width: 375, height: 812 });
+      await open(page, `/p/${me.projects[0]}/insights`);
+      const main = page.locator("#main");
+      await expect(main.getByTestId("insights-tokens-chart").locator("svg.recharts-surface")).toBeVisible();
+      await main.getByTestId("insights-tokens-view-table").click();
+      await expect(main.getByTestId("insights-tokens-table-region")).toBeVisible();
     },
   },
   {
