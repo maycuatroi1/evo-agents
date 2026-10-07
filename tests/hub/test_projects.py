@@ -482,33 +482,43 @@ def add_probe(app) -> None:
     """Routes standing in for the memory endpoints of later steps: they read and push rows of ``memories`` through
     ``project_access``, the way those endpoints start, and audit a push in the transaction that writes it."""
     from fastapi import Body, Request
+    from sqlalchemy import insert, select
 
-    from evo_agents.hub.db import legacy
+    from evo_agents.hub import tables
     from evo_agents.hub.server.projects import project_access
     from evo_agents.hub.server.security import CurrentUser
+
+    memories = tables.memories
 
     async def read(project: str, sink: str, request: Request, user: CurrentUser) -> list[str]:
         async with request.app.state.engine.begin() as conn:
             access = await project_access(conn, user, project)
-            cursor = await legacy(
-                conn, "SELECT name, label FROM memories WHERE project_id = %s ORDER BY name", (access.project_id,)
+            found = await conn.execute(
+                select(memories.c.name, memories.c.label)
+                .where(memories.c.project_id == access.project_id)
+                .order_by(memories.c.name)
             )
-            rows = await cursor.fetchall()
-        return [name for name, label in rows if access.visible(label, sink)]
+            rows = found.all()
+        return [row.name for row in rows if access.visible(row.label, sink)]
 
     async def push(project: str, request: Request, user: CurrentUser, data: Annotated[dict, Body()]) -> dict:
-        from psycopg.types.json import Jsonb
-
         from evo_agents.hub.server import audit
 
         async with request.app.state.engine.begin() as conn:
             access = await project_access(conn, user, project)
             label = access.push_label(data.get("label"))
-            await legacy(
-                conn,
-                "INSERT INTO memories (scope, project_id, location, name, type, owner_id, label, body, updated_by) "
-                "VALUES ('project', %s, 'harness', %s, 'project', %s, %s, %s, %s)",
-                (access.project_id, data["name"], user.user_id, Jsonb(label), data["body"], user.user_id),
+            await conn.execute(
+                insert(memories).values(
+                    scope="project",
+                    project_id=access.project_id,
+                    location="harness",
+                    name=data["name"],
+                    type="project",
+                    owner_id=user.user_id,
+                    label=label,
+                    body=data["body"],
+                    updated_by=user.user_id,
+                )
             )
             target = f"{project}/{data['name']}"
             await audit.record(conn, actor_id=user.user_id, token_id=user.token_id, action="memory.put", target=target)
@@ -531,16 +541,37 @@ def client(hub_db, tmp_path, github):
 
 
 def audit_rows(db) -> list[tuple]:
+    from sqlalchemy import select
+
+    from evo_agents.hub import tables
+
+    audit, users = tables.audit, tables.users
     return live.sql(
-        db, "SELECT u.login, a.action, a.target FROM audit a JOIN users u ON u.id = a.actor_id ORDER BY a.id"
+        db,
+        select(users.c.login, audit.c.action, audit.c.target)
+        .join_from(audit, users, users.c.id == audit.c.actor_id)
+        .order_by(audit.c.id),
     )
 
 
 def content_rows(db) -> dict:
+    from sqlalchemy import func, select
+
+    from evo_agents.hub import tables
+
     return {
-        table: live.sql(db, f"SELECT count(*) FROM {table}")[0][0]
+        table: live.sql(db, select(func.count()).select_from(getattr(tables, table)))[0][0]
         for table in ("projects", "project_sinks", "project_repos", "memories", "audit")
     }
+
+
+def project_rows(db, *columns: str) -> list[tuple]:
+    """``columns`` of every row of projects."""
+    from sqlalchemy import select
+
+    from evo_agents.hub import tables
+
+    return live.sql(db, select(*(tables.projects.c[name] for name in columns)))
 
 
 def users(client, github) -> dict:
@@ -580,10 +611,10 @@ def test_registering_needs_a_hub_admin_first_and_is_idempotent(client, github, h
     assert (rows["projects"], rows["project_sinks"], rows["project_repos"]) == (1, 2, 1)
 
     # The same body again changes nothing and leaves no audit row.
-    before = live.sql(hub_db, "SELECT updated_at FROM projects")
+    before = project_rows(hub_db, "updated_at")
     again = client.put("/v1/projects/demo", json=body(), headers=who["admin"])
     assert (again.json()["created"], again.json()["changed"]) == (False, False)
-    assert live.sql(hub_db, "SELECT updated_at FROM projects") == before
+    assert project_rows(hub_db, "updated_at") == before
 
     # A project admin may update it; a reader may not, and a stranger learns nothing from the answer.
     grant(client, who["admin"], "member", "reader", "internal")
@@ -668,11 +699,11 @@ def test_dropping_a_level_some_grant_reaches_is_refused(client, github, hub_db):
     who = users(client, github)
     assert client.put("/v1/projects/demo", json=body(), headers=who["admin"]).status_code == 200
     grant(client, who["admin"], "member", "reader", "secret")
-    before = live.sql(hub_db, "SELECT levels, updated_at FROM projects")
+    before = project_rows(hub_db, "levels", "updated_at")
     shorter = body(levels=["public", "internal", "customer"])
     refused = client.put("/v1/projects/demo", json=shorter, headers=who["admin"])
     assert refused.status_code == 409 and "member (secret)" in refused.json()["message"]
-    assert live.sql(hub_db, "SELECT levels, updated_at FROM projects") == before
+    assert project_rows(hub_db, "levels", "updated_at") == before
     grant(client, who["admin"], "member", "reader", "customer")
     assert client.put("/v1/projects/demo", json=shorter, headers=who["admin"]).json()["changed"] is True
 
@@ -695,15 +726,24 @@ def test_projects_come_by_name_and_the_grants_a_new_ladder_strands_by_login(clie
 
 
 def memory(db, name: str, label: dict) -> None:
-    from psycopg.types.json import Jsonb
+    from sqlalchemy import insert, literal, select
 
-    live.sql(
-        db,
-        "INSERT INTO memories (scope, project_id, location, name, type, owner_id, label, body, updated_by) "
-        "SELECT 'project', p.id, 'harness', %s, 'project', p.created_by, %s, 'body', p.created_by "
-        "FROM projects p WHERE p.name = 'demo'",
-        (name, Jsonb(label)),
-    )
+    from evo_agents.hub import tables
+
+    projects, memories = tables.projects, tables.memories
+    values = {
+        "scope": literal("project"),
+        "project_id": projects.c.id,
+        "location": literal("harness"),
+        "name": literal(name),
+        "type": literal("project"),
+        "owner_id": projects.c.created_by,
+        "label": literal(label, memories.c.label.type),
+        "body": literal("body"),
+        "updated_by": projects.c.created_by,
+    }
+    in_demo = select(*values.values()).where(projects.c.name == "demo")
+    live.sql(db, insert(memories).from_select(list(values), in_demo))
 
 
 @needs_pg
