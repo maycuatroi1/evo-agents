@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { type ReactNode, useCallback, useEffect, useId, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useId, useMemo, useState } from "react";
 
 import { useLiveSignal } from "@/components/live/live-context";
 import { planHref, stepHref } from "@/components/plans/links";
@@ -17,20 +17,22 @@ import { browserApi } from "@/lib/api/browser";
 import type { ApiErrorInfo } from "@/lib/api/errors";
 import { whoamiQuery } from "@/lib/queries";
 
+import { AgentTrace, type TraceContext } from "./agent-trace";
 import { PlanRunKindBadge } from "./badges";
 import { useRunViewer } from "./hooks";
 import type { RunMove } from "./log-model";
-import { isActiveState, type Run, RUN_VIEW_PARAM, runKey, runQuery } from "./queries";
+import { isActiveState, LIVE_REFRESH_MS, openDecisionsQuery, type Run, RUN_VIEW_PARAM, runKey, runQuery } from "./queries";
 import { RunActions, RunNotes } from "./run-actions";
 import { RunComposer } from "./run-composer";
-import { RunDetails, RunResult } from "./run-facts";
-import { RunLogCard, type SessionTab } from "./run-log";
-import { runControls, stepperModel } from "./run-model";
 import { RunDecisions } from "./run-decisions";
+import { RunDetails, RunResult } from "./run-facts";
+import { RunLogCard, SESSION_TABS, type SessionTab } from "./run-log";
+import { runControls } from "./run-model";
 import { RunPlanSteps } from "./run-plan-steps";
-import { RunStepper } from "./run-stepper";
 import { RunTerminalPanel } from "./run-terminal";
+import { RunTimeline } from "./run-timeline";
 import { terminalAccess } from "./terminal-model";
+import { UsageMeter } from "./usage-meter";
 import { logSignal, useRunLog } from "./use-run-log";
 
 /** A move between states as the log says it: "Running to Verifying, by the worker: ..." */
@@ -70,19 +72,28 @@ function useRunTerminalTab(run: Run, viewer: ReturnType<typeof useRunViewer>) {
 }
 
 /**
- * The tab the log card shows, held by the page: the Terminal tab once offered when the page was opened on it
- * (`?view=terminal`, a decision's Take over from the Inbox), or when a decision's Take over here asks for it.
+ * The tab the session card shows, held by the page and kept in the URL (`?view=log`, `?view=terminal`; the Trace, the
+ * first tab, has none): the Terminal tab once offered when the page was opened on it (a decision's Take over from the
+ * Inbox), or when a decision's Take over here asks for it. Changing tabs replaces the URL without a navigation.
  */
 function useSessionTab(terminalOffered: boolean) {
   const params = useSearchParams();
-  const wanted = params.get(RUN_VIEW_PARAM) === "terminal";
-  const [tab, setTab] = useState<SessionTab>("log");
+  const asked = params.get(RUN_VIEW_PARAM);
+  const wanted: SessionTab | null = (SESSION_TABS as readonly string[]).includes(asked ?? "") ? (asked as SessionTab) : null;
+  const [tab, setTab] = useState<SessionTab>(wanted === "log" ? "log" : "trace");
   const [applied, setApplied] = useState(false);
-  if (wanted && terminalOffered && !applied) {
+  if (wanted === "terminal" && terminalOffered && !applied) {
     setApplied(true);
     setTab("terminal");
   }
-  return [tab, setTab] as const;
+  const choose = useCallback((next: SessionTab) => {
+    setTab(next);
+    const url = new URL(window.location.href);
+    if (next === "trace") url.searchParams.delete(RUN_VIEW_PARAM);
+    else url.searchParams.set(RUN_VIEW_PARAM, next);
+    window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
+  }, []);
+  return [tab, choose] as const;
 }
 
 function RunPage({ run }: { run: Run }) {
@@ -115,8 +126,24 @@ function RunPage({ run }: { run: Run }) {
     if (moves > 0 || ended) void queryClient.invalidateQueries({ queryKey: runKey(run.project, run.id) });
   }, [moves, ended, queryClient, run.project, run.id]);
 
-  const stepper = stepperModel(run, log.moves);
   const plan = run.kind === "plan";
+  const active = isActiveState(run.state);
+  // The same query as the decisions' column (one request): "Asked you" links to the card of a decision still open.
+  const decisions = useQuery({ ...openDecisionsQuery(browserApi, run.project, run.id), enabled: plan && active, refetchInterval: LIVE_REFRESH_MS });
+  const openIds = useMemo(() => (decisions.data?.decisions ?? []).map((decision) => decision.id).join(","), [decisions.data]);
+  const traceContext = useMemo<TraceContext>(
+    () => ({
+      runId: run.id,
+      owner: run.dispatched_by,
+      viewer: viewer?.login ?? null,
+      describe,
+      openDecisions: new Set(openIds ? openIds.split(",").map(Number) : []),
+      working: run.state === "running" && log.status !== "ended",
+      active,
+    }),
+    [run.id, run.dispatched_by, viewer?.login, describe, openIds, run.state, log.status, active],
+  );
+
   const title = run.title ?? (plan ? run.plan_id : t("untitled"));
   const planLink = (chunks: ReactNode) => (
     <Link href={planHref(run.project, run.plan_id)} className="font-mono text-brand underline-offset-4 hover:underline" data-testid="run-plan-link">
@@ -156,20 +183,21 @@ function RunPage({ run }: { run: Run }) {
         actions={<RunActions run={run} controls={controls} />}
       />
       <RunNotes run={run} controls={controls} />
-      <RunStepper stepper={stepper} state={run.state} />
-      {/* The kit's run screen: the log on the left, the decision, details and result in the side column from xl. Below
-          xl one column, the decision first. */}
-      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]">
+      <RunTimeline run={run} moves={log.moves} />
+      {/* The kit's run screen: the trace on the left; the decision, details, usage and result in the side column from
+          xl. Below xl one column, the decision first. */}
+      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_23rem]">
         {plan ? <RunDecisions run={run} owner={controls.owner} onTakeOver={takeOver} className="xl:col-start-2 xl:row-start-1" /> : null}
         <div id={logId} className="min-w-0 scroll-mt-16 xl:col-start-1 xl:row-span-2 xl:row-start-1">
           <RunLogCard
             runId={run.id}
             log={log}
             frozen={{ at: frozenAt, set: setFrozenAt }}
-            active={isActiveState(run.state)}
+            active={active}
             composer={controls.message ? <RunComposer run={run} /> : null}
             tab={sessionTab}
             onTabChange={setSessionTab}
+            trace={(shown) => <AgentTrace events={log.events} status={log.status} context={traceContext} shown={shown} />}
             terminal={
               terminal
                 ? (shown) => (
@@ -181,6 +209,7 @@ function RunPage({ run }: { run: Run }) {
         </div>
         <div className="flex min-w-0 flex-col gap-4 xl:col-start-2">
           <RunDetails run={run} viewer={viewer} />
+          <UsageMeter run={run} events={log.events} />
           {plan ? <RunPlanSteps run={run} /> : null}
           <RunResult run={run} />
         </div>
@@ -190,8 +219,8 @@ function RunPage({ run }: { run: Run }) {
 }
 
 /**
- * One run: its state as a stepper, its live log, the owner's controls (cancel, take over, hand back, approve, rerun,
- * a message to the agent), its details and its result. A plan run also lists its plan's steps with their status, and
+ * One run: its phases as a timeline, its trace and raw log (live), the owner's controls (cancel, take over, hand back,
+ * approve, rerun, a message to the agent), its details, its usage and its result. A plan run also lists its plan's steps with their status, and
  * shows the decisions it waits on with the owner's answer form at the top of the side column. A run of a plan the visitor may not read, or of another
  * project, is not found.
  */

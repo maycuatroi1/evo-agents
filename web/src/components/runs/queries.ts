@@ -334,6 +334,11 @@ export function decisionHref(id: number): Route {
   return `/inbox?decision=${id}` as Route;
 }
 
+/** The id of a decision's card on its run's page, which the trace's "Asked you" links to. */
+export function decisionAnchor(id: number): string {
+  return `run-decision-${id}`;
+}
+
 /** `MAX_OPEN_DECISIONS` of the API: a run's agent has at most 20 decisions open at once. */
 export const MAX_OPEN_DECISIONS = 20;
 

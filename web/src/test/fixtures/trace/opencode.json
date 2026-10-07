@@ -1,0 +1,338 @@
+{
+ "_about": "A real run of the opencode adapter on this repository's code (opencode 1.18.34) in a scratch git repository, on the prompt of web/scripts/trace_fixtures.py, between the state events the hub writes; times are the machine's as the events arrived, from a fixed start. Paths are replaced and output events keep only the keys that name what happened. Made by web/scripts/trace_fixtures.py.",
+ "runtime": "opencode",
+ "version": "opencode 1.18.34",
+ "usage": {
+  "total": 378932,
+  "input": 94944,
+  "output": 103,
+  "reasoning": 109,
+  "cache_write": 0,
+  "cache_read": 283776,
+  "cost": 0.0
+ },
+ "events": [
+  {
+   "seq": 1,
+   "at": "2026-10-07T03:00:00.000Z",
+   "kind": "state",
+   "body": {
+    "to": "leased",
+    "from": "queued",
+    "actor": "worker",
+    "reason": "worker dev-laptop claimed it"
+   },
+   "truncated": false
+  },
+  {
+   "seq": 2,
+   "at": "2026-10-07T03:00:01.000Z",
+   "kind": "state",
+   "body": {
+    "to": "running",
+    "from": "leased",
+    "actor": "worker",
+    "reason": "worker dev-laptop reported running"
+   },
+   "truncated": false
+  },
+  {
+   "seq": 3,
+   "at": "2026-10-07T03:00:21.567Z",
+   "kind": "agent_thought_chunk",
+   "body": {
+    "content": {
+     "type": "text",
+     "text": "Let me do these steps in order."
+    }
+   },
+   "truncated": false
+  },
+  {
+   "seq": 4,
+   "at": "2026-10-07T03:00:21.611Z",
+   "kind": "tool_call",
+   "body": {
+    "toolCallId": "call_48eb35acbddf4405852f2a1d",
+    "title": "bash",
+    "kind": "execute",
+    "status": "in_progress",
+    "rawInput": {
+     "command": "cat missing-file.txt"
+    }
+   },
+   "truncated": false
+  },
+  {
+   "seq": 5,
+   "at": "2026-10-07T03:00:21.645Z",
+   "kind": "tool_call_update",
+   "body": {
+    "toolCallId": "call_48eb35acbddf4405852f2a1d",
+    "status": "failed",
+    "content": [
+     {
+      "type": "content",
+      "content": {
+       "type": "text",
+       "text": "cat: missing-file.txt: No such file or directory\n"
+      }
+     }
+    ],
+    "rawOutput": {
+     "exit": 1
+    }
+   },
+   "truncated": false
+  },
+  {
+   "seq": 6,
+   "at": "2026-10-07T03:00:21.700Z",
+   "kind": "usage_update",
+   "body": {
+    "usage": {
+     "total": 94621,
+     "input": 94590,
+     "output": 22,
+     "reasoning": 9,
+     "cache": {
+      "write": 0,
+      "read": 0
+     }
+    },
+    "cost": {
+     "amount": 0,
+     "currency": "USD"
+    },
+    "reason": "tool-calls"
+   },
+   "truncated": false
+  },
+  {
+   "seq": 7,
+   "at": "2026-10-07T03:00:24.261Z",
+   "kind": "agent_thought_chunk",
+   "body": {
+    "content": {
+     "type": "text",
+     "text": "Now step 2: ls -a."
+    }
+   },
+   "truncated": false
+  },
+  {
+   "seq": 8,
+   "at": "2026-10-07T03:00:24.348Z",
+   "kind": "tool_call",
+   "body": {
+    "toolCallId": "call_04e49fbb8d41494a8e9134dc",
+    "title": "bash",
+    "kind": "execute",
+    "status": "in_progress",
+    "rawInput": {
+     "command": "ls -a"
+    }
+   },
+   "truncated": false
+  },
+  {
+   "seq": 9,
+   "at": "2026-10-07T03:00:24.358Z",
+   "kind": "tool_call_update",
+   "body": {
+    "toolCallId": "call_04e49fbb8d41494a8e9134dc",
+    "status": "completed",
+    "content": [
+     {
+      "type": "content",
+      "content": {
+       "type": "text",
+       "text": ".\n..\n.git\nREADME.md\n"
+      }
+     }
+    ],
+    "rawOutput": {
+     "exit": 0
+    }
+   },
+   "truncated": false
+  },
+  {
+   "seq": 10,
+   "at": "2026-10-07T03:00:24.401Z",
+   "kind": "usage_update",
+   "body": {
+    "usage": {
+     "total": 94671,
+     "input": 112,
+     "output": 21,
+     "reasoning": 10,
+     "cache": {
+      "write": 0,
+      "read": 94528
+     }
+    },
+    "cost": {
+     "amount": 0,
+     "currency": "USD"
+    },
+    "reason": "tool-calls"
+   },
+   "truncated": false
+  },
+  {
+   "seq": 11,
+   "at": "2026-10-07T03:00:28.218Z",
+   "kind": "agent_thought_chunk",
+   "body": {
+    "content": {
+     "type": "text",
+     "text": "Now create selftest.txt with exactly \"ok\". Use printf to write exact content. The word \"ok\" — containing exactly the word ok. I'll write \"ok\" without trailing newline? \"containing exactly the word ok\" — safest is `printf 'ok'`. Some might expect newline, but \"exactly the word ok\" suggests just ok. I'll use printf 'ok'."
+    }
+   },
+   "truncated": false
+  },
+  {
+   "seq": 12,
+   "at": "2026-10-07T03:00:28.389Z",
+   "kind": "tool_call",
+   "body": {
+    "toolCallId": "call_dd8df893d61a4441b4e889bc",
+    "title": "bash",
+    "kind": "execute",
+    "status": "in_progress",
+    "rawInput": {
+     "command": "printf 'ok' > selftest.txt && cat selftest.txt"
+    }
+   },
+   "truncated": false
+  },
+  {
+   "seq": 13,
+   "at": "2026-10-07T03:00:28.396Z",
+   "kind": "tool_call_update",
+   "body": {
+    "toolCallId": "call_dd8df893d61a4441b4e889bc",
+    "status": "completed",
+    "content": [
+     {
+      "type": "content",
+      "content": {
+       "type": "text",
+       "text": "ok"
+      }
+     }
+    ],
+    "rawOutput": {
+     "exit": 0
+    }
+   },
+   "truncated": false
+  },
+  {
+   "seq": 14,
+   "at": "2026-10-07T03:00:28.471Z",
+   "kind": "usage_update",
+   "body": {
+    "usage": {
+     "total": 94797,
+     "input": 93,
+     "output": 31,
+     "reasoning": 81,
+     "cache": {
+      "write": 0,
+      "read": 94592
+     }
+    },
+    "cost": {
+     "amount": 0,
+     "currency": "USD"
+    },
+    "reason": "tool-calls"
+   },
+   "truncated": false
+  },
+  {
+   "seq": 15,
+   "at": "2026-10-07T03:00:28.511Z",
+   "kind": "output",
+   "body": {
+    "raw": {
+     "type": "message.part.updated"
+    }
+   },
+   "truncated": false
+  },
+  {
+   "seq": 16,
+   "at": "2026-10-07T03:00:31.806Z",
+   "kind": "agent_thought_chunk",
+   "body": {
+    "content": {
+     "type": "text",
+     "text": "Done. Reply with one short sentence."
+    }
+   },
+   "truncated": false
+  },
+  {
+   "seq": 17,
+   "at": "2026-10-07T03:00:32.052Z",
+   "kind": "agent_message_chunk",
+   "body": {
+    "content": {
+     "type": "text",
+     "text": "Ran the failing `cat`, listed directory contents with `ls -a`, and created `selftest.txt` containing `ok`."
+    }
+   },
+   "truncated": false
+  },
+  {
+   "seq": 18,
+   "at": "2026-10-07T03:00:32.095Z",
+   "kind": "usage_update",
+   "body": {
+    "usage": {
+     "total": 94843,
+     "input": 149,
+     "output": 29,
+     "reasoning": 9,
+     "cache": {
+      "write": 0,
+      "read": 94656
+     }
+    },
+    "cost": {
+     "amount": 0,
+     "currency": "USD"
+    },
+    "reason": "stop"
+   },
+   "truncated": false
+  },
+  {
+   "seq": 19,
+   "at": "2026-10-07T03:00:33.095Z",
+   "kind": "state",
+   "body": {
+    "to": "verifying",
+    "from": "running",
+    "actor": "worker",
+    "reason": "worker dev-laptop reported verifying"
+   },
+   "truncated": false
+  },
+  {
+   "seq": 20,
+   "at": "2026-10-07T03:00:34.095Z",
+   "kind": "state",
+   "body": {
+    "to": "done",
+    "from": "verifying",
+    "actor": "worker",
+    "reason": "worker dev-laptop reported done"
+   },
+   "truncated": false
+  }
+ ]
+}

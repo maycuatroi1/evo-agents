@@ -12,10 +12,10 @@ import { workerHref } from "@/components/workers/queries";
 
 import { runTiming } from "./model";
 import { HELD_STATES, isActiveState, type Run, runDiffHref, runHref } from "./queries";
-import { leaseSecondsLeft, readDiffstat, readUsage, readVerify, type RunViewer, shortSha } from "./run-model";
+import { leaseSecondsLeft, readDiffstat, readVerify, type RunViewer, shortSha } from "./run-model";
 import { useDuration } from "./runs-table";
 
-/** The run's facts and its result, the two cards beside the log. */
+/** The run's facts and its result, cards of the side column (its usage is the UsageMeter's, usage-meter.tsx). */
 
 function Card({ title, children, testId }: { title: string; children: ReactNode; testId: string }) {
   const id = useId();
@@ -195,8 +195,7 @@ export function RunResult({ run }: { run: Run }) {
   const format = useFormatter();
   const verify = readVerify(run.verify);
   const diffstat = readDiffstat(run.diffstat);
-  const usage = readUsage(run.usage);
-  const nothing = !run.error && verify.length === 0 && !run.commit_sha && !diffstat && !run.evidence && usage.length === 0 && !run.diff_sha256;
+  const nothing = !run.error && verify.length === 0 && !run.commit_sha && !diffstat && !run.evidence && !run.diff_sha256;
 
   return (
     <Card title={t("title")} testId="run-result">
@@ -266,17 +265,6 @@ export function RunResult({ run }: { run: Run }) {
                     {t("viewDiff")}
                   </Link>
                 ) : null}
-              </Fact>
-            ) : null}
-            {usage.length ? (
-              <Fact label={t("usage")}>
-                <ul className="flex flex-col font-mono text-xs">
-                  {usage.map((item) => (
-                    <li key={item.key} className="tabular-nums">
-                      {item.key}: {format.number(item.value)}
-                    </li>
-                  ))}
-                </ul>
               </Fact>
             ) : null}
           </dl>

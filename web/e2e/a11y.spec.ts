@@ -92,9 +92,16 @@ async function seedLiveRun(me: Member) {
   const [run] = await dispatch(me, project, ["2"]);
   await claimRun(live);
   await startRun(live, run.id);
+  // A trace with an item of each kind: thinking, words, a plan, a failed call (open, its output on term-bg), a raw
+  // runtime event, a usage report and a verify line.
   await sendEvents(live, run.id, [
+    { kind: "agent_thought_chunk", body: { content: { type: "text", text: "Step 2 needs the queue table first." } } },
     say("Reading the plan."),
+    { kind: "plan", body: { entries: [{ content: "Read the plan", status: "completed" }, { content: "Run the tests", status: "in_progress" }] } },
     tool("Bash", "pnpm test"),
+    { kind: "tool_call_update", body: { toolCallId: "call-9", status: "failed", rawOutput: { exitCode: 1 }, content: [{ type: "content", content: { type: "text", text: "FAIL src/queue.test.ts" } }] } },
+    { kind: "output", body: { raw: { type: "rate_limit_event" } } },
+    { kind: "usage_update", body: { usage: { input_tokens: 40, cache_read_input_tokens: 9000, output_tokens: 300 }, cost: { amount: 0.05, currency: "USD" } } },
     { kind: "system", body: { text: "verify: `pnpm test` exited 1 after 900 ms", exit_code: 1 } },
   ]);
   return { project, live, run };
@@ -480,11 +487,17 @@ const PAGES: Entry[] = [
       const { project, run } = await seedLiveRun(me);
       await open(page, runPath(project, run.id));
       await expect(page.locator("#main").getByTestId("log-status")).toHaveAttribute("data-status", "live");
-      await expect(page.locator("#main").getByTestId("log-line").first()).toBeVisible();
+      await expect(page.locator("#main").getByTestId("trace-tool")).toHaveAttribute("open", "");
+      await expect(page.locator("#main").getByTestId("run-usage-total")).toBeVisible();
       await expect(page.locator("#main").getByTestId("run-composer")).toBeVisible();
+      await page.locator("#main").getByTestId("trace-thought").getByText(/^Thought/).click();
+      await page.locator("#main").getByTestId("trace-raw").getByText("1 runtime event").click();
+      await expectNoSeriousViolations(page, "run page, its trace");
+      await page.locator("#main").getByRole("tab", { name: "Raw log" }).click();
+      await expect(page.locator("#main").getByTestId("log-line").first()).toBeVisible();
       await page.locator("#main").getByTestId("log-search").fill("plan");
       await expect(page.locator("#main").getByTestId("log-lines").locator("mark").first()).toBeVisible();
-      await expectNoSeriousViolations(page, "run page");
+      await expectNoSeriousViolations(page, "run page, its raw log");
       await page.locator("#main").getByTestId("run-takeover").click();
       await expect(page.getByTestId("takeover-dialog")).toBeVisible();
     },
@@ -512,7 +525,8 @@ const PAGES: Entry[] = [
       const { project, run } = await seedLiveRun(me);
       await page.setViewportSize({ width: 375, height: 812 });
       await open(page, runPath(project, run.id));
-      await expect(page.locator("#main").getByTestId("log-line").first()).toBeVisible();
+      await expect(page.locator("#main").getByTestId("trace-item").first()).toBeVisible();
+      await expect(page.locator("#main").getByTestId("run-timeline")).toBeVisible();
     },
   },
   {

@@ -9,6 +9,7 @@ import {
   dispatch,
   eventsOf,
   liveWorker,
+  planRunUnderway,
   reportState,
   RUN_PLAN,
   runControl,
@@ -17,6 +18,7 @@ import {
   runRow,
   runToReview,
   say,
+  seedPlanRunPlan,
   seedRunPlan,
   sendEvents,
   startRun,
@@ -45,6 +47,15 @@ function logOf(page: Page) {
 
 function line(page: Page, text: string) {
   return logOf(page).getByTestId("log-line").filter({ hasText: text });
+}
+
+function traceOf(page: Page) {
+  return main(page).getByTestId("trace");
+}
+
+/** The run's page on its Raw log tab, which the URL keeps. */
+function logPath(project: string, id: number) {
+  return `${runPath(project, id)}?view=log`;
 }
 
 /** A run of step 2 that `me` dispatched, claimed by their worker, with the agent started. */
@@ -99,17 +110,34 @@ test("the runs list leads to the run, whose log shows a new line within 2 second
   await expect(main(page).locator('[data-testid="run-phase"][data-phase="leased"]')).toHaveAttribute("data-status", "done");
   await expect(main(page).getByTestId("run-worker")).toHaveText(live.worker.name);
 
+  // The Trace is the first tab: the agent's words, the tool call with its command, the moves and the verify line.
+  const trace = traceOf(page);
+  await expect(main(page).getByTestId("run-tab-trace")).toHaveAttribute("aria-selected", "true");
+  await expect(trace).toHaveAttribute("role", "log");
+  await expect(trace).toHaveAttribute("aria-live", "polite");
+  await expect(main(page).getByTestId("log-status")).toHaveAttribute("data-status", "live");
+  await expect(trace.getByTestId("trace-message")).toHaveText("Reading plan rollout.");
+  await expect(trace.getByTestId("trace-tool")).toHaveAttribute("data-status", "in_progress");
+  await expect(trace.getByTestId("trace-tool-running")).toBeVisible();
+  await expect(trace.getByTestId("trace-tool-arg")).toHaveText("pytest -q tests/hub/test_queue.py");
+  await expect(trace).toContainText("Leased to Running");
+  await expect(trace).toContainText("verify: `pnpm test` exited 0 after 900 ms");
+  await expect(trace.getByTestId("trace-typing")).toBeVisible();
+
+  // What the worker sends now shows within 2 seconds, without a reload.
+  await sendEvents(live, run.id, [say("Moving the fake clock forward 301 s.")]);
+  await expect(trace.getByTestId("trace-message").filter({ hasText: "Moving the fake clock forward 301 s." })).toBeInViewport({ timeout: 2_000 });
+
+  // The Raw log, one tab over and kept in the URL, has every event as a line.
+  await main(page).getByRole("tab", { name: "Raw log" }).click();
+  await expect(page).toHaveURL(new RegExp(`${runPath(project, run.id)}\\?view=log$`));
   const log = logOf(page);
   await expect(log).toHaveAttribute("role", "log");
   await expect(log).toHaveAttribute("aria-live", "polite");
-  await expect(main(page).getByTestId("log-status")).toHaveAttribute("data-status", "live");
-  await expect(log.getByTestId("log-line")).toHaveCount(total);
+  await expect(log.getByTestId("log-line")).toHaveCount(total + 1);
   await expect(line(page, "Reading plan rollout.")).toHaveAttribute("data-kind", "agent_message_chunk");
   await expect(line(page, "Leased to Running")).toHaveAttribute("data-kind", "state");
-
-  // A line the worker sends now shows within 2 seconds, without a reload.
-  await sendEvents(live, run.id, [say("Moving the fake clock forward 301 s.")]);
-  await expect(line(page, "Moving the fake clock forward 301 s.")).toBeVisible({ timeout: 2_000 });
+  await expect(line(page, "Moving the fake clock forward 301 s.")).toBeVisible();
 
   // Filters by group and the search, which highlights what it found.
   const facets = main(page).getByTestId("log-facets");
@@ -180,7 +208,7 @@ test("a dropped stream reconnects with Last-Event-ID and shows no line twice", a
     });
   });
 
-  await open(page, runPath(project, run.id));
+  await open(page, logPath(project, run.id));
   await expect.poll(() => lastEventIds.length).toBeGreaterThanOrEqual(1);
   expect(lastEventIds[0]).toBe(String(before.last_seq));
 
@@ -200,7 +228,7 @@ test("when the stream cannot be used, the page reads the events instead", async 
     route.fulfill({ status: 503, contentType: "application/json", body: '{"error":"unavailable","message":"no stream"}' }),
   );
 
-  await open(page, runPath(project, run.id));
+  await open(page, logPath(project, run.id));
   await expect(main(page).getByTestId("log-status")).toHaveAttribute("data-status", "polling");
   await expect(main(page).getByTestId("log-paused")).toHaveText("The live stream is unavailable: the page reads new lines every 1.5 seconds.");
   await expect(logOf(page).getByTestId("log-line")).toHaveCount(total);
@@ -235,7 +263,7 @@ test("Approve turns a run in review done, and the plan shows its step done", asy
   await expect(main(page).getByTestId("run-state")).toHaveText("Done");
   await expect(main(page).locator('[data-testid="run-phase"][data-phase="done"]')).toHaveAttribute("data-status", "done");
   await expect(main(page).getByTestId("log-status")).toHaveAttribute("data-status", "ended");
-  await expect(line(page, "Review to Done, by the owner")).toBeVisible();
+  await expect(traceOf(page)).toContainText("Review to Done, by the owner");
   await expect(main(page).getByTestId("run-approve")).toHaveCount(0);
   await expect(main(page).getByTestId("run-rerun")).toBeVisible();
   expect((await runOf(me, project, run.id)).state).toBe("done");
@@ -292,6 +320,8 @@ test("a message from the owner shows in the log and waits in the run's inbox", a
   await composer.getByTestId("run-composer-send").click();
   await expect(composer.getByTestId("run-composer-sent")).toContainText("Sent.");
   await expect(composer.getByTestId("run-composer-text")).toHaveValue("");
+  await expect(traceOf(page).getByTestId("trace-item").filter({ hasText: text })).toHaveAttribute("data-type", "user");
+  await expect(traceOf(page).getByTestId("trace-item").filter({ hasText: text })).toContainText("You");
   await expect(line(page, text)).toHaveAttribute("data-kind", "user_message");
   await expect(line(page, text)).toContainText(`${me.login}: ${text}`);
 
@@ -344,7 +374,7 @@ test("someone other than the owner reads the run but gets no message box, no Tak
   await signInAs(other);
 
   await open(page, runPath(project, run.id));
-  await expect(line(page, "visible to every reader")).toBeVisible();
+  await expect(traceOf(page).getByTestId("trace-message")).toHaveText("visible to every reader");
   await expect(main(page).getByTestId("run-note-owner")).toContainText(`Only ${me.login}, who dispatched this run`);
   await expect(main(page).getByTestId("run-composer")).toHaveCount(0);
   await expect(main(page).getByTestId("run-takeover")).toHaveCount(0);
@@ -396,7 +426,7 @@ test("past 2,000 lines the log renders only the rows in view", async ({ page, me
   await sendEvents(live, run.id, Array.from({ length: 2_050 }, (_, index) => say(`line number ${index + 1}`)));
   const { last_seq: total } = await runOf(me, project, run.id);
 
-  await open(page, runPath(project, run.id));
+  await open(page, logPath(project, run.id));
   const log = logOf(page);
   await expect(main(page).getByTestId("log-count")).toHaveText(`${total.toLocaleString("en-US")} lines`, { timeout: 15_000 });
   await expect(log).toHaveAttribute("data-virtual", "true");
@@ -414,6 +444,146 @@ test("past 2,000 lines the log renders only the rows in view", async ({ page, me
   await expect(log.getByTestId("log-line")).toHaveCount(62);
 });
 
+test("the Trace pairs each tool call with its result, opens a failed one, folds the thinking, and the usage card adds up", async ({
+  page,
+  member,
+}) => {
+  const me = await member([{ role: "writer", maxLevel: "internal" }]);
+  const { project, live, run } = await runningRun(me);
+  const output = Array.from({ length: 30 }, (_, index) => `test_${index + 1} FAILED`).join("\n");
+  const text = (value: string) => ({ type: "text", text: value });
+  await sendEvents(live, run.id, [
+    { kind: "agent_thought_chunk", body: { content: text("The queue needs a lease column before claim can use it.") } },
+    { kind: "agent_message_chunk", body: { content: text("I'll add the lease column, then run the tests.") } },
+    {
+      kind: "tool_call",
+      body: {
+        toolCallId: "toolu_edit",
+        title: "Edit",
+        kind: "edit",
+        status: "pending",
+        rawInput: { file_path: "src/queue.ts", old_string: "claim() {}", new_string: "claim(worker) {\n  return lease(worker);\n}" },
+      },
+    },
+    { kind: "output", body: { raw: { type: "rate_limit_event" } } },
+    { kind: "tool_call_update", body: { toolCallId: "toolu_edit", status: "completed", content: [{ type: "content", content: text("Updated src/queue.ts") }] } },
+    { kind: "tool_call", body: { toolCallId: "toolu_test", title: "Bash", kind: "execute", status: "pending", rawInput: { command: "pytest -q", description: "Run the tests" } } },
+    {
+      kind: "tool_call_update",
+      body: { toolCallId: "toolu_test", status: "failed", rawOutput: { exitCode: 1 }, content: [{ type: "content", content: text(output) }] },
+    },
+    { kind: "plan", body: { entries: [{ content: "Add the lease column", status: "completed" }, { content: "Make the tests pass", status: "in_progress" }] } },
+    {
+      kind: "usage_update",
+      body: {
+        usage: { input_tokens: 12, cache_read_input_tokens: 9000, cache_creation_input_tokens: 300, output_tokens: 240 },
+        cost: { amount: 0.42, currency: "USD" },
+      },
+    },
+  ]);
+
+  await open(page, runPath(project, run.id));
+  const trace = traceOf(page);
+  const tools = trace.getByTestId("trace-tool");
+  await expect(tools).toHaveCount(2);
+
+  // The edit: its file, its diff stat, folded; opened, its change as a diff.
+  const edit = tools.nth(0);
+  await expect(edit).toHaveAttribute("data-status", "completed");
+  await expect(edit.getByTestId("trace-tool-arg")).toHaveText("src/queue.ts");
+  await expect(edit.getByTestId("trace-diffstat")).toContainText("+3 −1");
+  await expect(edit).not.toHaveAttribute("open");
+  await edit.getByTestId("trace-tool-arg").click();
+  await expect(edit.getByTestId("trace-tool-change")).toContainText("+   return lease(worker);");
+
+  // The failed command is open on its exit code, its output cut at 20 lines until asked.
+  const failed = tools.nth(1);
+  await expect(failed).toHaveAttribute("open", "");
+  await expect(failed.getByTestId("trace-exit")).toHaveText("exit 1");
+  await expect(trace.getByTestId("trace-item").filter({ hasText: "Run the tests" }).getByTestId("trace-tool-arg")).toHaveText("pytest -q");
+  const result = failed.getByTestId("trace-tool-output");
+  await expect(result).toContainText("test_20 FAILED");
+  await expect(result).not.toContainText("test_21 FAILED");
+  await result.getByRole("button", { name: "Show the full output (30 lines)" }).click();
+  await expect(result).toContainText("test_30 FAILED");
+
+  // The thinking folded over the agent's words, the plan as a checklist, the rate-limit event raw.
+  const thought = trace.getByTestId("trace-thought");
+  await expect(thought).toContainText(/^Thought (briefly|for)/);
+  await thought.getByText(/^Thought/).click();
+  await expect(thought).toContainText("The queue needs a lease column before claim can use it.");
+  await expect(trace.getByTestId("trace-plan")).toContainText("Make the tests pass");
+  await expect(trace.getByTestId("trace-raw")).toContainText("1 runtime event");
+  await expect(trace).not.toContainText("cache_read_input_tokens");
+
+  // The usage card adds up the report: the tokens in four parts, the cost as the runtime reported it.
+  const usage = main(page).getByTestId("run-usage");
+  await expect(usage.getByTestId("run-usage-total")).toHaveText("9,252");
+  await expect(usage.getByTestId("run-usage-cost")).toHaveText("$0.42 as reported");
+  await expect(usage.getByRole("img")).toHaveAccessibleName("Cache read 97.3 percent, input 0.1, output 2.6, reasoning 0");
+  await expect(usage.getByTestId("run-usage-note")).toHaveText("Cache write 300. Cost as the runtime reported it.");
+
+  // The tab is kept in the URL: the Raw log comes back on a reload, and the Trace takes the parameter away.
+  await main(page).getByRole("tab", { name: "Raw log" }).click();
+  await page.reload();
+  await expect(main(page).getByTestId("run-tab-log")).toHaveAttribute("aria-selected", "true");
+  await main(page).getByTestId("run-tab-trace").click();
+  await expect(page).toHaveURL(new RegExp(`${runPath(project, run.id)}$`));
+});
+
+test("a plan run's trace says what the agent asked, and Answer leads to the decision's card", async ({ page, member }) => {
+  const me = await member([{ role: "writer", maxLevel: "internal" }]);
+  const project = me.projects[0];
+  await seedPlanRunPlan(me, project);
+  const { run, decision } = await planRunUnderway(me, project, uniqueName("studio"), { waiting: true });
+
+  await open(page, runPath(project, run.id));
+  await expect(main(page).locator('[data-testid="run-phase"][data-phase="running"]')).toHaveAttribute("data-tone", "waiting");
+  const ask = traceOf(page).getByTestId("trace-item").filter({ hasText: "Asked you" });
+  await expect(ask).toContainText("Deploy the plan-runs build to staging now?");
+  await expect(ask.getByTestId("trace-ask-link")).toHaveAttribute("href", `#run-decision-${decision}`);
+  await ask.getByTestId("trace-ask-link").click();
+  await expect(page).toHaveURL(new RegExp(`#run-decision-${decision}$`));
+  const card = main(page).locator(`#run-decision-${decision}`);
+  await expect(card).toBeInViewport();
+
+  await card.getByTestId("decision-send").click();
+  await expect(traceOf(page).getByTestId("trace-item").filter({ hasText: `You answered decision #${decision}` })).toBeVisible();
+});
+
+test("past 500 items the Trace renders only the ones in view, follows the newest, and offers the way back to it", async ({ page, member }) => {
+  const me = await member([{ role: "writer", maxLevel: "internal" }]);
+  const { project, live, run } = await runningRun(me);
+  await sendEvents(
+    live,
+    run.id,
+    Array.from({ length: 520 }, (_, index) => ({
+      kind: "tool_call",
+      body: { toolCallId: `call-${index + 1}`, title: "Read", kind: "read", status: "completed", rawInput: { file_path: `src/file-${index + 1}.ts` } },
+    })),
+  );
+
+  await open(page, runPath(project, run.id));
+  const trace = traceOf(page);
+  await expect(trace).toHaveAttribute("data-virtual", "true", { timeout: 15_000 });
+  expect(await trace.getByTestId("trace-item").count()).toBeLessThan(120);
+  await trace.scrollIntoViewIfNeeded();
+  await expect(trace.getByTestId("trace-tool-arg").filter({ hasText: "src/file-520.ts" })).toBeInViewport();
+
+  await sendEvents(live, run.id, [say("the newest item")]);
+  await expect(trace.getByTestId("trace-message").filter({ hasText: "the newest item" })).toBeInViewport({ timeout: 2_000 });
+
+  // Scrolled up, the trace stays where the person put it, and Jump to the latest takes them back.
+  await trace.hover();
+  await page.mouse.wheel(0, -3_000);
+  await expect(trace).toHaveAttribute("data-follow", "false");
+  await sendEvents(live, run.id, [say("arrived while reading")]);
+  await expect(trace.getByTestId("trace-message").filter({ hasText: "arrived while reading" })).toHaveCount(0); // not rendered: out of view
+  await main(page).getByTestId("trace-latest").click();
+  await expect(trace.getByTestId("trace-message").filter({ hasText: "arrived while reading" })).toBeInViewport();
+  await expect(trace).toHaveAttribute("data-follow", "true");
+});
+
 test.describe("in Vietnamese", () => {
   test.use({ uiLocale: "vi" }); // the assertions below read the Vietnamese copy of messages/vi.json
 
@@ -425,7 +595,8 @@ test.describe("in Vietnamese", () => {
     await expect(main(page).getByTestId("run-state")).toHaveText("Đang chạy");
     await expect(main(page).getByTestId("run-takeover")).toHaveText("Tiếp quản");
     await expect(main(page).getByTestId("log-status")).toHaveText("Trực tiếp");
-    await expect(line(page, "Đã nhận sang Đang chạy, do worker")).toBeVisible();
+    await expect(traceOf(page)).toContainText("Đã nhận sang Đang chạy, do worker");
+    await expect(main(page).getByRole("tab", { name: "Log thô" })).toBeVisible();
     await expect(main(page).getByTestId("run-composer")).toContainText("Nhắn cho agent");
   });
 });

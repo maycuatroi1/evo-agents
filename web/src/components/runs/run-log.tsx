@@ -11,9 +11,11 @@ import {
   Play,
   Radio,
   RefreshCw,
+  ListTree,
   ScrollText,
   Settings2,
   SquareTerminal,
+  Terminal,
   WifiOff,
   Wrench,
 } from "lucide-react";
@@ -216,13 +218,21 @@ export function LogStatusBadge({ status }: { status: LogStatus }) {
   );
 }
 
-export type SessionTab = "log" | "terminal";
+export type SessionTab = "trace" | "log" | "terminal";
 
+export const SESSION_TABS: readonly SessionTab[] = ["trace", "log", "terminal"];
+
+/**
+ * The card of a run's session: the Trace (the kit's AgentTrace, first), the Raw log and, for the owner of the run and
+ * of its worker, the Terminal, as tabs. Every panel stays mounted, so switching tabs keeps the terminal's session, the
+ * log's place and the trace's open rows. The composer sits under the Trace and the Raw log.
+ */
 export function RunLogCard({
   runId,
   log,
   active,
   composer,
+  trace = null,
   terminal = null,
   frozen,
   tab: heldTab,
@@ -233,10 +243,11 @@ export function RunLogCard({
   /** The run may still write events: an empty log says it waits for them. */
   active: boolean;
   composer: ReactNode;
+  /** The Trace tab's panel, given whether it is the tab shown. Without it and a terminal, the card is the log alone. */
+  trace?: ((shown: boolean) => ReactNode) | null;
   /**
    * The Terminal tab's panel, for the owner of the run and of its worker (run-terminal.tsx), given whether it is the
-   * tab shown. Without it the card is the log alone. Both panels stay mounted, so switching tabs keeps the terminal's
-   * session and the log's place.
+   * tab shown.
    */
   terminal?: ((shown: boolean) => ReactNode) | null;
   /**
@@ -250,9 +261,12 @@ export function RunLogCard({
 }) {
   const t = useTranslations("runs.detail.log");
   const tTabs = useTranslations("runs.detail.terminal.tabs");
+  const format = useFormatter();
   const ids = useId();
-  const [ownTab, setOwnTab] = useState<SessionTab>("log");
-  const tab = heldTab ?? ownTab;
+  const [ownTab, setOwnTab] = useState<SessionTab>(trace ? "trace" : "log");
+  const wanted = heldTab ?? ownTab;
+  // A tab the card does not have (the Terminal once it is not offered, the Trace without one) shows the first it has.
+  const tab: SessionTab = wanted === "terminal" && !terminal ? (trace ? "trace" : "log") : wanted === "trace" && !trace ? "log" : wanted;
   const setTab = onTabChange ?? setOwnTab;
   const [group, setGroup] = useState<LogGroup | null>(null);
   const [query, setQuery] = useState("");
@@ -273,7 +287,7 @@ export function RunLogCard({
   const virtualRef = useRef<Virtual | null>(null);
   const lastTop = useRef(0);
 
-  // Keep the newest line in view while following, and when the Log tab is shown again (hidden, the log cannot scroll).
+  // Keep the newest line in view while following, and when the Raw log tab is shown again (hidden, it cannot scroll).
   useLayoutEffect(() => {
     const element = scrollRef.current;
     if (!follow || !element || shown.length === 0 || tab !== "log") return;
@@ -296,15 +310,15 @@ export function RunLogCard({
   const filtered = group !== null || deferredQuery.trim() !== "";
   const empty = shown.length === 0;
 
-  const logState = (
-    <>
-      <span role="status" className="inline-flex">
-        <LogStatusBadge status={log.status} />
-      </span>
-      <span className="ml-auto text-xs text-muted-foreground tabular-nums" data-testid="log-count">
-        {filtered ? t("countFiltered", { shown: shown.length, total: base.length }) : t("count", { total: base.length })}
-      </span>
-    </>
+  const status = (
+    <span role="status" className="inline-flex">
+      <LogStatusBadge status={log.status} />
+    </span>
+  );
+  const count = (
+    <span className="ml-auto text-xs text-muted-foreground tabular-nums" data-testid="log-count">
+      {filtered ? t("countFiltered", { shown: shown.length, total: base.length }) : t("count", { total: base.length })}
+    </span>
   );
 
   const logBody = (
@@ -384,26 +398,32 @@ export function RunLogCard({
         </span>
         <span>{t("kept")}</span>
       </div>
-      {composer}
     </>
   );
 
-  if (!terminal) {
+  if (!trace && !terminal) {
     return (
       <section aria-labelledby={`${ids}-title`} className="flex min-w-0 flex-col rounded-md border bg-card shadow-raised" data-testid="run-log">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b px-4 py-3">
           <h2 id={`${ids}-title`} className="text-[15px] leading-[22px] font-semibold">
             {t("title")}
           </h2>
-          {logState}
+          {status}
+          {count}
         </div>
         {logBody}
+        {composer}
       </section>
     );
   }
 
   return (
-    <Tabs value={tab} onValueChange={(value) => setTab(value === "terminal" ? "terminal" : "log")} className="gap-0" asChild>
+    <Tabs
+      value={tab}
+      onValueChange={(value) => setTab((SESSION_TABS as readonly string[]).includes(value) ? (value as SessionTab) : "log")}
+      className="gap-0"
+      asChild
+    >
       <section
         aria-labelledby={`${ids}-title`}
         className="flex min-w-0 flex-col rounded-md border bg-card shadow-raised"
@@ -414,24 +434,53 @@ export function RunLogCard({
           {tTabs("heading", { id: runId })}
         </h2>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b px-4">
-          <TabsList aria-label={tTabs("label")} className="w-auto border-b-0">
+          <TabsList aria-label={tTabs("label")} className="w-auto max-w-full overflow-x-auto border-b-0">
+            {trace ? (
+              <TabsTrigger value="trace" className="h-12" data-testid="run-tab-trace">
+                <ListTree aria-hidden="true" />
+                {tTabs("trace")}
+              </TabsTrigger>
+            ) : null}
             <TabsTrigger value="log" className="h-12" data-testid="run-tab-log">
               <ScrollText aria-hidden="true" />
               {tTabs("log")}
+              {all.length > 0 ? (
+                <>
+                  <span
+                    aria-hidden="true"
+                    className="rounded-full bg-muted px-1.5 text-[11px] leading-[18px] font-medium text-muted-foreground tabular-nums"
+                    data-testid="run-tab-log-count"
+                  >
+                    {format.number(all.length)}
+                  </span>
+                  <span className="sr-only">, {t("lines", { count: all.length })}</span>
+                </>
+              ) : null}
             </TabsTrigger>
-            <TabsTrigger value="terminal" className="h-12" data-testid="run-tab-terminal">
-              <SquareTerminal aria-hidden="true" />
-              {tTabs("terminal")}
-            </TabsTrigger>
+            {terminal ? (
+              <TabsTrigger value="terminal" className="h-12" data-testid="run-tab-terminal">
+                <Terminal aria-hidden="true" />
+                {tTabs("terminal")}
+              </TabsTrigger>
+            ) : null}
           </TabsList>
-          {tab === "log" ? logState : null}
+          {tab !== "terminal" ? status : null}
+          {tab === "log" ? count : null}
         </div>
+        {trace ? (
+          <TabsContent value="trace" forceMount className="gap-0 data-[state=inactive]:hidden">
+            {trace(tab === "trace")}
+          </TabsContent>
+        ) : null}
         <TabsContent value="log" forceMount className="gap-0 data-[state=inactive]:hidden">
           {logBody}
         </TabsContent>
-        <TabsContent value="terminal" forceMount className="gap-0 data-[state=inactive]:hidden">
-          {terminal(tab === "terminal")}
-        </TabsContent>
+        {terminal ? (
+          <TabsContent value="terminal" forceMount className="gap-0 data-[state=inactive]:hidden">
+            {terminal(tab === "terminal")}
+          </TabsContent>
+        ) : null}
+        {tab !== "terminal" ? composer : null}
       </section>
     </Tabs>
   );
