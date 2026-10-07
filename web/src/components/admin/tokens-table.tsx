@@ -2,9 +2,10 @@
 
 import { KeyRound } from "lucide-react";
 import Link from "next/link";
-import { useTranslations } from "next-intl";
+import { useFormatter, useTranslations } from "next-intl";
 import { useCallback, useMemo, useState } from "react";
 
+import type { DataListRow } from "@/components/data/data-list";
 import { DataTable, dataTableColumns } from "@/components/data/data-table";
 import { NAME_LINK } from "@/components/data/identifier";
 import type { Notice } from "@/components/feedback/toast";
@@ -39,6 +40,7 @@ type Props = {
 export function TokensTable({ tokens, caption, showLogin = true, onNotice, testId = "tokens-table" }: Props) {
   const t = useTranslations("admin.tokens");
   const tRevoke = useTranslations("admin.revokeToken");
+  const format = useFormatter();
   const failure = useWriteFailure();
   const write = useAdminWrite((api, id: number) => revokeToken(api, id));
   const [target, setTarget] = useState<AdminToken | null>(null);
@@ -174,6 +176,34 @@ export function TokensTable({ tokens, caption, showLogin = true, onNotice, testI
   };
 
   const error = write.isError && open ? failure(write.error, { 404: tRevoke("notFound"), 409: tRevoke("conflict") }) : null;
+  // On a phone: the token's kind and number, its state, whose it is and the machine it was made on, and Revoke as an
+  // icon (its name says what it revokes). The login opens the member's page, where their tokens are listed again.
+  const mobile = (token: AdminToken): DataListRow => {
+    const meta = format.list([...(showLogin ? [token.login] : []), token.host ?? t("noHost")], { type: "unit" });
+    return {
+      title: t("mobileTitle", { kind: t(`kinds.${token.kind}`), id: token.id }),
+      href: showLogin ? memberHref(token.login) : undefined,
+      tags: token.current ? <CurrentSessionBadge /> : null,
+      status: <TokenStateBadge state={token.state} />,
+      meta,
+      metaText: meta,
+      actions:
+        token.state === "revoked" ? null : (
+          <Button
+            type="button"
+            variant="quiet-danger"
+            size="icon"
+            aria-label={t("revokeLabel", { id: token.id, login: token.login })}
+            title={t("revokeLabel", { id: token.id, login: token.login })}
+            onClick={() => startRevoke(token)}
+            data-testid={`revoke-token-${token.id}`}
+          >
+            <KeyRound aria-hidden="true" />
+          </Button>
+        ),
+      data: { "token-id": token.id },
+    };
+  };
   return (
     <>
       <DataTable
@@ -183,6 +213,7 @@ export function TokensTable({ tokens, caption, showLogin = true, onNotice, testI
         getRowId={(row) => String(row.id)}
         columnClassNames={NARROW_HIDDEN}
         testId={testId}
+        mobile={mobile}
       />
       <ConfirmAction
         open={open}

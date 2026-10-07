@@ -6,6 +6,7 @@ import { getLocale, getTranslations } from "next-intl/server";
 import type { ReactNode } from "react";
 
 import { Providers } from "@/components/providers";
+import { mobileHint } from "@/lib/mobile-hint";
 
 import "./globals.css";
 
@@ -46,12 +47,15 @@ export const viewport: Viewport = {
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
   const locale = await getLocale();
-  const nonce = (await headers()).get("x-nonce") ?? undefined; // set by src/proxy.ts for every page
+  const requestHeaders = await headers();
+  const nonce = requestHeaders.get("x-nonce") ?? undefined; // set by src/proxy.ts for every page
   return (
     <html lang={locale} className={`${sans.variable} ${mono.variable}`} suppressHydrationWarning>
       <body className="min-h-svh">
         <NextIntlClientProvider>
-          <Providers nonce={nonce}>{children}</Providers>
+          <Providers nonce={nonce} mobile={mobileHint(requestHeaders)}>
+            {children}
+          </Providers>
         </NextIntlClientProvider>
       </body>
     </html>

@@ -5,6 +5,8 @@ import { useId } from "react";
 
 import { cn } from "@/lib/utils";
 
+import { useInFilterSheet } from "./filter-sheet";
+
 export type FacetOption = {
   /** null is "all". */
   value: string | null;
@@ -30,22 +32,31 @@ type FacetGroupProps = {
 /**
  * One facet as the kit's filter chips: a labelled group of toggle buttons, 28 px with 6 px corners (44 px under
  * 768 px), the count after the label in tabular figures. The pressed chip is the filter in force: aria-pressed says
- * so, and it shows on `surface-selected` inside a `brand` edge in a heavier weight, so colour is not the only cue.
+ * so, and it shows on `surface-selected` inside a `brand` edge in a heavier weight, so colour is not the only cue. In
+ * the phone's filter sheet (`FilterSheet`) the label always shows, above the chips.
  */
 export function FacetGroup({ label, showLabel = false, options, selected, onSelect, countLabel, testId }: FacetGroupProps) {
   const id = useId();
+  const inSheet = useInFilterSheet();
+  const labelled = showLabel || inSheet;
   return (
-    <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1.5" data-testid={testId}>
-      {showLabel ? (
-        <span id={id} className="text-xs font-medium text-muted-foreground">
+    <div
+      className={cn("flex min-w-0", inSheet ? "flex-col gap-2" : "flex-wrap items-center gap-x-2 gap-y-1.5")}
+      data-testid={testId}
+    >
+      {labelled ? (
+        <span
+          id={id}
+          className={inSheet ? "text-[13px] leading-[18px] font-medium text-foreground" : "text-xs font-medium text-muted-foreground"}
+        >
           {label}
         </span>
       ) : null}
       <div
         role="group"
-        aria-labelledby={showLabel ? id : undefined}
-        aria-label={showLabel ? undefined : label}
-        className="flex min-w-0 flex-wrap gap-1.5"
+        aria-labelledby={labelled ? id : undefined}
+        aria-label={labelled ? undefined : label}
+        className={cn("flex min-w-0 flex-wrap", inSheet ? "gap-2" : "gap-1.5")}
       >
         {options.map((option) => {
           const pressed = option.value === selected;

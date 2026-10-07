@@ -8,7 +8,7 @@ import { useMemo } from "react";
 
 import { DataCard, DataToolbar } from "@/components/data/data-card";
 import { CellMain, DataTable, dataTableColumns } from "@/components/data/data-table";
-import { NAME_LINK } from "@/components/data/identifier";
+import { Identifier, NAME_LINK } from "@/components/data/identifier";
 import { SearchField } from "@/components/data/search-field";
 import { PageHeader } from "@/components/shell/page-header";
 import { QueryView, useHubQuery } from "@/components/states/query-view";
@@ -107,6 +107,17 @@ function SkillsTable({ skills, place, repos }: { skills: Skill[]; place: SkillPl
       initialSorting={[{ id: "name", desc: false }]}
       columnClassNames={NARROW_HIDDEN}
       testId="skills-table"
+      // On a phone: the skill's name opening it, its latest version, and what it is for.
+      mobile={(skill) => ({
+        title: skill.name,
+        titleText: skill.name,
+        titleClassName: "font-mono text-[13px]",
+        href: skillHref(place, skill.name),
+        status: <Identifier value={`v${skill.version}`} />,
+        meta: skill.description,
+        metaText: skill.description,
+        data: { "skill-name": skill.name },
+      })}
     />
   );
 }
@@ -187,7 +198,7 @@ export function SkillsBrowser({ place, initialError }: { place: SkillPlace; init
                     clearLabel={t("filter.clear")}
                     debounce={150}
                     maxLength={200}
-                    className="sm:w-64"
+                    className="sm:w-64 max-md:flex-1"
                     testId="skills-filter"
                   />
                 </DataToolbar>

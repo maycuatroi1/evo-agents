@@ -85,6 +85,19 @@ function Expiry({ secret }: { secret: Secret }) {
   );
 }
 
+/** Expired, beside a secret's name in a phone's list, once its end is past by the browser's clock. */
+function MobileExpired({ secret }: { secret: Secret }) {
+  const t = useTranslations("secrets");
+  const now = useNow(secret.expires_at !== null);
+  if (now === null || !isExpired(secret, now)) return null;
+  return (
+    <Badge variant="warning" data-testid="secret-expired">
+      <Hourglass aria-hidden="true" />
+      {t("expired")}
+    </Badge>
+  );
+}
+
 function SecretsTable({
   secrets,
   onReplace,
@@ -190,6 +203,47 @@ function SecretsTable({
       initialSorting={[{ id: "name", desc: false }]}
       columnClassNames={NARROW_HIDDEN}
       testId="secrets-table"
+      // On a phone: the name, its kind, what it sets, Expired once past, and Replace and Delete as icons with their
+      // names. A secret has no page of its own; where it applies is in its Replace form.
+      mobile={(secret) => {
+        const target = targetOf(secret);
+        return {
+          title: secret.name,
+          titleText: secret.name,
+          titleClassName: "font-mono text-[13px]",
+          tags: <MobileExpired secret={secret} />,
+          status: <SecretKindBadge kind={secret.kind} />,
+          meta: target.shown,
+          metaText: target.text,
+          actions: (
+            <>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                aria-label={t("replaceLabel", { name: secret.name })}
+                title={t("replaceLabel", { name: secret.name })}
+                onClick={() => onReplace(secret)}
+                data-testid="secret-replace"
+              >
+                <RefreshCw aria-hidden="true" />
+              </Button>
+              <Button
+                type="button"
+                variant="quiet-danger"
+                size="icon"
+                aria-label={t("deleteLabel", { name: secret.name })}
+                title={t("deleteLabel", { name: secret.name })}
+                onClick={() => onDelete(secret)}
+                data-testid="secret-delete"
+              >
+                <Trash2 aria-hidden="true" />
+              </Button>
+            </>
+          ),
+          data: { "secret-name": secret.name },
+        };
+      }}
     />
   );
 }

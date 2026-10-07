@@ -71,6 +71,7 @@ function PlansTable({
   onDispatched: (run: Run) => void;
 }) {
   const t = useTranslations("plans.list");
+  const tProgress = useTranslations("plans.progress");
   const format = useFormatter();
   const canDispatch = useCanDispatch(project);
   const withActions = area === "active" && canDispatch;
@@ -163,6 +164,22 @@ function PlansTable({
       columnClassNames={NARROW_HIDDEN}
       testId={`plans-table-${area}`}
       empty={t("noMatch")}
+      // On a phone: the plan, its active plan run, and its id with the steps done. Run plan is on the plan's page.
+      mobile={(plan) => {
+        const planRun = activePlanRun(activity.runs, plan.plan_id);
+        const progress = tProgress("doneOfTotal", { done: plan.steps_done, total: plan.steps_total });
+        return {
+          title: plan.title ?? plan.plan_id,
+          titleText: plan.title ?? plan.plan_id,
+          href: planHref(project, plan.plan_id),
+          status: planRun ? <PlanRunLink project={project} run={planRun} /> : null,
+          meta: plan.title
+            ? t.rich("mobileMeta", { plan: plan.plan_id, progress, id: (chunks) => <span className="font-mono">{chunks}</span> })
+            : progress,
+          metaText: plan.title ? t("mobileMetaText", { plan: plan.plan_id, progress }) : progress,
+          data: { "plan-id": plan.plan_id },
+        };
+      }}
     />
   );
 }
@@ -248,7 +265,7 @@ function Plans({ project, plans }: { project: string; plans: PlanSummary[] }) {
         clearLabel={t("clearSearch")}
         debounce={150}
         maxLength={200}
-        className="sm:w-64"
+        className="sm:w-64 max-md:flex-1"
         testId="plans-search"
       />
     </DataToolbar>

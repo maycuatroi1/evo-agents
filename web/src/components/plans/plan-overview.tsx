@@ -101,7 +101,7 @@ function Intro({ view }: { view: PlanView }) {
       ) : null}
       {view.context ? (
         <details className="group">
-          <summary className="inline-flex min-h-9 cursor-pointer list-none items-center gap-1.5 rounded-sm text-sm font-medium text-brand [&::-webkit-details-marker]:hidden">
+          <summary className="inline-flex min-h-9 cursor-pointer max-md:min-h-11 list-none items-center gap-1.5 rounded-sm text-sm font-medium text-brand [&::-webkit-details-marker]:hidden">
             <ChevronRight className="size-4 transition-transform group-open:rotate-90" aria-hidden="true" />
             {t("context")}
           </summary>

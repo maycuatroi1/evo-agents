@@ -57,7 +57,9 @@ export function DataCard({
 
 /**
  * The toolbar at the top of a list's card: the search, the filter chips with their counts, then the number of
- * results on the right, said again in a polite live region when it changes. It is the list's search landmark.
+ * results on the right, said again in a polite live region when it changes. It is the list's search landmark. Under
+ * 768 px it keeps to one row, the search beside the "Filters (n)" button (`ToolbarFilters`), and the number of results
+ * moves to a line of its own under them.
  */
 export function DataToolbar({
   label,
@@ -77,7 +79,7 @@ export function DataToolbar({
       {count !== undefined && count !== null ? (
         <p
           aria-live="polite"
-          className="ml-auto text-xs leading-4 text-fg-subtle tabular-nums"
+          className="ml-auto text-xs leading-4 text-fg-subtle tabular-nums max-md:order-last max-md:ml-0 max-md:basis-full"
           data-testid={countTestId}
         >
           {count}

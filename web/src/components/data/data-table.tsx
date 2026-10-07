@@ -20,9 +20,11 @@ import { useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
 
 import { useInCard } from "./data-card";
+import { DataList, type DataListRow } from "./data-list";
 
 /** What a column says about itself to the table (`meta` of a column definition). */
 export type DataColumnMeta = {
@@ -63,6 +65,11 @@ type DataTableProps<TData extends RowData> = {
   density?: Density;
   testId?: string;
   columnClassNames?: Record<string, string>;
+  /**
+   * The row as a phone lists it: under 768 px the table becomes a list of these (title, state, one meta line), each
+   * opening the object's page, where the other columns are. Without it the table stays a table at every width.
+   */
+  mobile?: (row: TData) => DataListRow;
 };
 
 /**
@@ -108,7 +115,9 @@ export function CellMain({
  * reachable by keyboard. The header sits on `surface-sunken` in 12 px `fg-muted`; rows are 44 px (36 px `compact`)
  * with cells in `fg-muted` and the title cell in `fg`; numbers line up on the right in tabular figures; the actions
  * of a row show while it is hovered or holds focus. Inside a `DataCard` the table draws no frame of its own; alone,
- * it is a card. Narrow screens hide the columns listed in `columnClassNames` (e.g. "hidden md:table-cell").
+ * it is a card. Narrow screens hide the columns listed in `columnClassNames` (e.g. "hidden md:table-cell"); with
+ * `mobile`, screens under 768 px get a list of rows instead (`DataList`), in the table's order, under the same test id
+ * with `data-layout="list"`.
  */
 export function DataTable<TData extends RowData>({
   data,
@@ -120,9 +129,11 @@ export function DataTable<TData extends RowData>({
   density = "comfortable",
   testId,
   columnClassNames = {},
+  mobile,
 }: DataTableProps<TData>) {
   const t = useTranslations("table");
   const inCard = useInCard();
+  const phone = useIsMobile();
   const table = useTable({
     features: dataTableFeatures,
     columns,
@@ -134,12 +145,21 @@ export function DataTable<TData extends RowData>({
 
   const rows = table.getRowModel().rows;
   const compact = density === "compact";
+  const frame = cn(!inCard && "overflow-hidden rounded-md border bg-card shadow-raised");
+  if (mobile && phone) {
+    return (
+      <div className={frame} data-testid={testId} data-density={density} data-layout="list">
+        <DataList
+          label={caption}
+          rows={rows.map((row) => ({ id: row.id, row: mobile(row.original) }))}
+          compact={compact}
+          empty={empty}
+        />
+      </div>
+    );
+  }
   return (
-    <div
-      className={cn(!inCard && "overflow-hidden rounded-md border bg-card shadow-raised")}
-      data-testid={testId}
-      data-density={density}
-    >
+    <div className={frame} data-testid={testId} data-density={density} data-layout="table">
       <Table scrollLabel={caption} className="text-[13px] leading-[18px]">
         <TableCaption className="sr-only">{caption}</TableCaption>
         <TableHeader>
@@ -165,7 +185,7 @@ export function DataTable<TData extends RowData>({
                       <button
                         type="button"
                         onClick={header.column.getToggleSortingHandler()}
-                        className="group/sort -mx-1 inline-flex cursor-pointer items-center gap-1 rounded-xs px-1 py-0.5 transition-colors hover:text-foreground"
+                        className="group/sort -mx-1 inline-flex cursor-pointer items-center gap-1 rounded-xs px-1 py-0.5 transition-colors hover:text-foreground max-md:min-h-11"
                       >
                         <table.FlexRender header={header} />
                         {sorted === "asc" ? (

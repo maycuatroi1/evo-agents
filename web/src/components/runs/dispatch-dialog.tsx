@@ -214,7 +214,7 @@ function DispatchForm({
                 id={`${ids}-plan`}
                 value={plan ?? ""}
                 onChange={(event) => changePlan(event.target.value)}
-                className="w-full [&_select]:h-9 [&_select]:font-mono"
+                className="w-full md:[&_select]:h-9 [&_select]:font-mono"
                 data-testid="dispatch-plan"
               >
                 {choices.map((choice) => (
@@ -233,7 +233,7 @@ function DispatchForm({
               id={`${ids}-timeout`}
               value={String(timeout)}
               onChange={(event) => setTimeoutMinutes(Number(event.target.value))}
-              className="w-full [&_select]:h-9"
+              className="w-full md:[&_select]:h-9"
               aria-describedby={`${ids}-timeout-hint`}
               data-testid="dispatch-timeout"
             >
@@ -452,7 +452,7 @@ function StepPicker({
           ) : null}
           {settled.length > 0 ? (
             <details className="group rounded-md border" data-testid="dispatch-settled">
-              <summary className="flex min-h-10 cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-muted/50">
+              <summary className="flex min-h-10 cursor-pointer max-md:min-h-11 items-center gap-2 rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-muted/50">
                 {t("settled", { count: settled.length })}
               </summary>
               <ul className="flex flex-col gap-2 border-t p-2">

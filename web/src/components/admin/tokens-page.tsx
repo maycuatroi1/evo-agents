@@ -53,11 +53,12 @@ export function AdminTokens({ initialError }: { initialError: ApiErrorInfo | nul
     if (login && !LOGIN_NAME.test(login)) {
       setLoginError(tFilters("invalidLogin"));
       document.getElementById(`${ids}-login`)?.focus();
-      return;
+      return false;
     }
     setLoginError(null);
     const values = { login, kind: field(form, "kind"), state: field(form, "state"), limit: field(form, "limit") };
     go(tokenSearch(parseTokenFilters(new URLSearchParams(values))), "push");
+    return true;
   };
   const page = (cursor: string) => {
     go(tokenSearch({ ...view, cursor }), "replace");
@@ -132,7 +133,8 @@ export function AdminTokens({ initialError }: { initialError: ApiErrorInfo | nul
           busy={busy}
           toolbar={
             <FilterBar
-              key={filterKey(view)}
+              resetKey={filterKey(view)}
+              active={inUse.length}
               label={t("title")}
               onApply={apply}
               onClear={() => {

@@ -191,9 +191,17 @@ function RunPage({ run }: { run: Run }) {
       <RunNotes run={run} controls={controls} />
       <RunTimeline run={run} moves={log.moves} />
       {/* The kit's run screen: the trace on the left; the decision, details, usage and result in the side column from
-          xl. Below xl one column, the decision first. */}
+          xl. Below xl the side column moves under the timeline, the decision first, then the trace: the page reads in
+          that order at every width, and from md to xl the side cards sit two by two. */}
       <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_23rem]">
         {plan ? <RunDecisions run={run} owner={controls.owner} onTakeOver={takeOver} className="xl:col-start-2 xl:row-start-1" /> : null}
+        <div className="grid min-w-0 items-start gap-4 md:grid-cols-2 xl:col-start-2 xl:grid-cols-1" data-testid="run-side">
+          <RunDetails run={run} viewer={viewer} />
+          <UsageMeter run={run} events={log.events} />
+          {plan ? <RunPlanSteps run={run} /> : null}
+          <RunResult run={run} />
+          {controls.owner ? <RunCredentials run={run} /> : null}
+        </div>
         <div id={logId} className="min-w-0 scroll-mt-16 xl:col-start-1 xl:row-span-2 xl:row-start-1">
           <RunLogCard
             runId={run.id}
@@ -212,13 +220,6 @@ function RunPage({ run }: { run: Run }) {
                 : null
             }
           />
-        </div>
-        <div className="flex min-w-0 flex-col gap-4 xl:col-start-2">
-          <RunDetails run={run} viewer={viewer} />
-          <UsageMeter run={run} events={log.events} />
-          {plan ? <RunPlanSteps run={run} /> : null}
-          <RunResult run={run} />
-          {controls.owner ? <RunCredentials run={run} /> : null}
         </div>
       </div>
     </div>

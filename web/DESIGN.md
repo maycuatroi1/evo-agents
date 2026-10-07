@@ -137,8 +137,9 @@ reach Tailwind as `--font-plex-sans` and `--font-plex-mono` behind `font-sans`, 
 
 - Mono is for values, never for titles: a plan's title is `page-title`; its id sits in the breadcrumb and details.
 - A number that lines up in a column, a count or a duration uses `tabular-nums`.
-- Inputs use 16 px below 768 px (`text-base md:text-sm`), so phones do not zoom. The kit also steps body text up to
-  15 px under 640 px; the app does not do that yet.
+- Inputs, text areas and selects use 16 px below 768 px (`text-base md:text-sm`, `max-md:text-base` on
+  `NativeSelect`), so phones do not zoom. The kit also steps body text up to 15 px under 640 px; the app does not do
+  that yet.
 - Every h1 is `page-title` in Plex Sans, set by `PageHeader`; a plan's, a project's, a worker's or a member's name is
   the title in the interface face, and the id it goes by sits in a chip beside it.
 
@@ -231,10 +232,18 @@ shows at 20 px or larger beside the name in Plex Sans 600, and is never recolour
 - The kit's sizes: controls 32 px (28 in dense toolbars, 40 in dialog footers), every control at least 44 px under
   768 px, table rows 44 px (36 compact), a 52 px top bar, a 240 px sidebar folding to 56 px, content at most 1280 px
   with a 24 px gutter (16 on phones).
-- Checked widths: 375, 768, 1024 and 1440 px. At 375 px secondary table columns hide, wide tables scroll
-  inside their own focusable region, and the page itself never scrolls sideways (`e2e/shell.spec.ts`;
-  `e2e/no-sideways-scroll.spec.ts` checks a page of each area at 375, 768 and 1024 px). The shell's inset is
-  `min-w-0`: as a flex item beside the sidebar it would otherwise grow to the natural width of the widest table.
+- Checked widths: 375, 768, 1024 and 1440 px. Under 768 px a list's table becomes a list of rows (`DataList`) and its
+  filters fold into a "Filters (n)" sheet; a table that stays a table (the knowledge graph's, a skill's versions)
+  hides its secondary columns. Wide tables scroll inside their own focusable region, and the page itself never
+  scrolls sideways (`e2e/shell.spec.ts`; `e2e/no-sideways-scroll.spec.ts` checks a page of each area at 375, 768 and
+  1024 px; `e2e/mobile.spec.ts` the phone layout at 375 by 812 with a phone's user agent and touch). The shell's
+  inset is `min-w-0`: as a flex item beside the sidebar it would otherwise grow to the natural width of the widest
+  table.
+- The server renders the phone layout on a guess: `lib/mobile-hint.ts` reads `Sec-CH-UA-Mobile` and the user agent
+  (a phone, not a tablet), the root layout passes it to `Providers`, and `useIsMobile` (`hooks/use-mobile.ts`) returns
+  it on the server and while the page hydrates, then the browser's own answer. A phone gets the list in the HTML
+  itself, so nothing swaps once the scripts run; a wrong guess (a narrow desktop window) is corrected right after
+  hydration.
 
 ## Components
 
@@ -266,16 +275,20 @@ changed where the defaults fell short:
   ignores clicks, so a busy submit button does not submit; the caller passes the -ing label ("Dispatching"). The
   focus outline is the global 2 px `ring`.
 - `input.tsx`, `textarea.tsx`, `native-select.tsx`: a `card` fill inside an `input` (`border-control`) edge,
-  `fg-subtle` placeholders, `muted` when disabled.
+  `fg-subtle` placeholders, `muted` when disabled; an input or select is 44 px with 16 px text under 768 px (a
+  call site that sets a height on desktop keeps it from md: `md:[&_select]:h-9`).
 - `card.tsx`, `dialog.tsx`, `alert-dialog.tsx`, `sheet.tsx`, `dropdown-menu.tsx`: the kit's radius and elevation by
   role (Shape), with `duration-slow` for dialogs and sheets and `duration-base` for menus.
-- `hooks/use-mobile.ts`: `useSyncExternalStore` instead of state set inside an effect.
-- `tabs.tsx` (Radix tabs): a line style, the selected tab underlined in `brand` and set in a heavier weight.
+- `hooks/use-mobile.ts`: `useSyncExternalStore` instead of state set inside an effect, with the server's guess
+  (`MobileHintProvider`) as its server snapshot; false where the browser cannot match media (unit tests).
+- `tabs.tsx` (Radix tabs): a line style, the selected tab underlined in `brand` and set in a heavier weight; a tab is
+  44 px under 768 px.
 - `switch.tsx` (Radix switch): for a setting that applies once flipped. The track is ink (`primary`) when on and
   `border-control` (`input`, 3:1 on a card) when off, the thumb on `on-action` or `surface`, and the thumb moves, so
   the state is not told by colour alone; the focus outline is the global `ring` and the hit area 44 by 44 px. A
   `<label htmlFor>` names it.
-- Menus (`DropdownMenu`) are not modal, so the page behind stays readable by assistive technology.
+- Menus (`DropdownMenu`) are not modal, so the page behind stays readable by assistive technology. Their items are
+  44 px under 768 px.
 - `command.tsx`: shadcn's Command (cmdk 1.1.1), written by hand from upstream since the registry could not be reached:
   a 52 px input row over a hairline, `overline` group headings in `fg-subtle`, 36 px items (44 px under 768 px) with
   the control radius, the icon in `fg-muted` turning `brand` and the row `surface-selected` when selected. The
@@ -307,10 +320,36 @@ Shared pieces built on them:
   grows past two lines), `numeric` sets a number, size, duration or time on the right in tabular figures, header
   too, and `actions` holds the row's buttons, which show while the row is hovered or holds focus (`.row-actions` in
   `globals.css`; always shown where nothing can hover and under 768 px). Sortable headers show their direction with
-  a chevron, and the up-down chevron only under the pointer or focus. Columns listed in `columnClassNames` hide on
-  narrow screens. The admin lists paged by the API keep their filters as a form (`FilterBar`, submitted with Filter
-  so a screen reader moving through a select does not reload the list), drawn as the toolbar: labels in `caption`
-  over 32 px fields.
+  a chevron, and the up-down chevron only under the pointer or focus (a 44 px target under 768 px). Columns listed in
+  `columnClassNames` hide on narrow screens. The admin lists paged by the API keep their filters as a form
+  (`FilterBar`, submitted with Filter so a screen reader moving through a select does not reload the list), drawn as
+  the toolbar: labels in `caption` over 32 px fields.
+- `components/data/data-list.tsx`, the kit's DataTable under 768 px: a table given `mobile` (a row as a phone lists
+  it, `DataListRow`) renders, below 768 px, a named list of its rows in the table's order instead, under the same test
+  id with `data-layout="list"` (`"table"` otherwise). A row is at least 60 px (52 px `compact`): the title in
+  `body-strong` on one line with its tags, the state at the end of the line, and one meta line in `caption`
+  `fg-subtle` (`danger` for a failure), both cut with an ellipsis and whole in their tooltips. The title links to the
+  object's page and its link covers the row (an `::after` over the row; the focus ring is drawn on that cover), so a
+  tap anywhere opens it, and the link is described by the state and the meta line; any other link or button in the
+  row sits above the cover. The other columns are on that page: runs (the step's or plan's title, the state, "#12,
+  plan, step 2" or the failure), plans (the plan run's badge, "id, 3/12 steps done"), the plan's steps, workers
+  (slots in use and the machine), memories (the type, what it is about), skills (the version chip, the description),
+  members (the admin and not signed in tags, the first grant and how many more). Rows without a page of their own keep
+  their actions at the end as 44 px icon buttons named for what they act on: tokens (state, user and machine, Revoke,
+  the user's page as the row's link), secrets (kind, what it sets, Expired, Replace and Delete) and the audit trail
+  (the time at the end of the line, who did it to what). Sorting stays the table's; a phone keeps the order the table
+  had.
+- `components/data/filter-sheet.tsx`, the kit's filters under 768 px: `ToolbarFilters` keeps a toolbar's filters
+  inline from 768 px and, below, puts them behind one 44 px "Filters (n)" button beside the search (pressed, on
+  `surface-selected` inside a `brand` edge, while a filter is in force); the toolbar's result count moves to a line of
+  its own under them, so the toolbar keeps to one row and a list's first row is on the first screen. The button opens
+  `FilterSheet`, a dialog named "Filters" that slides up from the bottom (12 px top corners, at most 85 % of the
+  height, its foot above the safe area): a 52 px head with the title and a close button, every group with its label
+  above its 44 px chips (`useInFilterSheet`; a select's label through `ToolbarField`), then the result count (polite),
+  Clear filters and Show results. Chips apply as they are pressed; Show results, Esc or a tap outside close the sheet
+  and give focus back to the button. The admin lists' form (`FilterBar`) moves into the sheet whole, rows per page and
+  the time zone note included, and applies with Filter, which closes the sheet unless a field is wrong (its error
+  shows in the sheet).
 - `components/status/status-badge.tsx`: one `StatusBadge` (`kind` and `status`) and one map per kind, run, worker,
   plan, step, repo and decision; each state has a tone, a Lucide icon and its words under `status.<kind>` in
   `messages/en.json` and `vi.json`. The maps are `satisfies Record<...>` on the API's own types in
@@ -466,7 +505,7 @@ Shared pieces built on them:
   the kit's filter chips, a labelled group of `aria-pressed` toggles, 28 px with 6 px corners, the count after the
   label in `fg-subtle` tabular figures and in words for screen readers, the pressed one on `surface-selected` inside
   a `brand` edge in a heavier weight. Under 768 px the field, the chips and the admin filters are 44 px, with 16 px
-  text in fields so phones do not zoom. `/` focuses the page's search field (`search-shortcut.ts`, the first
+  text in fields so phones do not zoom, and the field takes the toolbar's row beside "Filters (n)". `/` focuses the page's search field (`search-shortcut.ts`, the first
   registered one in document order; the knowledge graph's query field too) unless focus is in a field that takes
   text or a dialog is open. Filters live in the URL and change it through `window.history.replaceState`, which
   Next.js syncs with `useSearchParams` without rendering the page on the server again.
@@ -580,8 +619,9 @@ Shared pieces built on them:
   found answered after a 409, stays with its answer until the visitor leaves.
 - `components/runs`, a run's page (`/p/{project}/runs/{id}`), the kit's RunScreen: the page head, the `RunTimeline`,
   then the session card (Trace, Raw log, Terminal) on the left and, in a 23 rem side column from xl, the decision while
-  a plan run waits, Details, Usage, the plan's steps, the Result and, for the run's owner, Credentials; below xl one
-  column, the decision first. The head
+  a plan run waits, Details, Usage, the plan's steps, the Result and, for the run's owner, Credentials. Below xl the
+  side column moves under the timeline, the decision first, then the side cards (two by two from md), then the
+  session card; the page reads in that order at every width (`run-side`). The head
   is "Run #12" for every run, a plan run saying so in its Plan run tag, over the plan (in the body font) and step as
   `brand` links with a quiet underline, so colour is not all that sets them apart from the line. The owner's controls sit in the header, each shown only when the state and the visitor's rights allow it
   (`run-model.ts`, `runControls`), in the kit's order: Take over (a dialog with `evo-agents worker attach N` and, for
@@ -641,7 +681,9 @@ Shared pieces built on them:
   reconnects by itself with `Last-Event-ID`, every event is kept once by its seq, and the stream's `end` closes it for
   good. When the stream fails (closed by the browser, three errors without opening, or 10 seconds behind the run's
   `last_seq`), the page reads `events?after=` every 1.5 seconds and tries the stream again every 30. The lines sit in a
-  `role="log"` region (polite), with filters by group, a search that highlights, Follow (scrolling up turns it off) and
+  `role="log"` region (polite), with filters by group (chips; under 768 px one 44 px menu button with the group's icon
+  and name, "Show: Tools" to a screen reader, its items the groups with their line counts, under the search field
+  and beside Follow and Pause), a search that highlights, Follow (scrolling up turns it off) and
   Pause (held by the page, so the top bar says Paused and resumes it); past 2,000 lines shown only the rows in view render (`@tanstack/react-virtual`). Where the web forwards `/v1`
   itself, `proxy.ts` asks for the stream unencoded: Next.js would gzip it and hold the events back.
 - The composer (`run-composer.tsx`), the kit's Composer: one bordered box with the focus ring on the box, the textarea

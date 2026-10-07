@@ -10,6 +10,7 @@ import { useMemo } from "react";
 import { DataCard, DataToolbar } from "@/components/data/data-card";
 import { CellMain, DataTable, dataTableColumns } from "@/components/data/data-table";
 import { FacetGroup, type FacetOption } from "@/components/data/facet-group";
+import { ToolbarFilters } from "@/components/data/filter-sheet";
 import { NAME_LINK } from "@/components/data/identifier";
 import { SearchField } from "@/components/data/search-field";
 import { VisibilityLevel } from "@/components/data/visibility";
@@ -140,6 +141,19 @@ function MemoryTable({
       initialSorting={ranked ? [] : [{ id: "updated", desc: true }]}
       columnClassNames={NARROW_HIDDEN}
       testId="memories-table"
+      // On a phone: the memory's title opening it, its type, and what it is about (or its file name).
+      mobile={(row) => {
+        const { title, description } = memoryTitle(row.name, row.body);
+        return {
+          title,
+          titleText: title !== row.name ? `${title} (${row.name})` : title,
+          href: memoryHref(scope, row.id),
+          status: <MemoryTypeBadge type={row.type} />,
+          meta: description ?? <span className="font-mono">{row.name}</span>,
+          metaText: description ?? row.name,
+          data: { "memory-name": row.name },
+        };
+      }}
     />
   );
 }
@@ -311,55 +325,59 @@ function MemoryList({
   ];
   const countLabel = (count: number) => t("count", { count });
 
+  const count =
+    facets && items
+      ? searching
+        ? t("summary.search", { count: facets.shown.length, q: filters.q })
+        : isFiltered(filters)
+          ? t("summary.filtered", { shown: facets.shown.length, count: items.length })
+          : t("summary.all", { count: items.length })
+      : undefined;
   const toolbar = (
-    <DataToolbar
-      label={isProject ? t("caption") : t("personalTitle")}
-      count={
-        facets && items
-          ? searching
-            ? t("summary.search", { count: facets.shown.length, q: filters.q })
-            : isFiltered(filters)
-              ? t("summary.filtered", { shown: facets.shown.length, count: items.length })
-              : t("summary.all", { count: items.length })
-          : undefined
-      }
-      countTestId="memories-summary"
-    >
+    <DataToolbar label={isProject ? t("caption") : t("personalTitle")} count={count} countTestId="memories-summary">
       <SearchField
         value={filters.q}
         onCommit={(q) => setFilters({ ...filters, q })}
         label={t("search.label")}
         placeholder={t("search.placeholder")}
         clearLabel={t("search.clear")}
-        className="sm:w-64"
+        className="sm:w-64 max-md:flex-1"
         testId="memories-search"
       />
       {facets ? (
-        <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2" data-testid="memories-facets">
-          {facets.locations.length > 2 || filters.location ? (
+        <ToolbarFilters
+          active={(filters.location ? 1 : 0) + (filters.type ? 1 : 0)}
+          summary={count}
+          onClear={() => setFilters({ ...filters, location: null, type: null })}
+          testId="memories-filters"
+        >
+          <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2 max-md:flex-col max-md:items-stretch max-md:gap-5" data-testid="memories-facets">
+            {facets.locations.length > 2 || filters.location ? (
+              <FacetGroup
+                label={t("facets.location")}
+                showLabel
+                options={facets.locations}
+                selected={filters.location}
+                onSelect={(location) => setFilters({ ...filters, location })}
+                countLabel={countLabel}
+                testId="facet-location"
+              />
+            ) : null}
             <FacetGroup
-              label={t("facets.location")}
+              label={t("facets.type")}
               showLabel
-              options={facets.locations}
-              selected={filters.location}
-              onSelect={(location) => setFilters({ ...filters, location })}
+              options={facets.types}
+              selected={filters.type}
+              onSelect={(type) => setFilters({ ...filters, type: type === null ? null : (type as MemoryFilters["type"]) })}
               countLabel={countLabel}
-              testId="facet-location"
+              testId="facet-type"
             />
-          ) : null}
-          <FacetGroup
-            label={t("facets.type")}
-            showLabel
-            options={facets.types}
-            selected={filters.type}
-            onSelect={(type) => setFilters({ ...filters, type: type === null ? null : (type as MemoryFilters["type"]) })}
-            countLabel={countLabel}
-            testId="facet-type"
-          />
-        </div>
+          </div>
+        </ToolbarFilters>
       ) : null}
       {isFiltered(filters) && facets && facets.shown.length > 0 ? (
-        <Button variant="ghost" size="sm" onClick={() => setFilters(NO_FILTERS)}>
+        // On a phone the filter sheet has its own Clear filters, and the search field its clear button.
+        <Button variant="ghost" size="sm" onClick={() => setFilters(NO_FILTERS)} className="max-md:hidden">
           {t("facets.clear")}
         </Button>
       ) : null}

@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { useFormatter, useTranslations } from "next-intl";
-import { useMemo } from "react";
+import { type ReactNode, useMemo } from "react";
 
+import type { DataListRow } from "@/components/data/data-list";
 import { CellMain, DataTable, dataTableColumns } from "@/components/data/data-table";
 import { Identifier, NAME_LINK, RunRef } from "@/components/data/identifier";
 import { useNow } from "@/components/kg/use-now";
@@ -139,6 +140,38 @@ function WorkerCell({ run, viewer }: { run: Run; viewer: Viewer | null }) {
   return <Identifier value={run.worker} href={mayOpen ? workerHref(run.worker_id) : undefined} />;
 }
 
+/**
+ * A run as a phone lists it: its title (the step's, the plan's for a plan run, or "Run #12" on the step's own page)
+ * opening the run, its state, and one line with its number and where it ran from (its worker, on the step's page), or
+ * why it failed.
+ */
+function useMobileRun(variant: RunsTableVariant) {
+  const t = useTranslations("runs");
+  return (run: Run): DataListRow => {
+    const ended = run.state === "failed" || run.state === "lost" || run.state === "cancelled";
+    const plan = run.kind === "plan" || run.step_key === null;
+    const failure = ended && run.error ? run.error : null;
+    const worker = run.worker_id !== null && run.worker ? run.worker : run.pinned_worker_id !== null ? t("pinnedWaiting") : t("noWorkerYet");
+    const where =
+      variant === "step"
+        ? worker
+        : plan
+          ? t(variant === "worker" ? "planLineProject" : "planLine", { project: run.project, plan: run.plan_id, repos: run.repos?.length ?? 0 })
+          : t(variant === "worker" ? "stepLineProject" : "stepLine", { project: run.project, plan: run.plan_id, step: run.step_key ?? "" });
+    const detail = failure ?? where;
+    return {
+      title: variant === "step" ? t("mobile.runTitle", { id: run.id }) : plan ? (run.title ?? run.plan_id) : (run.title ?? t("untitled")),
+      href: runHref(run.project, run.id),
+      tags: plan ? <PlanRunKindBadge /> : null,
+      status: <StatusBadge kind="run" status={run.state} />,
+      meta: t.rich("mobile.meta", { id: run.id, detail, ref: (chunks: ReactNode) => <span className="font-mono tabular-nums">{chunks}</span> }),
+      metaText: t("mobile.metaText", { id: run.id, detail }),
+      danger: failure !== null,
+      data: { "run-id": run.id, state: run.state },
+    };
+  };
+}
+
 /** Runs as a table, newest first as the API sends them; the order is the server's, so the columns do not sort. */
 export function RunsTable({
   runs,
@@ -155,6 +188,7 @@ export function RunsTable({
 }) {
   const t = useTranslations("runs");
   const tRuntime = useTranslations("runs.runtime");
+  const mobile = useMobileRun(variant);
   const columns = useMemo(() => {
     const helper = dataTableColumns<Run>();
     const run = helper.display({
@@ -236,6 +270,7 @@ export function RunsTable({
       getRowId={(row) => String(row.id)}
       columnClassNames={NARROW_HIDDEN[variant]}
       testId={testId}
+      mobile={mobile}
     />
   );
 }

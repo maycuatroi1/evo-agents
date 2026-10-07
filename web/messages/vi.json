@@ -418,6 +418,8 @@
       },
       "noGrants": "Chưa có quyền ở dự án nào",
       "moreGrants": "và {count} dự án khác: {projects}",
+      "mobileGrant": "{project}, {role}",
+      "mobileMore": "{grant} và {count} dự án khác",
       "grantSummary": "{project}: {role}, mức hiển thị {level}",
       "hubAdmin": "Quản trị viên hub",
       "notSignedIn": "Chưa đăng nhập",
@@ -542,6 +544,7 @@
       "noHost": "Không có",
       "revoke": "Thu hồi",
       "revokeLabel": "Thu hồi token {id} của {login}",
+      "mobileTitle": "{kind} #{id}",
       "emptyTitle": "Không có token nào đang hoạt động",
       "emptyDescription": "Token hiện ở đây khi có người đăng nhập hub từ trình duyệt, CLI hoặc worker.",
       "noMatchTitle": "Không có token nào khớp bộ lọc"
@@ -584,6 +587,7 @@
         "token": "Token"
       },
       "hub": "Hub",
+      "mobileMeta": "{actor}, {target}",
       "noProject": "Không thuộc dự án",
       "emptyTitle": "Chưa có dòng audit nào",
       "emptyDescription": "Mỗi lần đăng nhập, cấp quyền, hay thay đổi dự án, plan, memory và skill thêm một dòng ở đây.",
@@ -658,6 +662,8 @@
       "activeCaption": "Plan đang chạy",
       "completedCaption": "Plan đã hoàn tất",
       "revisionValue": "r{revision}",
+      "mobileMeta": "<id>{plan}</id>, {progress}",
+      "mobileMetaText": "{plan}, {progress}",
       "columns": {
         "plan": "Plan",
         "progress": "Tiến độ",
@@ -691,6 +697,8 @@
       "showAll": "Hiện cả {count} bước",
       "tableCaption": "Các bước của plan theo thứ tự",
       "noMatch": "Không có bước nào khớp với bộ lọc.",
+      "mobileMeta": "Bước {key}",
+      "mobileMetaRepo": "Bước {key}, {repo}",
       "columns": {
         "step": "Bước",
         "status": "Trạng thái",
@@ -835,7 +843,17 @@
   "table": {
     "sortAscending": "Đang xếp tăng dần",
     "sortDescending": "Đang xếp giảm dần",
-    "sortBy": "Xếp theo {column}"
+    "sortBy": "Xếp theo {column}",
+    "filters": {
+      "button": "Bộ lọc",
+      "buttonActive": "Bộ lọc ({count})",
+      "title": "Bộ lọc",
+      "description": "Danh sách đổi ngay khi bạn chọn.",
+      "descriptionForm": "Chọn bộ lọc rồi bấm Lọc để áp dụng.",
+      "close": "Đóng bộ lọc",
+      "clear": "Xoá bộ lọc",
+      "done": "Xem kết quả"
+    }
   },
   "memories": {
     "projectTitle": "Memory",
@@ -1305,6 +1323,7 @@
     "count": "{count, plural, other {# worker}}",
     "caption": "Worker",
     "hostLine": "{hostname}, {os} {arch}",
+    "mobileMeta": "Đang dùng {held}/{slots} slot, {host}",
     "slotsLabel": "Đang dùng {held} trên {slots} slot",
     "notReported": "Chưa báo",
     "never": "Chưa có",
@@ -1662,6 +1681,11 @@
     "planLine": "{plan}, mọi bước chưa xong, {repos, plural, other {# repo}}",
     "planLineProject": "{project}, {plan}, mọi bước chưa xong, {repos, plural, other {# repo}}",
     "untitled": "Bước chưa có tiêu đề",
+    "mobile": {
+      "runTitle": "Run #{id}",
+      "meta": "<ref>#{id}</ref>, {detail}",
+      "metaText": "#{id}, {detail}"
+    },
     "noWorkerYet": "chưa có",
     "pinnedWaiting": "đang chờ worker đã ghim",
     "queuedAt": "Vào queue lúc",
@@ -2048,6 +2072,7 @@
         "countFiltered": "{shown} trên {total, plural, other {# dòng}}",
         "lines": "{count, plural, other {# dòng}}",
         "filter": "Hiện",
+        "groupMenu": "Hiện: {group}",
         "groups": {
           "all": "Tất cả",
           "agent": "Agent",

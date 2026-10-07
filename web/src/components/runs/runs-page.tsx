@@ -9,6 +9,7 @@ import { Pager } from "@/components/admin/pager";
 import { usePagedQuery } from "@/components/admin/use-paged-query";
 import { DataCard, DataToolbar } from "@/components/data/data-card";
 import { FacetGroup, type FacetOption } from "@/components/data/facet-group";
+import { ToolbarFilters } from "@/components/data/filter-sheet";
 import { MetricStrip, QuietLine } from "@/components/data/metric-strip";
 import { SearchField } from "@/components/data/search-field";
 import { useNow } from "@/components/kg/use-now";
@@ -133,18 +134,14 @@ function RunList({ project }: { project: string }) {
     ...(filters.q ? [{ label: tStates("search"), value: filters.q }] : []),
   ];
 
+  const count =
+    state.status === "success"
+      ? isFiltered(filters)
+        ? t("listSummary.filtered", { count: state.data.total })
+        : t("listSummary.all", { count: state.data.total })
+      : undefined;
   const toolbar = (
-    <DataToolbar
-      label={caption}
-      count={
-        state.status === "success"
-          ? isFiltered(filters)
-            ? t("listSummary.filtered", { count: state.data.total })
-            : t("listSummary.all", { count: state.data.total })
-          : undefined
-      }
-      countTestId="runs-list-summary"
-    >
+    <DataToolbar label={caption} count={count} countTestId="runs-list-summary">
       <SearchField
         value={filters.q}
         onCommit={(q) => setFilters({ ...filters, q, page: 1 })}
@@ -152,27 +149,34 @@ function RunList({ project }: { project: string }) {
         placeholder={t("search.placeholder")}
         clearLabel={t("search.clear")}
         maxLength={MAX_QUERY}
-        className="sm:w-64"
+        className="sm:w-64 max-md:flex-1"
         testId="runs-search"
       />
-      <FacetGroup
-        label={t("facets.label")}
-        options={[
-          { value: null, label: t("facets.all"), count: state.status === "success" ? facetCount(state.data.counts, null) : undefined },
-          ...RUN_FACETS.map(
-            (facet): FacetOption => ({
-              value: facet,
-              label: t(`facets.${facet}`),
-              icon: FACET_ICONS[facet],
-              count: state.status === "success" ? facetCount(state.data.counts, facet) : undefined,
-            }),
-          ),
-        ]}
-        selected={filters.facet}
-        onSelect={(facet) => setFilters({ ...filters, facet: facet as RunFacet | null, page: 1 })}
-        countLabel={(count) => t("count", { count })}
-        testId="runs-facets"
-      />
+      <ToolbarFilters
+        active={filters.facet ? 1 : 0}
+        summary={count}
+        onClear={() => setFilters({ ...filters, facet: null, page: 1 })}
+        testId="runs-filters"
+      >
+        <FacetGroup
+          label={t("facets.label")}
+          options={[
+            { value: null, label: t("facets.all"), count: state.status === "success" ? facetCount(state.data.counts, null) : undefined },
+            ...RUN_FACETS.map(
+              (facet): FacetOption => ({
+                value: facet,
+                label: t(`facets.${facet}`),
+                icon: FACET_ICONS[facet],
+                count: state.status === "success" ? facetCount(state.data.counts, facet) : undefined,
+              }),
+            ),
+          ]}
+          selected={filters.facet}
+          onSelect={(facet) => setFilters({ ...filters, facet: facet as RunFacet | null, page: 1 })}
+          countLabel={(n) => t("count", { count: n })}
+          testId="runs-facets"
+        />
+      </ToolbarFilters>
     </DataToolbar>
   );
 

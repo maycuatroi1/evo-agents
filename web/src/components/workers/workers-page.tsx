@@ -9,6 +9,7 @@ import { useMemo, useState } from "react";
 import { DataCard, DataToolbar } from "@/components/data/data-card";
 import { CellMain, DataTable, dataTableColumns } from "@/components/data/data-table";
 import { FacetGroup, type FacetOption } from "@/components/data/facet-group";
+import { ToolbarFilters } from "@/components/data/filter-sheet";
 import { NAME_LINK } from "@/components/data/identifier";
 import { MetricStrip } from "@/components/data/metric-strip";
 import { notify } from "@/components/feedback/toast";
@@ -193,6 +194,21 @@ function WorkersTable({ workers, caption }: { workers: Worker[]; caption: string
       getRowId={(row) => String(row.id)}
       columnClassNames={NARROW_HIDDEN}
       testId="workers-table"
+      // On a phone: the worker's name opening its page, its status, and its slots in use with the machine it runs on.
+      mobile={(worker) => {
+        const host = t("hostLine", { hostname: worker.hostname, os: worker.os, arch: worker.arch });
+        const meta = t("mobileMeta", { held: worker.held_runs, slots: worker.slots, host });
+        return {
+          title: worker.name,
+          titleText: worker.name,
+          titleClassName: "font-mono text-[13px]",
+          href: workerHref(worker.id),
+          status: <StatusBadge kind="worker" status={workerView(worker)} />,
+          meta,
+          metaText: meta,
+          data: { "worker-name": worker.name },
+        };
+      }}
     />
   );
 }
@@ -257,17 +273,24 @@ function WorkerList({ workers, onRegister }: { workers: Worker[]; onRegister: ()
               clearLabel={t("search.clear")}
               debounce={150}
               maxLength={100}
-              className="sm:w-64"
+              className="sm:w-64 max-md:flex-1"
               testId="workers-search"
             />
-            <FacetGroup
-              label={t("facets.label")}
-              options={options}
-              selected={filters.status}
-              onSelect={(status) => setFilters({ ...filters, status: status === null ? null : (status as WorkerFilters["status"]) })}
-              countLabel={(n) => t("count", { count: n })}
-              testId="workers-facets"
-            />
+            <ToolbarFilters
+              active={filters.status ? 1 : 0}
+              summary={count}
+              onClear={() => setFilters({ ...filters, status: null })}
+              testId="workers-filters"
+            >
+              <FacetGroup
+                label={t("facets.label")}
+                options={options}
+                selected={filters.status}
+                onSelect={(status) => setFilters({ ...filters, status: status === null ? null : (status as WorkerFilters["status"]) })}
+                countLabel={(n) => t("count", { count: n })}
+                testId="workers-facets"
+              />
+            </ToolbarFilters>
           </DataToolbar>
         }
       >
