@@ -49,12 +49,13 @@ from typing import TYPE_CHECKING
 
 from procrastinate import App, JobContext, PsycopgConnector
 from psycopg_pool import AsyncConnectionPool
+from sqlalchemy import delete
 
 from evo_agents import __version__
-from evo_agents.hub import jobs
+from evo_agents.hub import jobs, tables
 from evo_agents.hub.blobs import STALE_AFTER, BlobStore
 from evo_agents.hub.config import HubConfig
-from evo_agents.hub.db import CONNECT_TIMEOUT, legacy, make_engine
+from evo_agents.hub.db import CONNECT_TIMEOUT, make_engine
 from evo_agents.hub.log import redact_dsn
 from evo_agents.hub.migrate import migrate
 
@@ -111,7 +112,8 @@ async def remove_stale_uploads(store: BlobStore, engine: AsyncEngine, now: datet
     is being deleted."""
     cutoff = (now or datetime.now(UTC)) - STALE_AFTER
     async with engine.begin() as conn:
-        rows = (await legacy(conn, "DELETE FROM blob_uploads WHERE created_at < %s", (cutoff,))).rowcount
+        uploads = tables.blob_uploads
+        rows = (await conn.execute(delete(uploads).where(uploads.c.created_at < cutoff))).rowcount
     objects = await asyncio.to_thread(store.remove_stale_uploads, cutoff)
     log.info("stale uploads removed", extra={"objects": objects, "rows": rows, "cutoff": cutoff.isoformat()})
     return {"objects": objects, "rows": rows}

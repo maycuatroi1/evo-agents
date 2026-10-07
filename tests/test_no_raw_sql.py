@@ -102,10 +102,6 @@ RAW_CONNECTION_HOME = "evo_agents/hub/db.py"  # where driver() is defined
 LEGACY: dict[str, int] = {
     "evo_agents/hub/blob_gc.py": 10,
     "evo_agents/hub/db.py": 3,
-    "evo_agents/hub/kg_build.py": 19,
-    "evo_agents/hub/kg_graph.py": 1,
-    "evo_agents/hub/kg_prune.py": 4,
-    "evo_agents/hub/kg_web.py": 1,
     "evo_agents/hub/migrate.py": 8,
     "evo_agents/hub/server/admin.py": 17,
     "evo_agents/hub/server/admin_console.py": 10,
@@ -113,7 +109,6 @@ LEGACY: dict[str, int] = {
     "evo_agents/hub/server/blobs.py": 9,
     "evo_agents/hub/server/credentials.py": 21,
     "evo_agents/hub/server/decisions.py": 18,
-    "evo_agents/hub/server/kg.py": 18,
     "evo_agents/hub/server/mcp.py": 1,
     "evo_agents/hub/server/memories.py": 16,
     "evo_agents/hub/server/notifications.py": 16,
@@ -127,7 +122,6 @@ LEGACY: dict[str, int] = {
     "evo_agents/hub/server/skills.py": 12,
     "evo_agents/hub/server/terminal.py": 4,
     "evo_agents/hub/server/workers.py": 23,
-    "evo_agents/hub/worker.py": 1,
     "tests/hub/conftest.py": 1,
     "tests/hub/live.py": 8,
     "tests/hub/pg.py": 4,
@@ -138,8 +132,6 @@ LEGACY: dict[str, int] = {
     "tests/hub/test_credentials_api.py": 10,
     "tests/hub/test_decisions.py": 16,
     "tests/hub/test_hooks.py": 6,
-    "tests/hub/test_kg.py": 25,
-    "tests/hub/test_kg_retention.py": 14,
     "tests/hub/test_mcp.py": 9,
     "tests/hub/test_memory.py": 17,
     "tests/hub/test_memory_api.py": 2,
@@ -162,7 +154,6 @@ LEGACY: dict[str, int] = {
     "tests/hub/test_terminal.py": 5,
     "tests/hub/test_web_auth.py": 8,
     "tests/hub/test_wheel.py": 2,
-    "tests/hub/test_worker.py": 8,
     "tests/hub/test_workers.py": 32,
 }
 
