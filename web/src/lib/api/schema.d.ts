@@ -1283,6 +1283,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project}/runs/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Run Stats
+         * @description The runs of the plans the caller may read that ended on each of the last ``days`` days in UTC: how many in
+         *     each end state, how long they ran and the tokens they used.
+         */
+        get: operations["run_stats_v1_projects__project__runs_stats_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{project}/runs/{run_id}": {
         parameters: {
             query?: never;
@@ -4651,6 +4672,70 @@ export interface components {
              */
             decisions: number;
         };
+        /** RunDay */
+        RunDay: {
+            /**
+             * Done
+             * @description runs that ended done
+             */
+            done: number;
+            /**
+             * Failed
+             * @description runs that ended failed
+             */
+            failed: number;
+            /**
+             * Lost
+             * @description runs whose worker stopped extending the lease
+             */
+            lost: number;
+            /**
+             * Cancelled
+             * @description runs that ended cancelled, queued or not
+             */
+            cancelled: number;
+            /**
+             * P50 Seconds
+             * @description the median time the runs that ended ran, from started (else leased) to finished, as the runs pages count it; null when none of them started
+             */
+            p50_seconds: number | null;
+            /**
+             * P90 Seconds
+             * @description the 90th percentile of that time; null when none of them started
+             */
+            p90_seconds: number | null;
+            /**
+             * Input Tokens
+             * @description input tokens not read from the cache, added up from the runs' usage as the run page's usage card reads it
+             */
+            input_tokens: number;
+            /**
+             * Output Tokens
+             * @description output tokens, reasoning left out
+             */
+            output_tokens: number;
+            /**
+             * Cache Read Tokens
+             * @description input tokens read from the cache
+             */
+            cache_read_tokens: number;
+            /**
+             * Reasoning Tokens
+             * @description reasoning (thinking) tokens
+             */
+            reasoning_tokens: number;
+            /**
+             * Runs With Usage
+             * @description the runs whose usage the hub could read: a run without usage, or with usage of no shape the card knows (Claude Code, Codex, opencode), adds no token
+             */
+            runs_with_usage: number;
+            /**
+             * Day
+             * Format: date
+             * @description a day in UTC
+             */
+            day: string;
+        };
         /** RunEvent */
         RunEvent: {
             /**
@@ -4702,6 +4787,67 @@ export interface components {
              * @description more events follow the last one here: ask again after it
              */
             more: boolean;
+        };
+        /**
+         * RunFigures
+         * @description The runs that ended in a span of UTC days, of the plans the caller may read.
+         */
+        RunFigures: {
+            /**
+             * Done
+             * @description runs that ended done
+             */
+            done: number;
+            /**
+             * Failed
+             * @description runs that ended failed
+             */
+            failed: number;
+            /**
+             * Lost
+             * @description runs whose worker stopped extending the lease
+             */
+            lost: number;
+            /**
+             * Cancelled
+             * @description runs that ended cancelled, queued or not
+             */
+            cancelled: number;
+            /**
+             * P50 Seconds
+             * @description the median time the runs that ended ran, from started (else leased) to finished, as the runs pages count it; null when none of them started
+             */
+            p50_seconds: number | null;
+            /**
+             * P90 Seconds
+             * @description the 90th percentile of that time; null when none of them started
+             */
+            p90_seconds: number | null;
+            /**
+             * Input Tokens
+             * @description input tokens not read from the cache, added up from the runs' usage as the run page's usage card reads it
+             */
+            input_tokens: number;
+            /**
+             * Output Tokens
+             * @description output tokens, reasoning left out
+             */
+            output_tokens: number;
+            /**
+             * Cache Read Tokens
+             * @description input tokens read from the cache
+             */
+            cache_read_tokens: number;
+            /**
+             * Reasoning Tokens
+             * @description reasoning (thinking) tokens
+             */
+            reasoning_tokens: number;
+            /**
+             * Runs With Usage
+             * @description the runs whose usage the hub could read: a run without usage, or with usage of no shape the card knows (Claude Code, Codex, opencode), adds no token
+             */
+            runs_with_usage: number;
         };
         /**
          * RunLease
@@ -4909,6 +5055,35 @@ export interface components {
              * @description of those, the ones the project does not hold yet: upload them, then commit
              */
             missing: string[];
+        };
+        /** RunStats */
+        RunStats: {
+            /** Project */
+            project: string;
+            /**
+             * Days
+             * @description the days counted, today in UTC the last
+             */
+            days: number;
+            /**
+             * First Day
+             * Format: date
+             * @description the oldest day counted, in UTC
+             */
+            first_day: string;
+            /**
+             * Last Day
+             * Format: date
+             * @description today in UTC
+             */
+            last_day: string;
+            /**
+             * By Day
+             * @description every day counted, the oldest first: a day without a run has zeros and null percentiles
+             */
+            by_day: components["schemas"]["RunDay"][];
+            /** @description the whole span: its counts and tokens are by_day's added up, its percentiles over every run */
+            total: components["schemas"]["RunFigures"];
         };
         /** RunUploadRequest */
         RunUploadRequest: {
@@ -10282,6 +10457,69 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    run_stats_v1_projects__project__runs_stats_get: {
+        parameters: {
+            query?: {
+                /** @description the last days in UTC to count, today included */
+                days?: number;
+            };
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunStats"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

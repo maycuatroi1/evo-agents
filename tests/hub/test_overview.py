@@ -269,6 +269,50 @@ def test_a_plan_labelled_customer_is_hidden_from_a_grant_that_reaches_internal(c
     assert not any(item["yours"] for item in shown["open_decisions"])
 
 
+def reregister(client, members, sinks) -> None:
+    """Project A registered again by the hub admin, with ``sinks`` instead of its hub sink clearing customer."""
+    response = client.put(f"/v1/projects/{A}", json=registration(sinks), headers=members[ADMIN])
+    assert response.status_code == 200, response.text
+    assert response.json()["changed"]
+
+
+def test_a_hub_sink_below_the_grant_limits_what_is_shown(client, members, world):
+    reregister(client, members, [{"id": "hub", "kind": "hub", "clearance": {"level": "internal"}}])
+    vault_runs = {world[name] for name in ("vault_running", "vault_done", "vault_waiting")}
+    reader = overview(client, members[READER])
+    for login in (INSIDER, OWNER):  # their grants reach customer, the hub sink internal: the sink limits
+        shown = overview(client, members[login])
+        runs, decisions = everything(shown)
+        assert not runs & vault_runs and world["d_vault"] not in decisions, login
+        (project,) = [item for item in shown["projects"] if item["name"] == A]
+        assert (project["max_level"], project["active_plans"], project["open_decisions"]) == ("customer", 2, 2)
+    insider = overview(client, members[INSIDER])
+    assert insider["counts"] == reader["counts"]
+    assert everything(insider) == everything(reader)
+    # B's own sink is untouched: the owner still sees B's runs, and its own decision of rollout but not of vault
+    mine = overview(client, members[OWNER])
+    assert world["beta_running"] in everything(mine)[0]
+    assert (mine["counts"]["waiting_on_you"], mine["counts"]["running"], mine["counts"]["done_7d"]) == (1, 3, 2)
+
+
+def test_a_project_without_a_hub_sink_shows_nothing(client, members, world):
+    reregister(
+        client, members, [{"id": "claude-code@anthropic", "kind": "agent-session", "clearance": {"level": "customer"}}]
+    )
+    for login in (READER, INSIDER, OTHER):
+        shown = overview(client, members[login])
+        assert shown["counts"] == dict.fromkeys(shown["counts"], 0), login
+        assert [item["done"] for item in shown["done_by_day"]] == [0] * DAYS
+        assert (shown["active_runs"], shown["recent_runs"], shown["open_decisions"]) == ([], [], [])
+        (project,) = shown["projects"]  # the project is still the member's, with nothing of it shown
+        assert (project["name"], project["active_plans"], project["open_decisions"]) == (A, 0, 0)
+    # the owner, who holds a grant on B too, sees B alone
+    mine = overview(client, members[OWNER])
+    beta = {world[name] for name in ("beta_running", "beta_done", "beta_waiting")}
+    assert everything(mine) == (beta, {world["d_beta"]})
+    assert [(p["name"], p["active_plans"], p["open_decisions"]) for p in mine["projects"]] == [(B, 1, 1), (A, 0, 0)]
+
+
 def test_a_member_without_a_grant_gets_empty_lists(client, members, world):
     for login in (STRANGER, ADMIN):  # a hub admin without a grant reads nothing of a project
         shown = overview(client, members[login])
