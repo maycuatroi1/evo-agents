@@ -5,22 +5,18 @@ Revises: ${down_revision | comma,n}
 Create Date: ${create_date}
 """
 
+import sqlalchemy as sa
 from alembic import op
-
+${imports if imports else ""}
 revision = ${repr(up_revision)}
 down_revision = ${repr(down_revision)}
 branch_labels = ${repr(branch_labels)}
 depends_on = ${repr(depends_on)}
 
-UPGRADE = ()
-DOWNGRADE = ()
-
 
 def upgrade() -> None:
-    for statement in UPGRADE:
-        op.execute(statement)
+    ${upgrades if upgrades else "pass"}
 
 
 def downgrade() -> None:
-    for statement in DOWNGRADE:
-        op.execute(statement)
+    ${downgrades if downgrades else "pass"}
