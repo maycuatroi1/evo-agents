@@ -18,7 +18,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.hub import pg
+from tests.hub import live, pg
 
 if not pg.DSN:
     pytest.skip(pg.SKIP_REASON, allow_module_level=True)
@@ -28,6 +28,9 @@ from alembic.script import ScriptDirectory
 from fastapi.testclient import TestClient
 from procrastinate.manager import JobManager
 from procrastinate.schema import SchemaManager
+from sqlalchemy import Boolean, Text, cast, column, func, literal, select, table, union_all
+from sqlalchemy.dialects.postgresql import REGCLASS
+from sqlalchemy.types import UserDefinedType
 
 from evo_agents.hub import jobs
 from evo_agents.hub.config import HubConfig
@@ -39,29 +42,78 @@ from evo_agents.hub.worker import queue
 
 ROOT = Path(__file__).parents[2]
 REVISION = ScriptDirectory.from_config(alembic_config()).get_revision("0004").module
-SNAPSHOT = """
-SELECT 'table', tablename FROM pg_tables WHERE schemaname = 'public'
-UNION ALL
-SELECT 'column', table_name || '.' || column_name || ' ' || data_type || ' ' || is_nullable
-  FROM information_schema.columns WHERE table_schema = 'public'
-UNION ALL
-SELECT 'index', indexdef FROM pg_indexes WHERE schemaname = 'public'
-UNION ALL
-SELECT 'trigger', tgrelid::regclass::text || ' ' || tgname FROM pg_trigger WHERE NOT tgisinternal
-UNION ALL
-SELECT 'function', oid::regprocedure::text || ' ' || md5(prosrc) FROM pg_proc
- WHERE pronamespace = 'public'::regnamespace
-UNION ALL
-SELECT 'type', typname FROM pg_type WHERE typnamespace = 'public'::regnamespace AND typtype IN ('e', 'c')
-UNION ALL
-SELECT 'revision', version_num FROM alembic_version
-ORDER BY 1, 2
-"""
 
 
-def query(db, sql: str, params=None):
-    with pg.admin(db.admin_dsn) as conn:
-        return conn.execute(sql, params).fetchall()
+class Catalog(UserDefinedType):
+    """A reg* type of Postgres's catalogs, to cast an oid to the name it stands for."""
+
+    cache_ok = True
+
+    def __init__(self, name: str):
+        self.name = name
+
+    def get_col_spec(self, **kw):
+        return self.name
+
+
+# The catalogs and procrastinate's tables the tests read, described where they are read.
+pg_tables = table("pg_tables", column("schemaname"), column("tablename"))
+schema_columns = table(
+    "columns",
+    column("table_schema"),
+    column("table_name", Text),
+    column("column_name", Text),
+    column("data_type", Text),
+    column("is_nullable", Text),
+    schema="information_schema",
+)
+pg_indexes = table("pg_indexes", column("schemaname"), column("indexdef"))
+pg_trigger = table("pg_trigger", column("tgrelid"), column("tgname"), column("tgisinternal", Boolean))
+pg_proc = table("pg_proc", column("oid"), column("proname", Text), column("prosrc"), column("pronamespace"))
+pg_type = table("pg_type", column("typname", Text), column("typnamespace"), column("typtype"))
+alembic_version = table("alembic_version", column("version_num"))
+procrastinate_jobs = table(
+    "procrastinate_jobs",
+    column("id"),
+    column("task_name"),
+    column("status"),
+    column("lock"),
+    column("queueing_lock"),
+    column("args"),
+)
+procrastinate_events = table("procrastinate_events", column("job_id"), column("type"), column("at"))
+procrastinate_workers = table("procrastinate_workers", column("id"))
+
+
+def _snapshot():
+    """Every table, column, index, trigger, function, type and the revision of the public schema, as sorted rows."""
+    public = cast("public", Catalog("regnamespace"))
+    trigger = cast(cast(pg_trigger.c.tgrelid, REGCLASS), Text) + " " + pg_trigger.c.tgname
+    function = cast(cast(pg_proc.c.oid, Catalog("regprocedure")), Text) + " " + func.md5(pg_proc.c.prosrc)
+    c = schema_columns.c
+    parts = union_all(
+        select(literal("table").label("what"), pg_tables.c.tablename.label("detail")).where(
+            pg_tables.c.schemaname == "public"
+        ),
+        select(literal("column"), c.table_name + "." + c.column_name + " " + c.data_type + " " + c.is_nullable).where(
+            c.table_schema == "public"
+        ),
+        select(literal("index"), pg_indexes.c.indexdef).where(pg_indexes.c.schemaname == "public"),
+        select(literal("trigger"), trigger).where(~pg_trigger.c.tgisinternal),
+        select(literal("function"), function).where(pg_proc.c.pronamespace == public),
+        select(literal("type"), pg_type.c.typname).where(
+            pg_type.c.typnamespace == public, pg_type.c.typtype.in_(["e", "c"])
+        ),
+        select(literal("revision"), alembic_version.c.version_num),
+    )
+    return parts.order_by(parts.selected_columns.what, parts.selected_columns.detail)
+
+
+SNAPSHOT = _snapshot()
+
+
+def query(db, statement):
+    return live.sql(db, statement)
 
 
 def make_config(db, tmp_path, s3=None) -> HubConfig:
@@ -76,9 +128,8 @@ def make_config(db, tmp_path, s3=None) -> HubConfig:
 
 
 def job(db, job_id: int) -> dict:
-    (row,) = query(
-        db, "SELECT task_name, status, lock, queueing_lock, args FROM procrastinate_jobs WHERE id = %s", (job_id,)
-    )
+    j = procrastinate_jobs.c
+    (row,) = query(db, select(j.task_name, j.status, j.lock, j.queueing_lock, j.args).where(j.id == job_id))
     return dict(zip(("task", "status", "lock", "queueing_lock", "args"), row, strict=True))
 
 
@@ -147,11 +198,11 @@ def test_hub_migrate_creates_the_procrastinate_tables_and_a_second_run_changes_n
     assert first.returncode == 0, first.stderr
     applied = [line for line in pg.log_lines(first.stderr) if line["msg"] == "migrations applied"]
     assert applied and "0004" in applied[0]["applied"]
-    tables = {row[0] for row in query(hub_db, "SELECT tablename FROM pg_tables WHERE schemaname = 'public'")}
+    tables = {row[0] for row in query(hub_db, select(pg_tables.c.tablename).where(pg_tables.c.schemaname == "public"))}
     assert pg.QUEUE_TABLES | pg.BLOB_TABLES <= tables
-    types = {row[0] for row in query(hub_db, "SELECT typname FROM pg_type WHERE typname LIKE 'procrastinate%'")}
+    types = {row[0] for row in query(hub_db, select(pg_type.c.typname).where(pg_type.c.typname.like("procrastinate%")))}
     assert {"procrastinate_job_status", "procrastinate_job_event_type", "procrastinate_job_to_defer_v1"} <= types
-    functions = query(hub_db, "SELECT count(*) FROM pg_proc WHERE proname LIKE 'procrastinate%'")[0][0]
+    functions = query(hub_db, select(func.count()).where(pg_proc.c.proname.like("procrastinate%")))[0][0]
     assert functions >= 15
     before = query(hub_db, SNAPSHOT)
 
@@ -194,11 +245,12 @@ def test_jobs_the_api_deferred_are_run_to_completion_by_the_worker(hub_db, tmp_p
     with running_worker(hub_db, tmp_path, s3, "--concurrency", "3") as worker:
         wait_for(lambda: all(job(hub_db, job_id)["status"] == "succeeded" for job_id in ids), what="the jobs")
         assert worker.stop() == 0, worker.log()
+    e = procrastinate_events.c
     events = query(
         hub_db,
-        "SELECT job_id, type::text, at FROM procrastinate_events WHERE job_id = ANY(%s) AND type IN ('started', "
-        "'succeeded') ORDER BY at",
-        (locked,),
+        select(e.job_id, cast(e.type, Text), e.at)
+        .where(e.job_id.in_(locked), cast(e.type, Text).in_(["started", "succeeded"]))
+        .order_by(e.at),
     )
     first, second = locked
     started_second = next(at for job_id, kind, at in events if job_id == second and kind == "started")
@@ -235,7 +287,7 @@ def test_sigterm_lets_the_running_job_finish_before_the_worker_exits(hub_db, tmp
     assert job(hub_db, job_id)["status"] == "succeeded"
     messages = worker.messages()
     assert messages.index("ping") < messages.index("worker stopped, connection pool closed")
-    assert query(hub_db, "SELECT count(*) FROM procrastinate_workers") == [(0,)]  # it unregistered itself
+    assert query(hub_db, select(func.count()).select_from(procrastinate_workers)) == [(0,)]  # it unregistered itself
 
 
 def test_a_worker_that_loses_postgres_exits_nonzero_so_it_is_restarted(hub_db, tmp_path, s3):
@@ -275,7 +327,7 @@ def test_kg_jobs_of_one_project_take_its_lock_and_queue_at_most_one(hub_db):
         "args": {"note": "first"},
     }
     assert job(hub_db, other)["lock"] == job(hub_db, other)["queueing_lock"] == "kg:beta"
-    assert query(hub_db, "SELECT count(*) FROM procrastinate_jobs") == [(2,)]
+    assert query(hub_db, select(func.count()).select_from(procrastinate_jobs)) == [(2,)]
     assert jobs.kg_lock("alpha") == "kg:alpha"
 
 

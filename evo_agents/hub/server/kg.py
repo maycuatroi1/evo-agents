@@ -50,21 +50,23 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi import Path as PathParam
 from fastapi.responses import JSONResponse
-from psycopg.types.json import Jsonb
 from pydantic import UUID4, BaseModel, Field, model_validator
+from sqlalchemy import Text, cast, delete, exists, func, literal, null, select, union
+from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.ext.asyncio import AsyncConnection
 
+from evo_agents.hub import tables
 from evo_agents.hub.access import Refused, has_role
 from evo_agents.hub.blobs import BlobStore, BlobStoreUnavailable, Upload, blob_key, sealed_key
-from evo_agents.hub.db import legacy
 from evo_agents.hub.jobs import kg_lock
-from evo_agents.hub.kg_build import QueueBusy, queue_build
+from evo_agents.hub.kg_build import QueueBusy, procrastinate_jobs, queue_build
 from evo_agents.hub.kg_graph import (
-    GRAPHS,
     TOOL_NAMES,
     ArtifactMismatch,
-    BuiltGraph,
     GraphUnavailable,
     answer,
+    built_graphs,
 )
 from evo_agents.hub.kg_ingest import (
     LogProblem,
@@ -227,10 +229,11 @@ def _hub_ceiling(access: ProjectAccess) -> Label:
     return Label(rules.hub_sink.level, rules.hub_sink.location, "U", frozenset({access.name}))
 
 
-async def _config(conn, access: ProjectAccess) -> dict:
-    row = await (
-        await legacy(conn, "SELECT knowledge FROM kg_configs WHERE project_id = %s", (access.project_id,))
-    ).fetchone()
+async def _config(conn: AsyncConnection, access: ProjectAccess) -> dict:
+    configs = tables.kg_configs
+    row = (
+        await conn.execute(select(configs.c.knowledge).where(configs.c.project_id == access.project_id))
+    ).one_or_none()
     if row is None:
         raise HTTPException(
             422,
@@ -240,6 +243,16 @@ async def _config(conn, access: ProjectAccess) -> dict:
 
 
 # The config
+
+
+def _held_sources(project_id: int):
+    """The sources of the runs the hub holds for the project, ingested or pending, each once, by name."""
+    ingests, pending = tables.kg_ingests, tables.kg_pending_runs
+    sources = union(
+        select(ingests.c.source).where(ingests.c.project_id == project_id),
+        select(pending.c.source).where(pending.c.project_id == project_id),
+    )
+    return sources.order_by(sources.selected_columns.source)
 
 
 @router.put("/{project}/config", response_model=ConfigSaved, responses=REFUSALS)
@@ -256,13 +269,8 @@ async def put_config(request: Request, project: ProjectName, body: KgConfig, use
                 422, f"the knowledge config of project {project} cannot be used: " + "; ".join(problems)
             )
         policy = Policy(project, config["knowledge"])
-        cursor = await legacy(
-            conn,
-            "SELECT source FROM kg_ingests WHERE project_id = %(p)s UNION SELECT source FROM kg_pending_runs "
-            "WHERE project_id = %(p)s ORDER BY source",
-            {"p": access.project_id},
-        )
-        uncleared = [row[0] for row in await cursor.fetchall() if not policy.source_label(row[0]).below(ceiling)]
+        held_sources = await conn.execute(_held_sources(access.project_id))
+        uncleared = [source for source in held_sources.scalars() if not policy.source_label(source).below(ceiling)]
         if uncleared:
             raise HTTPException(
                 422,
@@ -270,23 +278,32 @@ async def put_config(request: Request, project: ProjectName, body: KgConfig, use
                 "clears, but the hub holds runs of them: lower their labels or raise the sink's clearance",
             )
         digest = config_digest(config)
-        held = await (
-            await legacy(conn, "SELECT digest FROM kg_configs WHERE project_id = %s FOR UPDATE", (access.project_id,))
-        ).fetchone()
+        configs = tables.kg_configs
+        held = (
+            await conn.execute(
+                select(configs.c.digest).where(configs.c.project_id == access.project_id).with_for_update()
+            )
+        ).one_or_none()
         if held is not None and held[0] == digest:
             return ConfigSaved(digest=digest, changed=False)
-        await legacy(
-            conn,
-            "INSERT INTO kg_configs (project_id, digest, knowledge, ontology, updated_by) VALUES (%s, %s, %s, %s, %s) "
-            "ON CONFLICT (project_id) DO UPDATE SET digest = excluded.digest, knowledge = excluded.knowledge, "
-            "ontology = excluded.ontology, updated_by = excluded.updated_by, updated_at = now()",
-            (
-                access.project_id,
-                digest,
-                Jsonb(config["knowledge"]),
-                None if config["ontology"] is None else Jsonb(config["ontology"]),
-                user.user_id,
-            ),
+        saved = pg_insert(configs).values(
+            project_id=access.project_id,
+            digest=digest,
+            knowledge=config["knowledge"],
+            ontology=null() if config["ontology"] is None else config["ontology"],  # SQL NULL, not JSON null
+            updated_by=user.user_id,
+        )
+        await conn.execute(
+            saved.on_conflict_do_update(
+                index_elements=[configs.c.project_id],
+                set_={
+                    "digest": saved.excluded.digest,
+                    "knowledge": saved.excluded.knowledge,
+                    "ontology": saved.excluded.ontology,
+                    "updated_by": saved.excluded.updated_by,
+                    "updated_at": func.now(),
+                },
+            )
         )
         await audit.record(conn, actor_id=user.user_id, token_id=user.token_id, action=audit.KG_CONFIG, target=project)
     log.info("kg config saved", extra={"project": project, "login": user.login, "digest": digest})
@@ -301,31 +318,24 @@ async def list_runs(request: Request, project: ProjectName, user: CurrentUser) -
     async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
         _member(access)
-        ingested = await (
-            await legacy(
-                conn, "SELECT run_id::text FROM kg_ingests WHERE project_id = %s ORDER BY run_id", (access.project_id,)
-            )
-        ).fetchall()
-        pending = await (
-            await legacy(
-                conn,
-                "SELECT run_id::text FROM kg_pending_runs WHERE project_id = %s ORDER BY run_id",
-                (access.project_id,),
-            )
-        ).fetchall()
-    return Runs(ingested=[row[0] for row in ingested], pending=[row[0] for row in pending])
+        ingested = (await conn.execute(_run_ids(tables.kg_ingests, access.project_id))).scalars().all()
+        pending = (await conn.execute(_run_ids(tables.kg_pending_runs, access.project_id))).scalars().all()
+    return Runs(ingested=list(ingested), pending=list(pending))
 
 
-MISSING = """
-SELECT r.sha256 FROM unnest(%s::text[]) AS r (sha256)
- WHERE NOT EXISTS (SELECT 1 FROM blobs b WHERE b.project_id = %s AND b.sha256 = r.sha256)
- ORDER BY 1
-"""
+def _run_ids(runs, project_id: int):
+    """The run ids of the project in ``runs`` (kg_ingests or kg_pending_runs), as text, in order."""
+    run_id = cast(runs.c.run_id, Text).label("run_id")
+    return select(run_id).where(runs.c.project_id == project_id).order_by(run_id)
 
 
-async def _missing(conn, project_id: int, hashes) -> list[str]:
-    cursor = await legacy(conn, MISSING, (sorted(set(hashes)), project_id))
-    return [row[0] for row in await cursor.fetchall()]
+async def _missing(conn: AsyncConnection, project_id: int, hashes) -> list[str]:
+    """The hashes of ``hashes`` the project holds no blob of, sorted, each once."""
+    blobs = tables.blobs
+    wanted = func.unnest(literal(sorted(set(hashes)), ARRAY(Text))).table_valued("sha256").render_derived("r")
+    held = exists().where(blobs.c.project_id == project_id, blobs.c.sha256 == wanted.c.sha256)
+    query = select(wanted.c.sha256).where(~held).order_by(wanted.c.sha256)
+    return list((await conn.execute(query)).scalars())
 
 
 @router.post("/{project}/blobs/check", response_model=MissingBlobs, responses=REFUSALS)
@@ -367,15 +377,19 @@ async def _discard_upload(request: Request, user, project_id: int, upload_id: uu
     """Delete an upload the caller asked for and no longer needs, row and objects; its declared SHA-256."""
     if upload_id is None:
         return None
+    uploads = tables.blob_uploads
     async with request.app.state.engine.begin() as conn:
-        row = await (
-            await legacy(
-                conn,
-                "DELETE FROM blob_uploads WHERE upload_id = %s AND project_id = %s AND created_by = %s "
-                "RETURNING sha256",
-                (upload_id, project_id, user.user_id),
+        row = (
+            await conn.execute(
+                delete(uploads)
+                .where(
+                    uploads.c.upload_id == upload_id,
+                    uploads.c.project_id == project_id,
+                    uploads.c.created_by == user.user_id,
+                )
+                .returning(uploads.c.sha256)
             )
-        ).fetchone()
+        ).one_or_none()
     if row is not None:
         try:
             await asyncio.to_thread(blob_store(request).discard, [str(upload_id)])
@@ -384,7 +398,9 @@ async def _discard_upload(request: Request, user, project_id: int, upload_id: uu
     return row[0] if row else None
 
 
-PENDING_RUN = "SELECT log_sha256, blobs FROM kg_pending_runs WHERE project_id = %s AND run_id = %s"
+def _held_log(runs, project_id: int, run_id: uuid.UUID, *columns):
+    """``columns`` of the run in ``runs`` (kg_ingests or kg_pending_runs)."""
+    return select(*columns).where(runs.c.project_id == project_id, runs.c.run_id == run_id)
 
 
 @router.post("/{project}/runs", response_model=RunState, responses=REFUSALS)
@@ -396,14 +412,15 @@ async def push_run(request: Request, project: ProjectName, body: RunPush, user: 
         access = await project_access(conn, user, project)
         ceiling = _hub_ceiling(access)
         knowledge = await _config(conn, access)
-        ingested = await (
-            await legacy(
-                conn,
-                "SELECT log_sha256 FROM kg_ingests WHERE project_id = %s AND run_id = %s",
-                (access.project_id, run_id),
+        ingests, pending_runs = tables.kg_ingests, tables.kg_pending_runs
+        ingested = (
+            await conn.execute(_held_log(ingests, access.project_id, body.run_id, ingests.c.log_sha256))
+        ).one_or_none()
+        pending = (
+            await conn.execute(
+                _held_log(pending_runs, access.project_id, body.run_id, pending_runs.c.log_sha256, pending_runs.c.blobs)
             )
-        ).fetchone()
-        pending = await (await legacy(conn, PENDING_RUN, (access.project_id, run_id))).fetchone()
+        ).one_or_none()
     if ingested is not None or pending is not None:  # pushed before: the new upload is not needed
         declared = await _discard_upload(request, user, access.project_id, body.log_upload_id) or body.log_sha256
         held = (ingested or pending)[0]
@@ -454,14 +471,15 @@ async def push_run(request: Request, project: ProjectName, body: RunPush, user: 
             message = f"the log of run {run_id} was not uploaded as declared: {exc.problems[0]['problem']}"
             return error_response(request, 422, message + "; nothing was written", detail=exc.problems)
     else:
+        blobs = tables.blobs
         async with engine.begin() as conn:
-            row = await (
-                await legacy(
-                    conn,
-                    "SELECT size FROM blobs WHERE project_id = %s AND sha256 = %s",
-                    (access.project_id, body.log_sha256),
+            row = (
+                await conn.execute(
+                    select(blobs.c.size).where(
+                        blobs.c.project_id == access.project_id, blobs.c.sha256 == body.log_sha256
+                    )
                 )
-            ).fetchone()
+            ).one_or_none()
         if row is None:
             raise HTTPException(422, f"project {project} holds no blob {body.log_sha256}: upload the log of the run")
         try:
@@ -471,12 +489,20 @@ async def push_run(request: Request, project: ProjectName, body: RunPush, user: 
 
     run: RunLog = found["run"]
     blobs = sorted(run.blobs)
+    pending_runs = tables.kg_pending_runs
     async with engine.begin() as conn:
-        await legacy(
-            conn,
-            "INSERT INTO kg_pending_runs (project_id, run_id, source, log_sha256, log_size, blobs, pushed_by) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s) ON CONFLICT (project_id, run_id) DO NOTHING",
-            (access.project_id, run_id, run.source, found["sha256"], found["size"], blobs, user.user_id),
+        await conn.execute(
+            pg_insert(pending_runs)
+            .values(
+                project_id=access.project_id,
+                run_id=body.run_id,
+                source=run.source,
+                log_sha256=found["sha256"],
+                log_size=found["size"],
+                blobs=blobs,
+                pushed_by=user.user_id,
+            )
+            .on_conflict_do_nothing(index_elements=[pending_runs.c.project_id, pending_runs.c.run_id])
         )
         missing = await _missing(conn, access.project_id, blobs)
     log.info(
@@ -495,24 +521,45 @@ async def push_run(request: Request, project: ProjectName, body: RunPush, user: 
 # Builds
 
 
-BUILD_COLUMNS = """
-b.id, b.status, b.job_id, u.login, b.config_digest, b.runs, b.artifact_sha256, b.artifact_size, b.artifact_reused_from,
-b.artifact_pruned_at, b.content_hash, b.nodes, b.edges, b.error, b.queued_at, b.started_at, b.finished_at
-"""
-BUILD_FIELDS = tuple(Build.model_fields)
-
-
 async def _builds(
-    conn, project_id: int, *, build_id: int | None = None, status: str | None = None, limit: int = BUILDS_LIMIT
+    conn: AsyncConnection,
+    project_id: int,
+    *,
+    build_id: int | None = None,
+    status: str | None = None,
+    limit: int = BUILDS_LIMIT,
 ) -> list[Build]:
-    cursor = await legacy(
-        conn,
-        f"SELECT {BUILD_COLUMNS} FROM kg_builds b LEFT JOIN users u ON u.id = b.requested_by "
-        "WHERE b.project_id = %s AND (%s::bigint IS NULL OR b.id = %s) AND (%s::text IS NULL OR b.status = %s) "
-        "ORDER BY b.id DESC LIMIT %s",
-        (project_id, build_id, build_id, status, status, limit),
+    """The project's builds, newest first: only ``build_id`` and only those with ``status`` when given."""
+    b, users = tables.kg_builds, tables.users
+    query = (
+        select(
+            b.c.id,
+            b.c.status,
+            b.c.job_id,
+            users.c.login.label("requested_by"),
+            b.c.config_digest,
+            b.c.runs,
+            b.c.artifact_sha256,
+            b.c.artifact_size,
+            b.c.artifact_reused_from,
+            b.c.artifact_pruned_at,
+            b.c.content_hash,
+            b.c.nodes,
+            b.c.edges,
+            b.c.error,
+            b.c.queued_at,
+            b.c.started_at,
+            b.c.finished_at,
+        )
+        .join_from(b, users, users.c.id == b.c.requested_by, isouter=True)
+        .where(b.c.project_id == project_id)
     )
-    return [Build(**dict(zip(BUILD_FIELDS, row, strict=True))) for row in await cursor.fetchall()]
+    if build_id is not None:
+        query = query.where(b.c.id == build_id)
+    if status is not None:
+        query = query.where(b.c.status == status)
+    rows = await conn.execute(query.order_by(b.c.id.desc()).limit(limit))
+    return [Build(**row._mapping) for row in rows]
 
 
 async def _queue(request: Request, conn, project_id: int, project: str, requested_by: int | None):
@@ -529,20 +576,19 @@ async def commit_run(request: Request, project: ProjectName, run_id: RunId, user
     async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
         _hub_ceiling(access)
-        pending = await (
-            await legacy(
-                conn,
-                "SELECT source, log_sha256, log_size, blobs FROM kg_pending_runs WHERE project_id = %s AND run_id = %s "
-                "FOR UPDATE",
-                (access.project_id, run),
+        ingests, pending_runs = tables.kg_ingests, tables.kg_pending_runs
+        p = pending_runs.c
+        pending = (
+            await conn.execute(
+                _held_log(
+                    pending_runs, access.project_id, run_id, p.source, p.log_sha256, p.log_size, p.blobs
+                ).with_for_update()
             )
-        ).fetchone()
+        ).one_or_none()
         if pending is None:
-            held = await (
-                await legacy(
-                    conn, "SELECT 1 FROM kg_ingests WHERE project_id = %s AND run_id = %s", (access.project_id, run)
-                )
-            ).fetchone()
+            held = (
+                await conn.execute(_held_log(ingests, access.project_id, run_id, literal(1)).select_from(ingests))
+            ).one_or_none()
             if held is not None:
                 return RunCommitted(run_id=run, status="ingested", created=False, build=None, queued=False)
             raise HTTPException(
@@ -556,14 +602,20 @@ async def commit_run(request: Request, project: ProjectName, run_id: RunId, user
                 "upload and commit them, then commit the run again; nothing was written"
             )
             return error_response(request, 422, message, detail=[{"sha256": h} for h in missing[:MISSING_SHOWN]])
-        await legacy(
-            conn,
-            "INSERT INTO kg_ingests (project_id, run_id, source, log_sha256, log_size, pushed_by) "
-            "VALUES (%s, %s, %s, %s, %s, %s) ON CONFLICT (project_id, run_id) DO NOTHING",
-            (access.project_id, run, source, log_sha256, log_size, user.user_id),
+        await conn.execute(
+            pg_insert(ingests)
+            .values(
+                project_id=access.project_id,
+                run_id=run_id,
+                source=source,
+                log_sha256=log_sha256,
+                log_size=log_size,
+                pushed_by=user.user_id,
+            )
+            .on_conflict_do_nothing(index_elements=[ingests.c.project_id, ingests.c.run_id])
         )
-        await legacy(
-            conn, "DELETE FROM kg_pending_runs WHERE project_id = %s AND run_id = %s", (access.project_id, run)
+        await conn.execute(
+            delete(pending_runs).where(pending_runs.c.project_id == access.project_id, pending_runs.c.run_id == run_id)
         )
         await audit.record(conn, actor_id=user.user_id, token_id=user.token_id, action=audit.KG_INGEST, target=project)
         build_id, queued = await _queue(request, conn, access.project_id, project, None)
@@ -573,6 +625,17 @@ async def commit_run(request: Request, project: ProjectName, run_id: RunId, user
         extra={"project": project, "login": user.login, "blobs": len(blobs), "build_id": build_id, "queued": queued},
     )
     return RunCommitted(run_id=run, status="ingested", created=True, build=build, queued=queued)
+
+
+def _queued_jobs(project: str):
+    """The build jobs of the project still in the queue, waiting or running, with the build each one runs."""
+    j, b = procrastinate_jobs, tables.kg_builds
+    return (
+        select(j.c.id.label("job_id"), cast(j.c.status, Text).label("status"), b.c.id.label("build_id"))
+        .join_from(j, b, b.c.job_id == j.c.id, isouter=True)
+        .where(j.c.lock == kg_lock(project), j.c.status.in_(["todo", "doing"]))
+        .order_by(j.c.id)
+    )
 
 
 @router.get("/{project}/builds", response_model=Builds)
@@ -589,13 +652,8 @@ async def list_builds(
         access = await project_access(conn, user, project)
         _member(access)
         builds = await _builds(conn, access.project_id, status=status, limit=limit)
-        cursor = await legacy(
-            conn,
-            "SELECT j.id, j.status::text, b.id FROM procrastinate_jobs j LEFT JOIN kg_builds b ON b.job_id = j.id "
-            "WHERE j.lock = %s AND j.status IN ('todo', 'doing') ORDER BY j.id",
-            (kg_lock(project),),
-        )
-        jobs = [Job(job_id=row[0], status=row[1], build_id=row[2]) for row in await cursor.fetchall()]
+        rows = await conn.execute(_queued_jobs(project))
+        jobs = [Job(**row._mapping) for row in rows]
     return Builds(builds=builds, jobs=jobs)
 
 
@@ -643,8 +701,7 @@ async def tool_result(state, user: Principal, project: str, tool: str, arguments
     async with state.engine.begin() as conn:
         access = await project_access(conn, user, project)
         _member(access)
-        cursor = await legacy(conn, GRAPHS, (access.project_id, GRAPHS_TRIED))
-        graphs = [BuiltGraph(*row) for row in await cursor.fetchall()]
+        graphs = await built_graphs(conn, access.project_id, GRAPHS_TRIED)
     if not graphs:
         message = (
             f"error: project {project} has no graph on the hub yet: push its runs with `evo-agents hub kg push` "

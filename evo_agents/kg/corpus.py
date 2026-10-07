@@ -300,6 +300,38 @@ class Corpus:
             out.append(entry)
         return out
 
+    def run_ids(self) -> set[str]:
+        """The ids of the runs the runs table records."""
+        return {row[0] for row in self.db.execute("SELECT run_id FROM runs")}
+
+    def record_run(
+        self,
+        run_id: str,
+        *,
+        source: str,
+        connector: str | None,
+        status: str,
+        started_at: str | None = None,
+        finished_at: str | None = None,
+        version: str | None = None,
+        detail: dict | None = None,
+    ) -> None:
+        """Write the row of run ``run_id`` in the runs table, replacing any it had, in the caller's transaction:
+        nothing is committed here."""
+        self.db.execute(
+            "INSERT OR REPLACE INTO runs VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                run_id,
+                source,
+                connector,
+                version,
+                status,
+                started_at,
+                finished_at,
+                json.dumps(detail or {}, ensure_ascii=False),
+            ),
+        )
+
     def held(self, source: str | None = None) -> list[dict]:
         query = "SELECT run_id, source, scope, reason, ids FROM held"
         params: list = []

@@ -41,9 +41,10 @@ if not pg.DSN:
     pytest.skip(pg.SKIP_REASON, allow_module_level=True)
 
 from fastapi.testclient import TestClient
+from sqlalchemy import Text, cast, column, func, insert, select, table, update
 
 from evo_agents.hub import kg_build as hub_kg_build
-from evo_agents.hub import kg_push
+from evo_agents.hub import kg_push, tables
 from evo_agents.hub.blobs import BlobStore, blob_key
 from evo_agents.hub.client import Hub, HubError, Unreachable
 from evo_agents.hub.config import HubConfig
@@ -244,21 +245,43 @@ class BackgroundWorker:
         assert self.failure is None, self.failure
 
 
-def query(db, statement: str, params=()):
-    return live.sql(db, statement, params)
+# procrastinate's tables, as the tests read and change them.
+procrastinate_jobs = table(
+    "procrastinate_jobs",
+    column("id"),
+    column("task_name"),
+    column("status", hub_kg_build.JOB_STATUS),
+    column("lock"),
+    column("queueing_lock"),
+)
+procrastinate_events = table("procrastinate_events", column("job_id"), column("type"), column("at"))
 
 
-def count(db, table: str) -> int:
-    return query(db, f"SELECT count(*) FROM {table}")[0][0]
+def query(db, statement):
+    return live.sql(db, statement)
+
+
+def count(db, counted) -> int:
+    return query(db, select(func.count()).select_from(counted))[0][0]
 
 
 def jobs(db) -> list[tuple]:
     """The kg build jobs; the worker's periodic jobs may come and go."""
+    j = procrastinate_jobs.c
     return query(
         db,
-        "SELECT id, status::text, lock, queueing_lock FROM procrastinate_jobs WHERE task_name = 'hub.kg_build' "
-        "ORDER BY id",
+        select(j.id, cast(j.status, Text), j.lock, j.queueing_lock).where(j.task_name == "hub.kg_build").order_by(j.id),
     )
+
+
+def set_job_status(db, job_id: int, status: str) -> None:
+    query(db, update(procrastinate_jobs).values(status=status).where(procrastinate_jobs.c.id == job_id))
+
+
+def kg_lock_jobs(*statuses: str):
+    """How many jobs under project alpha's kg lock have one of ``statuses``."""
+    j = procrastinate_jobs.c
+    return select(func.count()).where(j.lock == "kg:alpha", j.status.in_(statuses))
 
 
 def grant(client, admin: dict, login: str, role: str, max_level: str, project: str = PROJECT) -> None:
@@ -353,7 +376,7 @@ def test_a_pushed_run_is_built_by_the_worker_and_answered_by_kg_tools(hub, tmp_p
     assert report.ok, report.errors
     assert len(report.pushed) == 1 and report.present == 0 and report.blobs > 0
     assert report.build["status"] == "queued"
-    assert count(hub.db, "kg_ingests") == 1 and count(hub.db, "kg_pending_runs") == 0
+    assert count(hub.db, tables.kg_ingests) == 1 and count(hub.db, tables.kg_pending_runs) == 0
     (job,) = jobs(hub.db)
     assert job[1:] == ("todo", "kg:alpha", "kg:alpha")
 
@@ -366,9 +389,10 @@ def test_a_pushed_run_is_built_by_the_worker_and_answered_by_kg_tools(hub, tmp_p
     assert (
         artifact is not None and sha(artifact) == build["artifact_sha256"] and len(artifact) == build["artifact_size"]
     )
-    assert query(hub.db, "SELECT kind, created_by FROM blobs WHERE sha256 = %s", (build["artifact_sha256"],)) == [
-        ("kg-graph", None)
-    ]
+    blobs = tables.blobs
+    assert query(
+        hub.db, select(blobs.c.kind, blobs.c.created_by).where(blobs.c.sha256 == build["artifact_sha256"])
+    ) == [("kg-graph", None)]
 
     found = tool_ok(hub, "kg_search", {"query": "guide"})
     assert found["structuredContent"]["project"] == PROJECT
@@ -402,10 +426,16 @@ def test_pushing_the_same_run_twice_ingests_it_once(hub, tmp_path):
     committed = hub.as_alice.call("POST", f"/v1/kg/{PROJECT}/runs/{run_id}/commit")
     assert committed["created"] is False and committed["queued"] is False and committed["build"] is None
 
-    assert query(hub.db, "SELECT run_id::text FROM kg_ingests") == [(run_id,)]
+    assert query(hub.db, select(cast(tables.kg_ingests.c.run_id, Text))) == [(run_id,)]
     assert jobs(hub.db) == before  # no second build was queued
-    filed = "SELECT a.action, a.target, p.name FROM audit a LEFT JOIN projects p ON p.id = a.project_id"
-    assert query(hub.db, f"{filed} WHERE a.action LIKE 'kg.%%' ORDER BY a.id") == [
+    audit, projects = tables.audit, tables.projects
+    filed = (
+        select(audit.c.action, audit.c.target, projects.c.name)
+        .join_from(audit, projects, projects.c.id == audit.c.project_id, isouter=True)
+        .where(audit.c.action.like("kg.%"))
+        .order_by(audit.c.id)
+    )
+    assert query(hub.db, filed) == [
         ("kg.config", PROJECT, PROJECT),
         ("kg.ingest", PROJECT, PROJECT),
     ]
@@ -453,7 +483,13 @@ def corpus_blobs(machine: Machine) -> set[str]:
 
 
 def held_blobs(hub) -> set[str]:
-    rows = query(hub.db, "SELECT b.sha256 FROM blobs b JOIN projects p ON p.id = b.project_id WHERE b.kind = 'kg-blob'")
+    blobs, projects = tables.blobs, tables.projects
+    rows = query(
+        hub.db,
+        select(blobs.c.sha256)
+        .join_from(blobs, projects, projects.c.id == blobs.c.project_id)
+        .where(blobs.c.kind == "kg-blob"),
+    )
     return {row[0] for row in rows}
 
 
@@ -469,7 +505,7 @@ def test_a_run_of_hundreds_of_blobs_goes_in_commits_answered_within_their_timeou
     report = Pusher(store_bound, laptop.project()).push()
     assert report.ok, report.errors
     assert report.pushed == [run_id] and report.blobs == len(blobs)
-    assert held_blobs(hub) == blobs and count(hub.db, "kg_ingests") == 1
+    assert held_blobs(hub) == blobs and count(hub.db, tables.kg_ingests) == 1
     assert len(store_bound.commits) > 1 and sum(c[0] for c in store_bound.commits) == len(blobs)
     for uploads, took, waited in store_bound.commits:
         assert uploads <= kg_push.COMMIT_BATCH and took * 3 < waited  # answered, with room for a slower store
@@ -599,10 +635,10 @@ def test_a_run_with_a_label_above_the_hub_sink_is_refused_and_leaves_nothing_beh
     assert error.startswith(f"run {raised_run}: 1 item(s) of run {raised_run} carry labels hub sink 'hub' does not")
     assert "docs:doc:salaries (customer)" in error and SECRET_TEXT not in error
 
-    assert count(hub.db, "kg_ingests") == 0 and count(hub.db, "kg_pending_runs") == 0
-    assert jobs(hub.db) == [] and count(hub.db, "kg_builds") == 0
-    assert count(hub.db, "blob_uploads") == 0
-    assert query(hub.db, "SELECT count(*) FROM blobs WHERE kind = 'kg-log'") == [(0,)]
+    assert count(hub.db, tables.kg_ingests) == 0 and count(hub.db, tables.kg_pending_runs) == 0
+    assert jobs(hub.db) == [] and count(hub.db, tables.kg_builds) == 0
+    assert count(hub.db, tables.blob_uploads) == 0
+    assert query(hub.db, select(func.count()).where(tables.blobs.c.kind == "kg-log")) == [(0,)]
     assert hub.s3.keys("uploads/") == []  # the staged objects and their sealed copies are gone
     for log in laptop.logs():
         assert hub.s3.get(blob_key(sha(log.read_bytes()))) is None
@@ -635,7 +671,7 @@ def test_committing_a_run_while_blobs_are_missing_is_422(hub, tmp_path):
     body = refused.json()
     assert body["error"] == "invalid_request" and "nothing was written" in body["message"]
     assert sorted(d["sha256"] for d in body["detail"]) == state["missing"]
-    assert count(hub.db, "kg_ingests") == 0 and jobs(hub.db) == []
+    assert count(hub.db, tables.kg_ingests) == 0 and jobs(hub.db) == []
 
     # blobs/check agrees, and after the blobs are committed the run commits
     check = hub.as_alice.call("POST", f"/v1/kg/{PROJECT}/blobs/check", {"sha256": state["missing"]})
@@ -643,7 +679,7 @@ def test_committing_a_run_while_blobs_are_missing_is_422(hub, tmp_path):
     report = push(hub, laptop)  # finishes the run: its log is held, so it is named by hash
     assert report.ok and report.pushed == [run_id] and report.blobs == len(state["missing"])
     assert hub.as_alice.call("POST", f"/v1/kg/{PROJECT}/blobs/check", {"sha256": state["missing"]}) == {"missing": []}
-    assert count(hub.db, "kg_ingests") == 1 and count(hub.db, "kg_pending_runs") == 0
+    assert count(hub.db, tables.kg_ingests) == 1 and count(hub.db, tables.kg_pending_runs) == 0
 
 
 def test_three_builds_queued_in_a_row_never_run_two_at_once_and_queue_at_most_one(hub, tmp_path, monkeypatch):
@@ -662,10 +698,12 @@ def test_three_builds_queued_in_a_row_never_run_two_at_once_and_queue_at_most_on
 
     def watch():
         while not stop.is_set():
+            j = procrastinate_jobs.c
             rows = query(
                 hub.db,
-                "SELECT count(*) FILTER (WHERE status = 'doing'), count(*) FILTER (WHERE status = 'todo') "
-                "FROM procrastinate_jobs WHERE lock = 'kg:alpha'",
+                select(func.count().filter(j.status == "doing"), func.count().filter(j.status == "todo")).where(
+                    j.lock == "kg:alpha"
+                ),
             )
             seen.append(rows[0])
             time.sleep(0.05)
@@ -674,9 +712,7 @@ def test_three_builds_queued_in_a_row_never_run_two_at_once_and_queue_at_most_on
     watcher.start()
     with BackgroundWorker(hub.db, hub.s3, hub.worker_dir, concurrency=3):
         deadline = time.monotonic() + 30
-        while not query(hub.db, "SELECT count(*) FROM procrastinate_jobs WHERE status = 'doing' AND lock = 'kg:alpha'")[
-            0
-        ][0]:
+        while not query(hub.db, kg_lock_jobs("doing"))[0][0]:
             assert time.monotonic() < deadline, "the build of the pushed run did not start"
             time.sleep(0.05)
         answers = []
@@ -685,9 +721,7 @@ def test_three_builds_queued_in_a_row_never_run_two_at_once_and_queue_at_most_on
             assert response.status_code == 202, response.text
             answers.append(response.json())
         deadline = time.monotonic() + 60
-        while query(
-            hub.db, "SELECT count(*) FROM procrastinate_jobs WHERE status IN ('todo', 'doing') AND lock = 'kg:alpha'"
-        )[0][0]:
+        while query(hub.db, kg_lock_jobs("todo", "doing"))[0][0]:
             assert time.monotonic() < deadline, jobs(hub.db)
             time.sleep(0.1)
     stop.set()
@@ -696,15 +730,19 @@ def test_three_builds_queued_in_a_row_never_run_two_at_once_and_queue_at_most_on
     assert seen and max(doing for doing, _ in seen) == 1 and max(todo for _, todo in seen) == 1
     assert [a["queued"] for a in answers] == [True, False, False]
     assert len({a["build"]["id"] for a in answers}) == 1  # the two refused ones name the waiting build
-    finished = query(hub.db, "SELECT status, started_at, finished_at FROM kg_builds ORDER BY id")
+    builds = tables.kg_builds
+    finished = query(hub.db, select(builds.c.status, builds.c.started_at, builds.c.finished_at).order_by(builds.c.id))
     assert [row[0] for row in finished] == ["succeeded", "succeeded"]
     (_, _, first_done), (_, second_started, _) = finished
     assert second_started >= first_done  # one after the other
     assert [row[1] for row in jobs(hub.db)] == ["succeeded", "succeeded"]
+    e, j = procrastinate_events, procrastinate_jobs
     events = query(
         hub.db,
-        "SELECT e.job_id, e.type::text, e.at FROM procrastinate_events e JOIN procrastinate_jobs j ON j.id = e.job_id "
-        "WHERE j.lock = 'kg:alpha' AND e.type IN ('started', 'succeeded') ORDER BY e.at",
+        select(e.c.job_id, cast(e.c.type, Text), e.c.at)
+        .join_from(e, j, j.c.id == e.c.job_id)
+        .where(j.c.lock == "kg:alpha", cast(e.c.type, Text).in_(["started", "succeeded"]))
+        .order_by(e.c.at),
     )
     running = 0
     for _, kind, _ in events:
@@ -766,11 +804,20 @@ def test_kg_tools_answer_from_the_cached_graph_when_the_blob_store_is_down(hub, 
     hub.s3.stop()
     assert tool_ok(hub, "kg_search", {"query": "guide"}) == before
     # a newer build whose graph is not cached yet: the cached one answers, and kg_status says so
+    projects = tables.projects
     query(
         hub.db,
-        "INSERT INTO kg_builds (project_id, status, artifact_sha256, artifact_size, content_hash, nodes, edges, "
-        "started_at, finished_at) SELECT id, 'succeeded', %s, 10, %s, 1, 0, now(), now() FROM projects WHERE name = %s",
-        ("f" * 64, "sha256:" + "f" * 64, PROJECT),
+        insert(tables.kg_builds).values(
+            project_id=select(projects.c.id).where(projects.c.name == PROJECT).scalar_subquery(),
+            status="succeeded",
+            artifact_sha256="f" * 64,
+            artifact_size=10,
+            content_hash="sha256:" + "f" * 64,
+            nodes=1,
+            edges=0,
+            started_at=func.now(),
+            finished_at=func.now(),
+        ),
     )
     assert (
         tool_ok(hub, "kg_search", {"query": "guide"})["structuredContent"]["results"]
@@ -837,7 +884,7 @@ def test_the_knowledge_config_must_fit_the_registered_project(hub, tmp_path):
     assert saved.status_code == 200 and saved.json()["changed"] is True
     again = hub.client.put(path, json=config, headers=hub.alice)
     assert again.json() == {"digest": saved.json()["digest"], "changed": False}
-    assert query(hub.db, "SELECT count(*) FROM audit WHERE action = 'kg.config'") == [(1,)]
+    assert query(hub.db, select(func.count()).where(tables.audit.c.action == "kg.config")) == [(1,)]
 
     def refused(body, member="alice", status=422) -> str:
         response = hub.client.put(path, json=body, headers=getattr(hub, member))
@@ -918,9 +965,10 @@ def test_logs_that_are_not_a_run_of_the_project_are_refused_and_discarded(hub, t
     )
     assert unheld.status_code == 422 and "holds no blob" in unheld.json()["message"]
 
-    assert count(hub.db, "kg_pending_runs") == 0 and count(hub.db, "kg_ingests") == 0 and jobs(hub.db) == []
+    assert count(hub.db, tables.kg_pending_runs) == 0 and count(hub.db, tables.kg_ingests) == 0 and jobs(hub.db) == []
     # every refused log upload was deleted; the kg-blob one and the last kg-log one were never committed
-    assert query(hub.db, "SELECT kind FROM blob_uploads ORDER BY kind") == [("kg-blob",), ("kg-log",)]
+    uploads = tables.blob_uploads
+    assert query(hub.db, select(uploads.c.kind).order_by(uploads.c.kind)) == [("kg-blob",), ("kg-log",)]
     assert len(hub.s3.keys("uploads/")) == 2
     assert push(hub, laptop).ok  # the real log still goes through
 
@@ -1005,9 +1053,10 @@ def test_runs_pushed_while_a_build_waits_join_that_build_and_carry_no_content(hu
     with caplog.at_level("INFO"):
         report = push(hub, laptop)
     assert report.ok and len(report.pushed) == 2
-    assert count(hub.db, "kg_ingests") == 2
+    assert count(hub.db, tables.kg_ingests) == 2
     (job,) = jobs(hub.db)  # the second commit found the first build waiting: refused defer, transaction intact
-    (build,) = query(hub.db, "SELECT id, job_id, status FROM kg_builds")
+    builds = tables.kg_builds
+    (build,) = query(hub.db, select(builds.c.id, builds.c.job_id, builds.c.status))
     assert build[1] == job[0] and report.build["id"] == build[0] and report.build["status"] == "queued"
     with caplog.at_level("INFO"):
         run_jobs(hub.db, hub.s3, hub.worker_dir)
@@ -1016,7 +1065,8 @@ def test_runs_pushed_while_a_build_waits_join_that_build_and_carry_no_content(hu
     logged = "\n".join(r.getMessage() + json.dumps(r.__dict__, default=str) for r in caplog.records)
     for text in ("Body text that stays", "Second body text"):
         assert text not in dump and text not in logged
-    assert query(hub.db, "SELECT DISTINCT target FROM audit WHERE action LIKE 'kg.%%'") == [(PROJECT,)]
+    audit = tables.audit
+    assert query(hub.db, select(audit.c.target).distinct().where(audit.c.action.like("kg.%"))) == [(PROJECT,)]
 
 
 # The CLI against `hub serve`
@@ -1151,8 +1201,9 @@ def test_a_build_whose_worker_died_is_failed_and_queued_again(hub, tmp_path):
     assert push(hub, laptop).ok
     ((job_id, *_),) = jobs(hub.db)
     # a worker took the build and was killed: the job stays doing, held by no live worker, with the project's lock
-    query(hub.db, "UPDATE procrastinate_jobs SET status = 'doing' WHERE id = %s", (job_id,))
-    query(hub.db, "UPDATE kg_builds SET status = 'running', started_at = now() WHERE job_id = %s", (job_id,))
+    builds = tables.kg_builds
+    set_job_status(hub.db, job_id, "doing")
+    query(hub.db, update(builds).values(status="running", started_at=func.now()).where(builds.c.job_id == job_id))
 
     async def recover():
         pool = await open_pool(make_config(hub.db, tmp_path / "recover", hub.s3))
@@ -1163,7 +1214,7 @@ def test_a_build_whose_worker_died_is_failed_and_queued_again(hub, tmp_path):
             await pool.close()
 
     assert asyncio.run(recover()) == {"failed": 1, "queued": [PROJECT]}
-    first, second = query(hub.db, "SELECT status, error, job_id FROM kg_builds ORDER BY id")
+    first, second = query(hub.db, select(builds.c.status, builds.c.error, builds.c.job_id).order_by(builds.c.id))
     assert first == ("failed", STOPPED, job_id)
     assert second[0] == "queued" and [row[1] for row in jobs(hub.db)] == ["failed", "todo"]
     assert asyncio.run(recover()) == {"failed": 0, "queued": []}
@@ -1180,8 +1231,9 @@ def test_a_build_the_worker_stops_is_recorded_and_queued_again(hub, tmp_path, mo
     laptop.sync("docs", doc("guide", "How the app works."))
     assert push(hub, laptop).ok
     ((job_id, *_),) = jobs(hub.db)
-    ((build_id,),) = query(hub.db, "SELECT id FROM kg_builds")
-    query(hub.db, "UPDATE procrastinate_jobs SET status = 'doing' WHERE id = %s", (job_id,))  # a worker took it
+    builds = tables.kg_builds
+    ((build_id,),) = query(hub.db, select(builds.c.id))
+    set_job_status(hub.db, job_id, "doing")  # a worker took it
     original = hub_kg_build.build_graph
     monkeypatch.setattr(hub_kg_build, "build_graph", lambda project: (time.sleep(1.0), original(project))[1])
 
@@ -1202,8 +1254,8 @@ def test_a_build_the_worker_stops_is_recorded_and_queued_again(hub, tmp_path, mo
             store.close()
 
     asyncio.run(stop_during_the_build())
-    stopped, again = query(hub.db, "SELECT status, error FROM kg_builds ORDER BY id")
+    stopped, again = query(hub.db, select(builds.c.status, builds.c.error).order_by(builds.c.id))
     assert stopped == ("failed", STOPPED) and again == ("queued", None)
-    query(hub.db, "UPDATE procrastinate_jobs SET status = 'aborted' WHERE id = %s", (job_id,))  # as the worker ends it
+    set_job_status(hub.db, job_id, "aborted")  # as the worker ends it
     run_jobs(hub.db, hub.s3, hub.worker_dir)
     assert latest(hub)["status"] == "succeeded"
