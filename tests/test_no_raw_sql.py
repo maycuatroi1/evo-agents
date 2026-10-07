@@ -105,7 +105,6 @@ LEGACY: dict[str, int] = {
     "evo_agents/hub/server/admin.py": 17,
     "evo_agents/hub/server/admin_console.py": 10,
     "evo_agents/hub/server/auth.py": 10,
-    "evo_agents/hub/server/credentials.py": 21,
     "evo_agents/hub/server/decisions.py": 18,
     "evo_agents/hub/server/notifications.py": 16,
     "evo_agents/hub/server/overview.py": 9,
@@ -113,13 +112,10 @@ LEGACY: dict[str, int] = {
     "evo_agents/hub/server/run_events.py": 15,
     "evo_agents/hub/server/run_state.py": 27,
     "evo_agents/hub/server/runs.py": 41,
-    "evo_agents/hub/server/secrets.py": 11,
     "evo_agents/hub/server/terminal.py": 4,
-    "evo_agents/hub/server/workers.py": 23,
     "tests/hub/test_admin_api.py": 17,
     "tests/hub/test_admin_overview.py": 13,
     "tests/hub/test_auth.py": 23,
-    "tests/hub/test_credentials_api.py": 10,
     "tests/hub/test_decisions.py": 16,
     "tests/hub/test_notifications.py": 12,
     "tests/hub/test_overview.py": 7,
@@ -129,11 +125,8 @@ LEGACY: dict[str, int] = {
     "tests/hub/test_run_stream.py": 12,
     "tests/hub/test_runs.py": 39,
     "tests/hub/test_sealing.py": 88,
-    "tests/hub/test_secrets_api.py": 17,
-    "tests/hub/test_secrets_cli.py": 1,
     "tests/hub/test_terminal.py": 5,
     "tests/hub/test_web_auth.py": 8,
-    "tests/hub/test_workers.py": 32,
 }
 
 
