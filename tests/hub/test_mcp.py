@@ -1112,9 +1112,9 @@ def agent_principal(hub, worker, run_id: int):
     from evo_agents.hub.server.security import WORKER, authenticate
 
     async def find():
-        pool = hub.app.state.pool
-        user = await authenticate(pool, worker.token, WORKER, hub.app.state.config)
-        async with pool.connection() as conn:
+        engine = hub.app.state.engine
+        user = await authenticate(engine, worker.token, WORKER, hub.app.state.config)
+        async with engine.begin() as conn:
             return replace(user, scope=await run_scope(conn, user, run_id))
 
     return hub.client.portal.call(find)
@@ -1251,7 +1251,7 @@ def test_a_run_scope_is_never_a_hub_admin_and_at_most_a_writer(hub):
     assert caught.value.status_code == 403 and "admin role on project alpha" in caught.value.detail
 
     async def publish_global():
-        async with hub.app.state.pool.connection() as conn:
+        async with hub.app.state.engine.begin() as conn:
             return await skills._writable(conn, principal, None)
 
     with pytest.raises(HTTPException) as caught:

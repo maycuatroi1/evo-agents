@@ -55,6 +55,7 @@ from pydantic import BaseModel, Field
 from evo_agents.hub import runs
 from evo_agents.hub.access import ROLES, has_role
 from evo_agents.hub.credentials import DISPATCH_FROM
+from evo_agents.hub.db import legacy
 from evo_agents.hub.server import audit, credentials
 from evo_agents.hub.server.admin import PROJECT_NAME
 from evo_agents.hub.server.auth import NO_STORE
@@ -345,7 +346,7 @@ def _worker(row) -> Worker:
 
 
 async def _workers(conn, where: str, params: dict) -> list[Worker]:
-    cursor = await conn.execute(WORKERS.format(where=where), {"held": list(runs.HELD_STATES), **params})
+    cursor = await legacy(conn, WORKERS.format(where=where), {"held": list(runs.HELD_STATES), **params})
     return [_worker(row) for row in await cursor.fetchall()]
 
 
@@ -361,7 +362,7 @@ async def _owned(conn, user: Principal, worker_id: int, *, lock: bool = False):
         "SELECT w.owner_id, u.login, w.name, w.token_id, w.drained_at, w.revoked_at "
         "FROM workers w JOIN users u ON u.id = w.owner_id WHERE w.id = %s"
     )
-    row = await (await conn.execute(statement + (" FOR UPDATE OF w" if lock else ""), (worker_id,))).fetchone()
+    row = await (await legacy(conn, statement + (" FOR UPDATE OF w" if lock else ""), (worker_id,))).fetchone()
     if row is None or (row[0] != user.user_id and not user.admin):
         raise HTTPException(404, NO_WORKER.format(id=worker_id))
     return row
@@ -384,7 +385,7 @@ async def _writable(conn, user: Principal, names: list[str]) -> list[int]:
 
 async def _name_taken(conn, owner_id: int, name: str) -> bool:
     statement = "SELECT 1 FROM workers WHERE owner_id = %s AND lower(name) = lower(%s) AND revoked_at IS NULL"
-    return await (await conn.execute(statement, (owner_id, name))).fetchone() is not None
+    return await (await legacy(conn, statement, (owner_id, name))).fetchone() is not None
 
 
 def _name_conflict(name: str) -> HTTPException:
@@ -424,10 +425,11 @@ async def _create_worker(
         **host.model_dump(include={"hostname", "os", "arch", "agent_version"}),
     }
     try:
-        worker_id = (await (await conn.execute(INSERT_WORKER, params)).fetchone())[0]
+        worker_id = (await (await legacy(conn, INSERT_WORKER, params)).fetchone())[0]
     except psycopg.errors.UniqueViolation:  # another registration took the name meanwhile
         raise _name_conflict(name) from None
-    await conn.execute(
+    await legacy(
+        conn,
         "INSERT INTO worker_projects (worker_id, project_id) SELECT %s, unnest(%s::bigint[])",
         (worker_id, list(project_ids)),
     )
@@ -469,12 +471,12 @@ async def create_pairing(request: Request, body: PairingRequest, user: CurrentUs
     """A code a machine joins with as a worker of the caller; shown once."""
     projects, labels = _unique(body.projects), _unique(body.labels)
     secret = _pairing_secret(request)
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         project_ids = await _writable(conn, user, projects)
         # One pairing of a member at a time, so two of them cannot both pass the count.
-        await conn.execute("SELECT 1 FROM users WHERE id = %s FOR UPDATE", (user.user_id,))
-        await conn.execute(PRUNE_PAIRINGS, (PAIRING_KEPT,))
-        live = (await (await conn.execute(LIVE_PAIRINGS, (user.user_id,))).fetchone())[0]
+        await legacy(conn, "SELECT 1 FROM users WHERE id = %s FOR UPDATE", (user.user_id,))
+        await legacy(conn, PRUNE_PAIRINGS, (PAIRING_KEPT,))
+        live = (await (await legacy(conn, LIVE_PAIRINGS, (user.user_id,))).fetchone())[0]
         if live >= MAX_LIVE_PAIRINGS:
             raise HTTPException(
                 409,
@@ -495,7 +497,7 @@ async def create_pairing(request: Request, body: PairingRequest, user: CurrentUs
         for _ in range(DRAWS):
             code = new_code()
             params |= {"selector": code[:SELECTOR_LENGTH], "hash": code_hash(secret, code)}
-            row = await (await conn.execute(INSERT_PAIRING, params)).fetchone()
+            row = await (await legacy(conn, INSERT_PAIRING, params)).fetchone()
             if row is not None:
                 break
         else:
@@ -518,7 +520,8 @@ async def create_pairing(request: Request, body: PairingRequest, user: CurrentUs
 
 
 async def _project_names(conn, project_ids: list[int]) -> list[str]:
-    cursor = await conn.execute(
+    cursor = await legacy(
+        conn,
         "SELECT name FROM projects WHERE id = ANY(%s::bigint[]) ORDER BY array_position(%s::bigint[], id)",
         (project_ids, project_ids),
     )
@@ -528,9 +531,10 @@ async def _project_names(conn, project_ids: list[int]) -> list[str]:
 @router.get("/pairings/{pairing_id}", response_model=PairingState, responses={404: {"model": ErrorBody}})
 async def pairing_state(request: Request, pairing_id: WorkerId, user: CurrentUser, response: Response) -> PairingState:
     """Whether a machine has joined with one of the caller's pairings yet."""
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         row = await (
-            await conn.execute(
+            await legacy(
+                conn,
                 "SELECT owner_id, name, projects, slots, labels, allow_web_terminal, attempts, created_at, expires_at, "
                 "used_at, worker_id, expires_at <= now() FROM worker_pairings WHERE id = %s",
                 (pairing_id,),
@@ -603,13 +607,13 @@ async def join(request: Request, body: JoinRequest, response: Response) -> Worke
         raise HTTPException(422, f"a pairing code is {CODE_LENGTH} characters of Crockford base32, written XXXX-XXXX")
     secret = _pairing_secret(request)
     refused = False
-    async with request.app.state.pool.connection() as conn:
-        row = await (await conn.execute(FIND_PAIRING, (code[:SELECTOR_LENGTH],))).fetchone()
+    async with request.app.state.engine.begin() as conn:
+        row = await (await legacy(conn, FIND_PAIRING, (code[:SELECTOR_LENGTH],))).fetchone()
         if row is None or row[8] >= MAX_WRONG_TRIES or not row[9]:
             refused = True
         elif not same(code_hash(secret, code), row[1]):
             # Counted in this transaction, which commits: a refusal must not roll the wrong try back.
-            await conn.execute("UPDATE worker_pairings SET attempts = attempts + 1 WHERE id = %s", (row[0],))
+            await legacy(conn, "UPDATE worker_pairings SET attempts = attempts + 1 WHERE id = %s", (row[0],))
             refused = True
             log.warning("wrong pairing code", extra={"pairing_id": row[0], "tries_left": MAX_WRONG_TRIES - row[8] - 1})
         else:
@@ -625,7 +629,7 @@ async def join(request: Request, body: JoinRequest, response: Response) -> Worke
 
 async def _join(conn, pairing, host: JoinRequest) -> WorkerCredential:
     pairing_id, _, owner_id, name, project_ids, slots, labels, terminal, _, _ = pairing
-    writes = (await (await conn.execute(OWNER_WRITES, (owner_id, project_ids, WRITER_ROLES))).fetchone())[0]
+    writes = (await (await legacy(conn, OWNER_WRITES, (owner_id, project_ids, WRITER_ROLES))).fetchone())[0]
     if writes != len(set(project_ids)):
         raise HTTPException(
             409,
@@ -642,8 +646,8 @@ async def _join(conn, pairing, host: JoinRequest) -> WorkerCredential:
         project_ids=project_ids,
         host=host,
     )
-    await conn.execute(
-        "UPDATE worker_pairings SET used_at = now(), worker_id = %s WHERE id = %s", (worker_id, pairing_id)
+    await legacy(
+        conn, "UPDATE worker_pairings SET used_at = now(), worker_id = %s WHERE id = %s", (worker_id, pairing_id)
     )
     target = f"worker:{worker_id} name={name} pairing:{pairing_id}"
     await audit.record(conn, actor_id=owner_id, token_id=issued.token_id, action=audit.WORKER_JOIN, target=target)
@@ -667,7 +671,7 @@ async def register(
             "on the web, create a pairing code instead",
         )
     projects = _unique(body.projects)
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         project_ids = await _writable(conn, user, projects)
         issued, worker_id = await _create_worker(
             conn,
@@ -703,13 +707,13 @@ async def list_workers(
         where.append("w.owner_id = %(owner)s")
     if not revoked:
         where.append("w.revoked_at IS NULL")
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         return await _workers(conn, " AND ".join(where), {"owner": user.user_id})
 
 
 @router.get("/{worker_id}", response_model=Worker, responses={404: {"model": ErrorBody}})
 async def show_worker(request: Request, worker_id: WorkerId, user: CurrentUser) -> Worker:
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         await _owned(conn, user, worker_id)
         return await _one_worker(conn, worker_id)
 
@@ -719,7 +723,7 @@ def _target(worker_id: int, name: str, owner: str) -> str:
 
 
 async def _set_drain(request: Request, user: Principal, worker_id: int, drain: bool) -> Worker:
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         owner_id, owner, name, _, drained_at, revoked_at = await _owned(conn, user, worker_id, lock=True)
         if not drain and owner_id != user.user_id:  # a hub admin may stop a worker, never set one going again
             raise HTTPException(
@@ -729,7 +733,7 @@ async def _set_drain(request: Request, user: Principal, worker_id: int, drain: b
             raise HTTPException(409, f"worker {worker_id} was revoked at {revoked_at.isoformat()}; it takes no runs")
         if (drained_at is not None) != drain:  # drained already, or not drained: nothing changes, nothing is audited
             statement = "UPDATE workers SET drained_at = CASE WHEN %s THEN now() END WHERE id = %s"
-            await conn.execute(statement, (drain, worker_id))
+            await legacy(conn, statement, (drain, worker_id))
             action = audit.WORKER_DRAIN if drain else audit.WORKER_UNDRAIN
             target = _target(worker_id, name, owner)
             await audit.record(conn, actor_id=user.user_id, token_id=user.token_id, action=action, target=target)
@@ -760,16 +764,16 @@ async def set_dispatch_from(request: Request, worker_id: WorkerId, body: Dispatc
     """Set who may hand the worker its runs: its owner, from a web session only."""
     if user.kind != WEB:
         raise HTTPException(403, DISPATCH_FROM_SESSION)
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         owner_id, owner, name, _, _, revoked_at = await _owned(conn, user, worker_id, lock=True)
         if owner_id != user.user_id:
             raise HTTPException(403, f"only {owner}, who owns worker {worker_id}, may set who dispatches to it")
         if revoked_at is not None:
             raise HTTPException(409, f"worker {worker_id} was revoked at {revoked_at.isoformat()}; it takes no runs")
-        row = await (await conn.execute("SELECT dispatch_from FROM workers WHERE id = %s", (worker_id,))).fetchone()
+        row = await (await legacy(conn, "SELECT dispatch_from FROM workers WHERE id = %s", (worker_id,))).fetchone()
         if row[0] != body.value:  # the value it has already: nothing changes, nothing is audited
             statement = "UPDATE workers SET dispatch_from = %s WHERE id = %s"
-            await conn.execute(statement, (body.value, worker_id))
+            await legacy(conn, statement, (body.value, worker_id))
             target = f"{_target(worker_id, name, owner)} dispatch_from={body.value}"
             action = audit.WORKER_DISPATCH_FROM
             await audit.record(conn, actor_id=user.user_id, token_id=user.token_id, action=action, target=target)
@@ -780,7 +784,7 @@ async def set_dispatch_from(request: Request, worker_id: WorkerId, body: Dispatc
 @router.post("/{worker_id}/revoke", response_model=Worker, responses=REFUSALS)
 async def revoke(request: Request, worker_id: WorkerId, user: CurrentUser) -> Worker:
     """End the worker and its token at once, and release the runs it holds."""
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         _, owner, name, token_id, _, revoked_at = await _owned(conn, user, worker_id, lock=True)
         if revoked_at is not None:
             raise HTTPException(409, f"worker {worker_id} was revoked already, at {revoked_at.isoformat()}")
@@ -804,7 +808,7 @@ async def lock_worker_of_token(conn, token_id: int, owner_id: int | None = None)
     row locked; None for any other token. Called before the token's row is changed, so a token revocation locks the
     two rows in the order POST /v1/workers/{id}/revoke does, and neither waits on the other in the opposite order."""
     params = {"token": token_id, "owner": owner_id}
-    row = await (await conn.execute(LIVE_WORKER_OF_TOKEN, params)).fetchone()
+    row = await (await legacy(conn, LIVE_WORKER_OF_TOKEN, params)).fetchone()
     return None if row is None else tuple(row)
 
 
@@ -812,8 +816,8 @@ async def end_worker(conn, actor: Principal, worker_id: int, name: str, owner: s
     """Revoke a live worker whose row the caller holds locked, and its token, release the runs it holds, give back
     every lease it still has and add the worker.revoke audit row, all in the caller's transaction; the caller revokes
     their GitHub tokens once it commits (``revoke_leased_tokens``). Returns how many runs were released."""
-    await conn.execute("UPDATE workers SET revoked_at = now() WHERE id = %s", (worker_id,))
-    await conn.execute("UPDATE tokens SET revoked_at = now() WHERE id = %s AND revoked_at IS NULL", (token_id,))
+    await legacy(conn, "UPDATE workers SET revoked_at = now() WHERE id = %s", (worker_id,))
+    await legacy(conn, "UPDATE tokens SET revoked_at = now() WHERE id = %s AND revoked_at IS NULL", (token_id,))
     released = await release_runs(conn, worker_id, f"its worker {name} was revoked")
     # The runs it released gave theirs back as they moved; this takes the rest, of runs that left it otherwise.
     await credentials.end_leases(
@@ -827,4 +831,4 @@ async def end_worker(conn, actor: Principal, worker_id: int, name: str, owner: s
 async def revoke_leased_tokens(app_state, worker_id: int) -> None:
     """Once ``end_worker`` committed: revoke at GitHub the tokens the worker's leases held. GitHub failing leaves them
     to the reaper's next pass."""
-    await credentials.revoke_tokens(app_state.pool, app_state.sealer, app_state.github_app, worker_id=worker_id)
+    await credentials.revoke_tokens(app_state.engine, app_state.sealer, app_state.github_app, worker_id=worker_id)

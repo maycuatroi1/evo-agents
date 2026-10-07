@@ -55,6 +55,7 @@ from pydantic import UUID4, BaseModel, Field, model_validator
 
 from evo_agents.hub.access import Refused, has_role
 from evo_agents.hub.blobs import BlobStore, BlobStoreUnavailable, Upload, blob_key, sealed_key
+from evo_agents.hub.db import legacy
 from evo_agents.hub.jobs import kg_lock
 from evo_agents.hub.kg_build import QueueBusy, queue_build
 from evo_agents.hub.kg_graph import (
@@ -228,7 +229,7 @@ def _hub_ceiling(access: ProjectAccess) -> Label:
 
 async def _config(conn, access: ProjectAccess) -> dict:
     row = await (
-        await conn.execute("SELECT knowledge FROM kg_configs WHERE project_id = %s", (access.project_id,))
+        await legacy(conn, "SELECT knowledge FROM kg_configs WHERE project_id = %s", (access.project_id,))
     ).fetchone()
     if row is None:
         raise HTTPException(
@@ -245,7 +246,7 @@ async def _config(conn, access: ProjectAccess) -> dict:
 async def put_config(request: Request, project: ProjectName, body: KgConfig, user: CurrentUser) -> ConfigSaved:
     """Save the knowledge config the project's graph is built with."""
     config = body.model_dump()
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
         ceiling = _hub_ceiling(access)
         access.push_label(None)  # the config is the harness source's: its label must leave the machine too
@@ -255,7 +256,8 @@ async def put_config(request: Request, project: ProjectName, body: KgConfig, use
                 422, f"the knowledge config of project {project} cannot be used: " + "; ".join(problems)
             )
         policy = Policy(project, config["knowledge"])
-        cursor = await conn.execute(
+        cursor = await legacy(
+            conn,
             "SELECT source FROM kg_ingests WHERE project_id = %(p)s UNION SELECT source FROM kg_pending_runs "
             "WHERE project_id = %(p)s ORDER BY source",
             {"p": access.project_id},
@@ -269,11 +271,12 @@ async def put_config(request: Request, project: ProjectName, body: KgConfig, use
             )
         digest = config_digest(config)
         held = await (
-            await conn.execute("SELECT digest FROM kg_configs WHERE project_id = %s FOR UPDATE", (access.project_id,))
+            await legacy(conn, "SELECT digest FROM kg_configs WHERE project_id = %s FOR UPDATE", (access.project_id,))
         ).fetchone()
         if held is not None and held[0] == digest:
             return ConfigSaved(digest=digest, changed=False)
-        await conn.execute(
+        await legacy(
+            conn,
             "INSERT INTO kg_configs (project_id, digest, knowledge, ontology, updated_by) VALUES (%s, %s, %s, %s, %s) "
             "ON CONFLICT (project_id) DO UPDATE SET digest = excluded.digest, knowledge = excluded.knowledge, "
             "ontology = excluded.ontology, updated_by = excluded.updated_by, updated_at = now()",
@@ -295,17 +298,19 @@ async def put_config(request: Request, project: ProjectName, body: KgConfig, use
 
 @router.get("/{project}/runs", response_model=Runs)
 async def list_runs(request: Request, project: ProjectName, user: CurrentUser) -> Runs:
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
         _member(access)
         ingested = await (
-            await conn.execute(
-                "SELECT run_id::text FROM kg_ingests WHERE project_id = %s ORDER BY run_id", (access.project_id,)
+            await legacy(
+                conn, "SELECT run_id::text FROM kg_ingests WHERE project_id = %s ORDER BY run_id", (access.project_id,)
             )
         ).fetchall()
         pending = await (
-            await conn.execute(
-                "SELECT run_id::text FROM kg_pending_runs WHERE project_id = %s ORDER BY run_id", (access.project_id,)
+            await legacy(
+                conn,
+                "SELECT run_id::text FROM kg_pending_runs WHERE project_id = %s ORDER BY run_id",
+                (access.project_id,),
             )
         ).fetchall()
     return Runs(ingested=[row[0] for row in ingested], pending=[row[0] for row in pending])
@@ -319,14 +324,14 @@ SELECT r.sha256 FROM unnest(%s::text[]) AS r (sha256)
 
 
 async def _missing(conn, project_id: int, hashes) -> list[str]:
-    cursor = await conn.execute(MISSING, (sorted(set(hashes)), project_id))
+    cursor = await legacy(conn, MISSING, (sorted(set(hashes)), project_id))
     return [row[0] for row in await cursor.fetchall()]
 
 
 @router.post("/{project}/blobs/check", response_model=MissingBlobs, responses=REFUSALS)
 async def check_blobs(request: Request, project: ProjectName, body: BlobCheck, user: CurrentUser) -> MissingBlobs:
     """The hashes of ``sha256`` the project does not hold."""
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
         _writer(access, "pushing to")
         return MissingBlobs(missing=await _missing(conn, access.project_id, body.sha256))
@@ -362,9 +367,10 @@ async def _discard_upload(request: Request, user, project_id: int, upload_id: uu
     """Delete an upload the caller asked for and no longer needs, row and objects; its declared SHA-256."""
     if upload_id is None:
         return None
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         row = await (
-            await conn.execute(
+            await legacy(
+                conn,
                 "DELETE FROM blob_uploads WHERE upload_id = %s AND project_id = %s AND created_by = %s "
                 "RETURNING sha256",
                 (upload_id, project_id, user.user_id),
@@ -384,18 +390,20 @@ PENDING_RUN = "SELECT log_sha256, blobs FROM kg_pending_runs WHERE project_id = 
 @router.post("/{project}/runs", response_model=RunState, responses=REFUSALS)
 async def push_run(request: Request, project: ProjectName, body: RunPush, user: CurrentUser):
     """Check the log of a run and keep it; the blobs it refers to that the project still lacks."""
-    pool = request.app.state.pool
+    engine = request.app.state.engine
     run_id = str(body.run_id)
-    async with pool.connection() as conn:
+    async with engine.begin() as conn:
         access = await project_access(conn, user, project)
         ceiling = _hub_ceiling(access)
         knowledge = await _config(conn, access)
         ingested = await (
-            await conn.execute(
-                "SELECT log_sha256 FROM kg_ingests WHERE project_id = %s AND run_id = %s", (access.project_id, run_id)
+            await legacy(
+                conn,
+                "SELECT log_sha256 FROM kg_ingests WHERE project_id = %s AND run_id = %s",
+                (access.project_id, run_id),
             )
         ).fetchone()
-        pending = await (await conn.execute(PENDING_RUN, (access.project_id, run_id))).fetchone()
+        pending = await (await legacy(conn, PENDING_RUN, (access.project_id, run_id))).fetchone()
     if ingested is not None or pending is not None:  # pushed before: the new upload is not needed
         declared = await _discard_upload(request, user, access.project_id, body.log_upload_id) or body.log_sha256
         held = (ingested or pending)[0]
@@ -403,7 +411,7 @@ async def push_run(request: Request, project: ProjectName, body: RunPush, user: 
             raise HTTPException(409, f"the hub holds another log for run {run_id}: a run's log never changes")
         if ingested is not None:
             return RunState(run_id=run_id, status="ingested", log_sha256=held, blobs=0, missing=[])
-        async with pool.connection() as conn:
+        async with engine.begin() as conn:
             missing = await _missing(conn, access.project_id, pending[1])
         return RunState(run_id=run_id, status="pending", log_sha256=held, blobs=len(pending[1]), missing=missing)
 
@@ -446,10 +454,12 @@ async def push_run(request: Request, project: ProjectName, body: RunPush, user: 
             message = f"the log of run {run_id} was not uploaded as declared: {exc.problems[0]['problem']}"
             return error_response(request, 422, message + "; nothing was written", detail=exc.problems)
     else:
-        async with pool.connection() as conn:
+        async with engine.begin() as conn:
             row = await (
-                await conn.execute(
-                    "SELECT size FROM blobs WHERE project_id = %s AND sha256 = %s", (access.project_id, body.log_sha256)
+                await legacy(
+                    conn,
+                    "SELECT size FROM blobs WHERE project_id = %s AND sha256 = %s",
+                    (access.project_id, body.log_sha256),
                 )
             ).fetchone()
         if row is None:
@@ -461,8 +471,9 @@ async def push_run(request: Request, project: ProjectName, body: RunPush, user: 
 
     run: RunLog = found["run"]
     blobs = sorted(run.blobs)
-    async with pool.connection() as conn:
-        await conn.execute(
+    async with engine.begin() as conn:
+        await legacy(
+            conn,
             "INSERT INTO kg_pending_runs (project_id, run_id, source, log_sha256, log_size, blobs, pushed_by) "
             "VALUES (%s, %s, %s, %s, %s, %s, %s) ON CONFLICT (project_id, run_id) DO NOTHING",
             (access.project_id, run_id, run.source, found["sha256"], found["size"], blobs, user.user_id),
@@ -494,7 +505,8 @@ BUILD_FIELDS = tuple(Build.model_fields)
 async def _builds(
     conn, project_id: int, *, build_id: int | None = None, status: str | None = None, limit: int = BUILDS_LIMIT
 ) -> list[Build]:
-    cursor = await conn.execute(
+    cursor = await legacy(
+        conn,
         f"SELECT {BUILD_COLUMNS} FROM kg_builds b LEFT JOIN users u ON u.id = b.requested_by "
         "WHERE b.project_id = %s AND (%s::bigint IS NULL OR b.id = %s) AND (%s::text IS NULL OR b.status = %s) "
         "ORDER BY b.id DESC LIMIT %s",
@@ -514,11 +526,12 @@ async def _queue(request: Request, conn, project_id: int, project: str, requeste
 async def commit_run(request: Request, project: ProjectName, run_id: RunId, user: CurrentUser):
     """Make a pushed run part of the project's corpus, once every blob it refers to is there, and queue a build."""
     run = str(run_id)
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
         _hub_ceiling(access)
         pending = await (
-            await conn.execute(
+            await legacy(
+                conn,
                 "SELECT source, log_sha256, log_size, blobs FROM kg_pending_runs WHERE project_id = %s AND run_id = %s "
                 "FOR UPDATE",
                 (access.project_id, run),
@@ -526,8 +539,8 @@ async def commit_run(request: Request, project: ProjectName, run_id: RunId, user
         ).fetchone()
         if pending is None:
             held = await (
-                await conn.execute(
-                    "SELECT 1 FROM kg_ingests WHERE project_id = %s AND run_id = %s", (access.project_id, run)
+                await legacy(
+                    conn, "SELECT 1 FROM kg_ingests WHERE project_id = %s AND run_id = %s", (access.project_id, run)
                 )
             ).fetchone()
             if held is not None:
@@ -543,13 +556,14 @@ async def commit_run(request: Request, project: ProjectName, run_id: RunId, user
                 "upload and commit them, then commit the run again; nothing was written"
             )
             return error_response(request, 422, message, detail=[{"sha256": h} for h in missing[:MISSING_SHOWN]])
-        await conn.execute(
+        await legacy(
+            conn,
             "INSERT INTO kg_ingests (project_id, run_id, source, log_sha256, log_size, pushed_by) "
             "VALUES (%s, %s, %s, %s, %s, %s) ON CONFLICT (project_id, run_id) DO NOTHING",
             (access.project_id, run, source, log_sha256, log_size, user.user_id),
         )
-        await conn.execute(
-            "DELETE FROM kg_pending_runs WHERE project_id = %s AND run_id = %s", (access.project_id, run)
+        await legacy(
+            conn, "DELETE FROM kg_pending_runs WHERE project_id = %s AND run_id = %s", (access.project_id, run)
         )
         await audit.record(conn, actor_id=user.user_id, token_id=user.token_id, action=audit.KG_INGEST, target=project)
         build_id, queued = await _queue(request, conn, access.project_id, project, None)
@@ -571,11 +585,12 @@ async def list_builds(
 ) -> Builds:
     """The project's builds, newest first (only those with ``status`` when given), and its build jobs still in the
     queue."""
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
         _member(access)
         builds = await _builds(conn, access.project_id, status=status, limit=limit)
-        cursor = await conn.execute(
+        cursor = await legacy(
+            conn,
             "SELECT j.id, j.status::text, b.id FROM procrastinate_jobs j LEFT JOIN kg_builds b ON b.job_id = j.id "
             "WHERE j.lock = %s AND j.status IN ('todo', 'doing') ORDER BY j.id",
             (kg_lock(project),),
@@ -586,7 +601,7 @@ async def list_builds(
 
 @router.get("/{project}/builds/{build_id}", response_model=Build)
 async def show_build(request: Request, project: ProjectName, build_id: int, user: CurrentUser) -> Build:
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
         _member(access)
         found = await _builds(conn, access.project_id, build_id=build_id, limit=1)
@@ -598,7 +613,7 @@ async def show_build(request: Request, project: ProjectName, build_id: int, user
 @router.post("/{project}/builds", status_code=202, response_model=Queued, responses=REFUSALS)
 async def request_build(request: Request, project: ProjectName, user: CurrentUser) -> Queued:
     """Queue a build of the project's graph from the runs the hub holds."""
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
         _writer(access, "building")
         build_id, queued = await _queue(request, conn, access.project_id, project, user.user_id)
@@ -625,10 +640,10 @@ async def tool_result(state, user: Principal, project: str, tool: str, arguments
     through ``sink``: the MCP tool result, an error included. ``state`` is the app's. Raises HTTPException: 404 for a
     project the caller cannot see, 403 without a grant on it, 503 when no graph can be fetched, 502 for an artifact
     whose bytes are not the build's."""
-    async with state.pool.connection() as conn:
+    async with state.engine.begin() as conn:
         access = await project_access(conn, user, project)
         _member(access)
-        cursor = await conn.execute(GRAPHS, (access.project_id, GRAPHS_TRIED))
+        cursor = await legacy(conn, GRAPHS, (access.project_id, GRAPHS_TRIED))
         graphs = [BuiltGraph(*row) for row in await cursor.fetchall()]
     if not graphs:
         message = (

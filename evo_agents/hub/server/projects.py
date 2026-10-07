@@ -33,6 +33,7 @@ from pydantic import BaseModel, Field
 
 from evo_agents.harness import load_schema
 from evo_agents.hub.access import HUB_KIND, INTEGRITIES, ROLES, ProjectRules, Refused
+from evo_agents.hub.db import driver, legacy
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.admin import PROJECT_NAME, ProjectName
 from evo_agents.hub.server.errors import ErrorBody
@@ -139,7 +140,7 @@ def not_found(name: str) -> str:
 
 
 async def _one(conn, query: str, params=()):
-    return await (await conn.execute(query, params)).fetchone()
+    return await (await legacy(conn, query, params)).fetchone()
 
 
 def _lower(ladder, held, cap):
@@ -173,8 +174,8 @@ async def project_access(conn, user: Principal, name: str) -> ProjectAccess:
         raise HTTPException(404, not_found(name))
     project_id, levels, locations, default_label, role, max_level = row
     role, max_level = scoped_grant(user, levels, role, max_level)
-    cursor = await conn.execute(
-        "SELECT sink_id, kind, clearance FROM project_sinks WHERE project_id = %s ORDER BY sink_id", (project_id,)
+    cursor = await legacy(
+        conn, "SELECT sink_id, kind, clearance FROM project_sinks WHERE project_id = %s ORDER BY sink_id", (project_id,)
     )
     sinks = [{"id": sink, "kind": kind, "clearance": clearance} for sink, kind, clearance in await cursor.fetchall()]
     return ProjectAccess(project_id, ProjectRules(name, levels, locations, sinks, default_label), role, max_level)
@@ -241,11 +242,11 @@ async def _held(conn, project_id: int) -> dict:
         (project_id,),
     )
     sinks = await (
-        await conn.execute("SELECT sink_id, kind, clearance FROM project_sinks WHERE project_id = %s", (project_id,))
+        await legacy(conn, "SELECT sink_id, kind, clearance FROM project_sinks WHERE project_id = %s", (project_id,))
     ).fetchall()
     repos = await (
-        await conn.execute(
-            "SELECT name, origin, default_branch, path FROM project_repos WHERE project_id = %s", (project_id,)
+        await legacy(
+            conn, "SELECT name, origin, default_branch, path FROM project_repos WHERE project_id = %s", (project_id,)
         )
     ).fetchall()
     return {
@@ -259,9 +260,9 @@ async def _held(conn, project_id: int) -> dict:
 
 
 async def _write_children(conn, project_id: int, desired: dict) -> None:
-    await conn.execute("DELETE FROM project_sinks WHERE project_id = %s", (project_id,))
-    await conn.execute("DELETE FROM project_repos WHERE project_id = %s", (project_id,))
-    async with conn.cursor() as cursor:
+    await legacy(conn, "DELETE FROM project_sinks WHERE project_id = %s", (project_id,))
+    await legacy(conn, "DELETE FROM project_repos WHERE project_id = %s", (project_id,))
+    async with (await driver(conn)).cursor() as cursor:
         await cursor.executemany(
             "INSERT INTO project_sinks (project_id, sink_id, kind, clearance) VALUES (%s, %s, %s, %s)",
             [(project_id, sink, kind, Jsonb(clearance)) for sink, kind, clearance in desired["sinks"]],
@@ -274,7 +275,8 @@ async def _write_children(conn, project_id: int, desired: dict) -> None:
 
 async def _check_grants(conn, name: str, project_id: int, levels: list[str]) -> None:
     """409 when a grant reaches a level the new ladder drops."""
-    cursor = await conn.execute(
+    cursor = await legacy(
+        conn,
         "SELECT u.login, g.max_level FROM grants g JOIN users u ON u.id = g.user_id "
         "WHERE g.project_id = %s AND NOT (g.max_level = ANY(%s)) ORDER BY lower(u.login)",
         (project_id, levels),
@@ -305,17 +307,19 @@ SELECT p.id, p.name, p.cluster, p.workspace, p.harness_path, p.levels, p.locatio
 
 async def _projects(conn, user: Principal, name: str | None = None) -> list[Project]:
     params = {"user": user.user_id, "admin": user.admin, "name": name, "only": user.run_project}
-    rows = await (await conn.execute(PROJECTS, params)).fetchall()
+    rows = await (await legacy(conn, PROJECTS, params)).fetchall()
     ids = [row[0] for row in rows]
     sinks: dict[int, list[Sink]] = {}
     repos: dict[int, list[Repo]] = {}
-    cursor = await conn.execute(
+    cursor = await legacy(
+        conn,
         "SELECT project_id, sink_id, kind, clearance FROM project_sinks WHERE project_id = ANY(%s) ORDER BY sink_id",
         (ids,),
     )
     for project_id, sink, kind, clearance in await cursor.fetchall():
         sinks.setdefault(project_id, []).append(Sink(id=sink, kind=kind, clearance=Clearance(**clearance)))
-    cursor = await conn.execute(
+    cursor = await legacy(
+        conn,
         "SELECT project_id, name, origin, default_branch, path FROM project_repos WHERE project_id = ANY(%s) "
         "ORDER BY name",
         (ids,),
@@ -347,13 +351,13 @@ async def _projects(conn, user: Principal, name: str | None = None) -> list[Proj
 
 @router.get("", response_model=list[Project])
 async def list_projects(request: Request, user: CurrentUser) -> list[Project]:
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         return await _projects(conn, user)
 
 
 @router.get("/{project}", response_model=Project, responses={404: {"model": ErrorBody}})
 async def show(request: Request, project: ProjectName, user: CurrentUser) -> Project:
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         found = await _projects(conn, user, project)
     if not found:
         raise HTTPException(404, not_found(project))
@@ -377,7 +381,7 @@ async def register(request: Request, body: Registration, project: ProjectName, u
     rules = _checked(project, body)
     desired = _desired(body, rules)
     fields = (desired["levels"], desired["locations"], Jsonb(desired["default_label"]), *desired["harness"])
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         row = await _one(conn, "SELECT id FROM projects WHERE name = %s FOR UPDATE", (project,))
         created = False
         if row is None:
@@ -399,7 +403,7 @@ async def register(request: Request, body: Registration, project: ProjectName, u
             changed = await _held(conn, project_id) != desired
             if changed:
                 await _check_grants(conn, project, project_id, body.levels)
-                await conn.execute(UPDATE_PROJECT, (*fields, project_id))
+                await legacy(conn, UPDATE_PROJECT, (*fields, project_id))
         if changed:
             await _write_children(conn, project_id, desired)
             action = audit.PROJECT_REGISTER if created else audit.PROJECT_UPDATE

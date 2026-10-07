@@ -36,6 +36,7 @@ from pydantic import BaseModel, Field
 
 from evo_agents.harness import load_schema, plan_body, plan_digest, plan_semantics
 from evo_agents.hub.access import has_role
+from evo_agents.hub.db import legacy
 from evo_agents.hub.plan_diff import DEFAULT_CONTEXT, MAX_CONTEXT, plan_diff
 from evo_agents.hub.plans import (
     AREAS,
@@ -238,9 +239,9 @@ async def _held(conn, access: ProjectAccess, plan_id: str, *, lock: bool = False
     params = (access.project_id, plan_id)
     if lock:
         locked = "SELECT 1 FROM plans WHERE project_id = %s AND plan_id = %s FOR UPDATE"
-        if await (await conn.execute(locked, params)).fetchone() is None:
+        if await (await legacy(conn, locked, params)).fetchone() is None:
             return None
-    row = await (await conn.execute(SELECT_PLAN, params)).fetchone()
+    row = await (await legacy(conn, SELECT_PLAN, params)).fetchone()
     return Held(*row) if row else None
 
 
@@ -294,10 +295,10 @@ async def list_plans(
     area: Literal[AREAS] | None = None,
     sink: Annotated[str | None, Header(alias=SINK_HEADER)] = None,
 ) -> list[PlanSummary]:
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
         _reader(access)
-        rows = await (await conn.execute(LIST_PLANS, {"project": access.project_id, "area": area})).fetchall()
+        rows = await (await legacy(conn, LIST_PLANS, {"project": access.project_id, "area": area})).fetchall()
     through = _sink(access, sink)
     return [
         PlanSummary(
@@ -324,7 +325,7 @@ async def show(
     user: CurrentUser,
     sink: Annotated[str | None, Header(alias=SINK_HEADER)] = None,
 ) -> dict:
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
         _reader(access)
         held = await _visible(conn, access, plan_id, sink)
@@ -342,7 +343,7 @@ SELECT r.revision, r.area, r.label, r.digest, r.summary, u.login, r.created_at, 
 async def _revisions(conn, access: ProjectAccess, plan_id: str, sink: str | None, revision: int | None = None):
     _reader(access)
     await _visible(conn, access, plan_id, sink)
-    cursor = await conn.execute(REVISIONS, (access.project_id, plan_id, revision, revision))
+    cursor = await legacy(conn, REVISIONS, (access.project_id, plan_id, revision, revision))
     through = _sink(access, sink)
     return [row for row in await cursor.fetchall() if access.visible(row[2], through)]
 
@@ -355,7 +356,7 @@ async def history(
     user: CurrentUser,
     sink: Annotated[str | None, Header(alias=SINK_HEADER)] = None,
 ) -> list[Revision]:
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
         rows = await _revisions(conn, access, plan_id, sink)
     return [
@@ -373,7 +374,7 @@ async def show_revision(
     user: CurrentUser,
     sink: Annotated[str | None, Header(alias=SINK_HEADER)] = None,
 ) -> RevisionBody:
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
         rows = await _revisions(conn, access, plan_id, sink, revision)
     if not rows:
@@ -405,7 +406,7 @@ async def diff(
 ) -> PlanDiff:
     """The lines that changed from one revision of the plan to another, as their git copies read; 404 when
     either revision is not one the caller can see."""
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
         older, old_body = await _one_revision(conn, access, plan_id, sink, from_revision)
         newer, new_body = await _one_revision(conn, access, plan_id, sink, to_revision)
@@ -444,9 +445,9 @@ class _Registered:
 
 
 async def _known_repos(conn, access: ProjectAccess) -> _Registered:
-    cursor = await conn.execute("SELECT name FROM project_repos WHERE project_id = %s", (access.project_id,))
+    cursor = await legacy(conn, "SELECT name FROM project_repos WHERE project_id = %s", (access.project_id,))
     names = {row[0] for row in await cursor.fetchall()}
-    row = await (await conn.execute("SELECT harness_path FROM projects WHERE id = %s", (access.project_id,))).fetchone()
+    row = await (await legacy(conn, "SELECT harness_path FROM projects WHERE id = %s", (access.project_id,))).fetchone()
     if row and row[0]:
         names.add(PurePosixPath(row[0]).name)  # the harness repo goes by its directory name, as in the loader
     return _Registered(names)
@@ -502,14 +503,16 @@ async def _store(conn, access, user, held: Held | None, *, area, label, body, su
     digest = plan_digest(body)
     revision = 1 if held is None else held.revision + 1
     if held is None:
-        cursor = await conn.execute(
+        cursor = await legacy(
+            conn,
             "INSERT INTO plans (project_id, plan_id, area, label, body, revision, digest, updated_by) "
             "VALUES (%s, %s, %s, %s, %s, 1, %s, %s) ON CONFLICT DO NOTHING "
             "RETURNING body, created_at, updated_at",
             (access.project_id, body["id"], area, Jsonb(label), Jsonb(body), digest, user.user_id),
         )
     else:
-        cursor = await conn.execute(
+        cursor = await legacy(
+            conn,
             "UPDATE plans SET area = %s, label = %s, body = %s, revision = %s, digest = %s, updated_at = now(), "
             "updated_by = %s WHERE project_id = %s AND plan_id = %s RETURNING body, created_at, updated_at",
             (area, Jsonb(label), Jsonb(body), revision, digest, user.user_id, access.project_id, body["id"]),
@@ -524,7 +527,8 @@ async def _store(conn, access, user, held: Held | None, *, area, label, body, su
             f"plan {body['id']} holds a number that does not survive storage unchanged: write it as a string. "
             "Nothing was written",
         )
-    await conn.execute(
+    await legacy(
+        conn,
         "INSERT INTO plan_revisions (project_id, plan_id, revision, area, label, body, digest, summary, actor_id) "
         "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
         (access.project_id, body["id"], revision, area, Jsonb(label), Jsonb(body), digest, summary, user.user_id),
@@ -557,7 +561,7 @@ async def put(request: Request, project: ProjectName, plan_id: PlanId, payload: 
     body = plan_body(payload.body)
     try:
         _schema_checked(body, plan_id)
-        async with request.app.state.pool.connection() as conn:
+        async with request.app.state.engine.begin() as conn:
             access = await project_access(conn, user, project)
             _writer(access)
             given_label = access.push_label(payload.label)
@@ -629,7 +633,7 @@ async def patch(request: Request, project: ProjectName, plan_id: PlanId, payload
     if payload.step is not None and payload.section != "steps":
         raise HTTPException(422, "step names an item of the steps section only; give index for other sections")
     try:
-        async with request.app.state.pool.connection() as conn:
+        async with request.app.state.engine.begin() as conn:
             access = await project_access(conn, user, project)
             _writer(access)
             stored, changed, warnings = await apply_patch(
@@ -695,7 +699,7 @@ async def complete(
     """Move the plan to the completed area; refused while a step is not done, as evo-cli's complete_plan."""
     given = payload.if_revision if payload else None
     try:
-        async with request.app.state.pool.connection() as conn:
+        async with request.app.state.engine.begin() as conn:
             access = await project_access(conn, user, project)
             _writer(access)
             held = await _visible(conn, access, plan_id, None, lock=True)

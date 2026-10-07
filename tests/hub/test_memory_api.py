@@ -425,7 +425,7 @@ def test_a_run_scope_reads_and_writes_the_memories_of_its_project_alone(client, 
     assert names(call(memories.list_memories, user=reader, sink="hub")) == []
 
     async def grant_of(user) -> tuple:
-        async with client.app.state.pool.connection() as conn:
+        async with client.app.state.engine.begin() as conn:
             access = await project_access(conn, user, "demo")
         return access.role, access.max_level
 

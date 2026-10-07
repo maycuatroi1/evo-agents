@@ -16,6 +16,7 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, HTTPException, Path, Query, Request, Response
 from pydantic import BaseModel
 
+from evo_agents.hub.db import legacy
 from evo_agents.hub.server import audit, workers
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.security import WEB, CurrentUser, delete_session_cookie, revoke_token
@@ -55,15 +56,15 @@ async def list_tokens(
     user: CurrentUser,
     include_inactive: Annotated[bool, Query(alias="all", description="also list revoked and expired tokens")] = False,
 ) -> list[TokenRow]:
-    async with request.app.state.pool.connection() as conn:
-        rows = await (await conn.execute(LIST, (user.user_id, include_inactive))).fetchall()
+    async with request.app.state.engine.begin() as conn:
+        rows = await (await legacy(conn, LIST, (user.user_id, include_inactive))).fetchall()
     return [TokenRow(**dict(zip(FIELDS, row, strict=True)), current=row[0] == user.token_id) for row in rows]
 
 
 @router.delete("/{token_id}", status_code=204, response_class=Response, responses={404: {"model": ErrorBody}})
 async def revoke(request: Request, user: CurrentUser, token_id: Annotated[int, Path(ge=1, le=MAX_ID)]) -> Response:
     """Revoke one of the caller's tokens; a worker token's worker is revoked with it."""
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         worker = await workers.lock_worker_of_token(conn, token_id, user.user_id)  # before the token's row
         if not await revoke_token(conn, token_id, user.user_id):
             raise HTTPException(404, f"you have no unrevoked token {token_id}: see `evo-agents hub token list`")

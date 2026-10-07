@@ -1138,7 +1138,7 @@ def test_the_cli_pushes_builds_and_reads_through_hub_serve(hub_db, tmp_path, s3)
 
 def test_a_build_whose_worker_died_is_failed_and_queued_again(hub, tmp_path):
     from evo_agents.hub import jobs as hub_jobs
-    from evo_agents.hub.db import open_pool
+    from evo_agents.hub.db import make_engine, open_pool
     from evo_agents.hub.jobs import JobQueue
     from evo_agents.hub.kg_build import STOPPED, recover_stalled
 
@@ -1158,7 +1158,7 @@ def test_a_build_whose_worker_died_is_failed_and_queued_again(hub, tmp_path):
         pool = await open_pool(make_config(hub.db, tmp_path / "recover", hub.s3))
         try:
             job_queue = await JobQueue.open(pool)
-            return await recover_stalled(SimpleNamespace(pool=pool), job_queue._manager)
+            return await recover_stalled(SimpleNamespace(engine=make_engine(pool)), job_queue._manager)
         finally:
             await pool.close()
 

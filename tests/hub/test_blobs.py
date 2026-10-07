@@ -43,7 +43,7 @@ from evo_agents.hub.blobs import (
     upload_key,
 )
 from evo_agents.hub.config import S3_VARIABLES, ConfigError, HubConfig, load_config
-from evo_agents.hub.db import open_pool
+from evo_agents.hub.db import make_engine, open_pool
 from evo_agents.hub.log import JsonFormatter, scrub
 from evo_agents.hub.migrate import head_revision, migrate
 from evo_agents.hub.server.app import create_app
@@ -633,7 +633,7 @@ def test_uploads_left_for_a_day_are_removed_with_their_rows(hub, tmp_path):
     async def clean(now):
         pool = await open_pool(config)
         try:
-            return await remove_stale_uploads(hub.store, pool, now)
+            return await remove_stale_uploads(hub.store, make_engine(pool), now)
         finally:
             await pool.close()
 

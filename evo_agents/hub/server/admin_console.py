@@ -28,6 +28,7 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, Response
 from pydantic import AwareDatetime, BaseModel, Field
 
+from evo_agents.hub.db import legacy
 from evo_agents.hub.server import audit, workers
 from evo_agents.hub.server.admin import (
     LOGIN_NAME,
@@ -145,8 +146,8 @@ async def audit_trail(
     after_at, after_id = decode_cursor(cursor) if cursor else (None, None)
     params = {"actor": actor, "action": action, "project": project, "since": since, "until": until}
     params |= {"after": after_at, "after_at": after_at, "after_id": after_id, "limit": limit + 1}
-    async with request.app.state.pool.connection() as conn:
-        rows = await (await conn.execute(AUDIT.format(where=_where(AUDIT_FILTERS, params)), params)).fetchall()
+    async with request.app.state.engine.begin() as conn:
+        rows = await (await legacy(conn, AUDIT.format(where=_where(AUDIT_FILTERS, params)), params)).fetchall()
     items = [
         AuditRow(id=row_id, at=at, actor=login, token_id=token_id, action=name, target=target, project=project_name)
         for row_id, at, login, token_id, name, target, project_name in rows[:limit]
@@ -158,8 +159,8 @@ async def audit_trail(
 @router.get("/audit/actions", response_model=list[str])
 async def audit_actions(request: Request) -> list[str]:
     """Every action the trail holds at least one row of, in alphabetical order, for the action filter."""
-    async with request.app.state.pool.connection() as conn:
-        return [row[0] for row in await (await conn.execute(ACTIONS)).fetchall()]
+    async with request.app.state.engine.begin() as conn:
+        return [row[0] for row in await (await legacy(conn, ACTIONS)).fetchall()]
 
 
 TokenState = Literal["active", "revoked", "expired"]
@@ -232,8 +233,8 @@ async def all_tokens(
     after_at, after_id = decode_cursor(cursor) if cursor else (None, None)
     params = {"login": login, "kind": kind, state: True, "after": after_at, "after_at": after_at, "after_id": after_id}
     params["limit"] = limit + 1
-    async with request.app.state.pool.connection() as conn:
-        rows = await (await conn.execute(TOKENS.format(where=_where(TOKEN_FILTERS, params)), params)).fetchall()
+    async with request.app.state.engine.begin() as conn:
+        rows = await (await legacy(conn, TOKENS.format(where=_where(TOKEN_FILTERS, params)), params)).fetchall()
     fields = ("id", "login", "kind", "host", "created_at", "last_used_at", "expires_at", "revoked_at", "state")
     items = [AdminToken(**dict(zip(fields, row, strict=True)), current=row[0] == user.token_id) for row in rows[:limit]]
     more = len(rows) > limit
@@ -250,11 +251,11 @@ async def revoke_any_token(
     request: Request, user: AdminUser, token_id: Annotated[int, Path(ge=1, le=MAX_ID)]
 ) -> Response:
     """Revoke a token or web session of any user; a worker token's worker is revoked with it."""
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         worker = await workers.lock_worker_of_token(conn, token_id)  # before the token's row
-        row = await (await conn.execute(REVOKE, (token_id,))).fetchone()
+        row = await (await legacy(conn, REVOKE, (token_id,))).fetchone()
         if row is None:
-            found = await (await conn.execute("SELECT revoked_at FROM tokens WHERE id = %s", (token_id,))).fetchone()
+            found = await (await legacy(conn, "SELECT revoked_at FROM tokens WHERE id = %s", (token_id,))).fetchone()
             if found is None:
                 raise HTTPException(404, f"this hub never issued token {token_id}")
             raise HTTPException(409, f"token {token_id} was revoked already, at {found[0].isoformat()}")

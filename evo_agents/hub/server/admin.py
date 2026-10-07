@@ -33,6 +33,7 @@ from pydantic import BaseModel, Field
 from evo_agents.hub.access import has_role
 from evo_agents.hub.blobs import BlobStoreUnavailable
 from evo_agents.hub.config import MAX_KG_KEEP_ARTIFACTS, HubConfig
+from evo_agents.hub.db import legacy
 from evo_agents.hub.runs import OFFLINE_AFTER_SECONDS
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.auth import GrantInfo
@@ -220,9 +221,9 @@ RETURNING xmax = 0
 @router.get("/users", response_model=list[UserRow], responses={403: {"model": ErrorBody}})
 async def users(request: Request) -> list[UserRow]:
     config: HubConfig = request.app.state.config
-    async with request.app.state.pool.connection() as conn:
-        rows = await (await conn.execute(USERS)).fetchall()
-        grant_rows = await (await conn.execute(USER_GRANTS)).fetchall()
+    async with request.app.state.engine.begin() as conn:
+        rows = await (await legacy(conn, USERS)).fetchall()
+        grant_rows = await (await legacy(conn, USER_GRANTS)).fetchall()
     grants: dict[int, list[UserGrant]] = {}
     for user_id, project, role, max_level, granted_by, granted_at in grant_rows:
         grant = UserGrant(project=project, role=role, max_level=max_level, granted_by=granted_by, granted_at=granted_at)
@@ -243,7 +244,7 @@ async def users(request: Request) -> list[UserRow]:
 
 async def _project(conn, name: str) -> tuple[int, list[str]]:
     """The id and label ladder of a registered project; 404 naming the command that registers one."""
-    row = await (await conn.execute("SELECT id, levels, locations FROM projects WHERE name = %s", (name,))).fetchone()
+    row = await (await legacy(conn, "SELECT id, levels, locations FROM projects WHERE name = %s", (name,))).fetchone()
     if row is None:
         raise HTTPException(404, f"project {name} is not registered on this hub: run `evo-agents hub project register`")
     project_id, levels, locations = row
@@ -255,15 +256,15 @@ async def _project(conn, name: str) -> tuple[int, list[str]]:
 )
 async def grant(request: Request, body: GrantRequest, project: ProjectName, login: Login, user: AdminUser) -> Grant:
     """Give ``login`` a role on ``project``, or change the one it has."""
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         project_id, ladder = await _project(conn, project)
         if body.max_level not in ladder:
             levels = ", ".join(ladder)
             raise HTTPException(422, f"max-level must be a level of project {project} ({levels}), not {body.max_level}")
-        await conn.execute("INSERT INTO users (login) VALUES (%s) ON CONFLICT DO NOTHING", (login,))
-        cursor = await conn.execute("SELECT id, login FROM users WHERE lower(login) = lower(%s)", (login,))
+        await legacy(conn, "INSERT INTO users (login) VALUES (%s) ON CONFLICT DO NOTHING", (login,))
+        cursor = await legacy(conn, "SELECT id, login FROM users WHERE lower(login) = lower(%s)", (login,))
         grantee_id, grantee = await cursor.fetchone()
-        cursor = await conn.execute(UPSERT_GRANT, (grantee_id, project_id, body.role, body.max_level, user.user_id))
+        cursor = await legacy(conn, UPSERT_GRANT, (grantee_id, project_id, body.role, body.max_level, user.user_id))
         (created,) = await cursor.fetchone()
         target = f"{project}/{grantee} role={body.role} max_level={body.max_level}"
         await audit.record(conn, actor_id=user.user_id, token_id=user.token_id, action=audit.GRANT_PUT, target=target)
@@ -291,15 +292,16 @@ async def _revoke_taken(request: Request, run_ids: list[int]) -> None:
 
     state = request.app.state
     for run_id in run_ids:
-        await credentials.revoke_tokens(state.pool, state.sealer, state.github_app, run_id=run_id)
+        await credentials.revoke_tokens(state.engine, state.sealer, state.github_app, run_id=run_id)
 
 
 @router.delete("/projects/{project}/grants/{login}", status_code=204, response_class=Response, responses=MISSING)
 async def revoke(request: Request, project: ProjectName, login: Login, user: AdminUser) -> Response:
     """Take away the role ``login`` has on ``project``."""
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         project_id, _ = await _project(conn, project)
-        cursor = await conn.execute(
+        cursor = await legacy(
+            conn,
             "DELETE FROM grants g USING users u WHERE g.user_id = u.id AND g.project_id = %s "
             "AND lower(u.login) = lower(%s) RETURNING u.login, u.id",
             (project_id, login),
@@ -319,16 +321,17 @@ async def revoke(request: Request, project: ProjectName, login: Login, user: Adm
 @router.get("/stats", response_model=dict[str, int], responses={403: {"model": ErrorBody}})
 async def stats(request: Request) -> dict[str, int]:
     """The number of rows of every hub table, by table name; tables added by later revisions show up by themselves."""
-    async with request.app.state.pool.connection() as conn:
-        cursor = await conn.execute(
+    async with request.app.state.engine.begin() as conn:
+        cursor = await legacy(
+            conn,
             "SELECT tablename FROM pg_tables WHERE schemaname = current_schema() AND tablename <> 'alembic_version' "
-            "ORDER BY tablename"
+            "ORDER BY tablename",
         )
         tables = [row[0] for row in await cursor.fetchall()]
         query = sql.SQL(" UNION ALL ").join(
             sql.SQL("SELECT {}, count(*) FROM {}").format(sql.Literal(table), sql.Identifier(table)) for table in tables
         )
-        counts = await (await conn.execute(query)).fetchall() if tables else []
+        counts = await (await legacy(conn, query)).fetchall() if tables else []
     return {table: count for table, count in counts}
 
 
@@ -411,10 +414,10 @@ SELECT p.name, f.failed, f.last_id, f.last_at, latest.id, latest.status
 async def overview(request: Request) -> AdminOverview:
     """What may need an admin: members, tokens to rotate, grants by project, storage, failed graph builds, offline
     workers and the last day of the audit trail."""
-    async with request.app.state.pool.connection() as conn:
-        counts = await (await conn.execute(OVERVIEW)).fetchone()
-        grants = await (await conn.execute(GRANT_COUNTS)).fetchall()
-        failed = await (await conn.execute(FAILED_BUILDS)).fetchall()
+    async with request.app.state.engine.begin() as conn:
+        counts = await (await legacy(conn, OVERVIEW)).fetchone()
+        grants = await (await legacy(conn, GRANT_COUNTS)).fetchall()
+        failed = await (await legacy(conn, FAILED_BUILDS)).fetchall()
     count = dict(zip(OVERVIEW_FIELDS, counts, strict=True))
     projects = [
         ProjectFailedBuilds(
@@ -473,7 +476,7 @@ async def prune_kg(request: Request, body: PruneRequest, user: AdminUser) -> KgP
     keep = body.keep or state.config.kg_keep_artifacts
     try:
         report = await prune(
-            state.pool,
+            state.engine,
             state.blobs,
             keep,
             body.project,

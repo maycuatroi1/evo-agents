@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import re
 
+from evo_agents.hub.db import legacy
+
 LOGIN = "auth.login"
 LOGOUT = "auth.logout"
 TOKEN_REVOKE = "token.revoke"
@@ -106,7 +108,7 @@ async def record(
         "project": project,
         "memory_id": memory_id,
     }
-    await conn.execute(INSERT, params)
+    await legacy(conn, INSERT, params)
 
 
 def token_target(token_id: int) -> str:

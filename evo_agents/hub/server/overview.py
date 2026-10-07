@@ -29,6 +29,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from evo_agents.hub import runs
+from evo_agents.hub.db import legacy
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.plans import step_counts
 from evo_agents.hub.server.projects import ProjectAccess, project_access
@@ -223,7 +224,7 @@ SELECT p.id,
 async def _granted(conn, user) -> list[ProjectAccess]:
     """The caller's access to each project it holds a grant on, by the check of the project's runs and decisions; a
     grant revoked since the list was read leaves its project out."""
-    names = [row[0] for row in await (await conn.execute(GRANTED, (user.user_id,))).fetchall()]
+    names = [row[0] for row in await (await legacy(conn, GRANTED, (user.user_id,))).fetchall()]
     accesses = []
     for name in names:
         try:
@@ -259,8 +260,8 @@ def _decision(row, wait: timedelta) -> OverviewDecision:
 async def overview(request: Request, user: CurrentUser) -> Overview:
     """What waits for you, what runs and what ended lately, over the projects you hold a grant on."""
     wait = timedelta(seconds=request.app.state.config.decision_wait_seconds)
-    async with request.app.state.pool.connection() as conn:
-        today: date = (await (await conn.execute(TODAY)).fetchone())[0]
+    async with request.app.state.engine.begin() as conn:
+        today: date = (await (await legacy(conn, TODAY)).fetchone())[0]
         accesses = await _granted(conn, user)
         pairs = []
         for access in accesses:
@@ -276,14 +277,14 @@ async def overview(request: Request, user: CurrentUser) -> Overview:
             "ended": list(ENDED_COUNTED),
             "since": since,
         }
-        counted = await (await conn.execute(RUN_COUNTS, params)).fetchall()
+        counted = await (await legacy(conn, RUN_COUNTS, params)).fetchall()
         in_flight = params | {"states": list(IN_FLIGHT), "limit": MAX_ACTIVE}
-        active = await (await conn.execute(ACTIVE_RUNS, in_flight)).fetchall()
+        active = await (await legacy(conn, ACTIVE_RUNS, in_flight)).fetchall()
         ended = params | {"states": list(runs.TERMINAL_STATES), "limit": MAX_RECENT}
-        recent = await (await conn.execute(RECENT_RUNS, ended)).fetchall()
-        decisions = await (await conn.execute(OPEN_DECISIONS, params | {"limit": MAX_DECISIONS})).fetchall()
-        decision_counts = await (await conn.execute(DECISION_COUNTS, params)).fetchall()
-        project_counts = await (await conn.execute(PROJECT_COUNTS, params)).fetchall()
+        recent = await (await legacy(conn, RECENT_RUNS, ended)).fetchall()
+        decisions = await (await legacy(conn, OPEN_DECISIONS, params | {"limit": MAX_DECISIONS})).fetchall()
+        decision_counts = await (await legacy(conn, DECISION_COUNTS, params)).fetchall()
+        project_counts = await (await legacy(conn, PROJECT_COUNTS, params)).fetchall()
 
     by_state: dict[str, int] = {}
     done_on: dict[date, int] = {}

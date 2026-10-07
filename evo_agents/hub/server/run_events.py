@@ -54,6 +54,7 @@ from pydantic import UUID4, AwareDatetime, BaseModel, Field, model_validator
 
 from evo_agents.hub import runs
 from evo_agents.hub.blobs import GET_TTL
+from evo_agents.hub.db import driver, legacy
 from evo_agents.hub.server import audit
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.admin import ProjectName
@@ -323,10 +324,10 @@ COUNT_EVENTS = "UPDATE runs SET event_seq = event_seq + %(n)s, events_acked = ev
 async def _claimed(conn, user: Principal, run_id: int):
     """(worker name, state, event_seq, events_acked, project) of run ``run_id``, its row locked, when the worker of
     ``user`` claimed it; 403 for a token of no live worker, 404 for another worker's run or none."""
-    worker = await (await conn.execute(LIVE_WORKER, (user.token_id,))).fetchone()
+    worker = await (await legacy(conn, LIVE_WORKER, (user.token_id,))).fetchone()
     if worker is None:
         raise HTTPException(403, "this worker token belongs to no live worker: join the machine again")
-    row = await (await conn.execute(CLAIMED_RUN, (run_id,))).fetchone()
+    row = await (await legacy(conn, CLAIMED_RUN, (run_id,))).fetchone()
     if row is None or row[0] != worker[0]:
         raise HTTPException(404, f"this worker did not claim run {run_id}")
     return (worker[1], *row[1:])
@@ -349,7 +350,7 @@ def _fresh(events: list[EventIn], acked: int) -> list[EventIn]:
 @worker_router.post("/runs/{run_id}/events", response_model=EventsAck, responses=EVENT_REFUSALS)
 async def post_events(request: Request, run_id: RunId, body: EventBatch, user: CurrentUser):
     """Store the events of the batch that follow the ones stored, and say up to where the worker's spool may go."""
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         _, _, last_seq, acked, _ = await _claimed(conn, user, run_id)
         fresh = _fresh(body.events, acked)
         if not fresh:
@@ -362,9 +363,9 @@ async def post_events(request: Request, run_id: RunId, body: EventBatch, user: C
         for number, event in enumerate(fresh, start=last_seq + 1):
             stored, cut = runs.fit_event_body(event.body)
             rows.append((run_id, number, event.at, event.kind, Jsonb(stored), cut))
-        async with conn.cursor() as cursor:
+        async with (await driver(conn)).cursor() as cursor:
             await cursor.executemany(INSERT_EVENT, rows)
-        await conn.execute(COUNT_EVENTS, {"n": len(fresh), "id": run_id})
+        await legacy(conn, COUNT_EVENTS, {"n": len(fresh), "id": run_id})
         await notify_events(conn, run_id)
     cut = sum(1 for row in rows if row[5])
     log.debug("run events stored", extra={"run_id": run_id, "stored": len(fresh), "truncated": cut})
@@ -393,13 +394,13 @@ SELECT i.id, i.body, u.login, i.created_at, i.decision_id
 async def take_inbox(request: Request, run_id: RunId, user: CurrentUser, body: InboxAck | None = None) -> Inbox:
     """Mark the messages up to ``ack`` delivered, and hand out the ones that still wait, for a run the worker holds."""
     ack = (body or InboxAck()).ack
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         _, state, *_ = await _claimed(conn, user, run_id)
         if state not in runs.HELD_STATES:
             raise HTTPException(404, NOT_HELD.format(id=run_id))
         if ack is not None:
-            await conn.execute(DELIVER, (run_id, ack))
-        rows = await (await conn.execute(UNDELIVERED, (run_id, MAX_INBOX))).fetchall()
+            await legacy(conn, DELIVER, (run_id, ack))
+        rows = await (await legacy(conn, UNDELIVERED, (run_id, MAX_INBOX))).fetchall()
     return Inbox(
         messages=[
             InboxMessage(id=i, text=text, sent_by=login, created_at=at, decision_id=decision)
@@ -418,7 +419,7 @@ async def request_run_uploads(request: Request, run_id: RunId, body: RunUploadRe
     kinds = [item.kind for item in body.items]
     if len(set(kinds)) != len(kinds):
         raise HTTPException(422, "a run has one log and one diff: name each kind once")
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         project = (await _claimed(conn, user, run_id))[4]
     return await issue_uploads(request, user, project, list(body.items))
 
@@ -439,9 +440,9 @@ RETURNING log_sha256, diff_sha256
 async def commit_run_blobs(request: Request, run_id: RunId, body: RunBlobCommit, user: CurrentUser):
     """Commit the uploads of a run's log and diff, and record them on the run."""
     ids = sorted({str(upload_id) for upload_id in body.upload_ids})
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         project = (await _claimed(conn, user, run_id))[4]
-        kinds = [row[0] for row in await (await conn.execute(UPLOAD_KINDS, (ids,))).fetchall()]
+        kinds = [row[0] for row in await (await legacy(conn, UPLOAD_KINDS, (ids,))).fetchall()]
     if len(set(kinds)) != len(kinds):
         raise HTTPException(422, "a run has one log and one diff: commit one upload of each kind")
     try:
@@ -453,11 +454,11 @@ async def commit_run_blobs(request: Request, run_id: RunId, body: RunBlobCommit,
         )
         return error_response(request, 422, message, detail=exc.problems)
     found = {BLOB_COLUMNS[blob.kind]: blob.sha256 for blob in committed.blobs}
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         await _claimed(conn, user, run_id)  # the worker may have been revoked while the bytes were read
         row = await (
-            await conn.execute(
-                RECORD_BLOBS, {"log": found.get("log_sha256"), "diff": found.get("diff_sha256"), "id": run_id}
+            await legacy(
+                conn, RECORD_BLOBS, {"log": found.get("log_sha256"), "diff": found.get("diff_sha256"), "id": run_id}
             )
         ).fetchone()
     log.info("run blobs recorded", extra={"run_id": run_id, "kinds": sorted(blob.kind for blob in committed.blobs)})
@@ -496,10 +497,10 @@ async def list_events(
 ) -> RunEvents:
     """The run's events after ``after``, in seq order."""
     params = {"run": run_id, "after": after, "kinds": list(dict.fromkeys(kind)), "limit": limit + 1}
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         await readable_run(conn, user, project, run_id, sink)
-        state, last_seq = await (await conn.execute(RUN_PROGRESS, (run_id,))).fetchone()
-        rows = await (await conn.execute(EVENTS_AFTER, params)).fetchall()
+        state, last_seq = await (await legacy(conn, RUN_PROGRESS, (run_id,))).fetchone()
+        rows = await (await legacy(conn, EVENTS_AFTER, params)).fetchall()
     events = _events(rows[:limit])
     return RunEvents(run_id=run_id, state=state, last_seq=last_seq, events=events, more=len(rows) > limit)
 
@@ -512,7 +513,7 @@ async def _streamed_run(
     sink: Annotated[str | None, Header(alias=plan_routes.SINK_HEADER)] = None,
 ) -> int:
     """The run a stream follows, checked before the stream starts so a refusal is an ordinary error answer."""
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         await readable_run(conn, user, project, run_id, sink)
     return run_id
 
@@ -534,15 +535,15 @@ async def stream(
     and every event was sent; a ``: ping`` comment keeps an idle stream open."""
     streams: RunStreams = request.app.state.run_streams
     streams.start()
-    pool = request.app.state.pool
+    engine = request.app.state.engine
     seen = last_event_id if last_event_id is not None else after
     params = {"run": followed, "kinds": [], "limit": STREAM_BATCH}
     with streams.subscribe(followed) as wakeup:
         while True:
-            async with pool.connection() as conn:
+            async with engine.begin() as conn:
                 # The state first: when it is final, the move's own event is committed already and read below.
-                state, _ = await (await conn.execute(RUN_PROGRESS, (followed,))).fetchone()
-                rows = await (await conn.execute(EVENTS_AFTER, {**params, "after": seen})).fetchall()
+                state, _ = await (await legacy(conn, RUN_PROGRESS, (followed,))).fetchone()
+                rows = await (await legacy(conn, EVENTS_AFTER, {**params, "after": seen})).fetchall()
             for event in _events(rows):
                 seen = event.seq
                 yield ServerSentEvent(data=event, id=str(event.seq))
@@ -569,7 +570,7 @@ INSERT_USER_MESSAGE = "INSERT INTO run_events (run_id, seq, kind, body) VALUES (
 )
 async def send_message(request: Request, project: ProjectName, run_id: RunId, body: MessageIn, user: CurrentUser):
     """Leave a message for the run's agent in its inbox, which the worker hands to the agent."""
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         access, row = await _owned_run(conn, user, project, run_id, "send a message to")
         state, plan_id, key = row[2], row[3], row[4]
         if state not in runs.MESSAGE_STATES:
@@ -577,16 +578,16 @@ async def send_message(request: Request, project: ProjectName, run_id: RunId, bo
                 409, f"run {run_id} is {state}: a message goes to a run that is queued or held by its worker"
             )
         await web_only_steering(conn, user, run_id, "send its agent a message", "send it from the web", "sent")
-        last_seq = (await (await conn.execute(RUN_PROGRESS, (run_id,))).fetchone())[1]
+        last_seq = (await (await legacy(conn, RUN_PROGRESS, (run_id,))).fetchone())[1]
         if last_seq >= runs.MAX_RUN_EVENTS:
             message = RUN_FULL.format(id=run_id, count=last_seq, limit=runs.MAX_RUN_EVENTS)
             return error_response(request, 413, message, detail=[{"limit": "events_per_run"}])
         message_id, created_at = await (
-            await conn.execute(INSERT_MESSAGE, (run_id, user.user_id, body.text))
+            await legacy(conn, INSERT_MESSAGE, (run_id, user.user_id, body.text))
         ).fetchone()
-        seq = (await (await conn.execute(NEXT_SEQ, (run_id,))).fetchone())[0]
+        seq = (await (await legacy(conn, NEXT_SEQ, (run_id,))).fetchone())[0]
         event = {"text": body.text, "from": user.login, "message_id": message_id}
-        await conn.execute(INSERT_USER_MESSAGE, (run_id, seq, Jsonb(event)))
+        await legacy(conn, INSERT_USER_MESSAGE, (run_id, seq, Jsonb(event)))
         await notify_events(conn, run_id)
         target = f"{_run_target(project, plan_id, key, run_id)} message:{message_id}"
         await _audit_run(conn, user, access, audit.RUN_MESSAGE, target)
@@ -626,9 +627,9 @@ async def diff(
 ) -> DiffLink:
     """A presigned GET of the diff the run's worker uploaded when the run ended."""
     store = blob_store(request)
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         await readable_run(conn, user, project, run_id, sink)
-        sha256, size = await (await conn.execute(RUN_DIFF, (run_id,))).fetchone()
+        sha256, size = await (await legacy(conn, RUN_DIFF, (run_id,))).fetchone()
     if sha256 is None:
         raise HTTPException(404, f"run {run_id} has no diff: its worker uploads one when the run ends")
     expires_at = datetime.now(UTC) + GET_TTL  # taken before signing, so never later than the URL

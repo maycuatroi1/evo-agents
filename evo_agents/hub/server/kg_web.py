@@ -27,6 +27,7 @@ from typing import Annotated
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
+from evo_agents.hub.db import legacy
 from evo_agents.hub.kg_graph import GRAPHS, ArtifactMismatch, BuiltGraph, GraphUnavailable
 from evo_agents.hub.kg_web import MAX_HOPS, MAX_NODES, SEARCH_LIMIT, GraphProblem, NotVisible, WebSession, read
 from evo_agents.hub.server.admin import ProjectName
@@ -164,10 +165,10 @@ async def _read(request: Request, user, project: str, reader):
     """``reader(session)`` over the project's latest successful build for ``user``, and that build; (None, None)
     when no build succeeded yet."""
     state = request.app.state
-    async with state.pool.connection() as conn:
+    async with state.engine.begin() as conn:
         access = await project_access(conn, user, project)
         _reader(access)
-        cursor = await conn.execute(GRAPHS, (access.project_id, GRAPHS_TRIED))
+        cursor = await legacy(conn, GRAPHS, (access.project_id, GRAPHS_TRIED))
         graphs = [BuiltGraph(*row) for row in await cursor.fetchall()]
     if not graphs:
         return None, None

@@ -41,6 +41,7 @@ from psycopg.types.json import Jsonb
 from pydantic import BaseModel, Field, model_validator
 
 from evo_agents.hub import runs
+from evo_agents.hub.db import legacy
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.admin import PROJECT_NAME
 from evo_agents.hub.server.errors import ErrorBody
@@ -137,8 +138,8 @@ async def notify(
         "details": Jsonb(details) if details is not None else None,
         "link": link,
     }
-    notification_id = (await (await conn.execute(INSERT_NOTIFICATION, params)).fetchone())[0]
-    await conn.execute(INSERT_DELIVERIES, {"id": notification_id, "user": user_id})
+    notification_id = (await (await legacy(conn, INSERT_NOTIFICATION, params)).fetchone())[0]
+    await legacy(conn, INSERT_DELIVERIES, {"id": notification_id, "user": user_id})
     return notification_id
 
 
@@ -222,7 +223,7 @@ def _error_text(exc: BaseException) -> str:
 async def _deliver_one(conn, delivery_id: int, instances: dict, config) -> str | None:
     """Try delivery ``delivery_id`` once, in the caller's transaction; delivered, retried or failed, or None when it
     is no longer due (taken by another pass, or done meanwhile)."""
-    row = await (await conn.execute(LOCK_DUE, (delivery_id,))).fetchone()
+    row = await (await legacy(conn, LOCK_DUE, (delivery_id,))).fetchone()
     if row is None:
         return None
     attempts, channel_kind, channel_config, enabled, *fields, has_channel = row
@@ -230,10 +231,10 @@ async def _deliver_one(conn, delivery_id: int, instances: dict, config) -> str |
     kind = channel_kind if has_channel else WEB
     cls = CHANNELS.get(kind)
     if cls is None:
-        await conn.execute(FAILED, (f"the hub has no class for channels of kind {kind}", delivery_id))
+        await legacy(conn, FAILED, (f"the hub has no class for channels of kind {kind}", delivery_id))
         return "failed"
     if has_channel and not enabled:
-        await conn.execute(FAILED, ("the channel was turned off before the notification went out", delivery_id))
+        await legacy(conn, FAILED, ("the channel was turned off before the notification went out", delivery_id))
         return "failed"
     channel = instances.get(kind)
     if channel is None:
@@ -243,25 +244,25 @@ async def _deliver_one(conn, delivery_id: int, instances: dict, config) -> str |
     except Exception as exc:  # any failure of a channel is the delivery's, never the job's
         error = _error_text(exc) or "the channel failed"
         if attempts + 1 >= runs.MAX_DELIVERY_ATTEMPTS:
-            await conn.execute(FAILED, (error, delivery_id))
+            await legacy(conn, FAILED, (error, delivery_id))
             log.warning("notification delivery failed", extra={"delivery_id": delivery_id, "channel": kind})
             return "failed"
-        await conn.execute(RETRY, (backoff(attempts + 1), error, delivery_id))
+        await legacy(conn, RETRY, (backoff(attempts + 1), error, delivery_id))
         log.info("notification delivery to try again", extra={"delivery_id": delivery_id, "channel": kind})
         return "retried"
-    await conn.execute(DELIVERED, (delivery_id,))
+    await legacy(conn, DELIVERED, (delivery_id,))
     return "delivered"
 
 
-async def deliver_notifications(pool, *, config=None, batch: int = DELIVERY_BATCH) -> dict:
+async def deliver_notifications(engine, *, config=None, batch: int = DELIVERY_BATCH) -> dict:
     """One pass of the job hub.deliver_notifications: each pending delivery that is due, tried once in a transaction
     of its own. Returns how many were delivered, are to be tried again, and failed."""
     report = {"delivered": 0, "retried": 0, "failed": 0}
-    async with pool.connection() as conn:
-        due = [row[0] for row in await (await conn.execute(DUE, (batch,))).fetchall()]
+    async with engine.begin() as conn:
+        due = [row[0] for row in await (await legacy(conn, DUE, (batch,))).fetchall()]
     instances: dict[str, Channel] = {}
     for delivery_id in due:
-        async with pool.connection() as conn:
+        async with engine.begin() as conn:
             outcome = await _deliver_one(conn, delivery_id, instances, config)
         if outcome is not None:
             report[outcome] += 1
@@ -336,7 +337,7 @@ def _notifications(rows) -> list[Notification]:
 )
 async def send_notice(request: Request, run_id: RunId, body: NoticeIn, user: CurrentUser) -> Notification:
     """Notify the owner of a plan run this worker holds: a push or merge into a default branch, say."""
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         _, row = await _held_plan_run(conn, user, run_id, lock=True)
         _, _, _, project_id, project, plan_id, dispatcher_id, _, repos = row
         names = [entry.get("repo") for entry in repos or [] if isinstance(entry, dict)]
@@ -358,7 +359,7 @@ async def send_notice(request: Request, run_id: RunId, body: NoticeIn, user: Cur
         facts = {"kind": body.kind, "notification_id": notification_id, **(body.details() or {})}
         await write_event(conn, run_id, {"text": shown, "notice": facts})
         (view,) = _notifications(
-            await (await conn.execute(NOTIFICATION_COLUMNS + " WHERE n.id = %s", (notification_id,))).fetchall()
+            await (await legacy(conn, NOTIFICATION_COLUMNS + " WHERE n.id = %s", (notification_id,))).fetchall()
         )
     log.info("notice sent", extra={"run_id": run_id, "kind": body.kind, "plan_id": plan_id})
     return view
@@ -457,17 +458,17 @@ async def list_notifications(
         "limit": limit,
         "offset": offset,
     }
-    async with request.app.state.pool.connection() as conn:
-        page = _notifications(await (await conn.execute(LIST_PAGE, params)).fetchall())
-        total = (await (await conn.execute(LIST_TOTAL, params)).fetchone())[0]
+    async with request.app.state.engine.begin() as conn:
+        page = _notifications(await (await legacy(conn, LIST_PAGE, params)).fetchall())
+        total = (await (await legacy(conn, LIST_TOTAL, params)).fetchone())[0]
     return NotificationList(notifications=page, total=total, limit=limit, offset=offset)
 
 
 @router.get("/notifications/count", response_model=NotificationCount)
 async def count_notifications(request: Request, user: CurrentUser) -> NotificationCount:
     """How many of the caller's notifications are unread, and how many decisions wait for their answer."""
-    async with request.app.state.pool.connection() as conn:
-        unread, open_decisions = await (await conn.execute(COUNTS, {"user": user.user_id})).fetchone()
+    async with request.app.state.engine.begin() as conn:
+        unread, open_decisions = await (await legacy(conn, COUNTS, {"user": user.user_id})).fetchone()
     return NotificationCount(unread=unread, open_decisions=open_decisions)
 
 
@@ -475,8 +476,8 @@ async def count_notifications(request: Request, user: CurrentUser) -> Notificati
 async def read_notifications(request: Request, body: ReadRequest, user: CurrentUser) -> ReadResult:
     """Mark the caller's notifications read: those named, or all of them."""
     params = {"user": user.user_id, "all": body.all, "ids": list(dict.fromkeys(body.ids or []))}
-    async with request.app.state.pool.connection() as conn:
-        marked = sorted(row[0] for row in await (await conn.execute(MARK_READ, params)).fetchall())
+    async with request.app.state.engine.begin() as conn:
+        marked = sorted(row[0] for row in await (await legacy(conn, MARK_READ, params)).fetchall())
         if marked:
             target = "notifications:all" if body.all else "notifications:" + ",".join(map(str, marked))
             if body.all:
@@ -484,6 +485,6 @@ async def read_notifications(request: Request, body: ReadRequest, user: CurrentU
             await audit.record(
                 conn, actor_id=user.user_id, token_id=user.token_id, action=audit.NOTIFICATION_READ, target=target
             )
-        unread = (await (await conn.execute(COUNTS, {"user": user.user_id})).fetchone())[0]
+        unread = (await (await legacy(conn, COUNTS, {"user": user.user_id})).fetchone())[0]
     log.info("notifications read", extra={"login": user.login, "read": len(marked)})
     return ReadResult(read=len(marked), unread=unread)

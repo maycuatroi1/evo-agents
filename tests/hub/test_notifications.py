@@ -89,7 +89,7 @@ def notice(client, worker: dict, run_id: int, **body):
 
 
 def deliver(client) -> dict:
-    return client.portal.call(notifications.deliver_notifications, client.app.state.pool)
+    return client.portal.call(notifications.deliver_notifications, client.app.state.engine)
 
 
 def deliveries(db) -> list[tuple]:
@@ -269,7 +269,7 @@ def test_the_fifth_failure_fails_a_delivery_and_a_channel_without_a_class_fails_
 
     # a channel turned off after the notification was stored fails its delivery instead of sending
     channel = add_channel(hub_db, "someone-else", "fake")
-    notification = client.portal.call(_notify, client.app.state.pool, user_id(hub_db, "someone-else"))
+    notification = client.portal.call(_notify, client.app.state.engine, user_id(hub_db, "someone-else"))
     sql(hub_db, "UPDATE notification_channels SET enabled = false WHERE id = %s", (channel,))
     assert deliver(client) == {"delivered": 1, "retried": 0, "failed": 1}
     assert sql(
@@ -279,9 +279,9 @@ def test_the_fifth_failure_fails_a_delivery_and_a_channel_without_a_class_fails_
     ) == [("failed", "the channel was turned off before the notification went out")]
 
 
-async def _notify(pool, member: int) -> int:
+async def _notify(engine, member: int) -> int:
     """A notice for ``member``, stored through the outbox."""
-    async with pool.connection() as conn:
+    async with engine.begin() as conn:
         return await notifications.notify(
             conn, user_id=member, kind="notice", notice_kind="plan_finished", title="Plan fleet finished"
         )
@@ -294,7 +294,7 @@ def test_the_job_runs_every_minute_queued_at_most_once_and_takes_the_hubs_pool(c
     worker, run = started(client, hub)
     notice(client, worker, run["id"])
     context = SimpleNamespace(
-        additional_context={"hub": SimpleNamespace(pool=client.app.state.pool, config=client.app.state.config)}
+        additional_context={"hub": SimpleNamespace(engine=client.app.state.engine, config=client.app.state.config)}
     )
     report = client.portal.call(queue.tasks[jobs.DELIVER_NOTIFICATIONS].func, context)
     assert report == {"delivered": 1, "retried": 0, "failed": 0}

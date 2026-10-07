@@ -34,7 +34,7 @@ from evo_agents.hub import blob_gc
 from evo_agents.hub.blobs import BLOB_PREFIX, BlobStore, blob_key
 from evo_agents.hub.client import Hub
 from evo_agents.hub.config import MAX_KG_KEEP_ARTIFACTS
-from evo_agents.hub.db import open_pool
+from evo_agents.hub.db import make_engine, open_pool
 from evo_agents.hub.jobs import PRUNE_KG_ARTIFACTS, JobQueue
 from evo_agents.hub.kg_prune import prune
 from evo_agents.hub.skills import pack
@@ -459,7 +459,7 @@ def test_two_prunes_at_once_delete_each_artifact_once(hub, tmp_path):
         pools = [await open_pool(config), await open_pool(config)]
         store = BlobStore.from_config(config)
         try:
-            return await asyncio.gather(*(prune(pool, store, 1) for pool in pools))
+            return await asyncio.gather(*(prune(make_engine(pool), store, 1) for pool in pools))
         finally:
             for pool in pools:
                 await pool.close()
@@ -498,7 +498,7 @@ def test_an_artifact_s_bytes_committed_while_the_retention_deletes_them_are_put_
                 pool = await open_pool(make_config(hub.db, tmp_path / "racing", hub.s3))
                 own = BlobStore.from_config(make_config(hub.db, tmp_path / "racing", hub.s3))
                 try:
-                    return await prune(pool, own, 1, PROJECT)
+                    return await prune(make_engine(pool), own, 1, PROJECT)
                 finally:
                     await pool.close()
                     own.close()

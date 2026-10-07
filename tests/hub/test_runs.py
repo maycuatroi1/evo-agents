@@ -202,7 +202,7 @@ def expire(db, run_id: int) -> None:
 
 
 def recover(client) -> dict:
-    return client.portal.call(run_state.recover_runs, client.app.state.pool)
+    return client.portal.call(run_state.recover_runs, client.app.state.engine)
 
 
 def state_of(db, run_id: int) -> str:
@@ -1095,7 +1095,7 @@ def test_events_of_runs_that_ended_long_ago_are_pruned(client, hub, hub_db):
     running = dispatched(client, hub["owner"], [2])[0]["id"]
     claim(client, worker)
     state = client.app.state
-    found = SimpleNamespace(pool=state.pool, config=state.config, sealer=state.sealer, github_app=state.github_app)
+    found = SimpleNamespace(engine=state.engine, config=state.config, sealer=state.sealer, github_app=state.github_app)
     context = SimpleNamespace(additional_context={"hub": found})
     report_ = client.portal.call(queue.tasks[jobs.PRUNE_RUN_EVENTS].func, context)
     assert report_ == {"deleted": 1, "days": 30, "tokens_dropped": 0}

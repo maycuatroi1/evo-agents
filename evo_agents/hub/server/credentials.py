@@ -75,6 +75,7 @@ from evo_agents.hub.credentials import (
     matches,
     normalize_origin,
 )
+from evo_agents.hub.db import legacy
 from evo_agents.hub.server import audit
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.admin import ProjectName
@@ -265,11 +266,11 @@ async def _held_run(conn, worker_id: int, run_id: int, *, lock: bool) -> _Run:
     """The run ``run_id`` that worker ``worker_id`` holds, its row locked with ``lock``; 404 for any other. 403 when
     the member who dispatched it no longer holds writer on its project; with ``lock`` their grant's row is held too,
     so a grant taken away meanwhile waits for the leases of this ask, and takes them back (``end_member_leases``)."""
-    row = await (await conn.execute(RUN + ("   FOR UPDATE OF r" if lock else ""), (run_id,))).fetchone()
+    row = await (await legacy(conn, RUN + ("   FOR UPDATE OF r" if lock else ""), (run_id,))).fetchone()
     if row is None or row[1] != worker_id or row[0] not in runs.HELD_STATES:
         raise HTTPException(404, NOT_HELD.format(id=run_id))
     state, worker, kind, project_id, project, plan_id, step_key, owner_id, owner, repo, repos, github_id = row
-    grant = await (await conn.execute(OWNER_ROLE + (" FOR SHARE" if lock else ""), (owner_id, project_id))).fetchone()
+    grant = await (await legacy(conn, OWNER_ROLE + (" FOR SHARE" if lock else ""), (owner_id, project_id))).fetchone()
     if not has_role(grant[0] if grant else None, "writer"):
         raise HTTPException(
             403,
@@ -296,9 +297,9 @@ async def _survey(conn, user: Principal, run_id: int, *, lock: bool) -> tuple[in
     and a secret cannot be deleted until the leases are recorded."""
     worker_id = (await _worker_of(conn, user))[0]
     run = await _held_run(conn, worker_id, run_id, lock=lock)
-    registered = dict(await (await conn.execute(ORIGINS, (run.project_id, list(run.repos)))).fetchall())
+    registered = dict(await (await legacy(conn, ORIGINS, (run.project_id, list(run.repos)))).fetchall())
     params = {"owner": run.owner_id, "project": run.project_id, "worker": worker_id}
-    rows = await (await conn.execute(SECRETS + (" FOR SHARE OF s" if lock else ""), params)).fetchall()
+    rows = await (await legacy(conn, SECRETS + (" FOR SHARE OF s" if lock else ""), params)).fetchall()
     secrets = [
         _Secret(row[0], row[1], row[2], row[3], row[4], row[5], Sealed(row[6], row[7], row[8]), row[9], row[10])
         for row in rows
@@ -306,7 +307,7 @@ async def _survey(conn, user: Principal, run_id: int, *, lock: bool) -> tuple[in
     params = {"run": run_id, "worker": worker_id, "refresh": REFRESH}
     tokens = [
         _HeldToken(row[0], frozenset(row[1].split()), row[2], Sealed(row[3], row[4], row[5]))
-        for row in await (await conn.execute(HELD_TOKENS, params)).fetchall()
+        for row in await (await legacy(conn, HELD_TOKENS, params)).fetchall()
     ]
     survey = _Survey(run, {repo: registered.get(repo) for repo in run.repos}, secrets, tokens)
     _choose(survey)
@@ -374,7 +375,7 @@ def _token_lease(lease_id: int, owner: str, token: str, expires_at: datetime) ->
 async def _lease_secrets(conn, survey: _Survey, worker_id: int, sealer: Sealer) -> list[Lease]:
     """A lease of each secret ``survey`` chose, the one the run holds already when there is one; a secret that does not
     open with the hub's key is left out, and the repos it was to answer for are missing."""
-    rows = await (await conn.execute(LIVE_SECRET_LEASES, (survey.run.id, worker_id))).fetchall()
+    rows = await (await legacy(conn, LIVE_SECRET_LEASES, (survey.run.id, worker_id))).fetchall()
     held = {(secret_id, target): lease_id for secret_id, target, lease_id in rows}
     chosen: list[tuple[_Secret, str]] = [(secret, secret.env_var) for secret in survey.env]
     for secret in dict.fromkeys(survey.git.values()):
@@ -402,7 +403,7 @@ async def _lease_secrets(conn, survey: _Survey, worker_id: int, sealer: Sealer) 
                 "external": None,
                 "expires_at": secret.expires_at,
             }
-            lease_id = (await (await conn.execute(INSERT_LEASE, params)).fetchone())[0]
+            lease_id = (await (await legacy(conn, INSERT_LEASE, params)).fetchone())[0]
         leases.append(_secret_lease(lease_id, secret, value))
     return leases
 
@@ -445,9 +446,9 @@ async def _lease_tokens(
             "external": str(token.installation.id),
             "expires_at": token.expires_at,
         }
-        lease_id = (await (await conn.execute(INSERT_LEASE, params)).fetchone())[0]
+        lease_id = (await (await legacy(conn, INSERT_LEASE, params)).fetchone())[0]
         sealed = sealer.seal(token.token, lease_aad(lease_id))  # bound to the lease's id, so inserted first
-        await conn.execute(SEAL_LEASE, (sealed.ciphertext, sealed.nonce, sealed.key_id, lease_id))
+        await legacy(conn, SEAL_LEASE, (sealed.ciphertext, sealed.nonce, sealed.key_id, lease_id))
         owner = survey.github[repos[0]][0] if repos else token.installation.account
         leases.append(_token_lease(lease_id, owner, token.token, token.expires_at))
     return leases
@@ -474,8 +475,8 @@ async def lease_credentials(request: Request, run_id: RunId, user: CurrentUser, 
     state = request.app.state
     sealer: Sealer | None = state.sealer
     app: GitHubApp | None = state.github_app
-    pool = state.pool
-    async with pool.connection() as conn:
+    engine = state.engine
+    async with engine.begin() as conn:
         _, survey = await _survey(conn, user, run_id, lock=False)
     made: list[InstallationToken] | None = None
     reasons: dict[str, str] = {}
@@ -491,7 +492,7 @@ async def lease_credentials(request: Request, run_id: RunId, user: CurrentUser, 
                 if f"{owner}/{name}" in found.missing:
                     reasons[repo] = found.missing[f"{owner}/{name}"]
     try:
-        async with pool.connection() as conn:
+        async with engine.begin() as conn:
             worker_id, survey = await _survey(conn, user, run_id, lock=True)
             if sealer is None:
                 missing_key = ", ".join(state.config.credentials_missing()) or "EVO_HUB_SECRETS_KEY"
@@ -560,15 +561,15 @@ GIVEN_BACK_RUN = "SELECT worker_id FROM runs WHERE id = %s"
 async def give_back_credentials(request: Request, run_id: RunId, user: CurrentUser) -> GivenBack:
     """Give back every lease this worker holds of the run, in whatever state the run is; GitHub tokens are revoked."""
     state = request.app.state
-    async with state.pool.connection() as conn:
+    async with state.engine.begin() as conn:
         worker_id = (await _worker_of(conn, user))[0]
-        row = await (await conn.execute(GIVEN_BACK_RUN + " FOR UPDATE", (run_id,))).fetchone()
+        row = await (await legacy(conn, GIVEN_BACK_RUN + " FOR UPDATE", (run_id,))).fetchone()
         if row is None or row[0] != worker_id:
             raise HTTPException(404, f"this worker never held run {run_id}")
         revoked = await end_leases(
             conn, run_id=run_id, worker_id=worker_id, actor_id=user.user_id, token_id=user.token_id, by="worker"
         )
-    await revoke_tokens(state.pool, state.sealer, state.github_app, run_id=run_id)
+    await revoke_tokens(state.engine, state.sealer, state.github_app, run_id=run_id)
     log.info("credentials given back", extra={"run_id": run_id, "worker_id": worker_id, "revoked": revoked})
     return GivenBack(revoked=revoked)
 
@@ -600,12 +601,12 @@ async def run_credentials(
     sink: Annotated[str | None, Header(alias=plan_routes.SINK_HEADER)] = None,
 ) -> list[RunLease]:
     """Every lease the run got, given back or not, without a value; for the member who dispatched it."""
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         await readable_run(conn, user, project, run_id, sink)
-        owner_id, owner = await (await conn.execute(RUN_OWNER, (run_id,))).fetchone()
+        owner_id, owner = await (await legacy(conn, RUN_OWNER, (run_id,))).fetchone()
         if owner_id != user.user_id:
             raise HTTPException(403, f"only {owner}, who dispatched run {run_id}, sees the credentials it got")
-        rows = await (await conn.execute(RUN_LEASES, (run_id,))).fetchall()
+        rows = await (await legacy(conn, RUN_LEASES, (run_id,))).fetchall()
     return [
         RunLease(
             id=lease_id,
@@ -652,7 +653,7 @@ async def end_leases(
     GitHub once the transaction commits. Returns how many leases were marked."""
     if run_id is None and worker_id is None:
         raise ValueError("end_leases needs a run, a worker or both")
-    rows = await (await conn.execute(END_LEASES, {"run": run_id, "worker": worker_id})).fetchall()
+    rows = await (await legacy(conn, END_LEASES, {"run": run_id, "worker": worker_id})).fetchall()
     for run, project_id, project, plan_id, step_key, count, secrets, tokens in rows:
         target = (
             f"{_run_target(project, plan_id, step_key, run)} leases={count} secrets={_ids(secrets)} "
@@ -682,7 +683,7 @@ async def end_member_leases(
     """Mark revoked, in the caller's transaction, every lease still out of the runs member ``user_id`` dispatched in
     project ``project_id``, as ``end_leases`` does for each run: the member no longer holds writer there. Returns the
     runs, whose GitHub tokens the caller revokes once the transaction commits (``revoke_tokens``)."""
-    run_ids = [row[0] for row in await (await conn.execute(MEMBER_RUNS_LEASED, (project_id, user_id))).fetchall()]
+    run_ids = [row[0] for row in await (await legacy(conn, MEMBER_RUNS_LEASED, (project_id, user_id))).fetchall()]
     for run_id in run_ids:
         await end_leases(conn, run_id=run_id, actor_id=actor_id, token_id=token_id, by=by)
     return run_ids
@@ -704,7 +705,7 @@ DROP_SEALED = "UPDATE credential_leases SET sealed_value = NULL, nonce = NULL, k
 
 
 async def revoke_tokens(
-    pool,
+    engine,
     sealer: Sealer | None,
     app: GitHubApp | None,
     *,
@@ -721,11 +722,11 @@ async def revoke_tokens(
     if sealer is None or app is None:
         return {"revoked": 0, "gone": 0, "left": 0, "unopened": 0}
     params = {"run": run_id, "worker": worker_id, "batch": batch}
-    async with pool.connection() as conn:
-        pending = [row[0] for row in await (await conn.execute(PENDING_TOKENS, params)).fetchall()]
+    async with engine.begin() as conn:
+        pending = [row[0] for row in await (await legacy(conn, PENDING_TOKENS, params)).fetchall()]
     for index, lease_id in enumerate(pending):
-        async with pool.connection() as conn:
-            row = await (await conn.execute(TAKE_TOKEN, (lease_id,))).fetchone()
+        async with engine.begin() as conn:
+            row = await (await legacy(conn, TAKE_TOKEN, (lease_id,))).fetchone()
             if row is None:  # revoked meanwhile by another pass, or being revoked now
                 continue
             try:
@@ -733,7 +734,7 @@ async def revoke_tokens(
             except Unsealable as exc:
                 why = {"lease_id": lease_id, "why": str(exc)}
                 log.warning("a leased GitHub token does not open; it ends at its expiry", extra=why)
-                await conn.execute(DROP_SEALED, (lease_id,))
+                await legacy(conn, DROP_SEALED, (lease_id,))
                 counts["unopened"] += 1
                 continue
             try:
@@ -742,7 +743,7 @@ async def revoke_tokens(
                 counts["left"] += len(pending) - index
                 log.warning("GitHub tokens left to revoke later", extra={"left": counts["left"], "why": str(exc)})
                 break
-            await conn.execute(DROP_SEALED, (lease_id,))
+            await legacy(conn, DROP_SEALED, (lease_id,))
             counts["revoked" if revoked else "gone"] += 1
     report = {key: counts.get(key, 0) for key in ("revoked", "gone", "left", "unopened")}
     if pending:
@@ -758,4 +759,4 @@ UPDATE credential_leases SET sealed_value = NULL, nonce = NULL, key_id = NULL
 
 async def drop_expired(conn) -> int:
     """Drop the sealed values of the GitHub tokens past their end, which GitHub no longer takes; how many."""
-    return (await conn.execute(DROP_EXPIRED)).rowcount
+    return (await legacy(conn, DROP_EXPIRED)).rowcount

@@ -54,12 +54,14 @@ from mcp.server.transport_security import DEFAULT_MAX_REQUEST_BODY_SIZE, Transpo
 from mcp_types import CallToolResult
 from mcp_types import Tool as McpTool
 from pydantic import ValidationError
+from sqlalchemy import exc as sa_exc
 from starlette.requests import Request
 
 from evo_agents import __version__
 from evo_agents.hub.access import has_role
 from evo_agents.hub.client import HubError
 from evo_agents.hub.config import HubConfig
+from evo_agents.hub.db import legacy
 from evo_agents.hub.mcp_tools import (
     INSTRUCTIONS,
     KG_TOOL_NAMES,
@@ -269,13 +271,13 @@ class McpGate:
             return error_response(request, 400, f"{RUN_HEADER} goes with a worker token: a machine token is no run's")
         if run is not None and not _RUN.fullmatch(run):
             return error_response(request, 400, f"{RUN_HEADER} must be the id of a run")
-        config, pool = request.app.state.config, request.app.state.pool
+        config, engine = request.app.state.config, request.app.state.engine
         try:
-            principal = await authenticate(pool, token, kind, config)
+            principal = await authenticate(engine, token, kind, config)
             if principal is not None and kind == WORKER:
-                async with pool.connection() as conn:
+                async with engine.begin() as conn:
                     principal = replace(principal, scope=await run_scope(conn, principal, int(run)))
-        except psycopg.OperationalError as exc:  # PoolTimeout is one; bugs stay 500s
+        except (psycopg.OperationalError, sa_exc.OperationalError) as exc:  # PoolTimeout is one; bugs stay 500s
             log.warning("cannot check a credential: database unavailable", extra={"error": type(exc).__name__})
             return error_response(request, 503, "the hub database is unavailable; try again shortly")
         except HTTPException as exc:  # a run its worker does not hold
@@ -293,7 +295,7 @@ async def run_scope(conn, user: Principal, run_id: int) -> RunScope:
     """The scope of the agent of run ``run_id`` for the worker whose token ``user`` authenticated: the run's project,
     the owner's grant there with its role capped at writer. HTTPException 403 when that worker does not hold the run
     now (another worker's, one that ended, none) or the owner holds no grant on the project any more."""
-    row = await (await conn.execute(RUN_SCOPE, {"token": user.token_id, "run": run_id})).fetchone()
+    row = await (await legacy(conn, RUN_SCOPE, {"token": user.token_id, "run": run_id})).fetchone()
     if row is None or row[0] not in HELD_STATES:
         raise HTTPException(403, NOT_HELD.format(run=run_id))
     _, project, role, max_level = row
@@ -428,7 +430,7 @@ class HubMcp(MCPServer):
             return _error(str(exc))
         except HTTPException as exc:
             return _error(_detail(exc))
-        except psycopg.OperationalError as exc:  # PoolTimeout is one
+        except (psycopg.OperationalError, sa_exc.OperationalError) as exc:  # PoolTimeout is one
             log.warning("mcp tool: database unavailable", extra={"tool": name, "error": type(exc).__name__})
             return _error("the hub database is unavailable; try again shortly")
         except Exception:
@@ -453,7 +455,7 @@ class HubMcp(MCPServer):
 
     async def _readable(self, caller: Caller, project: str) -> ProjectAccess:
         """The caller's access to ``project`` when anything of it is visible through the session's sink."""
-        async with self.hub.state.pool.connection() as conn:
+        async with self.hub.state.engine.begin() as conn:
             access = await project_access(conn, caller.user, project)
         if access.role is None:
             raise Refusal(f"reading project {project} needs a grant on it")
