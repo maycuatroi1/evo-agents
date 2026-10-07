@@ -13,7 +13,10 @@ from __future__ import annotations
 
 import re
 
-from evo_agents.hub.db import legacy
+from sqlalchemy import insert, select
+from sqlalchemy.ext.asyncio import AsyncConnection
+
+from evo_agents.hub import tables
 
 LOGIN = "auth.login"
 LOGOUT = "auth.logout"
@@ -70,14 +73,6 @@ _FIRST_NAME = re.compile(r"([a-z0-9][a-z0-9-]{0,99})(?:[/ @]|$)")
 _PROJECT_SKILL = re.compile(r"skill:project/([a-z0-9][a-z0-9-]{0,99})/")
 _MEMORY = re.compile(r"memory:([0-9]{1,18})")
 
-INSERT = """
-INSERT INTO audit (actor_id, token_id, action, target, project_id)
-VALUES (%(actor_id)s, %(token_id)s, %(action)s, %(target)s,
-        coalesce(%(project_id)s::bigint,
-                 (SELECT id FROM projects WHERE name = %(project)s::text),
-                 (SELECT project_id FROM memories WHERE id = %(memory_id)s::bigint)))
-"""
-
 
 def subject(action: str, target: str) -> tuple[str | None, int | None]:
     """The project an action happened in, as a project name or the id of the memory it changed; (None, None) for
@@ -96,19 +91,27 @@ def subject(action: str, target: str) -> tuple[str | None, int | None]:
 
 
 async def record(
-    conn, *, actor_id: int | None, token_id: int | None, action: str, target: str, project_id: int | None = None
+    conn: AsyncConnection,
+    *,
+    actor_id: int | None,
+    token_id: int | None,
+    action: str,
+    target: str,
+    project_id: int | None = None,
 ) -> None:
-    project, memory_id = (None, None) if project_id is not None else subject(action, target)
-    params = {
-        "actor_id": actor_id,
-        "token_id": token_id,
-        "action": action,
-        "target": target,
-        "project_id": project_id,
-        "project": project,
-        "memory_id": memory_id,
-    }
-    await legacy(conn, INSERT, params)
+    if project_id is None:
+        project, memory_id = subject(action, target)
+        if project is not None:
+            projects = tables.projects
+            project_id = select(projects.c.id).where(projects.c.name == project).scalar_subquery()
+        elif memory_id is not None:
+            memories = tables.memories
+            project_id = select(memories.c.project_id).where(memories.c.id == memory_id).scalar_subquery()
+    await conn.execute(
+        insert(tables.audit).values(
+            actor_id=actor_id, token_id=token_id, action=action, target=target, project_id=project_id
+        )
+    )
 
 
 def token_target(token_id: int) -> str:
