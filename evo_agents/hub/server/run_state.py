@@ -27,7 +27,7 @@ leaves interactive, and notifies EVENTS_CHANNEL with the run's id, as every writ
 streams of the run (``run_events``) send the new event at once. It settles the run's agent time: ``run_seconds`` takes
 the whole seconds since ``counted_at`` (else since the agent started, else since the claim) while the run was in one
 of ``runs.CLOCK_STATES``, and ``counted_at`` moves on to where the count stopped, or is cleared when the run leaves
-those states; a heartbeat settles it the same way (``SETTLE``). A move to ``waiting`` sets ``waiting_since`` (any other
+those states; a heartbeat settles it the same way (``settle``). A move to ``waiting`` sets ``waiting_since`` (any other
 move clears it) and one to ``parked`` sets ``parked_at``. A run that ends cancels its decisions still open, unless the
 caller deals with them (``decisions=None``): the reaper lets those of a run parked too long expire, and an answer to a
 parked run hands them to the run that resumes it. A plan run that ends ``failed`` sends its owner the notice
@@ -64,12 +64,12 @@ from typing import TYPE_CHECKING
 
 import psycopg
 from fastapi import HTTPException
-from psycopg import sql
-from psycopg.types.json import Jsonb
+from sqlalchemy import Integer, case, cast, delete, extract, func, insert, null, or_, select, update
+from sqlalchemy.exc import DBAPIError
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from evo_agents.hub import runs
+from evo_agents.hub import runs, tables
 from evo_agents.hub.access import has_role
-from evo_agents.hub.db import legacy
 from evo_agents.hub.plans import PlanProblem, step_index
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.projects import project_access
@@ -104,140 +104,100 @@ MOVE_COLUMNS = frozenset(
     }
 )
 
-# Agent time, in an UPDATE of runs (whose right-hand sides read the row as it was) or a query of it: when the count
-# last stopped, and the whole seconds since then while the run is in one of runs.CLOCK_STATES (%(clock)s).
-CLOCK_FROM = "coalesce(counted_at, started_at, leased_at, now())"
-ELAPSED = (
-    f"CASE WHEN state = ANY(%(clock)s) THEN greatest(0, floor(extract(epoch FROM now() - {CLOCK_FROM})))::integer "
-    "ELSE 0 END"
-)
-# What a heartbeat sets to settle a run's agent time without moving it; the fraction of a second left goes on counting.
-SETTLE = (
-    f"run_seconds = run_seconds + {ELAPSED}, "
-    f"counted_at = CASE WHEN state = ANY(%(clock)s) THEN {CLOCK_FROM} + make_interval(secs => {ELAPSED}) END"
-)
-PAST_TIMEOUT = f"run_seconds + {ELAPSED} > timeout_s"
 
-MOVE = f"""
-UPDATE runs SET state = %(to)s, error = coalesce(%(error)s, error), event_seq = event_seq + 1,
-       leased_at = CASE WHEN %(to)s = 'leased' THEN now() ELSE leased_at END,
-       started_at = CASE WHEN %(to)s IN ('running', 'interactive') THEN coalesce(started_at, now())
-                         ELSE started_at END,
-       lease_expires_at = CASE WHEN %(to)s = ANY(%(held)s) THEN coalesce(lease_expires_at, now() + %(lease)s)
-                               ELSE NULL END,
-       finished_at = CASE WHEN %(to)s = ANY(%(terminal)s) THEN now() ELSE finished_at END,
-       run_seconds = run_seconds + {ELAPSED},
-       counted_at = CASE WHEN %(to)s <> ALL(%(clock)s) THEN NULL
-                         WHEN state = ANY(%(clock)s) THEN {CLOCK_FROM} + make_interval(secs => {ELAPSED})
-                         ELSE now() END,
-       waiting_since = CASE WHEN %(to)s = 'waiting' THEN now() END,
-       parked_at = CASE WHEN %(to)s = 'parked' THEN now() ELSE parked_at END,
-       takeover_requested_at = CASE WHEN %(to)s = ANY(%(takeover)s) THEN takeover_requested_at END,
-       handback_requested_at = CASE WHEN %(to)s = ANY(%(handback)s) THEN handback_requested_at END{{extra}}
- WHERE id = %(id)s AND state = %(from)s
-RETURNING event_seq
-"""
-END_DECISIONS = "UPDATE decisions SET state = %s WHERE run_id = %s AND state = 'open'"
-# The next attempt keeps the dispatch's credential, so a worker that takes runs dispatched from the web only takes the
-# retry of one too, and never the retry of a run dispatched with a token.
-NEXT_ATTEMPT = """
-INSERT INTO runs (kind, project_id, plan_id, step_key, title, plan_revision, dispatched_by, dispatched_via,
-                  pinned_worker_id, requested_runtime, runtime, mode, approval, timeout_s, attempt, max_attempts,
-                  parent_run_id, repo, branch, repos, model)
-SELECT kind, project_id, plan_id, step_key, title, plan_revision, dispatched_by, dispatched_via, pinned_worker_id,
-       requested_runtime, requested_runtime, mode, approval, timeout_s, attempt + 1, max_attempts, id, repo, branch,
-       repos, model
-  FROM runs WHERE id = %s
-RETURNING id
-"""
-HELD_RUNS = """
-SELECT id, state, attempt, max_attempts, pinned_worker_id, cancel_requested_at IS NOT NULL
-  FROM runs
- WHERE worker_id = %s AND state = ANY(%s)
- ORDER BY id
-   FOR UPDATE
-"""
-PINNED_QUEUED = "SELECT id, state FROM runs WHERE pinned_worker_id = %s AND state = 'queued' ORDER BY id FOR UPDATE"
-PARKED_ON = "SELECT id FROM runs WHERE worker_id = %s AND state = 'parked' ORDER BY id FOR UPDATE"
-EXPIRED = "SELECT id FROM runs WHERE state = ANY(%s) AND lease_expires_at < now() ORDER BY lease_expires_at LIMIT %s"
-TIMED_OUT = f"SELECT id FROM runs WHERE state = ANY(%(held)s) AND {PAST_TIMEOUT} ORDER BY id LIMIT %(batch)s"
-LOCK_TIMED_OUT = f"""
-SELECT state, timeout_s, cancel_requested_at IS NOT NULL
-  FROM runs
- WHERE id = %(id)s AND state = ANY(%(held)s) AND {PAST_TIMEOUT}
-   FOR UPDATE SKIP LOCKED
-"""
-WAITED_TOO_LONG = """
-SELECT id FROM runs WHERE state = 'waiting' AND waiting_since < now() - %s ORDER BY waiting_since LIMIT %s
-"""
-LOCK_WAITED = """
-SELECT cancel_requested_at IS NOT NULL
-  FROM runs
- WHERE id = %s AND state = 'waiting' AND waiting_since < now() - %s
-   FOR UPDATE SKIP LOCKED
-"""
-PARKED_TOO_LONG = "SELECT id FROM runs WHERE state = 'parked' AND parked_at < now() - %s ORDER BY parked_at LIMIT %s"
-LOCK_PARKED = "SELECT 1 FROM runs WHERE id = %s AND state = 'parked' AND parked_at < now() - %s FOR UPDATE SKIP LOCKED"
-LOCK_EXPIRED = """
-SELECT r.id, r.state, r.attempt, r.max_attempts, r.cancel_requested_at IS NOT NULL, w.name
-  FROM runs r LEFT JOIN workers w ON w.id = r.worker_id
- WHERE r.id = %s AND r.state = ANY(%s) AND r.lease_expires_at < now()
-   FOR UPDATE OF r SKIP LOCKED
-"""
-UNCLAIMABLE = """
-SELECT r.id, w.name
-  FROM runs r JOIN workers w ON w.id = r.pinned_worker_id
- WHERE r.state = 'queued' AND w.revoked_at IS NOT NULL
- ORDER BY r.id
- LIMIT %s
-   FOR UPDATE OF r SKIP LOCKED
-"""
-PRUNE_EVENTS = """
-DELETE FROM run_events e USING runs r
- WHERE e.run_id = r.id AND r.finished_at IS NOT NULL AND r.finished_at < now() - make_interval(days => %s)
-"""
-RUN_STEP = """
-SELECT r.id, p.name, r.plan_id, r.step_key, r.dispatched_by, u.login, w.name, r.runtime, r.attempt, r.max_attempts,
-       r.repo, r.branch, r.commit_sha, r.diffstat, r.verify, r.evidence, r.error, r.kind, r.repos, r.project_id
-  FROM runs r JOIN projects p ON p.id = r.project_id JOIN users u ON u.id = r.dispatched_by
-  LEFT JOIN workers w ON w.id = r.worker_id
- WHERE r.id = %s
-"""
-PLAN_BODY = "SELECT body FROM plans WHERE project_id = %s AND plan_id = %s"
-# The steps a plan run reported, its earlier attempts and the parked runs it went on from included, in no order.
-REPORTED_STEPS = """
-WITH RECURSIVE chain (id, parent_run_id, resume_of_run_id) AS (
-    SELECT id, parent_run_id, resume_of_run_id FROM runs WHERE id = %s
-  UNION
-    SELECT r.id, r.parent_run_id, r.resume_of_run_id
-      FROM runs r JOIN chain c ON r.id = c.parent_run_id OR r.id = c.resume_of_run_id
-)
-SELECT DISTINCT e.body -> 'step_report' ->> 'step'
-  FROM run_events e JOIN chain c ON c.id = e.run_id
- WHERE e.kind = 'system' AND jsonb_typeof(e.body -> 'step_report') = 'object'
-   AND jsonb_typeof(e.body -> 'step_report' -> 'step') = 'string'
-"""
-NEXT_SEQ = "UPDATE runs SET event_seq = event_seq + 1 WHERE id = %s RETURNING event_seq"
-INSERT_SYSTEM_EVENT = "INSERT INTO run_events (run_id, seq, kind, body) VALUES (%s, %s, 'system', %s)"
+# Agent time, in an UPDATE of runs (whose right-hand sides read the row as it was) or a query of it.
 
 
-async def notify_queued(conn, run_id: int) -> None:
-    """Wake the claims waiting on RUNS_CHANNEL once the caller's transaction commits."""
-    await legacy(conn, "SELECT pg_notify(%s, %s)", (RUNS_CHANNEL, str(run_id)))
+def _clock_from():
+    """When the count last stopped: counted_at, else when the agent started, else the claim."""
+    r = tables.runs
+    return func.coalesce(r.c.counted_at, r.c.started_at, r.c.leased_at, func.now())
 
 
-async def notify_events(conn, run_id: int) -> None:
-    """Wake the streams of run ``run_id`` on EVENTS_CHANNEL once the caller's transaction commits; the notifications
-    of one transaction with the same run arrive as one."""
-    await legacy(conn, "SELECT pg_notify(%s, %s)", (EVENTS_CHANNEL, str(run_id)))
+def _elapsed():
+    """The whole seconds since the count last stopped while the run is in one of runs.CLOCK_STATES, else 0."""
+    r = tables.runs
+    since = func.greatest(0, func.floor(extract("epoch", func.now() - _clock_from())))
+    return case((r.c.state.in_(runs.CLOCK_STATES), cast(since, Integer)), else_=0)
+
+
+def _seconds(count):
+    """``make_interval(secs => count)``: make_interval's seventh argument is the seconds."""
+    return func.make_interval(0, 0, 0, 0, 0, 0, count)
+
+
+def settle() -> dict:
+    """What a heartbeat sets to settle a run's agent time without moving it, as values of an update of runs; the
+    fraction of a second left goes on counting."""
+    r = tables.runs
+    return {
+        "run_seconds": r.c.run_seconds + _elapsed(),
+        "counted_at": case((r.c.state.in_(runs.CLOCK_STATES), _clock_from() + _seconds(_elapsed()))),
+    }
+
+
+def _past_timeout():
+    r = tables.runs
+    return r.c.run_seconds + _elapsed() > r.c.timeout_s
 
 
 def _column_value(value):
-    return Jsonb(value) if isinstance(value, (dict, list)) else value
+    """A value a move sets: None is SQL NULL, also in a JSONB column, which would store a JSON null for it."""
+    return null() if value is None else value
+
+
+def _move(run_id: int, old: str, new: str, error: str | None, columns: dict, lease: timedelta):
+    """The UPDATE of a move: ``new`` is known here, so what it sets is decided in Python; the right-hand sides that
+    read the row (the agent time) are SQL and read it as it was."""
+    r = tables.runs
+    values = {
+        "state": new,
+        "event_seq": r.c.event_seq + 1,
+        "run_seconds": r.c.run_seconds + _elapsed(),
+        "waiting_since": func.now() if new == "waiting" else None,
+    }
+    if error is not None:
+        values["error"] = error
+    if new == "leased":
+        values["leased_at"] = func.now()
+    if new in ("running", "interactive"):
+        values["started_at"] = func.coalesce(r.c.started_at, func.now())
+    held = new in runs.HELD_STATES
+    values["lease_expires_at"] = func.coalesce(r.c.lease_expires_at, func.now() + lease) if held else None
+    if new in runs.TERMINAL_STATES:
+        values["finished_at"] = func.now()
+    if new in runs.CLOCK_STATES:
+        in_clock = r.c.state.in_(runs.CLOCK_STATES)
+        values["counted_at"] = case((in_clock, _clock_from() + _seconds(_elapsed())), else_=func.now())
+    else:
+        values["counted_at"] = None
+    if new == "parked":
+        values["parked_at"] = func.now()
+    if new not in runs.TAKEOVER_STATES:
+        values["takeover_requested_at"] = None
+    if new not in runs.HANDBACK_STATES:
+        values["handback_requested_at"] = None
+    values |= {name: _column_value(value) for name, value in columns.items()}
+    return update(r).values(**values).where(r.c.id == run_id, r.c.state == old).returning(r.c.event_seq)
+
+
+async def _insert_event(conn: AsyncConnection, run_id: int, seq: int, kind: str, body: dict) -> None:
+    await conn.execute(insert(tables.run_events).values(run_id=run_id, seq=seq, kind=kind, body=body))
+
+
+async def notify_queued(conn: AsyncConnection, run_id: int) -> None:
+    """Wake the claims waiting on RUNS_CHANNEL once the caller's transaction commits."""
+    await conn.execute(select(func.pg_notify(RUNS_CHANNEL, str(run_id))))
+
+
+async def notify_events(conn: AsyncConnection, run_id: int) -> None:
+    """Wake the streams of run ``run_id`` on EVENTS_CHANNEL once the caller's transaction commits; the notifications
+    of one transaction with the same run arrive as one."""
+    await conn.execute(select(func.pg_notify(EVENTS_CHANNEL, str(run_id))))
 
 
 async def move_run(
-    conn,
+    conn: AsyncConnection,
     run_id: int,
     old: str,
     new: str,
@@ -261,33 +221,13 @@ async def move_run(
     unknown = set(columns) - MOVE_COLUMNS
     if unknown:
         raise ValueError(f"a move cannot set {', '.join(sorted(unknown))}")
-    extra = sql.SQL("").join(
-        sql.SQL(", {} = {}").format(sql.Identifier(name), sql.Placeholder(f"set_{name}")) for name in columns
-    )
-    params = {
-        "id": run_id,
-        "from": old,
-        "to": new,
-        "error": error,
-        "held": list(runs.HELD_STATES),
-        "terminal": list(runs.TERMINAL_STATES),
-        "takeover": list(runs.TAKEOVER_STATES),
-        "handback": list(runs.HANDBACK_STATES),
-        "clock": list(runs.CLOCK_STATES),
-        "lease": lease,
-        **{f"set_{name}": _column_value(value) for name, value in columns.items()},
-    }
-    row = await (await legacy(conn, sql.SQL(MOVE).format(extra=extra), params)).fetchone()
-    if row is None:
+    seq = (await conn.execute(_move(run_id, old, new, error, columns, lease))).scalar_one_or_none()
+    if seq is None:
         raise runs.TransitionRefused(f"run {run_id} is no longer {old}: it moved meanwhile")
-    body = {"from": old, "to": new, "actor": actor, "reason": reason}
-    await legacy(
-        conn,
-        "INSERT INTO run_events (run_id, seq, kind, body) VALUES (%s, %s, 'state', %s)",
-        (run_id, row[0], Jsonb(body)),
-    )
+    await _insert_event(conn, run_id, seq, "state", {"from": old, "to": new, "actor": actor, "reason": reason})
     if new in runs.TERMINAL_STATES and decisions is not None:
-        await legacy(conn, END_DECISIONS, (decisions, run_id))
+        d = tables.decisions
+        await conn.execute(update(d).values(state=decisions).where(d.c.run_id == run_id, d.c.state == "open"))
     if new not in runs.HELD_STATES:  # no worker holds it now: the hub takes back what it leased the run
         from evo_agents.hub.server import credentials  # its routes read runs through the routes that import this module
 
@@ -325,16 +265,57 @@ class RunStep:
     project_id: int | None = None
 
 
-async def run_step(conn, run_id: int) -> RunStep:
-    row = await (await legacy(conn, RUN_STEP, (run_id,))).fetchone()
-    return RunStep(*row)
+def _run_step(run_id: int):
+    r, p, u, w = tables.runs, tables.projects, tables.users, tables.workers
+    return (
+        select(
+            r.c.id.label("run_id"),
+            p.c.name.label("project"),
+            r.c.plan_id,
+            r.c.step_key,
+            r.c.dispatched_by.label("dispatcher_id"),
+            u.c.login.label("dispatcher"),
+            w.c.name.label("worker"),
+            r.c.runtime,
+            r.c.attempt,
+            r.c.max_attempts,
+            r.c.repo,
+            r.c.branch,
+            r.c.commit_sha,
+            r.c.diffstat,
+            r.c.verify,
+            r.c.evidence,
+            r.c.error,
+            r.c.kind,
+            r.c.repos,
+            r.c.project_id,
+        )
+        .select_from(
+            r.join(p, p.c.id == r.c.project_id)
+            .join(u, u.c.id == r.c.dispatched_by)
+            .outerjoin(w, w.c.id == r.c.worker_id)
+        )
+        .where(r.c.id == run_id)
+    )
 
 
-async def write_event(conn, run_id: int, body: dict) -> int:
+async def run_step(conn: AsyncConnection, run_id: int) -> RunStep:
+    row = (await conn.execute(_run_step(run_id))).one()
+    return RunStep(**row._mapping)
+
+
+async def next_seq(conn: AsyncConnection, run_id: int) -> int:
+    """The hub's next number in the log of run ``run_id``, whose row the caller holds locked, counted on the run."""
+    r = tables.runs
+    stmt = update(r).values(event_seq=r.c.event_seq + 1).where(r.c.id == run_id).returning(r.c.event_seq)
+    return (await conn.execute(stmt)).scalar_one()
+
+
+async def write_event(conn: AsyncConnection, run_id: int, body: dict) -> int:
     """Write a ``system`` event of the hub's own into the log of run ``run_id``, whose row the caller holds locked,
     and wake its streams; its seq. Like the ``state`` events, it is written past the run's limit of events."""
-    seq = (await (await legacy(conn, NEXT_SEQ, (run_id,))).fetchone())[0]
-    await legacy(conn, INSERT_SYSTEM_EVENT, (run_id, seq, Jsonb(body)))
+    seq = await next_seq(conn, run_id)
+    await _insert_event(conn, run_id, seq, "system", body)
     await notify_events(conn, run_id)
     return seq
 
@@ -425,7 +406,7 @@ class StepNotWritten(Exception):
 
 
 async def write_step(
-    conn, found: RunStep, updates_for, *, token_id: int | None = None, strict: bool = False
+    conn: AsyncConnection, found: RunStep, updates_for, *, token_id: int | None = None, strict: bool = False
 ) -> int | None:
     """Set on the run's step what ``updates_for`` gives for it, as the dispatcher, in a savepoint of the caller's
     transaction; the new revision, or None when nothing was written. A write the plan refuses is logged and skipped,
@@ -482,7 +463,7 @@ async def write_step(
     except PlanProblem as exc:
         log.warning("run step not written to the plan", extra={**where, "why": str(exc)})
         refused = StepNotWritten(422, str(exc))
-    except psycopg.Error as exc:
+    except (DBAPIError, psycopg.Error) as exc:  # Core wraps the driver's error; a query not in Core raises its own
         if strict:
             raise
         log.error("run step not written to the plan", extra={**where, "error": f"{type(exc).__name__}: {exc}"})
@@ -492,7 +473,9 @@ async def write_step(
     return None
 
 
-async def record_move(conn, run_id: int, old: str, new: str, *, reason: str, token_id: int | None = None) -> int | None:
+async def record_move(
+    conn: AsyncConnection, run_id: int, old: str, new: str, *, reason: str, token_id: int | None = None
+) -> int | None:
     """Record in the plan what moving run ``run_id`` from ``old`` to ``new`` means for its step, or for the steps a
     plan run left in progress."""
     found = await run_step(conn, run_id)
@@ -506,7 +489,9 @@ async def record_move(conn, run_id: int, old: str, new: str, *, reason: str, tok
     return await write_step(conn, found, updates_for, token_id=token_id)
 
 
-async def release_plan_steps(conn, found: RunStep, new: str, *, reason: str, token_id: int | None = None) -> int | None:
+async def release_plan_steps(
+    conn: AsyncConnection, found: RunStep, new: str, *, reason: str, token_id: int | None = None
+) -> int | None:
     """When plan run ``found`` ends ``failed`` or ``cancelled``, set back to ``pending`` each step it reported (it, or
     an earlier attempt or parked run it went on from) that is still ``in_progress``, with the note a run of one step
     leaves; the last revision written, or None. Any other move writes nothing."""
@@ -533,11 +518,38 @@ def _natural(key: str) -> tuple:
     return (0, int(key), "") if key.isascii() and key.isdigit() else (1, 0, key)
 
 
-async def reported_steps(conn, run_id: int) -> list[str]:
+def _reported_steps(run_id: int):
+    """The steps a plan run reported, its earlier attempts and the parked runs it went on from included, in no
+    order: a recursive CTE walks parent_run_id and resume_of_run_id (UNION, so a cycle ends), and the ``system``
+    events of the chain whose body holds a ``step_report`` object with a string ``step`` name them."""
+    r, e = tables.runs, tables.run_events
+    chain = select(r.c.id, r.c.parent_run_id, r.c.resume_of_run_id).where(r.c.id == run_id).cte("chain", recursive=True)
+    earlier = tables.runs.alias("r")
+    chain = chain.union(
+        select(earlier.c.id, earlier.c.parent_run_id, earlier.c.resume_of_run_id).join_from(
+            earlier,
+            chain,
+            or_(earlier.c.id == chain.c.parent_run_id, earlier.c.id == chain.c.resume_of_run_id),
+        )
+    )
+    report = e.c.body["step_report"]
+    return (
+        select(report["step"].astext)
+        .distinct()
+        .join_from(e, chain, chain.c.id == e.c.run_id)
+        .where(
+            e.c.kind == "system",
+            func.jsonb_typeof(report) == "object",
+            func.jsonb_typeof(report["step"]) == "string",
+        )
+    )
+
+
+async def reported_steps(conn: AsyncConnection, run_id: int) -> list[str]:
     """The steps plan run ``run_id`` reported, it or an earlier attempt or parked run it went on from, in the order
     people number them."""
-    rows = await (await legacy(conn, REPORTED_STEPS, (run_id,))).fetchall()
-    return sorted((row[0] for row in rows), key=_natural)
+    keys = (await conn.execute(_reported_steps(run_id))).scalars().all()
+    return sorted(keys, key=_natural)
 
 
 def _every_step_done(body) -> bool:
@@ -547,7 +559,7 @@ def _every_step_done(body) -> bool:
     return all(isinstance(step, dict) and step.get("status") == "done" for step in steps)
 
 
-async def notify_plan_run_end(conn, found: RunStep, old: str, new: str, *, reason: str) -> int | None:
+async def notify_plan_run_end(conn: AsyncConnection, found: RunStep, old: str, new: str, *, reason: str) -> int | None:
     """Send the owner of plan run ``found`` the notice its end calls for: ``run_failed`` when it failed (its last
     attempt lost included, which fails), ``plan_finished`` when it ended done with every step of its plan done. A run
     done because a new run resumes it, and any other move, send nothing. The notification's id, or None."""
@@ -570,8 +582,11 @@ async def notify_plan_run_end(conn, found: RunStep, old: str, new: str, *, reaso
         )
     if new != "done" or old == "parked":
         return None
-    row = await (await legacy(conn, PLAN_BODY, (found.project_id, found.plan_id))).fetchone()
-    if row is None or not _every_step_done(row[0]):
+    pl = tables.plans
+    body = (
+        await conn.execute(select(pl.c.body).where(pl.c.project_id == found.project_id, pl.c.plan_id == found.plan_id))
+    ).scalar_one_or_none()
+    if body is None or not _every_step_done(body):
         return None
     steps = await reported_steps(conn, found.run_id)
     done = f"steps {', '.join(steps)}" if steps else "no step of its own"
@@ -592,8 +607,42 @@ async def notify_plan_run_end(conn, found: RunStep, old: str, new: str, *, reaso
 # Runs that lose their worker
 
 
+def _next_attempt(run_id: int):
+    """The next attempt of run ``run_id``: the same step, ``parent_run_id`` pointing back, the attempt one higher and
+    the runtime the dispatch asked for. It keeps the dispatch's credential, so a worker that takes runs dispatched
+    from the web only takes the retry of one too, and never the retry of a run dispatched with a token."""
+    r = tables.runs
+    copied = (
+        "kind",
+        "project_id",
+        "plan_id",
+        "step_key",
+        "title",
+        "plan_revision",
+        "dispatched_by",
+        "dispatched_via",
+        "pinned_worker_id",
+        "requested_runtime",
+        "mode",
+        "approval",
+        "timeout_s",
+        "max_attempts",
+        "repo",
+        "branch",
+        "repos",
+        "model",
+    )
+    source = select(
+        *(r.c[name] for name in copied),
+        r.c.requested_runtime.label("runtime"),
+        (r.c.attempt + 1).label("attempt"),
+        r.c.id.label("parent_run_id"),
+    ).where(r.c.id == run_id)
+    return insert(r).from_select([*copied, "runtime", "attempt", "parent_run_id"], source).returning(r.c.id)
+
+
 async def end_held(
-    conn,
+    conn: AsyncConnection,
     run_id: int,
     state: str,
     *,
@@ -614,86 +663,125 @@ async def end_held(
         await move_run(conn, run_id, state, "failed", "reaper", reason=reason, error=f"{reason}, and {why}")
         return "failed"
     await move_run(conn, run_id, state, "lost", "reaper", reason=reason, error=reason)
-    next_id = (await (await legacy(conn, NEXT_ATTEMPT, (run_id,))).fetchone())[0]
+    next_id = (await conn.execute(_next_attempt(run_id))).scalar_one()
     await notify_queued(conn, next_id)
     return "lost"
 
 
-async def release_runs(conn, worker_id: int, reason: str) -> int:
+async def release_runs(conn: AsyncConnection, worker_id: int, reason: str) -> int:
     """What the reaper does to the runs of a worker that will never extend a lease again, in the caller's
     transaction: each run it holds is cancelled when its cancel was asked for, fails when it is pinned to this worker
     or on its last attempt, and is otherwise lost, with the next attempt queued for the same step. Queued runs pinned
     to the worker fail, since no other worker may claim them, and runs parked on it are cancelled, since no other
     worker has their session. Returns how many runs were moved."""
+    r = tables.runs
     moved = 0
-    for run_id, state, attempt, max_attempts, pinned, cancel in await (
-        await legacy(conn, HELD_RUNS, (worker_id, list(runs.HELD_STATES)))
-    ).fetchall():
+    held = (
+        select(
+            r.c.id,
+            r.c.state,
+            r.c.attempt,
+            r.c.max_attempts,
+            r.c.pinned_worker_id,
+            r.c.cancel_requested_at.is_not(None).label("cancel"),
+        )
+        .where(r.c.worker_id == worker_id, r.c.state.in_(runs.HELD_STATES))
+        .order_by(r.c.id)
+        .with_for_update()
+    )
+    for row in (await conn.execute(held)).all():
         await end_held(
             conn,
-            run_id,
-            state,
-            attempt=attempt,
-            max_attempts=max_attempts,
-            cancel=cancel,
-            pinned_here=pinned == worker_id,
+            row.id,
+            row.state,
+            attempt=row.attempt,
+            max_attempts=row.max_attempts,
+            cancel=row.cancel,
+            pinned_here=row.pinned_worker_id == worker_id,
             reason=reason,
         )
         moved += 1
-    for run_id, state in await (await legacy(conn, PINNED_QUEUED, (worker_id,))).fetchall():
+    pinned_queued = (
+        select(r.c.id, r.c.state)
+        .where(r.c.pinned_worker_id == worker_id, r.c.state == "queued")
+        .order_by(r.c.id)
+        .with_for_update()
+    )
+    for row in (await conn.execute(pinned_queued)).all():
         error = f"{reason}, and the run was pinned to it"
-        await move_run(conn, run_id, state, "failed", "reaper", reason=reason, error=error)
+        await move_run(conn, row.id, row.state, "failed", "reaper", reason=reason, error=error)
         moved += 1
-    for (run_id,) in await (await legacy(conn, PARKED_ON, (worker_id,))).fetchall():
+    parked_on = (
+        select(r.c.id).where(r.c.worker_id == worker_id, r.c.state == "parked").order_by(r.c.id).with_for_update()
+    )
+    for run_id in (await conn.execute(parked_on)).scalars().all():
         why = f"{reason}, and only it has the session of the parked run"
         await move_run(conn, run_id, "parked", "cancelled", "reaper", reason=why)
         moved += 1
     return moved
 
 
-async def end_timed_out(engine, batch: int, ended: Counter) -> None:
+async def end_timed_out(engine: AsyncEngine, batch: int, ended: Counter) -> None:
     """Fail every held run whose agent time is past its timeout, or cancel it when its cancel was asked for, each in a
     transaction of its own; count them in ``ended``."""
-    params = {"held": list(runs.HELD_STATES), "clock": list(runs.CLOCK_STATES), "batch": batch}
+    r = tables.runs
+    late_held = (r.c.state.in_(runs.HELD_STATES), _past_timeout())
     async with engine.begin() as conn:
-        late = [row[0] for row in await (await legacy(conn, TIMED_OUT, params)).fetchall()]
+        late = (await conn.execute(select(r.c.id).where(*late_held).order_by(r.c.id).limit(batch))).scalars().all()
     for run_id in late:
         async with engine.begin() as conn:
-            row = await (await legacy(conn, LOCK_TIMED_OUT, {**params, "id": run_id})).fetchone()
+            lock = (
+                select(r.c.state, r.c.timeout_s, r.c.cancel_requested_at.is_not(None).label("cancel"))
+                .where(r.c.id == run_id, *late_held)
+                .with_for_update(skip_locked=True)
+            )
+            row = (await conn.execute(lock)).one_or_none()
             if row is None:  # it ended meanwhile, or another pass took it
                 continue
-            state, timeout_s, cancel = row
+            state, timeout_s, cancel = row.state, row.timeout_s, row.cancel
             reason = f"it ran past its timeout of {timeout_s // 60} minutes"
             new = "cancelled" if cancel else "failed"
             await move_run(conn, run_id, state, new, "reaper", reason=reason, error=None if cancel else reason)
             ended[new] += 1
 
 
-async def park_waiting(engine, batch: int, wait: timedelta, ended: Counter) -> None:
+async def park_waiting(engine: AsyncEngine, batch: int, wait: timedelta, ended: Counter) -> None:
     """Park every run that has waited ``wait`` for its owner's answer, or cancel it when its cancel was asked for,
     each in a transaction of its own; count them in ``ended``."""
+    r = tables.runs
+    waited_long = (r.c.state == "waiting", r.c.waiting_since < func.now() - wait)
     async with engine.begin() as conn:
-        waited = [row[0] for row in await (await legacy(conn, WAITED_TOO_LONG, (wait, batch))).fetchall()]
+        query = select(r.c.id).where(*waited_long).order_by(r.c.waiting_since).limit(batch)
+        waited = (await conn.execute(query)).scalars().all()
     hours = _hours(wait)
     for run_id in waited:
         async with engine.begin() as conn:
-            row = await (await legacy(conn, LOCK_WAITED, (run_id, wait))).fetchone()
+            lock = (
+                select(r.c.cancel_requested_at.is_not(None).label("cancel"))
+                .where(r.c.id == run_id, *waited_long)
+                .with_for_update(skip_locked=True)
+            )
+            row = (await conn.execute(lock)).one_or_none()
             if row is None:  # answered, ended or taken by another pass meanwhile
                 continue
             reason = f"nobody answered its decision within {hours}"
-            new = "cancelled" if row[0] else "parked"
+            new = "cancelled" if row.cancel else "parked"
             await move_run(conn, run_id, "waiting", new, "reaper", reason=reason)
             ended[new] += 1
 
 
-async def expire_parked(engine, batch: int, parked_for: timedelta, ended: Counter) -> None:
+async def expire_parked(engine: AsyncEngine, batch: int, parked_for: timedelta, ended: Counter) -> None:
     """Cancel every run parked for ``parked_for``, its open decisions expired, each in a transaction of its own;
     count them in ``ended``."""
+    r = tables.runs
+    parked_long = (r.c.state == "parked", r.c.parked_at < func.now() - parked_for)
     async with engine.begin() as conn:
-        parked = [row[0] for row in await (await legacy(conn, PARKED_TOO_LONG, (parked_for, batch))).fetchall()]
+        query = select(r.c.id).where(*parked_long).order_by(r.c.parked_at).limit(batch)
+        parked = (await conn.execute(query)).scalars().all()
     for run_id in parked:
         async with engine.begin() as conn:
-            if (await (await legacy(conn, LOCK_PARKED, (run_id, parked_for))).fetchone()) is None:
+            lock = select(r.c.id).where(r.c.id == run_id, *parked_long).with_for_update(skip_locked=True)
+            if (await conn.execute(lock)).one_or_none() is None:
                 continue
             reason = f"it stayed parked for {_hours(parked_for)} without an answer"
             await move_run(conn, run_id, "parked", "cancelled", "reaper", reason=reason, decisions="expired")
@@ -711,7 +799,7 @@ def _hours(span: timedelta) -> str:
 
 
 async def recover_runs(
-    engine,
+    engine: AsyncEngine,
     batch: int = RECOVER_BATCH,
     *,
     decision_wait: timedelta = DECISION_WAIT,
@@ -725,25 +813,39 @@ async def recover_runs(
     fails. Last, the GitHub tokens of the leases given back, by these runs or earlier, are revoked at GitHub with
     ``github_app`` (``credentials.revoke_tokens``; nothing without the App or ``sealer``). Returns how many runs
     ended in each state, and how many were parked."""
+    r, w = tables.runs, tables.workers
     ended: Counter[str] = Counter()
     await end_timed_out(engine, batch, ended)
+    lapsed = (r.c.state.in_(runs.HELD_STATES), r.c.lease_expires_at < func.now())
     async with engine.begin() as conn:
-        expired = [row[0] for row in await (await legacy(conn, EXPIRED, (list(runs.HELD_STATES), batch))).fetchall()]
+        query = select(r.c.id).where(*lapsed).order_by(r.c.lease_expires_at).limit(batch)
+        expired = (await conn.execute(query)).scalars().all()
     for run_id in expired:
         async with engine.begin() as conn:
-            row = await (await legacy(conn, LOCK_EXPIRED, (run_id, list(runs.HELD_STATES)))).fetchone()
+            lock = (
+                select(
+                    r.c.state,
+                    r.c.attempt,
+                    r.c.max_attempts,
+                    r.c.cancel_requested_at.is_not(None).label("cancel"),
+                    w.c.name.label("worker"),
+                )
+                .select_from(r.outerjoin(w, w.c.id == r.c.worker_id))
+                .where(r.c.id == run_id, *lapsed)
+                .with_for_update(of=r, skip_locked=True)
+            )
+            row = (await conn.execute(lock)).one_or_none()
             if row is None:  # a heartbeat extended it, or another pass took it
                 continue
-            _, state, attempt, max_attempts, cancel, worker = row
-            reason = f"its worker {worker} stopped extending the lease"
+            reason = f"its worker {row.worker} stopped extending the lease"
             ended[
                 await end_held(
                     conn,
                     run_id,
-                    state,
-                    attempt=attempt,
-                    max_attempts=max_attempts,
-                    cancel=cancel,
+                    row.state,
+                    attempt=row.attempt,
+                    max_attempts=row.max_attempts,
+                    cancel=row.cancel,
                     pinned_here=False,
                     reason=reason,
                 )
@@ -751,7 +853,15 @@ async def recover_runs(
     await park_waiting(engine, batch, decision_wait, ended)
     await expire_parked(engine, batch, parked_for, ended)
     async with engine.begin() as conn:
-        for run_id, worker in await (await legacy(conn, UNCLAIMABLE, (batch,))).fetchall():
+        unclaimable = (
+            select(r.c.id, w.c.name)
+            .join_from(r, w, w.c.id == r.c.pinned_worker_id)
+            .where(r.c.state == "queued", w.c.revoked_at.is_not(None))
+            .order_by(r.c.id)
+            .limit(batch)
+            .with_for_update(of=r, skip_locked=True)
+        )
+        for run_id, worker in (await conn.execute(unclaimable)).all():
             reason = f"its pinned worker {worker} was revoked"
             error = f"{reason}, so no worker may claim it"
             await move_run(conn, run_id, "queued", "failed", "reaper", reason=reason, error=error)
@@ -765,13 +875,19 @@ async def recover_runs(
     return report
 
 
-async def prune_run_events(engine, days: int) -> dict:
+async def prune_run_events(engine: AsyncEngine, days: int) -> dict:
     """Delete the events of runs that ended more than ``days`` days ago, and drop the sealed values of the GitHub
     tokens leased to runs that are past their end (``credentials.drop_expired``)."""
     from evo_agents.hub.server import credentials
 
+    r, e = tables.runs, tables.run_events
+    prune = delete(e).where(
+        e.c.run_id == r.c.id,
+        r.c.finished_at.is_not(None),
+        r.c.finished_at < func.now() - timedelta(days=days),
+    )
     async with engine.begin() as conn:
-        deleted = (await legacy(conn, PRUNE_EVENTS, (days,))).rowcount
+        deleted = (await conn.execute(prune)).rowcount
         dropped = await credentials.drop_expired(conn)
     log.info("run events pruned", extra={"deleted": deleted, "days": days, "tokens_dropped": dropped})
     return {"deleted": deleted, "days": days, "tokens_dropped": dropped}
