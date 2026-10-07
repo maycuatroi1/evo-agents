@@ -116,7 +116,6 @@ from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.run_state import (
     MAX_EVIDENCE_BYTES,
     RUNS_CHANNEL,
-    SETTLE,
     StepNotWritten,
     evidence,
     move_run,
@@ -1752,8 +1751,15 @@ async def claim(request: Request, user: CurrentUser, body: ClaimRequest | None =
         wakeups.done(worker_id, number)
 
 
+# The agent time a heartbeat settles, as run_state.SETTLE gave it before run_state moved to Core (run_state.settle).
+_CLOCK_FROM = "coalesce(counted_at, started_at, leased_at, now())"
+_ELAPSED_SECONDS = f"greatest(0, floor(extract(epoch FROM now() - {_CLOCK_FROM})))::integer"
 EXTEND = f"""
-UPDATE runs SET lease_expires_at = now() + %(lease)s, {SETTLE}
+UPDATE runs SET lease_expires_at = now() + %(lease)s,
+       run_seconds = run_seconds + CASE WHEN state = ANY(%(clock)s) THEN {_ELAPSED_SECONDS} ELSE 0 END,
+       counted_at = CASE WHEN state = ANY(%(clock)s)
+                         THEN {_CLOCK_FROM} + make_interval(secs => CASE WHEN state = ANY(%(clock)s)
+                                                                         THEN {_ELAPSED_SECONDS} ELSE 0 END) END
  WHERE worker_id = %(worker)s AND id = ANY(%(ids)s) AND state = ANY(%(held)s)
 RETURNING id, state, cancel_requested_at IS NOT NULL, lease_expires_at, takeover_requested_at IS NOT NULL,
           handback_requested_at IS NOT NULL
