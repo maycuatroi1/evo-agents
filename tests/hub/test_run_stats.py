@@ -15,8 +15,9 @@ if not pg.DSN:
     pytest.skip(pg.SKIP_REASON, allow_module_level=True)
 
 from fastapi.testclient import TestClient
-from psycopg.types.json import Jsonb
+from sqlalchemy import Date, cast, func, insert, null, select
 
+from evo_agents.hub import tables
 from evo_agents.hub.runs import HELD_STATES, TERMINAL_STATES
 from evo_agents.hub.server.app import create_app
 from evo_agents.hub.server.plans import SINK_HEADER
@@ -91,8 +92,10 @@ USAGES = {
 
 
 @pytest.fixture
-def client(hub_db, tmp_path, github):
-    sql(hub_db, f"ALTER DATABASE \"{hub_db.name}\" SET timezone TO '{SESSION_ZONE}'")
+def client(hub_db, tmp_path, github, monkeypatch):
+    # Every session of the test starts in SESSION_ZONE: libpq sets its time zone from PGTZ, for the hub's pool and the
+    # test's own connections alike.
+    monkeypatch.setenv("PGTZ", SESSION_ZONE)
     with TestClient(create_app(live.hub_config(hub_db, tmp_path, github)), base_url="https://hub.test") as client:
         yield client
 
@@ -132,25 +135,12 @@ def worker(client, members) -> dict:
 
 
 def db_now(db) -> datetime:
-    return sql(db, "SELECT now()")[0][0]
+    return sql(db, select(func.now()))[0][0]
 
 
 def utc_today_start(db) -> datetime:
-    today = sql(db, "SELECT (now() AT TIME ZONE 'UTC')::date")[0][0]
+    today = sql(db, select(cast(func.timezone("UTC", func.now()), Date)))[0][0]
     return datetime.combine(today, time.min, tzinfo=UTC)
-
-
-INSERT_RUN = """
-INSERT INTO runs (project_id, plan_id, kind, step_key, title, plan_revision, dispatched_by, worker_id,
-                  requested_runtime, runtime, mode, approval, timeout_s, state, repo, queued_at, leased_at,
-                  lease_expires_at, started_at, finished_at, usage, error)
-SELECT p.id, pl.plan_id, 'step', %(step)s, 'Step ' || %(step)s, pl.revision, u.id, %(worker)s, 'claude-code',
-       'claude-code', 'headless', 'review', 3600, %(state)s, 'evo-agents', %(queued_at)s, %(leased_at)s, %(lease)s,
-       %(started_at)s, %(finished_at)s, %(usage)s, %(error)s
-  FROM projects p JOIN plans pl ON pl.project_id = p.id JOIN users u ON lower(u.login) = lower(%(owner)s)
- WHERE p.name = %(project)s AND pl.plan_id = %(plan)s
-RETURNING id
-"""
 
 
 def add_run(
@@ -172,22 +162,35 @@ def add_run(
     now = db_now(db)
     end = finished_at or now
     start = None if ran is None else end - ran
-    params = {
-        "project": project,
-        "plan": plan,
-        "owner": owner,
-        "step": step,
-        "worker": None if start is None else worker["id"],
-        "state": state,
-        "queued_at": (start or end) - timedelta(minutes=5),
-        "leased_at": start,
-        "lease": now + timedelta(minutes=5) if state in HELD_STATES else None,
-        "started_at": None if leased_only else start,
-        "finished_at": finished_at if state in TERMINAL_STATES else None,
-        "usage": None if usage is None else Jsonb(usage),
-        "error": "verify failed: pytest exited 1" if state in ("failed", "lost") else None,
-    }
-    return sql(db, INSERT_RUN, params)[0][0]
+    r, p, pl, u = tables.runs, tables.projects, tables.plans, tables.users
+    stmt = insert(r).values(
+        project_id=select(p.c.id).where(p.c.name == project).scalar_subquery(),
+        plan_id=plan,
+        kind="step",
+        step_key=step,
+        title=f"Step {step}",
+        plan_revision=select(pl.c.revision)
+        .join_from(pl, p, p.c.id == pl.c.project_id)
+        .where(p.c.name == project, pl.c.plan_id == plan)
+        .scalar_subquery(),
+        dispatched_by=select(u.c.id).where(func.lower(u.c.login) == func.lower(owner)).scalar_subquery(),
+        worker_id=None if start is None else worker["id"],
+        requested_runtime="claude-code",
+        runtime="claude-code",
+        mode="headless",
+        approval="review",
+        timeout_s=3600,
+        state=state,
+        repo="evo-agents",
+        queued_at=(start or end) - timedelta(minutes=5),
+        leased_at=start,
+        lease_expires_at=now + timedelta(minutes=5) if state in HELD_STATES else None,
+        started_at=None if leased_only else start,
+        finished_at=finished_at if state in TERMINAL_STATES else None,
+        usage=null() if usage is None else usage,  # SQL NULL, not a JSON null
+        error="verify failed: pytest exited 1" if state in ("failed", "lost") else None,
+    )
+    return sql(db, stmt.returning(r.c.id))[0][0]
 
 
 def stats(client, headers, *, days: int | None = None, sink: str | None = None) -> dict:
@@ -219,7 +222,7 @@ def reregister(client, members, sinks) -> None:
 
 
 def test_runs_count_on_the_utc_day_they_ended(client, members, worker, hub_db):
-    assert sql(hub_db, "SELECT current_setting('TimeZone')") == [(SESSION_ZONE,)]
+    assert sql(hub_db, select(func.current_setting("TimeZone"))) == [(SESSION_ZONE,)]
     today = utc_today_start(hub_db)
     first = today - timedelta(days=6)
     for state, finished_at in (
