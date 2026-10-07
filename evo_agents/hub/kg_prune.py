@@ -24,10 +24,12 @@ from __future__ import annotations
 import logging
 from dataclasses import asdict, dataclass, field
 
-from evo_agents.hub import blob_gc
+from sqlalchemy import delete, exists, func, null, select, union_all, update
+from sqlalchemy.ext.asyncio import AsyncConnection
+
+from evo_agents.hub import blob_gc, tables
 from evo_agents.hub.blobs import BlobStore
 from evo_agents.hub.config import DEFAULT_KG_KEEP_ARTIFACTS, MAX_KG_KEEP_ARTIFACTS
-from evo_agents.hub.db import legacy
 from evo_agents.hub.kg_build import ARTIFACT_KIND
 
 log = logging.getLogger(__name__)
@@ -35,29 +37,36 @@ log = logging.getLogger(__name__)
 DEFAULT_KEEP = DEFAULT_KG_KEEP_ARTIFACTS
 MAX_KEEP = MAX_KG_KEEP_ARTIFACTS
 
-# A project's artifacts, newest first (rank 1 is the one its reads use), then its kg-graph blobs no build points at.
-PLAN = """
-WITH artifacts AS (
-    SELECT project_id, artifact_sha256 AS sha256, max(artifact_size) AS size, max(id) AS newest
-      FROM kg_builds
-     WHERE artifact_sha256 IS NOT NULL AND (%(project_id)s::bigint IS NULL OR project_id = %(project_id)s)
-     GROUP BY project_id, artifact_sha256
-)
-SELECT p.name, a.project_id, a.sha256, a.size,
-       row_number() OVER (PARTITION BY a.project_id ORDER BY a.newest DESC) AS rank
-  FROM artifacts a JOIN projects p ON p.id = a.project_id
-UNION ALL
-SELECT p.name, b.project_id, b.sha256, b.size, NULL
-  FROM blobs b JOIN projects p ON p.id = b.project_id
- WHERE b.kind = 'kg-graph' AND (%(project_id)s::bigint IS NULL OR b.project_id = %(project_id)s)
-   AND NOT EXISTS (SELECT 1 FROM kg_builds k WHERE k.project_id = b.project_id AND k.artifact_sha256 = b.sha256)
-ORDER BY 1, 5 NULLS LAST
-"""
-DROP_FROM_BUILDS = """
-UPDATE kg_builds SET artifact_sha256 = NULL, artifact_pruned_at = now()
- WHERE project_id = %s AND artifact_sha256 = ANY(%s)
-"""
-DROP_BLOBS = "DELETE FROM blobs WHERE project_id = %s AND kind = 'kg-graph' AND sha256 = ANY(%s)"
+
+def _plan(project_id: int | None):
+    """The artifacts of each project (only ``project_id``'s when given), newest first: rank 1 is the one its reads
+    use. Then its kg-graph blobs no build points at, with no rank. Rows of (name, project_id, sha256, size, rank),
+    by project name."""
+    builds, blobs, projects = tables.kg_builds, tables.blobs, tables.projects
+    artifacts = select(
+        builds.c.project_id,
+        builds.c.artifact_sha256.label("sha256"),
+        func.max(builds.c.artifact_size).label("size"),
+        func.max(builds.c.id).label("newest"),
+    ).where(builds.c.artifact_sha256.is_not(None))
+    unreferenced = (
+        select(projects.c.name, blobs.c.project_id, blobs.c.sha256, blobs.c.size, null())
+        .join_from(blobs, projects, projects.c.id == blobs.c.project_id)
+        .where(
+            blobs.c.kind == ARTIFACT_KIND,
+            ~exists().where(builds.c.project_id == blobs.c.project_id, builds.c.artifact_sha256 == blobs.c.sha256),
+        )
+    )
+    if project_id is not None:
+        artifacts = artifacts.where(builds.c.project_id == project_id)
+        unreferenced = unreferenced.where(blobs.c.project_id == project_id)
+    artifacts = artifacts.group_by(builds.c.project_id, builds.c.artifact_sha256).cte("artifacts")
+    rank = func.row_number().over(partition_by=artifacts.c.project_id, order_by=artifacts.c.newest.desc())
+    ranked = select(
+        projects.c.name, artifacts.c.project_id, artifacts.c.sha256, artifacts.c.size, rank.label("rank")
+    ).join_from(artifacts, projects, projects.c.id == artifacts.c.project_id)
+    plan = union_all(ranked, unreferenced)
+    return plan.order_by(plan.selected_columns.name, plan.selected_columns.rank.nulls_last())
 
 
 class UnknownProject(LookupError):
@@ -106,19 +115,20 @@ def check_keep(keep: int) -> int:
 
 
 async def _drop(
-    conn, keep: int, project: str | None, actor_id: int | None, token_id: int | None, audit: bool
+    conn: AsyncConnection, keep: int, project: str | None, actor_id: int | None, token_id: int | None, audit: bool
 ) -> list[ProjectPruned]:
     """Drop the references to the artifacts beyond ``keep`` and record the blobs left unreferenced, in ``conn``'s
     transaction, which holds the blob lock exclusively."""
     from evo_agents.hub.server import audit as audit_trail
 
+    builds, blobs, projects = tables.kg_builds, tables.blobs, tables.projects
     project_id = None
     if project is not None:
-        row = await (await legacy(conn, "SELECT id FROM projects WHERE name = %s", (project,))).fetchone()
+        row = (await conn.execute(select(projects.c.id).where(projects.c.name == project))).one_or_none()
         if row is None:
             raise UnknownProject(f"project {project} is not registered on this hub")
         project_id = row[0]
-    rows = await (await legacy(conn, PLAN, {"project_id": project_id})).fetchall()
+    rows = (await conn.execute(_plan(project_id))).all()
     found: dict[str, ProjectPruned] = {}
     doomed: dict[tuple[int, str], dict[str, int]] = {}  # (project id, name) -> {sha256: size}
     for name, pid, sha256, size, rank in rows:
@@ -134,9 +144,17 @@ async def _drop(
         found[project] = ProjectPruned(project)
     left: dict[str, tuple[int, str]] = {}
     for (pid, name), hashes in doomed.items():
-        cursor = await legacy(conn, DROP_FROM_BUILDS, (pid, sorted(hashes)))
-        found[name].builds = cursor.rowcount
-        await legacy(conn, DROP_BLOBS, (pid, sorted(hashes)))
+        dropped = await conn.execute(
+            update(builds)
+            .values(artifact_sha256=None, artifact_pruned_at=func.now())
+            .where(builds.c.project_id == pid, builds.c.artifact_sha256.in_(sorted(hashes)))
+        )
+        found[name].builds = dropped.rowcount
+        await conn.execute(
+            delete(blobs).where(
+                blobs.c.project_id == pid, blobs.c.kind == ARTIFACT_KIND, blobs.c.sha256.in_(sorted(hashes))
+            )
+        )
         left.update({sha: (size, ARTIFACT_KIND) for sha, size in hashes.items()})
         if audit:
             await audit_trail.record(

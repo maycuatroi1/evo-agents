@@ -29,7 +29,7 @@ from evo_agents.hub.blobs import BlobStore
 from evo_agents.hub.kg_graph import BuiltGraph, GraphCache, HubSession
 from evo_agents.kg.policy import Label, Policy
 from evo_agents.kg.serve import HUB_DEGREE, SEED_EDGES, STATUS_RANK, ToolError
-from evo_agents.kg.store import LIVE, Store
+from evo_agents.kg.store import Store
 
 MAX_HOPS = 2
 MAX_NODES = 150
@@ -86,13 +86,8 @@ class WebSession(HubSession):
         if self.error:
             return []
         store, b = self._visible_store()
-        rows = store.db.execute(
-            f"SELECT kind, label_lvl, label_loc, label_int, count(*) FROM nodes WHERE {LIVE} "
-            "GROUP BY kind, label_lvl, label_loc, label_int",
-            {"b": b},
-        )
         counts: dict[str, int] = {}
-        for kind, level, location, integrity, count in rows:
+        for kind, level, location, integrity, count in store.kind_counts(b):
             if self.visible((level, location, integrity)):
                 counts[kind] = counts.get(kind, 0) + count
         ordered = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))

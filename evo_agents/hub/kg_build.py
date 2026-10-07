@@ -40,10 +40,13 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import yaml
+from sqlalchemy import BigInteger, Text, cast, column, delete, func, insert, literal, select, table, update
+from sqlalchemy.dialects.postgresql import ENUM
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import blob_gc
+from evo_agents.hub import blob_gc, tables
 from evo_agents.hub.blobs import KIND_LIMITS, PARALLEL, BlobStore, BlobStoreUnavailable, blob_key
-from evo_agents.hub.db import legacy
 from evo_agents.hub.jobs import KG_BUILD, JobQueue, kg_lock
 from evo_agents.hub.kg_ingest import ONTOLOGY_FILE, blob_refs
 from evo_agents.kg.corpus import Corpus
@@ -58,6 +61,23 @@ STALLED_AFTER = 120.0  # seconds without a heartbeat from its worker before a ru
 STOPPED = "the worker running this build stopped before it finished; a new build was queued"
 CHUNK = 1024 * 1024
 HARNESS_YAML = "name: {name}\nknowledge_file: knowledge.yaml\nrepos: []\n"
+
+# procrastinate's job table, which the hub reads and locks but never writes: the columns the kg queries use. The
+# status is procrastinate's enum, so a value compared with it is sent untyped and Postgres reads it as the enum.
+JOB_STATUS = ENUM(
+    "todo",
+    "doing",
+    "succeeded",
+    "failed",
+    "cancelled",
+    "aborting",
+    "aborted",
+    name="procrastinate_job_status",
+    create_type=False,
+)
+procrastinate_jobs = table(
+    "procrastinate_jobs", column("id"), column("status", JOB_STATUS), column("lock"), column("queueing_lock")
+)
 
 
 class BuildFailure(Exception):
@@ -162,18 +182,13 @@ def _merge(corpus: Corpus, ingest: Ingest) -> None:
     end = next((r for r in reversed(records) if r.get("type") == "run_end"), {})
     with corpus.db:
         corpus.merge(records, run_id)
-        corpus.db.execute(
-            "INSERT OR REPLACE INTO runs VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (
-                run_id,
-                header.get("source") or "",
-                header.get("connector"),
-                None,
-                end.get("status") or "unknown",
-                header.get("started_at"),
-                None,
-                json.dumps({"hub": True}),
-            ),
+        corpus.record_run(
+            run_id,
+            source=header.get("source") or "",
+            connector=header.get("connector"),
+            status=end.get("status") or "unknown",
+            started_at=header.get("started_at"),
+            detail={"hub": True},
         )
 
 
@@ -181,7 +196,7 @@ def prepare_corpus(store: BlobStore, project: Project, ingests: list[Ingest]) ->
     """Bring the cached corpus of ``project`` up to ``ingests``; how many runs were merged now."""
     corpus = project.corpus()
     try:
-        merged = {row[0] for row in corpus.db.execute("SELECT run_id FROM runs")}
+        merged = corpus.run_ids()
         new = [ingest for ingest in ingests if ingest.run_id not in merged]
 
         def fetch_log(ingest: Ingest) -> None:
@@ -225,8 +240,7 @@ def build_graph(project: Project) -> tuple[Path, object]:
         if not report.ok:
             shown = "; ".join(report.errors[:5])
             raise BuildFailure(f"the build reported {len(report.errors)} error(s): {shown}")
-        stage.db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-        stage.db.execute("PRAGMA journal_mode=DELETE")
+        stage.leave_wal()
     finally:
         stage.close()
     for stale in (Path(f"{target}-wal"), Path(f"{target}-shm")):
@@ -258,37 +272,68 @@ def describe_failure(exc: BaseException) -> str:
     return (text or type(exc).__name__)[:ERROR_CHARS]
 
 
-START = """
-UPDATE kg_builds SET status = 'running', started_at = now(), job_id = coalesce(job_id, %s)
- WHERE id = %s AND status IN ('queued', 'running')
-RETURNING id
-"""
-START_UNQUEUED = """
-INSERT INTO kg_builds (project_id, job_id, status, started_at) VALUES (%s, %s, 'running', now()) RETURNING id
-"""
-SUCCEEDED = """
-UPDATE kg_builds SET status = 'succeeded', config_digest = %s, runs = %s, artifact_sha256 = %s, artifact_size = %s,
-       artifact_reused_from = %s, content_hash = %s, nodes = %s, edges = %s, error = NULL, finished_at = now()
- WHERE id = %s
-"""
-LATEST_ARTIFACT = """
-SELECT id, artifact_sha256, artifact_size, content_hash, artifact_reused_from FROM kg_builds
- WHERE project_id = %s AND artifact_sha256 IS NOT NULL ORDER BY id DESC LIMIT 1
-"""
-FAILED = """
-UPDATE kg_builds SET status = 'failed', config_digest = %s, runs = %s, error = %s, finished_at = now() WHERE id = %s
-"""
-ARTIFACT = """
-INSERT INTO blobs (project_id, sha256, size, kind, created_by) VALUES (%s, %s, %s, %s, NULL)
-    ON CONFLICT (project_id, sha256) DO NOTHING
-"""
+def _start(build_id: int, job_id: int | None):
+    """Mark build ``build_id`` running under job ``job_id``, unless it ended already; its id, when it did not."""
+    builds = tables.kg_builds
+    return (
+        update(builds)
+        .values(
+            status="running",
+            started_at=func.now(),
+            job_id=func.coalesce(builds.c.job_id, literal(job_id, BigInteger)),
+        )
+        .where(builds.c.id == build_id, builds.c.status.in_(["queued", "running"]))
+        .returning(builds.c.id)
+    )
+
+
+def _start_unqueued(project_id: int, job_id: int | None):
+    """A new build of the project, running under job ``job_id``: for a job whose build row is gone."""
+    builds = tables.kg_builds
+    return (
+        insert(builds)
+        .values(project_id=project_id, job_id=job_id, status="running", started_at=func.now())
+        .returning(builds.c.id)
+    )
+
+
+def _latest_artifact(project_id: int):
+    """The project's latest build still holding an artifact: id, artifact_sha256, artifact_size, content_hash and
+    artifact_reused_from."""
+    builds = tables.kg_builds
+    return (
+        select(
+            builds.c.id,
+            builds.c.artifact_sha256,
+            builds.c.artifact_size,
+            builds.c.content_hash,
+            builds.c.artifact_reused_from,
+        )
+        .where(builds.c.project_id == project_id, builds.c.artifact_sha256.is_not(None))
+        .order_by(builds.c.id.desc())
+        .limit(1)
+    )
+
+
+def _failed_build(build_id: int, digest: str | None, runs: int, error: str):
+    builds = tables.kg_builds
+    return (
+        update(builds)
+        .values(status="failed", config_digest=digest, runs=runs, error=error, finished_at=func.now())
+        .where(builds.c.id == build_id)
+    )
+
+
+def _project_id(name: str):
+    projects = tables.projects
+    return select(projects.c.id).where(projects.c.name == name)
 
 
 async def _reusable(engine, store: BlobStore, project_id: int, built: Built) -> tuple | None:
     """The latest build of the project still holding an artifact, when it has ``built``'s content and its object is
     in the bucket with its size; None otherwise."""
     async with engine.begin() as conn:
-        latest = await (await legacy(conn, LATEST_ARTIFACT, (project_id,))).fetchone()
+        latest = (await conn.execute(_latest_artifact(project_id))).one_or_none()
     if latest is None or latest[3] != built.content_hash:
         return None
     if await asyncio.to_thread(store.size, blob_key(latest[1])) != latest[2]:
@@ -307,7 +352,7 @@ async def record(
         await asyncio.to_thread(store.put_file, built.sha256, built.path)
     async with engine.begin() as conn:
         await blob_gc.lock_shared(conn)
-        if latest is not None and await (await legacy(conn, LATEST_ARTIFACT, (project_id,))).fetchone() == latest:
+        if latest is not None and (await conn.execute(_latest_artifact(project_id))).one_or_none() == latest:
             artifact = Artifact(latest[1], latest[2], latest[4] or latest[0])
         else:
             # Uploaded above, unless another build of the project finished meanwhile, which the queue's lock rules
@@ -316,28 +361,37 @@ async def record(
             if latest is not None or revived:
                 await asyncio.to_thread(store.put_file, built.sha256, built.path, replace=bool(revived))
             artifact = Artifact(built.sha256, built.size, None)
-        await legacy(conn, ARTIFACT, (project_id, artifact.sha256, artifact.size, ARTIFACT_KIND))
-        await legacy(
-            conn,
-            SUCCEEDED,
-            (
-                digest,
-                built.runs,
-                artifact.sha256,
-                artifact.size,
-                artifact.reused_from,
-                built.content_hash,
-                built.nodes,
-                built.edges,
-                build_id,
-            ),
+        blobs, builds = tables.blobs, tables.kg_builds
+        await conn.execute(
+            pg_insert(blobs)
+            .values(
+                project_id=project_id, sha256=artifact.sha256, size=artifact.size, kind=ARTIFACT_KIND, created_by=None
+            )
+            .on_conflict_do_nothing(index_elements=[blobs.c.project_id, blobs.c.sha256])
+        )
+        await conn.execute(
+            update(builds)
+            .values(
+                status="succeeded",
+                config_digest=digest,
+                runs=built.runs,
+                artifact_sha256=artifact.sha256,
+                artifact_size=artifact.size,
+                artifact_reused_from=artifact.reused_from,
+                content_hash=built.content_hash,
+                nodes=built.nodes,
+                edges=built.edges,
+                error=None,
+                finished_at=func.now(),
+            )
+            .where(builds.c.id == build_id)
         )
     return artifact
 
 
 async def _failed(engine, digest: str | None, runs: int, error: str, build_id: int) -> None:
     async with engine.begin() as conn:
-        await legacy(conn, FAILED, (digest, runs, error, build_id))
+        await conn.execute(_failed_build(build_id, digest, runs, error))
 
 
 async def _stopped(
@@ -346,7 +400,7 @@ async def _stopped(
     """Record that the worker stopped before build ``build_id`` finished, and queue another so the runs it would
     have built are not left waiting for the next push."""
     async with engine.begin() as conn:
-        await legacy(conn, FAILED, (digest, runs, STOPPED if manager else STOPPED.split(";")[0], build_id))
+        await conn.execute(_failed_build(build_id, digest, runs, STOPPED if manager else STOPPED.split(";")[0]))
         if manager is not None:
             await queue_build(JobQueue(manager), conn, project_id, project, None)
 
@@ -356,29 +410,33 @@ async def run_build(context, project: str, build_id: int | None, job_id: int | N
     ``context`` is the worker's HubContext; ``manager``, procrastinate's job manager, queues the build again when
     the worker stops before this one finished."""
     engine = context.engine
+    configs, kg_ingests = tables.kg_configs, tables.kg_ingests
     async with engine.begin() as conn:
-        row = await (await legacy(conn, "SELECT id FROM projects WHERE name = %s", (project,))).fetchone()
+        row = (await conn.execute(_project_id(project))).one_or_none()
         if row is None:
             log.warning("kg build of a project the hub does not have", extra={"project": project, "job_id": job_id})
             return {"status": "skipped"}
         project_id = row[0]
         started = None
         if build_id is not None:
-            started = await (await legacy(conn, START, (job_id, build_id))).fetchone()
+            started = (await conn.execute(_start(build_id, job_id))).one_or_none()
         if started is None:
-            started = await (await legacy(conn, START_UNQUEUED, (project_id, job_id))).fetchone()
+            started = (await conn.execute(_start_unqueued(project_id, job_id))).one()
         build_id = started[0]
-        found = await (
-            await legacy(
-                conn, "SELECT digest, knowledge, ontology FROM kg_configs WHERE project_id = %s", (project_id,)
+        found = (
+            await conn.execute(
+                select(configs.c.digest, configs.c.knowledge, configs.c.ontology).where(
+                    configs.c.project_id == project_id
+                )
             )
-        ).fetchone()
-        cursor = await legacy(
-            conn,
-            "SELECT run_id::text, log_sha256, log_size FROM kg_ingests WHERE project_id = %s ORDER BY run_id",
-            (project_id,),
+        ).one_or_none()
+        run_id = cast(kg_ingests.c.run_id, Text).label("run_id")
+        rows = await conn.execute(
+            select(run_id, kg_ingests.c.log_sha256, kg_ingests.c.log_size)
+            .where(kg_ingests.c.project_id == project_id)
+            .order_by(run_id)
         )
-        ingests = [Ingest(*row) for row in await cursor.fetchall()]
+        ingests = [Ingest(**row._mapping) for row in rows]
     digest = found[0] if found else None
     log.info("kg build started", extra={"project": project, "build_id": build_id, "job_id": job_id})
     try:
@@ -428,35 +486,36 @@ async def run_build(context, project: str, build_id: int | None, job_id: int | N
 
 
 async def queue_build(
-    job_queue: JobQueue, conn, project_id: int, project: str, requested_by: int | None
+    job_queue: JobQueue, conn: AsyncConnection, project_id: int, project: str, requested_by: int | None
 ) -> tuple[int | None, bool]:
     """Queue a build of ``project`` in ``conn``'s transaction: (its build id, True), or (the waiting build's id,
     False) when one waits already. The waiting job's row stays locked until the transaction ends, and the worker
     takes jobs with SKIP LOCKED, so it cannot start that build before the caller's rows are visible to it."""
     key = kg_lock(project)
+    builds, jobs = tables.kg_builds, procrastinate_jobs
     for _ in range(QUEUE_ATTEMPTS):
-        (build_id,) = await (
-            await legacy(
-                conn,
-                "INSERT INTO kg_builds (project_id, status, requested_by) VALUES (%s, 'queued', %s) RETURNING id",
-                (project_id, requested_by),
+        build_id = (
+            await conn.execute(
+                insert(builds)
+                .values(project_id=project_id, status="queued", requested_by=requested_by)
+                .returning(builds.c.id)
             )
-        ).fetchone()
+        ).scalar_one()
         job_id = await job_queue.defer_kg(KG_BUILD, project, connection=conn, project=project, build_id=build_id)
         if job_id is not None:
-            await legacy(conn, "UPDATE kg_builds SET job_id = %s WHERE id = %s", (job_id, build_id))
+            await conn.execute(update(builds).values(job_id=job_id).where(builds.c.id == build_id))
             return build_id, True
-        await legacy(conn, "DELETE FROM kg_builds WHERE id = %s", (build_id,))
-        waiting = await (
-            await legacy(
-                conn,
-                "SELECT j.id, b.id FROM procrastinate_jobs j LEFT JOIN kg_builds b ON b.job_id = j.id "
-                "WHERE j.queueing_lock = %s AND j.status = 'todo' FOR UPDATE OF j",
-                (key,),
+        await conn.execute(delete(builds).where(builds.c.id == build_id))
+        waiting = (
+            await conn.execute(
+                select(jobs.c.id.label("job_id"), builds.c.id.label("build_id"))
+                .join_from(jobs, builds, builds.c.job_id == jobs.c.id, isouter=True)
+                .where(jobs.c.queueing_lock == key, jobs.c.status == "todo")
+                .with_for_update(of=jobs)
             )
-        ).fetchone()
+        ).first()
         if waiting is not None:
-            return waiting[1], False
+            return waiting.build_id, False
         # The waiting job started in between: queue another, which will see this transaction's rows.
     raise QueueBusy(f"a build of project {project} could not be queued; try again shortly")
 
@@ -470,18 +529,23 @@ async def recover_stalled(context, manager) -> dict:
     projects = set()
     for job in stalled:
         await manager.finish_job(job, Status.FAILED, delete_job=False)
+        builds = tables.kg_builds
         async with context.engine.begin() as conn:
-            await legacy(
-                conn,
-                "UPDATE kg_builds SET status = 'failed', error = %s, started_at = coalesce(started_at, now()), "
-                "finished_at = now() WHERE job_id = %s AND status IN ('queued', 'running')",
-                (STOPPED, job.id),
+            await conn.execute(
+                update(builds)
+                .values(
+                    status="failed",
+                    error=STOPPED,
+                    started_at=func.coalesce(builds.c.started_at, func.now()),
+                    finished_at=func.now(),
+                )
+                .where(builds.c.job_id == job.id, builds.c.status.in_(["queued", "running"]))
             )
         projects.add(job.task_kwargs.get("project"))
     queued = []
     for project in sorted(p for p in projects if isinstance(p, str)):
         async with context.engine.begin() as conn:
-            row = await (await legacy(conn, "SELECT id FROM projects WHERE name = %s", (project,))).fetchone()
+            row = (await conn.execute(_project_id(project))).one_or_none()
             if row is not None:
                 await queue_build(JobQueue(manager), conn, row[0], project, None)
                 queued.append(project)
