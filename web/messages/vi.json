@@ -335,35 +335,92 @@
   },
   "admin": {
     "title": "Quản trị hub",
-    "groups": {
-      "access": "Người dùng và quyền",
-      "projects": "Dự án",
-      "content": "Nội dung",
-      "other": "Khác"
+    "overview": {
+      "metrics": {
+        "label": "Tổng quan hub",
+        "members": "Thành viên",
+        "membersMeta": "{count, plural, =0 {Không ai hoạt động} other {# người hoạt động}} trong {days} ngày qua",
+        "tokens": "Token còn hiệu lực",
+        "tokensMeta": "{count, plural, =0 {Không token nào hết hạn} other {# token hết hạn}} trong {days} ngày tới",
+        "workers": "Worker",
+        "workersMeta": "{live, plural, =0 {Chưa có worker nào} other {{count, plural, =0 {Tất cả đều online} other {# offline}}}}",
+        "storage": "Lưu trữ blob",
+        "storageMeta": "{count, plural, other {# đối tượng}}",
+        "audit": "Dòng audit",
+        "auditMeta": "Trong {hours} giờ qua"
+      },
+      "attention": {
+        "title": "Cần xử lý",
+        "count": "{count, plural, other {# việc cần xử lý}}",
+        "clearTitle": "Mọi thứ ổn.",
+        "clear": "Không token nào hết hạn trong {expiring} ngày tới, không build đồ thị nào lỗi trong {days} ngày qua, và mọi worker đều online.",
+        "builds": {
+          "title": "{count, plural, other {# lần build đồ thị lỗi}} ở {project}",
+          "lastFailure": "Lỗi gần nhất: build #{id},",
+          "since": "Build mới nhất #{id} {status, select, succeeded {đã thành công} running {đang chạy} queued {đang chờ} other {đã lỗi}}"
+        },
+        "offline": {
+          "title": "{count, plural, other {# worker offline}}",
+          "meta": "Không có heartbeat hơn {minutes} phút"
+        },
+        "expiring": {
+          "title": "{count, plural, other {# token hết hạn}} trong {days} ngày tới",
+          "meta": "Mỗi lần dùng sẽ lùi hạn của token; thu hồi những token không ai cần"
+        },
+        "unused": {
+          "title": "{count, plural, other {# token}} không dùng trong {days} ngày",
+          "meta": "Chưa bị thu hồi; xem chúng thuộc về ai"
+        },
+        "notSignedIn": {
+          "title": "{count, plural, other {# người}} chưa đăng nhập lần nào",
+          "meta": "Đã được cấp quyền, đang chờ lần đăng nhập đầu tiên"
+        },
+        "deletions": {
+          "title": "{count, plural, other {# blob}} đang chờ xoá khỏi kho lưu trữ",
+          "meta": "Tổng {size}; lần dọn tiếp theo sẽ thử lại"
+        }
+      },
+      "access": {
+        "title": "Quyền theo dự án",
+        "allMembers": "Tất cả thành viên",
+        "admins": "{count, plural, other {# người quản trị}}",
+        "writers": "{count, plural, other {# người ghi}}",
+        "readers": "{count, plural, other {# người đọc}}",
+        "nobody": "Chưa ai có quyền",
+        "noProjects": "Chưa có dự án nào được đăng ký. Đăng ký bằng <code>evo-agents hub project register</code>."
+      },
+      "diagnostics": "Số dòng của từng bảng trong hub nằm ở trang <link>Chẩn đoán</link>."
     },
-    "tables": {
-      "users": "Người dùng",
-      "tokens": "Token và phiên",
-      "grants": "Quyền theo dự án",
-      "audit": "Dòng audit",
-      "projects": "Dự án",
-      "project_repos": "Repo của dự án",
-      "project_sinks": "Sink của dự án",
-      "memories": "Memories",
-      "memory_revisions": "Revision của memory",
-      "plans": "Plans",
-      "plan_revisions": "Revision của plan",
-      "skills": "Skills",
-      "skill_versions": "Version của skill",
-      "kg_ingests": "Lượt đẩy knowledge graph"
+    "diagnostics": {
+      "title": "Chẩn đoán",
+      "caption": "Số dòng trong từng bảng của hub",
+      "columns": {
+        "table": "Bảng",
+        "area": "Phần",
+        "rows": "Số dòng"
+      },
+      "total": "{tables, plural, other {# bảng}}, tổng {rows, plural, other {# dòng}}",
+      "empty": "Hub không báo bảng nào.",
+      "areas": {
+        "access": "Người dùng và quyền",
+        "projects": "Dự án",
+        "content": "Memory, plan và skill",
+        "runs": "Worker và run",
+        "credentials": "Secret và lease",
+        "notifications": "Thông báo",
+        "graph": "Đồ thị tri thức",
+        "storage": "Lưu trữ blob",
+        "queue": "Hàng đợi job",
+        "other": "Khác"
+      }
     },
-    "rows": "{count, plural, other {# dòng}}",
     "nav": {
       "label": "Các trang quản trị",
       "overview": "Tổng quan",
       "members": "Thành viên",
       "tokens": "Token",
-      "audit": "Audit"
+      "audit": "Audit",
+      "diagnostics": "Chẩn đoán"
     },
     "filters": {
       "apply": "Lọc",
@@ -525,6 +582,8 @@
       "state": "Trạng thái",
       "states": {
         "active": "Đang hoạt động",
+        "expiring": "Hết hạn trong {days} ngày tới",
+        "unused": "Không dùng trong {days} ngày",
         "revoked": "Đã thu hồi",
         "expired": "Đã hết hạn",
         "any": "Mọi trạng thái"
@@ -1121,6 +1180,11 @@
     },
     "history": {
       "caption": "Các build gần nhất của dự án",
+      "filter": "Các build hiển thị",
+      "all": "Tất cả",
+      "failed": "Lỗi",
+      "captionFailed": "Các build lỗi gần nhất của dự án",
+      "noFailed": "Dự án này chưa có build nào lỗi.",
       "build": "Build",
       "status": "Trạng thái",
       "queued": "Xếp hàng lúc",

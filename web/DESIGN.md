@@ -457,7 +457,10 @@ Shared pieces built on them:
   so Recharts is not in any page's first load. With `quiet`, a strip whose in-flight cells are all zero gives way to
   one line on `surface-sunken` ("All quiet. No run is in progress, queued or waiting for review." and Dispatch for a
   writer): the runs page passes it while no plan run is parked; the workers page does not, since its counts are the
-  fleet's state and an offline machine must stay in view.
+  fleet's state and an offline machine must stay in view. A cell given `href` opens that page from anywhere in it: its
+  label is the link, described by the figure and its line, with a cover over the cell, a chevron after the label and
+  the cell on `accent` under the pointer; `display` sets the figure as it reads ("1.2 GB", "1,234") where the bare value
+  would not.
 - `components/home`, Home (`/`), the kit's MissionControl: one read of `GET /v1/me/overview` (prefetched on the
   server with the workers list, then asked every 5 seconds while a run is in flight or a decision is open and every 30
   otherwise; the page's LiveIndicator query) and the workers list for the Fleet card. The page head is "Home"; under
@@ -479,6 +482,26 @@ Shared pieces built on them:
   lists the visitor's own workers with `HeartbeatBars`; Projects each project of the grants with the role, active plans,
   repos and open decisions. A member without a grant sees the EmptyState that says a hub administrator grants roles,
   with their login to copy; a hub admin without one is sent to Administration. The pure parts are `home/model.ts`.
+- `components/admin`, Administration (`/admin`), the review's F6: what an admin acts on, not the database's tables. One
+  read of `GET /v1/admin/overview`, prefetched on the server. Under the area's tabs and the head "Hub administration",
+  the MetricStrip of five cells, each opening its page: Members (those seen within 30 days), Live tokens (how many
+  expire within 14 days), Workers (how many are offline), Blob storage (the bytes of the bucket's distinct objects, to
+  Diagnostics) and Audit rows of the last 24 hours. Then two columns from the lg breakpoint (3 to 2), one below, of
+  Home's cards with a 48 px head. Needs attention lists, the most pressing first, rows of a 20 px mark in its tone,
+  the title over one line of facts (each wraps to a second line before it is cut) and a chevron; the title's link
+  covers the row and opens the list already filtered: a project whose newest graph build failed (`danger`, its build
+  history on Failed, `/p/{project}/kg?builds=failed#build-history`), offline workers (`danger`,
+  `/workers?status=offline`), tokens expiring within 14 days (`attention`, `/admin/tokens?state=expiring`), a project
+  that failed lately but built since, tokens unused for 90 days (`?state=unused`), people granted access who have not
+  signed in yet, and blobs waiting to leave the bucket (no page lists them, so no link). Its count pill counts the
+  `danger` and `attention` rows; with nothing to list it says "All clear." with a `success` check. Access by project
+  lists every project with its grants by role, each opening `/admin/members?project=`. No table name shows here; the
+  foot links Diagnostics (`/admin/diagnostics`, the Overview tab still selected): the rows of every table
+  (`GET /v1/admin/stats`) in one DataCard, the name in mono, the area of the hub it belongs to (by prefix, so a table a
+  later revision adds lands in one), the rows in tabular figures and the totals at its foot, a list under 768 px. The
+  pure parts are `admin/overview-model.ts`. The knowledge graph page's build history has All and Failed (the kit's
+  segmented control, `?builds=failed` through the History API); Failed reads the project's latest failed builds on
+  their own, so a failure older than the latest builds still shows.
 - `components/feedback/toast.tsx` and `ui/sonner.tsx`: the kit's Toast through Sonner, mounted once in `providers.tsx`.
   Bottom right, 24 px from the edges (16 on phones), 380 px wide, z-index 60, on `surface-raised` inside a `border` edge
   with `shadow-popover` and 8 px corners: the tone's Lucide icon, a past-tense title in `body-strong` ("Run #13

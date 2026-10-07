@@ -52,7 +52,7 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | health | `GET /v1/health`, `GET /v1/health/live` |
 | sign-in | `/v1/auth/config`, `/v1/auth/github`, `/v1/auth/whoami`, `/v1/auth/logout`, `/v1/auth/web/{login,callback,csrf,logout}` |
 | tokens | `GET /v1/tokens`, `DELETE /v1/tokens/{id}` |
-| admin | `/v1/admin/users`, `/v1/admin/stats`, `/v1/admin/projects/{project}/grants/{login}`, `/v1/admin/audit`, `/v1/admin/tokens`, `/v1/admin/kg/prune` |
+| admin | `/v1/admin/overview`, `/v1/admin/users`, `/v1/admin/stats`, `/v1/admin/projects/{project}/grants/{login}`, `/v1/admin/audit`, `/v1/admin/tokens`, `/v1/admin/kg/prune` |
 | projects | `GET /v1/projects`, `GET` and `PUT /v1/projects/{project}` |
 | plans | `/v1/projects/{project}/plans`, `.../plans/{plan_id}` (`GET`, `PUT`, `PATCH`), `.../revisions`, `.../diff`, `.../complete` |
 | memories | `/v1/memories` (`GET`, `PUT`), `/v1/memories/search`, `/v1/memories/{id}`, `.../revisions` |
@@ -153,7 +153,11 @@ evo-agents hub admin users
 evo-agents hub admin stats      # rows in every table
 ```
 
-The audit trail and every user's tokens are on the web's admin pages (`/v1/admin/audit`, `/v1/admin/tokens`).
+The audit trail and every user's tokens are on the web's admin pages (`/v1/admin/audit`, `/v1/admin/tokens`). The
+web's Administration page reads `/v1/admin/overview`: members seen within 30 days, tokens expiring within 14 days or
+unused for 90 (`/v1/admin/tokens?state=expiring` and `?state=unused` list them), each project's grants by role, the
+bytes the blob store holds and the deletions still pending, graph builds that failed within 7 days, offline workers
+and the audit rows of the last 24 hours. The rows of every table are on its Diagnostics page.
 
 ## Projects and who sees what
 

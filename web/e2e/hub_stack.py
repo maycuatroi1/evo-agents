@@ -30,6 +30,10 @@ and each resize with ``size: <cols>x<rows>``; GET /terminal/worker/<run_id> says
 The Insights specs need runs that ended on earlier days: POST /runs/backdate {run_id, days, seconds} moves an ended run
 ``days`` whole UTC days back, every time of it alike, and with ``seconds`` makes it start that long before it ended.
 
+The admin specs need tokens nobody used lately: POST /tokens/idle {token_id, days} makes a token look last used
+``days`` days ago, its expiry TOKEN_TTL after that, as the hub would have left it; the token must not be used again,
+since a use moves both forward.
+
 The hub seals secrets with an EVO_HUB_SECRETS_KEY of its own, made for each start, and has no GitHub App: a run gets
 the owner's secrets as leases, and a repo on github.com that no git secret covers is missing with that reason.
 
@@ -231,6 +235,26 @@ def backdate_run(dsn: str, body: dict) -> dict:
     return {"run_id": row[0], "started_at": row[1].isoformat() if row[1] else None, "finished_at": row[2].isoformat()}
 
 
+def idle_token(dsn: str, body: dict) -> dict:
+    """Make token ``token_id`` last used ``days`` days ago and expire TOKEN_TTL after that. LookupError for a token
+    the stack never issued."""
+    import psycopg
+
+    from evo_agents.hub.server.security import TOKEN_TTL
+
+    with psycopg.connect(dsn, autocommit=True) as conn:
+        row = conn.execute(
+            "UPDATE tokens SET last_used_at = now() - make_interval(days => %(days)s), "
+            "created_at = least(created_at, now() - make_interval(days => %(days)s)), "
+            "expires_at = now() - make_interval(days => %(days)s) + %(ttl)s "
+            "WHERE id = %(id)s RETURNING id, last_used_at, expires_at",
+            {"days": int(body["days"]), "ttl": TOKEN_TTL, "id": int(body["token_id"])},
+        ).fetchone()
+    if row is None:
+        raise LookupError(f"no token {body['token_id']}")
+    return {"token_id": row[0], "last_used_at": row[1].isoformat(), "expires_at": row[2].isoformat()}
+
+
 INPUT, OUTPUT, RESIZE = 0, 1, 2  # evo_agents.hub.terminal: the frame types
 CONNECT_FOR = 30.0  # seconds the fake worker keeps trying while no browser waits
 
@@ -386,6 +410,11 @@ def control_server(
             elif self.path == "/runs/backdate":
                 try:
                     self._reply(200, backdate_run(dsn, body))
+                except LookupError as exc:
+                    self._reply(404, {"error": str(exc)})
+            elif self.path == "/tokens/idle":
+                try:
+                    self._reply(200, idle_token(dsn, body))
                 except LookupError as exc:
                     self._reply(404, {"error": str(exc)})
             elif self.path in ("/kg/seed", "/kg/build"):

@@ -313,7 +313,18 @@ const NARROW = {
   queued: "hidden md:table-cell",
 };
 
-export function BuildHistory({ builds, now }: { builds: KgBuild[]; now: number | null }) {
+export function BuildHistory({
+  builds,
+  now,
+  caption,
+  empty,
+}: {
+  builds: KgBuild[];
+  now: number | null;
+  caption?: string;
+  /** One line in place of the rows when there are none (the failed builds of a project that never failed). */
+  empty?: ReactNode;
+}) {
   const t = useTranslations("kg.history");
   const columns = useMemo(() => {
     const helper = dataTableColumns<KgBuild>();
@@ -396,7 +407,8 @@ export function BuildHistory({ builds, now }: { builds: KgBuild[]; now: number |
     <DataTable
       data={builds}
       columns={columns}
-      caption={t("caption")}
+      caption={caption ?? t("caption")}
+      empty={empty}
       getRowId={(row) => String(row.id)}
       initialSorting={[{ id: "id", desc: true }]}
       columnClassNames={NARROW}

@@ -1,9 +1,11 @@
 "use client";
 
 import { Eye } from "lucide-react";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 
 import { Tag } from "@/components/data/identifier";
+import { Segmented } from "@/components/data/segmented";
 import { PageHeader } from "@/components/shell/page-header";
 import { QueryView, useHubQuery } from "@/components/states/query-view";
 import { ApiErrorState, NotFoundState, TableSkeleton } from "@/components/states/states";
@@ -11,7 +13,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Skeleton } from "@/components/ui/skeleton";
 import { browserApi } from "@/lib/api/browser";
 import type { ApiErrorInfo } from "@/lib/api/errors";
-import { buildsActive, kgBuildsQuery, kgGraphQuery } from "@/lib/kg/queries";
+import {
+  BUILD_HISTORY_ID,
+  type BuildFilter,
+  buildsActive,
+  kgBuildsQuery,
+  kgFailedBuildsQuery,
+  kgGraphQuery,
+  parseBuildFilter,
+} from "@/lib/kg/queries";
 import type { KgBuilds } from "@/lib/kg/types";
 
 import { BuildHistory, BuildQueue, LatestBuild, NoBuilds, StatusTiles } from "./build-status";
@@ -22,6 +32,8 @@ export type KgOverviewErrors = {
   builds: ApiErrorInfo | null;
   graph: ApiErrorInfo | null;
   search: ApiErrorInfo | null;
+  /** Of the failed builds, prefetched when the URL asks for them (`?builds=failed`). */
+  failed?: ApiErrorInfo | null;
 };
 
 function TilesSkeleton() {
@@ -72,7 +84,63 @@ function SearchSection({
   );
 }
 
-function Builds({ data }: { data: KgBuilds }) {
+/** The history's filter in the URL (`?builds=failed`), changed through the History API like the lists' filters. */
+function useBuildFilter(): [BuildFilter, (next: BuildFilter) => void] {
+  const params = useSearchParams();
+  const pathname = usePathname();
+  const filter = parseBuildFilter(params.get("builds"));
+  const set = (next: BuildFilter) => {
+    const search = new URLSearchParams(params.toString());
+    if (next === "failed") search.set("builds", "failed");
+    else search.delete("builds");
+    const text = search.toString();
+    window.history.replaceState(null, "", `${pathname}${text ? `?${text}` : ""}`);
+  };
+  return [filter, set];
+}
+
+/** The project's latest failed builds, read on their own so a failure older than the latest builds still shows. */
+function FailedHistory({ project, now, initialError }: { project: string; now: number | null; initialError: ApiErrorInfo | null }) {
+  const t = useTranslations("kg.history");
+  const failed = useHubQuery(kgFailedBuildsQuery(browserApi, project), initialError);
+  return (
+    <QueryView state={failed} loading={<TableSkeleton rows={4} />}>
+      {(data) => <BuildHistory builds={data.builds} now={now} caption={t("captionFailed")} empty={t("noFailed")} />}
+    </QueryView>
+  );
+}
+
+/** The build history under its head, with All and Failed; the admin overview links to Failed by its anchor. */
+function History({ project, data, now, failedError }: { project: string; data: KgBuilds; now: number | null; failedError: ApiErrorInfo | null }) {
+  const t = useTranslations("kg.history");
+  const tBuilds = useTranslations("kg.builds");
+  const [filter, setFilter] = useBuildFilter();
+  return (
+    <section aria-labelledby={BUILD_HISTORY_ID} className="flex flex-col gap-2" data-testid="kg-history" data-filter={filter}>
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+        <h3 id={BUILD_HISTORY_ID} className="scroll-mt-20 text-[15px] leading-[22px] font-semibold">
+          {tBuilds("history")}
+        </h3>
+        <Segmented
+          label={t("filter")}
+          value={filter}
+          onChange={setFilter}
+          options={[
+            { value: "all", label: t("all"), testId: "history-all" },
+            { value: "failed", label: t("failed"), testId: "history-failed" },
+          ]}
+        />
+      </div>
+      {filter === "failed" ? (
+        <FailedHistory project={project} now={now} initialError={failedError} />
+      ) : (
+        <BuildHistory builds={data.builds} now={now} />
+      )}
+    </section>
+  );
+}
+
+function Builds({ project, data, failedError }: { project: string; data: KgBuilds; failedError: ApiErrorInfo | null }) {
   const t = useTranslations("kg.builds");
   const now = useNow(buildsActive(data));
   const [latest] = data.builds;
@@ -92,10 +160,7 @@ function Builds({ data }: { data: KgBuilds }) {
             <LatestBuild build={latest} now={now} />
             <BuildQueue data={data} now={now} />
           </div>
-          <div className="flex flex-col gap-2">
-            <h3 className="text-[15px] leading-[22px] font-semibold">{t("history")}</h3>
-            <BuildHistory builds={data.builds} now={now} />
-          </div>
+          <History project={project} data={data} now={now} failedError={failedError} />
         </>
       ) : (
         <>
@@ -164,7 +229,7 @@ export function KgOverview({
       </QueryView>
       <SearchSection project={project} query={query} kind={kind} errors={errors} />
       <QueryView state={builds} loading={<TableSkeleton rows={4} />}>
-        {(data) => <Builds data={data} />}
+        {(data) => <Builds project={project} data={data} failedError={errors.failed ?? null} />}
       </QueryView>
     </>
   );

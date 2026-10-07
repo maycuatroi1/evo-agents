@@ -290,6 +290,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Overview
+         * @description What may need an admin: members, tokens to rotate, grants by project, storage, failed graph builds, offline
+         *     workers and the last day of the audit trail.
+         */
+        get: operations["overview_v1_admin_overview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/kg/prune": {
         parameters: {
             query?: never;
@@ -1988,6 +2009,20 @@ export interface components {
             /** Dispatched By */
             dispatched_by: string;
         };
+        /** AdminOverview */
+        AdminOverview: {
+            members: components["schemas"]["MemberCounts"];
+            tokens: components["schemas"]["TokenCounts"];
+            /**
+             * Grants
+             * @description every project, by name, with its grants by role
+             */
+            grants: components["schemas"]["ProjectGrantCounts"][];
+            storage: components["schemas"]["StorageCounts"];
+            kg_builds: components["schemas"]["FailedBuildCounts"];
+            workers: components["schemas"]["WorkerCounts"];
+            audit: components["schemas"]["AuditCounts"];
+        };
         /** AdminToken */
         AdminToken: {
             /** Id */
@@ -2044,6 +2079,13 @@ export interface components {
              * @description the owner's own words, at most 4 KiB
              */
             text?: string | null;
+        };
+        /** AuditCounts */
+        AuditCounts: {
+            /** Rows */
+            rows: number;
+            /** Hours */
+            hours: number;
         };
         /** AuditPage */
         AuditPage: {
@@ -2643,6 +2685,21 @@ export interface components {
             /** Source */
             source: string | null;
         };
+        /** FailedBuildCounts */
+        FailedBuildCounts: {
+            /**
+             * Failed
+             * @description graph builds of every project that failed within days
+             */
+            failed: number;
+            /** Days */
+            days: number;
+            /**
+             * Projects
+             * @description the projects with such a build, latest failure first
+             */
+            projects: components["schemas"]["ProjectFailedBuilds"][];
+        };
         /** Found */
         Found: {
             /** Id */
@@ -3076,6 +3133,26 @@ export interface components {
              * @constant
              */
             status: "ok";
+        };
+        /** MemberCounts */
+        MemberCounts: {
+            /**
+             * Total
+             * @description every user: people who signed in, and logins granted access before signing in
+             */
+            total: number;
+            /**
+             * Active
+             * @description users the hub saw within active_days: any token or web session of theirs used
+             */
+            active: number;
+            /**
+             * Not Signed In
+             * @description logins granted access that have not signed in yet
+             */
+            not_signed_in: number;
+            /** Active Days */
+            active_days: number;
         };
         /** Memory */
         Memory: {
@@ -4055,6 +4132,44 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+        };
+        /** ProjectFailedBuilds */
+        ProjectFailedBuilds: {
+            /** Project */
+            project: string;
+            /**
+             * Failed
+             * @description builds of the project that failed within the window
+             */
+            failed: number;
+            /** Last Failed Id */
+            last_failed_id: number;
+            /**
+             * Last Failed At
+             * Format: date-time
+             */
+            last_failed_at: string;
+            /**
+             * Latest Id
+             * @description the project's newest build, whatever its status
+             */
+            latest_id: number;
+            /**
+             * Latest Status
+             * @enum {string}
+             */
+            latest_status: "queued" | "running" | "succeeded" | "failed";
+        };
+        /** ProjectGrantCounts */
+        ProjectGrantCounts: {
+            /** Project */
+            project: string;
+            /** Admins */
+            admins: number;
+            /** Writers */
+            writers: number;
+            /** Readers */
+            readers: number;
         };
         /** ProjectPruned */
         ProjectPruned: {
@@ -5552,6 +5667,48 @@ export interface components {
              */
             written: boolean;
         };
+        /** StorageCounts */
+        StorageCounts: {
+            /**
+             * Objects
+             * @description distinct blobs in the bucket: projects holding the same bytes share one object
+             */
+            objects: number;
+            /**
+             * Bytes
+             * @description their size
+             */
+            bytes: number;
+            /**
+             * Pending Deletions
+             * @description objects nothing refers to any more whose deletion from the bucket has not succeeded yet; the next prune tries again
+             */
+            pending_deletions: number;
+            /** Pending Bytes */
+            pending_bytes: number;
+        };
+        /** TokenCounts */
+        TokenCounts: {
+            /**
+             * Live
+             * @description tokens and web sessions neither revoked nor expired
+             */
+            live: number;
+            /**
+             * Expiring
+             * @description live ones that expire within expiring_days; GET /v1/admin/tokens?state=expiring lists them
+             */
+            expiring: number;
+            /**
+             * Unused
+             * @description tokens not revoked whose last use, or issue when never used, is unused_days old or more; GET /v1/admin/tokens?state=unused lists them
+             */
+            unused: number;
+            /** Expiring Days */
+            expiring_days: number;
+            /** Unused Days */
+            unused_days: number;
+        };
         /** TokenInfo */
         TokenInfo: {
             /** Id */
@@ -5869,6 +6026,21 @@ export interface components {
             drained_at: string | null;
             /** Revoked At */
             revoked_at: string | null;
+        };
+        /** WorkerCounts */
+        WorkerCounts: {
+            /**
+             * Live
+             * @description workers not revoked
+             */
+            live: number;
+            /**
+             * Offline
+             * @description live workers without a heartbeat for over offline_after_seconds, or without any
+             */
+            offline: number;
+            /** Offline After Seconds */
+            offline_after_seconds: number;
         };
         /** WorkerCredential */
         WorkerCredential: {
@@ -6662,6 +6834,44 @@ export interface operations {
                     "application/json": {
                         [key: string]: number;
                     };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    overview_v1_admin_overview_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminOverview"];
                 };
             };
             /** @description Unauthorized */
@@ -9513,8 +9723,8 @@ export interface operations {
                 /** @description one user's tokens, any case */
                 login?: string | null;
                 kind?: ("machine" | "web" | "worker") | null;
-                /** @description live tokens unless set */
-                state?: ("active" | "revoked" | "expired") | "any";
+                /** @description live tokens unless set; expiring: live ones expiring within 14 days; unused: not revoked and unused for 90 days */
+                state?: "active" | "revoked" | "expired" | "expiring" | "unused" | "any";
                 /** @description next_cursor of the previous page, with the same filters */
                 cursor?: string | null;
                 /** @description rows per page */

@@ -2,25 +2,25 @@ import { dehydrate } from "@tanstack/react-query";
 import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
 
-import { adminOverviewQuery } from "@/components/admin/data";
-import { AdminOverviewPage } from "@/components/admin/overview-page";
+import { adminStatsQuery } from "@/components/admin/data";
+import { AdminDiagnosticsPage } from "@/components/admin/diagnostics-page";
 import { HydrationBoundary } from "@/lib/api/hydration-boundary";
 import { getQueryClient, prefetch } from "@/lib/api/prefetch";
 import { serverApi } from "@/lib/api/server";
 
 export async function generateMetadata(): Promise<Metadata> {
-  const t = await getTranslations("admin");
+  const t = await getTranslations("admin.diagnostics");
   return { title: t("title") };
 }
 
-/** Only hub admins get data here; the API answers 403 to anyone else, and the page says so. */
-export default async function AdminPage() {
+/** The rows of every hub table, for hub admins; anyone else gets the API's 403 as the no-access state. */
+export default async function DiagnosticsPage() {
   const api = await serverApi();
   const client = getQueryClient();
-  const error = await prefetch(client, adminOverviewQuery(() => api));
+  const error = await prefetch(client, adminStatsQuery(() => api));
   return (
     <HydrationBoundary state={dehydrate(client)}>
-      <AdminOverviewPage initialError={error} />
+      <AdminDiagnosticsPage initialError={error} />
     </HydrationBoundary>
   );
 }

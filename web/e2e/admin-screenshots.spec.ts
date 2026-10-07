@@ -1,7 +1,8 @@
 import path from "node:path";
 
 import { expect, test } from "./support/fixtures";
-import { ADMIN_ACCOUNT, machineToken, newAccount, uniqueName } from "./support/hub";
+import { ADMIN_ACCOUNT, idleMachineToken, machineToken, newAccount, uniqueName } from "./support/hub";
+import { kgProject, queueBuild } from "./support/kg";
 
 /**
  * Review screenshots of the admin area in light and dark, at desktop width and at 375 px, written to
@@ -32,6 +33,10 @@ test.describe("admin screenshots", () => {
       await admin.grant(atlas, bob.login, "admin", "secret");
       for (let i = 0; i < 3; i += 1) await machineToken(alice);
       await machineToken(bob);
+      // Something for the overview to list: a token about to expire and a project whose graph build failed.
+      await idleMachineToken(bob, 80);
+      const failing = await kgProject(admin, "failing");
+      await queueBuild(failing.project, failing.writer, true);
       await signInAs(ADMIN_ACCOUNT);
       const main = page.locator("#main");
       const shot = async (name: string, fullPage = false) =>
@@ -43,8 +48,11 @@ test.describe("admin screenshots", () => {
       ] as const) {
         await page.setViewportSize({ width, height: width === 375 ? 812 : 900 });
         await page.goto("/admin");
-        await expect(main.getByTestId("admin-stats")).toBeVisible();
-        await shot(`overview${suffix}`);
+        await expect(main.getByTestId("admin-overview")).toBeVisible();
+        await shot(`overview${suffix}`, true);
+        await page.goto("/admin/diagnostics");
+        await expect(main.getByTestId("diagnostics-table")).toBeVisible();
+        await shot(`diagnostics${suffix}`, true);
         await page.goto("/admin/members");
         await expect(main.getByTestId("members-table")).toBeVisible();
         await shot(`members${suffix}`);

@@ -1,8 +1,10 @@
 "use client";
 
-import type { LucideIcon } from "lucide-react";
+import { ChevronRight, type LucideIcon } from "lucide-react";
+import type { Route } from "next";
 import dynamic from "next/dynamic";
-import type { ReactNode } from "react";
+import Link from "next/link";
+import { type ReactNode, useId } from "react";
 
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
@@ -22,6 +24,10 @@ export type Metric = {
   label: string;
   icon: LucideIcon;
   value: number;
+  /** The figure as it reads, when not the bare value: a count with group separators, a size ("1.2 GB"). */
+  display?: string;
+  /** The page behind the number: the label links there, and the link covers the cell. */
+  href?: Route;
   /** Words set small after the value ("and 1 lost"). */
   extra?: string | null;
   /** One line naming what is behind the number ("#13 on M1s-Mac-mini"). */
@@ -51,10 +57,20 @@ const TONE_VALUE: Record<MetricTone, string> = {
 };
 
 function MetricCell({ metric }: { metric: Metric }) {
-  const { icon: Icon, value, tone } = metric;
+  const { icon: Icon, value, tone, href } = metric;
   const zero = value === 0;
+  const ids = useId();
+  const described = [`${ids}-value`, metric.meta ? `${ids}-meta` : ""].filter(Boolean).join(" ");
   return (
-    <div className="flex min-w-0 flex-col gap-0.5 bg-card px-4 py-3" data-testid={`summary-${metric.id}`} data-value={value}>
+    <div
+      className={cn(
+        "flex min-w-0 flex-col gap-0.5 bg-card px-4 py-3",
+        // A cell with a page: its label's link covers it, so a click or tap anywhere in the cell opens the page.
+        href && "group/metric relative transition-colors hover:bg-accent",
+      )}
+      data-testid={`summary-${metric.id}`}
+      data-value={value}
+    >
       <dt className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
         {metric.live ? (
           <span className="relative inline-flex size-2 shrink-0" aria-hidden="true">
@@ -64,16 +80,35 @@ function MetricCell({ metric }: { metric: Metric }) {
         ) : (
           <Icon className="size-3.5 shrink-0" aria-hidden="true" />
         )}
-        <span className="truncate">{metric.label}</span>
+        {href ? (
+          <Link
+            href={href}
+            aria-describedby={described}
+            className={cn(
+              "truncate group-hover/metric:text-foreground",
+              "after:absolute after:inset-0 after:content-[''] focus-visible:outline-none",
+              "focus-visible:after:outline-2 focus-visible:after:-outline-offset-2 focus-visible:after:outline-ring",
+            )}
+            data-testid={`summary-${metric.id}-link`}
+          >
+            {metric.label}
+          </Link>
+        ) : (
+          <span className="truncate">{metric.label}</span>
+        )}
+        {href ? (
+          <ChevronRight className="ml-auto size-3.5 shrink-0 text-fg-subtle group-hover/metric:text-foreground" aria-hidden="true" />
+        ) : null}
       </dt>
       <dd
+        id={`${ids}-value`}
         className={cn(
           "flex items-baseline gap-2 text-2xl leading-[30px] font-semibold tracking-[-0.01em] tabular-nums",
           zero ? "text-fg-subtle" : tone ? TONE_VALUE[tone] : "text-foreground",
         )}
         data-testid={`summary-${metric.id}-value`}
       >
-        {value}
+        {metric.display ?? value}
         {metric.extra ? <small className="truncate text-[13px] leading-[18px] font-normal tracking-normal text-fg-subtle">{metric.extra}</small> : null}
       </dd>
       {metric.series ? (
@@ -85,7 +120,11 @@ function MetricCell({ metric }: { metric: Metric }) {
           </div>
         </dd>
       ) : null}
-      {metric.meta ? <dd className="truncate text-xs text-fg-subtle">{metric.meta}</dd> : null}
+      {metric.meta ? (
+        <dd id={`${ids}-meta`} className="truncate text-xs text-fg-subtle">
+          {metric.meta}
+        </dd>
+      ) : null}
     </div>
   );
 }
@@ -93,7 +132,7 @@ function MetricCell({ metric }: { metric: Metric }) {
 /**
  * The kit's MetricStrip (web/DESIGN.md, Components): a row of counts in one container, cells divided by 1 px rules, a
  * zero in `fg-subtle`, a cell that needs a person in `attention` and the agents at work in `running` with a live dot,
- * and an optional sparkline per cell. When `quiet` is given and every in-flight cell is zero, the strip gives way to
+ * and an optional sparkline per cell. A cell given `href` opens that page from anywhere in it. When `quiet` is given and every in-flight cell is zero, the strip gives way to
  * that one line ("All quiet."), so a calm project is not four zero tiles.
  */
 export function MetricStrip({

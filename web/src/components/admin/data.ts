@@ -19,6 +19,9 @@ export type AuditRow = Schemas["AuditRow"];
 export type AuditPage = Schemas["AuditPage"];
 export type AdminToken = Schemas["AdminToken"];
 export type TokenPage = Schemas["TokenPage"];
+export type AdminOverview = Schemas["AdminOverview"];
+export type ProjectFailedBuilds = Schemas["ProjectFailedBuilds"];
+export type ProjectGrantCounts = Schemas["ProjectGrantCounts"];
 export type Role = "reader" | "writer" | "admin";
 export const ROLES: readonly Role[] = ["reader", "writer", "admin"];
 
@@ -34,8 +37,15 @@ export const DEFAULT_PAGE_SIZE: PageSize = 50;
 
 export const TOKEN_KINDS = ["machine", "web", "worker"] as const;
 export type TokenKind = (typeof TOKEN_KINDS)[number];
-export const TOKEN_STATES = ["active", "revoked", "expired", "any"] as const;
+/**
+ * The token list's state filter. Besides a token's own state: `expiring`, live ones that expire within
+ * `TokenCounts.expiring_days` (14), and `unused`, those not revoked and unused for `unused_days` (90), as the admin
+ * overview counts them; the overview's links open the list on these.
+ */
+export const TOKEN_STATES = ["active", "expiring", "unused", "revoked", "expired", "any"] as const;
 export type TokenStateFilter = (typeof TOKEN_STATES)[number];
+/** The windows of the `expiring` and `unused` filters, as the API's TOKEN_EXPIRING_DAYS and TOKEN_UNUSED_DAYS. */
+export const TOKEN_FILTER_DAYS = { expiring: 14, unused: 90 } as const;
 
 /** A URLSearchParams, or the `searchParams` record a server page receives. */
 export type ParamSource = { get(name: string): string | null };
@@ -118,7 +128,23 @@ export const adminKeys = {
   auditActions: ["admin", "audit", "actions"] as const,
   tokensAll: ["admin", "tokens"] as const,
   tokens: (params: TokenParams) => ["admin", "tokens", "page", params] as const,
+  overview: ["admin", "overview"] as const,
+  stats: ["admin", "stats"] as const,
 };
+
+/** GET /v1/admin/overview: what may need an admin, in one read. Admin writes invalidate it with the rest of `admin`. */
+export const adminOverviewQuery = (api: ApiSource) =>
+  queryOptions({
+    queryKey: adminKeys.overview,
+    queryFn: ({ signal }) => call(api().GET("/v1/admin/overview", { signal })),
+  });
+
+/** GET /v1/admin/stats: the rows of every hub table, for the diagnostics page. */
+export const adminStatsQuery = (api: ApiSource) =>
+  queryOptions({
+    queryKey: adminKeys.stats,
+    queryFn: ({ signal }) => call(api().GET("/v1/admin/stats", { signal })),
+  });
 
 export const adminUsersQuery = (api: ApiSource) =>
   queryOptions({
