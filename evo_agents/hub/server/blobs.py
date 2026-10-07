@@ -40,8 +40,12 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import UUID4, BaseModel, Field
+from sqlalchemy import BigInteger, Text, Uuid, any_, cast, column, delete, func, insert, literal, select
+from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import blob_gc
+from evo_agents.hub import blob_gc, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.blobs import (
     KIND_LIMITS,
@@ -52,7 +56,6 @@ from evo_agents.hub.blobs import (
     Upload,
     new_upload_id,
 )
-from evo_agents.hub.db import driver, legacy
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.admin import PROJECT_NAME
 from evo_agents.hub.server.errors import ErrorBody, error_response
@@ -137,7 +140,7 @@ class Holder:
     name: str  # the project's, or GLOBAL
 
 
-async def holder(conn, user: Principal, project: str | None, doing: str) -> Holder:
+async def holder(conn: AsyncConnection, user: Principal, project: str | None, doing: str) -> Holder:
     """The holder ``user`` is ``doing`` something to blobs of: ``project``, where ``user`` must be a writer, or the hub
     itself when ``project`` is None, for a hub admin. 403 (or the 404 of ``project_access``) otherwise."""
     if project is None:
@@ -174,11 +177,6 @@ def _over_limit(request: Request, items: list[UploadItem]) -> JSONResponse | Non
     return error_response(request, 413, message, detail=detail)
 
 
-INSERT_UPLOAD = """
-INSERT INTO blob_uploads (upload_id, project_id, sha256, size, kind, created_by) VALUES (%s, %s, %s, %s, %s, %s)
-"""
-
-
 @router.post("/uploads", response_model=Uploads, responses=UPLOAD_REFUSALS)
 async def request_uploads(request: Request, body: UploadRequest, user: CurrentUser) -> Uploads:
     """Presigned PUT URLs for the blobs of ``items`` that the project does not hold yet."""
@@ -202,21 +200,30 @@ async def issue_uploads(
         refusal = _over_limit(request, items)
         if refusal is not None:
             return refusal
-        cursor = await legacy(
-            conn,
-            "SELECT sha256 FROM blobs WHERE project_id IS NOT DISTINCT FROM %s AND sha256 = ANY(%s)",
-            (access.project_id, [item.sha256 for item in items]),
+        blobs = tables.blobs
+        held = select(blobs.c.sha256).where(
+            blobs.c.project_id.is_not_distinct_from(access.project_id),
+            blob_gc.hashes_in(blobs.c.sha256, [item.sha256 for item in items]),
         )
-        present = {row[0] for row in await cursor.fetchall()}
+        present = set((await conn.execute(held)).scalars())
         needed = [
             Upload(new_upload_id(), item.sha256, item.size, item.kind) for item in items if item.sha256 not in present
         ]
         if needed:
-            async with (await driver(conn)).cursor() as cursor:
-                await cursor.executemany(
-                    INSERT_UPLOAD,
-                    [(u.upload_id, access.project_id, u.sha256, u.size, u.kind, user.user_id) for u in needed],
-                )
+            await conn.execute(
+                insert(tables.blob_uploads),
+                [
+                    {
+                        "upload_id": u.upload_id,
+                        "project_id": access.project_id,
+                        "sha256": u.sha256,
+                        "size": u.size,
+                        "kind": u.kind,
+                        "created_by": user.user_id,
+                    }
+                    for u in needed
+                ],
+            )
     expires_at = datetime.now(UTC) + UPLOAD_TTL  # taken before signing, so never later than the URLs
 
     def sign() -> list[UploadTicket]:
@@ -233,17 +240,44 @@ async def issue_uploads(
     return Uploads(uploads=tickets, present=sorted(present), expires_at=expires_at)
 
 
-PENDING = """
-SELECT upload_id::text, sha256, size, kind FROM blob_uploads
- WHERE upload_id = ANY(%s::uuid[]) AND project_id IS NOT DISTINCT FROM %s AND created_by = %s
-   AND created_at > now() - %s
-"""
-INSERT_BLOBS = """
-INSERT INTO blobs (project_id, sha256, size, kind, created_by)
-SELECT %s::bigint, sha256, size, kind, %s FROM unnest(%s::text[], %s::bigint[], %s::text[]) AS b (sha256, size, kind)
-    ON CONFLICT (project_id, sha256) DO NOTHING
-RETURNING sha256
-"""
+def _uploads_in(upload_ids: list[str]):
+    """``upload_id = ANY(upload_ids)``, the ids bound as one uuid[] parameter."""
+    return tables.blob_uploads.c.upload_id == any_(literal(upload_ids, ARRAY(Uuid)))
+
+
+def _pending(upload_ids: list[str], project_id: int | None, user_id: int):
+    """The uploads of ``upload_ids`` that ``user_id`` asked for in ``project_id`` within STALE_AFTER, as Upload's
+    fields by column name."""
+    uploads = tables.blob_uploads
+    return select(
+        cast(uploads.c.upload_id, Text).label("upload_id"), uploads.c.sha256, uploads.c.size, uploads.c.kind
+    ).where(
+        _uploads_in(upload_ids),
+        uploads.c.project_id.is_not_distinct_from(project_id),
+        uploads.c.created_by == user_id,
+        uploads.c.created_at > func.now() - STALE_AFTER,
+    )
+
+
+def _recorded(project_id: int | None, user_id: int, blobs: list[Upload]):
+    """One blobs row of ``project_id`` per blob of ``blobs`` that it does not hold yet, returning their hashes."""
+    b = (
+        func.unnest(
+            literal([blob.sha256 for blob in blobs], ARRAY(Text)),
+            literal([blob.size for blob in blobs], ARRAY(BigInteger)),
+            literal([blob.kind for blob in blobs], ARRAY(Text)),
+        )
+        .table_valued(column("sha256", Text), column("size", BigInteger), column("kind", Text))
+        .render_derived(name="b")
+    )
+    rows = select(literal(project_id, BigInteger), b.c.sha256, b.c.size, b.c.kind, literal(user_id, BigInteger))
+    held = tables.blobs
+    return (
+        pg_insert(held)
+        .from_select(["project_id", "sha256", "size", "kind", "created_by"], rows)
+        .on_conflict_do_nothing(index_elements=[held.c.project_id, held.c.sha256])
+        .returning(held.c.sha256)
+    )
 
 
 async def _discard(store: BlobStore, upload_ids: list[str]) -> None:
@@ -283,8 +317,8 @@ async def commit_uploads(
     ids = sorted(set(upload_ids))
     async with engine.begin() as conn:
         access = await holder(conn, user, project, "committing")
-        cursor = await legacy(conn, PENDING, (ids, access.project_id, user.user_id, STALE_AFTER))
-        uploads = [Upload(*row) for row in await cursor.fetchall() if kinds is None or row[3] in kinds]
+        rows = (await conn.execute(_pending(ids, access.project_id, user.user_id))).all()
+        uploads = [Upload(**row._mapping) for row in rows if kinds is None or row.kind in kinds]
     unknown = sorted(set(ids) - {upload.upload_id for upload in uploads})
     if unknown:
         raise HTTPException(
@@ -303,7 +337,7 @@ async def commit_uploads(
     ]
     if problems:
         async with engine.begin() as conn:
-            await legacy(conn, "DELETE FROM blob_uploads WHERE upload_id = ANY(%s::uuid[])", (ids,))
+            await conn.execute(delete(tables.blob_uploads).where(_uploads_in(ids)))
         await _discard(store, ids)
         log.warning(
             "blob commit refused: uploads do not match",
@@ -317,14 +351,13 @@ async def commit_uploads(
             raise HTTPException(503, UNAVAILABLE) from None  # the uploads stay, so the same commit can be sent again
         except Exception:
             async with engine.begin() as conn:
-                await legacy(conn, "DELETE FROM blob_uploads WHERE upload_id = ANY(%s::uuid[])", (ids,))
+                await conn.execute(delete(tables.blob_uploads).where(_uploads_in(ids)))
             await _discard(store, ids)
             raise
     async with engine.begin() as conn:  # the blobs the hub records already: only those are looked for first
-        cursor = await legacy(
-            conn, "SELECT DISTINCT sha256 FROM blobs WHERE sha256 = ANY(%s)", ([upload.sha256 for upload in uploads],)
-        )
-        held = frozenset(row[0] for row in await cursor.fetchall())
+        sha256 = tables.blobs.c.sha256
+        recorded = select(sha256).distinct().where(blob_gc.hashes_in(sha256, [upload.sha256 for upload in uploads]))
+        held = frozenset((await conn.execute(recorded)).scalars())
     try:
         written = await asyncio.to_thread(store.publish_all, uploads, held)
     except BlobStoreUnavailable:
@@ -341,19 +374,8 @@ async def commit_uploads(
                 await asyncio.to_thread(store.publish_all, [b for b in blobs if b.sha256 in revived])
             except BlobStoreUnavailable:
                 raise HTTPException(503, UNAVAILABLE) from None
-        cursor = await legacy(
-            conn,
-            INSERT_BLOBS,
-            (
-                access.project_id,
-                user.user_id,
-                [b.sha256 for b in blobs],
-                [b.size for b in blobs],
-                [b.kind for b in blobs],
-            ),
-        )
-        added = len(await cursor.fetchall())
-        await legacy(conn, "DELETE FROM blob_uploads WHERE upload_id = ANY(%s::uuid[])", (ids,))
+        added = len((await conn.execute(_recorded(access.project_id, user.user_id, blobs))).all())
+        await conn.execute(delete(tables.blob_uploads).where(_uploads_in(ids)))
         if added:
             await audit.record(
                 conn, actor_id=user.user_id, token_id=user.token_id, action=audit.BLOB_COMMIT, target=access.name
