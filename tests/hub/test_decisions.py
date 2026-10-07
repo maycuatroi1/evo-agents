@@ -18,7 +18,7 @@ from evo_agents.hub import runs
 from evo_agents.hub.config import ConfigError, load_config
 from evo_agents.hub.server.app import create_app
 from tests.hub.fake_github import Account
-from tests.hub.live import sql
+from tests.hub.live import bearer, sql
 from tests.hub.test_plan_runs import (
     PLAN,
     REPOS,
@@ -186,6 +186,50 @@ def test_the_agent_asks_a_decision_of_its_plan_run_and_the_owner_is_notified(cli
     assert deliveries == [(None, "pending")]
     events = sql(hub_db, "SELECT body FROM run_events WHERE run_id = %s AND kind = 'system'", (run_id,))
     assert events[-1][0]["decision"] == {"id": found["id"], "category": "architecture", "step": "2"}
+
+
+def test_the_decision_list_is_newest_first_filtered_paged_and_holds_the_plans_the_caller_reads(
+    client, hub, hub_db, github
+):
+    public_reader = bearer(live.sign_in(client, github, "public-reader", 650)["token"])
+    grant = {"role": "reader", "max_level": "public"}
+    granted = client.put(f"/v1/admin/projects/{PROJECT}/grants/public-reader", json=grant, headers=hub["admin"])
+    assert granted.status_code == 200, granted.text
+    label = {"level": "public", "location": "any", "integrity": "U"}
+    pushed = client.put(
+        f"/v1/projects/{PROJECT}/plans/open-plan",
+        json={"body": plan_body("open-plan"), "label": label},
+        headers=hub["owner"],
+    )
+    assert pushed.status_code == 200, pushed.text
+    worker, run = started(client, hub)
+    first = asked(client, worker, run["id"])
+    second = asked(client, worker, run["id"], step_key=None)
+    elsewhere = fleet_worker(client, hub["owner"], "linux-box")
+    open_run = dispatched_plan(client, hub["owner"], "open-plan")
+    assert claim(client, elsewhere)["id"] == open_run["id"]
+    moved(client, elsewhere, open_run["id"], "running")
+    third = asked(client, elsewhere, open_run["id"])
+    answered(client, hub["owner"], first["id"], option="postgres")
+
+    def listed(headers, **params) -> tuple[list[int], int]:
+        response = client.get(f"/v1/projects/{PROJECT}/decisions", params=params, headers=headers)
+        assert response.status_code == 200, response.text
+        return [item["id"] for item in response.json()["decisions"]], response.json()["total"]
+
+    ids = (third["id"], second["id"], first["id"])
+    assert listed(hub["reader"]) == ([*ids], 3)
+    assert listed(hub["reader"], state="open") == ([third["id"], second["id"]], 2)
+    assert listed(hub["reader"], state=["open", "answered"]) == ([*ids], 3)
+    assert listed(hub["reader"], state="expired") == ([], 0)
+    assert listed(hub["reader"], run_id=run["id"]) == ([second["id"], first["id"]], 2)
+    assert listed(hub["reader"], run_id=run["id"], state="answered") == ([first["id"]], 1)
+    assert listed(hub["reader"], plan_id="open-plan") == ([third["id"]], 1)
+    assert listed(hub["reader"], limit=2) == ([third["id"], second["id"]], 3)
+    assert listed(hub["reader"], limit=2, offset=2) == ([first["id"]], 3)
+    # a reader up to public reads the decisions of the public plan alone
+    assert listed(public_reader) == ([third["id"]], 1)
+    assert listed(public_reader, plan_id=PLAN) == ([], 0)
 
 
 @pytest.mark.parametrize(
