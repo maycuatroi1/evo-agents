@@ -5,6 +5,8 @@ gets 403, a second answer gets 409; the answer goes to the run's inbox and the h
 use up the run's timeout; the reaper parks a run that waited 24 hours and cancels one parked 7 days; answering a parked
 run queues a run that resumes it, pinned to the same worker, with its session id."""
 
+from datetime import timedelta
+
 import pytest
 
 from tests.hub import live, pg
@@ -13,8 +15,9 @@ if not pg.DSN:
     pytest.skip(pg.SKIP_REASON, allow_module_level=True)
 
 from fastapi.testclient import TestClient
+from sqlalchemy import func, select, update
 
-from evo_agents.hub import runs
+from evo_agents.hub import runs, tables
 from evo_agents.hub.config import ConfigError, load_config
 from evo_agents.hub.server.app import create_app
 from tests.hub.fake_github import Account
@@ -134,8 +137,30 @@ def waiting(client, hub) -> tuple[dict, dict, dict]:
     return worker, run, asked_decision
 
 
+def set_run(hub_db, run_id: int, **values) -> None:
+    r = tables.runs
+    sql(hub_db, update(r).values(**values).where(r.c.id == run_id))
+
+
 def park(hub_db, run_id: int) -> None:
-    sql(hub_db, "UPDATE runs SET waiting_since = now() - interval '24 hours 1 second' WHERE id = %s", (run_id,))
+    set_run(hub_db, run_id, waiting_since=func.now() - timedelta(hours=24, seconds=1))
+
+
+def last_reason(hub_db, run_id: int) -> list[tuple]:
+    """The reason of the run's latest move, as its ``state`` event holds it."""
+    e = tables.run_events
+    query = (
+        select(e.c.body["reason"].astext)
+        .where(e.c.run_id == run_id, e.c.kind == "state")
+        .order_by(e.c.seq.desc())
+        .limit(1)
+    )
+    return sql(hub_db, query)
+
+
+def event_bodies(hub_db, run_id: int, kind: str) -> list[tuple]:
+    e = tables.run_events
+    return sql(hub_db, select(e.c.body).where(e.c.run_id == run_id, e.c.kind == kind))
 
 
 # Asking
@@ -182,9 +207,10 @@ def test_the_agent_asks_a_decision_of_its_plan_run_and_the_owner_is_notified(cli
     ]
     assert mine[0]["title"] == f"Run #{run_id} asks: {QUESTION}"
     assert client.get("/v1/me/notifications", headers=hub["other"]).json()["notifications"] == []
-    deliveries = sql(hub_db, "SELECT channel_id, state FROM notification_deliveries")
+    sent = tables.notification_deliveries
+    deliveries = sql(hub_db, select(sent.c.channel_id, sent.c.state))
     assert deliveries == [(None, "pending")]
-    events = sql(hub_db, "SELECT body FROM run_events WHERE run_id = %s AND kind = 'system'", (run_id,))
+    events = event_bodies(hub_db, run_id, "system")
     assert events[-1][0]["decision"] == {"id": found["id"], "category": "architecture", "step": "2"}
 
 
@@ -255,7 +281,7 @@ def test_a_decision_the_route_does_not_take_gets_422(client, hub, hub_db, extra)
     worker, run = started(client, hub)
     response = ask(client, worker, run["id"], **extra)
     assert response.status_code == 422, response.text
-    assert sql(hub_db, "SELECT count(*) FROM decisions") == [(0,)]
+    assert sql(hub_db, select(func.count()).select_from(tables.decisions)) == [(0,)]
 
 
 def test_only_the_worker_holding_a_plan_run_asks_and_a_run_keeps_at_most_twenty_open(client, hub, hub_db):
@@ -312,7 +338,8 @@ def test_only_the_runs_owner_answers_and_a_decision_is_answered_once(client, hub
             PROJECT,
         )
     ]
-    assert not [row for row in sql(hub_db, "SELECT target FROM audit") if "SQLite" in row[0] or "backup" in row[0]]
+    targets = sql(hub_db, select(tables.audit.c.target))
+    assert not [row for row in targets if "SQLite" in row[0] or "backup" in row[0]]
     # answering reads the decision's notification
     unread = client.get("/v1/me/notifications/count", headers=hub["owner"]).json()
     assert unread == {"unread": 0, "open_decisions": 0}
@@ -339,7 +366,7 @@ def test_the_answer_goes_to_the_inbox_the_heartbeat_counts_it_and_the_run_goes_o
     assert message["text"] == (
         f"Answer to decision #{found['id']} (architecture): {QUESTION}\nThe owner's answer:\n{ANSWER_TEXT}"
     )
-    events = sql(hub_db, "SELECT body FROM run_events WHERE run_id = %s AND kind = 'user_message'", (run_id,))
+    events = event_bodies(hub_db, run_id, "user_message")
     assert events == [
         ({"text": message["text"], "from": OWNER, "message_id": message["id"], "decision_id": found["id"]},)
     ]
@@ -376,13 +403,13 @@ def test_waiting_does_not_count_toward_the_timeout(client, hub, hub_db):
     claim(client, worker)
     moved(client, worker, run_id, "running")
     # the agent ran an hour, then asked and ended its turn
-    sql(hub_db, "UPDATE runs SET counted_at = now() - interval '3600 seconds' WHERE id = %s", (run_id,))
+    set_run(hub_db, run_id, counted_at=func.now() - timedelta(seconds=3600))
     found = asked(client, worker, run_id)
     moved(client, worker, run_id, "waiting")
     spent = run_view(client, hub["owner"], run_id)["run_seconds"]
     assert 3600 <= spent <= 3660
     # nearly a day of waiting, with heartbeats, uses none of the two hours
-    sql(hub_db, "UPDATE runs SET waiting_since = now() - interval '23 hours' WHERE id = %s", (run_id,))
+    set_run(hub_db, run_id, waiting_since=func.now() - timedelta(hours=23))
     beat(client, worker, runs_held=[run_id])
     assert recover(client) == NOTHING_RECOVERED
     assert run_view(client, hub["owner"], run_id)["run_seconds"] == spent
@@ -391,9 +418,10 @@ def test_waiting_does_not_count_toward_the_timeout(client, hub, hub_db):
     moved(client, worker, run_id, "running")
     assert recover(client) == NOTHING_RECOVERED
     # the second hour of running time uses up the rest
-    sql(hub_db, "UPDATE runs SET counted_at = now() - make_interval(secs => %s) WHERE id = %s", (7201 - spent, run_id))
+    set_run(hub_db, run_id, counted_at=func.now() - timedelta(seconds=7201 - spent))
     assert recover(client) == {**NOTHING_RECOVERED, "failed": 1}
-    assert sql(hub_db, "SELECT state, error FROM runs WHERE id = %s", (run_id,)) == [
+    r = tables.runs
+    assert sql(hub_db, select(r.c.state, r.c.error).where(r.c.id == run_id)) == [
         ("failed", "it ran past its timeout of 120 minutes")
     ]
 
@@ -411,12 +439,7 @@ def test_the_reaper_parks_a_run_waiting_a_day_and_cancels_one_parked_a_week(clie
     assert (parked["state"], parked["lease_expires_at"], parked["waiting_since"]) == ("parked", None, None)
     assert parked["parked_at"] is not None and parked["session_id"] == SESSION
     assert moves(hub_db, run_id)[-1][1:] == ("waiting", "parked", "reaper")
-    reason = sql(
-        hub_db,
-        "SELECT body ->> 'reason' FROM run_events WHERE run_id = %s AND kind = 'state' ORDER BY seq DESC LIMIT 1",
-        (run_id,),
-    )
-    assert reason == [("nobody answered its decision within 24 hours",)]
+    assert last_reason(hub_db, run_id) == [("nobody answered its decision within 24 hours",)]
     # the heartbeat lets the worker go of it without cancelling, and its slot is free for another run
     (control_,) = beat(client, worker, runs_held=[run_id])["runs"]
     assert {key: control_[key] for key in ("held", "state", "cancel", "park", "decisions")} == {
@@ -432,9 +455,9 @@ def test_the_reaper_parks_a_run_waiting_a_day_and_cancels_one_parked_a_week(clie
     assert ready(client, hub["reader"])["plan_run"]["state"] == "parked"  # still the plan's active run
     assert fleet_step(client, hub["owner"], 2)["status"] == "in_progress"
 
-    sql(hub_db, "UPDATE runs SET parked_at = now() - interval '6 days 23 hours' WHERE id = %s", (run_id,))
+    set_run(hub_db, run_id, parked_at=func.now() - timedelta(days=6, hours=23))
     assert recover(client) == NOTHING_RECOVERED
-    sql(hub_db, "UPDATE runs SET parked_at = now() - interval '7 days 1 second' WHERE id = %s", (run_id,))
+    set_run(hub_db, run_id, parked_at=func.now() - timedelta(days=7, seconds=1))
     assert recover(client) == {**NOTHING_RECOVERED, "cancelled": 1}
     assert state_of(hub_db, run_id) == "cancelled"
     assert moves(hub_db, run_id)[-1][1:] == ("parked", "cancelled", "reaper")
@@ -474,12 +497,7 @@ def test_answering_a_parked_run_queues_a_run_that_resumes_it_on_the_same_worker(
     old = run_view(client, hub["owner"], parked_id)
     assert old["state"] == "done" and old["finished_at"] is not None
     assert moves(hub_db, parked_id)[-1][1:] == ("parked", "done", "owner")
-    reason = sql(
-        hub_db,
-        "SELECT body ->> 'reason' FROM run_events WHERE run_id = %s AND kind = 'state' ORDER BY seq DESC LIMIT 1",
-        (parked_id,),
-    )
-    assert reason == [(f"resumed as #{new_id}",)]
+    assert last_reason(hub_db, parked_id) == [(f"resumed as #{new_id}",)]
     new = run_view(client, hub["owner"], new_id)
     assert {
         key: new[key]
@@ -570,12 +588,9 @@ def test_revoking_a_worker_cancels_the_runs_parked_on_it(client, hub, hub_db):
     assert client.post(f"/v1/workers/{worker['id']}/revoke", headers=hub["owner"]).status_code == 200
     assert state_of(hub_db, run["id"]) == "cancelled"
     assert decision(client, hub["owner"], found["id"])["state"] == "cancelled"
-    reason = sql(
-        hub_db,
-        "SELECT body ->> 'reason' FROM run_events WHERE run_id = %s AND kind = 'state' ORDER BY seq DESC LIMIT 1",
-        (run["id"],),
-    )
-    assert reason == [("its worker mac-mini was revoked, and only it has the session of the parked run",)]
+    assert last_reason(hub_db, run["id"]) == [
+        ("its worker mac-mini was revoked, and only it has the session of the parked run",)
+    ]
 
 
 # A worker set to take runs dispatched from the web only
@@ -628,7 +643,8 @@ def test_a_token_cannot_steer_a_run_on_a_worker_that_takes_runs_from_the_web_onl
     assert refused.status_code == 403
     assert refused.json()["message"].startswith(f"run {run_id} was parked on worker mac-mini, which {WEB_ONLY}")
     assert state_of(hub_db, run_id) == "parked"
-    assert sql(hub_db, "SELECT count(*) FROM runs WHERE resume_of_run_id = %s", (run_id,)) == [(0,)]
+    r = tables.runs
+    assert sql(hub_db, select(func.count()).select_from(r).where(r.c.resume_of_run_id == run_id)) == [(0,)]
 
     # From the web: the answer resumes it, pinned to the worker, where a token's message is refused too.
     done = answered(client, hub["owner_web"], found["id"], option="postgres")
