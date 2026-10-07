@@ -482,10 +482,25 @@ def names(client, headers, **params) -> list[str]:
 
 
 def counts(db) -> dict:
+    from sqlalchemy import func, select
+
+    from evo_agents.hub import tables
+
     return {
-        table: live.sql(db, f"SELECT count(*) FROM {table}")[0][0]
-        for table in ("memories", "memory_revisions", "audit")
+        table.name: live.sql(db, select(func.count()).select_from(table))[0][0]
+        for table in (tables.memories, tables.memory_revisions, tables.audit)
     }
+
+
+def memory_rows(db, *columns: str, **equal) -> list[tuple]:
+    """The ``columns`` of every memory whose columns hold the values ``equal`` names, in id order."""
+    from sqlalchemy import select
+
+    from evo_agents.hub import tables
+
+    m = tables.memories
+    query = select(*(m.c[name] for name in columns)).where(*(m.c[name] == value for name, value in equal.items()))
+    return live.sql(db, query.order_by(m.c.id))
 
 
 @needs_pg
@@ -577,22 +592,27 @@ def test_if_revision_conflicts_carry_the_current_version_and_delete_leaves_a_tom
     assert back.status_code == 200 and (back.json()["id"], back.json()["revision"]) == (memory_id, 4)
     assert put(client, who["alice"], body="x", if_revision=9, name="other.md").status_code == 409  # nothing there
 
+    from sqlalchemy import select
+
+    from evo_agents.hub import tables
+
+    r, a, p = tables.memory_revisions, tables.audit, tables.projects
     history = live.sql(
-        hub_db,
-        "SELECT revision, body, deleted FROM memory_revisions WHERE memory_id = %s ORDER BY revision",
-        (memory_id,),
+        hub_db, select(r.c.revision, r.c.body, r.c.deleted).where(r.c.memory_id == memory_id).order_by(r.c.revision)
     )
     assert history == [(1, "v1 secret-content", False), (2, "v2 from bob", False), (3, "", True), (4, "v4 back", False)]
     audit = live.sql(
         hub_db,
-        "SELECT a.action, a.target, p.name FROM audit a LEFT JOIN projects p ON p.id = a.project_id "
-        "WHERE a.action LIKE 'memory.%%' ORDER BY a.id",
+        select(a.c.action, a.c.target, p.c.name)
+        .join_from(a, p, p.c.id == a.c.project_id, isouter=True)
+        .where(a.c.action.like("memory.%"))
+        .order_by(a.c.id),
     )
     assert audit == [("memory.put", f"memory:{memory_id}", "demo")] * 2 + [
         ("memory.delete", f"memory:{memory_id}", "demo")
     ] + [("memory.put", f"memory:{memory_id}", "demo")]  # filed under the memory's project (schema 0007)
     logged = caplog.text + json.dumps([vars(r) for r in caplog.records], default=str)
-    stored = json.dumps(live.sql(hub_db, "SELECT * FROM audit"), default=str) + logged
+    stored = json.dumps(live.sql(hub_db, select(a)), default=str) + logged
     for content in ("secret-content", "from bob", "note.md", "v4 back"):
         assert content not in stored
     outcomes = [r.outcome for r in caplog.records if r.getMessage() == "memory write"]
@@ -700,13 +720,15 @@ def test_search_breaks_a_tie_in_rank_by_the_latest_change(client, who):
 @needs_pg
 def test_the_schema_holds_the_same_bounds(client, who, hub_db):
     from psycopg import errors
+    from sqlalchemy import insert, literal, select
+    from sqlalchemy.dialects.postgresql import JSONB
+
+    from evo_agents.hub import tables
 
     put(client, who["alice"], name="kept.md")
-    insert = (
-        "INSERT INTO memories (scope, project_id, location, name, type, owner_id, label, body, updated_by, deleted) "
-        "SELECT %s, p.id, %s, %s, 'project', p.created_by, '{}', %s, p.created_by, %s FROM projects p"
-    )
-    with pg.admin(hub_db.admin_dsn) as conn:
+    m, p, u = tables.memories, tables.projects, tables.users
+    columns = ["scope", "project_id", "location", "name", "type", "owner_id", "label", "body", "updated_by", "deleted"]
+    with live.connect(hub_db, admin=True) as conn:
         for scope, location, name, body, deleted in (
             ("project", "harness", "MEMORY.md", "x", False),
             ("project", "harness", "a/b.md", "x", False),
@@ -715,13 +737,32 @@ def test_the_schema_holds_the_same_bounds(client, who, hub_db):
             ("project", "harness", "x.md", "left behind", True),
             ("project", "a/b", "x.md", "x", False),
         ):
-            with pytest.raises(errors.CheckViolation):
-                conn.execute(insert, (scope, location, name, body, deleted))
-        with pytest.raises(errors.CheckViolation):
-            conn.execute(
-                "INSERT INTO memories (scope, location, name, type, owner_id, label, body, updated_by) "
-                "SELECT 'personal', 'not.a.slug', 'x.md', 'user', id, '{}', 'x', id FROM users LIMIT 1"
+            values = select(
+                literal(scope),
+                p.c.id,
+                literal(location),
+                literal(name),
+                literal("project"),
+                p.c.created_by,
+                literal({}, JSONB),
+                literal(body),
+                p.c.created_by,
+                literal(deleted),
             )
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(insert(m).from_select(columns, values))
+        with pytest.raises(errors.CheckViolation):
+            values = select(
+                literal("personal"),
+                literal("not.a.slug"),
+                literal("x.md"),
+                literal("user"),
+                u.c.id,
+                literal({}, JSONB),
+                literal("x"),
+                u.c.id,
+            ).limit(1)
+            conn.execute(insert(m).from_select([c for c in columns if c not in ("project_id", "deleted")], values))
 
 
 # Sync, in process: the client library over the app
@@ -809,11 +850,11 @@ def test_a_sync_writes_nothing_twice_and_a_dry_run_writes_nothing(client, who, h
     assert pushed.counts["created"] == 3 and not pushed.conflicts
     assert any("linked.md: not pushed, a symlink" in e for e in pushed.errors)
     assert any("conflict copies wait" in n for n in pushed.notes)
-    stored = sorted(r[0] for r in live.sql(hub_db, "SELECT name FROM memories"))
+    stored = sorted(r[0] for r in memory_rows(hub_db, "name"))
     assert stored == ["math.md", "mine.md", "shared.md"]  # never MEMORY.md, a conflict copy or a symlink
-    held = live.sql(hub_db, "SELECT body FROM memories WHERE name = 'shared.md'")[0][0]
+    held = memory_rows(hub_db, "body", name="shared.md")[0][0]
     assert held.encode() == (laptop.dir("ws/demo-harness") / "shared.md").read_bytes()
-    assert live.sql(hub_db, "SELECT scope, location FROM memories WHERE name = 'math.md'") == [("personal", "notes")]
+    assert memory_rows(hub_db, "scope", "location", name="math.md") == [("personal", "notes")]
 
     state, rows = laptop.state(), counts(hub_db)
     laptop.hub.calls.clear()
@@ -868,7 +909,7 @@ def test_a_project_memory_never_falls_back_to_personal_and_a_personal_one_never_
     laptop = Machine(tmp_path / "laptop", InProcessHub(client, who["alice"]), "alice", monkeypatch)
     laptop.write("ws/app", "app.md", typed("project"))
     laptop.run("push")
-    assert live.sql(hub_db, "SELECT scope, location FROM memories") == [("project", "app")]
+    assert memory_rows(hub_db, "scope", "location") == [("project", "app")]
 
     # The project's repo moves elsewhere in the registry: this directory is no longer the project's here.
     registry = laptop.home / ".claude" / "harness" / "registry.json"
@@ -882,7 +923,7 @@ def test_a_project_memory_never_falls_back_to_personal_and_a_personal_one_never_
     (laptop.dir("ws/app") / "app.md").write_text(typed("project", "changed"), encoding="utf-8")
     moved = laptop.run("push")
     assert any("not pushed as personal" in e for e in moved.errors)
-    assert live.sql(hub_db, "SELECT scope, body FROM memories") == [("project", typed("project"))]
+    assert memory_rows(hub_db, "scope", "body") == [("project", typed("project"))]
     registry.unlink()
 
     # A personal memory whose directory belongs to the project on this machine is not pulled into it.
@@ -900,7 +941,15 @@ def grant(client, who, project: str, body: dict, level: str = "internal") -> Non
     assert client.put(f"/v1/admin/projects/{project}/grants/alice", json=access, headers=admin).status_code == 200
 
 
-PLACED = "SELECT p.name, m.location, m.body FROM memories m JOIN projects p ON p.id = m.project_id ORDER BY m.id"
+def project_memories(db) -> list[tuple]:
+    """The project, location and body of every project memory, in id order."""
+    from sqlalchemy import select
+
+    from evo_agents.hub import tables
+
+    m, p = tables.memories, tables.projects
+    query = select(p.c.name, m.c.location, m.c.body).join_from(m, p, p.c.id == m.c.project_id).order_by(m.c.id)
+    return live.sql(db, query)
 
 
 @needs_pg
@@ -917,7 +966,7 @@ def test_a_harness_root_another_project_lists_as_a_repo_syncs_with_its_own_proje
     laptop.write("ws/demo-harness", "h.md", typed("project", "harness notes"))
     pushed = laptop.run("push")
     assert pushed.counts["created"] == 1 and not pushed.errors
-    assert live.sql(hub_db, PLACED) == [("demo", "harness", typed("project", "harness notes"))]
+    assert project_memories(hub_db) == [("demo", "harness", typed("project", "harness notes"))]
 
     # A memory of seams at its repo demo-harness has no directory here: the directory is demo's.
     assert put(client, who["alice"], project="seams", location="demo-harness", name="s.md").status_code == 200
@@ -956,7 +1005,7 @@ def test_a_repo_of_two_projects_syncs_once_a_binding_chooses_and_a_memory_never_
     shared = str((laptop.home / "ws" / "shared").resolve())
     bound.write_text(json.dumps({shared: {"project": "vault", "harness_root": "/elsewhere"}}), encoding="utf-8")
     assert laptop.run("push").counts["created"] == 1
-    assert live.sql(hub_db, PLACED) == [("vault", "shared", typed("project", "customer notes"))]
+    assert project_memories(hub_db) == [("vault", "shared", typed("project", "customer notes"))]
 
     # Bound to demo now: the memory synced with vault does not follow the directory into demo.
     bound.write_text(json.dumps({shared: {"project": "demo"}}), encoding="utf-8")
@@ -964,11 +1013,11 @@ def test_a_repo_of_two_projects_syncs_once_a_binding_chooses_and_a_memory_never_
     held = laptop.run("push")
     assert [e for e in held.errors if "never moves between projects by itself" in e]
     assert held.counts["created"] == held.counts["updated"] == held.counts["moved"] == 0
-    assert live.sql(hub_db, PLACED) == [("vault", "shared", typed("project", "customer notes"))]
+    assert project_memories(hub_db) == [("vault", "shared", typed("project", "customer notes"))]
     # A new file goes to the project the binding chose.
     laptop.write("ws/shared", "t.md", typed("project", "internal notes"))
     assert laptop.run("push").counts["created"] == 1
-    assert live.sql(hub_db, PLACED)[-1] == ("demo", "shared", typed("project", "internal notes"))
+    assert project_memories(hub_db)[-1] == ("demo", "shared", typed("project", "internal notes"))
 
 
 @needs_pg
@@ -1013,7 +1062,7 @@ def test_a_type_or_place_change_moves_a_memory_and_a_shared_copy_goes_only_with_
     moved = laptop.run("push", prune=True)
     assert (moved.counts["created"], moved.counts["moved"]) == (1, 1)
     assert names(client, who["bob"]) == [] and names(client, who["alice"]) == ["x.md"]
-    assert live.sql(hub_db, "SELECT type, deleted FROM memories ORDER BY id") == [("project", True), ("user", False)]
+    assert memory_rows(hub_db, "type", "deleted") == [("project", True), ("user", False)]
 
     path.write_text(typed("reference", "shared again"), encoding="utf-8")  # a private copy moves without --prune
     assert laptop.run("push").counts["moved"] == 1
@@ -1022,11 +1071,11 @@ def test_a_type_or_place_change_moves_a_memory_and_a_shared_copy_goes_only_with_
     # A directory that was personal becomes the project's: its memories move, the personal copies go.
     notes = laptop.write("ws/later", "n.md", typed("project", "personal until the repo is registered"))
     laptop.run("push")
-    assert live.sql(hub_db, "SELECT scope, location FROM memories WHERE name = 'n.md'") == [("personal", "ws-later")]
+    assert memory_rows(hub_db, "scope", "location", name="n.md") == [("personal", "ws-later")]
     repos = [*PROJECT["repos"], {"name": "later", "path": "later"}]
     assert client.put("/v1/projects/demo", json={**PROJECT, "repos": repos}, headers=who[live.ADMIN]).status_code == 200
     assert laptop.run("push").counts["moved"] == 1
-    rows = live.sql(hub_db, "SELECT scope, location, deleted FROM memories WHERE name = 'n.md' ORDER BY id")
+    rows = memory_rows(hub_db, "scope", "location", "deleted", name="n.md")
     assert rows == [("personal", "ws-later", True), ("project", "later", False)]
     assert notes.read_text(encoding="utf-8") == typed("project", "personal until the repo is registered")
 
@@ -1250,6 +1299,6 @@ def test_writers_racing_on_one_memory_create_it_once(team, hub_db):
     with ThreadPoolExecutor(max_workers=8) as pool:
         outcomes = sorted(pool.map(create, range(8)), key=str)
     assert outcomes == [1] + [409] * 7
-    assert live.sql(hub_db, "SELECT count(*) FROM memories")[0][0] == 1
-    assert live.sql(hub_db, "SELECT count(*) FROM memory_revisions")[0][0] == 1
+    assert counts(hub_db)["memories"] == 1
+    assert counts(hub_db)["memory_revisions"] == 1
     assert [line for line in pg.log_lines(served.log()) if line["level"].lower() in ("error", "critical")] == []

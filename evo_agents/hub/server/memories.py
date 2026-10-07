@@ -52,11 +52,13 @@ from fastapi import APIRouter, HTTPException, Path, Query, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
-from psycopg.types.json import Jsonb
 from pydantic import BaseModel, Field, model_validator
+from sqlalchemy import BigInteger, DateTime, Select, and_, func, insert, literal, or_, select, tuple_, update
+from sqlalchemy import exc as sa_exc
+from sqlalchemy.ext.asyncio import AsyncConnection
 
+from evo_agents.hub import tables
 from evo_agents.hub.access import has_role
-from evo_agents.hub.db import legacy
 from evo_agents.hub.memory import (
     AGENT_SINK,
     HARNESS,
@@ -227,73 +229,105 @@ class Row:
     project_id: int | None
 
 
-COLUMNS = """
-m.id, m.scope, p.name, m.location, m.name, m.type, o.login, m.label, m.body, m.revision, m.deleted, m.created_at,
-m.updated_at, u.login, m.owner_id, m.project_id
-"""
-FROM = """
-  FROM memories m LEFT JOIN projects p ON p.id = m.project_id
-  JOIN users o ON o.id = m.owner_id JOIN users u ON u.id = m.updated_by
-"""
-# What may be visible before labels count: one's personal memories (not for the agent of a run) and, in the projects
-# one holds a grant on, the shared memories and one's own.
-CANDIDATE = """
-(%(personal)s AND m.scope = 'personal' AND m.owner_id = %(user)s
- OR m.scope = 'project' AND m.project_id = ANY(%(projects)s)
-    AND (m.type IN ('project', 'reference') OR m.owner_id = %(user)s))
-"""
-FILTERS = """
-(%(scope)s::text IS NULL OR m.scope = %(scope)s)
-AND (%(project_id)s::bigint IS NULL OR m.project_id = %(project_id)s)
-AND (%(location)s::text IS NULL OR m.location = %(location)s)
-"""
-LIST = f"""
-SELECT {COLUMNS} {FROM}
- WHERE {CANDIDATE} AND {FILTERS} AND (%(deleted)s OR NOT m.deleted)
-   AND (m.updated_at, m.id) > (%(after_at)s::timestamptz, %(after_id)s::bigint)
- ORDER BY m.updated_at, m.id
- LIMIT %(batch)s
-"""
-SEARCH = f"""
-SELECT {COLUMNS}, ts_rank(m.search, q) AS rank
-  {FROM}, websearch_to_tsquery('simple', %(q)s) q
- WHERE m.search @@ q AND NOT m.deleted AND {CANDIDATE} AND {FILTERS}
- ORDER BY rank DESC, m.updated_at DESC, m.id DESC
- LIMIT %(batch)s OFFSET %(offset)s
-"""
-ONE = f"SELECT {COLUMNS} {FROM} WHERE m.id = %s"
-KEY = f"""
-SELECT {COLUMNS} {FROM}
- WHERE m.scope = %(scope)s AND m.project_id IS NOT DISTINCT FROM %(project_id)s AND m.location = %(location)s
-   AND m.name = %(name)s AND (%(shared)s AND m.type IN ('project', 'reference')
-                              OR NOT %(shared)s AND m.type IN ('user', 'feedback') AND m.owner_id = %(user)s
-                              OR m.scope = 'personal' AND m.owner_id = %(user)s)
-   FOR UPDATE OF m
-"""
-INSERT = """
-INSERT INTO memories (scope, project_id, location, name, type, owner_id, label, body, updated_by)
-VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id
-"""
-UPDATE = """
-UPDATE memories SET type = %s, label = %s, body = %s, deleted = %s, revision = revision + 1, updated_at = now(),
-       updated_by = %s
- WHERE id = %s
-"""
-REVISION = """
-INSERT INTO memory_revisions (memory_id, revision, type, label, body, deleted, actor_id)
-SELECT id, revision, type, label, body, deleted, %s FROM memories WHERE id = %s
-"""
-GRANTED = """
-SELECT p.name FROM grants g JOIN projects p ON p.id = g.project_id WHERE g.user_id = %s ORDER BY p.name
-"""
+SHARED = ("project", "reference")  # SHARED_TYPES, in the order the queries name them
+OWNED = ("user", "feedback")
 
 
-FIELDS = tuple(Memory.model_fields)  # the order of COLUMNS, before owner_id and project_id
+def _memories(*extra) -> Select:
+    """The memories with what a Memory shows, column by field name, then owner_id, project_id and ``extra``: the
+    project's name and the logins of the owner and of the last writer joined in."""
+    m, p = tables.memories, tables.projects
+    owner, writer = tables.users.alias("o"), tables.users.alias("u")
+    return select(
+        m.c.id,
+        m.c.scope,
+        p.c.name.label("project"),
+        m.c.location,
+        m.c.name,
+        m.c.type,
+        owner.c.login.label("owner"),
+        m.c.label,
+        m.c.body,
+        m.c.revision,
+        m.c.deleted,
+        m.c.created_at,
+        m.c.updated_at,
+        writer.c.login.label("updated_by"),
+        m.c.owner_id,
+        m.c.project_id,
+        *extra,
+    ).select_from(
+        m.outerjoin(p, p.c.id == m.c.project_id)
+        .join(owner, owner.c.id == m.c.owner_id)
+        .join(writer, writer.c.id == m.c.updated_by)
+    )
 
 
-def _row(values) -> Row:
-    memory = Memory(**dict(zip(FIELDS, values[: len(FIELDS)], strict=True)))
-    return Row(memory, values[len(FIELDS)], values[len(FIELDS) + 1])
+def _listed(reach: list, deleted: bool, after_at: datetime | str, after_id: int) -> Select:
+    """A batch of the memories ``reach`` selects after (``after_at``, ``after_id``), in (updated_at, id) order."""
+    m = tables.memories
+    query = _memories().where(*reach)
+    if not deleted:
+        query = query.where(~m.c.deleted)
+    after = tuple_(literal(after_at, DateTime(timezone=True)), literal(after_id, BigInteger))
+    return query.where(tuple_(m.c.updated_at, m.c.id) > after).order_by(m.c.updated_at, m.c.id).limit(BATCH)
+
+
+def _searched(reach: list, q: str, offset: int) -> Select:
+    """A batch of the live memories ``reach`` selects whose name or body matches ``q``, best first."""
+    m = tables.memories
+    query = func.websearch_to_tsquery("simple", q).column_valued("q")
+    rank = func.ts_rank(m.c.search, query).label("rank")
+    return (
+        _memories(rank)
+        .where(m.c.search.bool_op("@@")(query), ~m.c.deleted, *reach)
+        .order_by(rank.desc(), m.c.updated_at.desc(), m.c.id.desc())
+        .limit(BATCH)
+        .offset(offset)
+    )
+
+
+def _at_key(body: MemoryIn, user: Principal, project_id: int | None) -> Select:
+    """The memory at the key ``body`` names, locked: the shared one of the project, else the caller's own."""
+    m = tables.memories
+    if body.scope == "project" and body.type in SHARED_TYPES:
+        kind = m.c.type.in_(SHARED)
+    else:
+        kind = and_(m.c.type.in_(OWNED), m.c.owner_id == user.user_id)
+    return (
+        _memories()
+        .where(
+            m.c.scope == body.scope,
+            m.c.project_id.is_not_distinct_from(project_id),
+            m.c.location == body.location,
+            m.c.name == body.name,
+            or_(kind, and_(m.c.scope == "personal", m.c.owner_id == user.user_id)),
+        )
+        .with_for_update(of=m)
+    )
+
+
+def _changed(memory_id: int, kind: str, label: dict, body: str, deleted: bool, user_id: int):
+    """The next revision of memory ``memory_id``, written by ``user_id``."""
+    m = tables.memories
+    return (
+        update(m)
+        .values(
+            type=kind,
+            label=label,
+            body=body,
+            deleted=deleted,
+            revision=m.c.revision + 1,
+            updated_at=func.now(),
+            updated_by=user_id,
+        )
+        .where(m.c.id == memory_id)
+    )
+
+
+def _row(found) -> Row:
+    """A row of ``_memories()`` as the memory, its owner's id and its project's id, by column name."""
+    return Row(Memory(**found._mapping), found.owner_id, found.project_id)
 
 
 def _through(user: Principal, sink: str | None) -> str | None:
@@ -338,21 +372,40 @@ async def _accesses(conn, user: Principal, project: str | None) -> dict[str, Pro
     if project is not None:
         access = await project_access(conn, user, project)
         return {project: access} if access.role else {}
-    names = [row[0] for row in await (await legacy(conn, GRANTED, (user.user_id,))).fetchall()]
+    grants, projects = tables.grants, tables.projects
+    granted = (
+        select(projects.c.name)
+        .join_from(grants, projects, projects.c.id == grants.c.project_id)
+        .where(grants.c.user_id == user.user_id)
+        .order_by(projects.c.name)
+    )
+    names = (await conn.execute(granted)).scalars().all()
     found = {name: await _access(conn, user, name) for name in names if user.reaches(name)}
     return {name: access for name, access in found.items() if access is not None and access.role}
 
 
-def _params(user: Principal, accesses: dict[str, ProjectAccess], scope, project, location) -> dict:
-    project_id = accesses[project].project_id if project is not None and project in accesses else None
-    return {
-        "personal": user.scope is None,  # the agent of a run reads no personal memory
-        "user": user.user_id,
-        "projects": [access.project_id for access in accesses.values()],
-        "scope": scope,
-        "project_id": project_id,
-        "location": location,
-    }
+def _reach(user: Principal, accesses: dict[str, ProjectAccess], scope, project, location) -> list:
+    """The conditions on the memories that may be visible before labels count: one's personal memories (not for the
+    agent of a run) and, in the projects one holds a grant on, the shared memories and one's own; then the scope,
+    project and location the caller narrowed to."""
+    m = tables.memories
+    in_projects = and_(
+        m.c.scope == "project",
+        m.c.project_id.in_([access.project_id for access in accesses.values()]),
+        or_(m.c.type.in_(SHARED), m.c.owner_id == user.user_id),
+    )
+    if user.scope is None:
+        candidate = or_(and_(m.c.scope == "personal", m.c.owner_id == user.user_id), in_projects)
+    else:
+        candidate = in_projects  # the agent of a run reads no personal memory
+    reach = [candidate]
+    if scope is not None:
+        reach.append(m.c.scope == scope)
+    if project is not None and project in accesses:
+        reach.append(m.c.project_id == accesses[project].project_id)
+    if location is not None:
+        reach.append(m.c.location == location)
+    return reach
 
 
 # Cursors: the (updated_at, id) of the last row a page examined, base64url JSON. They only position a listing in
@@ -401,11 +454,11 @@ async def list_memories(
         accesses = await _accesses(conn, user, project)
         if project is not None and not accesses:
             return Page(items=[], next_cursor=None)  # a hub admin without a grant
-        params = {**_params(user, accesses, scope, project, location), "deleted": deleted, "batch": BATCH}
+        reach = _reach(user, accesses, scope, project, location)
         items: list[Memory] = []
         budget, scanned, following = PAGE_BYTES, 0, None
         while True:
-            rows = await (await legacy(conn, LIST, {**params, "after_at": after_at, "after_id": after_id})).fetchall()
+            rows = (await conn.execute(_listed(reach, deleted, after_at, after_id))).all()
             for values in rows:
                 row = _row(values)
                 scanned += 1
@@ -441,15 +494,15 @@ async def search_memories(
         accesses = await _accesses(conn, user, project)
         if project is not None and not accesses:
             return Results(items=[])  # a hub admin without a grant
-        params = {**_params(user, accesses, scope, project, location), "q": q, "batch": BATCH}
+        reach = _reach(user, accesses, scope, project, location)
         found: list[Found] = []
         budget = PAGE_BYTES
         for offset in range(0, SCAN_ROWS, BATCH):
-            rows = await (await legacy(conn, SEARCH, {**params, "offset": offset})).fetchall()
+            rows = (await conn.execute(_searched(reach, q, offset))).all()
             for values in rows:
                 row = _row(values)
                 if _visible(row, user, accesses, sink):
-                    found.append(Found(**row.memory.model_dump(), rank=values[len(FIELDS) + 2]))
+                    found.append(Found(**row.memory.model_dump(), rank=values.rank))
                     budget -= _size(row.memory)
                 if len(found) >= limit or budget <= 0:
                     return Results(items=found)
@@ -462,8 +515,12 @@ def _not_found(memory_id: int) -> str:
     return f"no memory {memory_id} that you can see on this hub"
 
 
-async def _load(conn, memory_id: int, *, lock: bool = False) -> Row | None:
-    found = await (await legacy(conn, ONE + (" FOR UPDATE OF m" if lock else ""), (memory_id,))).fetchone()
+async def _load(conn: AsyncConnection, memory_id: int, *, lock: bool = False) -> Row | None:
+    m = tables.memories
+    query = _memories().where(m.c.id == memory_id)
+    if lock:
+        query = query.with_for_update(of=m)
+    found = (await conn.execute(query)).one_or_none()
     return _row(found) if found else None
 
 
@@ -502,9 +559,14 @@ def _lock_key(body: MemoryIn, user: Principal, project_id: int | None) -> int:
     return int.from_bytes(hashlib.sha256(key).digest()[:4], "big", signed=True)
 
 
-async def _written(conn, user: Principal, memory_id: int, action: str) -> Memory:
+async def _written(conn: AsyncConnection, user: Principal, memory_id: int, action: str) -> Memory:
     """After a change: its revision row, its audit row, and the memory as it now is."""
-    await legacy(conn, REVISION, (user.user_id, memory_id))
+    m, r = tables.memories, tables.memory_revisions
+    revision = select(
+        m.c.id, m.c.revision, m.c.type, m.c.label, m.c.body, m.c.deleted, literal(user.user_id, BigInteger)
+    )
+    columns = ["memory_id", "revision", "type", "label", "body", "deleted", "actor_id"]
+    await conn.execute(insert(r).from_select(columns, revision.where(m.c.id == memory_id)))
     await record(conn, actor_id=user.user_id, token_id=user.token_id, action=action, target=f"memory:{memory_id}")
     return (await _load(conn, memory_id)).memory
 
@@ -514,9 +576,10 @@ def _logged(memory: Memory, user: Principal, outcome: str) -> None:
     log.info("memory write", extra={**extra, "revision": memory.revision, "login": user.login})
 
 
-async def _has_repo(conn, project_id: int, name: str) -> bool:
-    found = await legacy(conn, "SELECT 1 FROM project_repos WHERE project_id = %s AND name = %s", (project_id, name))
-    return await found.fetchone() is not None
+async def _has_repo(conn: AsyncConnection, project_id: int, name: str) -> bool:
+    repos = tables.project_repos
+    found = select(repos.c.name).where(repos.c.project_id == project_id, repos.c.name == name)
+    return (await conn.execute(found)).first() is not None
 
 
 @router.put("", response_model=Written, responses={**REFUSALS, 409: {"model": Conflict}})
@@ -541,16 +604,8 @@ async def put(request: Request, body: MemoryIn, user: CurrentUser, sink: Sink = 
                     "list --json`",
                 )
         project_id = access.project_id if access else None
-        await legacy(conn, "SELECT pg_advisory_xact_lock(%s, %s)", (LOCK_CLASS, _lock_key(body, user, project_id)))
-        key = {
-            "scope": body.scope,
-            "project_id": project_id,
-            "location": body.location,
-            "name": body.name,
-            "shared": body.scope == "project" and body.type in SHARED_TYPES,
-            "user": user.user_id,
-        }
-        found = await (await legacy(conn, KEY, key)).fetchone()
+        await conn.execute(select(func.pg_advisory_xact_lock(LOCK_CLASS, _lock_key(body, user, project_id))))
+        found = (await conn.execute(_at_key(body, user, project_id))).one_or_none()
         current = _row(found) if found else None
         accesses = {body.project: access} if access else {}
         if current is not None and not _visible(current, user, accesses, sink):
@@ -588,16 +643,27 @@ async def put(request: Request, body: MemoryIn, user: CurrentUser, sink: Sink = 
             )
         try:
             if held is None:
-                values = (body.scope, project_id, body.location, body.name, body.type, user.user_id)
-                inserted = await legacy(conn, INSERT, (*values, Jsonb(label), body.body, user.user_id))
-                memory_id = (await inserted.fetchone())[0]
+                m = tables.memories
+                inserted = insert(m).values(
+                    scope=body.scope,
+                    project_id=project_id,
+                    location=body.location,
+                    name=body.name,
+                    type=body.type,
+                    owner_id=user.user_id,
+                    label=label,
+                    body=body.body,
+                    updated_by=user.user_id,
+                )
+                memory_id = (await conn.execute(inserted.returning(m.c.id))).scalar_one()
             else:
                 memory_id = held.id
-                update = (body.type, Jsonb(label), body.body, False, user.user_id, memory_id)
-                await legacy(conn, UPDATE, update)
+                await conn.execute(_changed(memory_id, body.type, label, body.body, False, user.user_id))
             memory = await _written(conn, user, memory_id, PUT)
-        except psycopg.errors.IntegrityError as exc:  # the checks above match the schema's; this is a backstop
-            log.warning("memory write refused by the schema", extra={"constraint": exc.diag.constraint_name})
+        except sa_exc.IntegrityError as exc:  # the checks above match the schema's; this is a backstop
+            if not isinstance(exc.orig, psycopg.errors.IntegrityError):
+                raise
+            log.warning("memory write refused by the schema", extra={"constraint": exc.orig.diag.constraint_name})
             raise HTTPException(422, "the memory breaks a rule of the hub's schema; nothing was written") from None
     outcome = "created" if held is None else "restored" if held.deleted else "updated"
     _logged(memory, user, outcome)
@@ -625,7 +691,7 @@ async def delete(
             return _conflict(
                 request, f"{held.name} changed on the hub: it is at revision {held.revision}, not {if_revision}", held
             )
-        await legacy(conn, UPDATE, (held.type, Jsonb(held.label), "", True, user.user_id, memory_id))
+        await conn.execute(_changed(memory_id, held.type, held.label, "", True, user.user_id))
         memory = await _written(conn, user, memory_id, DELETE)
     _logged(memory, user, "deleted")
     return Written(**memory.model_dump(), created=False, changed=True)
@@ -635,18 +701,30 @@ async def delete(
 
 DEFAULT_REVISIONS = 50
 MAX_REVISIONS = 200
-REVISIONS = """
-SELECT r.revision, r.type, r.label, r.deleted, octet_length(r.body), u.login, r.created_at
-  FROM memory_revisions r JOIN users u ON u.id = r.actor_id
- WHERE r.memory_id = %(memory_id)s AND (%(before)s::integer IS NULL OR r.revision < %(before)s)
- ORDER BY r.revision DESC
- LIMIT %(batch)s
-"""
-ONE_REVISION = """
-SELECT r.revision, r.type, r.label, r.deleted, octet_length(r.body), u.login, r.created_at, r.body
-  FROM memory_revisions r JOIN users u ON u.id = r.actor_id
- WHERE r.memory_id = %s AND r.revision = %s
-"""
+
+
+def _revisions(*extra) -> Select:
+    """The revisions of memories with what a RevisionSummary shows, column by field name, then ``extra``."""
+    r, u = tables.memory_revisions, tables.users
+    return select(
+        r.c.revision,
+        r.c.type,
+        r.c.label,
+        r.c.deleted,
+        func.octet_length(r.c.body).label("size"),
+        u.c.login.label("actor"),
+        r.c.created_at,
+        *extra,
+    ).join_from(r, u, u.c.id == r.c.actor_id)
+
+
+def _history(memory_id: int, before: int | None) -> Select:
+    """A batch of the revisions of memory ``memory_id`` older than ``before``, the latest first."""
+    r = tables.memory_revisions
+    query = _revisions().where(r.c.memory_id == memory_id)
+    if before is not None:
+        query = query.where(r.c.revision < before)
+    return query.order_by(r.c.revision.desc()).limit(BATCH)
 
 
 class RevisionSummary(BaseModel):
@@ -670,9 +748,6 @@ class MemoryRevision(RevisionSummary):
     body: str = Field(description="the whole file as it was; empty for a tombstone")
 
 
-REVISION_FIELDS = tuple(RevisionSummary.model_fields)
-
-
 def _as_of(row: Row, kind: str, label: dict) -> Row:
     """``row`` as it was at a revision of type ``kind`` labelled ``label``: what the read rule judges a revision by."""
     return Row(row.memory.model_copy(update={"type": kind, "label": label}), row.owner_id, row.project_id)
@@ -681,7 +756,7 @@ def _as_of(row: Row, kind: str, label: dict) -> Row:
 def _revision_visible(
     row: Row, values, user: Principal, access: ProjectAccess | None, sink: str | None
 ) -> RevisionSummary | None:
-    summary = RevisionSummary(**dict(zip(REVISION_FIELDS, values[: len(REVISION_FIELDS)], strict=True)))
+    summary = RevisionSummary(**values._mapping)
     accesses = {row.memory.project: access} if access is not None else {}
     return summary if _visible(_as_of(row, summary.type, summary.label), user, accesses, sink) else None
 
@@ -705,12 +780,11 @@ async def revisions(
     following = None
     async with request.app.state.engine.begin() as conn:
         row, access = await _readable(conn, user, memory_id, sink)
-        params = {"memory_id": memory_id, "before": before, "batch": BATCH}
         oldest_seen = False
         for _ in range(0, SCAN_ROWS, BATCH):
-            found = await (await legacy(conn, REVISIONS, params)).fetchall()
+            found = (await conn.execute(_history(memory_id, before))).all()
             for values in found:
-                params["before"] = values[0]
+                before = values.revision
                 summary = _revision_visible(row, values, user, access, sink)
                 if summary is not None:
                     items.append(summary)
@@ -721,8 +795,8 @@ async def revisions(
             if len(found) < BATCH:
                 oldest_seen = True
                 break
-        if not oldest_seen and params["before"] is not None and params["before"] > 1:
-            following = params["before"]  # the limit or the scan bound ended this page
+        if not oldest_seen and before is not None and before > 1:
+            following = before  # the limit or the scan bound ended this page
     return Revisions(memory_id=memory_id, items=items, next_before=following)
 
 
@@ -738,8 +812,10 @@ async def show_revision(
     sink = _through(user, sink)
     async with request.app.state.engine.begin() as conn:
         row, access = await _readable(conn, user, memory_id, sink)
-        values = await (await legacy(conn, ONE_REVISION, (memory_id, revision))).fetchone()
+        r = tables.memory_revisions
+        one = _revisions(r.c.body).where(r.c.memory_id == memory_id, r.c.revision == revision)
+        values = (await conn.execute(one)).one_or_none()
     summary = None if values is None else _revision_visible(row, values, user, access, sink)
     if summary is None:
         raise HTTPException(404, f"no revision {revision} of memory {memory_id} that you can see on this hub")
-    return MemoryRevision(**summary.model_dump(), memory_id=memory_id, body=values[len(REVISION_FIELDS)])
+    return MemoryRevision(**summary.model_dump(), memory_id=memory_id, body=values.body)
