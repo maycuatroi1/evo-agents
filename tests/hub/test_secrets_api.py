@@ -26,6 +26,7 @@ from evo_agents.hub.credentials import DEFAULT_GIT_USERNAME, MAX_SECRET_BYTES
 from evo_agents.hub.server import secrets as secret_routes
 from evo_agents.hub.server.app import create_app
 from evo_agents.hub.server.sealing import KEY_BYTES, Sealed, Sealer, secret_aad
+from evo_agents.isotime import parse_iso
 from tests.hub.fake_github import Account
 from tests.hub.live import ADMIN, add_project, bearer, sql, table_dump
 from tests.hub.test_run_tables import PLAN, add_plan, add_run
@@ -253,9 +254,9 @@ def test_a_put_replaces_the_secret_whole(client, hub, hub_db, config):
         "https://gitlab.example.org/ops",
         "bot",
     )
-    assert second["projects"] == ["docs"] and datetime.fromisoformat(second["expires_at"]) == later
+    assert second["projects"] == ["docs"] and parse_iso(second["expires_at"]) == later
     assert second["created_at"] == first["created_at"]
-    assert datetime.fromisoformat(second["updated_at"]) >= datetime.fromisoformat(first["updated_at"])
+    assert parse_iso(second["updated_at"]) >= parse_iso(first["updated_at"])
     assert len(stored(hub_db, OWNER, "token")) == 1
     assert opened(config, hub_db, OWNER, "token") == value
     assert bindings(hub_db, "token") == [("docs", None)]
