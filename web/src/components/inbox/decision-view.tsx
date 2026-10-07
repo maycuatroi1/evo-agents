@@ -63,14 +63,14 @@ function useShortDuration() {
 }
 
 /** "asked 6 minutes ago, parks in 23 h 54 min", or "parked 3 hours ago" once the run has parked. */
-function AskedTiming({ decision, parksAt }: { decision: Decision; parksAt: string | null }) {
+export function AskedTiming({ decision, parksAt, className = "ml-auto" }: { decision: Decision; parksAt: string | null; className?: string }) {
   const t = useTranslations("inbox.decision");
   const duration = useShortDuration();
   const counting = decision.state === "open" && decision.run_state === "waiting" && parksAt !== null;
   const now = useNow(counting);
   const timing = parkTiming(decision, parksAt, now);
   return (
-    <span className="ml-auto inline-flex flex-wrap items-center gap-x-1 tabular-nums" data-testid="decision-timing">
+    <span className={cn("inline-flex flex-wrap items-center gap-x-1 tabular-nums", className)} data-testid="decision-timing">
       <span>
         {t.rich("asked", { time: () => <Ago value={decision.asked_at} never="-" /> })}
         {timing ? "," : null}
@@ -84,6 +84,14 @@ function AskedTiming({ decision, parksAt }: { decision: Decision; parksAt: strin
   );
 }
 
+/** The decision's state as the kit's pill: Waiting for you for the run's owner, Waiting for its owner for anyone else. */
+export function DecisionStatePill({ decision, access, size }: { decision: Decision; access: AnswerAccess; size?: "lg" }) {
+  const t = useTranslations("inbox.decision");
+  const label =
+    decision.state === "open" ? (access === "answer" ? t("waitingYou") : access === "notOwner" ? t("waitingFor", { owner: decision.owner }) : undefined) : undefined;
+  return <StatusBadge kind="decision" status={decision.state} label={label} size={size} />;
+}
+
 /**
  * The card's head: the decision's state as the kit's pill (Waiting for you, for the run's owner), its category, where
  * it comes from (the run, the project, plan and step; on the run's own page only the step), and when it was asked and
@@ -92,7 +100,6 @@ function AskedTiming({ decision, parksAt }: { decision: Decision; parksAt: strin
 function DecisionHead({ decision, where, access, parksAt }: { decision: Decision; where: "inbox" | "run"; access: AnswerAccess; parksAt: string | null }) {
   const t = useTranslations("inbox.decision");
   const open = decision.state === "open";
-  const label = open ? (access === "answer" ? t("waitingYou") : access === "notOwner" ? t("waitingFor", { owner: decision.owner }) : undefined) : undefined;
   const step =
     decision.step_key !== null ? (
       <Link href={stepHref(decision.project, decision.plan_id, decision.step_key)} className={HEAD_LINK} data-testid="decision-step-link">
@@ -107,7 +114,7 @@ function DecisionHead({ decision, where, access, parksAt }: { decision: Decision
       )}
       data-testid="decision-head"
     >
-      <StatusBadge kind="decision" status={decision.state} label={label} />
+      <DecisionStatePill decision={decision} access={access} />
       <DecisionCategoryBadge category={decision.category} />
       {where === "inbox" ? (
         <>
@@ -179,9 +186,10 @@ function Question({
 
 /**
  * The agent's context, Markdown rendered without raw HTML or images (the memories' `SafeMarkdown`), folded after four
- * lines with a button for the rest. Focus moving into the folded part (a link, a code block) unfolds it.
+ * lines with a button for the rest. Focus moving into the folded part (a link, a code block) unfolds it. On the phone's
+ * screen (`screen`) it reads at 15 px.
  */
-function FoldedContext({ text }: { text: string }) {
+export function FoldedContext({ text, screen = false }: { text: string; screen?: boolean }) {
   const t = useTranslations("inbox.decision");
   const ids = useId();
   const box = useRef<HTMLDivElement>(null);
@@ -206,12 +214,12 @@ function FoldedContext({ text }: { text: string }) {
         ref={box}
         role="group"
         aria-label={t("context")}
-        className={cn("w-full text-[13px] leading-relaxed", !open && "line-clamp-4")}
+        className={cn("w-full", screen ? "text-[15px] leading-[22px]" : "text-[13px] leading-relaxed", !open && "line-clamp-4")}
         onFocus={() => {
           if (!open && overflows) setOpen(true);
         }}
       >
-        <SafeMarkdown testId="decision-context-markdown" className="text-[13px] text-muted-foreground">
+        <SafeMarkdown testId="decision-context-markdown" className={cn("text-muted-foreground", screen ? "text-[15px] leading-[22px]" : "text-[13px]")}>
           {text}
         </SafeMarkdown>
       </div>
@@ -220,7 +228,7 @@ function FoldedContext({ text }: { text: string }) {
           type="button"
           variant="link"
           size="sm"
-          className="h-auto min-h-6 px-0 text-xs"
+          className={cn("h-auto min-h-6 px-0", screen ? "text-sm max-md:min-h-11" : "text-xs")}
           aria-expanded={open}
           aria-controls={`${ids}-context`}
           onClick={() => setOpen(!open)}
@@ -234,25 +242,31 @@ function FoldedContext({ text }: { text: string }) {
   );
 }
 
-/** An option as the kit's radio card: the label with the agent's pick tagged, then what it does next. */
+/**
+ * An option as the kit's radio card: the label with the agent's pick tagged, then what it does next. On the phone's
+ * screen (`screen`) it has 14 px of padding, a 15 px title and a 14 px description.
+ */
 function OptionCard({
   option,
   name,
   checked,
   onPick,
+  screen = false,
 }: {
   option: DecisionOption;
   name: string;
   checked: boolean;
   onPick: () => void;
+  screen?: boolean;
 }) {
   const id = useId();
   return (
     <label
       htmlFor={id}
       className={cn(
-        "grid cursor-pointer grid-cols-[16px_minmax(0,1fr)] gap-3 rounded-sm border border-border-strong bg-card p-3 transition-colors hover:bg-accent max-md:min-h-11",
+        "grid cursor-pointer grid-cols-[16px_minmax(0,1fr)] gap-3 rounded-sm border border-border-strong bg-card transition-colors hover:bg-accent max-md:min-h-11",
         "has-checked:border-brand has-checked:bg-surface-selected",
+        screen ? "p-3.5" : "p-3",
       )}
       data-testid={`decision-choice-${option.key}`}
       data-key={option.key}
@@ -269,21 +283,27 @@ function OptionCard({
         aria-labelledby={`${id}-title`}
         aria-describedby={option.description ? `${id}-description` : undefined}
       />
-      <OptionText option={option} id={id} />
+      <OptionText option={option} id={id} screen={screen} />
     </label>
   );
 }
 
-function OptionText({ option, id }: { option: DecisionOption; id: string }) {
+function OptionText({ option, id, screen = false }: { option: DecisionOption; id: string; screen?: boolean }) {
   return (
     <span className="flex min-w-0 flex-col gap-0.5">
-      <span id={`${id}-title`} className="flex flex-wrap items-center gap-2 text-sm font-medium text-foreground [overflow-wrap:anywhere]">
+      <span
+        id={`${id}-title`}
+        className={cn("flex flex-wrap items-center gap-2 font-medium text-foreground [overflow-wrap:anywhere]", screen ? "text-[15px] leading-[22px]" : "text-sm")}
+      >
         {option.label}
         {/* A space for the accessible name ("Deploy now Agent's pick"); a flex container does not draw it. */}
         {option.recommended ? <> <AgentPickTag /></> : null}
       </span>
       {option.description ? (
-        <span id={`${id}-description`} className="text-[13px] leading-[18px] whitespace-pre-line text-muted-foreground [overflow-wrap:anywhere]">
+        <span
+          id={`${id}-description`}
+          className={cn("whitespace-pre-line text-muted-foreground [overflow-wrap:anywhere]", screen ? "text-sm leading-5" : "text-[13px] leading-[18px]")}
+        >
           {option.description}
         </span>
       ) : null}
@@ -292,7 +312,7 @@ function OptionText({ option, id }: { option: DecisionOption; id: string }) {
 }
 
 /** The options as they were offered, for anyone who cannot answer, the agent's pick tagged. */
-function OptionList({ decision }: { decision: Decision }) {
+export function OptionList({ decision, screen = false }: { decision: Decision; screen?: boolean }) {
   const t = useTranslations("inbox.answer");
   const ids = useId();
   return (
@@ -302,8 +322,8 @@ function OptionList({ decision }: { decision: Decision }) {
       </p>
       <ul className="flex flex-col gap-2" aria-labelledby={`${ids}-legend`}>
         {decision.options.map((option, index) => (
-          <li key={option.key} className="rounded-sm border bg-card p-3" data-testid="decision-option" data-key={option.key}>
-            <OptionText option={option} id={`${ids}-${index}`} />
+          <li key={option.key} className={cn("rounded-sm border bg-card", screen ? "p-3.5" : "p-3")} data-testid="decision-option" data-key={option.key}>
+            <OptionText option={option} id={`${ids}-${index}`} screen={screen} />
           </li>
         ))}
       </ul>
@@ -312,7 +332,7 @@ function OptionList({ decision }: { decision: Decision }) {
 }
 
 /** Who answered is in the head; here the option chosen, their words, whether the agent got it, and the run that took it. */
-function AnswerSummary({ decision }: { decision: Decision }) {
+export function AnswerSummary({ decision }: { decision: Decision }) {
   const t = useTranslations("inbox.decision");
   const option = chosenOption(decision);
   const resumed = decision.answer_run_id !== null && decision.answer_run_id !== decision.run_id ? decision.answer_run_id : null;
@@ -364,19 +384,29 @@ function AnswerSummary({ decision }: { decision: Decision }) {
 }
 
 /** Take over, for the owner who may open the run's terminal now: the run page's Terminal tab, or `onTakeOver` there. */
-function TakeOverButton({ decision, href, onTakeOver }: { decision: Decision; href: Route; onTakeOver?: () => void }) {
+export function TakeOverButton({
+  decision,
+  href,
+  onTakeOver,
+  className,
+}: {
+  decision: Decision;
+  href: Route;
+  onTakeOver?: () => void;
+  className?: string;
+}) {
   const t = useTranslations("inbox.answer");
   const label = t("takeOverLabel", { run: decision.run_id });
   if (onTakeOver) {
     return (
-      <Button type="button" variant="outline" onClick={onTakeOver} aria-label={label} data-testid="decision-takeover">
+      <Button type="button" variant="outline" onClick={onTakeOver} aria-label={label} className={className} data-testid="decision-takeover">
         <Terminal aria-hidden="true" />
         {t("takeOver")}
       </Button>
     );
   }
   return (
-    <Button asChild variant="outline">
+    <Button asChild variant="outline" className={className}>
       <Link href={href} aria-label={label} data-testid="decision-takeover">
         <Terminal aria-hidden="true" />
         {t("takeOver")}
@@ -386,31 +416,19 @@ function TakeOverButton({ decision, href, onTakeOver }: { decision: Decision; hr
 }
 
 /**
- * The owner's answer: the options as radio cards with the agent's pick chosen, so one click on Send answer (or Cmd or
- * Ctrl with Enter anywhere in the form) answers with it; Clear the choice leaves words alone as the answer. A note for
- * the agent, Take over when the owner may open the run's terminal, then Send answer. Nothing chosen or written, or words
- * over 4 KiB of UTF-8, is refused here beside the field. What the hub says is a toast: the answer sent, with a link to
- * the run that takes it, or why the hub refused it, which stays until dismissed; after a 409 the card shows the
- * decision as the hub holds it.
+ * The owner's answer, as state a layout renders: the options with the agent's pick chosen, so one click on Send answer
+ * (or Cmd or Ctrl with Enter anywhere in the form) answers with it; Clear the choice leaves words alone as the answer.
+ * Nothing chosen or written, or words over 4 KiB of UTF-8, is refused beside the field. What the hub says is a toast:
+ * the answer sent, with a link to the run that takes it, or why the hub refused it, which stays until dismissed; after a
+ * 409 the decision is shown as the hub holds it. The card (`AnswerForm`) and the phone's screen lay it out.
  */
-function AnswerForm({
-  decision,
-  flush,
-  onAnswered,
-  onConflict,
-  onTakeOver,
-}: {
-  decision: Decision;
-  flush: boolean;
-  onAnswered?: (decision: Decision) => void;
-  onConflict?: (decision: Decision) => void;
-  onTakeOver?: () => void;
-}) {
+export function useAnswerForm(
+  decision: Decision,
+  { onAnswered, onConflict }: { onAnswered?: (decision: Decision) => void; onConflict?: (decision: Decision) => void } = {},
+) {
   const t = useTranslations("inbox.answer");
-  const format = useFormatter();
   const ids = useId();
   const failure = useAnswerFailure();
-  const modifier = useModifierKey();
   const terminalHref = useDecisionTerminalHref(decision);
   const answer = useAnswerDecision(decision, {
     onAnswered: (answered) => {
@@ -438,19 +456,16 @@ function AnswerForm({
   const [option, setOption] = useState<string | null>(() => initialOption(decision));
   const [text, setText] = useState("");
   const [problem, setProblem] = useState<AnswerProblem>(null);
-  const options = useRef<HTMLFieldSetElement>(null);
-  const box = useRef<HTMLTextAreaElement>(null);
   const bytes = utf8Bytes(text.trim());
-  const long = bytes > MAX_ANSWER_BYTES;
-  const parked = decision.run_state === "parked";
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
     if (answer.isPending) return;
     const found = answerProblem(option, text);
     setProblem(found);
-    if (found === "empty") return options.current?.querySelector<HTMLInputElement>("input")?.focus();
-    if (found === "long") return box.current?.focus();
+    // Focus goes where the answer needs work: the first option, or the field (`AnswerFields` gives them these ids).
+    if (found === "empty") return document.getElementById(`${ids}-options`)?.querySelector<HTMLInputElement>("input")?.focus();
+    if (found === "long") return document.getElementById(`${ids}-text`)?.focus();
     answer.mutate(answerBody(option, text));
   };
 
@@ -460,94 +475,156 @@ function AnswerForm({
     event.currentTarget.requestSubmit();
   };
 
+  return {
+    decision,
+    ids,
+    option,
+    pick: (key: string | null) => {
+      setOption(key);
+      if (key !== null) setProblem(null);
+    },
+    text,
+    write: (value: string) => {
+      setText(value);
+      setProblem(null);
+    },
+    problem,
+    bytes,
+    long: bytes > MAX_ANSWER_BYTES,
+    parked: decision.run_state === "parked",
+    pending: answer.isPending,
+    terminalHref,
+    /** The form's own props: what it submits, Cmd or Ctrl with Enter, and its name. */
+    formProps: {
+      onSubmit: submit,
+      onKeyDown,
+      noValidate: true,
+      "aria-label": t("title", { id: decision.id }),
+      "aria-busy": answer.isPending || undefined,
+      "data-testid": "decision-form",
+    },
+  };
+}
+
+export type AnswerFormState = ReturnType<typeof useAnswerForm>;
+
+/**
+ * The answer's fields: the options as radio cards with Clear the choice, the note (or the answer itself once no option
+ * is chosen) with its byte count past three quarters of the limit, and what is wrong with the answer. `screen` is the
+ * phone's decision screen: options with 14 px of padding and 15 px titles, and 16 px text in the field throughout, so
+ * the phone does not zoom into it.
+ */
+export function AnswerFields({ form, screen = false }: { form: AnswerFormState; screen?: boolean }) {
+  const t = useTranslations("inbox.answer");
+  const format = useFormatter();
+  const { decision, ids, option, problem, bytes, long } = form;
   const problemId = `${ids}-problem`;
-  const describedBy = [problem ? problemId : null, bytes >= MAX_ANSWER_BYTES * COUNT_FROM ? `${ids}-bytes` : null].filter(Boolean).join(" ");
+  const counted = bytes >= MAX_ANSWER_BYTES * COUNT_FROM;
+  const describedBy = [problem ? problemId : null, counted ? `${ids}-bytes` : null].filter(Boolean).join(" ");
   return (
-    <form
-      onSubmit={submit}
-      onKeyDown={onKeyDown}
-      noValidate
-      className="flex flex-col"
-      aria-label={t("title", { id: decision.id })}
-      aria-busy={answer.isPending || undefined}
-      data-testid="decision-form"
-    >
-      <div className="flex flex-col gap-3 px-4">
-        <fieldset ref={options} className="m-0 flex min-w-0 flex-col gap-2 border-0 p-0" data-testid="decision-form-options">
-          <legend className="sr-only">{t("legend")}</legend>
-          {decision.options.map((item) => (
-            <OptionCard
-              key={item.key}
-              option={item}
-              name={`decision-${decision.id}-option`}
-              checked={option === item.key}
-              onPick={() => {
-                setOption(item.key);
-                setProblem(null);
-              }}
-            />
-          ))}
-          {option !== null ? (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="self-start"
-              onClick={() => setOption(null)}
-              data-testid="decision-clear-option"
-            >
-              <Eraser aria-hidden="true" />
-              {t("clearOption")}
-            </Button>
-          ) : null}
-        </fieldset>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor={`${ids}-text`} className="text-xs font-medium text-muted-foreground">
-            {option !== null ? t("note") : t("text")}
-          </Label>
-          <Textarea
-            ref={box}
-            id={`${ids}-text`}
-            value={text}
-            rows={3}
-            placeholder={option !== null ? t("notePlaceholder") : t("textPlaceholder")}
-            onChange={(event) => {
-              setText(event.target.value);
-              setProblem(null);
-            }}
-            className="max-h-64 min-h-[72px] resize-y md:text-[13px] md:leading-[18px]"
-            aria-invalid={problem === "long" || undefined}
-            aria-describedby={describedBy || undefined}
-            data-testid="decision-text"
+    <div className="flex flex-col gap-3">
+      <fieldset id={`${ids}-options`} className="m-0 flex min-w-0 flex-col gap-2 border-0 p-0" data-testid="decision-form-options">
+        <legend className="sr-only">{t("legend")}</legend>
+        {decision.options.map((item) => (
+          <OptionCard
+            key={item.key}
+            option={item}
+            name={`decision-${decision.id}-option`}
+            checked={option === item.key}
+            onPick={() => form.pick(item.key)}
+            screen={screen}
           />
-          {bytes >= MAX_ANSWER_BYTES * COUNT_FROM ? (
-            <span
-              id={`${ids}-bytes`}
-              className={cn("self-end text-xs tabular-nums text-muted-foreground", long && "font-medium text-danger")}
-              data-testid="decision-bytes"
-            >
-              {t("bytes", { count: format.number(bytes), max: format.number(MAX_ANSWER_BYTES) })}
-            </span>
-          ) : null}
-        </div>
-        {problem ? (
-          <p id={problemId} className="text-sm font-medium text-danger" role="alert" data-testid="decision-problem">
-            {problem === "empty" ? t("empty") : t("long", { max: format.number(MAX_ANSWER_BYTES) })}
-          </p>
+        ))}
+        {option !== null ? (
+          <Button type="button" variant="ghost" size="sm" className="self-start" onClick={() => form.pick(null)} data-testid="decision-clear-option">
+            <Eraser aria-hidden="true" />
+            {t("clearOption")}
+          </Button>
         ) : null}
+      </fieldset>
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor={`${ids}-text`} className={cn("font-medium text-muted-foreground", screen ? "text-sm" : "text-xs")}>
+          {option !== null ? t("note") : t("text")}
+        </Label>
+        <Textarea
+          id={`${ids}-text`}
+          value={form.text}
+          rows={3}
+          placeholder={option !== null ? t("notePlaceholder") : t("textPlaceholder")}
+          onChange={(event) => form.write(event.target.value)}
+          className={cn(
+            "max-h-64 resize-y",
+            screen ? "min-h-[88px] text-base leading-[22px] md:text-base" : "min-h-[72px] md:text-[13px] md:leading-[18px]",
+          )}
+          aria-invalid={problem === "long" || undefined}
+          aria-describedby={describedBy || undefined}
+          data-testid="decision-text"
+        />
+        {counted ? (
+          <span
+            id={`${ids}-bytes`}
+            className={cn("self-end text-xs tabular-nums text-muted-foreground", long && "font-medium text-danger")}
+            data-testid="decision-bytes"
+          >
+            {t("bytes", { count: format.number(bytes), max: format.number(MAX_ANSWER_BYTES) })}
+          </span>
+        ) : null}
+      </div>
+      {problem ? (
+        <p id={problemId} className="text-sm font-medium text-danger" role="alert" data-testid="decision-problem">
+          {problem === "empty" ? t("empty") : t("long", { max: format.number(MAX_ANSWER_BYTES) })}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+/** "The agent continues as soon as you answer", or that the parked run resumes. */
+export function AnswerHint({ form, className }: { form: AnswerFormState; className?: string }) {
+  const t = useTranslations("inbox.answer");
+  return (
+    <p className={cn("text-xs text-pretty text-fg-subtle", className)} data-testid="decision-form-hint">
+      {form.parked ? t("footParked") : t("foot")}
+    </p>
+  );
+}
+
+/**
+ * The card's answer form: the fields, then a footer with the hint, Take over when the owner may open the run's terminal,
+ * and Send answer with its key (Cmd or Ctrl with Enter; from 768 px, where a keyboard is likely). `flush` keeps the
+ * footer in view at the foot of a sheet that is the card.
+ */
+function AnswerForm({
+  decision,
+  flush,
+  onAnswered,
+  onConflict,
+  onTakeOver,
+}: {
+  decision: Decision;
+  flush: boolean;
+  onAnswered?: (decision: Decision) => void;
+  onConflict?: (decision: Decision) => void;
+  onTakeOver?: () => void;
+}) {
+  const t = useTranslations("inbox.answer");
+  const modifier = useModifierKey();
+  const form = useAnswerForm(decision, { onAnswered, onConflict });
+  return (
+    <form {...form.formProps} className="flex flex-col">
+      <div className="px-4">
+        <AnswerFields form={form} />
       </div>
       <div
         className={cn("flex flex-wrap items-center gap-2 p-4", flush && "sticky bottom-0 mt-3 border-t bg-popover")}
         data-testid="decision-foot"
       >
-        <p className="mr-auto min-w-0 basis-full text-xs text-pretty text-fg-subtle sm:basis-auto" data-testid="decision-form-hint">
-          {parked ? t("footParked") : t("foot")}
-        </p>
-        {terminalHref ? <TakeOverButton decision={decision} href={terminalHref} onTakeOver={onTakeOver} /> : null}
-        <Button type="submit" busy={answer.isPending} aria-keyshortcuts="Meta+Enter Control+Enter" data-testid="decision-send">
-          {answer.isPending ? t("sending") : t("send")}
-          {modifier && !answer.isPending ? (
-            <Kbd className="ml-0.5 border-current bg-transparent text-current opacity-70" aria-hidden="true" data-testid="decision-send-kbd">
+        <AnswerHint form={form} className="mr-auto min-w-0 basis-full sm:basis-auto" />
+        {form.terminalHref ? <TakeOverButton decision={decision} href={form.terminalHref} onTakeOver={onTakeOver} /> : null}
+        <Button type="submit" busy={form.pending} aria-keyshortcuts="Meta+Enter Control+Enter" data-testid="decision-send">
+          {form.pending ? t("sending") : t("send")}
+          {modifier && !form.pending ? (
+            <Kbd className="ml-0.5 border-current bg-transparent text-current opacity-70 max-md:hidden" aria-hidden="true" data-testid="decision-send-kbd">
               {modifier === "meta" ? "⌘↵" : "Ctrl ↵"}
             </Kbd>
           ) : null}
@@ -558,7 +635,7 @@ function AnswerForm({
 }
 
 /** Why the visitor sees no form: someone else's decision, or one whose run can no longer take an answer. */
-function NoFormNote({ decision, access }: { decision: Decision; access: "notOwner" | "runGone" }) {
+export function NoFormNote({ decision, access }: { decision: Decision; access: "notOwner" | "runGone" }) {
   const t = useTranslations("inbox.decision");
   const tState = useStatusText("run");
   return (
@@ -573,7 +650,7 @@ function NoFormNote({ decision, access }: { decision: Decision; access: "notOwne
   );
 }
 
-function ClosedNote({ decision }: { decision: Decision }) {
+export function ClosedNote({ decision }: { decision: Decision }) {
   const t = useTranslations("inbox.decision");
   if (decision.state !== "expired" && decision.state !== "cancelled") return null;
   return (

@@ -589,6 +589,20 @@ Shared pieces built on them:
   click outside or Back) gives focus back to what opened the sheet, or, for a sheet opened by its URL, to the
   decision's link in the list. A link that names only the decision asks each project of the visitor's grants for it at
   once. Opening it from the Inbox marks its notification read.
+- `components/inbox/mobile-decision.tsx`, the kit's MobileDecision: under 768 px the Inbox's sheet is a screen of its
+  own instead (Home's stays a sheet), the phone's whole width and `100dvh` tall on `canvas`. A 52 px top bar on
+  `surface`: Back to Inbox (a 44 px ghost icon button that closes it, like Esc and Back), "Run #12" in 16 px 600 as a
+  link to the run, then the LiveIndicator (the decision is read every 10 seconds while it waits) and the bell. Then,
+  the only part that scrolls: the state pill (`lg`) and the category, the project, plan and step on one 14 px line, when
+  it was asked and when the run parks, the question as the screen's h1 in 20/28 px 600 (the dialog's name, focused
+  once read), the context at 15 px, the options as radio cards with 14 px of padding (15 px titles, 14 px
+  descriptions), the note in 16 px text so the phone does not zoom into it, and "What the agent did so far" folded:
+  opened, it reads the run and its last 200 events and lists the last five things the Trace shows (`agent-digest.ts`
+  over `buildTrace`; no moves between states, no runtime events shown raw, not the decision on screen), oldest first,
+  one line each with its icon and time, then a link to the run's trace. A bar at the foot on `surface`, above the
+  safe area (`env(safe-area-inset-bottom)`), holds Take over (when offered) and Send answer side by side, 44 px and
+  15 px, with no `kbd`; the button submits the form above it (`form=`). Once answered the bar goes and focus comes back
+  to the question. The card's `kbd` hides under 768 px everywhere else too (the run's page, Home's sheet).
 - `components/inbox/decision-view.tsx`: the kit's DecisionCard, the same in the sheet and in the side column of a plan
   run's page. The head on `attention-soft` while the decision is open: the `StatusBadge` "Waiting for you" (for the
   run's owner; "Waiting for octo" for anyone else), the category as a tag, the run, project, plan and step as links
@@ -602,7 +616,7 @@ Shared pieces built on them:
   checked, so one click on Send answer answers with it; Clear the choice leaves the owner's words alone as the answer.
   Then a note for the agent (the answer itself once the choice is cleared; 4 KiB of UTF-8, counted past 75%), and the
   footer: "The agent continues as soon as you answer." (or that the parked run resumes), Take over, and Send answer
-  with its `kbd` (⌘↵ on Apple devices, Ctrl ↵ elsewhere, shown once the page has hydrated; Cmd or Ctrl with Enter sends
+  with its `kbd` from 768 px (⌘↵ on Apple devices, Ctrl ↵ elsewhere, shown once the page has hydrated; Cmd or Ctrl with Enter sends
   from anywhere in the form, `aria-keyshortcuts` on the button). Take over shows while the owner may open the run's
   terminal (their run on a worker of theirs registered with `--allow-web-terminal`, in a state the hub opens a
   terminal in): it leads to the run's page on its Terminal tab (`?view=terminal`), or on that page shows the tab.

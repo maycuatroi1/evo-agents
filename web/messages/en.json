@@ -2492,6 +2492,15 @@
       "notFoundTitle": "Decision #{id} was not found",
       "notFoundDescription": "It belongs to a project or plan you cannot read, or the link is wrong."
     },
+    "screen": {
+      "back": "Back to Inbox",
+      "soFar": "What the agent did so far",
+      "soFarList": "The last things the agent did, oldest first",
+      "soFarEmpty": "The agent has not reported anything yet.",
+      "soFarError": "Couldn't read what the agent did.",
+      "soFarRetry": "Try again",
+      "soFarOpen": "Open the run's trace"
+    },
     "decision": {
       "runLink": "Run #{id}",
       "stepLink": "step {key}",

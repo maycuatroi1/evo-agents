@@ -178,6 +178,19 @@ function oneLine(text: string): string {
   return text.trim().includes("\n") ? `${line} …` : line;
 }
 
+/** A tool's own name, as opposed to a command or a path some runtimes give as its title. */
+const TOOL_NAME = /^[A-Za-z][A-Za-z0-9_:-]{0,47}$/;
+
+/**
+ * How a tool call is named: a tool's own name ("Bash", "TodoWrite", "mcp__hub__search") heads it, null when the runtime
+ * gave none (the caller names the kind instead); a title that is a command or a path (Codex, opencode) is what the call
+ * did, as its argument when the input names nothing.
+ */
+export function toolLabel(tool: Pick<ToolCall, "title" | "arg">): { name: string | null; arg: string | null } {
+  const name = tool.title !== null && TOOL_NAME.test(tool.title) ? tool.title : null;
+  return { name, arg: tool.arg ?? (name ? null : tool.title) };
+}
+
 /** The lines an edit adds and removes, from its input (Claude Code, opencode, Codex) or its ACP diff content. */
 export function diffStat(input: unknown, content: unknown): DiffStat | null {
   let added = 0;
