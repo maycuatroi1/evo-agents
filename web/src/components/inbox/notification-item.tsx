@@ -113,9 +113,9 @@ function noticeHref(notification: Notification): Route | null {
 }
 
 /**
- * One notification of the Inbox. A decision opens beside the list (its title is a link to `/inbox?decision=ID`, which
- * `onOpenDecision` follows without leaving the page); a notice links to its run. An unread one is marked by a dot, a
- * heavier title and the words "Unread" for screen readers, and offers Mark as read.
+ * One notification of the Inbox. A decision opens in a sheet over the list (its title is a link to
+ * `/inbox?decision=ID`, which `onOpenDecision` follows without leaving the page); a notice links to its run. An unread
+ * one is marked by a dot, a heavier title and the words "Unread" for screen readers, and offers Mark as read.
  */
 export function NotificationItem({
   notification,

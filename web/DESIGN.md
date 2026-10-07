@@ -447,23 +447,45 @@ Shared pieces built on them:
   project live in the URL like the runs page's; Mark as read on each unread one, and Mark all as read in the header (Mark
   these as read, by id, while a filter is on). An unread notification says Unread in words beside a dot and has a
   heavier title. A notice of a push or merge into a default branch names its repo, branch and commits (seven digits,
-  the full name for screen readers, five shown and the rest a click away); its body folds to three lines. A decision
-  opens beside the list at `/inbox?decision=ID`, the link every decision notification carries (the History API pushes
-  it, so Back closes it; opened from the list, the question's heading takes focus, and Close gives it back to the
-  list); below the lg breakpoint it replaces the list, with a way back. A link that names only the decision asks each project of the visitor's grants for it at once. Opening it
-  marks its notification read. The decision (`decision-view.tsx`) shows its number, state and category (badges with an
-  icon and a word), the question, where it comes from (project, run with its state, plan, step, when, of whom), the
-  agent's context as Markdown through the memories' `SafeMarkdown` (no raw HTML, no images loaded), then for the run's
-  owner while it is open the answer form: the options as radio cards with the recommended one badged Recommended (a
-  thumbs-up icon and the word) and none picked for them, a box for their own words (4 KiB of UTF-8, counted past 75%),
-  and Send answer. Nothing chosen or written, or too many bytes, is refused beside the field; the hub's answer is a
-  toast: "Answer sent to run #N" with a link to the run, or the refusal (403, 404 and 409 in the decision's own words
-  through `useWriteFailure`, the hub's message as a detail), which stays until dismissed. Once answered the form gives way to who answered, when, the option and words, whether the worker has handed
-  it to the agent yet (read every 10 seconds until it has), and the run that resumed a parked one; the options list
-  marks the one chosen. Anyone else reads the options and why they cannot answer. A plan run's page shows its open
-  decisions in a "Waiting for your decision" banner above the stepper (`runs/run-decisions.tsx`) with the same view and
-  form, read every 5 seconds while the run is active; a decision answered there stays with its answer until the visitor
-  leaves.
+  the full name for screen readers, five shown and the rest a click away); its body folds to three lines; its kind is
+  a tag (an icon and a word, square corners), not a pill.
+- `components/inbox/decision-sheet.tsx`: a decision is answered in a sheet, without leaving the page: from the Inbox's
+  list at `/inbox?decision=ID`, the link every decision notification carries (the History API pushes it, so Back closes
+  it), and from Home's Needs you, which passes the decision's project and when its run parks. It slides in from the
+  right over the page, the whole width of a phone and 576 px from the sm breakpoint, on `surface-raised` with
+  `shadow-dialog`: a 52 px top bar names the decision ("Decision #7", the dialog's name) beside a close button, then
+  the card edge to edge. The question's heading takes focus once the decision is read; closing (the button, Esc, a
+  click outside or Back) gives focus back to what opened the sheet, or, for a sheet opened by its URL, to the
+  decision's link in the list. A link that names only the decision asks each project of the visitor's grants for it at
+  once. Opening it from the Inbox marks its notification read.
+- `components/inbox/decision-view.tsx`: the kit's DecisionCard, the same in the sheet and in the side column of a plan
+  run's page. The head on `attention-soft` while the decision is open: the `StatusBadge` "Waiting for you" (for the
+  run's owner; "Waiting for octo" for anyone else), the category as a tag, the run, project, plan and step as links
+  with a quiet underline (on the run's own page only the step), then "asked 6 minutes ago, parks in 23 h 59 min", or
+  "parked 3 hours ago" once the run has parked. When a run parks is the hub's to say (its decision wait is a setting),
+  so the card reads it from `GET /v1/me/overview` while the run waits, or takes it from Home. The question in 15/22 px
+  500; the agent's context as Markdown through the memories' `SafeMarkdown` (no raw HTML, no images loaded), clamped
+  to four lines with Show more, and unfolded when focus moves into it. For the run's owner the answer form: the options
+  as the kit's radio cards (`border-strong`, `surface-selected` inside a `brand` edge when checked, 44 px under 768 px),
+  the label and what the option does next, the agent's pick tagged "Agent's pick" (`brand` on `brand-soft`) and
+  checked, so one click on Send answer answers with it; Clear the choice leaves the owner's words alone as the answer.
+  Then a note for the agent (the answer itself once the choice is cleared; 4 KiB of UTF-8, counted past 75%), and the
+  footer: "The agent continues as soon as you answer." (or that the parked run resumes), Take over, and Send answer
+  with its `kbd` (⌘↵ on Apple devices, Ctrl ↵ elsewhere, shown once the page has hydrated; Cmd or Ctrl with Enter sends
+  from anywhere in the form, `aria-keyshortcuts` on the button). Take over shows while the owner may open the run's
+  terminal (their run on a worker of theirs registered with `--allow-web-terminal`, in a state the hub opens a
+  terminal in): it leads to the run's page on its Terminal tab (`?view=terminal`), or on that page shows the tab.
+  Nothing chosen or written, or too many bytes, is refused beside the field; the hub's answer is a toast: "Answer sent
+  to run #N" with a link to the run, or the refusal (403, 404 and 409 in the decision's own words through
+  `useWriteFailure`, the hub's message as a detail), which stays until dismissed. After a 409 the card reads the
+  decision again and shows it as the hub holds it. Once answered the card is one compact block: the head on
+  `surface-sunken` with the Answered pill and "by octo, 2 minutes ago", the question in `fg-muted`, the option chosen,
+  the owner's words, whether the worker has handed it to the agent yet (read every 10 seconds until it has) and the
+  run that resumed a parked one; an expired or cancelled one says what happened. Anyone but the owner reads the
+  context, the options (the agent's pick tagged) and why they cannot answer. A plan run's page shows its open decisions
+  at the top of the side column from the xl breakpoint, above the log below it (`runs/run-decisions.tsx`, "Waiting for
+  your decision" and a link to the Inbox), read every 5 seconds while the run is active; a decision answered there, or
+  found answered after a 409, stays with its answer until the visitor leaves.
 - `components/runs`, a run's page (`/p/{project}/runs/{id}`): a stepper of its states (the current one
   `aria-current="step"`, a run that ended badly marked where it stopped), the log, the details and the result, and the
   owner's controls in the header, each shown only when the state and the visitor's rights allow it (`run-model.ts`,

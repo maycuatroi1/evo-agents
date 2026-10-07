@@ -216,7 +216,7 @@ export function LogStatusBadge({ status }: { status: LogStatus }) {
   );
 }
 
-type SessionTab = "log" | "terminal";
+export type SessionTab = "log" | "terminal";
 
 export function RunLogCard({
   runId,
@@ -225,6 +225,8 @@ export function RunLogCard({
   composer,
   terminal = null,
   frozen,
+  tab: heldTab,
+  onTabChange,
 }: {
   runId: number;
   log: RunLog;
@@ -242,11 +244,16 @@ export function RunLogCard({
    * Paused and resume it; without it the card holds Pause itself.
    */
   frozen?: { at: number | null; set: (at: number | null) => void };
+  /** The tab shown, when the page holds it (a decision's Take over shows the Terminal tab); the card holds it otherwise. */
+  tab?: SessionTab;
+  onTabChange?: (tab: SessionTab) => void;
 }) {
   const t = useTranslations("runs.detail.log");
   const tTabs = useTranslations("runs.detail.terminal.tabs");
   const ids = useId();
-  const [tab, setTab] = useState<SessionTab>("log");
+  const [ownTab, setOwnTab] = useState<SessionTab>("log");
+  const tab = heldTab ?? ownTab;
+  const setTab = onTabChange ?? setOwnTab;
   const [group, setGroup] = useState<LogGroup | null>(null);
   const [query, setQuery] = useState("");
   const [follow, setFollow] = useState(true);

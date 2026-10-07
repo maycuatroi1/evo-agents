@@ -2,8 +2,9 @@
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { type ReactNode, useCallback, useEffect, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useId, useState } from "react";
 
 import { useLiveSignal } from "@/components/live/live-context";
 import { planHref, stepHref } from "@/components/plans/links";
@@ -19,11 +20,11 @@ import { whoamiQuery } from "@/lib/queries";
 import { PlanRunKindBadge } from "./badges";
 import { useRunViewer } from "./hooks";
 import type { RunMove } from "./log-model";
-import { isActiveState, type Run, runKey, runQuery } from "./queries";
+import { isActiveState, type Run, RUN_VIEW_PARAM, runKey, runQuery } from "./queries";
 import { RunActions, RunNotes } from "./run-actions";
 import { RunComposer } from "./run-composer";
 import { RunDetails, RunResult } from "./run-facts";
-import { RunLogCard } from "./run-log";
+import { RunLogCard, type SessionTab } from "./run-log";
 import { runControls, stepperModel } from "./run-model";
 import { RunDecisions } from "./run-decisions";
 import { RunPlanSteps } from "./run-plan-steps";
@@ -68,12 +69,38 @@ function useRunTerminalTab(run: Run, viewer: ReturnType<typeof useRunViewer>) {
   return { open: access.open, sessionCreatedAt: me?.token.kind === "web" ? me.token.created_at : null };
 }
 
+/**
+ * The tab the log card shows, held by the page: the Terminal tab once offered when the page was opened on it
+ * (`?view=terminal`, a decision's Take over from the Inbox), or when a decision's Take over here asks for it.
+ */
+function useSessionTab(terminalOffered: boolean) {
+  const params = useSearchParams();
+  const wanted = params.get(RUN_VIEW_PARAM) === "terminal";
+  const [tab, setTab] = useState<SessionTab>("log");
+  const [applied, setApplied] = useState(false);
+  if (wanted && terminalOffered && !applied) {
+    setApplied(true);
+    setTab("terminal");
+  }
+  return [tab, setTab] as const;
+}
+
 function RunPage({ run }: { run: Run }) {
   const t = useTranslations("runs.detail");
   const queryClient = useQueryClient();
   const viewer = useRunViewer(run.project);
   const controls = runControls(run, viewer);
   const terminal = useRunTerminalTab(run, viewer);
+  const [sessionTab, setSessionTab] = useSessionTab(terminal !== null);
+  const logId = useId();
+  const takeOver = terminal?.open
+    ? () => {
+        setSessionTab("terminal");
+        const card = document.getElementById(logId);
+        card?.scrollIntoView({ block: "start", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+        card?.querySelector<HTMLElement>('[data-testid="run-tab-terminal"]')?.focus({ preventScroll: true });
+      }
+    : undefined;
   const describe = useDescribeMove();
   const log = useRunLog({ project: run.project, runId: run.id, knownLastSeq: run.last_seq, describe });
   const [frozenAt, setFrozenAt] = useState<number | null>(null);
@@ -128,25 +155,31 @@ function RunPage({ run }: { run: Run }) {
         }
         actions={<RunActions run={run} controls={controls} />}
       />
-      {plan ? <RunDecisions run={run} owner={controls.owner} /> : null}
       <RunNotes run={run} controls={controls} />
       <RunStepper stepper={stepper} state={run.state} />
+      {/* The kit's run screen: the log on the left, the decision, details and result in the side column from xl. Below
+          xl one column, the decision first. */}
       <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]">
-        <RunLogCard
-          runId={run.id}
-          log={log}
-          frozen={{ at: frozenAt, set: setFrozenAt }}
-          active={isActiveState(run.state)}
-          composer={controls.message ? <RunComposer run={run} /> : null}
-          terminal={
-            terminal
-              ? (shown) => (
-                  <RunTerminalPanel run={run} open={terminal.open} active={shown} sessionCreatedAt={terminal.sessionCreatedAt} />
-                )
-              : null
-          }
-        />
-        <div className="flex min-w-0 flex-col gap-4">
+        {plan ? <RunDecisions run={run} owner={controls.owner} onTakeOver={takeOver} className="xl:col-start-2 xl:row-start-1" /> : null}
+        <div id={logId} className="min-w-0 scroll-mt-16 xl:col-start-1 xl:row-span-2 xl:row-start-1">
+          <RunLogCard
+            runId={run.id}
+            log={log}
+            frozen={{ at: frozenAt, set: setFrozenAt }}
+            active={isActiveState(run.state)}
+            composer={controls.message ? <RunComposer run={run} /> : null}
+            tab={sessionTab}
+            onTabChange={setSessionTab}
+            terminal={
+              terminal
+                ? (shown) => (
+                    <RunTerminalPanel run={run} open={terminal.open} active={shown} sessionCreatedAt={terminal.sessionCreatedAt} />
+                  )
+                : null
+            }
+          />
+        </div>
+        <div className="flex min-w-0 flex-col gap-4 xl:col-start-2">
           <RunDetails run={run} viewer={viewer} />
           {plan ? <RunPlanSteps run={run} /> : null}
           <RunResult run={run} />
@@ -159,7 +192,7 @@ function RunPage({ run }: { run: Run }) {
 /**
  * One run: its state as a stepper, its live log, the owner's controls (cancel, take over, hand back, approve, rerun,
  * a message to the agent), its details and its result. A plan run also lists its plan's steps with their status, and
- * shows the decisions it waits on with the owner's answer form. A run of a plan the visitor may not read, or of another
+ * shows the decisions it waits on with the owner's answer form at the top of the side column. A run of a plan the visitor may not read, or of another
  * project, is not found.
  */
 export function RunDetail({ project, runId, initialError }: { project: string; runId: number; initialError: ApiErrorInfo | null }) {

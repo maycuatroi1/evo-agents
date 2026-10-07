@@ -11,7 +11,6 @@ import {
   Rocket,
   Send,
   Target,
-  ThumbsUp,
   Trash2,
   Upload,
   Wallet,
@@ -19,11 +18,9 @@ import {
 import { useTranslations } from "next-intl";
 
 import { Tag } from "@/components/data/identifier";
-import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 
 import type { DecisionCategory, NoticeKind } from "./queries";
-
-type Variant = "success" | "info" | "destructive";
 
 export const CATEGORY_ICON: Record<DecisionCategory, LucideIcon> = {
   deploy: Rocket,
@@ -46,21 +43,22 @@ export function DecisionCategoryBadge({ category, className }: { category: Decis
   );
 }
 
-export const NOTICE_LOOK: Record<NoticeKind, { icon: LucideIcon; variant: Variant }> = {
-  push_default_branch: { icon: Upload, variant: "info" },
-  merge_default_branch: { icon: GitMerge, variant: "info" },
-  plan_finished: { icon: CircleCheck, variant: "success" },
-  run_failed: { icon: CircleX, variant: "destructive" },
+export const NOTICE_LOOK: Record<NoticeKind, { icon: LucideIcon }> = {
+  push_default_branch: { icon: Upload },
+  merge_default_branch: { icon: GitMerge },
+  plan_finished: { icon: CircleCheck },
+  run_failed: { icon: CircleX },
 };
 
+/** What a notice is about, as the kit's tag: a kind is a name with square corners, never a round state pill. */
 export function NoticeKindBadge({ kind, className }: { kind: NoticeKind; className?: string }) {
   const t = useTranslations("inbox.noticeKind");
-  const { icon: Icon, variant } = NOTICE_LOOK[kind];
+  const { icon: Icon } = NOTICE_LOOK[kind];
   return (
-    <Badge variant={variant} className={className} data-kind={kind} data-testid="notice-kind">
+    <Tag className={className} data-kind={kind} data-testid="notice-kind">
       <Icon aria-hidden="true" />
       {t(kind)}
-    </Badge>
+    </Tag>
   );
 }
 
@@ -75,13 +73,12 @@ export function DecisionKindBadge({ className }: { className?: string }) {
   );
 }
 
-/** The option the agent recommends. */
-export function RecommendedBadge({ className }: { className?: string }) {
+/** The option the agent recommends, as the kit's brand tag "Agent's pick". */
+export function AgentPickTag({ className }: { className?: string }) {
   const t = useTranslations("inbox.decision");
   return (
-    <Badge variant="info" className={className} data-testid="decision-recommended">
-      <ThumbsUp aria-hidden="true" />
-      {t("recommended")}
-    </Badge>
+    <Tag className={cn("bg-brand-soft text-brand", className)} data-testid="decision-recommended">
+      {t("agentsPick")}
+    </Tag>
   );
 }

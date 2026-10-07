@@ -14,6 +14,11 @@ export function useInCard(): boolean {
   return useContext(InCard);
 }
 
+/** Content framed by something else, such as a sheet: the tables, states and skeletons inside draw no frame. */
+export function InFrame({ children }: { children: ReactNode }) {
+  return <InCard.Provider value>{children}</InCard.Provider>;
+}
+
 /**
  * The card a list lives in (the kit's DataTable): the toolbar on top, then the table, or the empty, no-results or
  * loading state in its place, then an optional footer such as the pager. A footer that renders nothing takes no room.

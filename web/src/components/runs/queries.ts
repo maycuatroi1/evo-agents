@@ -246,6 +246,14 @@ export function runHref(project: string, id: number): Route {
   return projectHref(project, `${RUNS_SEGMENT}/${id}`);
 }
 
+/** The search parameter of a run's page that names the tab of its log card to show first. */
+export const RUN_VIEW_PARAM = "view";
+
+/** A run's page with its Terminal tab shown, where the owner takes the run over from a decision. */
+export function runTerminalHref(project: string, id: number): Route {
+  return `${runHref(project, id)}?${RUN_VIEW_PARAM}=terminal` as Route;
+}
+
 export function runDiffHref(project: string, id: number): Route {
   return projectHref(project, `${RUNS_SEGMENT}/${id}/diff`);
 }
