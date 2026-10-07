@@ -132,8 +132,6 @@ LEGACY: dict[str, int] = {
     "tests/hub/test_credentials_api.py": 10,
     "tests/hub/test_decisions.py": 16,
     "tests/hub/test_hooks.py": 6,
-    "tests/hub/test_kg.py": 25,
-    "tests/hub/test_kg_retention.py": 14,
     "tests/hub/test_mcp.py": 9,
     "tests/hub/test_memory.py": 17,
     "tests/hub/test_memory_api.py": 2,
