@@ -71,10 +71,11 @@ export function AdminAudit({ initialError }: { initialError: ApiErrorInfo | null
     setErrors(found);
     if (found.actor || found.to) {
       document.getElementById(`${ids}-${found.actor ? "actor" : "to"}`)?.focus();
-      return;
+      return false;
     }
     if (next.action && !ACTION_NAME.test(next.action)) next.action = "";
     go(auditSearch(next), "push");
+    return true;
   };
   const clear = () => {
     setErrors({});
@@ -182,9 +183,10 @@ export function AdminAudit({ initialError }: { initialError: ApiErrorInfo | null
         <DataCard
           busy={busy}
           toolbar={
-            // Keyed by the URL's filters, so Back and Clear put the fields back to what the list shows.
+            // Reset by the URL's filters, so Back and Clear put the fields back to what the list shows.
             <FilterBar
-              key={filterKey(view)}
+              resetKey={filterKey(view)}
+              active={inUse.length}
               label={t("title")}
               onApply={apply}
               onClear={clear}

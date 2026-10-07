@@ -297,7 +297,7 @@ function GrantSteps({
             name="project"
             value={project}
             onChange={(event) => changeProject(event.target.value)}
-            className="w-full [&_select]:h-9"
+            className="w-full md:[&_select]:h-9"
             aria-invalid={errors.project ? true : undefined}
             aria-describedby={describedBy("project")}
             aria-required="true"
@@ -368,7 +368,7 @@ function GrantSteps({
             setErrors((e) => ({ ...e, maxLevel: undefined }));
           }}
           disabled={!selected}
-          className="w-full [&_select]:h-9"
+          className="w-full md:[&_select]:h-9"
           aria-invalid={errors.maxLevel ? true : undefined}
           aria-describedby={describedBy("maxLevel", true)}
           data-testid="grant-max-level"

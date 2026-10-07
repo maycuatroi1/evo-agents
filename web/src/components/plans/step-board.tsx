@@ -239,6 +239,16 @@ function StepTable({ steps, context }: { steps: PlanStep[]; context: Context }) 
       columnClassNames={{ repo: "hidden md:table-cell", depends: "hidden lg:table-cell", done_at: "hidden xl:table-cell" }}
       testId="steps-table"
       empty={t("noMatch")}
+      // On a phone: the step's title opening its page, its status, and its key with the repo it changes.
+      mobile={(step) => ({
+        title: stepLabel(step) || step.key,
+        titleText: stepLabel(step) || step.key,
+        href: stepHref(context.project, context.planId, step.key),
+        tags: step.group === "done" ? null : <BlockingBadge blocking={step.blocking} />,
+        status: <StepStatusBadge group={step.group} raw={step.rawStatus} />,
+        meta: step.repo ? t("mobileMetaRepo", { key: step.key, repo: step.repo }) : t("mobileMeta", { key: step.key }),
+        data: { "step-key": step.key },
+      })}
     />
   );
 }

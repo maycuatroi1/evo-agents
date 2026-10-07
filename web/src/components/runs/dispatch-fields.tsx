@@ -175,7 +175,7 @@ export function WorkerPicker({
             id={`${ids}-worker`}
             value={pinned === null ? "" : String(pinned)}
             onChange={(event) => onPinned(Number(event.target.value))}
-            className="w-full sm:w-80 [&_select]:h-9 [&_select]:font-mono"
+            className="w-full sm:w-80 md:[&_select]:h-9 [&_select]:font-mono"
             data-testid="dispatch-pinned-worker"
           >
             {workers.map((worker) => (
@@ -247,7 +247,7 @@ export function ModelField({
         disabled={disabled}
         aria-invalid={problem !== null || undefined}
         aria-describedby={`${ids}-hint${message ? ` ${ids}-error` : ""}`}
-        className="h-9 font-mono text-sm placeholder:font-sans"
+        className="h-9 font-mono placeholder:font-sans"
         data-testid="plan-run-model-input"
       />
       {suggestions.length > 0 ? (

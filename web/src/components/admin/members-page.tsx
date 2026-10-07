@@ -7,6 +7,7 @@ import { useTranslations } from "next-intl";
 import { useCallback, useId, useMemo, useState } from "react";
 
 import { DataCard, DataToolbar } from "@/components/data/data-card";
+import { ToolbarField, ToolbarFilters } from "@/components/data/filter-sheet";
 import { CellMain, DataTable, dataTableColumns } from "@/components/data/data-table";
 import { NAME_LINK } from "@/components/data/identifier";
 import { SearchField } from "@/components/data/search-field";
@@ -18,7 +19,6 @@ import { QueryView, useHubQuery } from "@/components/states/query-view";
 import { type ActiveFilter, EmptyState, NoResults, TableSkeleton } from "@/components/states/states";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { browserApi } from "@/lib/api/browser";
 import type { Project } from "@/lib/api/client";
@@ -62,8 +62,21 @@ function Grants({ user }: { user: AdminUser }) {
   );
 }
 
+/** A member's grants in one line, for a phone's list: the first one with its role, then how many more. */
+function useGrantLine() {
+  const t = useTranslations("admin.members");
+  const tRoles = useTranslations("roles");
+  return (user: AdminUser): string => {
+    if (user.grants.length === 0) return t("noGrants");
+    const [first, ...rest] = user.grants;
+    const grant = t("mobileGrant", { project: first.project, role: tRoles(roleLabelKey(first.role)) });
+    return rest.length > 0 ? t("mobileMore", { grant, count: rest.length }) : grant;
+  };
+}
+
 function MembersTable({ users, onGrant }: { users: AdminUser[]; onGrant: (login: string) => void }) {
   const t = useTranslations("admin.members");
+  const grantLine = useGrantLine();
   const columns = useMemo(() => {
     const helper = dataTableColumns<AdminUser>();
     return helper.columns([
@@ -155,6 +168,21 @@ function MembersTable({ users, onGrant }: { users: AdminUser[]; onGrant: (login:
       initialSorting={[{ id: "login", desc: false }]}
       columnClassNames={NARROW_HIDDEN}
       testId="members-table"
+      // On a phone: the login opening the member's page (grants, tokens and Grant access are there), and their access.
+      mobile={(user) => ({
+        title: user.login,
+        titleText: user.login,
+        href: memberHref(user.login),
+        tags: (
+          <>
+            {user.admin ? <HubAdminBadge /> : null}
+            {!user.signed_in ? <NotSignedInBadge /> : null}
+          </>
+        ),
+        meta: grantLine(user),
+        metaText: grantLine(user),
+        data: { login: user.login },
+      })}
     />
   );
 }
@@ -221,27 +249,35 @@ export function AdminMembers({ initialError }: { initialError: ApiErrorInfo | nu
                       debounce={150}
                       maxLength={100}
                       controls={`${ids}-results`}
-                      className="sm:w-64"
+                      className="sm:w-64 max-md:flex-1"
                       testId="member-search"
                     />
-                    <Label htmlFor={`${ids}-project`} className="sr-only">
-                      {t("project")}
-                    </Label>
-                    <NativeSelect
-                      id={`${ids}-project`}
-                      value={view.project}
-                      onChange={(event) => go({ q: view.q, project: event.target.value }, "replace")}
-                      className="w-full sm:w-52 max-md:[&_select]:h-11 max-md:[&_select]:text-base"
-                      aria-controls={`${ids}-results`}
-                      data-testid="member-project"
+                    <ToolbarFilters
+                      active={view.project ? 1 : 0}
+                      summary={t("shown", { shown: shown.length, total: all.length })}
+                      onClear={() => go({ q: view.q }, "replace")}
+                      testId="member-filters"
                     >
-                      <NativeSelectOption value="">{t("allProjects")}</NativeSelectOption>
-                      {projectList.map((project) => (
-                        <NativeSelectOption key={project.name} value={project.name}>
-                          {project.name}
-                        </NativeSelectOption>
-                      ))}
-                    </NativeSelect>
+                      <ToolbarField label={t("project")}>
+                        {(id) => (
+                          <NativeSelect
+                            id={id}
+                            value={view.project}
+                            onChange={(event) => go({ q: view.q, project: event.target.value }, "replace")}
+                            className="w-full md:w-52"
+                            aria-controls={`${ids}-results`}
+                            data-testid="member-project"
+                          >
+                            <NativeSelectOption value="">{t("allProjects")}</NativeSelectOption>
+                            {projectList.map((project) => (
+                              <NativeSelectOption key={project.name} value={project.name}>
+                                {project.name}
+                              </NativeSelectOption>
+                            ))}
+                          </NativeSelect>
+                        )}
+                      </ToolbarField>
+                    </ToolbarFilters>
                   </DataToolbar>
                 }
               >

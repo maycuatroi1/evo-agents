@@ -256,7 +256,7 @@ function PlanRunForm({
             id={`${ids}-timeout`}
             value={String(timeout)}
             onChange={(event) => setTimeoutHours(Number(event.target.value) as PlanTimeout)}
-            className="w-full sm:w-56 [&_select]:h-9"
+            className="w-full sm:w-56 md:[&_select]:h-9"
             aria-describedby={`${ids}-timeout-hint`}
             data-testid="plan-run-timeout"
           >

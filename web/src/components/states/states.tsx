@@ -242,13 +242,13 @@ export function PageSkeleton() {
 const TITLE_WIDTHS = ["w-[62%]", "w-[48%]", "w-[70%]", "w-[55%]", "w-[40%]", "w-[66%]"];
 const SUB_WIDTHS = ["w-[38%]", "w-[30%]", "w-[44%]", "w-[26%]", "w-[34%]", "w-[40%]"];
 
-/** A list's toolbar while it loads: the search field and three chips. */
+/** A list's toolbar while it loads: the search field and three chips; on a phone, the 44 px field alone. */
 function ToolbarSkeleton() {
   return (
     <div className="flex flex-wrap items-center gap-2 border-b px-4 py-3">
-      <Skeleton className="h-8 w-full rounded-sm sm:w-64" />
+      <Skeleton className="h-8 w-full rounded-sm max-md:h-11 sm:w-64" />
       {[56, 72, 64].map((width) => (
-        <Skeleton key={width} className="h-7 rounded-sm" style={{ width }} />
+        <Skeleton key={width} className="h-7 rounded-sm max-md:hidden" style={{ width }} />
       ))}
     </div>
   );
@@ -256,27 +256,28 @@ function ToolbarSkeleton() {
 
 /**
  * A table in the shape of the kit's rows: the header on `surface-sunken`, then 44 px rows of a short reference, a
- * title over its secondary line, a state pill and a figure on the right. `toolbar` adds the toolbar above. Alone it
- * is a card; inside a `DataCard` it draws no frame.
+ * title over its secondary line, a state pill and a figure on the right; on a phone, the list's 60 px rows of a title
+ * over its line, with no header. `toolbar` adds the toolbar above. Alone it is a card; inside a `DataCard` it draws no
+ * frame.
  */
 export function TableSkeleton({ rows = 5, toolbar = false }: { rows?: number; toolbar?: boolean }) {
   const inCard = useInCard();
   return (
     <div className={cn("min-w-0", !inCard && "overflow-hidden rounded-md border bg-card shadow-raised")}>
       {toolbar ? <ToolbarSkeleton /> : null}
-      <div className="flex h-9 items-center gap-6 border-b bg-surface-sunken px-4">
+      <div className="flex h-9 items-center gap-6 border-b bg-surface-sunken px-4 max-md:hidden">
         {[40, 120, 56].map((width) => (
           <span key={width} className="h-2.5 rounded-xs bg-border" style={{ width }} />
         ))}
       </div>
       {Array.from({ length: rows }, (_, i) => (
-        <div key={i} className="flex h-11 items-center gap-4 border-b px-4 last:border-b-0">
-          <Skeleton className="h-3 w-8 shrink-0 rounded-xs" />
+        <div key={i} className="flex h-11 items-center gap-4 border-b px-4 last:border-b-0 max-md:h-[60px]">
+          <Skeleton className="h-3 w-8 shrink-0 rounded-xs max-md:hidden" />
           <div className="flex min-w-0 flex-1 flex-col gap-1.5">
             <Skeleton className={cn("h-3 rounded-xs", TITLE_WIDTHS[i % TITLE_WIDTHS.length])} />
             <Skeleton className={cn("h-2.5 rounded-xs", SUB_WIDTHS[i % SUB_WIDTHS.length])} />
           </div>
-          <Skeleton className="hidden h-[22px] w-20 shrink-0 rounded-full sm:block" />
+          <Skeleton className="h-[22px] w-20 shrink-0 rounded-full" />
           <Skeleton className="hidden h-3 w-14 shrink-0 rounded-xs md:block" />
         </div>
       ))}

@@ -418,6 +418,8 @@
       },
       "noGrants": "No project access yet",
       "moreGrants": "and {count} more: {projects}",
+      "mobileGrant": "{project}, {role}",
+      "mobileMore": "{grant}, and {count, plural, one {# more project} other {# more projects}}",
       "grantSummary": "{project}: {role}, {level} visibility",
       "hubAdmin": "Hub admin",
       "notSignedIn": "Not signed in yet",
@@ -542,6 +544,7 @@
       "noHost": "None",
       "revoke": "Revoke",
       "revokeLabel": "Revoke token {id} of {login}",
+      "mobileTitle": "{kind} #{id}",
       "emptyTitle": "No live tokens",
       "emptyDescription": "Tokens show here once someone signs in to the hub from a browser, the CLI or a worker.",
       "noMatchTitle": "No token matches the filters"
@@ -584,6 +587,7 @@
         "token": "Token"
       },
       "hub": "Hub",
+      "mobileMeta": "{actor}, {target}",
       "noProject": "No project",
       "emptyTitle": "No audit entries yet",
       "emptyDescription": "Sign-ins, grants, and changes to projects, plans, memories and skills add entries here.",
@@ -658,6 +662,8 @@
       "activeCaption": "Active plans",
       "completedCaption": "Completed plans",
       "revisionValue": "r{revision}",
+      "mobileMeta": "<id>{plan}</id>, {progress}",
+      "mobileMetaText": "{plan}, {progress}",
       "columns": {
         "plan": "Plan",
         "progress": "Progress",
@@ -691,6 +697,8 @@
       "showAll": "Show all {count} steps",
       "tableCaption": "The plan's steps in order",
       "noMatch": "No step matches the filters.",
+      "mobileMeta": "Step {key}",
+      "mobileMetaRepo": "Step {key}, {repo}",
       "columns": {
         "step": "Step",
         "status": "Status",
@@ -835,7 +843,17 @@
   "table": {
     "sortAscending": "Sorted ascending",
     "sortDescending": "Sorted descending",
-    "sortBy": "Sort by {column}"
+    "sortBy": "Sort by {column}",
+    "filters": {
+      "button": "Filters",
+      "buttonActive": "Filters ({count})",
+      "title": "Filters",
+      "description": "The list changes as you choose.",
+      "descriptionForm": "Choose the filters, then press Filter to apply them.",
+      "close": "Close filters",
+      "clear": "Clear filters",
+      "done": "Show results"
+    }
   },
   "memories": {
     "projectTitle": "Memories",
@@ -1305,6 +1323,7 @@
     "count": "{count, plural, one {# worker} other {# workers}}",
     "caption": "Workers",
     "hostLine": "{hostname}, {os} {arch}",
+    "mobileMeta": "{held}/{slots} slots in use, {host}",
     "slotsLabel": "{held} of {slots} slots in use",
     "notReported": "Not reported",
     "never": "Never",
@@ -1662,6 +1681,11 @@
     "planLine": "{plan}, every step not done, {repos, plural, one {# repo} other {# repos}}",
     "planLineProject": "{project}, {plan}, every step not done, {repos, plural, one {# repo} other {# repos}}",
     "untitled": "Untitled step",
+    "mobile": {
+      "runTitle": "Run #{id}",
+      "meta": "<ref>#{id}</ref>, {detail}",
+      "metaText": "#{id}, {detail}"
+    },
     "noWorkerYet": "none yet",
     "pinnedWaiting": "waiting for its pinned worker",
     "queuedAt": "Queued at",
@@ -2048,6 +2072,7 @@
         "countFiltered": "{shown} of {total, plural, one {# line} other {# lines}}",
         "lines": "{count, plural, one {# line} other {# lines}}",
         "filter": "Show",
+        "groupMenu": "Show: {group}",
         "groups": {
           "all": "All",
           "agent": "Agent",

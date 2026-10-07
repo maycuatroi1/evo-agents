@@ -44,6 +44,7 @@ export function ActionLabel({ action, inline = false }: { action: string; inline
 export function AuditTable({ rows, caption, testId = "audit-table" }: { rows: AuditRow[]; caption: string; testId?: string }) {
   const t = useTranslations("admin.audit");
   const format = useFormatter();
+  const actionName = useActionName();
   const columns = useMemo(() => {
     const helper = dataTableColumns<AuditRow>();
     return helper.columns([
@@ -126,6 +127,28 @@ export function AuditTable({ rows, caption, testId = "audit-table" }: { rows: Au
       columnClassNames={NARROW_HIDDEN}
       density="compact"
       testId={testId}
+      // On a phone: what was done, when (the time at the end of the line, the day in its tooltip), and who did it to
+      // what. A row of the trail has no page of its own, so it opens nothing.
+      mobile={(row) => {
+        const at = new Date(row.at);
+        const meta = t("mobileMeta", { actor: row.actor ?? t("hub"), target: row.target });
+        return {
+          title: actionName(row.action) ?? <code className="font-mono text-xs">{row.action}</code>,
+          titleText: row.action,
+          status: (
+            <time
+              dateTime={row.at}
+              title={format.dateTime(at, { dateStyle: "medium", timeStyle: "medium" })}
+              className="text-xs whitespace-nowrap text-fg-subtle tabular-nums"
+            >
+              {format.dateTime(at, { dateStyle: "short", timeStyle: "medium" })}
+            </time>
+          ),
+          meta,
+          metaText: meta,
+          data: { "audit-id": row.id },
+        };
+      }}
     />
   );
 }
