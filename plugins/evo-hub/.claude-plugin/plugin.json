@@ -1,7 +1,7 @@
 {
   "name": "evo-hub",
   "displayName": "evo agents hub",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "The team hub of evo-agents over MCP: memories, plans, skills and the knowledge graph of your projects. Hooks keep Claude Code's memory files and the plan copies of a harness in step with the hub.",
   "author": {"name": "maycuatroi", "url": "https://github.com/maycuatroi1"},
   "repository": "https://github.com/maycuatroi1/evo-agents",

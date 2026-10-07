@@ -1,7 +1,7 @@
 {
   "name": "evo-kg",
   "displayName": "evo knowledge graph",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Project knowledge graph over MCP, built by evo-agents from the sources a harness declares in knowledge.yaml.",
   "author": {"name": "maycuatroi", "url": "https://github.com/maycuatroi1"},
   "repository": "https://github.com/maycuatroi1/evo-agents",
