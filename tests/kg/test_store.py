@@ -1,4 +1,5 @@
 import sqlite3
+from pathlib import Path
 
 import pytest
 
@@ -169,3 +170,30 @@ def test_schema_upgrade_is_refused_by_readers_and_keeps_the_file_on_failure(tmp_
     assert db.execute("SELECT 1 FROM sqlite_master WHERE name = 'nodes_key'").fetchone() is None
     db.close()
     assert not (path.parent / "graph.sqlite.rebuild").exists()
+
+
+def test_kind_counts_split_the_live_nodes_by_kind_and_label(tmp_path, kg_env):
+    project = make_project(tmp_path, kg_env)
+    report = sync_build(project)
+    store = Store.for_project(project)
+    rows = store.kind_counts(report.build_id)
+    store.close()
+    assert sum(count for *_, count in rows) == report.nodes
+    assert len({tuple(row[:4]) for row in rows}) == len(rows)
+    symbols = [row for row in rows if row[0] == "Symbol"]
+    assert symbols and all(isinstance(count, int) and count > 0 for *_, count in symbols)
+
+
+def test_leave_wal_leaves_the_whole_store_in_its_file(tmp_path):
+    path = tmp_path / "graph.sqlite"
+    store = Store(path)
+    store.db.execute("INSERT INTO meta VALUES ('note', 'kept')")
+    store.db.commit()
+    assert Path(f"{path}-wal").exists()
+    store.leave_wal()
+    assert store.db.execute("PRAGMA journal_mode").fetchone()[0] == "delete"
+    store.close()
+    assert not Path(f"{path}-wal").exists()
+    reopened = sqlite3.connect(path)
+    assert reopened.execute("SELECT value FROM meta WHERE key = 'note'").fetchone() == ("kept",)
+    reopened.close()
