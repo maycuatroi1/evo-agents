@@ -69,6 +69,7 @@ TOOL_KINDS = ("read", "edit", "delete", "move", "search", "execute", "think", "f
 PLAN_STATUSES = {"pending": "pending", "inprogress": "in_progress", "in_progress": "in_progress"}
 
 _VERSION = re.compile(r"\s*v?(\d+(?:\.\d+)*)")
+_VARIABLE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\Z")
 
 # The launcher: a new session (so a process group of its own), its pid in the file of argv[1], then the runtime.
 _NEW_SESSION = (
@@ -169,12 +170,14 @@ def new_session_argv(pid_file: Path, program: str, *args: str) -> list[str]:
     return [sys.executable or "python3", "-I", "-c", _NEW_SESSION, str(pid_file), program, *args]
 
 
-def write_launcher(directory: Path, program: str) -> Path:
+def write_launcher(directory: Path, program: str, *, unset: Iterable[str] = ()) -> Path:
     """An executable ``directory/launch`` that runs ``program`` with its own arguments as ``new_session_argv`` does,
-    the pid going to ``directory/pid``: for an SDK that takes the path of one executable."""
+    the pid going to ``directory/pid``: for an SDK that takes the path of one executable. The variables in ``unset``
+    are removed first, from whatever environment the SDK gives it (its own process's, as a rule)."""
     path = directory / "launch"
     command = " ".join(shlex.quote(part) for part in new_session_argv(directory / "pid", program))
-    path.write_text(f'#!/bin/sh\nexec {command} "$@"\n', encoding="utf-8")
+    removed = "".join(f"unset {name}\n" for name in unset if _VARIABLE.match(name))
+    path.write_text(f'#!/bin/sh\n{removed}exec {command} "$@"\n', encoding="utf-8")
     path.chmod(0o700)
     return path
 

@@ -31,6 +31,7 @@
     "myMemories": "Memory cá nhân",
     "globalSkills": "Skill dùng chung",
     "workers": "Worker",
+    "secrets": "Secret",
     "runDiff": "Diff",
     "inbox": "Inbox"
   },
@@ -1240,6 +1241,7 @@
         "permissionsValue": "Toàn quyền, như {owner}",
         "dispatch": "Ai dispatch",
         "dispatchValue": "Chỉ {owner}",
+        "dispatchWeb": "Chỉ {owner}, từ web",
         "terminal": "Terminal trên web",
         "terminalOn": "Cho phép",
         "terminalOff": "Không cho phép",
@@ -1283,6 +1285,128 @@
       "revokeConfirm": "Thu hồi worker",
       "revokePending": "Đang thu hồi…",
       "revokeSuccess": "Đã thu hồi {name}. Token của worker không còn hiệu lực."
+    },
+    "dispatchFrom": {
+      "label": "Chỉ nhận run dispatch từ web",
+      "hint": "Bật: worker này chỉ nhận run bạn dispatch khi đăng nhập trên web. Run dispatch bằng token, từ dòng lệnh hay do agent, chờ worker khác, và token không gắn được run vào worker này, nên token bị lộ không giao được việc cho nó.",
+      "webSuccess": "{name} giờ chỉ nhận run dispatch từ web.",
+      "anySuccess": "{name} lại nhận run dispatch từ dòng lệnh và từ web."
+    }
+  },
+  "secrets": {
+    "eyebrow": "Credential cho run của bạn",
+    "title": "Secret",
+    "description": "Token mà hub giữ kín và giao cho run của các dự án bạn chọn, trên worker của bạn. Value chỉ gửi lên một lần và không bao giờ hiện lại, ở đây hay ở bất cứ đâu.",
+    "count": "{count, plural, other {# secret}}",
+    "addButton": "Thêm secret",
+    "caption": "Secret của bạn",
+    "listSummary": "{count, plural, other {# secret, chỉ của bạn: không ai khác thấy, kể cả quản trị hub.}}",
+    "columns": {
+      "secret": "Secret",
+      "kind": "Loại",
+      "projects": "Dự án",
+      "workers": "Worker",
+      "expires": "Hết hạn",
+      "updated": "Ghi value lúc",
+      "actions": "Thao tác"
+    },
+    "kind": {
+      "env": "Biến môi trường",
+      "git": "Credential git"
+    },
+    "gitTarget": "<code>{prefix}</code>, user <code>{user}</code>",
+    "anyWorker": "Mọi worker của bạn",
+    "never": "Không hết hạn",
+    "expired": "Đã hết hạn",
+    "replace": "Thay",
+    "replaceLabel": "Thay secret {name}",
+    "delete": "Xoá",
+    "deleteLabel": "Xoá secret {name}",
+    "empty": {
+      "title": "Chưa có secret nào",
+      "description": "Thêm thứ run cần, như <code>CLAUDE_CODE_OAUTH_TOKEN</code> cho Claude Code hay access token GitLab cho git. Từ terminal, <code>evo-agents hub secret set</code> làm việc tương tự."
+    },
+    "errors": {
+      "forbidden": "Hub từ chối: secret cần vai trò writer ở mọi dự án nó gắn với, và chỉ gắn được với worker của chính bạn chưa bị thu hồi.",
+      "notFound": "Một dự án bạn chọn không còn nữa, hoặc bạn không còn quyền xem nó. Danh sách vừa được tải lại.",
+      "conflict": "Bạn đã giữ 200 secret: hãy xoá bớt một cái trước khi thêm.",
+      "unavailable": "Hub này chưa giữ được secret: người vận hành chưa đặt khoá dùng để niêm phong chúng.",
+      "apiMessage": "Thông báo từ API: {message}"
+    },
+    "form": {
+      "addTitle": "Thêm secret",
+      "replaceTitle": "Thay secret {name}",
+      "addDescription": "Hub niêm phong value và không bao giờ hiện lại, kể cả với bạn. Run của các dự án bạn chọn nhận nó trên worker của bạn.",
+      "replaceDescription": "Mọi trường đã điền sẵn như hub đang giữ, trừ value: hub không giữ bản nào hiện ra được, nên hãy nhập hoặc dán lại value, value mới hay value cũ.",
+      "close": "Đóng",
+      "name": "Tên",
+      "namePlaceholder": "ví dụ claude-oauth",
+      "nameHint": "Chữ thường, số, dấu chấm, gạch ngang và gạch dưới, tối đa 64 ký tự, bắt đầu bằng chữ hoặc số.",
+      "kind": "Loại",
+      "kinds": {
+        "env": "Biến môi trường",
+        "envHint": "Môi trường của agent nhận nó, ví dụ CLAUDE_CODE_OAUTH_TOKEN.",
+        "git": "Credential git",
+        "gitHint": "Credential helper của git trả nó cho các origin bắt đầu bằng một tiền tố URL, ví dụ access token GitLab."
+      },
+      "envVar": "Tên biến",
+      "envVarHint": "Chữ hoa, số và dấu gạch dưới. Không được là PATH, HOME, SHELL, USER, TMPDIR hay SSH_AUTH_SOCK, và không bắt đầu bằng EVO_, GIT_, LD_, DYLD_ hay PYTHON.",
+      "urlPrefix": "Tiền tố URL",
+      "urlPrefixHint": "Địa chỉ https mà các origin bắt đầu bằng, không kèm user hay mật khẩu. Origin git@ và ssh:// cùng host và đường dẫn cũng khớp.",
+      "username": "Username",
+      "usernameHint": "User git gửi kèm value; để trống thì là {user}, như GitLab nhận với access token.",
+      "projects": "Dự án có run nhận secret",
+      "projectsHint": "Chỉ liệt kê dự án bạn có vai trò writer.",
+      "projectsFailed": "Không tải được danh sách dự án. Đóng hộp thoại rồi thử lại.",
+      "noProjects": "Bạn chưa có vai trò writer ở dự án nào, nên không run nào nhận được secret. Hãy xin quản trị dự án cấp vai trò writer.",
+      "workers": "Worker",
+      "workersHint": "Không chọn worker nào thì mọi worker của bạn đều nhận; chọn vài worker để chỉ chúng nhận.",
+      "noWorkers": "Bạn chưa có worker nào: secret sẽ đến mọi worker bạn đăng ký sau này.",
+      "expires": "Hết hạn vào ngày",
+      "expiresHint": "Không bắt buộc. Từ 00:00 UTC của ngày đó không run nào nhận nó nữa, giống cách GitLab cho access token hết hạn vào ngày hết hạn.",
+      "value": "Value",
+      "valueHint": "Gửi một lần qua HTTPS và được hub niêm phong; trang này quên nó ngay khi gửi.",
+      "valueReplaceHint": "Value mới, hoặc nhập lại value cũ; trang này quên nó ngay khi gửi.",
+      "valueOneLine": "Một dòng, như giao thức credential của git yêu cầu.",
+      "valueLines": "Ở đây chỉ một dòng; value nhiều dòng thì gửi bằng evo-agents hub secret set, đọc từ stdin.",
+      "valueForgotten": "Value không được giữ lại: hãy dán lại trước khi thử lại.",
+      "warning": "Agent của run đọc được value này ở dạng rõ và có thể làm lộ nó. Hãy dùng token chỉ có những quyền run cần, kèm ngày hết hạn.",
+      "cancel": "Huỷ",
+      "add": "Thêm secret",
+      "replace": "Thay secret",
+      "saving": "Đang lưu…",
+      "added": "Đã thêm secret {name}. Hub đã niêm phong value và sẽ không hiện lại.",
+      "replaced": "Đã thay secret {name}. Run nào xin credential từ giờ sẽ nhận value mới.",
+      "problems": {
+        "nameRequired": "Đặt tên cho secret.",
+        "nameInvalid": "Chữ thường, số, dấu chấm, gạch ngang và gạch dưới, tối đa 64 ký tự, bắt đầu bằng chữ hoặc số.",
+        "nameTaken": "Bạn đã có secret tên này: dùng Thay ở dòng của nó, hoặc chọn tên khác.",
+        "envVarRequired": "Nhập tên biến mà secret đặt.",
+        "envVarInvalid": "Chữ hoa, số và dấu gạch dưới, không bắt đầu bằng số.",
+        "envVarDenied": "Biến này điều khiển shell, git hoặc worker nên không thể lấy từ secret.",
+        "urlPrefixRequired": "Nhập tiền tố https của các origin mà secret trả lời.",
+        "urlPrefixInvalid": "Một địa chỉ https có host và đường dẫn, không có query hay fragment, ví dụ https://gitlab.example.org/group.",
+        "urlPrefixCredentials": "Không đưa user hay mật khẩu vào địa chỉ: user điền vào Username, token điền vào Value.",
+        "usernameInvalid": "Một dòng, tối đa 200 ký tự.",
+        "projectsRequired": "Chọn ít nhất một dự án.",
+        "expiresInvalid": "Chọn một ngày.",
+        "expiresPast": "Chọn một ngày sau hôm nay: secret phải hết hạn trong tương lai.",
+        "valueRequired": "Nhập hoặc dán value.",
+        "valueTooLong": "Tối đa {max} byte UTF-8.",
+        "valueNul": "Value không được chứa ký tự NUL.",
+        "valueLines": "Một dòng: giao thức credential của git không nhận nhiều dòng."
+      }
+    },
+    "deleteDialog": {
+      "title": "Xoá secret {name}?",
+      "leases": "Run sẽ không nhận nó nữa, và các lease của nó còn đang dùng bị thu hồi. Agent nào đã đọc nó thì vẫn giữ value.",
+      "source": "Hub quên value: hãy thu hồi token cả ở nơi đã tạo ra nó.",
+      "audit": "Thao tác không hoàn tác được và được ghi vào audit.",
+      "cancel": "Huỷ",
+      "confirm": "Xoá secret",
+      "pending": "Đang xoá…",
+      "notFound": "Bạn không còn secret tên này. Danh sách vừa được tải lại.",
+      "success": "Đã xoá secret {name}. Hãy thu hồi token cả ở nơi đã tạo ra nó."
     }
   },
   "runs": {
@@ -1838,6 +1962,32 @@
         "viewDiff": "Xem diff",
         "usage": "Mức dùng",
         "evidence": "Bằng chứng"
+      },
+      "credentials": {
+        "title": "Credential",
+        "description": "Những gì run nhận từ hub, không bao giờ có value. Chỉ bạn thấy mục này.",
+        "loading": "Đang tải credential",
+        "failed": "Không đọc được credential của run này.",
+        "emptyActive": "Chưa có: worker xin chúng ngay sau khi nhận run.",
+        "empty": "Run này không nhận credential nào từ hub.",
+        "provider": {
+          "secret": "Secret của bạn",
+          "githubApp": "GitHub App"
+        },
+        "state": {
+          "out": "Đang dùng",
+          "expired": "Hết hạn",
+          "revoked": "Đã thu hồi"
+        },
+        "variable": "Biến",
+        "repos": "Repo",
+        "issued": "Cấp",
+        "issuedTo": "<time></time> cho <code>{worker}</code>",
+        "expires": "Hết hạn",
+        "noEnd": "không hết hạn",
+        "revoked": "Thu hồi",
+        "notRevoked": "chưa",
+        "manage": "Secret của bạn nằm ở trang <link>Secret</link>."
       },
       "actions": {
         "diff": "Xem diff",

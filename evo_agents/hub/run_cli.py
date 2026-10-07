@@ -5,7 +5,10 @@ plan run, one run that does every step of the plan not done yet (POST /v1/projec
 ``show`` read runs of both kinds. ``logs`` prints a run's events page by page (GET .../runs/{id}/events?after=SEQ), or
 with ``--follow`` reads the run's server-sent events (GET .../runs/{id}/stream) until the hub sends ``end``. ``send``
 leaves a message for the run's agent, and ``cancel``, ``approve``, ``takeover``, ``handback`` and ``rerun`` are the
-owner's controls. Every command after ``dispatch``, ``plan`` and ``list`` takes the id of a run, as ``list`` shows it.
+owner's controls. ``credentials`` lists the leases the run got of its owner's secrets and of the hub's GitHub App
+(GET .../runs/{id}/credentials, the owner only), never their values. Every command after ``dispatch``, ``plan`` and
+``list`` takes the id of a run, as ``list`` shows it. A refusal is the hub's message on stderr, such as why a worker
+whose owner set it to take runs dispatched from the web only refuses a run dispatched with a token.
 ``docs/workers.md`` describes the protocol behind them; ``--json`` prints what the hub answered, with the keys declared
 next to the flag.
 
@@ -32,7 +35,7 @@ import urllib.error
 import urllib.request
 from collections.abc import Callable, Iterable, Iterator
 from contextlib import contextmanager
-from datetime import timezone
+from datetime import datetime, timezone
 from urllib.parse import urlencode
 
 from evo_agents import __version__
@@ -72,6 +75,7 @@ RUN_KEYS = (
     "title",
     "plan_revision",
     "dispatched_by",
+    "dispatched_via",
     "worker_id",
     "worker",
     "pinned_worker_id",
@@ -114,6 +118,7 @@ RUN_KEYS = (
 RUN_LIST_KEYS = ("runs", "total", "counts", "limit", "offset")
 EVENTS_KEYS = ("run_id", "state", "last_seq", "events", "more")
 MESSAGE_KEYS = ("id", "run_id", "seq", "text", "sent_by", "created_at", "delivered_at")
+LEASE_KEYS = ("id", "name", "provider", "kind", "target", "worker", "issued_at", "expires_at", "revoked_at")
 RUN = returns_object(*RUN_KEYS, schema="Run")
 
 KIND_LABELS = {
@@ -635,6 +640,51 @@ def cmd_send(args) -> int:
     return 0
 
 
+def _lease_state(lease: dict, now: datetime) -> str:
+    """``revoked YYYY-MM-DD HH:MM`` (UTC), ``expired``, or ``out`` for a lease the run still holds."""
+    if lease["revoked_at"]:
+        return f"revoked {_when(lease['revoked_at'])}"
+    try:
+        ends = parse_iso(lease["expires_at"]) if lease["expires_at"] else None
+    except ValueError:
+        ends = None
+    if ends is not None and (ends if ends.tzinfo else ends.replace(tzinfo=timezone.utc)) <= now:
+        return "expired"
+    return "out"
+
+
+@_client_command
+def cmd_credentials(args) -> int:
+    hub, _ = _signed_in()
+    leases = hub.call("GET", _runs_path(_project(args), args.run, "credentials"))
+    if args.json:
+        _print_json(leases)
+        return 0
+    if not leases:
+        print(f"Run #{args.run} got no lease: its worker asked for none, or the hub had nothing for it.")
+        return 0
+    now = datetime.now(timezone.utc)
+    rows = [
+        (
+            lease["name"],
+            lease["provider"],
+            lease["target"],
+            lease["worker"],
+            _when(lease["issued_at"]),
+            _when(lease["expires_at"]),
+            _lease_state(lease, now),
+        )
+        for lease in leases
+    ]
+    _table(("NAME", "PROVIDER", "TARGET", "WORKER", "ISSUED (UTC)", "EXPIRES (UTC)", "STATE"), rows)
+    out = sum(row[-1] == "out" for row in rows)
+    print(
+        f"{len(leases)} lease(s) of run #{args.run}, "
+        + (f"{out} still out." if out else "none still out: each was given back, taken back or ended.")
+    )
+    return 0
+
+
 def _cancelled(run: dict) -> str:
     if run["state"] == "cancelled":
         return f"Cancelled run #{run['id']}, {_step(run)}."
@@ -821,6 +871,16 @@ def register_runs(hsub) -> None:
     with_project(send)
     json_option(send, returns_object(*MESSAGE_KEYS, schema="Message"))
     send.set_defaults(func=cmd_send)
+
+    credentials = rsub.add_parser(
+        "credentials",
+        help="the leases a run got: secret or GitHub App, target, worker, when issued, ending and revoked; never the "
+        "value (owner only)",
+    )
+    with_run(credentials)
+    with_project(credentials)
+    json_option(credentials, returns_array(*LEASE_KEYS, schema="RunLease"))
+    credentials.set_defaults(func=cmd_credentials)
 
     for action, (help_text, said) in CONTROLS.items():
         parser = rsub.add_parser(action, help=f"{help_text} (owner only)")

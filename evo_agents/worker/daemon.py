@@ -17,8 +17,10 @@
   service tells its manager not to (``service``). A protocol the hub no longer speaks (426) stops it with exit status
   1, which an upgrade can mend.
 - At the start, the events a previous daemon left in the spool are sent, and runs it left unfinished are marked
-  ended, their tmux sessions closed. At the start and every hour, the worktrees of runs that ended more than 7 days
-  ago are removed.
+  ended, their tmux sessions closed and their credential sockets removed. At the start and every hour, the worktrees
+  of runs that ended more than 7 days ago are removed.
+- Each run takes its leases from the hub after the claim and gives them back when it ends here (``credentials``),
+  also when the daemon stops.
 - A previous daemon that died with an agent started (``runs/<run>/agent.json``, ``orphans``) left it running. The
   first heartbeat that gets an answer also names those runs, and before any claim the daemon stops the process group
   of each one's agent, SIGTERM then SIGKILL. The run's worktree and its evo-run branch are removed when the hub no
@@ -44,6 +46,7 @@ from evo_agents.hub import runs
 from evo_agents.isotime import parse_iso
 from evo_agents.worker import checkouts, gitops, interactive, orphans
 from evo_agents.worker.adapter import Adapter, detect_runtimes
+from evo_agents.worker.credentials import socket_path
 from evo_agents.worker.home import WorkerConfig, WorkerHome, revoked_exit
 from evo_agents.worker.hubapi import Backoff, HubProblem, Outdated, Refused, Unreachable, WorkerHub, new_session
 from evo_agents.worker.run import Run, Sender, run_class
@@ -445,6 +448,8 @@ class Daemon:
         a terminal UI left running in their tmux session is closed."""
         for record in self.home.load_runs():
             if record.get("finished_at") is None:
+                with contextlib.suppress(OSError):  # its leases went with that daemon; the hub takes them back
+                    socket_path(self.home, record["id"]).unlink(missing_ok=True)
                 record["finished_at"] = datetime.now(timezone.utc).isoformat()
                 record["state"] = f"{record.get('state')} when the worker stopped"
                 with contextlib.suppress(OSError):

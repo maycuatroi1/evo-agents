@@ -93,5 +93,5 @@ def test_the_wheel_ships_the_migrations_and_migrates_from_its_own_venv(hub_db, t
     with pg.admin(hub_db.admin_dsn) as conn:
         assert conn.execute("SELECT version_num FROM alembic_version").fetchall() == [(REVISIONS[-1],)]
         added = pg.BLOB_TABLES | pg.QUEUE_TABLES | pg.KG_TABLES | pg.RETENTION_TABLES | pg.RUN_TABLES
-        tables = 15 + len(added | pg.NOTIFICATION_TABLES)
+        tables = 15 + len(added | pg.NOTIFICATION_TABLES | pg.CREDENTIAL_TABLES)
         assert conn.execute("SELECT count(*) FROM pg_tables WHERE schemaname = 'public'").fetchone()[0] == tables

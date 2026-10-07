@@ -88,9 +88,11 @@ class Credentials:
     url: str
     login: str
     token: str
+    run: int | None = None  # a worker token's, for the agent of this run (``evo_agents.hub.mcp_proxy``)
 
     def __repr__(self) -> str:  # the token stays out of tracebacks
-        return f"Credentials(url={self.url!r}, login={self.login!r})"
+        run = "" if self.run is None else f", run={self.run}"
+        return f"Credentials(url={self.url!r}, login={self.login!r}{run})"
 
 
 def hub_dir() -> Path:

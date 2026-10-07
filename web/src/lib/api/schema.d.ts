@@ -1179,6 +1179,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/workers/{worker_id}/dispatch-from": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Set Dispatch From
+         * @description Set who may hand the worker its runs: its owner, from a web session only.
+         */
+        post: operations["set_dispatch_from_v1_workers__worker_id__dispatch_from_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/workers/{worker_id}/revoke": {
         parameters: {
             query?: never;
@@ -1822,6 +1842,95 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/secrets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Secrets
+         * @description The caller's own secrets, by name, without their values; a hub admin's own too.
+         */
+        get: operations["list_secrets_v1_secrets_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/secrets/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Put Secret
+         * @description Create the caller's secret ``name``, or replace it whole; the value is sealed and never shown again.
+         */
+        put: operations["put_secret_v1_secrets__name__put"];
+        post?: never;
+        /**
+         * Delete Secret
+         * @description Delete the caller's secret ``name``: its value and bindings go, and its leases are revoked.
+         */
+        delete: operations["delete_secret_v1_secrets__name__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/runs/{run_id}/credentials": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Run Credentials
+         * @description Every lease the run got, given back or not, without a value; for the member who dispatched it.
+         */
+        get: operations["run_credentials_v1_projects__project__runs__run_id__credentials_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/credentials": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Lease Credentials
+         * @description The leases of a run this worker holds: the owner's secrets for its project and a GitHub token for its repos on
+         *     github.com, with the reason of each repo nothing covers.
+         */
+        post: operations["lease_credentials_v1_worker_runs__run_id__credentials_post"];
+        /**
+         * Give Back Credentials
+         * @description Give back every lease this worker holds of the run, in whatever state the run is; GitHub tokens are revoked.
+         */
+        delete: operations["give_back_credentials_v1_worker_runs__run_id__credentials_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2124,6 +2233,66 @@ export interface components {
              */
             changed: boolean;
         };
+        /**
+         * CredentialLease
+         * @description One credential a run holds, as ``evo_agents.hub.credentials.Lease`` reads it.
+         */
+        CredentialLease: {
+            /**
+             * Id
+             * @description the lease; the same id when it is asked for again
+             */
+            id: number;
+            /**
+             * Kind
+             * @description env: a variable of the agent; git: what git's helper answers
+             * @enum {string}
+             */
+            kind: "env" | "git";
+            /**
+             * Provider
+             * @description secret: the owner's; github-app: a token the hub's App made
+             * @enum {string}
+             */
+            provider: "secret" | "github-app";
+            /**
+             * Name
+             * @description the secret's name, or github-app:<account>
+             */
+            name: string;
+            /**
+             * Env Var
+             * @description kind env: the variable it sets
+             */
+            env_var: string | null;
+            /**
+             * Url Prefix
+             * @description kind git: the https prefix of the origins it answers for
+             */
+            url_prefix: string | null;
+            /**
+             * Username
+             * @description kind git: the user git sends with the value
+             */
+            username: string | null;
+            /**
+             * Value
+             * @description the credential itself: for memory only, never a file, a log line or an event
+             */
+            value: string;
+            /**
+             * Expires At
+             * @description when it stops working; ask again before, for a GitHub token
+             */
+            expires_at: string | null;
+        };
+        /** Credentials */
+        Credentials: {
+            /** Leases */
+            leases: components["schemas"]["CredentialLease"][];
+            /** Missing */
+            missing: components["schemas"]["MissingOrigin"][];
+        };
         /** Csrf */
         Csrf: {
             /** Csrf */
@@ -2337,6 +2506,15 @@ export interface components {
              */
             model?: string | null;
         };
+        /** DispatchFrom */
+        DispatchFrom: {
+            /**
+             * Value
+             * @description any: runs dispatched with any credential of the owner; web: only runs dispatched from a web session, so a token cannot hand the worker work
+             * @enum {string}
+             */
+            value: "any" | "web";
+        };
         /** ErrorBody */
         ErrorBody: {
             /** Error */
@@ -2469,6 +2647,14 @@ export interface components {
              * @description host name of the machine
              */
             host: string;
+        };
+        /** GivenBack */
+        GivenBack: {
+            /**
+             * Revoked
+             * @description leases of the run this worker gave back now; 0 when none was out any more
+             */
+            revoked: number;
         };
         /** Grant */
         Grant: {
@@ -3000,6 +3186,21 @@ export interface components {
              * @description the hashes of the request the project does not hold
              */
             missing: string[];
+        };
+        /**
+         * MissingOrigin
+         * @description A repo of the run whose origin no lease covers: git uses the machine's own credentials for it.
+         */
+        MissingOrigin: {
+            /** Repo */
+            repo: string;
+            /**
+             * Origin
+             * @description as the project registered it; null when it registered none
+             */
+            origin: string | null;
+            /** Reason */
+            reason: string;
         };
         /** Neighbourhood */
         Neighbourhood: {
@@ -3930,6 +4131,11 @@ export interface components {
              */
             dispatched_by: string;
             /**
+             * Dispatched Via
+             * @description the credential it was dispatched with: web, a web session; machine, a token (the command line, an agent); null for a run dispatched before 0.5.0
+             */
+            dispatched_via: ("machine" | "web") | null;
+            /**
              * Worker Id
              * @description the worker that claimed it
              */
@@ -4232,6 +4438,56 @@ export interface components {
              */
             more: boolean;
         };
+        /**
+         * RunLease
+         * @description A lease a run got, as its owner sees it: everything but the value.
+         */
+        RunLease: {
+            /** Id */
+            id: number;
+            /**
+             * Name
+             * @description the secret's name, or github-app:<account>
+             */
+            name: string;
+            /**
+             * Provider
+             * @description secret: the owner's; github-app: a token the hub's App made
+             * @enum {string}
+             */
+            provider: "secret" | "github-app";
+            /**
+             * Kind
+             * @description env: a variable of the agent; git: what git's helper answered
+             * @enum {string}
+             */
+            kind: "env" | "git";
+            /**
+             * Target
+             * @description kind env: the variable it set; kind git: the origins of the run's repos it answered for, space-separated, in the form of normalize_origin
+             */
+            target: string;
+            /**
+             * Worker
+             * @description the worker it was leased to
+             */
+            worker: string;
+            /**
+             * Issued At
+             * Format: date-time
+             */
+            issued_at: string;
+            /**
+             * Expires At
+             * @description when it stops working: a GitHub token's hour, a secret's end
+             */
+            expires_at: string | null;
+            /**
+             * Revoked At
+             * @description when the run gave it back or the hub took it; null while out
+             */
+            revoked_at: string | null;
+        };
         /** RunList */
         RunList: {
             /**
@@ -4432,6 +4688,155 @@ export interface components {
              * @description the models the runtime lists on the machine, for a dispatch to suggest; null when it lists none
              */
             models?: string[] | null;
+        };
+        /**
+         * Secret
+         * @description A secret as its owner sees it: everything but the value.
+         */
+        Secret: {
+            /** Name */
+            name: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "env" | "git";
+            /**
+             * Env Var
+             * @description kind env: the variable it sets
+             */
+            env_var: string | null;
+            /**
+             * Url Prefix
+             * @description kind git: the https prefix of the origins it answers for
+             */
+            url_prefix: string | null;
+            /**
+             * Username
+             * @description kind git: the user git sends with it
+             */
+            username: string | null;
+            /**
+             * Projects
+             * @description the projects whose runs get it
+             */
+            projects: string[];
+            /**
+             * Workers
+             * @description the workers it is bound to; empty for any worker of its owner
+             */
+            workers: string[];
+            /** Expires At */
+            expires_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description when its value was last written
+             */
+            updated_at: string;
+        };
+        /** SecretWrite */
+        SecretWrite: {
+            /**
+             * Kind
+             * @description env: a variable of the agent's environment; git: what git's credential helper answers
+             * @enum {string}
+             */
+            kind: "env" | "git";
+            /**
+             * Env Var
+             * @description kind env only: the variable it sets, upper case, never one that steers the shell, git or the worker (PATH, HOME, EVO_*, GIT_* ...)
+             */
+            env_var?: string | null;
+            /**
+             * Url Prefix
+             * @description kind git only: the https prefix of the origins it answers for, such as https://gitlab.example.org/group; kept as https://host/path, without .git or a trailing slash
+             */
+            url_prefix?: string | null;
+            /**
+             * Username
+             * @description kind git only: the user git sends with the value; oauth2 when left out
+             */
+            username?: string | null;
+            /**
+             * Projects
+             * @description the projects whose runs get it; the writer role on each
+             */
+            projects: string[];
+            /**
+             * Workers
+             * @description names of the caller's own workers that are not revoked; left out or empty for any of them
+             */
+            workers?: string[];
+            /**
+             * Expires At
+             * @description after this no run gets it; in the future
+             */
+            expires_at?: string | null;
+            /**
+             * Value
+             * Format: password
+             * @description the secret itself, 1 to 16384 bytes of UTF-8; written once, never shown again
+             */
+            value: string;
+        };
+        /** SecretWritten */
+        SecretWritten: {
+            /** Name */
+            name: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "env" | "git";
+            /**
+             * Env Var
+             * @description kind env: the variable it sets
+             */
+            env_var: string | null;
+            /**
+             * Url Prefix
+             * @description kind git: the https prefix of the origins it answers for
+             */
+            url_prefix: string | null;
+            /**
+             * Username
+             * @description kind git: the user git sends with it
+             */
+            username: string | null;
+            /**
+             * Projects
+             * @description the projects whose runs get it
+             */
+            projects: string[];
+            /**
+             * Workers
+             * @description the workers it is bound to; empty for any worker of its owner
+             */
+            workers: string[];
+            /** Expires At */
+            expires_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description when its value was last written
+             */
+            updated_at: string;
+            /**
+             * Created
+             * @description false when a secret of this name was replaced
+             */
+            created: boolean;
         };
         /** SignedIn */
         SignedIn: {
@@ -5002,6 +5407,12 @@ export interface components {
             free_slots: number | null;
             /** Allow Web Terminal */
             allow_web_terminal: boolean;
+            /**
+             * Dispatch From
+             * @description who may hand it runs: any, runs its owner dispatched with any credential; web, only runs dispatched from a web session
+             * @enum {string}
+             */
+            dispatch_from: "any" | "web";
             /**
              * Held Runs
              * @description runs it holds now (leased, running, interactive or verifying)
@@ -9198,6 +9609,77 @@ export interface operations {
             };
         };
     };
+    set_dispatch_from_v1_workers__worker_id__dispatch_from_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                worker_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DispatchFrom"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Worker"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     revoke_v1_workers__worker_id__revoke_post: {
         parameters: {
             query?: never;
@@ -11359,6 +11841,350 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_secrets_v1_secrets_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Secret"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    put_secret_v1_secrets__name__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description unique among the caller's secrets */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SecretWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SecretWritten"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_secret_v1_secrets__name__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description unique among the caller's secrets */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_credentials_v1_projects__project__runs__run_id__credentials_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunLease"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    lease_credentials_v1_worker_runs__run_id__credentials_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Credentials"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    give_back_credentials_v1_worker_runs__run_id__credentials_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GivenBack"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

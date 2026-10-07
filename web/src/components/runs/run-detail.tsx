@@ -21,6 +21,7 @@ import type { RunMove } from "./log-model";
 import { isActiveState, type Run, runKey, runQuery } from "./queries";
 import { RunActions, RunNotes } from "./run-actions";
 import { RunComposer } from "./run-composer";
+import { RunCredentials } from "./run-credentials";
 import { RunDetails, RunResult } from "./run-facts";
 import { RunLogCard } from "./run-log";
 import { runControls, stepperModel } from "./run-model";
@@ -150,6 +151,7 @@ function RunPage({ run }: { run: Run }) {
           <RunDetails run={run} viewer={viewer} />
           {plan ? <RunPlanSteps run={run} /> : null}
           <RunResult run={run} />
+          {controls.owner ? <RunCredentials run={run} /> : null}
         </div>
       </div>
     </div>
@@ -158,7 +160,7 @@ function RunPage({ run }: { run: Run }) {
 
 /**
  * One run: its state as a stepper, its live log, the owner's controls (cancel, take over, hand back, approve, rerun,
- * a message to the agent), its details and its result. A plan run also lists its plan's steps with their status, and
+ * a message to the agent), its details and its result, and for its owner the credentials it got from the hub. A plan run also lists its plan's steps with their status, and
  * shows the decisions it waits on with the owner's answer form. A run of a plan the visitor may not read, or of another
  * project, is not found.
  */

@@ -340,3 +340,95 @@ def test_search_narrows_to_a_location_and_answers_every_reader_alike(client, who
     assert listed(client, who["carol", "web"], project="demo", location="app") == ["app-note.md"]
     refused = client.get("/v1/memories/search", params={"q": "x", "location": ""}, headers=who["carol", "web"])
     assert refused.status_code == 422
+
+
+@needs_pg
+def test_a_run_scope_reads_and_writes_the_memories_of_its_project_alone(client, who, hub_db):
+    """The agent of a run reaches these routes, through the hub's /mcp, as its owner with the run's scope
+    (``RunScope``): the memories of the run's project, under the grant as the scope caps it, and never a personal
+    memory or one of another project, by listing, searching, asking for an id, deleting or writing."""
+    from dataclasses import replace
+    from functools import partial
+
+    from fastapi import HTTPException
+    from starlette.requests import Request
+
+    from evo_agents.hub.server import memories
+    from evo_agents.hub.server.projects import project_access
+    from evo_agents.hub.server.security import WORKER, Principal, RunScope
+
+    other = {**PROJECT, "harness": {"name": "other", "workspace": "~/ws", "path": "other-harness"}}
+    assert client.put("/v1/projects/other", json=other, headers=who[live.ADMIN]).status_code == 200
+    grant = {"role": "writer", "max_level": "secret"}
+    response = client.put("/v1/admin/projects/other/grants/alice", json=grant, headers=who[live.ADMIN])
+    assert response.status_code == 200, response.text
+    ids = {}
+    for level in ("internal", "customer"):
+        label = {"level": level, "location": "domestic-only"}
+        ids[level] = put(client, who["alice"], name=f"{level}-note.md", body=f"quokka {level}\n", label=label)["id"]
+    ids["other"] = put(client, who["alice"], project="other", name="other-note.md", body="quokka other\n")["id"]
+    diary = {"scope": "personal", "location": "notes", "name": "diary.md", "type": "user", "body": "quokka diary\n"}
+    personal = client.put("/v1/memories", json=diary, headers=who["alice"])
+    assert personal.status_code == 200, personal.text
+    ids["personal"] = personal.json()["id"]
+    everything = ["customer-note.md", "diary.md", "internal-note.md", "other-note.md"]
+    assert searched(client, who["alice"], "quokka", sink="hub") == everything  # alice's own machine token
+
+    (user_id, token_id), *_ = live.sql(
+        hub_db, "SELECT u.id, t.id FROM users u JOIN tokens t ON t.user_id = u.id WHERE u.login = 'alice'"
+    )
+    agent = Principal(user_id, "alice", False, token_id, WORKER, "x", RunScope(7, "demo", "writer", "internal"))
+    request = Request(
+        {"type": "http", "app": client.app, "method": "GET", "path": "/", "headers": [], "query_string": b""}
+    )
+
+    def call(route, user=agent, **arguments):
+        return client.portal.call(partial(route, request, user=user, **arguments))
+
+    def refused(route, **arguments) -> HTTPException:
+        with pytest.raises(HTTPException) as caught:
+            call(route, **arguments)
+        return caught.value
+
+    def names(found) -> list[str]:
+        return sorted(memory.name for memory in found.items)
+
+    # The grant reaches secret and the hub sink clears it; the scope stops at internal.
+    assert names(call(memories.list_memories, sink="hub")) == ["internal-note.md"]
+    assert names(call(memories.search_memories, q="quokka", sink="hub")) == ["internal-note.md"]
+    assert names(call(memories.search_memories, q="quokka", scope="personal", sink="hub")) == []
+    assert names(call(memories.list_memories, scope="personal", sink="hub")) == []
+    assert call(memories.show, memory_id=ids["internal"], sink="hub").name == "internal-note.md"
+    for hidden in ("customer", "other", "personal"):
+        assert refused(memories.show, memory_id=ids[hidden], sink="hub").status_code == 404, hidden
+        assert refused(memories.revisions, memory_id=ids[hidden], sink="hub").status_code == 404, hidden
+    assert refused(memories.delete, memory_id=ids["personal"], if_revision=1, sink="hub").status_code == 404
+    elsewhere = refused(memories.list_memories, project="other", sink="hub")
+    assert elsewhere.status_code == 404 and "no project other" in elsewhere.detail
+    assert refused(memories.search_memories, q="quokka", project="other", sink="hub").status_code == 404
+
+    note = {"scope": "project", "project": "demo", "location": "harness", "name": "agent.md", "type": "project"}
+    note["body"] = "---\nname: Agent\n---\nquokka agent\n"
+    written = call(memories.put, body=memories.MemoryIn(**note), sink="hub")
+    assert written.created and (written.project, written.updated_by) == ("demo", "alice")
+    assert refused(memories.put, body=memories.MemoryIn(**{**note, "project": "other"}), sink="hub").status_code == 404
+    mine = refused(memories.put, body=memories.MemoryIn(**{**diary, "name": "agent-diary.md"}), sink="hub")
+    assert mine.status_code == 403 and "a personal memory is its owner's" in mine.detail
+    assert sorted(row[0] for row in live.sql(hub_db, "SELECT name FROM memories")) == sorted([*everything, "agent.md"])
+
+    # The scope caps the grant, role and level alike: a reader's scope writes nothing.
+    reader = replace(agent, scope=RunScope(7, "demo", "reader", "public"))
+    assert (
+        refused(memories.put, user=reader, body=memories.MemoryIn(**{**note, "name": "r.md"}), sink="hub").status_code
+        == 403
+    )
+    assert names(call(memories.list_memories, user=reader, sink="hub")) == []
+
+    async def grant_of(user) -> tuple:
+        async with client.app.state.pool.connection() as conn:
+            access = await project_access(conn, user, "demo")
+        return access.role, access.max_level
+
+    assert client.portal.call(grant_of, agent) == ("writer", "internal")
+    assert client.portal.call(grant_of, reader) == ("reader", "public")
+    assert client.portal.call(grant_of, replace(agent, scope=None)) == ("writer", "secret")

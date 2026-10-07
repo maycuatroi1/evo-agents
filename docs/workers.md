@@ -1,6 +1,7 @@
 # Workers and runs
 
-A worker is a member's own laptop or desktop, registered with the hub, that runs plan steps for that member. The
+A worker is a machine registered with the hub that runs plan steps for one member: usually the member's own laptop or
+desktop, but possibly a machine others also administer (see [A machine others administer](#a-machine-others-administer)). The
 member dispatches a ready step; the hub queues a run; the member's worker claims it, runs the step with Claude Code,
 opencode or Codex CLI, headless or with a person at the keyboard, and sends logs, state and evidence back while it
 works. The hub then records the step's progress in the plan. From 0.4.0 a member can also hand a whole plan to one of
@@ -26,7 +27,7 @@ and notices reach a member.
 
 | Entity | What it is | Table |
 | --- | --- | --- |
-| worker | a machine its owner registered: a name unique per owner, host facts (hostname, OS, arch, daemon version), 1 to 8 slots, labels, the runtimes and checkouts it reports, whether it allows the web terminal | `workers` |
+| worker | a machine its owner registered: a name unique per owner, host facts (hostname, OS, arch, daemon version), 1 to 8 slots, labels, the runtimes and checkouts it reports, whether it allows the web terminal, who may dispatch to it (`dispatch_from`) | `workers` |
 | worker project | a project the worker may take runs of, chosen at registration | `worker_projects` |
 | pairing | a one-time code the web creates so a machine can join without a machine token | `worker_pairings` |
 | run | one attempt at one plan step on one worker (kind `step`), or one session on one worker that does every step of a plan not done yet (kind `plan`) | `runs` |
@@ -36,10 +37,10 @@ and notices reach a member.
 | notification | a decision or a notice (a push to a default branch, say) for the run's owner, and its deliveries to the owner's channels | `notifications`, `notification_channels`, `notification_deliveries` |
 
 A run records the project, plan and step key, the step's title at dispatch, the plan revision it was dispatched from,
-who dispatched it, the worker (or the worker it is pinned to), the runtime the dispatch asked for
-(`requested_runtime`: `claude-code`, `opencode`, `codex` or `any`, which the next attempt asks for again) and the one
-the run has (`runtime`: the same, except that `any` becomes the runtime the claiming worker picked), the
-mode (`headless` or `interactive`), the approval (`auto` or `review`), a timeout of 5 to 240 minutes, its attempt out
+who dispatched it and with which credential (`dispatched_via`: `web` or `machine`), the worker (or the worker it is
+pinned to), the runtime the dispatch asked for (`requested_runtime`: `claude-code`, `opencode`, `codex` or `any`,
+which the next attempt asks for again) and the one the run has (`runtime`: the same, except that `any` becomes the
+runtime the claiming worker picked), the mode (`headless` or `interactive`), the approval (`auto` or `review`), a timeout of 5 to 240 minutes, its attempt out
 of at most 3, the run it retries (`parent_run_id`), its state and lease, the agent's session id, the repo and branch,
 and at the end the commit, diffstat, verify results, evidence, usage and error.
 
@@ -50,10 +51,16 @@ and at the end the commit, diffstat, verify results, evidence, usage and error.
   otherwise). Another writer of the same project never gets a run onto your worker. A hub admin sees every worker
   and may drain or revoke one, but cannot dispatch to it or undrain it: only the owner sets a drained worker going
   again (403 for anyone else).
+- **The owner may keep a worker to runs dispatched from the web.** With `dispatch_from` set to `web`, the worker
+  claims only runs its owner dispatched from a web session, and a dispatch pinned to it with a token gets 403, so a
+  machine token that leaked cannot hand it work; a message or a decision answer sent with a token to a run on it, or
+  that it may claim, gets 403 too, so that token cannot steer its agent. Only the owner turns this on or off, from a web session: a machine
+  token gets 403 there. [credentials.md](credentials.md#who-may-hand-a-worker-its-work) has the details.
 - **Roles on the project still apply.** Dispatching needs the writer role; reading runs, events and diffs needs
   reader. Messages, takeover, handback, cancel, approve, rerun and the terminal belong to the run's owner, the member
   who dispatched it. A worker takes runs only of the projects it was registered for, and only while its owner still
-  holds writer on them: once the grant goes, claims skip those runs.
+  holds writer on them: once the grant goes, claims skip those runs, the hub takes back the credentials leased to the
+  member's runs there and leases them none.
 - **The agent has the full permissions of the machine's owner.** Claude Code runs with permission mode
   `bypassPermissions` (`--dangerously-skip-permissions`), opencode with the equivalent of `--auto`, and Codex with
   `--dangerously-bypass-approvals-and-sandbox`. The run's worktree is where the agent works, not a sandbox: the
@@ -63,7 +70,11 @@ and at the end the commit, diffstat, verify results, evidence, usage and error.
   forced, and each such push or merge sends the owner a notice.
 - **A worker token (`evw_...`) works only on `/v1/worker/*`**, and machine tokens and web sessions get 403 there. The
   hub shows the token once, when the machine joins or registers, and keeps only its SHA-256. With it a worker reads
-  nothing beyond the runs it holds. Revoking the worker ends the token at once, and revoking the token
+  nothing beyond the runs it holds. Outside `/v1` it also opens the hub's `/mcp` for the agent of a run the worker
+  holds, with `X-Evo-Run`, scoped to the run's project, at most writer and never a hub admin (`docs/hub.md`). The
+  agent runs as the daemon's user and can read the token, so the scope holds for a request naming its own run only:
+  an agent can lease the credentials of the worker's other runs, reach `/mcp` as one of them, and claim a queued run
+  of another project the worker serves ([credentials.md](credentials.md#what-is-still-a-risk) says what limits it). Revoking the worker ends the token at once, and revoking the token
   (`DELETE /v1/tokens/{id}`, or `DELETE /v1/admin/tokens/{id}` for a hub admin) revokes the worker with it, in the
   same transaction: its runs are released and its name is free again, as with `POST /v1/workers/{id}/revoke`.
 
@@ -71,9 +82,9 @@ What stays a risk: a plan's text, or anything the agent reads while it works, ca
 acts on them with the owner's permissions. Whoever controls the hub server itself, rather than an admin account
 through the API, can hand work to every worker; signing dispatches with a key kept on the owner's machine is an open
 question. The web terminal is a remote shell into the machine, which is why it has the extra checks under
-[Terminal](#terminal). Every dispatch, cancel, approve, rerun, pairing, join, registration, drain, revoke and terminal
-session leaves an audit row (`run.*`, `worker.*`, `terminal.open`, `terminal.close`), and so does each message,
-takeover and handback (`run.message`, `run.takeover`, `run.handback`); a row names the run and the message by id,
+[Terminal](#terminal). Every dispatch, cancel, approve, rerun, pairing, join, registration, drain, change of
+`dispatch_from`, revoke and terminal session leaves an audit row (`run.*`, `worker.*`, `terminal.open`,
+`terminal.close`), and so does each message, takeover and handback (`run.message`, `run.takeover`, `run.handback`); a row names the run and the message by id,
 never the text.
 
 ## Worker status
@@ -370,8 +381,9 @@ with the run's id, on one connection of the api process opened by the first clai
 seconds, so a missed notification delays a claim but never loses one. It picks a queued run with `SELECT ... FOR UPDATE SKIP LOCKED` when all of these hold: the worker's owner
 dispatched it, the project is one of the worker's and the owner still holds writer on it, the worker reported the
 runtime as available (a run asking for `any` takes the first of `claude-code`, `opencode`, `codex` it has) and a
-checkout of the repo, the run is pinned to no other worker, the worker holds fewer runs than its slots, and it is
-neither draining nor revoked. A plan run also needs a daemon of 0.4.0 or later, as the worker's `agent_version` says:
+checkout of the repo, the run is pinned to no other worker, the run was dispatched from a web session when the
+worker's `dispatch_from` is `web`, the worker holds fewer runs than its slots, and it is neither draining nor revoked.
+A plan run also needs a daemon of 0.4.0 or later, as the worker's `agent_version` says:
 an older daemon would read it as a run of one step without a repo and fail it. The oldest such run is leased for 300 seconds (`EVO_HUB_RUN_LEASE_SECONDS`, which
 tests shorten). The answer is `{"run": {...}}` with the
 id, project, plan, step key and title, plan revision, attempt, max attempts, parent run, runtime, mode, approval,
@@ -529,6 +541,8 @@ For the worker, with an `evw_` token and the version header:
 | `POST /v1/worker/runs/{id}/events` | sends a batch of events |
 | `POST /v1/worker/runs/{id}/inbox` | acknowledges messages handed to the agent, takes the waiting ones |
 | `POST /v1/worker/runs/{id}/uploads`, `/blobs` | uploads the run's log and diff, records them on the run |
+| `POST /v1/worker/runs/{id}/credentials` | takes the leases of a run it holds: the owner's secrets, a GitHub token ([credentials.md](credentials.md)) |
+| `DELETE /v1/worker/runs/{id}/credentials` | gives back every lease it holds of the run; the hub revokes the GitHub tokens |
 | websocket `/v1/worker/runs/{id}/terminal` | the worker's end of the terminal |
 
 For members, with a web session or a machine token. `{p}` is a project, and run routes sit under
@@ -541,6 +555,7 @@ For members, with a web session or a machine token. `{p}` is a project, and run 
 | `GET /v1/workers`, `GET /v1/workers/{id}` | owner; a hub admin sees all | list and show workers |
 | `POST /v1/workers/{id}/drain`, `/revoke` | owner or hub admin | stop new claims, end the worker |
 | `POST /v1/workers/{id}/undrain` | owner | resume claims |
+| `POST /v1/workers/{id}/dispatch-from` | owner, web session only | `{"value": "web"}`: claim only runs dispatched from the web; `"any"`: from anywhere again |
 | `GET /v1/projects/{p}/plans/{plan}/ready-steps` | reader | every step, with whether it may be dispatched and why not |
 | `POST /v1/projects/{p}/runs` | writer | dispatch steps, all or none |
 | `POST /v1/projects/{p}/plan-runs` | writer | dispatch a plan run: every step of the plan not done yet, on one worker |
@@ -561,8 +576,10 @@ worker of the caller's), `approval` (`review` by default, or `auto`), `timeout_m
 `model` (optional, one line of at most 200 characters, as the runtime names it; null, the default, leaves the choice
 to the runtime as before). It queues one run per step, at the plan's current revision, or nothing: a step that is not ready or has an active run is
 409, a step the plan does not have or one without a repo is 422, a worker that is not the caller's (or no worker) is
-403, and a revoked worker or one that does not serve the project is 409. `ready-steps` answers every step of the plan
-in plan order with `ready`, `reason` (as `unready_reason` says it, or the active run) and the active run.
+403, and a revoked worker or one that does not serve the project is 409. A worker whose owner set `dispatch_from` to
+`web` takes a pinned dispatch only from a web session: with a token the answer is 403, saying so. Each run records
+the caller's credential in `dispatched_via`, `web` or `machine`, and so does a rerun. `ready-steps` answers every step
+of the plan in plan order with `ready`, `reason` (as `unready_reason` says it, or the active run) and the active run.
 
 A dispatch, a plan run or a rerun pinned to a worker is checked against what that worker's last heartbeat reported,
 as the claim checks it: the runtime asked for available (any one for `any`), a checkout of each repo the run needs
@@ -770,6 +787,7 @@ page's own origin, under the CSP's `connect-src 'self'`.
 | `evo-agents worker service uninstall` | stops the daemon and removes the service; the worker stays registered |
 | `evo-agents worker service status [--json]` | whether the service is installed and the daemon runs, its pid and last exit |
 | `evo-agents worker status [--json]` | the worker as this machine and the hub see it: runtimes, tmux and whether the web terminal is allowed, checkouts, the daemon's pid, runs kept, the spool |
+| `evo-agents worker doctor [--json]` | what the machine holds or allows that a worker should not (another administrator, a readable home, the owner's long-lived credentials, a PATH others write), each finding with a code, a severity, what was found and how to fix it; exits 2 when a finding is high (see [Checking a worker machine](credentials.md#checking-a-worker-machine)) |
 | `evo-agents worker attach N` | puts this terminal on the tmux session `evo-run-N` of an interactive run (`tmux attach`, or `switch-client` from inside tmux on the same server) |
 | `evo-agents worker selftest --runtime NAME [--model M] [--effort E] [--timeout S] [--keep] [--background]` | runs the runtime's adapter for real on a tiny prompt in a scratch git repository, prints each event and how many of each kind came, and exits 0 when the turn completed and the agent wrote the file it was asked for (it spends a little of the owner's quota; Claude Code and Codex run at effort `low` unless `--effort` says otherwise); `--background` (claude-code only) checks that the session waits for a command run in the background: the agent starts `sleep 20 && date -u` that way, ends its turn, and writes the file once the command ended |
 | `evo-agents worker drain [--resume]` | stops claims (or resumes them) through `POST /v1/workers/{id}/drain` or `/undrain`, with the machine token |
@@ -778,6 +796,8 @@ page's own origin, under the CSP's `connect-src 'self'`.
 | `evo-agents worker ask --category C --question Q [--context-file F] --option KEY=LABEL[:DESCRIPTION] ... [--recommended KEY] [--step KEY]` | for the agent of a plan run: asks the run's owner a decision, 2 to 6 options, and prints its id |
 | `evo-agents worker notify --kind push_default_branch\|merge_default_branch --title T [--body B] [--repo R] [--branch B] [--commit SHA ...]` | for the agent of a plan run: sends the run's owner a notice of a push or merge into a default branch |
 | `evo-agents worker plan [--json]` | for the agent of a plan run: prints the run's plan as the hub holds it now |
+| `evo-agents worker git-credential --run N get\|store\|erase` | git's credential helper for run N, named by the run's git configuration: `get` answers from the run's leases through its socket, `store` and `erase` do nothing (see [docs/credentials.md](credentials.md)) |
+| `evo-agents worker env --run N` | prints what run N's leases add to its agent's environment as `export` lines; an interactive pane evaluates it |
 
 `join` and `register` refuse a machine that is a worker already, unless `--replace` is given. When the machine is
 signed in to the same hub, they keep the repos of the worker's projects as the hub lists them, and `run` reads them
@@ -791,9 +811,10 @@ projects; `worker.log` (0600) the daemon's JSON log lines, rotated at 10 MiB wit
 pairing codes and presigned signatures masked; `service.log` what the daemon printed under launchd before its log
 was open; `daemon.pid`, locked while a daemon runs, so a second one refuses to start; `spool/` the events not
 acknowledged yet; `runs/<id>/` what the daemon knows of each run and its whole event log (and, for a plan run, the
-decisions its agent asked, `decisions.jsonl`; and, until the run ends on this machine, `agent.json`: the pid and the
-process group of the agent the run started last, and when its leader started as `ps` prints it); `worktrees/` the
-runs' worktrees, and each plan run's directory.
+decisions its agent asked, `decisions.jsonl`; until the run ends on this machine, `agent.json`: the pid and the
+process group of the agent the run started last, and when its leader started as `ps` prints it; and, while the run
+holds leases, `cred.sock` (0600), the socket the daemon hands them through, to its own uid only); `worktrees/` the
+runs' worktrees, and each plan run's directory. No lease value is ever written under it.
 
 ### Runtimes and checkouts
 
@@ -822,11 +843,11 @@ never from an exit code. Each starts its runtime in a session of its own, throug
 `setsid`, so a Ctrl-C at the daemon's terminal does not reach the agent, and its process group, tools included, is
 killed once the agent has ended, or 20 seconds after an interrupt it did not end on.
 
-| Runtime | Through | Full permissions | A message of the owner | Interrupt | The turn ends |
-| --- | --- | --- | --- | --- | --- |
-| `claude-code` | `claude-agent-sdk`: `ClaudeSDKClient` over `claude` on PATH, session id made by the daemon (`--session-id`, or `--resume` for a run that goes on with a session) | `permission_mode="bypassPermissions"` (`--dangerously-skip-permissions`) | `query()`; Claude Code takes it at the next tool boundary and may fold it into the same `result` | the SDK's `interrupt()`, then the input stream ends | at its `result`, unless a command the agent started in the background still runs: then the input stays open and the CLI's own turn after the command ends goes on with the agent (the adapter writes to it when no turn opens within 15 seconds), up to 30 minutes after the turn ended; otherwise, and once the agent wrote `.evo-run/result.json`, the input stream ends and the CLI exits once it has done what it was given; `stop_at_turn_boundary` ends the input stream at once, and the turn in progress still finishes |
-| `codex` | `openai-codex` over `codex app-server --listen stdio://`, with `codex` on PATH | sandbox `danger-full-access` and approval policy `never` (`--dangerously-bypass-approvals-and-sandbox`) | `turn/steer` during the turn; a new turn on the same thread when the turn no longer takes it | `turn/interrupt` | at `turn/completed`, with its status |
-| `opencode` | HTTP and the event stream of `opencode serve`, started per run on 127.0.0.1 at a free port, with a random `OPENCODE_SERVER_PASSWORD` and stdin `/dev/null` | each `permission.asked` of the session answered `once`, as `opencode run --auto` does, so the owner's explicit denials still hold; sessions get `opencode run`'s rules (no question, no plan mode) | `POST /session/:id/prompt_async`, taken at the next step boundary | `POST /session/:id/abort` | when the session goes idle with every prompt it was sent |
+| Runtime | Through | Credential | Full permissions | A message of the owner | Interrupt | The turn ends |
+| --- | --- | --- | --- | --- | --- | --- |
+| `claude-code` | `claude-agent-sdk`: `ClaudeSDKClient` over `claude` on PATH, session id made by the daemon (`--session-id`, or `--resume` for a run that goes on with a session) | the machine's login of `claude`, or `CLAUDE_CODE_OAUTH_TOKEN` from an `env` lease, a `claude setup-token` token ([credentials.md](credentials.md)). With that lease the daemon's `ANTHROPIC_API_KEY`, which Claude Code would take first, is left out of the agent's environment unless a lease sets it too (the launcher and the pane's script unset it), and a `system` event says so once a run; the terminal UI starts without `--remote-control`, which such a token cannot open, and says so too | `permission_mode="bypassPermissions"` (`--dangerously-skip-permissions`) | `query()`; Claude Code takes it at the next tool boundary and may fold it into the same `result` | the SDK's `interrupt()`, then the input stream ends | at its `result`, unless a command the agent started in the background still runs: then the input stays open and the CLI's own turn after the command ends goes on with the agent (the adapter writes to it when no turn opens within 15 seconds), up to 30 minutes after the turn ended; otherwise, and once the agent wrote `.evo-run/result.json`, the input stream ends and the CLI exits once it has done what it was given; `stop_at_turn_boundary` ends the input stream at once, and the turn in progress still finishes |
+| `codex` | `openai-codex` over `codex app-server --listen stdio://`, with `codex` on PATH | the machine's login of `codex` (`$CODEX_HOME`), and the variables `env` leases set in the agent's environment | sandbox `danger-full-access` and approval policy `never` (`--dangerously-bypass-approvals-and-sandbox`) | `turn/steer` during the turn; a new turn on the same thread when the turn no longer takes it | `turn/interrupt` | at `turn/completed`, with its status |
+| `opencode` | HTTP and the event stream of `opencode serve`, started per run on 127.0.0.1 at a free port, with a random `OPENCODE_SERVER_PASSWORD` and stdin `/dev/null` | the providers the owner set up in opencode, and the variables `env` leases set in the agent's environment, such as a provider's API key | each `permission.asked` of the session answered `once`, as `opencode run --auto` does, so the owner's explicit denials still hold; sessions get `opencode run`'s rules (no question, no plan mode) | `POST /session/:id/prompt_async`, taken at the next step boundary | `POST /session/:id/abort` | when the session goes idle with every prompt it was sent |
 
 The agent gets, on top of its runtime's own system prompt, a note that it runs unattended and that the owner may send
 messages. The model and the reasoning effort are the run's `model` and `effort` when the hub sends them, else
@@ -864,7 +885,10 @@ hands it no run.
 
 ### A run on the machine
 
-1. The daemon fetches `origin` in the checkout and makes the worktree `~/.evo/worker/worktrees/<project>-<run>` on
+1. The daemon takes the run's leases from the hub (`POST /v1/worker/runs/{id}/credentials`, see
+   [docs/credentials.md](credentials.md)), so its fetch and push and its agent use them; each repo whose origin no
+   lease covers gets a `system` event "no leased credential for {origin}: {reason}; git uses this machine's own". It
+   fetches `origin` in the checkout and makes the worktree `~/.evo/worker/worktrees/<project>-<run>` on
    the plan's branch for the repo, from `origin/<branch>` when the remote has it, else the local branch, else the
    remote's default branch. When that branch is checked out in another worktree (the owner's checkout, say), or has
    local commits the start lacks, the worktree is on `evo-run/<run>` instead and the push still goes to the plan's
@@ -892,7 +916,8 @@ hands it no run.
    in the worktree, and are named in a `system` event of the run (`left_out`); a copy the agent edited is its work
    and is committed. The daemon then refuses to push a detached HEAD, a branch the agent switched to, or a default
    branch; and pushes `HEAD` to the plan's branch on origin, never forced and never merged. A push the remote refuses
-   (not a fast-forward, say) fails the run.
+   (not a fast-forward, say) fails the run; one it refuses for its credential, on an origin a lease covers, is tried
+   once more after the daemon took the run's leases again (see [docs/credentials.md](credentials.md)).
 5. Once every event of the run is acknowledged, it reports `done` (approval `auto`) or `review`, with the commit,
    the diffstat, the verify results, the agent's summary and its usage. It then uploads the run's log and diff
    when the hub has a blob store, and moves the worktree off the plan's branch, so the owner can check the branch
@@ -901,13 +926,14 @@ hands it no run.
 
 ### A plan run on the machine
 
-1. The daemon makes the directory `~/.evo/worker/worktrees/<project>-<run>` and, in it, a worktree of each repo of
-   the run, named as the repo, on the branch the plan names for that repo: from `origin/<branch>` when the remote has
-   it, else the local branch, else the remote's default branch, as for a run of one step. When that branch is checked
-   out elsewhere, or has local commits the start lacks, the worktree is on `evo-run/<run>/<repo>` and the pushes still
-   go to the plan's branch. A repo the plan names no branch for fails the run before the agent starts, and so does a
-   default branch of the repo the plan does not name for it. The plan as claimed goes to `.evo-run/plan.yaml` in the
-   directory.
+1. The daemon takes the run's leases for all its repos, as for a run of one step, so the agent's `evo-agents worker
+   step` pushes with them too. It makes the directory `~/.evo/worker/worktrees/<project>-<run>` and, in it, a worktree
+   of each repo of the run, named as the repo, on the branch the plan names for that repo: from `origin/<branch>` when
+   the remote has it, else the local branch, else the remote's default branch, as for a run of one step. When that
+   branch is checked out elsewhere, or has local commits the start lacks, the worktree is on `evo-run/<run>/<repo>` and
+   the pushes still go to the plan's branch. A repo the plan names no branch for fails the run before the agent starts,
+   and so does a default branch of the repo the plan does not name for it. The plan as claimed goes to
+   `.evo-run/plan.yaml` in the directory.
 2. The agent starts in that directory (not in a repo), with `EVO_RUN_ID`, `EVO_RUN_KIND=plan` and `EVO_WORKER_HOME`
    in its environment, and the daemon reports `running`. The agent works through four commands that read the run
    from those variables and its record under `EVO_WORKER_HOME`, call the hub with the worker's token, and refuse to
@@ -958,8 +984,10 @@ starts, and a takeover is noted as unsupported while the run goes on headless.
   interactive mode, or taken over before its agent started, starts there, the UI given the run's prompt.
 - **The UIs.** Claude Code: `claude --resume ID --dangerously-skip-permissions --remote-control evo-run-N`
   (`--session-id` and the prompt for a new session), so the session also shows in the Claude apps through Remote
-  Control. Claude Code stops at its folder trust dialog in every new folder, the bypass flag notwithstanding, so the
-  daemon first sets `projects[<worktree>].hasTrustDialogAccepted` to true in Claude Code's state file (`~/.claude.json`,
+  Control. A run whose lease sets `CLAUDE_CODE_OAUTH_TOKEN` starts it without `--remote-control`, since a token of
+  `claude setup-token` only calls the model and cannot open a Remote Control session, and a `system` event says so.
+  Claude Code stops at its folder trust dialog in every new folder, the bypass flag notwithstanding, so the daemon
+  first sets `projects[<worktree>].hasTrustDialogAccepted` to true in Claude Code's state file (`~/.claude.json`,
   or `.claude.json` under `CLAUDE_CONFIG_DIR`), for the worktree's path as given and resolved; the file is replaced
   atomically with its mode and every other key, and one that is not a JSON object is left alone (the dialog then
   waits in the terminal). opencode: `opencode attach URL --session ID --dir WORKTREE` on an `opencode serve` of the
@@ -971,7 +999,9 @@ starts, and a takeover is noted as unsupported while the run goes on headless.
 - **The pane.** tmux runs the UI through a script in the run's directory (mode 0700, removed once read) that enters
   the worktree, sets the agent's environment over the tmux server's and executes the UI, so the UI has the run's
   variables whatever server it lands on: the default one, the one of `$TMUX` when the daemon runs inside tmux, or
-  `EVO_WORKER_TMUX_SOCKET`. `evo-agents worker attach N` reads the server from the run's record.
+  `EVO_WORKER_TMUX_SOCKET`. What the run's leases add to that environment is not in the script, which runs
+  `eval "$(evo-agents worker env --run N)"` instead, so no lease value is written to disk. `evo-agents worker attach N`
+  reads the server from the run's record.
 - **The log.** While a person drives the agent, the run's log follows the runtime's own record of the session, in the
   same event kinds: Claude Code's transcript (`<config>/projects/*/<ID>.jsonl`), Codex's rollout
   (`$CODEX_HOME/sessions/Y/M/D/rollout-*-<ID>.jsonl`, the one whose `session_meta` names the worktree for a new
@@ -1046,10 +1076,14 @@ command says so, and `evo-agents worker run` can go under a supervisor of your o
   the old file said; other variables are not kept.
 - Stopping the service, by `uninstall` or at logout, sends the daemon SIGTERM and kills what is left 60 seconds later
   (launchd `ExitTimeOut`, systemd `KillMode=mixed` and `TimeoutStopSec=60`).
+- The daemon, and so its agents, start with umask 077 (launchd `Umask` 63, systemd `UMask=0077`): what a run writes
+  is the user's alone.
 - The daemon writes `worker.log` itself. What it prints before that log is open goes to `service.log` in the state
   directory on macOS, and to `journalctl --user -u evo-agents-worker` on Linux.
 - systemd stops a user's services when the user logs out; `loginctl enable-linger` keeps them running, and the
   install says so when lingering is off.
+- The install then runs `evo-agents worker doctor` with the PATH it wrote and prints its high and medium findings
+  as `warning:` lines. They do not stop it.
 
 The install refuses a machine that is not a worker yet, a Python without the worker extra, and a machine where a
 daemon already runs outside the service. It waits up to 10 seconds for the daemon to run and fails, leaving the
@@ -1059,6 +1093,19 @@ heartbeat, and a daemon started after `evo-agents worker revoke` deleted the tok
 does not start either again; at each login it starts the daemon once more, which stops the same way, until the
 machine is a worker again. `evo-agents worker revoke` leaves the service installed and says so; `evo-agents worker
 service uninstall` removes it.
+
+## A machine others administer
+
+Root on a worker reads every file of the worker's user and the memory of its processes. On a machine only its owner
+uses that is the owner; on a shared Mac mini or a lab server it is someone else too. From 0.5.0 such a machine need
+keep no long-lived credential of its owner: the hub keeps the owner's secrets sealed and leases each run only what
+it needs (a GitHub App token for the run's repos that lives an hour, a static GitLab token of the project, the
+runtime's environment such as `CLAUDE_CODE_OAUTH_TOKEN`), the daemon keeps leases in memory, and the agent reaches
+the hub's MCP with the worker token, scoped to the run's project. The agent runs as the daemon's user, though, and
+reads that token too: on a worker that serves several projects, or holds several runs at once, one run's agent
+reaches the others. Register such a worker for one project with one slot, or run a worker per project under a user of
+its own. `evo-agents worker doctor` says what the machine still holds. [docs/credentials.md](credentials.md) describes the design, what stays a risk, and how to cut a
+credential off.
 
 ## What version 1 does not do
 

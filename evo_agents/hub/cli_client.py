@@ -14,9 +14,9 @@ harness through ``registration``, and ``registry pull`` writes the registry thro
 ``plan_cli`` (over ``plans``; its harness copies in ``mirror``), ``hub run`` in ``run_cli`` (over the hub's runs),
 ``hub decision`` and ``hub notifications`` in ``decision_cli`` (over the decisions and notifications of plan runs),
 ``hub memory`` in ``cli_memory`` (over ``memory``), ``hub skills`` in ``cli_skills`` (over ``skill_sync`` and
-``skills``), ``hub kg`` in ``kg_cli`` (over ``kg_push``), ``hub mcp`` in ``mcp_proxy`` (its tools in ``mcp_tools``),
-``hub hook`` (the evo-hub plugin's hooks) in ``hooks``. ``hub contract``, ``hub openapi`` and the server commands are
-registered by ``cli``.
+``skills``), ``hub secret`` in ``cli_secrets`` (over the owner's secret routes), ``hub kg`` in ``kg_cli`` (over
+``kg_push``), ``hub mcp`` in ``mcp_proxy`` (its tools in ``mcp_tools``), ``hub hook`` (the evo-hub plugin's hooks) in
+``hooks``. ``hub contract``, ``hub openapi`` and the server commands are registered by ``cli``.
 """
 
 from __future__ import annotations
@@ -426,6 +426,10 @@ def register_client(hsub) -> None:
     from evo_agents.hub.cli_skills import register_skills
 
     register_skills(hsub)
+
+    from evo_agents.hub.cli_secrets import register_secrets
+
+    register_secrets(hsub)
 
     from evo_agents.hub.kg_cli import register_kg
 

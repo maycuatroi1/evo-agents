@@ -24,8 +24,10 @@ waits: ``RunStreams`` wakes it when EVENTS_CHANNEL is notified with its run's id
 connection (``listen``), and it looks again every STREAM_POLL_SECONDS besides.
 
 The owner sends the run's agent a message (POST .../runs/{id}/messages, at most MAX_MESSAGE_BYTES of UTF-8) while the
-run is queued or held: it waits in run_inbox, the log gets a ``user_message`` event, and the heartbeat counts it
-until the worker takes it with POST /v1/worker/runs/{id}/inbox, which also acknowledges the ones handed to the agent.
+run is queued or held, from a web session when the run is on a worker set to take runs dispatched from the web only
+(``runs.web_only_steering``: a token gets 403 then): it waits in run_inbox, the log gets a ``user_message`` event, and
+the heartbeat counts it until the worker takes it with POST /v1/worker/runs/{id}/inbox, which also acknowledges the
+ones handed to the agent.
 The owner's answer to a decision of the run comes the same way (``decisions``), as a message that names the decision
 (``decision_id``); acknowledging it records when the answer reached the agent (``decisions.delivered_at``).
 
@@ -68,6 +70,7 @@ from evo_agents.hub.server.runs import (
     _owned_run,
     _run_target,
     readable_run,
+    web_only_steering,
 )
 from evo_agents.hub.server.security import CurrentUser, Principal
 
@@ -573,6 +576,7 @@ async def send_message(request: Request, project: ProjectName, run_id: RunId, bo
             raise HTTPException(
                 409, f"run {run_id} is {state}: a message goes to a run that is queued or held by its worker"
             )
+        await web_only_steering(conn, user, run_id, "send its agent a message", "send it from the web", "sent")
         last_seq = (await (await conn.execute(RUN_PROGRESS, (run_id,))).fetchone())[1]
         if last_seq >= runs.MAX_RUN_EVENTS:
             message = RUN_FULL.format(id=run_id, count=last_seq, limit=runs.MAX_RUN_EVENTS)

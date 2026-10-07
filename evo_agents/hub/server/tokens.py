@@ -73,6 +73,7 @@ async def revoke(request: Request, user: CurrentUser, token_id: Annotated[int, P
         released = await workers.end_worker(conn, user, *worker, token_id) if worker else 0
     if worker:
         log.info("worker revoked", extra={"worker_id": worker[0], "by": user.login, "runs_released": released})
+        await workers.revoke_leased_tokens(request.app.state, worker[0])
     response = Response(status_code=204)
     if token_id == user.token_id and user.kind == WEB:
         delete_session_cookie(response)
