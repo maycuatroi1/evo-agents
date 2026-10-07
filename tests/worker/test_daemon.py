@@ -45,7 +45,9 @@ pytest.importorskip("aiohttp", reason="the daemon needs the worker extra, evo-ak
 
 import httpx
 import uvicorn
+from sqlalchemy import func, select, update
 
+from evo_agents.hub import tables
 from evo_agents.hub.config import HubConfig
 from evo_agents.hub.db import make_engine, open_pool
 from evo_agents.hub.mirror import render
@@ -885,11 +887,9 @@ def test_an_orphan_agent_of_a_parked_run_is_stopped_and_its_worktree_kept(make_s
     run_id, pgid, _ = orphan(stack)
     # The hub parks a plan run that waited a day for its owner; a run of one step is parked here by hand, which is
     # all the heartbeat looks at (state parked, on this worker).
-    live.sql(
-        hub_db,
-        "UPDATE runs SET state = 'parked', parked_at = now(), lease_expires_at = NULL, counted_at = NULL WHERE id = %s",
-        (run_id,),
-    )
+    runs = tables.runs
+    parked = update(runs).values(state="parked", parked_at=func.now(), lease_expires_at=None, counted_at=None)
+    live.sql(hub_db, parked.where(runs.c.id == run_id))
 
     proc = stack.start_daemon()
     wait_until(lambda: not group_alive(pgid), "the new daemon to stop the agent", explain=stack.daemon_output)
@@ -981,7 +981,8 @@ def test_a_run_fetches_and_pushes_with_its_leases_which_it_gives_back_at_its_end
         assert not called.exists(), "the machine's own helper was never asked"
 
         # The leases went back at the end of the run, and git has no credential for the origin any more.
-        rows = live.sql(hub_db, "SELECT revoked_at IS NOT NULL FROM credential_leases WHERE run_id = %s", (run_id,))
+        leases = tables.credential_leases
+        rows = live.sql(hub_db, select(leases.c.revoked_at.is_not(None)).where(leases.c.run_id == run_id))
         assert rows and all(revoked for (revoked,) in rows)
         config = dict(line.split("=", 1) for line in seen_config.read_text(encoding="utf-8").splitlines())
         worktree = stack.worktree(run_id)
