@@ -1822,6 +1822,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/me/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Overview
+         * @description What waits for you, what runs and what ended lately, over the projects you hold a grant on.
+         */
+        get: operations["overview_v1_me_overview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2133,6 +2153,20 @@ export interface components {
              * @default X-Evo-CSRF
              */
             header: string;
+        };
+        /** DayCount */
+        DayCount: {
+            /**
+             * Day
+             * Format: date
+             * @description a day in UTC
+             */
+            day: string;
+            /**
+             * Done
+             * @description runs that ended done that day
+             */
+            done: number;
         };
         /** Decision */
         Decision: {
@@ -3189,6 +3223,237 @@ export interface components {
             label: string;
             /** Description */
             description?: string | null;
+        };
+        /** Overview */
+        Overview: {
+            counts: components["schemas"]["OverviewCounts"];
+            /**
+             * Done By Day
+             * @description the last 7 days in UTC, oldest first, today last
+             */
+            done_by_day: components["schemas"]["DayCount"][];
+            /**
+             * Active Runs
+             * @description at most 20 runs in leased, running, interactive, verifying, waiting, parked, queued: those whose agent works first, then waiting, parked and queued, the newest first within each
+             */
+            active_runs: components["schemas"]["OverviewRun"][];
+            /**
+             * Recent Runs
+             * @description the 10 runs that ended last, the last first
+             */
+            recent_runs: components["schemas"]["OverviewRun"][];
+            /**
+             * Open Decisions
+             * @description at most 20: yours first, then the oldest first
+             */
+            open_decisions: components["schemas"]["OverviewDecision"][];
+            /**
+             * Projects
+             * @description the projects you hold a grant on, by name
+             */
+            projects: components["schemas"]["OverviewProject"][];
+        };
+        /** OverviewCounts */
+        OverviewCounts: {
+            /**
+             * Waiting On You
+             * @description open decisions of the runs you dispatched, which only you may answer
+             */
+            waiting_on_you: number;
+            /**
+             * Running
+             * @description runs whose agent works: leased, running, interactive, verifying
+             */
+            running: number;
+            /**
+             * Queued
+             * @description runs no worker has claimed yet
+             */
+            queued: number;
+            /**
+             * Done 7D
+             * @description runs that ended done in the last 7 days in UTC, today included
+             */
+            done_7d: number;
+            /**
+             * Failed 7D
+             * @description runs that ended failed in the same days
+             */
+            failed_7d: number;
+            /**
+             * Lost 7D
+             * @description runs whose worker stopped extending the lease, in the same days
+             */
+            lost_7d: number;
+        };
+        /** OverviewDecision */
+        OverviewDecision: {
+            /** Id */
+            id: number;
+            /** Project */
+            project: string;
+            /**
+             * Run Id
+             * @description the plan run the decision belongs to
+             */
+            run_id: number;
+            /**
+             * Run State
+             * @enum {string}
+             */
+            run_state: "queued" | "leased" | "running" | "interactive" | "verifying" | "waiting" | "review" | "parked" | "done" | "failed" | "lost" | "cancelled";
+            /** Plan Id */
+            plan_id: string;
+            /** Plan Title */
+            plan_title: string | null;
+            /**
+             * Step Key
+             * @description the step it is about, when the agent named one
+             */
+            step_key: string | null;
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "deploy" | "delete_data" | "live_migration" | "external_send" | "spend_money" | "architecture" | "scope";
+            /** Question */
+            question: string;
+            /**
+             * Owner
+             * @description the login of the run's owner, the one member who may answer
+             */
+            owner: string;
+            /**
+             * Yours
+             * @description whether you are that owner
+             */
+            yours: boolean;
+            /**
+             * Asked At
+             * Format: date-time
+             */
+            asked_at: string;
+            /**
+             * Parks At
+             * @description when the run parks for want of an answer: EVO_HUB_DECISION_WAIT_SECONDS after it started waiting, or when it parked; null while its agent still works
+             */
+            parks_at: string | null;
+        };
+        /** OverviewProject */
+        OverviewProject: {
+            /** Name */
+            name: string;
+            /**
+             * Role
+             * @description your role on the project
+             */
+            role: string;
+            /**
+             * Max Level
+             * @description the highest label level your grant reaches
+             */
+            max_level: string;
+            /**
+             * Repos
+             * @description the repos registered for the project
+             */
+            repos: number;
+            /**
+             * Active Plans
+             * @description its plans in the active area that you can see
+             */
+            active_plans: number;
+            /**
+             * Open Decisions
+             * @description open decisions of the plans you can see, yours or not
+             */
+            open_decisions: number;
+        };
+        /** OverviewRun */
+        OverviewRun: {
+            /** Id */
+            id: number;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "step" | "plan";
+            /** Project */
+            project: string;
+            /** Plan Id */
+            plan_id: string;
+            /**
+             * Plan Title
+             * @description the plan's title as the hub holds it now
+             */
+            plan_title: string | null;
+            /**
+             * Step Key
+             * @description null for a plan run
+             */
+            step_key: string | null;
+            /**
+             * Title
+             * @description the step's title when the run was dispatched; the plan's for a plan run
+             */
+            title: string | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "queued" | "leased" | "running" | "interactive" | "verifying" | "waiting" | "review" | "parked" | "done" | "failed" | "lost" | "cancelled";
+            /**
+             * Dispatched By
+             * @description the login of the member who dispatched it, its owner
+             */
+            dispatched_by: string;
+            /**
+             * Worker Id
+             * @description the worker that claimed it; null while it is queued
+             */
+            worker_id: number | null;
+            /**
+             * Worker
+             * @description that worker's name
+             */
+            worker: string | null;
+            /**
+             * Runtime
+             * @description any until a worker claims the run
+             * @enum {string}
+             */
+            runtime: "any" | "claude-code" | "opencode" | "codex";
+            /** Model */
+            model: string | null;
+            /**
+             * Steps Total
+             * @description the steps of a plan run's plan; null for a run of one step
+             */
+            steps_total: number | null;
+            /**
+             * Steps Done
+             * @description a plan run's steps the plan holds done now; null for a run of one step
+             */
+            steps_done: number | null;
+            /**
+             * Run Seconds
+             * @description the agent time the run has used, as the hub last counted it
+             */
+            run_seconds: number;
+            /**
+             * Queued At
+             * Format: date-time
+             */
+            queued_at: string;
+            /** Started At */
+            started_at: string | null;
+            /** Finished At */
+            finished_at: string | null;
+            /**
+             * Error
+             * @description why the run failed, was lost or ended
+             */
+            error: string | null;
         };
         /** Page */
         Page: {
@@ -11354,6 +11619,35 @@ export interface operations {
             };
             /** @description Unprocessable Entity */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    overview_v1_me_overview_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Overview"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };
