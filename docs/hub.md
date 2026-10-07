@@ -531,7 +531,10 @@ When the test reports a finding, write the statement with Core on `tables.py`: a
 seeds and reads the database the same way, through `tests.hub.live.sql(db, statement)`, which runs a Core statement
 on a sync engine as the database's owner and raises the driver's error. A change that only raw SQL can make adds
 its place to the test's allowed lists (`ALLOWED_SQL`, `ALLOWED_PSYCOPG_SQL` or `ALLOWED_DRIVER`) in the same pull
-request, with the reason in a comment next to it.
+request, with the reason in a comment next to it. Where SQLAlchemy lacks a keyword, a small construct of
+`sqlalchemy.ext.compiler` adds it around a compiled Core statement, as `decisions.py` does for the `OVERRIDING SYSTEM
+VALUE` of the insert that resumes a parked plan run with an id reserved beforehand, and `tests/hub/test_run_tables.py`
+for `EXPLAIN` and `ANALYZE`.
 
 A new migration starts from `tables.py`: change the table there, then let Alembic compare the metadata with a
 scratch database that `evo-agents hub migrate` brought to head and write the revision, from a Python shell:

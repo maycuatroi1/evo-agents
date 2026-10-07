@@ -141,17 +141,12 @@ def connect(db: pg.Database, *, admin: bool = False):
 
 
 def sql(db: pg.Database, statement, params=()):
-    """Run one statement in a transaction of its own; its rows as tuples, or None when it returns none. A Core
-    statement (on ``evo_agents.hub.tables``) runs on ``engine(db)``, with ``params`` as a dict or a list of dicts,
-    and a refusal raises the driver's error, such as ``psycopg.errors.CheckViolation``; a string runs as the
-    superuser, until no test passes one."""
-    if not isinstance(statement, str):
-        with engine(db).begin() as conn:
-            result = conn.execute(statement, params or None)
-            return [tuple(row) for row in result] if result.returns_rows else None
-    with pg.admin(db.admin_dsn) as conn:
-        cursor = conn.execute(statement, params)
-        return cursor.fetchall() if cursor.description else None
+    """Run one Core statement (on ``evo_agents.hub.tables``) on ``engine(db)``, in a transaction of its own, with
+    ``params`` as a dict or a list of dicts; its rows as tuples, or None when it returns none. A refusal raises the
+    driver's error, such as ``psycopg.errors.CheckViolation``."""
+    with engine(db).begin() as conn:
+        result = conn.execute(statement, params or None)
+        return [tuple(row) for row in result] if result.returns_rows else None
 
 
 def _user_id(conn, login: str) -> int:

@@ -12,10 +12,9 @@ The guard reads every module under evo_agents/hub and tests/hub and reports, by 
 
 A few places keep SQL for good, each for a reason no query builder changes: the migrations that have run
 (MIGRATIONS_RUN), the LISTEN of the listener and the test databases' CREATE and DROP (ALLOWED_SQL,
-ALLOWED_PSYCOPG_SQL), and procrastinate's connection (ALLOWED_DRIVER). LEGACY lists the files that still hold SQL
-while the hub moves to Core, each with the number of findings it may keep: the number only goes down, a file whose
-findings rise or fall fails until the number says so, and a file left with none fails until it leaves the list.
-docs/hub.md, section "Data access", says how to write the query instead.
+ALLOWED_PSYCOPG_SQL), and procrastinate's connection (ALLOWED_DRIVER). A change that only raw SQL can make adds its
+place there in the same pull request, with the reason. docs/hub.md, section "Data access", says how to write the
+query instead.
 
 Standard library only: this runs on a core install, without SQLAlchemy or psycopg.
 """
@@ -97,11 +96,6 @@ ALLOWED_DRIVER = frozenset(
 )
 RAW_CONNECTION = frozenset({"get_raw_connection", "driver_connection"})
 RAW_CONNECTION_HOME = "evo_agents/hub/db.py"  # where driver() is defined
-
-# Files that still hold SQL, and how many findings each may keep. Only goes down; empty, it goes away.
-LEGACY: dict[str, int] = {
-    "evo_agents/hub/db.py": 1,
-}
 
 
 @dataclass(frozen=True)
@@ -224,27 +218,8 @@ def _report(findings: list[Finding]) -> str:
 
 
 def test_the_hub_holds_no_sql_outside_the_allowed_places():
-    findings = [f for path in modules() if path.relative_to(ROOT).as_posix() not in LEGACY for f in scan(path)]
+    findings = [finding for path in modules() for finding in scan(path)]
     assert not findings, _report(findings)
-
-
-def test_legacy_only_shrinks():
-    wrong = []
-    for path, allowed in sorted(LEGACY.items()):
-        if not (ROOT / path).is_file():
-            wrong.append(f"  {path}: no such file; take it out of LEGACY")
-            continue
-        found = scan(ROOT / path)
-        if not found:
-            wrong.append(f"  {path}: no SQL left; take it out of LEGACY")
-        elif len(found) > allowed:
-            wrong.append(f"  {path}: {len(found)} findings, LEGACY allows {allowed}; new SQL ({GUIDE}):")
-            wrong += [f"    {finding}" for finding in found]
-        elif len(found) < allowed:
-            wrong.append(
-                f"  {path}: {len(found)} findings left; lower its LEGACY number from {allowed} to {len(found)}"
-            )
-    assert not wrong, "LEGACY is out of date:\n" + "\n".join(wrong)
 
 
 def test_the_places_allowed_for_good_exist():
