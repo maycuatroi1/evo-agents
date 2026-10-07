@@ -443,8 +443,8 @@ Shared pieces built on them:
   the same cells for Home's Fleet card: 60 bars 18 px high (a full `success-solid` bar, an 8 px `danger-solid` one, a
   3 px `neutral-solid` stub), one image named with the counts.
 - `components/runs`: a run is in one of the API's states, waiting (a plan run's agent asked its owner a decision) and
-  parked (nobody answered for 24 hours) included; both show in the running phase of a run's stepper, under their own
-  name and icon. The runs pages ask the hub every 5 seconds while the project (or the step, or the worker) has an
+  parked (nobody answered for 24 hours) included; both show in the running phase of a run's timeline, under their own
+  name, on an `attention` node. The runs pages ask the hub every 5 seconds while the project (or the step, or the worker) has an
   active run and every 30 seconds otherwise; the list's facets (active, review, done, failed or cancelled) and search
   are the API's own filters, so a page of 50 runs comes back with the count of each state. A run's state is a
   `StatusBadge` with an icon and a word. The Dispatch dialog lists every pending step of a plan in plan order and folds the done,
@@ -519,24 +519,67 @@ Shared pieces built on them:
   at the top of the side column from the xl breakpoint, above the log below it (`runs/run-decisions.tsx`, "Waiting for
   your decision" and a link to the Inbox), read every 5 seconds while the run is active; a decision answered there, or
   found answered after a 409, stays with its answer until the visitor leaves.
-- `components/runs`, a run's page (`/p/{project}/runs/{id}`): a stepper of its states (the current one
-  `aria-current="step"`, a run that ended badly marked where it stopped), the log, the details and the result, and the
-  owner's controls in the header, each shown only when the state and the visitor's rights allow it (`run-model.ts`,
-  `runControls`): Cancel (confirmed in a dialog), Take over (a dialog with `evo-agents worker attach N` and, for Claude
-  Code, the Remote Control session `evo-run-N`), Hand back, Approve and Rerun, plus the message box under the log. Anyone
-  but the run's owner reads only. The header puts these actions under the title until the xl breakpoint
-  (`PageHeader`'s `actions`, which take a line of their own when the title leaves no room), so they wrap instead of
-  pushing the page sideways.
-- The log (`use-run-log.ts`, `run-log.tsx`) follows the run's server-sent events with an EventSource; the browser
+- `components/runs`, a run's page (`/p/{project}/runs/{id}`), the kit's RunScreen: the page head, the `RunTimeline`,
+  then the session card (Trace, Raw log, Terminal) on the left and, in a 23 rem side column from xl, the decision while
+  a plan run waits, Details, Usage, the plan's steps and the Result; below xl one column, the decision first. The
+  owner's controls sit in the header, each shown only when the state and the visitor's rights allow it
+  (`run-model.ts`, `runControls`): Cancel (confirmed in a dialog), Take over (a dialog with `evo-agents worker attach
+  N` and, for Claude Code, the Remote Control session `evo-run-N`), Hand back, Approve and Rerun, plus the composer
+  under the trace. Anyone but the run's owner reads only. The header puts these actions under the title until the xl
+  breakpoint (`PageHeader`'s `actions`, which take a line of their own when the title leaves no room), so they wrap
+  instead of pushing the page sideways.
+- `run-timeline.tsx`, the kit's RunTimeline (`timelineModel` in `run-model.ts`): the phases left to right (top to
+  bottom under 768 px), the time from each phase to the next on the line between them, mono 11 px in `fg-muted` on
+  `card`. Done phases are `fg-muted` nodes on a solid `fg-subtle` line; the current one is a `running` node with the
+  live ping and a dashed line ahead, its gap counting up with `useNow`; a queued run's node is neutral and a run in
+  review is `review-solid`, since neither is agent work. A waiting or parked run shows its state on the running phase
+  in `attention`, "since 10:22:41", the gap "waiting 6m". A failed run stops on a `danger-solid` node at the time it
+  ended (lost and cancelled on a `neutral-solid` one), the gap before it on the line, the later phases "skipped"; only a
+  run that is done ends on `success-solid`. Times are local in `code-small`; each is focusable and its tooltip says
+  the full date and time zone. An ordered list labelled "Phases of run #N", the current phase `aria-current="step"`,
+  each phase's status in words for screen readers.
+- The session card (`run-log.tsx`) holds the tabs, all kept mounted (Radix `forceMount`) and kept in the URL
+  (`?view=log`, `?view=terminal`; the Trace has none), changed with `history.replaceState` so the page does not
+  navigate. The stream's status badge sits beside the tabs; the Raw log's line count sits in its tab and, on that tab,
+  beside it. The composer shows under the Trace and the Raw log, not under the Terminal.
+- The Trace (`agent-trace.tsx`, `trace-model.ts`), the kit's AgentTrace and the first tab, reads the same events as
+  the Raw log (`useRunLog` keeps them beside its lines): consecutive `agent_message_chunk` events are one message
+  (SafeMarkdown), a turn ending at anything else shown or at a `usage_update`; `agent_thought_chunk` events fold into
+  "Thought for 3.2s" (from the event before them) over the words that follow; a `tool_call` and its
+  `tool_call_update` events, matched by `toolCallId` in seq order whatever order they arrived in, are one row: the
+  tool's name (or its kind's for a title that is a command or a path, as Codex and opencode give), what the agent said
+  it is for, the main argument in mono (a Codex command without its `/bin/zsh -lc` wrapper), an edit's `+3 −1`, the
+  exit code (Codex `exitCode`, opencode `exit`, Claude Code's "Exit code 1"), the duration from the events' times, and
+  a spinner with the time so far while it runs. Rows are `details`, folded, a failed one open; the output (the
+  update's `content`, else its `rawOutput`) sits on `term-bg`, cut at 20 lines with "Show the full output (45 lines)",
+  an edit's change as `- old` and `+ new` lines in `term-error` and `term-ok`. A `plan` is a checklist, a
+  `user_message` "You" (or "You answered decision #7"), a `state` a caption line, a `system` line in `caption` with
+  its tone and its output folded, and the hub's "decision #7 asked" an `attention` row "Asked you" with the question
+  and Answer, a link to the decision's card on the page (`#run-decision-7`) while it is open, to the Inbox otherwise.
+  `output` events and kinds the page does not know fold together, one caption line per run of them, with their JSON.
+  A running run ends with the typing dots (`animate-typing`, solid under reduced motion). The trace is a `role="log"`
+  region (polite) that follows the newest item unless the person scrolled up, when "Jump to the latest" shows; past
+  500 items only the ones in view render (`@tanstack/react-virtual`, measured rows).
+- `usage-meter.tsx`, the kit's UsageMeter, and `usage-model.ts`: the tokens the runtime reported as one total, a bar of
+  cache read, input, output and reasoning in `chart-5`, `chart-1`, `chart-3` and `chart-4` (each part at least 3 px),
+  a row per part with its share ("under 0.1%" for a part that rounds to nothing), cache writes said under it, and the
+  cost "as reported" or "Cost not reported"; nothing is priced by the page. Once the worker reported the run's end it
+  reads `run.usage`; while it runs it adds up the `usage_update` events, as each runtime reports them: Claude Code per
+  turn with the session's cost so far, opencode per step with the step's cost, Codex the thread's running total (its
+  cached input inside its input, reasoning inside output). The Result card no longer lists raw usage keys.
+- The Raw log (`use-run-log.ts`, `run-log.tsx`) follows the run's server-sent events with an EventSource; the browser
   reconnects by itself with `Last-Event-ID`, every event is kept once by its seq, and the stream's `end` closes it for
   good. When the stream fails (closed by the browser, three errors without opening, or 10 seconds behind the run's
   `last_seq`), the page reads `events?after=` every 1.5 seconds and tries the stream again every 30. The lines sit in a
   `role="log"` region (polite), with filters by group, a search that highlights, Follow (scrolling up turns it off) and
   Pause (held by the page, so the top bar says Paused and resumes it); past 2,000 lines shown only the rows in view render (`@tanstack/react-virtual`). Where the web forwards `/v1`
   itself, `proxy.ts` asks for the stream unencoded: Next.js would gzip it and hold the events back.
-- The Terminal tab (`run-terminal.tsx`, `use-run-terminal.ts`, `terminal-model.ts`) shows beside the Log tab in the log
-  card only for the run's owner on a worker of theirs registered with `--allow-web-terminal` (`terminalAccess`), while
-  the run is leased, running or interactive, and stays for the rest of the visit once shown. Both tabs stay mounted
+- The composer (`run-composer.tsx`), the kit's Composer: one bordered box with the focus ring on the box, the textarea
+  without an edge of its own, and a bar that says what the run is ("Headless run on laptop.") beside Send and its key
+  (Cmd or Ctrl with Enter, as the DecisionCard's).
+- The Terminal tab (`run-terminal.tsx`, `use-run-terminal.ts`, `terminal-model.ts`) shows after the Raw log tab in the
+  session card only for the run's owner on a worker of theirs registered with `--allow-web-terminal` (`terminalAccess`), while
+  the run is leased, running or interactive, and stays for the rest of the visit once shown. Every tab stays mounted
   (Radix tabs with `forceMount`), so switching keeps the terminal's session and the log's place. Connect loads the
   terminal (wterm's DOM renderer over libghostty's VT core, WebAssembly from the web's own origin, `terminal-view.tsx`
   through `next/dynamic`, so the page carries none of it until then), then opens a websocket on the page's own origin:

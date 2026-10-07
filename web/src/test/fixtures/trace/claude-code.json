@@ -1,0 +1,431 @@
+{
+ "_about": "A real run of the claude-code adapter on this repository's code (claude-code 2.1.291) in a scratch git repository, on the prompt of web/scripts/trace_fixtures.py with two turns, between the state events the hub writes; times are the machine's as the events arrived, from a fixed start. Paths are replaced and output events keep only the keys that name what happened. Made by web/scripts/trace_fixtures.py.",
+ "runtime": "claude-code",
+ "version": "claude-code 2.1.291",
+ "usage": {
+  "input_tokens": 12,
+  "cache_creation_input_tokens": 24069,
+  "cache_read_input_tokens": 138764,
+  "output_tokens": 361,
+  "total_cost_usd": 0.22757280000000002
+ },
+ "events": [
+  {
+   "seq": 1,
+   "at": "2026-10-07T03:00:00.000Z",
+   "kind": "state",
+   "body": {
+    "to": "leased",
+    "from": "queued",
+    "actor": "worker",
+    "reason": "worker dev-laptop claimed it"
+   },
+   "truncated": false
+  },
+  {
+   "seq": 2,
+   "at": "2026-10-07T03:00:01.000Z",
+   "kind": "state",
+   "body": {
+    "to": "running",
+    "from": "leased",
+    "actor": "worker",
+    "reason": "worker dev-laptop reported running"
+   },
+   "truncated": false
+  },
+  {
+   "seq": 3,
+   "at": "2026-10-07T03:00:03.907Z",
+   "kind": "output",
+   "body": {
+    "raw": {
+     "type": "system",
+     "subtype": "hook_response",
+     "hook_name": "SessionStart:startup",
+     "exit_code": 0,
+     "outcome": "success"
+    }
+   },
+   "truncated": false
+  },
+  {
+   "seq": 4,
+   "at": "2026-10-07T03:00:03.907Z",
+   "kind": "output",
+   "body": {
+    "raw": {
+     "type": "system",
+     "subtype": "hook_response",
+     "hook_name": "SessionStart:startup",
+     "exit_code": 0,
+     "outcome": "success"
+    }
+   },
+   "truncated": false
+  },
+  {
+   "seq": 5,
+   "at": "2026-10-07T03:00:03.907Z",
+   "kind": "output",
+   "body": {
+    "raw": {
+     "type": "system",
+     "subtype": "hook_response",
+     "hook_name": "SessionStart:startup",
+     "exit_code": 0,
+     "outcome": "success"
+    }
+   },
+   "truncated": false
+  },
+  {
+   "seq": 6,
+   "at": "2026-10-07T03:00:03.924Z",
+   "kind": "output",
+   "body": {
+    "raw": {
+     "type": "system",
+     "subtype": "init"
+    }
+   },
+   "truncated": false
+  },
+  {
+   "seq": 7,
+   "at": "2026-10-07T03:00:05.854Z",
+   "kind": "tool_call",
+   "body": {
+    "toolCallId": "toolu_01LPtZmDoxA9aXz36oWpHvKi",
+    "title": "Bash",
+    "kind": "execute",
+    "status": "pending",
+    "rawInput": {
+     "command": "cat missing-file.txt",
+     "description": "Read missing file (expected to fail)"
+    }
+   },
+   "truncated": false
+  },
+  {
+   "seq": 8,
+   "at": "2026-10-07T03:00:05.860Z",
+   "kind": "output",
+   "body": {
+    "raw": {
+     "type": "rate_limit_event"
+    }
+   },
+   "truncated": false
+  },
+  {
+   "seq": 9,
+   "at": "2026-10-07T03:00:07.336Z",
+   "kind": "tool_call_update",
+   "body": {
+    "toolCallId": "toolu_01LPtZmDoxA9aXz36oWpHvKi",
+    "status": "failed",
+    "content": [
+     {
+      "type": "content",
+      "content": {
+       "type": "text",
+       "text": "Exit code 1\ncat: missing-file.txt: No such file or directory"
+      }
+     }
+    ]
+   },
+   "truncated": false
+  },
+  {
+   "seq": 10,
+   "at": "2026-10-07T03:00:09.428Z",
+   "kind": "tool_call",
+   "body": {
+    "toolCallId": "toolu_01EfRaJtzofJBbt7mH22GmNX",
+    "title": "Bash",
+    "kind": "execute",
+    "status": "pending",
+    "rawInput": {
+     "command": "sleep 15 && date -u",
+     "description": "Sleep 15 seconds then print UTC date",
+     "run_in_background": true
+    }
+   },
+   "truncated": false
+  },
+  {
+   "seq": 11,
+   "at": "2026-10-07T03:00:09.558Z",
+   "kind": "output",
+   "body": {
+    "raw": {
+     "type": "system",
+     "subtype": "background_tasks_changed"
+    }
+   },
+   "truncated": false
+  },
+  {
+   "seq": 12,
+   "at": "2026-10-07T03:00:09.558Z",
+   "kind": "output",
+   "body": {
+    "raw": {
+     "type": "system",
+     "subtype": "task_started",
+     "task_type": "local_bash",
+     "description": "Sleep 15 seconds then print UTC date"
+    }
+   },
+   "truncated": false
+  },
+  {
+   "seq": 13,
+   "at": "2026-10-07T03:00:09.593Z",
+   "kind": "tool_call_update",
+   "body": {
+    "toolCallId": "toolu_01EfRaJtzofJBbt7mH22GmNX",
+    "status": "completed",
+    "content": [
+     {
+      "type": "content",
+      "content": {
+       "type": "text",
+       "text": "Command running in background with ID: bpyt1ksto. Output is being written to: /tmp/claude/session/3036d9da-0461-44a3-8bdf-3d89839e9c46/tasks/bpyt1ksto.output. You will be notified when it completes. To check interim output, use Read on that file path."
+      }
+     }
+    ]
+   },
+   "truncated": false
+  },
+  {
+   "seq": 14,
+   "at": "2026-10-07T03:00:10.658Z",
+   "kind": "agent_message_chunk",
+   "body": {
+    "content": {
+     "type": "text",
+     "text": "STARTED"
+    }
+   },
+   "truncated": false
+  },
+  {
+   "seq": 15,
+   "at": "2026-10-07T03:00:10.819Z",
+   "kind": "usage_update",
+   "body": {
+    "usage": {
+     "input_tokens": 6,
+     "cache_creation_input_tokens": 23515,
+     "cache_read_input_tokens": 70839,
+     "output_tokens": 210,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+     },
+     "service_tier": "standard",
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 23515,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "inference_geo": "not_available",
+     "iterations": [
+      {
+       "input_tokens": 2,
+       "output_tokens": 6,
+       "cache_read_input_tokens": 33448,
+       "cache_creation_input_tokens": 305,
+       "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 305
+       },
+       "type": "message"
+      }
+     ],
+     "speed": "standard",
+     "fallback_credit": null
+    },
+    "cost": {
+     "amount": 0.20651180000000002,
+     "currency": "USD"
+    },
+    "numTurns": 3,
+    "durationMs": 6908
+   },
+   "truncated": false
+  },
+  {
+   "seq": 16,
+   "at": "2026-10-07T03:00:24.584Z",
+   "kind": "output",
+   "body": {
+    "raw": {
+     "type": "system",
+     "subtype": "background_tasks_changed"
+    }
+   },
+   "truncated": false
+  },
+  {
+   "seq": 17,
+   "at": "2026-10-07T03:00:24.585Z",
+   "kind": "output",
+   "body": {
+    "raw": {
+     "type": "system",
+     "subtype": "task_updated"
+    }
+   },
+   "truncated": false
+  },
+  {
+   "seq": 18,
+   "at": "2026-10-07T03:00:24.585Z",
+   "kind": "output",
+   "body": {
+    "raw": {
+     "type": "system",
+     "subtype": "task_notification",
+     "status": "completed"
+    }
+   },
+   "truncated": false
+  },
+  {
+   "seq": 19,
+   "at": "2026-10-07T03:00:24.646Z",
+   "kind": "output",
+   "body": {
+    "raw": {
+     "type": "system",
+     "subtype": "init"
+    }
+   },
+   "truncated": false
+  },
+  {
+   "seq": 20,
+   "at": "2026-10-07T03:00:26.545Z",
+   "kind": "tool_call",
+   "body": {
+    "toolCallId": "toolu_01XZLKihrS6qUoRBnwFYZF2Y",
+    "title": "Bash",
+    "kind": "execute",
+    "status": "pending",
+    "rawInput": {
+     "command": "printf 'ok\\n' > selftest.txt",
+     "description": "Create selftest.txt containing ok"
+    }
+   },
+   "truncated": false
+  },
+  {
+   "seq": 21,
+   "at": "2026-10-07T03:00:26.877Z",
+   "kind": "tool_call_update",
+   "body": {
+    "toolCallId": "toolu_01XZLKihrS6qUoRBnwFYZF2Y",
+    "status": "completed",
+    "content": [
+     {
+      "type": "content",
+      "content": {
+       "type": "text",
+       "text": "(Bash completed with no output)"
+      }
+     }
+    ]
+   },
+   "truncated": false
+  },
+  {
+   "seq": 22,
+   "at": "2026-10-07T03:00:28.597Z",
+   "kind": "agent_message_chunk",
+   "body": {
+    "content": {
+     "type": "text",
+     "text": "Lệnh chạy nền đã hoàn tất với exit code 0, sau đó tôi tạo file `selftest.txt` chứa chữ `ok`."
+    }
+   },
+   "truncated": false
+  },
+  {
+   "seq": 23,
+   "at": "2026-10-07T03:00:28.749Z",
+   "kind": "usage_update",
+   "body": {
+    "usage": {
+     "input_tokens": 6,
+     "cache_creation_input_tokens": 554,
+     "cache_read_input_tokens": 67925,
+     "output_tokens": 151,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+     },
+     "service_tier": "standard",
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 554,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "inference_geo": "not_available",
+     "iterations": [
+      {
+       "input_tokens": 2,
+       "output_tokens": 57,
+       "cache_read_input_tokens": 34172,
+       "cache_creation_input_tokens": 135,
+       "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 135
+       },
+       "type": "message"
+      }
+     ],
+     "speed": "standard",
+     "fallback_credit": null
+    },
+    "cost": {
+     "amount": 0.22757280000000002,
+     "currency": "USD"
+    },
+    "numTurns": 2,
+    "durationMs": 4116
+   },
+   "truncated": false
+  },
+  {
+   "seq": 24,
+   "at": "2026-10-07T03:00:29.749Z",
+   "kind": "state",
+   "body": {
+    "to": "verifying",
+    "from": "running",
+    "actor": "worker",
+    "reason": "worker dev-laptop reported verifying"
+   },
+   "truncated": false
+  },
+  {
+   "seq": 25,
+   "at": "2026-10-07T03:00:30.749Z",
+   "kind": "state",
+   "body": {
+    "to": "done",
+    "from": "verifying",
+    "actor": "worker",
+    "reason": "worker dev-laptop reported done"
+   },
+   "truncated": false
+  }
+ ]
+}

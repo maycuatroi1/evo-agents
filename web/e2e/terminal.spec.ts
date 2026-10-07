@@ -97,8 +97,8 @@ test("the owner connects the terminal: keys echo through the worker's PTY, a res
   };
   await expect.poll(settled, { timeout: 10_000 }).toBe(true);
 
-  // The Log tab keeps the session; back on the Terminal tab it is still live.
-  await main(page).getByRole("tab", { name: "Log" }).click();
+  // The Raw log tab keeps the session; back on the Terminal tab it is still live.
+  await main(page).getByRole("tab", { name: "Raw log" }).click();
   await expect(main(page).getByTestId("log-lines")).toBeVisible();
   await main(page).getByRole("tab", { name: "Terminal" }).click();
   await expect(panel.getByTestId("terminal-status")).toHaveText("Connected");
@@ -139,8 +139,10 @@ test("someone other than the owner sees no Terminal tab, and the hub closes thei
 
   await open(page, runPath(project, run.id));
   await expect(main(page).getByRole("heading", { level: 1 })).toContainText(`Run #${run.id}`);
-  await expect(main(page).getByTestId("log-lines")).toBeVisible();
-  await expect(main(page).getByRole("tab")).toHaveCount(0);
+  await expect(main(page).getByTestId("trace")).toBeVisible();
+  // The Trace and the Raw log, and no Terminal tab.
+  await expect(main(page).getByRole("tab")).toHaveCount(2);
+  await expect(main(page).getByRole("tab", { name: "Terminal" })).toHaveCount(0);
   await expect(main(page).getByTestId("terminal-panel")).toHaveCount(0);
 
   const refused = await terminalCloseCode(page, project, run.id);

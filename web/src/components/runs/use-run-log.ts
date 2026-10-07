@@ -40,6 +40,8 @@ const MAX_POLL_BACKOFF_MS = 15_000;
 
 export type RunLog = {
   lines: LogLine[];
+  /** The events themselves, in seq order, each once: what the Trace and the usage card read. */
+  events: RunEvent[];
   moves: RunMove[];
   status: LogStatus;
   /** The final state the stream (or a read of the events) reported; null while the run goes on. */
@@ -91,6 +93,7 @@ const defaultSource = (url: string) => new EventSource(url);
 
 export function useRunLog({ project, runId, knownLastSeq, describe, openSource = defaultSource }: Options): RunLog {
   const [lines, setLines] = useState<LogLine[]>([]);
+  const [events, setEvents] = useState<RunEvent[]>([]);
   const [moves, setMoves] = useState<RunMove[]>([]);
   const [status, setStatus] = useState<LogStatus>("connecting");
   const [endState, setEndState] = useState<RunState | null>(null);
@@ -134,6 +137,7 @@ export function useRunLog({ project, runId, knownLastSeq, describe, openSource =
       const added = batch.map((event) => toLogLine(event, describeMove));
       const moved = batch.map(moveOf).filter((move): move is RunMove => move !== null);
       setLines((previous) => previous.concat(added));
+      setEvents((previous) => previous.concat(batch));
       if (moved.length) setMoves((previous) => previous.concat(moved));
       setShownSeq(lastSeq);
       setUpdatedAt(Date.now());
@@ -302,7 +306,7 @@ export function useRunLog({ project, runId, knownLastSeq, describe, openSource =
     };
   }, [project, runId]);
 
-  return { lines, moves, status, endState, lastSeq: shownSeq, failure, updatedAt, streamRetryAt, pollFailing };
+  return { lines, events, moves, status, endState, lastSeq: shownSeq, failure, updatedAt, streamRetryAt, pollFailing };
 }
 
 /**

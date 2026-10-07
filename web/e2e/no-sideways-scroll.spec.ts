@@ -135,7 +135,8 @@ test("runs pages never scroll sideways at 375, 768 and 1024 px", async ({ page, 
     { path: `/p/${project}/runs`, ready: shown("runs-table") },
     { path: `/p/${project}/plans/${RUN_PLAN}/steps/2`, ready: shown("step-runs-table") },
     { path: `/workers/${live.worker.id}`, ready: shown("worker-runs-table") },
-    { path: runPath(project, run.id), ready: shown("log-line") },
+    { path: runPath(project, run.id), ready: shown("trace-item") },
+    { path: `${runPath(project, run.id)}?view=log`, ready: shown("log-line") },
     { path: `${runPath(project, run.id)}/diff`, ready: shown("diff-file") },
   ]);
 });

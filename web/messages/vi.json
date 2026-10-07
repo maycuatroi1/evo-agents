@@ -1729,8 +1729,9 @@
       "planSub": "Plan <planLink>{plan}</planLink>: {title}. Mọi bước chưa xong, trong một phiên.",
       "notFoundTitle": "Không tìm thấy run #{id}",
       "notFoundDescription": "Run này không có trong dự án, hoặc thuộc một plan bạn không được đọc.",
-      "stepper": {
-        "label": "Tiến trình của run",
+      "timeline": {
+        "section": "Dòng thời gian của run",
+        "label": "Các pha của run #{id}",
         "phase": {
           "queued": "Đang chờ",
           "leased": "Đã nhận",
@@ -1745,7 +1746,98 @@
           "stopped": "kết thúc ở đây",
           "todo": "chưa tới"
         },
-        "during": "kết thúc khi đang ở {phase}"
+        "since": "từ {time}",
+        "notYet": "chưa tới",
+        "skipped": "bỏ qua",
+        "waitingGap": "chờ {duration}",
+        "gapLabel": "Mất",
+        "gap": {
+          "seconds": "{seconds} giây",
+          "minutes": "{minutes} phút {seconds} giây",
+          "minutesOnly": "{minutes} phút",
+          "hours": "{hours} giờ {minutes} phút"
+        }
+      },
+      "trace": {
+        "label": "Trace của run #{id}",
+        "agent": "Agent",
+        "you": "Bạn",
+        "someone": "Ai đó",
+        "thought": "Suy nghĩ trong {duration}",
+        "thoughtBrief": "Suy nghĩ nhanh",
+        "plan": "Kế hoạch",
+        "planCount": "Xong {done} trên {total}",
+        "planStatus": {
+          "pending": "Chưa làm",
+          "in_progress": "Đang làm",
+          "completed": "Xong"
+        },
+        "youAnswered": "Bạn đã trả lời quyết định #{id}",
+        "answered": "{login} đã trả lời quyết định #{id}",
+        "askedYou": "Hỏi bạn",
+        "asked": "Hỏi {login}",
+        "answer": "Trả lời",
+        "viewDecision": "Xem quyết định",
+        "inInbox": "Mở trong Inbox",
+        "exit": "mã thoát {code}",
+        "noResult": "không có kết quả",
+        "status": {
+          "pending": "đang chờ",
+          "in_progress": "đang chạy",
+          "completed": "xong",
+          "failed": "lỗi"
+        },
+        "kind": {
+          "read": "Đọc",
+          "edit": "Sửa",
+          "delete": "Xoá",
+          "move": "Chuyển",
+          "search": "Tìm",
+          "execute": "Shell",
+          "think": "Suy nghĩ",
+          "fetch": "Tải",
+          "switch_mode": "Chế độ",
+          "other": "Tool"
+        },
+        "diff": "{added, plural, other {thêm # dòng}}, {removed, plural, other {bớt # dòng}}",
+        "showFull": "Hiện toàn bộ output ({count, plural, other {# dòng}})",
+        "showLess": "Chỉ hiện {count} dòng đầu",
+        "noOutput": "Không có output.",
+        "noOutputYet": "Chưa có output.",
+        "input": "Input",
+        "systemOutput": "Output",
+        "raw": "{count, plural, other {# sự kiện của runtime}}",
+        "nothing": "Chưa có gì để hiện. Các sự kiện đến giờ nằm trong Log thô.",
+        "working": "Agent đang làm việc.",
+        "latest": "Tới mục mới nhất",
+        "duration": {
+          "under": "dưới 0,1 giây",
+          "seconds": "{seconds},{tenths} giây",
+          "minutes": "{minutes} phút {seconds} giây",
+          "hours": "{hours} giờ {minutes} phút"
+        }
+      },
+      "usage": {
+        "title": "Mức dùng",
+        "soFar": "đến giờ",
+        "token": "token",
+        "tokens": "token",
+        "asReported": "theo runtime báo",
+        "costNotReported": "Runtime không báo chi phí",
+        "parts": {
+          "cacheRead": "Đọc cache",
+          "input": "Input",
+          "output": "Output",
+          "reasoning": "Suy luận"
+        },
+        "share": "{value}%",
+        "tiny": "dưới 0,1",
+        "bar": "Đọc cache {cacheRead} phần trăm, input {input}, output {output}, suy luận {reasoning}",
+        "cacheWrite": "Ghi cache {count}.",
+        "costNote": "Chi phí đúng như runtime báo.",
+        "noCostNote": "Runtime không báo chi phí.",
+        "none": "Hiện khi agent xong lượt đầu tiên và runtime báo mức đã dùng.",
+        "noneEnded": "Runtime không báo mức dùng của run này."
       },
       "planSteps": {
         "title": "Các bước của plan",
@@ -1834,7 +1926,8 @@
         "tabs": {
           "label": "Cách xem phiên",
           "heading": "Phiên trực tiếp của run #{id}",
-          "log": "Log",
+          "trace": "Trace",
+          "log": "Log thô",
           "terminal": "Terminal"
         },
         "where": "TUI của agent trên {worker}, chuyển tiếp qua hub.",
@@ -1883,15 +1976,19 @@
       },
       "composer": {
         "label": "Nhắn cho agent",
-        "placeholder": "Ví dụ: phủ thêm trường hợp token đã bị thu hồi",
+        "placeholder": "Nhắn cho agent. Agent đọc tin nhắn ở lượt kế tiếp.",
         "send": "Gửi",
         "sending": "Đang gửi…",
-        "hint": "Worker chuyển tin nhắn cho agent ở lượt kế tiếp; Ctrl hoặc Cmd + Enter để gửi. Chỉ bạn thấy ô này vì bạn đã dispatch run.",
+        "hint": "Chỉ bạn thấy ô này vì bạn đã dispatch run.",
         "sent": "Đã gửi. Tin nhắn nằm trong inbox của run chờ lượt kế tiếp của agent.",
         "blank": "Hãy gõ tin nhắn trước.",
         "long": "Một tin nhắn tối đa {max} byte UTF-8. Hãy rút ngắn lại.",
         "bytes": "{count} trên {max} byte",
-        "conflict": "Run không nhận tin nhắn nữa: run đã kết thúc hoặc đang chờ duyệt."
+        "conflict": "Run không nhận tin nhắn nữa: run đã kết thúc hoặc đang chờ duyệt.",
+        "headlessOn": "Run headless trên {worker}.",
+        "interactiveOn": "Run tương tác trên {worker}.",
+        "headless": "Run headless.",
+        "interactive": "Run tương tác."
       },
       "facts": {
         "title": "Chi tiết",
@@ -1952,7 +2049,6 @@
         "changes": "Thay đổi",
         "diffstat": "{files, plural, other {# file}}, +{insertions} -{deletions}",
         "viewDiff": "Xem diff",
-        "usage": "Mức dùng",
         "evidence": "Bằng chứng",
         "copyCommit": "Sao chép SHA của commit"
       },

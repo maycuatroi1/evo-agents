@@ -61,7 +61,7 @@ test("a run's page follows its event stream, and the log's Pause shows as Paused
   expect((await claimRun(worker))?.id).toBe(run.id);
   await startRun(worker, run.id);
 
-  await open(page, runPath(project, run.id));
+  await open(page, `${runPath(project, run.id)}?view=log`);
   const main = page.locator("#main");
   await expect(main.getByTestId("log-status")).toHaveAttribute("data-status", "live");
   const live = indicator(page);

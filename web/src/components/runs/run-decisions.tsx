@@ -11,7 +11,7 @@ import { type Decision, decisionQuery } from "@/components/inbox/queries";
 import { browserApi } from "@/lib/api/browser";
 import { cn } from "@/lib/utils";
 
-import { decisionHref, isActiveState, LIVE_REFRESH_MS, openDecisionsQuery, type Run } from "./queries";
+import { decisionAnchor, decisionHref, isActiveState, LIVE_REFRESH_MS, openDecisionsQuery, type Run } from "./queries";
 
 /**
  * A plan run's open decisions on its page, at the top of the side column (above the log below the xl breakpoint): the
@@ -95,7 +95,7 @@ export function RunDecisions({
       {shown.length > 0 ? (
         <ol className="flex flex-col gap-3">
           {shown.map((decision) => (
-            <li key={decision.id} data-testid="run-decision">
+            <li key={decision.id} id={decisionAnchor(decision.id)} tabIndex={-1} className="scroll-mt-20 rounded-md" data-testid="run-decision">
               <LiveDecision decision={decision} settledHere={kept.has(decision.id)} onSettled={keep} onTakeOver={onTakeOver} />
             </li>
           ))}

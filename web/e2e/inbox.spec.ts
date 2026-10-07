@@ -282,14 +282,15 @@ test("the owner takes over from a decision while the agent still works, in the r
   const log = main(page).getByTestId("run-log");
   await expect(log).toHaveAttribute("data-tab", "terminal");
 
-  // On the run's own page the card's Take over shows the Terminal tab without leaving it.
+  // On the run's own page the card's Take over shows the Terminal tab without leaving it; the Trace is the first tab.
   await open(page, runPath(project, run.id));
-  await expect(log).toHaveAttribute("data-tab", "log");
+  await expect(log).toHaveAttribute("data-tab", "trace");
   const card = main(page).getByTestId("run-decisions").getByTestId("decision");
   await card.getByTestId("decision-takeover").click();
   await expect(log).toHaveAttribute("data-tab", "terminal");
   await expect(main(page).getByTestId("run-tab-terminal")).toBeFocused();
-  await expect(page).toHaveURL(new RegExp(`${runPath(project, run.id)}$`));
+  // No navigation: the tab shown is kept in the URL in place.
+  await expect(page).toHaveURL(new RegExp(`${runPath(project, run.id)}\\?view=terminal$`));
 
 });
 

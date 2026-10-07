@@ -120,6 +120,18 @@
     }
   }
 
+  /* The typing dots at the end of a running run's trace: each fades in and out, a fifth of a beat after the last. */
+  --animate-typing: typing 1.2s ease-in-out infinite;
+  @keyframes typing {
+    0%,
+    100% {
+      opacity: 0.25;
+    }
+    50% {
+      opacity: 1;
+    }
+  }
+
   /* The live dot: a ring that grows and fades once per pulse period, over a solid dot. */
   --animate-live-ping: live-ping var(--pulse-period) cubic-bezier(0, 0, 0.2, 1) infinite;
   @keyframes live-ping {
@@ -306,7 +318,8 @@
       scroll-behavior: auto !important;
       transition-duration: 0.01ms !important;
     }
-    .animate-live-ping {
+    .animate-live-ping,
+    .animate-typing {
       animation: none !important;
     }
   }

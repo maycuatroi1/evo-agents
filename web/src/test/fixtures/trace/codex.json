@@ -1,0 +1,426 @@
+{
+ "_about": "A real run of the codex adapter on this repository's code (codex 0.153.4) in a scratch git repository, on the prompt of web/scripts/trace_fixtures.py, between the state events the hub writes; times are the machine's as the events arrived, from a fixed start. Paths are replaced and output events keep only the keys that name what happened. Made by web/scripts/trace_fixtures.py.",
+ "runtime": "codex",
+ "version": "codex 0.153.4",
+ "usage": {
+  "cache_write_input_tokens": 0,
+  "cached_input_tokens": 102016,
+  "input_tokens": 125097,
+  "output_tokens": 131,
+  "reasoning_output_tokens": 0,
+  "total_tokens": 125228
+ },
+ "events": [
+  {
+   "seq": 1,
+   "at": "2026-10-07T03:00:00.000Z",
+   "kind": "state",
+   "body": {
+    "to": "leased",
+    "from": "queued",
+    "actor": "worker",
+    "reason": "worker dev-laptop claimed it"
+   },
+   "truncated": false
+  },
+  {
+   "seq": 2,
+   "at": "2026-10-07T03:00:01.000Z",
+   "kind": "state",
+   "body": {
+    "to": "running",
+    "from": "leased",
+    "actor": "worker",
+    "reason": "worker dev-laptop reported running"
+   },
+   "truncated": false
+  },
+  {
+   "seq": 3,
+   "at": "2026-10-07T03:00:07.765Z",
+   "kind": "output",
+   "body": {
+    "raw": {
+     "method": "hook/completed"
+    }
+   },
+   "truncated": false
+  },
+  {
+   "seq": 4,
+   "at": "2026-10-07T03:00:07.778Z",
+   "kind": "output",
+   "body": {
+    "raw": {
+     "method": "hook/completed"
+    }
+   },
+   "truncated": false
+  },
+  {
+   "seq": 5,
+   "at": "2026-10-07T03:00:13.068Z",
+   "kind": "output",
+   "body": {
+    "raw": {
+     "method": "hook/completed"
+    }
+   },
+   "truncated": false
+  },
+  {
+   "seq": 6,
+   "at": "2026-10-07T03:00:13.106Z",
+   "kind": "tool_call",
+   "body": {
+    "toolCallId": "exec-29f818c2-4f06-4c38-9028-236407e027af",
+    "title": "/bin/zsh -lc 'cat missing-file.txt'",
+    "kind": "execute",
+    "status": "in_progress",
+    "rawInput": {
+     "command": "/bin/zsh -lc 'cat missing-file.txt'",
+     "cwd": "/tmp/evo-worker-selftest"
+    }
+   },
+   "truncated": false
+  },
+  {
+   "seq": 7,
+   "at": "2026-10-07T03:00:13.108Z",
+   "kind": "tool_call_update",
+   "body": {
+    "toolCallId": "exec-29f818c2-4f06-4c38-9028-236407e027af",
+    "status": "failed",
+    "content": [
+     {
+      "type": "content",
+      "content": {
+       "type": "text",
+       "text": "cat: missing-file.txt: No such file or directory\n"
+      }
+     }
+    ],
+    "rawOutput": {
+     "exitCode": 1,
+     "durationMs": 0
+    }
+   },
+   "truncated": false
+  },
+  {
+   "seq": 8,
+   "at": "2026-10-07T03:00:13.139Z",
+   "kind": "output",
+   "body": {
+    "raw": {
+     "method": "hook/completed"
+    }
+   },
+   "truncated": false
+  },
+  {
+   "seq": 9,
+   "at": "2026-10-07T03:00:13.139Z",
+   "kind": "output",
+   "body": {
+    "raw": {
+     "method": "hook/completed"
+    }
+   },
+   "truncated": false
+  },
+  {
+   "seq": 10,
+   "at": "2026-10-07T03:00:13.142Z",
+   "kind": "usage_update",
+   "body": {
+    "usage": {
+     "cacheWriteInputTokens": 0,
+     "cachedInputTokens": 8832,
+     "inputTokens": 31131,
+     "outputTokens": 30,
+     "reasoningOutputTokens": 0,
+     "totalTokens": 31161
+    },
+    "last": {
+     "cacheWriteInputTokens": 0,
+     "cachedInputTokens": 8832,
+     "inputTokens": 31131,
+     "outputTokens": 30,
+     "reasoningOutputTokens": 0,
+     "totalTokens": 31161
+    },
+    "contextWindow": 828400
+   },
+   "truncated": false
+  },
+  {
+   "seq": 11,
+   "at": "2026-10-07T03:00:16.590Z",
+   "kind": "output",
+   "body": {
+    "raw": {
+     "method": "hook/completed"
+    }
+   },
+   "truncated": false
+  },
+  {
+   "seq": 12,
+   "at": "2026-10-07T03:00:16.628Z",
+   "kind": "tool_call",
+   "body": {
+    "toolCallId": "exec-0e593a24-3420-44f2-a56d-24f9aedc869f",
+    "title": "/bin/zsh -lc 'ls -a'",
+    "kind": "execute",
+    "status": "in_progress",
+    "rawInput": {
+     "command": "/bin/zsh -lc 'ls -a'",
+     "cwd": "/tmp/evo-worker-selftest"
+    }
+   },
+   "truncated": false
+  },
+  {
+   "seq": 13,
+   "at": "2026-10-07T03:00:16.630Z",
+   "kind": "tool_call_update",
+   "body": {
+    "toolCallId": "exec-0e593a24-3420-44f2-a56d-24f9aedc869f",
+    "status": "completed",
+    "content": [
+     {
+      "type": "content",
+      "content": {
+       "type": "text",
+       "text": ".\n..\n.git\nREADME.md\n"
+      }
+     }
+    ],
+    "rawOutput": {
+     "exitCode": 0,
+     "durationMs": 0
+    }
+   },
+   "truncated": false
+  },
+  {
+   "seq": 14,
+   "at": "2026-10-07T03:00:16.662Z",
+   "kind": "output",
+   "body": {
+    "raw": {
+     "method": "hook/completed"
+    }
+   },
+   "truncated": false
+  },
+  {
+   "seq": 15,
+   "at": "2026-10-07T03:00:16.662Z",
+   "kind": "output",
+   "body": {
+    "raw": {
+     "method": "hook/completed"
+    }
+   },
+   "truncated": false
+  },
+  {
+   "seq": 16,
+   "at": "2026-10-07T03:00:16.664Z",
+   "kind": "usage_update",
+   "body": {
+    "usage": {
+     "cacheWriteInputTokens": 0,
+     "cachedInputTokens": 39808,
+     "inputTokens": 62360,
+     "outputTokens": 59,
+     "reasoningOutputTokens": 0,
+     "totalTokens": 62419
+    },
+    "last": {
+     "cacheWriteInputTokens": 0,
+     "cachedInputTokens": 30976,
+     "inputTokens": 31229,
+     "outputTokens": 29,
+     "reasoningOutputTokens": 0,
+     "totalTokens": 31258
+    },
+    "contextWindow": 828400
+   },
+   "truncated": false
+  },
+  {
+   "seq": 17,
+   "at": "2026-10-07T03:00:19.167Z",
+   "kind": "output",
+   "body": {
+    "raw": {
+     "method": "hook/completed"
+    }
+   },
+   "truncated": false
+  },
+  {
+   "seq": 18,
+   "at": "2026-10-07T03:00:19.203Z",
+   "kind": "tool_call",
+   "body": {
+    "toolCallId": "exec-a318963d-c8ec-4733-8b19-6bd40c0d55ea",
+    "title": "/bin/zsh -lc \"printf 'ok' > selftest.txt\"",
+    "kind": "execute",
+    "status": "in_progress",
+    "rawInput": {
+     "command": "/bin/zsh -lc \"printf 'ok' > selftest.txt\"",
+     "cwd": "/tmp/evo-worker-selftest"
+    }
+   },
+   "truncated": false
+  },
+  {
+   "seq": 19,
+   "at": "2026-10-07T03:00:19.204Z",
+   "kind": "tool_call_update",
+   "body": {
+    "toolCallId": "exec-a318963d-c8ec-4733-8b19-6bd40c0d55ea",
+    "status": "completed",
+    "rawOutput": {
+     "exitCode": 0,
+     "durationMs": 0
+    }
+   },
+   "truncated": false
+  },
+  {
+   "seq": 20,
+   "at": "2026-10-07T03:00:19.236Z",
+   "kind": "output",
+   "body": {
+    "raw": {
+     "method": "hook/completed"
+    }
+   },
+   "truncated": false
+  },
+  {
+   "seq": 21,
+   "at": "2026-10-07T03:00:19.236Z",
+   "kind": "output",
+   "body": {
+    "raw": {
+     "method": "hook/completed"
+    }
+   },
+   "truncated": false
+  },
+  {
+   "seq": 22,
+   "at": "2026-10-07T03:00:19.238Z",
+   "kind": "usage_update",
+   "body": {
+    "usage": {
+     "cacheWriteInputTokens": 0,
+     "cachedInputTokens": 70912,
+     "inputTokens": 93683,
+     "outputTokens": 93,
+     "reasoningOutputTokens": 0,
+     "totalTokens": 93776
+    },
+    "last": {
+     "cacheWriteInputTokens": 0,
+     "cachedInputTokens": 31104,
+     "inputTokens": 31323,
+     "outputTokens": 34,
+     "reasoningOutputTokens": 0,
+     "totalTokens": 31357
+    },
+    "contextWindow": 828400
+   },
+   "truncated": false
+  },
+  {
+   "seq": 23,
+   "at": "2026-10-07T03:00:21.766Z",
+   "kind": "agent_message_chunk",
+   "body": {
+    "content": {
+     "type": "text",
+     "text": "Đã chạy `cat missing-file.txt` (lỗi như dự kiến), chạy `ls -a` và tạo `selftest.txt` chứa đúng `ok`."
+    }
+   },
+   "truncated": false
+  },
+  {
+   "seq": 24,
+   "at": "2026-10-07T03:00:21.905Z",
+   "kind": "usage_update",
+   "body": {
+    "usage": {
+     "cacheWriteInputTokens": 0,
+     "cachedInputTokens": 102016,
+     "inputTokens": 125097,
+     "outputTokens": 131,
+     "reasoningOutputTokens": 0,
+     "totalTokens": 125228
+    },
+    "last": {
+     "cacheWriteInputTokens": 0,
+     "cachedInputTokens": 31104,
+     "inputTokens": 31414,
+     "outputTokens": 38,
+     "reasoningOutputTokens": 0,
+     "totalTokens": 31452
+    },
+    "contextWindow": 828400
+   },
+   "truncated": false
+  },
+  {
+   "seq": 25,
+   "at": "2026-10-07T03:00:22.003Z",
+   "kind": "output",
+   "body": {
+    "raw": {
+     "method": "hook/completed"
+    }
+   },
+   "truncated": false
+  },
+  {
+   "seq": 26,
+   "at": "2026-10-07T03:00:22.004Z",
+   "kind": "output",
+   "body": {
+    "raw": {
+     "method": "hook/completed"
+    }
+   },
+   "truncated": false
+  },
+  {
+   "seq": 27,
+   "at": "2026-10-07T03:00:23.004Z",
+   "kind": "state",
+   "body": {
+    "to": "verifying",
+    "from": "running",
+    "actor": "worker",
+    "reason": "worker dev-laptop reported verifying"
+   },
+   "truncated": false
+  },
+  {
+   "seq": 28,
+   "at": "2026-10-07T03:00:24.004Z",
+   "kind": "state",
+   "body": {
+    "to": "done",
+    "from": "verifying",
+    "actor": "worker",
+    "reason": "worker dev-laptop reported done"
+   },
+   "truncated": false
+  }
+ ]
+}

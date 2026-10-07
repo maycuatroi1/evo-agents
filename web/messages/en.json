@@ -1729,8 +1729,9 @@
       "planSub": "Plan <planLink>{plan}</planLink>: {title}. Every step not done yet, in one session.",
       "notFoundTitle": "Run #{id} not found",
       "notFoundDescription": "The run does not exist in this project, or it belongs to a plan you cannot read.",
-      "stepper": {
-        "label": "Progress of the run",
+      "timeline": {
+        "section": "Timeline of the run",
+        "label": "Phases of run #{id}",
         "phase": {
           "queued": "Queued",
           "leased": "Leased",
@@ -1745,7 +1746,98 @@
           "stopped": "ended here",
           "todo": "not reached"
         },
-        "during": "ended while {phase}"
+        "since": "since {time}",
+        "notYet": "not yet",
+        "skipped": "skipped",
+        "waitingGap": "waiting {duration}",
+        "gapLabel": "Took",
+        "gap": {
+          "seconds": "{seconds}s",
+          "minutes": "{minutes}m {seconds}s",
+          "minutesOnly": "{minutes}m",
+          "hours": "{hours}h {minutes}m"
+        }
+      },
+      "trace": {
+        "label": "Trace of run #{id}",
+        "agent": "Agent",
+        "you": "You",
+        "someone": "Someone",
+        "thought": "Thought for {duration}",
+        "thoughtBrief": "Thought briefly",
+        "plan": "Plan",
+        "planCount": "{done} of {total} done",
+        "planStatus": {
+          "pending": "To do",
+          "in_progress": "In progress",
+          "completed": "Done"
+        },
+        "youAnswered": "You answered decision #{id}",
+        "answered": "{login} answered decision #{id}",
+        "askedYou": "Asked you",
+        "asked": "Asked {login}",
+        "answer": "Answer",
+        "viewDecision": "View the decision",
+        "inInbox": "Open in the Inbox",
+        "exit": "exit {code}",
+        "noResult": "no result",
+        "status": {
+          "pending": "pending",
+          "in_progress": "running",
+          "completed": "done",
+          "failed": "failed"
+        },
+        "kind": {
+          "read": "Read",
+          "edit": "Edit",
+          "delete": "Delete",
+          "move": "Move",
+          "search": "Search",
+          "execute": "Shell",
+          "think": "Think",
+          "fetch": "Fetch",
+          "switch_mode": "Mode",
+          "other": "Tool"
+        },
+        "diff": "{added, plural, one {# line added} other {# lines added}}, {removed, plural, one {# removed} other {# removed}}",
+        "showFull": "Show the full output ({count, plural, one {# line} other {# lines}})",
+        "showLess": "Show the first {count} lines",
+        "noOutput": "No output.",
+        "noOutputYet": "No output yet.",
+        "input": "Input",
+        "systemOutput": "Output",
+        "raw": "{count, plural, one {# runtime event} other {# runtime events}}",
+        "nothing": "Nothing to show yet. The events so far are in the Raw log.",
+        "working": "The agent is working.",
+        "latest": "Jump to the latest",
+        "duration": {
+          "under": "under 0.1s",
+          "seconds": "{seconds}.{tenths}s",
+          "minutes": "{minutes}m {seconds}s",
+          "hours": "{hours}h {minutes}m"
+        }
+      },
+      "usage": {
+        "title": "Usage",
+        "soFar": "so far",
+        "token": "token",
+        "tokens": "tokens",
+        "asReported": "as reported",
+        "costNotReported": "Cost not reported",
+        "parts": {
+          "cacheRead": "Cache read",
+          "input": "Input",
+          "output": "Output",
+          "reasoning": "Reasoning"
+        },
+        "share": "{value}%",
+        "tiny": "under 0.1",
+        "bar": "Cache read {cacheRead} percent, input {input}, output {output}, reasoning {reasoning}",
+        "cacheWrite": "Cache write {count}.",
+        "costNote": "Cost as the runtime reported it.",
+        "noCostNote": "The runtime reported no cost.",
+        "none": "Shows once the agent ends its first turn and the runtime reports what it used.",
+        "noneEnded": "The runtime reported no usage for this run."
       },
       "planSteps": {
         "title": "Steps of the plan",
@@ -1834,7 +1926,8 @@
         "tabs": {
           "label": "Session view",
           "heading": "Live session of run #{id}",
-          "log": "Log",
+          "trace": "Trace",
+          "log": "Raw log",
           "terminal": "Terminal"
         },
         "where": "The agent's TUI on {worker}, relayed through the hub.",
@@ -1883,15 +1976,19 @@
       },
       "composer": {
         "label": "Message the agent",
-        "placeholder": "For example: also cover the revoked-token case",
+        "placeholder": "Message the agent. It reads this on its next turn.",
         "send": "Send",
         "sending": "Sending…",
-        "hint": "The worker hands it to the agent at its next turn; Ctrl or Cmd + Enter sends. Only you see this box: you dispatched the run.",
+        "hint": "Only you see this box: you dispatched the run.",
         "sent": "Sent. It waits in the run's inbox for the agent's next turn.",
         "blank": "Type a message first.",
         "long": "A message is at most {max} bytes of UTF-8. Shorten it.",
         "bytes": "{count} of {max} bytes",
-        "conflict": "The run no longer takes messages: it ended, or waits for review."
+        "conflict": "The run no longer takes messages: it ended, or waits for review.",
+        "headlessOn": "Headless run on {worker}.",
+        "interactiveOn": "Interactive run on {worker}.",
+        "headless": "Headless run.",
+        "interactive": "Interactive run."
       },
       "facts": {
         "title": "Details",
@@ -1952,7 +2049,6 @@
         "changes": "Changes",
         "diffstat": "{files, plural, one {# file} other {# files}}, +{insertions} -{deletions}",
         "viewDiff": "View the diff",
-        "usage": "Usage",
         "evidence": "Evidence",
         "copyCommit": "Copy the commit SHA"
       },
