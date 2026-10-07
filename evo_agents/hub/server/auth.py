@@ -18,9 +18,12 @@ from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, Field
+from sqlalchemy import Text, cast, delete, func, literal, select, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.ext.asyncio import AsyncConnection
 
+from evo_agents.hub import tables
 from evo_agents.hub.config import HubConfig
-from evo_agents.hub.db import legacy
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.github import GitHubRefused, GitHubUnavailable, GitHubUser
@@ -98,60 +101,79 @@ def github_errors(refused_status: int, hint: str):
         raise HTTPException(502, str(exc)) from None
 
 
-async def _one(conn, sql: str, params=()):
-    return await (await legacy(conn, sql, params)).fetchone()
-
-
-async def _move_aside(conn, user_id: int) -> None:
+async def _move_aside(conn: AsyncConnection, user_id: int) -> None:
     """Give up the login of a row whose GitHub account was renamed since: ``_`` cannot occur in a GitHub login, so
     the new name collides with nobody, and the account gets its real login back when it signs in again."""
-    await legacy(
-        conn, "UPDATE users SET login = left(login, 80) || '_' || coalesce(github_id, id) WHERE id = %s", (user_id,)
+    users = tables.users
+    suffix = cast(func.coalesce(users.c.github_id, users.c.id), Text)
+    await conn.execute(
+        update(users).values(login=func.left(users.c.login, 80, type_=Text) + "_" + suffix).where(users.c.id == user_id)
     )
 
 
-async def upsert_user(conn, user: GitHubUser) -> tuple[int, str]:
+async def _merge_grants(conn: AsyncConnection, into: int, holder_id: int) -> None:
+    """Copy the grants of row ``holder_id`` to row ``into``, keeping those ``into`` holds on the same project."""
+    grants = tables.grants
+    moved = select(
+        literal(into, grants.c.user_id.type),
+        grants.c.project_id,
+        grants.c.role,
+        grants.c.max_level,
+        grants.c.granted_by,
+        grants.c.granted_at,
+    ).where(grants.c.user_id == holder_id)
+    columns = ["user_id", "project_id", "role", "max_level", "granted_by", "granted_at"]
+    await conn.execute(
+        pg_insert(grants)
+        .from_select(columns, moved)
+        .on_conflict_do_nothing(index_elements=[grants.c.user_id, grants.c.project_id])
+    )
+
+
+async def upsert_user(conn: AsyncConnection, user: GitHubUser) -> tuple[int, str]:
     """The id and login of the users row for a GitHub account, created or brought up to date."""
+    users = tables.users
     for _ in range(USER_RETRIES):
-        own = await _one(conn, "SELECT id FROM users WHERE github_id = %s FOR UPDATE", (user.id,))
-        holder = await _one(
-            conn, "SELECT id, github_id FROM users WHERE lower(login) = lower(%s) FOR UPDATE", (user.login,)
-        )
-        if holder is not None and holder[1] != user.id:
+        own = (await conn.execute(select(users.c.id).where(users.c.github_id == user.id).with_for_update())).first()
+        holder = (
+            await conn.execute(
+                select(users.c.id, users.c.github_id)
+                .where(func.lower(users.c.login) == func.lower(user.login))
+                .with_for_update()
+            )
+        ).first()
+        if holder is not None and holder.github_id != user.id:
             holder_id, holder_github_id = holder
             if holder_github_id is None and own is None:  # granted before the first sign-in: claim it
-                await legacy(
-                    conn,
-                    "UPDATE users SET github_id = %s, login = %s, last_seen_at = now() WHERE id = %s",
-                    (user.id, user.login, holder_id),
+                await conn.execute(
+                    update(users)
+                    .values(github_id=user.id, login=user.login, last_seen_at=func.now())
+                    .where(users.c.id == holder_id)
                 )
                 return holder_id, user.login
             if holder_github_id is None:  # granted to the new login of a known account: merge the grants into it
-                await legacy(
-                    conn,
-                    "INSERT INTO grants (user_id, project_id, role, max_level, granted_by, granted_at) "
-                    "SELECT %s, project_id, role, max_level, granted_by, granted_at FROM grants WHERE user_id = %s "
-                    "ON CONFLICT (user_id, project_id) DO NOTHING",
-                    (own[0], holder_id),
-                )
-                await legacy(conn, "DELETE FROM users WHERE id = %s", (holder_id,))
+                await _merge_grants(conn, own.id, holder_id)
+                await conn.execute(delete(users).where(users.c.id == holder_id))
             else:
                 await _move_aside(conn, holder_id)
         if own is not None:
-            await legacy(conn, "UPDATE users SET login = %s, last_seen_at = now() WHERE id = %s", (user.login, own[0]))
-            return own[0], user.login
-        row = await _one(
-            conn,
-            "INSERT INTO users (login, github_id, last_seen_at) VALUES (%s, %s, now()) ON CONFLICT DO NOTHING "
-            "RETURNING id",
-            (user.login, user.id),
+            await conn.execute(
+                update(users).values(login=user.login, last_seen_at=func.now()).where(users.c.id == own.id)
+            )
+            return own.id, user.login
+        created = await conn.execute(
+            pg_insert(users)
+            .values(login=user.login, github_id=user.id, last_seen_at=func.now())
+            .on_conflict_do_nothing()
+            .returning(users.c.id)
         )
-        if row is not None:
-            return row[0], user.login
+        user_id = created.scalar()
+        if user_id is not None:
+            return user_id, user.login
     raise RuntimeError(f"could not settle the users row of GitHub account {user.id} after {USER_RETRIES} tries")
 
 
-async def sign_in(conn, config: HubConfig, user: GitHubUser, kind: str, host: str | None) -> SignedIn:
+async def sign_in(conn: AsyncConnection, config: HubConfig, user: GitHubUser, kind: str, host: str | None) -> SignedIn:
     """A new token of ``kind`` for the GitHub ``user``, with its audit row, in the caller's transaction."""
     user_id, login = await upsert_user(conn, user)
     issued = await issue_token(conn, user_id, kind, host)
@@ -211,25 +233,32 @@ async def github_login(body: GitHubLogin, request: Request, response: Response) 
 
 @router.get("/whoami", response_model=WhoAmI, responses={401: {"model": ErrorBody}})
 async def whoami(request: Request, user: CurrentUser) -> WhoAmI:
+    tokens, grants, projects = tables.tokens, tables.grants, tables.projects
     async with request.app.state.engine.begin() as conn:
-        token = await _one(
-            conn,
-            "SELECT id, kind, host, created_at, last_used_at, expires_at FROM tokens WHERE id = %s",
-            (user.token_id,),
+        token = (
+            await conn.execute(
+                select(
+                    tokens.c.id,
+                    tokens.c.kind,
+                    tokens.c.host,
+                    tokens.c.created_at,
+                    tokens.c.last_used_at,
+                    tokens.c.expires_at,
+                ).where(tokens.c.id == user.token_id)
+            )
+        ).one()
+        held = await conn.execute(
+            select(projects.c.name.label("project"), grants.c.role, grants.c.max_level)
+            .join_from(grants, projects, projects.c.id == grants.c.project_id)
+            .where(grants.c.user_id == user.user_id)
+            .order_by(projects.c.name)
         )
-        cursor = await legacy(
-            conn,
-            "SELECT p.name, g.role, g.max_level FROM grants g JOIN projects p ON p.id = g.project_id "
-            "WHERE g.user_id = %s ORDER BY p.name",
-            (user.user_id,),
-        )
-        grants = await cursor.fetchall()
-    fields = ("id", "kind", "host", "created_at", "last_used_at", "expires_at")
+        grant_rows = held.all()
     return WhoAmI(
         login=user.login,
         admin=user.admin,
-        token=TokenInfo(**dict(zip(fields, token, strict=True))),
-        grants=[GrantInfo(project=p, role=r, max_level=m) for p, r, m in grants],
+        token=TokenInfo(**token._mapping),
+        grants=[GrantInfo(**row._mapping) for row in grant_rows],
     )
 
 
