@@ -112,8 +112,37 @@ def bearer(token: str) -> dict:
     return {"Authorization": f"Bearer {token}"}
 
 
-def sql(db: pg.Database, statement: str, params=()):
-    """Run one statement as the superuser; its rows, or None when it returns none."""
+def engine(db: pg.Database):
+    """A SQLAlchemy engine on ``db`` as its owner, the role the hub runs as. It keeps no connection (``NullPool``):
+    each ``begin()`` connects, and closes once its block ends, so nothing outlives a test."""
+    if db.dsn not in _ENGINES:
+        import psycopg
+        from sqlalchemy import create_engine
+        from sqlalchemy.pool import NullPool
+
+        _ENGINES[db.dsn] = create_engine(
+            "postgresql+psycopg://", creator=lambda: psycopg.connect(db.dsn), poolclass=NullPool
+        )
+    return _ENGINES[db.dsn]
+
+
+_ENGINES: dict = {}
+
+
+def sql(db: pg.Database, statement, params=()):
+    """Run one statement in a transaction of its own; its rows as tuples, or None when it returns none. A Core
+    statement (on ``evo_agents.hub.tables``) runs on ``engine(db)``, with ``params`` as a dict or a list of dicts,
+    and a refusal raises the driver's error, such as ``psycopg.errors.CheckViolation``; a string runs as the
+    superuser, until no test passes one."""
+    if not isinstance(statement, str):
+        from sqlalchemy.exc import DBAPIError
+
+        try:
+            with engine(db).begin() as conn:
+                result = conn.execute(statement, params or None)
+                return [tuple(row) for row in result] if result.returns_rows else None
+        except DBAPIError as exc:
+            raise exc.orig from exc
     with pg.admin(db.admin_dsn) as conn:
         cursor = conn.execute(statement, params)
         return cursor.fetchall() if cursor.description else None
