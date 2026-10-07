@@ -571,12 +571,15 @@ const PAGES: Entry[] = [
       await seedPlanRunPlan(me, project);
       const { decision } = await planRunUnderway(me, project, uniqueName("a11y"), { waiting: true });
       await open(page, `/inbox?decision=${decision}`);
-      const panel = page.locator("#main").getByTestId("decision-panel");
-      await expect(panel.getByTestId("decision-form")).toBeVisible();
-      await expect(panel.getByTestId("decision-context-markdown")).toBeVisible();
+      const sheet = page.getByTestId("decision-sheet");
+      await expect(sheet.getByTestId("decision-form")).toBeVisible();
+      await expect(sheet.getByTestId("decision-context-markdown")).toBeVisible();
+      await expect(sheet.getByTestId("decision-parks")).toBeVisible();
       await expectNoSeriousViolations(page, "decision with its answer form");
-      await panel.getByTestId("decision-send").click();
-      await expect(panel.getByTestId("decision-problem")).toBeVisible();
+      // The agent's pick is chosen for the owner; clear it to send nothing.
+      await sheet.getByTestId("decision-clear-option").click();
+      await sheet.getByTestId("decision-send").click();
+      await expect(sheet.getByTestId("decision-problem")).toBeVisible();
     },
   },
   {
@@ -586,17 +589,17 @@ const PAGES: Entry[] = [
       await seedPlanRunPlan(me, project);
       const { decision } = await planRunUnderway(me, project, uniqueName("a11y"), { waiting: true });
       await open(page, `/inbox?decision=${decision}`);
-      const panel = page.locator("#main").getByTestId("decision-panel");
-      await panel.getByRole("radio").first().check();
-      await panel.getByTestId("decision-text").fill("After the backup.");
-      await panel.getByTestId("decision-send").click();
-      await expect(panel.getByTestId("decision-answer")).toBeVisible();
+      const sheet = page.getByTestId("decision-sheet");
+      await sheet.getByRole("radio").first().check();
+      await sheet.getByTestId("decision-text").fill("After the backup.");
+      await sheet.getByTestId("decision-send").click();
+      await expect(sheet.getByTestId("decision-answer")).toBeVisible();
       // The answer's toast is on screen while axe looks.
       await expect(page.getByTestId("toast").first()).toBeVisible();
     },
   },
   {
-    name: "plan run page waiting for a decision, with the answer form in its banner",
+    name: "plan run page waiting for a decision, with the answer form in its side column",
     open: async ({ page, me }) => {
       const project = me.projects[0];
       await seedPlanRunPlan(me, project);
@@ -618,8 +621,11 @@ const PAGES: Entry[] = [
       await expect(page.locator("#main").getByTestId("notification")).toHaveCount(1);
       await expectNoSeriousViolations(page, "inbox at 375 px");
       await open(page, `/inbox?decision=${decision}`);
-      await expect(page.locator("#main").getByTestId("decision-back")).toBeVisible();
-      await expect(page.locator("#main").getByTestId("inbox-list")).toBeHidden();
+      // The sheet takes the phone's whole width, its close button at hand.
+      const sheet = page.getByTestId("decision-sheet");
+      await expect(sheet.getByTestId("decision-form")).toBeVisible();
+      await expect(sheet.getByTestId("decision-close")).toBeVisible();
+      expect((await sheet.boundingBox())?.width).toBe(375);
     },
   },
   {
