@@ -114,15 +114,28 @@ test.describe("shell", () => {
     await signInAs(account);
     expect(await pickerProjects(page)).toEqual([first, second].sort());
 
-    // The home table shows the same list, with roles.
-    const table = page.getByTestId("projects-table");
-    await expect(table.getByRole("link")).toHaveText([first, second].sort());
-    await expect(table.getByRole("row").filter({ hasText: first })).toContainText("Đọc");
-    await expect(table.getByRole("row").filter({ hasText: second })).toContainText("Ghi");
+    // Home's Projects card lists the same projects, with roles.
+    const cards = page.locator("#main").getByTestId("home-projects").getByTestId("home-project");
+    await expect(cards).toHaveCount(2);
+    expect(await cards.evaluateAll((rows) => rows.map((row) => row.getAttribute("data-project")))).toEqual([first, second].sort());
+    await expect(cards.filter({ hasText: first })).toContainText("Đọc, không có plan đang chạy, 1 kho mã");
+    await expect(cards.filter({ hasText: second })).toContainText("Ghi");
+
+    // The picker says the same of each project with the Visibility of the grant, and finds one by a part of its name.
+    let menu = await openPicker(page);
+    await expect(menu.locator(`[data-project="${first}"]`)).toContainText("Đọc, Mức hiển thị: Internal, 1 kho mã, không có plan đang chạy");
+    await expect(menu.locator(`[data-project="${second}"]`)).toContainText("Ghi, Mức hiển thị: Public");
+    await menu.getByTestId("project-switcher-search").fill(second.split("-").slice(1).join("-"));
+    await expect(menu.locator("[data-project]")).toHaveCount(1);
+    await expect(menu.locator("[data-project]")).toHaveAttribute("data-project", second);
+    await page.keyboard.press("Escape"); // empties the field
+    await expect(menu.locator("[data-project]")).toHaveCount(2);
+    await page.keyboard.press("Escape");
+    await expect(menu).toBeHidden();
 
     // Choosing a project opens its overview, and the picker and user menu follow it.
-    const menu = await openPicker(page);
-    await menu.getByRole("menuitemradio", { name: first }).click();
+    menu = await openPicker(page);
+    await menu.locator(`[data-project="${first}"]`).click();
     await expect(page).toHaveURL(new RegExp(`/p/${first}$`));
     await expect(page.getByRole("heading", { level: 1, name: first })).toBeVisible();
     await expect(page.getByTestId("label-ladder").getByRole("listitem")).toHaveCount(4);

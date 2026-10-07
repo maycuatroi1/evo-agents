@@ -33,7 +33,7 @@ test.describe("signing in", () => {
   test("the GitHub web flow ends on the shell with the session cookie set", async ({ page, signInAs, context }) => {
     const account = newAccount("login");
     await signInAs(account);
-    await expect(page.getByRole("heading", { level: 1, name: "Dự án của tôi" })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: "Trang chủ" })).toBeVisible();
     await expect(page.getByTestId("user-menu")).toContainText(account.login);
     const session = (await context.cookies()).find((cookie) => cookie.name === SESSION_COOKIE);
     expect(session?.httpOnly).toBe(true);

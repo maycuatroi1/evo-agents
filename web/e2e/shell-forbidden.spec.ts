@@ -17,7 +17,7 @@ test.describe("refusals from the API", () => {
     const state = page.getByTestId("state-forbidden");
     await expect(state).toBeVisible();
     await expect(state.getByRole("heading", { name: "Bạn không có quyền xem trang này" })).toBeVisible();
-    await expect(state.getByRole("link", { name: "Về danh sách dự án" })).toHaveAttribute("href", "/");
+    await expect(state.getByRole("link", { name: "Về trang chủ" })).toHaveAttribute("href", "/");
     await expect(page.getByTestId("admin-stats")).toHaveCount(0);
     // The shell is still there around the state.
     await expect(page.getByTestId("user-menu")).toBeVisible();

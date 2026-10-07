@@ -105,13 +105,58 @@ async function seedSkill(me: Member) {
   await publishSkill(await apiOf(me), bundle, "team-notes", me.projects[0], { repo: "example-org/skills", commit: "0123abc" });
 }
 
+/**
+ * Home's every card, in the first project of `me`: a plan run waiting for their decision, a step run at work and one
+ * that failed (with Rerun), and their two workers.
+ */
+async function seedHome(me: Member) {
+  const project = me.projects[0];
+  await seedPlanRunPlan(me, project);
+  await planRunUnderway(me, project, uniqueName("a11y-home"), { waiting: true });
+  const { live, waiting } = await seedRuns(me);
+  await claimRun(live);
+  await startRun(live, waiting.id);
+}
+
 const PAGES: Entry[] = [
   {
-    name: "my projects",
+    name: "home",
     deployed: true,
     open: async ({ page }) => {
       await page.goto("/");
       await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+      await expect(page.locator("#main").getByTestId("state-loading")).toHaveCount(0);
+    },
+  },
+  {
+    name: "home with a decision, runs in flight, a failed run and the fleet",
+    open: async ({ page, me }) => {
+      await seedHome(me);
+      await open(page, "/");
+      const main = page.locator("#main");
+      await expect(main.getByTestId("needs-you-item")).toHaveCount(1);
+      await expect(main.getByTestId("in-flight-item").first()).toBeVisible();
+      await expect(main.getByTestId("recent-rerun")).toBeVisible();
+      await expect(main.getByTestId("fleet-worker").first()).toBeVisible();
+      await expect(main.getByTestId("summary-done-series")).toHaveCount(1);
+    },
+  },
+  {
+    name: "home with the decision sheet open from Needs you",
+    open: async ({ page, me }) => {
+      await seedHome(me);
+      await open(page, "/");
+      await page.locator("#main").getByTestId("needs-you-answer").click();
+      await expect(page.getByTestId("decision-sheet").getByTestId("decision-form")).toBeVisible();
+    },
+  },
+  {
+    name: "home on a small screen",
+    open: async ({ page, me }) => {
+      await seedHome(me);
+      await page.setViewportSize({ width: 375, height: 812 });
+      await open(page, "/");
+      await expect(page.locator("#main").getByTestId("needs-you-item")).toHaveCount(1);
     },
   },
   {
@@ -768,6 +813,13 @@ for (const scheme of ["light", "dark"] as const) {
       await page.goto("/admin");
       await expect(page.getByTestId("admin-stats")).toBeVisible();
       await expectNoSeriousViolations(page, `/admin as hub admin (${scheme})`);
+    });
+
+    test(`home of a member without a grant has no serious axe violation (${scheme})`, async ({ page, signInAs }) => {
+      test.skip(isDeployed, "signs in a new member through the local stack");
+      await signInAs(newAccount("a11y-nogrant"));
+      await expect(page.locator("#main").getByTestId("state-empty")).toBeVisible();
+      await expectNoSeriousViolations(page, `home without a grant (${scheme})`);
     });
 
     for (const entry of ADMIN_PAGES) {
