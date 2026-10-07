@@ -154,47 +154,68 @@ def sql(db: pg.Database, statement, params=()):
         return cursor.fetchall() if cursor.description else None
 
 
+def _user_id(conn, login: str) -> int:
+    """The id of the user ``login``, added when there is none."""
+    from sqlalchemy import select
+    from sqlalchemy.dialects.postgresql import insert
+
+    from evo_agents.hub import tables
+
+    users = tables.users
+    added = conn.execute(insert(users).values(login=login).on_conflict_do_nothing().returning(users.c.id)).scalar()
+    return added if added is not None else conn.execute(select(users.c.id).where(users.c.login == login)).scalar_one()
+
+
 def add_project(db: pg.Database, name: str = "demo", levels: list[str] | None = None) -> int:
     """A registered project, created by a user of its own (projects come from step 3's registry)."""
-    from psycopg.types.json import Jsonb
+    from sqlalchemy import insert
 
-    with pg.admin(db.admin_dsn) as conn:
-        owner = conn.execute(
-            "INSERT INTO users (login) VALUES (%s) ON CONFLICT DO NOTHING RETURNING id", (f"{name}-owner",)
-        ).fetchone()
-        if owner is None:
-            owner = conn.execute("SELECT id FROM users WHERE login = %s", (f"{name}-owner",)).fetchone()
-        return conn.execute(
-            "INSERT INTO projects (name, levels, locations, default_label, created_by) VALUES (%s, %s, %s, %s, %s) "
-            "RETURNING id",
-            (name, levels or LEVELS, ["any"], Jsonb({"level": (levels or LEVELS)[0]}), owner[0]),
-        ).fetchone()[0]
+    from evo_agents.hub import tables
+
+    projects = tables.projects
+    with engine(db).begin() as conn:
+        owner = _user_id(conn, f"{name}-owner")
+        project = insert(projects).values(
+            name=name,
+            levels=levels or LEVELS,
+            locations=["any"],
+            default_label={"level": (levels or LEVELS)[0]},
+            created_by=owner,
+        )
+        return conn.execute(project.returning(projects.c.id)).scalar_one()
 
 
 def insert_token(db: pg.Database, login: str, kind: str = "machine") -> str:
     """A live token of ``login`` written straight into the database, for tests about something else."""
+    from datetime import timedelta
+
+    from sqlalchemy import func, insert
+
+    from evo_agents.hub import tables
     from evo_agents.hub.server.security import hash_token, new_token
 
     token = new_token(kind)
-    with pg.admin(db.admin_dsn) as conn:
-        user_id = (
-            conn.execute(
-                "INSERT INTO users (login) VALUES (%s) ON CONFLICT DO NOTHING RETURNING id", (login,)
-            ).fetchone()
-            or conn.execute("SELECT id FROM users WHERE login = %s", (login,)).fetchone()
-        )
+    with engine(db).begin() as conn:
         conn.execute(
-            "INSERT INTO tokens (user_id, kind, token_hash, host, expires_at) "
-            "VALUES (%s, %s, %s, %s, now() + interval '90 days')",
-            (user_id[0], kind, hash_token(token), "test-host" if kind == "machine" else None),
+            insert(tables.tokens).values(
+                user_id=_user_id(conn, login),
+                kind=kind,
+                token_hash=hash_token(token),
+                host="test-host" if kind == "machine" else None,
+                expires_at=func.now() + timedelta(days=90),
+            )
         )
     return token
 
 
 def table_dump(db: pg.Database) -> str:
     """Every row of every hub table as JSON text, to search for a value that must not be stored."""
-    tables = [row[0] for row in sql(db, "SELECT tablename FROM pg_tables WHERE schemaname = 'public'")]
+    from sqlalchemy import Text, cast, column, func, select, table
+
+    catalog = table("pg_tables", column("schemaname", Text), column("tablename", Text))
+    names = [row[0] for row in sql(db, select(catalog.c.tablename).where(catalog.c.schemaname == "public"))]
     rows = []
-    for table in tables:
-        rows += [row[0] for row in sql(db, f'SELECT row_to_json(t)::text FROM "{table}" t')]
+    for name in names:
+        each = table(name).alias("t")
+        rows += [row[0] for row in sql(db, select(cast(func.row_to_json(each.table_valued()), Text)))]
     return json.dumps(rows)
