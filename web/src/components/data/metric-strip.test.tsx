@@ -82,7 +82,8 @@ describe("MetricStrip", () => {
     const image = screen.getByRole("img", { name: label });
     // The chart is drawn for the eye only and takes no focus; the label carries the values.
     expect(image.firstElementChild).toHaveAttribute("aria-hidden", "true");
-    expect(await screen.findByTestId("sparkline-chart")).toBeInTheDocument();
+    // Recharts is a chunk of its own; its first import in a busy test run can take more than findBy's default second.
+    expect(await screen.findByTestId("sparkline-chart", {}, { timeout: 5_000 })).toBeInTheDocument();
     expect(image.querySelector("[tabindex]")).toBeNull();
   });
 });

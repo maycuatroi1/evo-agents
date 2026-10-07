@@ -47,13 +47,23 @@
   },
   "projectSwitcher": {
     "label": "Projects",
+    "dialog": "Choose a project",
     "trigger": "Choose a project, current: {name}",
     "triggerEmpty": "Choose a project",
     "placeholder": "No project selected",
-    "allProjects": "All projects",
+    "hint": "Open a project to see its content",
+    "search": "Find a project",
+    "searchLabel": "Find a project by name",
+    "clear": "Clear the search",
+    "results": "{count, plural, =0 {No project matches} one {# project} other {# projects}}",
+    "noMatch": "No project matches “{query}”.",
     "none": "No project has been granted to you yet",
     "loadError": "The project list could not be loaded",
-    "hint": "Open a project to see its content"
+    "home": "Home",
+    "visibility": "Visibility: {level}",
+    "repos": "{count, plural, one {# repo} other {# repos}}",
+    "plans": "{count, plural, =0 {no active plan} one {# active plan} other {# active plans}}",
+    "decisions": "{count, plural, one {# open decision} other {# open decisions}}"
   },
   "userMenu": {
     "trigger": "Account {login}",
@@ -146,18 +156,92 @@
     }
   },
   "home": {
-    "title": "My projects",
-    "count": "{count, plural, =0 {No projects} one {# project} other {# projects}}",
-    "emptyTitle": "No project has been granted to you yet",
-    "emptyDescription": "Ask a hub administrator to grant a role to {login}, then reload this page.",
-    "columns": {
-      "name": "Project",
-      "role": "Role",
-      "visibility": "Visibility",
-      "repos": "Repos",
-      "updated": "Updated"
+    "title": "Home",
+    "metrics": {
+      "label": "Your work across projects",
+      "waiting": "Waiting on you",
+      "waitingMeta": "#{run}, asked <time></time>",
+      "waitingNone": "nothing waits for your answer",
+      "running": "Running",
+      "runningMeta": "#{run} on {worker}",
+      "runningMetaMore": "#{run} on {worker}, and {more} more",
+      "runningNone": "no agent is at work",
+      "queued": "Queued",
+      "queuedMeta": "#{run}, queued <time></time>",
+      "queuedNone": "no run waits for a worker",
+      "done": "Done, 7 days",
+      "doneSeries": "Runs done per day, {from} to {to}: {values}",
+      "failed": "Failed, 7 days",
+      "failedLost": "and {count} lost",
+      "failedMeta": "#{run}: {error}",
+      "failedMetaPlain": "#{run}, {project}",
+      "failedNone": "none in the last 7 days",
+      "quietTitle": "All quiet.",
+      "quietText": "No run is in progress and nothing waits for you.",
+      "quietWeek": "Last 7 days: {done} done, {failed} failed, {lost} lost."
     },
-    "open": "Open project {name}"
+    "needs": {
+      "title": "Needs you",
+      "count": "{count, plural, one {# decision waits for your answer} other {# decisions wait for your answer}}",
+      "inbox": "Open inbox",
+      "answer": "Answer",
+      "answerLabel": "Answer decision #{id}",
+      "where": "{project}, {plan}, step {step}",
+      "wherePlan": "{project}, {plan}",
+      "asked": "asked <time></time>",
+      "parksIn": "parks in {duration}",
+      "parked": "parked <time></time>",
+      "more": "{count, plural, one {# more in the inbox} other {# more in the inbox}}"
+    },
+    "flight": {
+      "title": "In flight",
+      "count": "{count, plural, one {# run in flight} other {# runs in flight}}",
+      "where": "{project}, {plan}, step {step}",
+      "wherePlan": "{project}, {plan}",
+      "steps": "{done} of {total} steps done",
+      "stepsShort": "{done}/{total}",
+      "waitingYou": "Waiting for you",
+      "waitingFor": "Waiting for {owner}",
+      "noWorker": "no worker yet",
+      "ran": "running for {duration}",
+      "queuedAgo": "queued <time></time>"
+    },
+    "recent": {
+      "title": "Recent",
+      "empty": "No run has ended yet. Runs show here once they finish, fail or are cancelled.",
+      "ranOn": "{duration} on {worker}",
+      "ran": "{duration}",
+      "cancelled": "Cancelled by {owner}",
+      "rerun": "Rerun",
+      "rerunLabel": "Rerun #{id}",
+      "rerunning": "Rerunning"
+    },
+    "fleet": {
+      "title": "Fleet",
+      "all": "All workers",
+      "busy": "Busy {held}/{slots}",
+      "line": "{runtimes}, {os} {arch}",
+      "noRuntime": "no runtime reported",
+      "heartbeat": "last heartbeat <time></time>",
+      "never": "no heartbeat yet",
+      "emptyTitle": "No worker of yours yet",
+      "emptyText": "A worker is a machine of yours that runs plan steps. Register one on the Workers page.",
+      "register": "Register a worker",
+      "error": "Couldn't read your workers.",
+      "retry": "Try again"
+    },
+    "projects": {
+      "title": "Projects",
+      "count": "{count, plural, one {# project} other {# projects}}",
+      "open": "Open project {name}"
+    },
+    "empty": {
+      "title": "No project has been granted to you yet",
+      "description": "A hub administrator grants roles on projects. Send them your login, {login}, then reload this page.",
+      "adminDescription": "You administer the hub but hold no role on a project. Grant yourself one in Administration, then reload this page.",
+      "admin": "Open Administration",
+      "copyLogin": "Copy your login"
+    }
   },
   "project": {
     "harness": "Harness",
@@ -689,7 +773,7 @@
     "status": "HTTP status {status}",
     "apiMessage": "Message from the API",
     "retry": "Try again",
-    "backHome": "Back to projects",
+    "backHome": "Back to Home",
     "noResults": {
       "inUse": "Filters in use",
       "filter": "{label}:",

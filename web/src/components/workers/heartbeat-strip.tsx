@@ -28,6 +28,49 @@ const CELL: Record<CellState, string> = {
 
 const noVersion = () => -1;
 
+/** The kit's compact bars (Fleet on Home): a full bar received, a short one missed, a 3 px stub not watched. */
+const BAR: Record<CellState, string> = {
+  received: "h-full bg-success-solid",
+  missed: "h-2 bg-danger-solid",
+  unknown: "h-[3px] bg-neutral-solid",
+  before: "h-px bg-border",
+};
+
+/**
+ * The kit's HeartbeatStrip at its compact size, for the Fleet card on Home: 60 bars of the last hour, 18 px high, from
+ * the same observations as the worker page's strip. The bars are drawn for the eye; the strip is one image named with
+ * the counts, so a screen reader hears "30 with a heartbeat, 0 without, 30 not recorded".
+ */
+export function HeartbeatBars({ workerId, createdAt, className }: { workerId: number; createdAt: string; className?: string }) {
+  const t = useTranslations("workers.heartbeat");
+  const now = useNow(true);
+  const version = useSyncExternalStore(subscribeHeartbeats, heartbeatsVersion, noVersion);
+  if (now === null || version < 0) return <Skeleton className={cn("h-[18px] w-full max-w-[298px] rounded-xs", className)} aria-hidden="true" />;
+  const cells = heartbeatCells(observationsOf(workerId), Date.parse(createdAt), now);
+  const counts = countCells(cells);
+  const summary = t("summary", {
+    received: counts.received,
+    missed: counts.missed,
+    unknown: counts.unknown + counts.before,
+    minutes: STRIP_MINUTES,
+  });
+  return (
+    <div
+      role="img"
+      aria-label={summary}
+      title={summary}
+      className={cn("grid h-[18px] w-full max-w-[298px] grid-cols-[repeat(60,minmax(0,1fr))] items-end gap-0.5", className)}
+      data-testid="heartbeat-bars"
+      data-received={counts.received}
+      data-missed={counts.missed}
+    >
+      {cells.map((cell) => (
+        <span key={cell.start} className={cn("block w-full rounded-[1px]", BAR[cell.state])} data-state={cell.state} />
+      ))}
+    </div>
+  );
+}
+
 /**
  * One cell per minute of the last hour, from what this tab saw (see heartbeats.ts). A received minute is a full
  * bar, a missed one a short red bar, a minute nobody watched a dot on the baseline: shape and colour both tell them

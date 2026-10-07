@@ -5,7 +5,23 @@ import { ADMIN_ACCOUNT, machineToken } from "./support/hub";
 import { grantOn, kgPath, nodePath, SHARED_NODE, sharedKg } from "./support/kg";
 import { apiOf, memoryFile, putMemory } from "./support/memories";
 import { ACTIVE_PLAN, open, seedPlans } from "./support/plans";
-import { claimRun, dispatch, liveWorker, RUN_PLAN, runPath, runToReview, say, seedRunPlan, sendEvents, startRun, uploadDiff } from "./support/runs";
+import {
+  askDecision,
+  claimRun,
+  dispatch,
+  liveWorker,
+  planRunUnderway,
+  reportState,
+  RUN_PLAN,
+  runPath,
+  runToReview,
+  say,
+  seedPlanRunPlan,
+  seedRunPlan,
+  sendEvents,
+  startRun,
+  uploadDiff,
+} from "./support/runs";
 import { packSkill, publishSkill } from "./support/skills";
 import { heartbeat, registerWorker, RUNTIMES } from "./support/workers";
 
@@ -13,8 +29,8 @@ import { heartbeat, registerWorker, RUNTIMES } from "./support/workers";
  * A table wider than the page scrolls inside its own region; the document itself never scrolls sideways. Step 25
  * found a wide table widening the shell's <main> at 768 and 1024 px, where the open sidebar leaves the content its
  * narrowest for the breakpoint; the shell's inset is min-w-0 since. The pages with the widest tables of each area
- * (admin, plans, memories, skills, knowledge graph, workers, runs), seeded with long unbroken names, at 375, 768 and 1024
- * px.
+ * (admin, plans, memories, skills, knowledge graph, workers, runs) and Home, seeded with long unbroken names, at 375,
+ * 768 and 1024 px.
  */
 const WIDTHS = [375, 768, 1024];
 const LONG = "a-rather-long-unbroken-name-that-never-wraps-in-a-table-cell";
@@ -122,4 +138,19 @@ test("runs pages never scroll sideways at 375, 768 and 1024 px", async ({ page, 
     { path: runPath(project, run.id), ready: shown("log-line") },
     { path: `${runPath(project, run.id)}/diff`, ready: shown("diff-file") },
   ]);
+});
+
+test("home never scrolls sideways at 375, 768 and 1024 px", async ({ page, member }) => {
+  const me = await member([{ role: "writer", maxLevel: "internal" }]);
+  const project = me.projects[0];
+  // Long unbroken names in every card: a worker, a decision's question and a failure.
+  await seedPlanRunPlan(me, project);
+  const { live, run } = await planRunUnderway(me, project, `${LONG}-plan`, { waiting: true });
+  await askDecision(live, run.id, `${LONG}${LONG}?`, "4");
+  await seedRunPlan(me, project);
+  const step = await liveWorker(me, project, `${LONG}-step`);
+  const [failing] = await dispatch(me, project, ["2"]);
+  await claimRun(step);
+  await reportState(step, failing.id, { state: "failed", error: `${LONG}${LONG}${LONG}` });
+  await noSidewaysScroll(page, [{ path: "/", ready: shown("needs-you-item") }]);
 });

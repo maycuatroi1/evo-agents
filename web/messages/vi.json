@@ -47,13 +47,23 @@
   },
   "projectSwitcher": {
     "label": "Dự án",
+    "dialog": "Chọn dự án",
     "trigger": "Chọn dự án, đang chọn {name}",
     "triggerEmpty": "Chọn dự án",
     "placeholder": "Chưa chọn dự án",
-    "allProjects": "Tất cả dự án",
+    "hint": "Mở dự án để xem nội dung",
+    "search": "Tìm dự án",
+    "searchLabel": "Tìm dự án theo tên",
+    "clear": "Xoá ô tìm",
+    "results": "{count, plural, =0 {Không dự án nào khớp} other {# dự án}}",
+    "noMatch": "Không dự án nào khớp “{query}”.",
     "none": "Bạn chưa được cấp dự án nào",
     "loadError": "Không tải được danh sách dự án",
-    "hint": "Mở dự án để xem nội dung"
+    "home": "Trang chủ",
+    "visibility": "Mức hiển thị: {level}",
+    "repos": "{count, plural, other {# kho mã}}",
+    "plans": "{count, plural, =0 {không có plan đang chạy} other {# plan đang chạy}}",
+    "decisions": "{count, plural, other {# quyết định đang mở}}"
   },
   "userMenu": {
     "trigger": "Tài khoản {login}",
@@ -146,18 +156,92 @@
     }
   },
   "home": {
-    "title": "Dự án của tôi",
-    "count": "{count, plural, =0 {Không có dự án} other {# dự án}}",
-    "emptyTitle": "Bạn chưa được cấp dự án nào",
-    "emptyDescription": "Nhờ quản trị viên hub cấp vai trò cho tài khoản {login}, rồi tải lại trang này.",
-    "columns": {
-      "name": "Dự án",
-      "role": "Vai trò",
-      "visibility": "Mức hiển thị",
-      "repos": "Kho mã",
-      "updated": "Cập nhật"
+    "title": "Trang chủ",
+    "metrics": {
+      "label": "Công việc của bạn ở mọi dự án",
+      "waiting": "Chờ bạn",
+      "waitingMeta": "#{run}, hỏi <time></time>",
+      "waitingNone": "không có gì chờ bạn trả lời",
+      "running": "Đang chạy",
+      "runningMeta": "#{run} trên {worker}",
+      "runningMetaMore": "#{run} trên {worker}, và {more} run khác",
+      "runningNone": "không agent nào đang làm việc",
+      "queued": "Đang chờ",
+      "queuedMeta": "#{run}, vào hàng đợi <time></time>",
+      "queuedNone": "không run nào chờ worker",
+      "done": "Xong, 7 ngày",
+      "doneSeries": "Run xong mỗi ngày, từ {from} đến {to}: {values}",
+      "failed": "Thất bại, 7 ngày",
+      "failedLost": "và {count} mất lease",
+      "failedMeta": "#{run}: {error}",
+      "failedMetaPlain": "#{run}, {project}",
+      "failedNone": "không có trong 7 ngày qua",
+      "quietTitle": "Mọi thứ yên ắng.",
+      "quietText": "Không run nào đang chạy và không có gì chờ bạn.",
+      "quietWeek": "7 ngày qua: {done} xong, {failed} thất bại, {lost} mất lease."
     },
-    "open": "Mở dự án {name}"
+    "needs": {
+      "title": "Cần bạn",
+      "count": "{count, plural, other {# quyết định chờ bạn trả lời}}",
+      "inbox": "Mở Inbox",
+      "answer": "Trả lời",
+      "answerLabel": "Trả lời quyết định #{id}",
+      "where": "{project}, {plan}, bước {step}",
+      "wherePlan": "{project}, {plan}",
+      "asked": "hỏi <time></time>",
+      "parksIn": "tạm gác sau {duration}",
+      "parked": "tạm gác <time></time>",
+      "more": "{count, plural, other {còn # quyết định trong Inbox}}"
+    },
+    "flight": {
+      "title": "Đang diễn ra",
+      "count": "{count, plural, other {# run đang hoạt động}}",
+      "where": "{project}, {plan}, bước {step}",
+      "wherePlan": "{project}, {plan}",
+      "steps": "xong {done} trên {total} bước",
+      "stepsShort": "{done}/{total}",
+      "waitingYou": "Đang chờ bạn",
+      "waitingFor": "Đang chờ {owner}",
+      "noWorker": "chưa có worker",
+      "ran": "đã chạy {duration}",
+      "queuedAgo": "vào hàng đợi <time></time>"
+    },
+    "recent": {
+      "title": "Vừa kết thúc",
+      "empty": "Chưa run nào kết thúc. Run hiện ở đây khi xong, thất bại hoặc bị huỷ.",
+      "ranOn": "{duration} trên {worker}",
+      "ran": "{duration}",
+      "cancelled": "{owner} đã huỷ",
+      "rerun": "Chạy lại",
+      "rerunLabel": "Chạy lại #{id}",
+      "rerunning": "Đang chạy lại"
+    },
+    "fleet": {
+      "title": "Worker của bạn",
+      "all": "Mọi worker",
+      "busy": "Bận {held}/{slots}",
+      "line": "{runtimes}, {os} {arch}",
+      "noRuntime": "chưa báo runtime nào",
+      "heartbeat": "heartbeat gần nhất <time></time>",
+      "never": "chưa có heartbeat",
+      "emptyTitle": "Bạn chưa có worker nào",
+      "emptyText": "Worker là máy của bạn chạy các bước của plan. Đăng ký một máy ở trang Worker.",
+      "register": "Đăng ký worker",
+      "error": "Không đọc được danh sách worker của bạn.",
+      "retry": "Thử lại"
+    },
+    "projects": {
+      "title": "Dự án",
+      "count": "{count, plural, other {# dự án}}",
+      "open": "Mở dự án {name}"
+    },
+    "empty": {
+      "title": "Bạn chưa được cấp dự án nào",
+      "description": "Quản trị viên hub cấp vai trò trong từng dự án. Gửi họ tên đăng nhập của bạn, {login}, rồi tải lại trang này.",
+      "adminDescription": "Bạn quản trị hub nhưng chưa có vai trò trong dự án nào. Tự cấp cho mình ở trang Quản trị, rồi tải lại trang này.",
+      "admin": "Mở trang Quản trị",
+      "copyLogin": "Sao chép tên đăng nhập"
+    }
   },
   "project": {
     "harness": "Harness",
@@ -689,7 +773,7 @@
     "status": "Mã HTTP {status}",
     "apiMessage": "Thông báo từ API",
     "retry": "Thử lại",
-    "backHome": "Về danh sách dự án",
+    "backHome": "Về trang chủ",
     "noResults": {
       "inUse": "Bộ lọc đang dùng",
       "filter": "{label}:",

@@ -334,6 +334,16 @@ Shared pieces built on them:
   language, sign out) are the kit's switch: a bordered `card` control, the name over an `fg-subtle` line. The top bar
   (`site-header.tsx`) holds the sidebar toggle, the breadcrumb (13 px, slashes, the trail starts at the project), the
   page's LiveIndicator and the inbox bell. Page header below.
+- `components/shell/project-switcher.tsx`: the switcher opens a popover (`ui/popover.tsx`, a dialog named "Choose a
+  project", to the right of the sidebar, below the trigger in the phone's sheet) with a search field on top, focused
+  as it opens, that keeps the projects whose name holds every word typed, the count said in a polite live region. The
+  projects are a navigation of links, exactly those `GET /v1/projects` returns (the grants; every project for a hub
+  admin): the tile, the name, then the role, "Visibility: Internal", the repos and the active plans in `caption`
+  `fg-subtle`, and the open decisions as an `attention` count said in words. The counts come from
+  `GET /v1/me/overview`, read when the switcher opens; a hub admin's project without a grant shows "No role" and its
+  repos. The current project is `surface-selected` and `aria-current`. Down from the field enters the list, the arrows,
+  Home and End move in it, up from the first goes back to the field; the first Escape empties the field, the next
+  closes. Home sits at its foot.
 - `components/shell/page-header.tsx`: the page head of the kit, one row. `title` is the one h1 (`page-title`, Plex
   Sans, wrapping anywhere for a long unbroken name), `status` the state of what it names (a `StatusBadge` at `lg`),
   `tags` its kind, role, counts and identifier chips, `actions` the page's buttons on the right (`ml-auto`), and `sub`
@@ -369,6 +379,27 @@ Shared pieces built on them:
   one line on `surface-sunken` ("All quiet. No run is in progress, queued or waiting for review." and Dispatch for a
   writer): the runs page passes it while no plan run is parked; the workers page does not, since its counts are the
   fleet's state and an offline machine must stay in view.
+- `components/home`, Home (`/`), the kit's MissionControl: one read of `GET /v1/me/overview` (prefetched on the
+  server with the workers list, then asked every 5 seconds while a run is in flight or a decision is open and every 30
+  otherwise; the page's LiveIndicator query) and the workers list for the Fleet card. The page head is "Home"; under
+  it the MetricStrip of five cells: Waiting on you (`attention`, the oldest of the visitor's open decisions named),
+  Running (`running` with the live dot, the run and its worker), Queued (the run that waited longest), Done in 7 days
+  with the sparkline of `done_by_day` (UTC days, every value in its label) and Failed in 7 days with "and N lost" and
+  the last failure's reason. With no run in flight and no decision open it gives way to the quiet line, which still says
+  the week's figures. Then two columns from the lg breakpoint (300 px on the right, 340 px from xl), one below, in the
+  order Needs you, In flight, Recent, Fleet, Projects; between md and lg Fleet and Projects sit side by side. Each card
+  has a 48 px head (the h2, a count pill said in words, a link on the right) over rows of a 20 px mark, the title over
+  one `caption` line in `fg-subtle`, and what ends the row; in a card narrower than 576 px (a container query) the end
+  moves under the line. Needs you lists only the open decisions the visitor answers (`yours`) and disappears when there
+  is none: the question links to `/inbox?decision=ID`, a plain click and the primary Answer (named "Answer decision
+  #7") open the DecisionSheet over Home, loaded on demand (`next/dynamic`, asked for when the pointer or focus reaches
+  Answer), so Answer then Send answer answers with the agent's pick. In flight lists the active runs (the agent at work
+  first with the live dot, waiting and parked, queued): a plan run carries its tag and its steps done of the total as a
+  bar; a waiting run says whose answer it waits for. Recent lists the runs that ended last, a failure's reason in
+  `danger`, and Rerun (ghost, `RotateCcw`) on the visitor's own failed or lost run of one step where they write. Fleet
+  lists the visitor's own workers with `HeartbeatBars`; Projects each project of the grants with the role, active plans,
+  repos and open decisions. A member without a grant sees the EmptyState that says a hub administrator grants roles,
+  with their login to copy; a hub admin without one is sent to Administration. The pure parts are `home/model.ts`.
 - `components/feedback/toast.tsx` and `ui/sonner.tsx`: the kit's Toast through Sonner, mounted once in `providers.tsx`.
   Bottom right, 24 px from the edges (16 on phones), 380 px wide, z-index 60, on `surface-raised` inside a `border` edge
   with `shadow-popover` and 8 px corners: the tone's Lucide icon, a past-tense title in `body-strong` ("Run #13
@@ -408,7 +439,9 @@ Shared pieces built on them:
   every 2 seconds while its pairing code waits. Draining or revoking a worker asks for its name, typed out
   (`confirm-by-name.tsx`). The hub keeps only a worker's latest heartbeat, so the 60-minute heartbeat strip is built
   from what the tab has read (`heartbeats.ts`): a received minute is a full bar, a missed one a short red bar, a
-  minute nobody watched a dot, with the counts written out beside it.
+  minute nobody watched a dot, with the counts written out beside it. `HeartbeatBars` is the kit's compact strip of
+  the same cells for Home's Fleet card: 60 bars 18 px high (a full `success-solid` bar, an 8 px `danger-solid` one, a
+  3 px `neutral-solid` stub), one image named with the counts.
 - `components/runs`: a run is in one of the API's states, waiting (a plan run's agent asked its owner a decision) and
   parked (nobody answered for 24 hours) included; both show in the running phase of a run's stepper, under their own
   name and icon. The runs pages ask the hub every 5 seconds while the project (or the step, or the worker) has an

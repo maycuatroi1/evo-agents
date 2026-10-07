@@ -18,7 +18,7 @@ describe("ApiErrorState", () => {
   it("says the visitor has no access on a 403", () => {
     renderVi(<ApiErrorState error={info(403)} />);
     expect(screen.getByRole("heading", { name: "Bạn không có quyền xem trang này" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Về danh sách dự án" })).toHaveAttribute("href", "/");
+    expect(screen.getByRole("link", { name: "Về trang chủ" })).toHaveAttribute("href", "/");
   });
 
   it("says not found on a 404", () => {
