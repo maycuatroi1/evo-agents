@@ -80,7 +80,8 @@
       "runs": "Run",
       "plans": "Plan",
       "workers": "Worker",
-      "goto": "Đi tới"
+      "goto": "Đi tới",
+      "help": "Trợ giúp"
     },
     "actions": {
       "runPlan": "Chạy plan {plan}",
@@ -115,7 +116,55 @@
     "noMatch": "Không có gì khớp “{query}” trong {scope}.",
     "trySwitch": "Nhấn Tab để đổi dự án.",
     "searching": "Đang tìm run",
-    "partial": "Một phần kết quả không đọc được. Thử lại sau giây lát."
+    "partial": "Một phần kết quả không đọc được. Thử lại sau giây lát.",
+    "shortcuts": "Phím tắt"
+  },
+  "shortcuts": {
+    "title": "Phím tắt",
+    "description": "Phím đơn chỉ có tác dụng khi con trỏ không nằm trong ô nhập chữ hay terminal.",
+    "close": "Đóng",
+    "list": "Tất cả phím tắt",
+    "then": "rồi",
+    "off": "Đã tắt",
+    "groups": {
+      "general": "Chung",
+      "goto": "Đi tới",
+      "actions": "Hành động"
+    },
+    "names": {
+      "palette": "Mở bảng lệnh",
+      "search": "Tìm trong trang này",
+      "help": "Xem các phím tắt",
+      "sidebar": "Ẩn hoặc hiện thanh bên",
+      "close": "Đóng hộp thoại hoặc menu",
+      "goHome": "Trang chủ",
+      "goInbox": "Inbox",
+      "goPlans": "Plans",
+      "goRuns": "Run",
+      "goWorkers": "Worker",
+      "dispatch": "Dispatch một bước",
+      "send": "Gửi câu trả lời hoặc tin nhắn"
+    },
+    "where": {
+      "project": "Của dự án đang mở",
+      "writer": "Trên các trang của dự án, với vai trò Ghi"
+    },
+    "keys": {
+      "command": "Command",
+      "control": "Control",
+      "enter": "Enter",
+      "escape": "Escape",
+      "slash": "Dấu gạch chéo",
+      "question": "Dấu chấm hỏi"
+    },
+    "single": {
+      "label": "Phím tắt một phím",
+      "hint": "/, ?, D và các phím G. Tắt đi nếu chúng vướng việc nhập bằng giọng nói hay một công cụ khác."
+    },
+    "needProject": {
+      "title": "Mở một dự án trước",
+      "text": "Plan và run thuộc về một dự án. Chọn dự án ở thanh bên."
+    }
   },
   "userMenu": {
     "trigger": "Tài khoản {login}",
@@ -129,6 +178,7 @@
     "themeDark": "Tối",
     "themeSystem": "Theo hệ thống",
     "language": "Ngôn ngữ",
+    "shortcuts": "Phím tắt",
     "logout": "Đăng xuất",
     "loggingOut": "Đang đăng xuất…",
     "logoutFailed": "Chưa đăng xuất được. Thử lại sau ít phút."

@@ -7,6 +7,7 @@ import { useTranslations } from "next-intl";
 import { useId, useState } from "react";
 
 import { useLiveQuery } from "@/components/live/live-context";
+import { ShortcutKeys, useDispatchShortcut } from "@/components/shell/shortcuts";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { browserApi } from "@/lib/api/browser";
@@ -45,6 +46,8 @@ export function StepRuns({ project, planId, stepKey }: { project: string; planId
   const isReady = readiness?.ready === true;
   // While the plan has a plan run, every step is that run's: Run this step stays locked, and says which run holds it.
   const planRun = ready.data?.plan_run ? { planId: ready.data.plan_id, run: ready.data.plan_run } : null;
+  // D runs this step while it is ready; otherwise D opens the project's Dispatch, as on the project's other pages.
+  const dispatchKey = useDispatchShortcut(canDispatch && isReady ? () => setDispatching(true) : null);
 
   return (
     <section className="flex flex-col gap-3 rounded-md border bg-card shadow-raised p-4" aria-labelledby={`${ids}-title`} data-testid="step-runs">
@@ -78,6 +81,7 @@ export function StepRuns({ project, planId, stepKey }: { project: string; planId
             className="shrink-0 aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
             aria-disabled={!isReady || undefined}
             aria-describedby={readiness ? `${ids}-readiness` : undefined}
+            aria-keyshortcuts={dispatchKey ? "D" : undefined}
             onClick={() => {
               if (isReady) setDispatching(true);
             }}
@@ -86,6 +90,9 @@ export function StepRuns({ project, planId, stepKey }: { project: string; planId
           >
             <Play aria-hidden="true" />
             {t("run")}
+            {dispatchKey ? (
+              <ShortcutKeys id="dispatch" className="ml-0.5" keyClassName="border-current bg-transparent text-current opacity-70" />
+            ) : null}
           </Button>
         ) : null}
       </div>

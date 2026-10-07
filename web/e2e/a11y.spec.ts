@@ -608,6 +608,36 @@ const PAGES: Entry[] = [
     },
   },
   {
+    name: "keyboard shortcuts dialog, and the keys beside the runs page's Dispatch and a sidebar item",
+    open: async ({ page, me }) => {
+      await seedRuns(me);
+      await open(page, `/p/${me.projects[0]}/runs`);
+      await expect(page.getByTestId("palette-trigger-key")).toBeAttached(); // the shell has hydrated
+      await expect(page.locator('#main [data-testid="runs-dispatch"] [data-shortcut="dispatch"]')).toBeVisible();
+      await page.getByTestId("nav-workers").hover();
+      await expect(page.locator('[data-testid="nav-workers"] [data-shortcut="goWorkers"]')).toBeVisible();
+      await expectNoSeriousViolations(page, "the keys beside their actions");
+      await page.keyboard.press("Shift+Slash");
+      await expect(page.getByTestId("shortcuts-dialog")).toBeVisible();
+    },
+  },
+  {
+    name: "keyboard shortcuts dialog on a small screen, single keys off",
+    open: async ({ page }) => {
+      await page.setViewportSize({ width: 375, height: 812 });
+      await open(page, "/");
+      await expect(page.getByTestId("palette-trigger-key")).toBeAttached();
+      await page.getByTestId("palette-trigger").click();
+      await expect(page.getByTestId("command-palette").getByRole("combobox")).toBeFocused();
+      await page.keyboard.type("shortcuts");
+      await page.keyboard.press("Enter");
+      const dialog = page.getByTestId("shortcuts-dialog");
+      await expect(dialog).toBeVisible();
+      await dialog.getByTestId("shortcuts-single").click();
+      await expect(dialog.locator('[data-shortcut="search"]')).toHaveAttribute("data-off", "true");
+    },
+  },
+  {
     name: "run page with its live log, the owner's controls and the Take over dialog",
     open: async ({ page, me }) => {
       const { project, run } = await seedLiveRun(me);

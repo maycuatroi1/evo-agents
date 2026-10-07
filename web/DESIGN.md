@@ -422,7 +422,24 @@ Shared pieces built on them:
   in it deletes, cancels, drains or revokes. Esc closes it and gives focus back to what held it, and a dialog it
   opened gives focus back there too. The foot says the keys (↑ ↓ move, ↵ open, Tab switch project; hidden under 768
   px) and the scope; a polite live region says how many results the scope holds; no match names the query and the
-  scope, and a read that failed says some results could not be read.
+  scope, and a read that failed says some results could not be read. An item that a key also does from the page
+  shows that key after its meta (G I on Inbox, G P and G R on the page's project's Plans and Runs, D on Dispatch a
+  step there), and once something typed names it, a Help group offers Keyboard shortcuts.
+- `components/shell/shortcuts.tsx`: the registry of every key the web answers to (`SHORTCUTS`) and the shell's own
+  keys. G then H, I, P, R or W within a second goes to Home, Inbox, the Plans and Runs of the page's project (or of
+  the visitor's only project; with several and none shown, a note says to open one), and Workers; after 400 ms
+  without a second key a hint at the foot of the screen names them (for the eye, `aria-hidden`; under 768 px none).
+  D opens Dispatch on a project's pages for a writer: the page's own where it registers one (`useDispatchShortcut`:
+  the runs page's button, a ready step's Run this step), else the shell's, fetched at the first D. `?` opens the
+  shortcuts dialog, also in the account menu and the palette: a dialog on `surface-raised`, 512 px wide, the keys by
+  group (General, Go to, Actions) in a description list, each row the action, where it works when not everywhere, and
+  its keys as `kbd`, "then" between the strokes of a sequence and the whole said in words for screen readers ("G then
+  R", "Control K"); at its foot the switch Single-key shortcuts. Cmd K or Ctrl K, `/` and Cmd or Ctrl with Enter keep
+  their handlers where they act; the registry gives their `kbd` its text (`shortcutText`). `ShortcutKeys` is a
+  shortcut's keys beside its action, `aria-hidden` (the action carries `aria-keyshortcuts` where ARIA can say the
+  key, and the dialog says every key), hidden under 768 px: on the sidebar's items while the pointer is over one or
+  it has keyboard focus, in the runs page's Dispatch and a step's Run this step, in the account menu's Keyboard
+  shortcuts, and on the palette's items.
 - `components/shell/page-header.tsx`: the page head of the kit, one row. `title` is the one h1 (`page-title`, Plex
   Sans, wrapping anywhere for a long unbroken name), `status` the state of what it names (a `StatusBadge` at `lg`),
   `tags` its kind, role, counts and identifier chips, `actions` the page's buttons on the right (`ml-auto`), and `sub`
@@ -784,9 +801,15 @@ so the server renders a page the same way for everyone who has not picked a lang
 - Text contrast at least 4.5:1 in both themes (tables above); a 2 px focus outline in `ring` (`focus-ring`, the
   brand cobalt) with a 2 px offset on every focusable element.
 - A skip link to `#main`, one `<main>`, a labelled `<nav>` and breadcrumb, an `h1` on every page.
-- Keys: Cmd K or Ctrl K opens the command palette, `/` focuses the page's search, Cmd or Ctrl with Enter sends an
-  answer or a message, Ctrl or Cmd with B folds the sidebar, Esc closes and gives focus back; each is shown in a `kbd`
-  beside what it does or in the palette's foot.
+- Keys (`components/shell/shortcuts.tsx` lists them all, and `?` shows them): Cmd K or Ctrl K opens the command
+  palette, `/` focuses the page's search, G then H, I, P, R or W goes to Home, Inbox, Plans, Runs or Workers, D
+  opens Dispatch on a writer's project page, `?` lists the keys, Cmd or Ctrl with Enter sends an answer or a message,
+  Ctrl or Cmd with B folds the sidebar, Esc closes and gives focus back; each is shown in a `kbd` beside what it does
+  or in the palette's foot. A single key never takes a key pressed with Cmd, Ctrl or Alt (the browser's and the
+  screen reader's own), nor one typed in a text field, the web terminal, a menu, a list or a dialog
+  (`characterKeyBlocked` in `lib/keyboard.ts`); a screen reader in browse mode keeps its letters, since the page never
+  receives them. The shortcuts dialog turns single keys off on this browser (WCAG 2.1.4, for speech input and switch
+  devices); the keys with Cmd or Ctrl stay.
 - `e2e/a11y.spec.ts` runs axe (WCAG 2.2 A and AA rules) on every page and open menu in light and dark and
   fails on any serious or critical violation.
 

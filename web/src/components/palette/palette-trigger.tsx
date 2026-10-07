@@ -3,6 +3,7 @@
 import { Search } from "lucide-react";
 import { useTranslations } from "next-intl";
 
+import { shortcutText } from "@/components/shell/shortcuts";
 import { Kbd } from "@/components/ui/kbd";
 import { useModifierKey } from "@/lib/keyboard";
 
@@ -34,7 +35,7 @@ export function PaletteTrigger() {
       <span className="truncate max-lg:sr-only">{t("trigger")}</span>
       {modifier ? (
         <Kbd className="ml-auto max-lg:hidden" aria-hidden="true" data-testid="palette-trigger-key">
-          {modifier === "meta" ? "⌘K" : "Ctrl K"}
+          {shortcutText("palette", modifier)}
         </Kbd>
       ) : null}
     </button>

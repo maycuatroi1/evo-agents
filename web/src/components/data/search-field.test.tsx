@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { setCharacterKeys } from "@/lib/keyboard";
 import { renderVi } from "@/test/render";
 
 import { SearchField } from "./search-field";
@@ -36,6 +37,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.useRealTimers();
+  act(() => setCharacterKeys(true));
 });
 
 describe("SearchField", () => {
@@ -112,6 +114,39 @@ describe("the / shortcut", () => {
     fireEvent.keyDown(document.body, { key: "/" });
     expect(screen.getByRole("searchbox")).not.toHaveFocus();
     dialog.remove();
+  });
+
+  it("leaves / to the web terminal and to an open menu", () => {
+    renderVi(
+      <>
+        <div className="hub-terminal" tabIndex={0} data-testid="terminal" />
+        <div role="menu">
+          <div role="menuitem" tabIndex={-1} data-testid="item" />
+        </div>
+        <Field />
+      </>,
+    );
+    for (const id of ["terminal", "item"]) {
+      const owner = screen.getByTestId(id);
+      owner.focus();
+      expect(fireEvent.keyDown(owner, { key: "/" })).toBe(true);
+      expect(owner).toHaveFocus();
+    }
+  });
+
+  it("is off, its key neither shown nor announced, while single-key shortcuts are off", () => {
+    renderVi(<Field />);
+    act(() => setCharacterKeys(false));
+    const input = screen.getByRole("searchbox");
+    expect(input).not.toHaveAttribute("aria-keyshortcuts");
+    expect(screen.queryByText("/")).not.toBeInTheDocument();
+    fireEvent.keyDown(document.body, { key: "/" });
+    expect(input).not.toHaveFocus();
+
+    act(() => setCharacterKeys(true));
+    expect(input).toHaveAttribute("aria-keyshortcuts", "/");
+    fireEvent.keyDown(document.body, { key: "/" });
+    expect(input).toHaveFocus();
   });
 
   it("picks the first field on the page, and none that opted out", () => {

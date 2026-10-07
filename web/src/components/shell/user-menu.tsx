@@ -1,11 +1,11 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { ChevronsUpDown, Languages, Loader2, LogOut, Monitor, Moon, Sun, TriangleAlert } from "lucide-react";
+import { ChevronsUpDown, Keyboard, Languages, Loader2, LogOut, Monitor, Moon, Sun, TriangleAlert } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { useTheme } from "next-themes";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import { useVisibilityName } from "@/components/data/visibility";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -34,6 +34,7 @@ import { initials } from "@/lib/utils";
 
 import { SWITCH_CLASS, useCurrentProject } from "./project-switcher";
 import { roleLabelKey } from "./role-badge";
+import { ShortcutKeys, useOpenShortcuts } from "./shortcuts";
 
 const YEAR = 60 * 60 * 24 * 365;
 
@@ -58,6 +59,10 @@ export function UserMenu() {
   const { data: projects } = useQuery(projectsQuery(browserApi));
   const [pending, setPending] = useState(false);
   const [failed, setFailed] = useState(false);
+  const openShortcuts = useOpenShortcuts();
+  const trigger = useRef<HTMLButtonElement>(null);
+  // Set while Keyboard shortcuts opens its dialog, so the closing menu leaves focus to the dialog.
+  const toDialog = useRef(false);
 
   if (!me) return null;
   const current = projects?.find((p) => p.name === project) ?? null;
@@ -91,6 +96,7 @@ export function UserMenu() {
         <DropdownMenu modal={false}>
           <DropdownMenuTrigger asChild>
             <SidebarMenuButton
+              ref={trigger}
               size="lg"
               data-testid="user-menu"
               aria-label={t("trigger", { login: me.login })}
@@ -113,6 +119,11 @@ export function UserMenu() {
             side={isMobile ? "top" : "right"}
             align="end"
             sideOffset={4}
+            onCloseAutoFocus={(event) => {
+              if (!toDialog.current) return;
+              toDialog.current = false;
+              event.preventDefault(); // the dialog holds focus, and gives it back to the menu's button when it closes
+            }}
             data-testid="user-menu-content"
           >
             <DropdownMenuLabel className="flex flex-col gap-1 py-2 font-normal">
@@ -174,6 +185,19 @@ export function UserMenu() {
                   </DropdownMenuRadioGroup>
                 </DropdownMenuSubContent>
               </DropdownMenuSub>
+              {openShortcuts ? (
+                <DropdownMenuItem
+                  onSelect={() => {
+                    toDialog.current = true;
+                    openShortcuts(trigger.current);
+                  }}
+                  data-testid="user-menu-shortcuts"
+                >
+                  <Keyboard aria-hidden="true" />
+                  {t("shortcuts")}
+                  <ShortcutKeys id="help" className="ml-auto" />
+                </DropdownMenuItem>
+              ) : null}
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
             <DropdownMenuItem

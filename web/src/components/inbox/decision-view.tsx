@@ -14,6 +14,7 @@ import { Prose } from "@/components/plans/prose";
 import { durationParts } from "@/components/runs/model";
 import { runHref } from "@/components/runs/queries";
 import { utf8Bytes } from "@/components/runs/run-model";
+import { shortcutText } from "@/components/shell/shortcuts";
 import { StatusBadge, useStatusText } from "@/components/status/status-badge";
 import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/kbd";
@@ -625,7 +626,7 @@ function AnswerForm({
           {form.pending ? t("sending") : t("send")}
           {modifier && !form.pending ? (
             <Kbd className="ml-0.5 border-current bg-transparent text-current opacity-70 max-md:hidden" aria-hidden="true" data-testid="decision-send-kbd">
-              {modifier === "meta" ? "⌘↵" : "Ctrl ↵"}
+              {shortcutText("send", modifier)}
             </Kbd>
           ) : null}
         </Button>

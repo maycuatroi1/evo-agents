@@ -4,6 +4,7 @@ import { Search, X } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 
 import { Kbd } from "@/components/ui/kbd";
+import { useCharacterKeys } from "@/lib/keyboard";
 import { cn } from "@/lib/utils";
 
 import { useSearchShortcut } from "./search-shortcut";
@@ -52,6 +53,9 @@ export function SearchField({
   const [committed, setCommitted] = useState(value);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useSearchShortcut(input, shortcut);
+  // The key is shown and announced only while single-key shortcuts are on (the shortcuts dialog turns them off).
+  const characterKeys = useCharacterKeys();
+  const slash = shortcut && characterKeys;
 
   // The URL changed without this field (back, a link, "clear filters"): show what it says now.
   if (value !== committed) {
@@ -103,7 +107,7 @@ export function SearchField({
         autoComplete="off"
         spellCheck={false}
         enterKeyHint="search"
-        aria-keyshortcuts={shortcut ? "/" : undefined}
+        aria-keyshortcuts={slash ? "/" : undefined}
         aria-controls={controls}
         className="h-full min-w-0 flex-1 bg-transparent text-base text-foreground outline-none placeholder:text-fg-subtle focus-visible:outline-none md:text-[13px] [&::-webkit-search-cancel-button]:hidden"
         onChange={(event) => change(event.target.value)}
@@ -130,7 +134,7 @@ export function SearchField({
         >
           <X className="size-3.5" aria-hidden="true" />
         </button>
-      ) : shortcut ? (
+      ) : slash ? (
         <Kbd aria-hidden="true" className="mr-0.5 max-md:hidden">
           /
         </Kbd>
