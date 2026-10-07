@@ -30,8 +30,9 @@ Jobs (names in ``evo_agents.hub.jobs``):
 
 procrastinate allows one App per process; ``queue`` is that App here. ``run`` gives it a connector of its own for
 the time it runs, and the jobs reach the hub's tables, the blob store, the sealing key and the GitHub App through
-``HubContext``. The worker handles SIGTERM and SIGINT itself rather than through procrastinate, which cannot tell a
-signal from a failure.
+``HubContext``: the connector's pool, and the SQLAlchemy engine on that pool (``evo_agents.hub.db``), made after
+the pool opens and disposed of before it closes. The worker handles SIGTERM and SIGINT itself rather than through
+procrastinate, which cannot tell a signal from a failure.
 """
 
 from __future__ import annotations
@@ -53,11 +54,13 @@ from evo_agents import __version__
 from evo_agents.hub import jobs
 from evo_agents.hub.blobs import STALE_AFTER, BlobStore
 from evo_agents.hub.config import HubConfig
-from evo_agents.hub.db import CONNECT_TIMEOUT
+from evo_agents.hub.db import CONNECT_TIMEOUT, make_engine
 from evo_agents.hub.log import redact_dsn
 from evo_agents.hub.migrate import migrate
 
 if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncEngine
+
     from evo_agents.hub.server.github_app import GitHubApp
     from evo_agents.hub.server.sealing import Sealer
 
@@ -83,6 +86,7 @@ class HubContext:
     data_dir: Path
     sealer: Sealer | None = None  # None without EVO_HUB_SECRETS_KEY
     github_app: GitHubApp | None = None  # None without EVO_HUB_GITHUB_APP_*: no GitHub token to revoke
+    engine: AsyncEngine | None = None  # on ``pool``; None only where a test builds a context without one
 
 
 def hub(context: JobContext) -> HubContext:
@@ -193,6 +197,7 @@ def connector(config: HubConfig, concurrency: int) -> PsycopgConnector:
         timeout=config.pool_timeout,
         kwargs={"application_name": APPLICATION_NAME, "connect_timeout": CONNECT_TIMEOUT},
         name="evo-hub-worker",
+        close_returns=True,  # a connection the engine closes goes back to the pool
     )
 
 
@@ -261,9 +266,16 @@ async def run(config: HubConfig, concurrency: int = 1) -> int:
             except Exception as exc:
                 log.error("worker cannot start", extra={"db": target, "error": f"{type(exc).__name__}: {exc}"})
                 return 1
+            engine = make_engine(queue.connector.pool)
             try:
                 context = HubContext(
-                    config, queue.connector.pool, store, config.data_dir, Sealer.from_config(config), github_app
+                    config,
+                    queue.connector.pool,
+                    store,
+                    config.data_dir,
+                    Sealer.from_config(config),
+                    github_app,
+                    engine,
                 )
                 log.info("worker ready", extra={"schema": ",".join(result.after), "applied": list(result.applied)})
                 signalled = await work(
@@ -274,6 +286,7 @@ async def run(config: HubConfig, concurrency: int = 1) -> int:
                     additional_context={"hub": context},
                 )
             finally:
+                await engine.dispose()
                 await queue.close_async()
     finally:
         store.close()

@@ -1,15 +1,26 @@
-"""The hub's Postgres access: one psycopg 3 ``AsyncConnectionPool`` per process and hand-written SQL.
+"""The hub's Postgres access: one psycopg 3 ``AsyncConnectionPool`` per process, and a SQLAlchemy engine on it.
 
-The FastAPI lifespan opens the pool after migrating and closes it on shutdown. Every query runs through
-``pool.connection()``, whose transaction commits when the block ends cleanly and rolls back otherwise.
-A connection is checked before it is handed out, so the pool recovers by itself after Postgres restarts.
+The lifespan of the api and of the worker opens the pool after migrating, then the engine on that pool
+(``make_engine``); on shutdown it disposes of the engine, then closes the pool. The engine keeps no connection of its
+own (``NullPool``): each one it hands out is taken from the pool (``async_creator=pool.getconn``), and closing it
+gives it back, because the pool is made with ``close_returns=True``. The pool's size, timeout and check govern both,
+and a connection is checked before it is handed out, so the pool recovers by itself after Postgres restarts.
+
+``engine.begin()`` gives an ``AsyncConnection`` whose transaction commits when the block ends cleanly and rolls
+back otherwise; queries on it are SQLAlchemy Core on ``evo_agents.hub.tables``. ``driver(conn)`` is the psycopg
+connection under it, in the same transaction: what procrastinate defers a job on (``evo_agents.hub.jobs``), and the
+bridge for code that still runs its statements on psycopg. ``pool.connection()`` gives such code a connection of
+its own, whose transaction likewise commits when the block ends cleanly.
 """
 
 from __future__ import annotations
 
 import asyncio
 
+import psycopg
 from psycopg_pool import AsyncConnectionPool
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
+from sqlalchemy.pool import NullPool
 
 from evo_agents.hub.config import HubConfig
 
@@ -26,6 +37,7 @@ def create_pool(config: HubConfig) -> AsyncConnectionPool:
         kwargs={"application_name": APPLICATION_NAME, "connect_timeout": CONNECT_TIMEOUT},
         check=AsyncConnectionPool.check_connection,
         name="evo-hub",
+        close_returns=True,  # a connection the engine closes goes back to the pool
         open=False,
     )
 
@@ -39,6 +51,18 @@ async def open_pool(config: HubConfig) -> AsyncConnectionPool:
         await pool.close()
         raise
     return pool
+
+
+def make_engine(pool: AsyncConnectionPool) -> AsyncEngine:
+    """A SQLAlchemy engine whose connections are ``pool``'s, made with ``close_returns=True`` (``create_pool``).
+    Nothing connects until the first ``begin()``; dispose of it before closing the pool."""
+    return create_async_engine("postgresql+psycopg://", poolclass=NullPool, async_creator=pool.getconn)
+
+
+async def driver(conn: AsyncConnection) -> psycopg.AsyncConnection:
+    """The psycopg connection under ``conn``, in the same transaction: what ``conn`` wrote, it sees, and what it
+    writes commits or rolls back with ``conn``. Never commit, roll back or close it directly."""
+    return (await conn.get_raw_connection()).driver_connection
 
 
 async def schema_revision(pool: AsyncConnectionPool, timeout: float) -> str | None:

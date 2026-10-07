@@ -10,6 +10,10 @@ holding it run one after the other; the queueing lock keeps at most one of them 
 one waits is a no-op. procrastinate's queueing lock alone still lets several run at once, and its lock alone lets
 any number wait. A job deferred on the caller's connection runs inside a savepoint, so a defer refused because one
 waits already leaves the caller's transaction usable.
+
+The caller's connection is an ``AsyncConnection`` of the hub's engine (``evo_agents.hub.db``): procrastinate, whose
+only async connector is psycopg's, gets the psycopg connection under it through ``driver``, and the savepoint is the
+engine's ``begin_nested()``. A psycopg connection is still taken, the way code not yet on the engine holds one.
 """
 
 from __future__ import annotations
@@ -18,6 +22,9 @@ from procrastinate import PsycopgConnector, exceptions
 from procrastinate.manager import JobManager
 from procrastinate.tasks import configure_task
 from psycopg_pool import AsyncConnectionPool
+from sqlalchemy.ext.asyncio import AsyncConnection
+
+from evo_agents.hub.db import driver
 
 PING = "hub.ping"  # does nothing for a moment: proves a worker takes jobs
 CLEANUP_UPLOADS = "hub.cleanup_uploads"  # hourly: uploads never committed, after 24 hours
@@ -53,6 +60,22 @@ class JobQueue:
         """Queue a job of ``task`` with ``kwargs`` (JSON values); its id, or None when a job with the same
         ``queueing_lock`` waits already, which counts as queued. With ``connection``, the job is queued in that
         connection's transaction and exists only if it commits."""
+        if isinstance(connection, AsyncConnection):
+            deferrer = configure_task(
+                name=task,
+                job_manager=self._manager,
+                lock=lock,
+                queueing_lock=queueing_lock,
+                connection=await driver(connection),
+            )
+            # The refusal is an error in Postgres, which would abort the caller's whole transaction without the
+            # savepoint; leaving the block with it rolls back to the savepoint.
+            try:
+                async with connection.begin_nested():
+                    return await deferrer.defer_async(**kwargs)
+            except exceptions.AlreadyEnqueued:
+                return None
+        # No connection, or a psycopg one from code not yet on the engine.
         deferrer = configure_task(
             name=task, job_manager=self._manager, lock=lock, queueing_lock=queueing_lock, connection=connection
         )

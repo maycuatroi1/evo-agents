@@ -7,8 +7,8 @@ A database at a revision this package does not know (written by a newer release)
 anything runs: a hub never writes to a schema it cannot read.
 
 Alembic is driven from code against the scripts shipped in ``evo_agents/hub/migrations``; there is no
-alembic.ini. SQLAlchemy is used here and in the migration scripts only, over psycopg 3
-(``postgresql+psycopg``); the server itself runs hand-written SQL on a psycopg pool.
+alembic.ini. Migrating runs on an engine of its own over psycopg 3 (``postgresql+psycopg``), apart from the
+server's pool and the engine on it (``evo_agents.hub.db``).
 """
 
 from __future__ import annotations
