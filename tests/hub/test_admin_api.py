@@ -135,6 +135,25 @@ def test_a_grant_shows_the_project_to_the_member_and_revoking_hides_it(client, g
     assert client.delete(grant_path("demo", "member"), headers=admin).status_code == 404
 
 
+def test_users_come_by_login_whatever_its_case_and_grants_by_project(client, github, hub_db, admin):
+    for name in ("zeta", "alpha", "mid"):
+        add_project(hub_db, name)
+    member = bearer(live.sign_in(client, github, "member", 501)["token"])
+    live.sign_in(client, github, "Zed", 503)
+    live.sign_in(client, github, "amy", 504)
+    for project in ("zeta", "alpha", "mid"):
+        assert client.put(grant_path(project, "member"), json=READER, headers=admin).status_code == 200
+
+    users = client.get("/v1/admin/users", headers=admin).json()
+    assert [u["login"] for u in users] == ["alpha-owner", "amy", "member", "mid-owner", ADMIN, "Zed", "zeta-owner"]
+    (grants,) = [u["grants"] for u in users if u["login"] == "member"]
+    assert [g["project"] for g in grants] == ["alpha", "mid", "zeta"]
+    me = client.get("/v1/auth/whoami", headers=member).json()
+    assert [g["project"] for g in me["grants"]] == ["alpha", "mid", "zeta"]
+    overview = client.get("/v1/admin/overview", headers=admin).json()
+    assert [g["project"] for g in overview["grants"]] == ["alpha", "mid", "zeta"]
+
+
 # The audit trail
 
 

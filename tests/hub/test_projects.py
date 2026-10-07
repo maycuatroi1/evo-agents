@@ -677,6 +677,23 @@ def test_dropping_a_level_some_grant_reaches_is_refused(client, github, hub_db):
     assert client.put("/v1/projects/demo", json=shorter, headers=who["admin"]).json()["changed"] is True
 
 
+@needs_pg
+def test_projects_come_by_name_and_the_grants_a_new_ladder_strands_by_login(client, github, hub_db):
+    who = users(client, github)
+    for name in ("zeta", "alpha"):
+        harness = {"name": name, "workspace": "~/ws", "path": f"{name}-harness"}
+        assert client.put(f"/v1/projects/{name}", json=body(harness=harness), headers=who["admin"]).status_code == 200
+    assert [p["name"] for p in client.get("/v1/projects", headers=who["admin"]).json()] == ["alpha", "zeta"]
+
+    for login in ("zed", "Amy", "member"):
+        grant(client, who["admin"], login, "reader", "secret", project="alpha")
+    harness = {"name": "alpha", "workspace": "~/ws", "path": "alpha-harness"}
+    shorter = body(levels=["public", "internal", "customer"], harness=harness)
+    refused = client.put("/v1/projects/alpha", json=shorter, headers=who["admin"])
+    assert refused.status_code == 409, refused.text
+    assert "grants reach: Amy (secret), member (secret), zed (secret). Change" in refused.json()["message"]
+
+
 def memory(db, name: str, label: dict) -> None:
     from psycopg.types.json import Jsonb
 
