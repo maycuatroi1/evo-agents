@@ -1,6 +1,6 @@
 {
   "name": "evo-agents-hub-web",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "private": true,
   "type": "module",
   "engines": {
@@ -24,6 +24,7 @@
     "@wterm/ghostty": "0.5.4",
     "@wterm/react": "0.5.4",
     "class-variance-authority": "0.7.1",
+    "cmdk": "1.1.1",
     "cn": "0.4.0",
     "cytoscape": "3.34.3",
     "lucide-react": "1.51.0",
@@ -34,9 +35,12 @@
     "radix-ui": "1.6.7",
     "react": "19.3.0",
     "react-dom": "19.3.0",
+    "react-is": "19.3.0",
     "react-markdown": "10.1.0",
+    "recharts": "3.10.1",
     "remark-gfm": "4.0.1",
-    "server-only": "0.0.1"
+    "server-only": "0.0.1",
+    "sonner": "2.0.8"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.13.0",

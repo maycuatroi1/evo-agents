@@ -246,6 +246,14 @@ export function runHref(project: string, id: number): Route {
   return projectHref(project, `${RUNS_SEGMENT}/${id}`);
 }
 
+/** The search parameter of a run's page that names the tab of its log card to show first. */
+export const RUN_VIEW_PARAM = "view";
+
+/** A run's page with its Terminal tab shown, where the owner takes the run over from a decision. */
+export function runTerminalHref(project: string, id: number): Route {
+  return `${runHref(project, id)}?${RUN_VIEW_PARAM}=terminal` as Route;
+}
+
 export function runDiffHref(project: string, id: number): Route {
   return projectHref(project, `${RUNS_SEGMENT}/${id}/diff`);
 }
@@ -299,6 +307,21 @@ export function runEvents(api: ApiClient, project: string, id: number, after: nu
   );
 }
 
+/** The run's latest events the decision screen reads for "What the agent did so far". */
+export const RECENT_EVENTS = 200;
+
+/**
+ * The run's events up to `lastSeq` (the run's `last_seq`, which numbers its events from 1 without gaps), at most the
+ * last RECENT_EVENTS of them. A newer `lastSeq` is a new read; the summary it made stays on screen until it lands.
+ */
+export const recentEventsQuery = (api: ApiSource, project: string, id: number, lastSeq: number) =>
+  queryOptions({
+    queryKey: [...runKey(project, id), "recent", lastSeq] as const,
+    queryFn: ({ signal }) => runEvents(api(), project, id, Math.max(0, lastSeq - RECENT_EVENTS), signal),
+    staleTime: Infinity, // the events before a seq never change
+    placeholderData: keepPreviousData,
+  });
+
 export type RunControl = "cancel" | "takeover" | "handback" | "approve" | "rerun";
 
 /** One of the owner's controls, with the session's CSRF header; rerun answers the new run. */
@@ -344,6 +367,11 @@ export type DecisionList = Schemas["DecisionList"];
 /** Where the web shows a decision and its answer form, as the hub's notifications link to it (`decision_link`). */
 export function decisionHref(id: number): Route {
   return `/inbox?decision=${id}` as Route;
+}
+
+/** The id of a decision's card on its run's page, which the trace's "Asked you" links to. */
+export function decisionAnchor(id: number): string {
+  return `run-decision-${id}`;
 }
 
 /** `MAX_OPEN_DECISIONS` of the API: a run's agent has at most 20 decisions open at once. */

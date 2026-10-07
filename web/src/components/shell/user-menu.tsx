@@ -1,12 +1,13 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { ChevronsUpDown, Languages, Loader2, LogOut, Monitor, Moon, Sun, TriangleAlert } from "lucide-react";
+import { ChevronsUpDown, Keyboard, Languages, Loader2, LogOut, Monitor, Moon, Sun, TriangleAlert } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { useTheme } from "next-themes";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
+import { useVisibilityName } from "@/components/data/visibility";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -31,8 +32,9 @@ import { LOCALE_COOKIE, LOGIN_PATH } from "@/lib/config";
 import { projectsQuery, whoamiQuery } from "@/lib/queries";
 import { initials } from "@/lib/utils";
 
-import { useCurrentProject } from "./project-switcher";
+import { SWITCH_CLASS, useCurrentProject } from "./project-switcher";
 import { roleLabelKey } from "./role-badge";
+import { ShortcutKeys, useOpenShortcuts } from "./shortcuts";
 
 const YEAR = 60 * 60 * 24 * 365;
 
@@ -46,6 +48,7 @@ async function signOut(): Promise<void> {
 export function UserMenu() {
   const t = useTranslations("userMenu");
   const tRoles = useTranslations("roles");
+  const levelName = useVisibilityName();
   const tLocales = useTranslations("locales");
   const locale = useLocale();
   const router = useRouter();
@@ -56,6 +59,10 @@ export function UserMenu() {
   const { data: projects } = useQuery(projectsQuery(browserApi));
   const [pending, setPending] = useState(false);
   const [failed, setFailed] = useState(false);
+  const openShortcuts = useOpenShortcuts();
+  const trigger = useRef<HTMLButtonElement>(null);
+  // Set while Keyboard shortcuts opens its dialog, so the closing menu leaves focus to the dialog.
+  const toDialog = useRef(false);
 
   if (!me) return null;
   const current = projects?.find((p) => p.name === project) ?? null;
@@ -89,30 +96,34 @@ export function UserMenu() {
         <DropdownMenu modal={false}>
           <DropdownMenuTrigger asChild>
             <SidebarMenuButton
+              ref={trigger}
               size="lg"
               data-testid="user-menu"
               aria-label={t("trigger", { login: me.login })}
-              className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+              className={SWITCH_CLASS}
             >
-              <Avatar className="size-8 rounded-lg">
-                <AvatarFallback className="rounded-lg bg-secondary font-mono text-xs font-semibold">
-                  {initials(me.login)}
-                </AvatarFallback>
+              <Avatar className="size-7">
+                <AvatarFallback className="text-[11px] font-semibold">{initials(me.login)}</AvatarFallback>
               </Avatar>
-              <span className="grid flex-1 text-left text-sm leading-tight">
-                <span className="truncate font-semibold">{me.login}</span>
-                <span className="truncate text-xs text-muted-foreground">
+              <span className="grid min-w-0 flex-1 text-left group-data-[collapsible=icon]:hidden">
+                <span className="truncate text-[13px] leading-[18px] font-semibold text-foreground">{me.login}</span>
+                <span className="truncate text-xs leading-4 font-normal text-fg-subtle">
                   {me.admin ? t("hubAdmin") : t("member")}
                 </span>
               </span>
-              <ChevronsUpDown className="ml-auto size-4" aria-hidden="true" />
+              <ChevronsUpDown className="ml-auto text-fg-subtle group-data-[collapsible=icon]:hidden" aria-hidden="true" />
             </SidebarMenuButton>
           </DropdownMenuTrigger>
           <DropdownMenuContent
-            className="w-(--radix-dropdown-menu-trigger-width) min-w-64 rounded-lg"
+            className="w-(--radix-dropdown-menu-trigger-width) min-w-64 rounded-md"
             side={isMobile ? "top" : "right"}
             align="end"
             sideOffset={4}
+            onCloseAutoFocus={(event) => {
+              if (!toDialog.current) return;
+              toDialog.current = false;
+              event.preventDefault(); // the dialog holds focus, and gives it back to the menu's button when it closes
+            }}
             data-testid="user-menu-content"
           >
             <DropdownMenuLabel className="flex flex-col gap-1 py-2 font-normal">
@@ -129,7 +140,7 @@ export function UserMenu() {
                     ? t("projectRole", {
                         project: current.name,
                         role: tRoles(roleLabelKey(current.role)),
-                        level: current.max_level ?? "",
+                        level: current.max_level ? levelName(current.max_level) : "-",
                       })
                     : t("projectRoleNone", { project: current.name })}
                 </span>
@@ -174,6 +185,19 @@ export function UserMenu() {
                   </DropdownMenuRadioGroup>
                 </DropdownMenuSubContent>
               </DropdownMenuSub>
+              {openShortcuts ? (
+                <DropdownMenuItem
+                  onSelect={() => {
+                    toDialog.current = true;
+                    openShortcuts(trigger.current);
+                  }}
+                  data-testid="user-menu-shortcuts"
+                >
+                  <Keyboard aria-hidden="true" />
+                  {t("shortcuts")}
+                  <ShortcutKeys id="help" className="ml-auto" />
+                </DropdownMenuItem>
+              ) : null}
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
             <DropdownMenuItem
@@ -188,7 +212,7 @@ export function UserMenu() {
               {pending ? t("loggingOut") : t("logout")}
             </DropdownMenuItem>
             {failed ? (
-              <p role="alert" className="flex items-start gap-2 px-2 py-1.5 text-xs text-destructive">
+              <p role="alert" className="flex items-start gap-2 px-2 py-1.5 text-xs text-danger">
                 <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
                 {t("logoutFailed")}
               </p>

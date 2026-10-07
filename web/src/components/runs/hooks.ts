@@ -1,10 +1,13 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { Route } from "next";
 import { useFormatter, useTranslations } from "next-intl";
 import { useCallback } from "react";
 
-import { type Notice, useWriteFailure, type WriteFailure } from "@/components/admin/notice";
+import { useWriteFailure, type WriteFailure } from "@/components/admin/notice";
+import { notify } from "@/components/feedback/toast";
+import { projectHref } from "@/components/shell/nav";
 import { workerKeys } from "@/components/workers/queries";
 import { browserApi } from "@/lib/api/browser";
 import { isApiError } from "@/lib/api/errors";
@@ -20,6 +23,7 @@ import {
   type PlanRunRequest,
   type Run,
   type RunControl,
+  runHref,
   runKey,
   runKeys,
 } from "./queries";
@@ -84,20 +88,48 @@ export function useViewer(): Viewer | null {
   return data ? { login: data.login, admin: Boolean(data.admin) } : null;
 }
 
-/** "Queued 2 runs: #12 and #13.", for the notice a page shows after a dispatch. */
-export function useDispatchedNotice() {
-  const t = useTranslations("runs");
+/**
+ * The toast after a dispatch: "Run #12 dispatched" with a link to it, or "2 runs dispatched: #12 and #13" with a link
+ * to the project's active runs.
+ */
+export function useDispatchedToast() {
+  const t = useTranslations("runs.toast");
   const format = useFormatter();
-  return (runs: Run[]): Notice => ({
-    tone: "success",
-    text: t("dispatched", { count: runs.length, ids: format.list(runs.map((run) => `#${run.id}`), { type: "conjunction" }) }),
-  });
+  return useCallback(
+    (runs: Run[]) => {
+      if (runs.length === 0) return;
+      const ids = format.list(
+        runs.map((run) => `#${run.id}`),
+        { type: "conjunction" },
+      );
+      const [first] = runs;
+      notify({
+        tone: "success",
+        text: t("dispatched", { count: runs.length, ids }),
+        description: t("dispatchedText", { count: runs.length }),
+        link:
+          runs.length === 1
+            ? { label: t("openRun"), href: runHref(first.project, first.id) }
+            : { label: t("openRuns"), href: `${projectHref(first.project, "runs")}?state=active` as Route },
+      });
+    },
+    [t, format],
+  );
 }
 
-/** "Queued plan run #14 of rollout.", for the notice a page shows after Run plan. */
-export function usePlanRunNotice() {
-  const t = useTranslations("runs.planRun");
-  return useCallback((run: Run): Notice => ({ tone: "success", text: t("dispatched", { id: run.id, plan: run.plan_id }) }), [t]);
+/** The toast after Run plan: "Plan run #14 dispatched", with a link to it. */
+export function usePlanRunToast() {
+  const t = useTranslations("runs.planRun.toast");
+  return useCallback(
+    (run: Run) =>
+      void notify({
+        tone: "success",
+        text: t("dispatched", { id: run.id }),
+        description: t("dispatchedText", { plan: run.plan_id }),
+        link: { label: t("openRun"), href: runHref(run.project, run.id) },
+      }),
+    [t],
+  );
 }
 
 /**

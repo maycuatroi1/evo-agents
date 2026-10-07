@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useFormatter, useTranslations } from "next-intl";
 import { type ReactNode, useId } from "react";
 
+import { useStatusText } from "@/components/status/status-badge";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { KNOWN_RUNTIMES } from "@/components/workers/model";
@@ -66,9 +67,9 @@ export function Choice({
     <label
       htmlFor={id}
       className={cn(
-        "flex min-h-11 items-start gap-2.5 rounded-lg border px-3 py-2 transition-colors",
+        "flex min-h-11 items-start gap-2.5 rounded-md border px-3 py-2 transition-colors",
         disabled ? "cursor-not-allowed border-dashed bg-muted/40" : "cursor-pointer hover:bg-muted/50",
-        checked && !disabled && "border-primary/40 bg-accent",
+        checked && !disabled && "border-brand/40 bg-surface-selected",
       )}
       data-testid={testId}
       data-disabled={disabled || undefined}
@@ -140,7 +141,7 @@ export function WorkerPicker({
   subject?: DispatchSubject;
 }) {
   const t = useTranslations("runs.dispatch");
-  const tStatus = useTranslations("workers.status");
+  const tStatus = useStatusText("worker");
   const ids = useId();
   const none = !loading && workers.length === 0;
   return (
@@ -174,7 +175,7 @@ export function WorkerPicker({
             id={`${ids}-worker`}
             value={pinned === null ? "" : String(pinned)}
             onChange={(event) => onPinned(Number(event.target.value))}
-            className="w-full sm:w-80 [&_select]:h-9 [&_select]:font-mono"
+            className="w-full sm:w-80 md:[&_select]:h-9 [&_select]:font-mono"
             data-testid="dispatch-pinned-worker"
           >
             {workers.map((worker) => (
@@ -186,10 +187,10 @@ export function WorkerPicker({
         </div>
       ) : null}
       {none ? (
-        <p className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-dashed px-3 py-2 text-sm text-muted-foreground" data-testid="dispatch-no-workers">
+        <p className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md border border-dashed px-3 py-2 text-sm text-muted-foreground" data-testid="dispatch-no-workers">
           <Server className="size-4 shrink-0" aria-hidden="true" />
           <span>{t("noWorkers", { project })}</span>
-          <Link href={WORKERS_HREF} className="font-medium text-primary underline-offset-4 hover:underline">
+          <Link href={WORKERS_HREF} className="font-medium text-brand underline-offset-4 hover:underline">
             {t("registerWorker")}
           </Link>
         </p>
@@ -246,7 +247,7 @@ export function ModelField({
         disabled={disabled}
         aria-invalid={problem !== null || undefined}
         aria-describedby={`${ids}-hint${message ? ` ${ids}-error` : ""}`}
-        className="h-9 font-mono text-sm placeholder:font-sans"
+        className="h-9 font-mono placeholder:font-sans"
         data-testid="plan-run-model-input"
       />
       {suggestions.length > 0 ? (
@@ -260,7 +261,7 @@ export function ModelField({
         {hint}
       </p>
       {message ? (
-        <p id={`${ids}-error`} className="flex items-start gap-1.5 text-xs font-medium text-destructive" data-testid="plan-run-model-error">
+        <p id={`${ids}-error`} className="flex items-start gap-1.5 text-xs font-medium text-danger" data-testid="plan-run-model-error">
           <TriangleAlert className="mt-px size-3.5 shrink-0" aria-hidden="true" />
           {message}
         </p>
@@ -337,7 +338,7 @@ export function Outlook({ outlook, project, subject = "runs" }: { outlook: Dispa
     <p
       className={cn(
         "flex min-w-0 flex-1 items-start gap-2 text-sm text-pretty",
-        tone === "ok" ? "text-success-foreground" : tone === "warn" ? "text-warning-foreground" : "text-muted-foreground",
+        tone === "ok" ? "text-success" : tone === "warn" ? "text-attention" : "text-muted-foreground",
       )}
       role="status"
       aria-live="polite"

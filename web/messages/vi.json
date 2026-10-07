@@ -16,12 +16,13 @@
   },
   "nav": {
     "label": "Điều hướng chính",
+    "home": "Trang chủ",
     "hub": "Hub",
-    "projects": "Dự án của tôi",
     "project": "Dự án",
     "overview": "Tổng quan",
     "plans": "Plans",
     "runs": "Run",
+    "insights": "Thống kê",
     "kg": "Đồ thị tri thức",
     "admin": "Quản trị",
     "toggleSidebar": "Ẩn hoặc hiện thanh bên",
@@ -33,23 +34,143 @@
     "workers": "Worker",
     "secrets": "Secret",
     "runDiff": "Diff",
-    "inbox": "Inbox"
+    "inbox": "Inbox",
+    "counts": {
+      "openDecisions": "{count, plural, other {# quyết định chờ bạn trả lời}}",
+      "activeRuns": "{count, plural, other {# run đang hoạt động}}"
+    },
+    "fleet": {
+      "onlineBusy": "<b>{online, plural, other {# worker online}}</b>, {busy} đang chạy",
+      "onlineIdle": "<b>{online, plural, other {# worker online}}</b>, không worker nào đang chạy",
+      "offline": "<b>Không có worker nào online</b>, {registered} đã đăng ký",
+      "none": "Chưa có worker nào",
+      "error": "Không đọc được danh sách worker"
+    }
   },
   "projectSwitcher": {
     "label": "Dự án",
+    "dialog": "Chọn dự án",
     "trigger": "Chọn dự án, đang chọn {name}",
     "triggerEmpty": "Chọn dự án",
     "placeholder": "Chưa chọn dự án",
-    "allProjects": "Tất cả dự án",
+    "hint": "Mở dự án để xem nội dung",
+    "search": "Tìm dự án",
+    "searchLabel": "Tìm dự án theo tên",
+    "clear": "Xoá ô tìm",
+    "results": "{count, plural, =0 {Không dự án nào khớp} other {# dự án}}",
+    "noMatch": "Không dự án nào khớp “{query}”.",
     "none": "Bạn chưa được cấp dự án nào",
     "loadError": "Không tải được danh sách dự án",
-    "hint": "Mở dự án để xem nội dung"
+    "home": "Trang chủ",
+    "visibility": "Mức hiển thị: {level}",
+    "repos": "{count, plural, other {# kho mã}}",
+    "plans": "{count, plural, =0 {không có plan đang chạy} other {# plan đang chạy}}",
+    "decisions": "{count, plural, other {# quyết định đang mở}}"
+  },
+  "palette": {
+    "trigger": "Tìm hoặc chuyển tới",
+    "title": "Bảng lệnh",
+    "description": "Tìm run, plan, worker hay trang, hoặc bắt đầu một việc. Tab đổi dự án.",
+    "label": "Tìm hoặc chạy lệnh",
+    "placeholder": "Tìm hoặc chạy lệnh",
+    "list": "Kết quả",
+    "close": "Đóng",
+    "groups": {
+      "actions": "Hành động",
+      "runs": "Run",
+      "plans": "Plan",
+      "workers": "Worker",
+      "goto": "Đi tới",
+      "help": "Trợ giúp"
+    },
+    "actions": {
+      "runPlan": "Chạy plan {plan}",
+      "dispatch": "Dispatch một bước",
+      "dispatchIn": "Dispatch một bước trong {project}",
+      "rerun": "Chạy lại #{id}",
+      "register": "Đăng ký worker",
+      "stepsLeft": "{count, plural, other {còn # bước}}",
+      "failedAgo": "thất bại {ago}",
+      "lostAgo": "mất lease {ago}",
+      "failedJustNow": "vừa thất bại",
+      "lostJustNow": "vừa mất lease"
+    },
+    "plan": {
+      "progress": "xong {done} trên {total}",
+      "completed": "Đã hoàn thành"
+    },
+    "goto": {
+      "page": "{page} của {project}"
+    },
+    "scope": {
+      "all": "Mọi dự án",
+      "switch": "Đang tìm trong {scope}. Đổi dự án"
+    },
+    "hints": {
+      "move": "di chuyển",
+      "open": "mở",
+      "scope": "đổi dự án",
+      "close": "đóng"
+    },
+    "results": "{count, plural, =0 {Không có kết quả} other {# kết quả}} trong {scope}",
+    "noMatch": "Không có gì khớp “{query}” trong {scope}.",
+    "trySwitch": "Nhấn Tab để đổi dự án.",
+    "searching": "Đang tìm run",
+    "partial": "Một phần kết quả không đọc được. Thử lại sau giây lát.",
+    "shortcuts": "Phím tắt"
+  },
+  "shortcuts": {
+    "title": "Phím tắt",
+    "description": "Phím đơn chỉ có tác dụng khi con trỏ không nằm trong ô nhập chữ hay terminal.",
+    "close": "Đóng",
+    "list": "Tất cả phím tắt",
+    "then": "rồi",
+    "off": "Đã tắt",
+    "groups": {
+      "general": "Chung",
+      "goto": "Đi tới",
+      "actions": "Hành động"
+    },
+    "names": {
+      "palette": "Mở bảng lệnh",
+      "search": "Tìm trong trang này",
+      "help": "Xem các phím tắt",
+      "sidebar": "Ẩn hoặc hiện thanh bên",
+      "close": "Đóng hộp thoại hoặc menu",
+      "goHome": "Trang chủ",
+      "goInbox": "Inbox",
+      "goPlans": "Plans",
+      "goRuns": "Run",
+      "goWorkers": "Worker",
+      "dispatch": "Dispatch một bước",
+      "send": "Gửi câu trả lời hoặc tin nhắn"
+    },
+    "where": {
+      "project": "Của dự án đang mở",
+      "writer": "Trên các trang của dự án, với vai trò Ghi"
+    },
+    "keys": {
+      "command": "Command",
+      "control": "Control",
+      "enter": "Enter",
+      "escape": "Escape",
+      "slash": "Dấu gạch chéo",
+      "question": "Dấu chấm hỏi"
+    },
+    "single": {
+      "label": "Phím tắt một phím",
+      "hint": "/, ?, D và các phím G. Tắt đi nếu chúng vướng việc nhập bằng giọng nói hay một công cụ khác."
+    },
+    "needProject": {
+      "title": "Mở một dự án trước",
+      "text": "Plan và run thuộc về một dự án. Chọn dự án ở thanh bên."
+    }
   },
   "userMenu": {
     "trigger": "Tài khoản {login}",
     "hubAdmin": "Quản trị viên hub",
     "member": "Thành viên",
-    "projectRole": "{project}: {role}, mức tối đa {level}",
+    "projectRole": "{project}: {role}, mức hiển thị {level}",
     "projectRoleNone": "{project}: không có vai trò",
     "grants": "{count, plural, =0 {Chưa có quyền ở dự án nào} other {Có quyền ở # dự án}}",
     "theme": "Giao diện",
@@ -57,6 +178,7 @@
     "themeDark": "Tối",
     "themeSystem": "Theo hệ thống",
     "language": "Ngôn ngữ",
+    "shortcuts": "Phím tắt",
     "logout": "Đăng xuất",
     "loggingOut": "Đang đăng xuất…",
     "logoutFailed": "Chưa đăng xuất được. Thử lại sau ít phút."
@@ -71,31 +193,166 @@
     "reader": "Đọc",
     "none": "Không có vai trò"
   },
-  "home": {
-    "title": "Dự án của tôi",
-    "description": "Các dự án hub trả về cho tài khoản của bạn, kèm vai trò và mức nhãn cao nhất bạn được xem.",
-    "count": "{count, plural, =0 {Không có dự án} other {# dự án}}",
-    "emptyTitle": "Bạn chưa được cấp dự án nào",
-    "emptyDescription": "Nhờ quản trị viên hub cấp vai trò cho tài khoản {login}, rồi tải lại trang này.",
-    "columns": {
-      "name": "Dự án",
-      "role": "Vai trò",
-      "maxLevel": "Mức nhãn tối đa",
-      "repos": "Kho mã",
-      "updated": "Cập nhật"
+  "status": {
+    "run": {
+      "queued": "Đang chờ",
+      "leased": "Đã nhận",
+      "running": "Đang chạy",
+      "interactive": "Tương tác",
+      "verifying": "Đang kiểm",
+      "waiting": "Chờ quyết định",
+      "review": "Chờ duyệt",
+      "parked": "Tạm gác",
+      "done": "Xong",
+      "failed": "Thất bại",
+      "lost": "Mất lease",
+      "cancelled": "Đã huỷ"
     },
-    "open": "Mở dự án {name}"
+    "worker": {
+      "idle": "Rảnh",
+      "busy": "Đang chạy",
+      "draining": "Ngừng nhận việc",
+      "offline": "Offline",
+      "revoked": "Đã thu hồi"
+    },
+    "plan": {
+      "pending": "Chưa xong",
+      "active": "Plan run đang chạy",
+      "blocked": "Bị chặn",
+      "completed": "Đã hoàn tất"
+    },
+    "step": {
+      "pending": "Chưa làm",
+      "in_progress": "Đang làm",
+      "blocked": "Bị chặn",
+      "done": "Xong"
+    },
+    "repo": {
+      "merged": "Đã merge",
+      "done": "Xong",
+      "in_progress": "Đang làm",
+      "pending": "Chưa làm",
+      "not-needed": "Không cần"
+    },
+    "decision": {
+      "open": "Đang mở",
+      "answered": "Đã trả lời",
+      "expired": "Hết hạn",
+      "cancelled": "Đã huỷ"
+    },
+    "other": "Trạng thái khác: {status}"
+  },
+  "identifier": {
+    "copy": "Sao chép {value}",
+    "copied": "Đã chép {value} vào clipboard",
+    "selected": "Đã chọn sẵn: bấm Ctrl+C hoặc Cmd+C để chép",
+    "refused": "Trình duyệt chặn clipboard. Hãy chọn đoạn chữ rồi bấm Ctrl+C hoặc Cmd+C."
+  },
+  "visibility": {
+    "value": "Mức hiển thị: {level}",
+    "levels": {
+      "public": "Public",
+      "internal": "Internal",
+      "customer": "Customer",
+      "secret": "Secret"
+    }
+  },
+  "home": {
+    "title": "Trang chủ",
+    "metrics": {
+      "label": "Công việc của bạn ở mọi dự án",
+      "waiting": "Chờ bạn",
+      "waitingMeta": "#{run}, hỏi <time></time>",
+      "waitingNone": "không có gì chờ bạn trả lời",
+      "running": "Đang chạy",
+      "runningMeta": "#{run} trên {worker}",
+      "runningMetaMore": "#{run} trên {worker}, và {more} run khác",
+      "runningNone": "không agent nào đang làm việc",
+      "queued": "Đang chờ",
+      "queuedMeta": "#{run}, vào hàng đợi <time></time>",
+      "queuedNone": "không run nào chờ worker",
+      "done": "Xong, 7 ngày",
+      "doneSeries": "Run xong mỗi ngày, từ {from} đến {to}: {values}",
+      "failed": "Thất bại, 7 ngày",
+      "failedLost": "và {count} mất lease",
+      "failedMeta": "#{run}: {error}",
+      "failedMetaPlain": "#{run}, {project}",
+      "failedNone": "không có trong 7 ngày qua",
+      "quietTitle": "Mọi thứ yên ắng.",
+      "quietText": "Không run nào đang chạy và không có gì chờ bạn.",
+      "quietWeek": "7 ngày qua: {done} xong, {failed} thất bại, {lost} mất lease."
+    },
+    "needs": {
+      "title": "Cần bạn",
+      "count": "{count, plural, other {# quyết định chờ bạn trả lời}}",
+      "inbox": "Mở Inbox",
+      "answer": "Trả lời",
+      "answerLabel": "Trả lời quyết định #{id}",
+      "where": "{project}, {plan}, bước {step}",
+      "wherePlan": "{project}, {plan}",
+      "asked": "hỏi <time></time>",
+      "parksIn": "tạm gác sau {duration}",
+      "parked": "tạm gác <time></time>",
+      "more": "{count, plural, other {còn # quyết định trong Inbox}}"
+    },
+    "flight": {
+      "title": "Đang diễn ra",
+      "count": "{count, plural, other {# run đang hoạt động}}",
+      "where": "{project}, {plan}, bước {step}",
+      "wherePlan": "{project}, {plan}",
+      "steps": "xong {done} trên {total} bước",
+      "stepsShort": "{done}/{total}",
+      "waitingYou": "Đang chờ bạn",
+      "waitingFor": "Đang chờ {owner}",
+      "noWorker": "chưa có worker",
+      "ran": "đã chạy {duration}",
+      "queuedAgo": "vào hàng đợi <time></time>"
+    },
+    "recent": {
+      "title": "Vừa kết thúc",
+      "empty": "Chưa run nào kết thúc. Run hiện ở đây khi xong, thất bại hoặc bị huỷ.",
+      "ranOn": "{duration} trên {worker}",
+      "ran": "{duration}",
+      "cancelled": "{owner} đã huỷ",
+      "rerun": "Chạy lại",
+      "rerunLabel": "Chạy lại #{id}",
+      "rerunning": "Đang chạy lại"
+    },
+    "fleet": {
+      "title": "Worker của bạn",
+      "all": "Mọi worker",
+      "busy": "Bận {held}/{slots}",
+      "line": "{runtimes}, {os} {arch}",
+      "noRuntime": "chưa báo runtime nào",
+      "heartbeat": "heartbeat gần nhất <time></time>",
+      "never": "chưa có heartbeat",
+      "emptyTitle": "Bạn chưa có worker nào",
+      "emptyText": "Worker là máy của bạn chạy các bước của plan. Đăng ký một máy ở trang Worker.",
+      "register": "Đăng ký worker",
+      "error": "Không đọc được danh sách worker của bạn.",
+      "retry": "Thử lại"
+    },
+    "projects": {
+      "title": "Dự án",
+      "count": "{count, plural, other {# dự án}}",
+      "open": "Mở dự án {name}"
+    },
+    "empty": {
+      "title": "Bạn chưa được cấp dự án nào",
+      "description": "Quản trị viên hub cấp vai trò trong từng dự án. Gửi họ tên đăng nhập của bạn, {login}, rồi tải lại trang này.",
+      "adminDescription": "Bạn quản trị hub nhưng chưa có vai trò trong dự án nào. Tự cấp cho mình ở trang Quản trị, rồi tải lại trang này.",
+      "admin": "Mở trang Quản trị",
+      "copyLogin": "Sao chép tên đăng nhập"
+    }
   },
   "project": {
-    "title": "Tổng quan dự án",
     "harness": "Harness",
     "noHarness": "Dự án được đăng ký không kèm đường dẫn harness.",
     "role": "Vai trò của bạn",
-    "maxLevel": "Mức nhãn tối đa",
     "adminWithoutGrant": "Bạn là quản trị viên hub nhưng chưa có vai trò trong dự án này: bạn quản lý được dự án nhưng không đọc nội dung của nó.",
     "ladder": {
       "title": "Thang nhãn",
-      "description": "Các mức từ thấp tới cao. Bạn xem được nội dung có nhãn tới mức tối đa của mình.",
+      "description": "Từ thấp tới cao. Bạn xem được nội dung có nhãn tới mức hiển thị của mình.",
       "visible": "Xem được",
       "hidden": "Không xem được",
       "default": "Nhãn mặc định",
@@ -112,7 +369,7 @@
     },
     "sinks": {
       "title": "Sink",
-      "description": "Nơi nội dung của dự án được phép đi tới, kèm mức nhãn tối đa.",
+      "description": "Nơi nội dung của dự án được phép đi tới, kèm mức cao nhất mỗi nơi được nhận.",
       "empty": "Dự án chưa khai sink nào.",
       "id": "Sink",
       "kind": "Loại",
@@ -128,36 +385,92 @@
   },
   "admin": {
     "title": "Quản trị hub",
-    "description": "Số dòng trong từng bảng của hub. Chỉ quản trị viên hub xem được trang này.",
-    "groups": {
-      "access": "Người dùng và quyền",
-      "projects": "Dự án",
-      "content": "Nội dung",
-      "other": "Khác"
+    "overview": {
+      "metrics": {
+        "label": "Tổng quan hub",
+        "members": "Thành viên",
+        "membersMeta": "{count, plural, =0 {Không ai hoạt động} other {# người hoạt động}} trong {days} ngày qua",
+        "tokens": "Token còn hiệu lực",
+        "tokensMeta": "{count, plural, =0 {Không token nào hết hạn} other {# token hết hạn}} trong {days} ngày tới",
+        "workers": "Worker",
+        "workersMeta": "{live, plural, =0 {Chưa có worker nào} other {{count, plural, =0 {Tất cả đều online} other {# offline}}}}",
+        "storage": "Lưu trữ blob",
+        "storageMeta": "{count, plural, other {# đối tượng}}",
+        "audit": "Dòng audit",
+        "auditMeta": "Trong {hours} giờ qua"
+      },
+      "attention": {
+        "title": "Cần xử lý",
+        "count": "{count, plural, other {# việc cần xử lý}}",
+        "clearTitle": "Mọi thứ ổn.",
+        "clear": "Không token nào hết hạn trong {expiring} ngày tới, không build đồ thị nào lỗi trong {days} ngày qua, và mọi worker đều online.",
+        "builds": {
+          "title": "{count, plural, other {# lần build đồ thị lỗi}} ở {project}",
+          "lastFailure": "Lỗi gần nhất: build #{id},",
+          "since": "Build mới nhất #{id} {status, select, succeeded {đã thành công} running {đang chạy} queued {đang chờ} other {đã lỗi}}"
+        },
+        "offline": {
+          "title": "{count, plural, other {# worker offline}}",
+          "meta": "Không có heartbeat hơn {minutes} phút"
+        },
+        "expiring": {
+          "title": "{count, plural, other {# token hết hạn}} trong {days} ngày tới",
+          "meta": "Mỗi lần dùng sẽ lùi hạn của token; thu hồi những token không ai cần"
+        },
+        "unused": {
+          "title": "{count, plural, other {# token}} không dùng trong {days} ngày",
+          "meta": "Chưa bị thu hồi; xem chúng thuộc về ai"
+        },
+        "notSignedIn": {
+          "title": "{count, plural, other {# người}} chưa đăng nhập lần nào",
+          "meta": "Đã được cấp quyền, đang chờ lần đăng nhập đầu tiên"
+        },
+        "deletions": {
+          "title": "{count, plural, other {# blob}} đang chờ xoá khỏi kho lưu trữ",
+          "meta": "Tổng {size}; lần dọn tiếp theo sẽ thử lại"
+        }
+      },
+      "access": {
+        "title": "Quyền theo dự án",
+        "allMembers": "Tất cả thành viên",
+        "admins": "{count, plural, other {# người quản trị}}",
+        "writers": "{count, plural, other {# người ghi}}",
+        "readers": "{count, plural, other {# người đọc}}",
+        "nobody": "Chưa ai có quyền",
+        "noProjects": "Chưa có dự án nào được đăng ký. Đăng ký bằng <code>evo-agents hub project register</code>."
+      },
+      "diagnostics": "Số dòng của từng bảng trong hub nằm ở trang <link>Chẩn đoán</link>."
     },
-    "tables": {
-      "users": "Người dùng",
-      "tokens": "Token và phiên",
-      "grants": "Quyền theo dự án",
-      "audit": "Dòng audit",
-      "projects": "Dự án",
-      "project_repos": "Repo của dự án",
-      "project_sinks": "Sink của dự án",
-      "memories": "Memories",
-      "memory_revisions": "Revision của memory",
-      "plans": "Plans",
-      "plan_revisions": "Revision của plan",
-      "skills": "Skills",
-      "skill_versions": "Version của skill",
-      "kg_ingests": "Lượt đẩy knowledge graph"
+    "diagnostics": {
+      "title": "Chẩn đoán",
+      "caption": "Số dòng trong từng bảng của hub",
+      "columns": {
+        "table": "Bảng",
+        "area": "Phần",
+        "rows": "Số dòng"
+      },
+      "total": "{tables, plural, other {# bảng}}, tổng {rows, plural, other {# dòng}}",
+      "empty": "Hub không báo bảng nào.",
+      "areas": {
+        "access": "Người dùng và quyền",
+        "projects": "Dự án",
+        "content": "Memory, plan và skill",
+        "runs": "Worker và run",
+        "credentials": "Secret và lease",
+        "notifications": "Thông báo",
+        "graph": "Đồ thị tri thức",
+        "storage": "Lưu trữ blob",
+        "queue": "Hàng đợi job",
+        "other": "Khác"
+      }
     },
-    "rows": "{count, plural, other {# dòng}}",
     "nav": {
       "label": "Các trang quản trị",
       "overview": "Tổng quan",
       "members": "Thành viên",
       "tokens": "Token",
-      "audit": "Audit"
+      "audit": "Audit",
+      "diagnostics": "Chẩn đoán"
     },
     "filters": {
       "apply": "Lọc",
@@ -177,7 +490,6 @@
       "loading": "Đang tải trang…"
     },
     "notice": {
-      "dismiss": "Đóng thông báo",
       "requestId": "Mã request: {id}"
     },
     "errors": {
@@ -191,11 +503,11 @@
     },
     "members": {
       "title": "Thành viên",
-      "description": "Người dùng đã đăng nhập hoặc được cấp quyền trước, cùng vai trò và mức nhãn tối đa của họ trong từng dự án. Mỗi lần cấp hay thu hồi được ghi vào audit.",
       "count": "{count, plural, other {# người dùng}}",
       "shown": "Hiển thị {shown} trên {total} người dùng",
       "search": "Tìm theo tên đăng nhập",
       "searchPlaceholder": "Ví dụ: octocat",
+      "clearSearch": "Xoá ô tìm",
       "project": "Dự án",
       "allProjects": "Tất cả dự án",
       "grant": "Cấp quyền",
@@ -205,7 +517,6 @@
       "emptyTitle": "Chưa có người dùng nào",
       "emptyDescription": "Người dùng xuất hiện ở đây sau lần đăng nhập đầu tiên, hoặc khi bạn cấp quyền cho tên đăng nhập GitHub của họ.",
       "noMatchTitle": "Không có người dùng khớp bộ lọc",
-      "noMatchDescription": "Thử tên đăng nhập khác hoặc chọn tất cả dự án.",
       "columns": {
         "login": "Người dùng",
         "grants": "Quyền theo dự án",
@@ -214,24 +525,27 @@
         "actions": "Thao tác"
       },
       "noGrants": "Chưa có quyền ở dự án nào",
-      "grantSummary": "{project}: {role}, mức {level}",
+      "moreGrants": "và {count} dự án khác: {projects}",
+      "mobileGrant": "{project}, {role}",
+      "mobileMore": "{grant} và {count} dự án khác",
+      "grantSummary": "{project}: {role}, mức hiển thị {level}",
       "hubAdmin": "Quản trị viên hub",
       "notSignedIn": "Chưa đăng nhập",
       "never": "Chưa bao giờ"
     },
     "member": {
-      "eyebrow": "Thành viên",
+      "metaTitle": "Thành viên",
       "notFoundTitle": "Không tìm thấy người dùng {login}",
       "notFoundDescription": "Hub không có người dùng này. Có thể tên đăng nhập bị gõ sai, hoặc người đó chưa đăng nhập và chưa được cấp quyền.",
       "summary": "Có trên hub từ {created}. Hoạt động lần cuối: {lastSeen}.",
       "grantsTitle": "Quyền theo dự án",
-      "grantsDescription": "Vai trò và mức nhãn cao nhất người này xem được trong từng dự án.",
+      "grantsDescription": "Vai trò và mức hiển thị của người này trong từng dự án.",
       "grantsEmptyTitle": "Chưa có quyền ở dự án nào",
       "grantsEmptyDescription": "{login} chưa thấy dự án nào trên hub. Cấp vai trò để họ đọc hoặc ghi nội dung của một dự án.",
       "columns": {
         "project": "Dự án",
         "role": "Vai trò",
-        "maxLevel": "Mức nhãn tối đa",
+        "visibility": "Mức hiển thị",
         "grantedBy": "Cấp bởi",
         "grantedAt": "Cấp lúc",
         "actions": "Thao tác"
@@ -250,7 +564,7 @@
     },
     "grant": {
       "title": "Cấp quyền theo dự án",
-      "description": "Chọn người dùng, dự án, vai trò và mức nhãn cao nhất họ được xem. Bạn sẽ xác nhận ở bước sau.",
+      "description": "Chọn người dùng, dự án, vai trò và mức hiển thị. Bạn sẽ xác nhận ở bước sau.",
       "login": "Tên đăng nhập GitHub",
       "loginHint": "Có thể cấp cho người chưa đăng nhập lần nào; quyền có hiệu lực từ lần đăng nhập đầu tiên của họ.",
       "loginRequired": "Nhập tên đăng nhập GitHub.",
@@ -260,15 +574,15 @@
       "noProjects": "Hub chưa có dự án nào. Đăng ký dự án bằng lệnh evo-agents hub project register, rồi quay lại đây.",
       "role": "Vai trò",
       "roleHints": {
-        "reader": "Xem memories, plans, skills và knowledge graph của dự án, tới mức nhãn tối đa.",
+        "reader": "Xem memories, plans, skills và knowledge graph của dự án, tới mức hiển thị được cấp.",
         "writer": "Như Đọc, và đẩy memories, plans, skills, knowledge graph lên hub.",
         "admin": "Như Ghi, và đăng ký lại dự án từ harness của nó."
       },
-      "maxLevel": "Mức nhãn tối đa",
-      "maxLevelHint": "Thang nhãn của dự án, từ thấp tới cao. Người này xem được nội dung có nhãn tới mức này.",
-      "maxLevelRequired": "Chọn một mức nhãn.",
-      "existing": "{login} đang có vai trò {role}, mức {level} trong dự án này. Lưu sẽ thay bằng lựa chọn mới.",
-      "unchanged": "{login} đã có đúng vai trò và mức nhãn này. Không có gì để thay đổi.",
+      "visibility": "Mức hiển thị",
+      "visibilityHint": "Các mức trong thang nhãn của dự án, từ thấp tới cao. Người này xem được nội dung có nhãn tới mức được chọn.",
+      "visibilityRequired": "Chọn một mức hiển thị.",
+      "existing": "{login} đang có vai trò {role}, mức hiển thị {level} trong dự án này. Lưu sẽ thay bằng lựa chọn mới.",
+      "unchanged": "{login} đã có đúng vai trò và mức hiển thị này. Không có gì để thay đổi.",
       "continue": "Tiếp tục",
       "cancel": "Huỷ",
       "close": "Đóng",
@@ -279,15 +593,17 @@
         "login": "Người dùng",
         "project": "Dự án",
         "role": "Vai trò",
-        "maxLevel": "Mức nhãn tối đa",
+        "visibility": "Mức hiển thị",
         "previous": "Thay cho"
       },
-      "previous": "{role}, mức {level}",
+      "previous": "{role}, mức hiển thị {level}",
       "back": "Quay lại",
       "confirm": "Xác nhận cấp quyền",
       "saving": "Đang lưu…",
       "notFound": "Dự án {project} không còn trên hub. Đóng hộp thoại rồi chọn dự án khác.",
-      "success": "Đã cấp vai trò {role}, mức {level}, cho {login} trong dự án {project}."
+      "success": "Vai trò {role}, mức hiển thị {level}, cho {login} trong dự án {project}.",
+      "successTitle": "Đã cấp quyền cho {login}",
+      "openMember": "Mở thành viên"
     },
     "revokeGrant": {
       "title": "Thu hồi quyền của {login} trong dự án {project}?",
@@ -296,12 +612,15 @@
       "confirm": "Thu hồi quyền",
       "pending": "Đang thu hồi…",
       "notFound": "Quyền này đã được thu hồi trước đó. Danh sách vừa được tải lại.",
-      "success": "Đã thu hồi quyền của {login} trong dự án {project}."
+      "success": "{login} không còn vào được dự án {project}.",
+      "successTitle": "Đã thu hồi quyền của {login}",
+      "failed": "Không thu hồi được quyền của {login} trong {project}",
+      "openMember": "Mở thành viên"
     },
     "tokens": {
       "title": "Token và phiên đăng nhập",
-      "description": "Token máy của CLI và phiên web của mọi người dùng. Thu hồi một token thì yêu cầu kế tiếp dùng nó nhận 401, từ mọi máy.",
       "caption": "Token và phiên đăng nhập",
+      "count": "{count, plural, other {# token}}",
       "login": "Người dùng",
       "loginPlaceholder": "Tất cả người dùng",
       "kind": "Loại",
@@ -313,6 +632,8 @@
       "state": "Trạng thái",
       "states": {
         "active": "Đang hoạt động",
+        "expiring": "Hết hạn trong {days} ngày tới",
+        "unused": "Không dùng trong {days} ngày",
         "revoked": "Đã thu hồi",
         "expired": "Đã hết hạn",
         "any": "Mọi trạng thái"
@@ -333,8 +654,10 @@
       "noHost": "Không có",
       "revoke": "Thu hồi",
       "revokeLabel": "Thu hồi token {id} của {login}",
-      "emptyTitle": "Không có token nào khớp bộ lọc",
-      "emptyDescription": "Đổi người dùng, loại hoặc trạng thái để xem token khác."
+      "mobileTitle": "{kind} #{id}",
+      "emptyTitle": "Không có token nào đang hoạt động",
+      "emptyDescription": "Token hiện ở đây khi có người đăng nhập hub từ trình duyệt, CLI hoặc worker.",
+      "noMatchTitle": "Không có token nào khớp bộ lọc"
     },
     "revokeToken": {
       "title": "Thu hồi token {id} của {login}?",
@@ -348,12 +671,15 @@
       "pending": "Đang thu hồi…",
       "notFound": "Hub không còn token này. Danh sách vừa được tải lại.",
       "conflict": "Token này đã bị thu hồi trước đó. Danh sách vừa được tải lại.",
-      "success": "Đã thu hồi token {id} của {login}. Yêu cầu kế tiếp dùng token này sẽ nhận 401."
+      "success": "Yêu cầu kế tiếp dùng token này sẽ nhận 401.",
+      "successTitle": "Đã thu hồi token {id} của {login}",
+      "failed": "Không thu hồi được token {id}",
+      "openMember": "Mở thành viên"
     },
     "audit": {
       "title": "Nhật ký audit",
-      "description": "Mỗi thao tác thay đổi dữ liệu trên hub: ai làm, bằng token nào, việc gì, với đối tượng nào và trong dự án nào. Nhật ký không chứa nội dung hay thông tin xác thực.",
       "caption": "Nhật ký audit, mới nhất trước",
+      "count": "{count, plural, other {# dòng}}",
       "actor": "Người thực hiện",
       "actorPlaceholder": "Tất cả người dùng",
       "action": "Hành động",
@@ -371,9 +697,11 @@
         "token": "Token"
       },
       "hub": "Hub",
+      "mobileMeta": "{actor}, {target}",
       "noProject": "Không thuộc dự án",
-      "emptyTitle": "Không có dòng audit nào khớp bộ lọc",
-      "emptyDescription": "Nới bộ lọc, chẳng hạn bỏ người thực hiện hay mở rộng khoảng ngày.",
+      "emptyTitle": "Chưa có dòng audit nào",
+      "emptyDescription": "Mỗi lần đăng nhập, cấp quyền, hay thay đổi dự án, plan, memory và skill thêm một dòng ở đây.",
+      "noMatchTitle": "Không có dòng audit nào khớp bộ lọc",
       "actions": {
         "auth_login": "Đăng nhập",
         "auth_logout": "Đăng xuất",
@@ -397,40 +725,23 @@
     }
   },
   "plans": {
-    "planEyebrow": "Plan",
-    "stepEyebrow": "Bước của plan",
-    "backToPlans": "Tất cả plan của dự án",
-    "backToPlan": "Về plan {name}",
     "revision": "Revision {revision}",
+    "copyId": "Sao chép mã plan {id}",
     "updated": "Sửa lần cuối bởi <who>{login}</who> lúc {time}",
+    "stepOf": "Thuộc plan <plan>{name}</plan>, sửa lần cuối bởi <who>{login}</who> lúc {time}",
     "emptyList": "Danh sách trống",
     "readOnly": {
-      "label": "Trang chỉ để đọc",
-      "text": "Nội dung plan ở đây chỉ để đọc: plan được sửa bằng <code>evo harness step</code> hoặc <code>evo-agents hub plan</code>, và mỗi lần sửa thêm một revision vào lịch sử. Muốn một worker của bạn làm plan này thì người có quyền ghi dùng Chạy plan."
+      "label": "Chỉ đọc",
+      "title": "Chỉ đọc.",
+      "text": "Plan được sửa từ CLI bằng <code>evo harness step</code>; mỗi lần sửa thêm một revision.",
+      "copy": "Sao chép",
+      "copyLabel": "Sao chép lệnh {command}",
+      "copied": "Đã chép"
     },
     "tabs": {
       "label": "Các phần của plan",
       "steps": "Các bước",
       "revisions": "Lịch sử revision"
-    },
-    "area": {
-      "active": "Đang chạy",
-      "completed": "Đã hoàn tất"
-    },
-    "status": {
-      "pending": "Chưa làm",
-      "in_progress": "Đang làm",
-      "blocked": "Bị chặn",
-      "done": "Xong",
-      "other": "Trạng thái khác: {status}"
-    },
-    "repoStatus": {
-      "merged": "Đã merge",
-      "done": "Xong",
-      "in_progress": "Đang làm",
-      "pending": "Chưa làm",
-      "not-needed": "Không cần",
-      "other": "Trạng thái khác: {status}"
     },
     "progress": {
       "title": "Tiến độ",
@@ -443,7 +754,6 @@
     "list": {
       "metaTitle": "Plans của {project}",
       "title": "Plans",
-      "description": "Các plan của dự án mà hub đang giữ, kèm tiến độ tính theo số bước đã xong.",
       "activeCount": "{count, plural, other {# đang chạy}}",
       "completedCount": "{count, plural, other {# đã hoàn tất}}",
       "active": "Đang chạy",
@@ -451,13 +761,19 @@
       "noActive": "Dự án không có plan nào đang chạy.",
       "noCompleted": "Dự án chưa có plan nào hoàn tất.",
       "emptyTitle": "Dự án chưa có plan nào trên hub",
-      "emptyDescription": "Đẩy các plan trong harness lên bằng evo-agents hub plan import, rồi tải lại trang. Plan có nhãn cao hơn mức của bạn sẽ không hiện ở đây.",
+      "emptyDescription": "Plan hiện ở đây khi một thành viên đẩy các plan trong harness lên bằng evo-agents hub plan import; plan có nhãn cao hơn mức hiển thị của bạn không hiện.",
       "search": "Tìm plan theo tên hoặc mã",
-      "searchPlaceholder": "Tìm plan…",
+      "searchPlaceholder": "Tìm plan",
+      "clearSearch": "Xoá ô tìm",
       "shown": "Hiện {shown} trên {total} plan",
+      "total": "{count, plural, other {# plan}}",
       "noMatch": "Không có plan nào khớp với từ khoá.",
+      "noMatchTitle": "Không có plan nào khớp",
       "activeCaption": "Plan đang chạy",
       "completedCaption": "Plan đã hoàn tất",
+      "revisionValue": "r{revision}",
+      "mobileMeta": "<id>{plan}</id>, {progress}",
+      "mobileMetaText": "{plan}, {progress}",
       "columns": {
         "plan": "Plan",
         "progress": "Tiến độ",
@@ -477,7 +793,8 @@
     "board": {
       "title": "Các bước",
       "search": "Tìm bước theo mã, tên, repo hoặc nội dung",
-      "searchPlaceholder": "Tìm bước…",
+      "searchPlaceholder": "Tìm bước",
+      "clearSearch": "Xoá ô tìm",
       "repo": "Repo",
       "allRepos": "Mọi repo",
       "view": "Cách xem các bước",
@@ -490,6 +807,8 @@
       "showAll": "Hiện cả {count} bước",
       "tableCaption": "Các bước của plan theo thứ tự",
       "noMatch": "Không có bước nào khớp với bộ lọc.",
+      "mobileMeta": "Bước {key}",
+      "mobileMetaRepo": "Bước {key}, {repo}",
       "columns": {
         "step": "Bước",
         "status": "Trạng thái",
@@ -558,7 +877,7 @@
     },
     "notFound": {
       "title": "Không tìm thấy plan {plan}",
-      "description": "Plan không có trong dự án {project}, hoặc nhãn của nó cao hơn mức bạn được xem.",
+      "description": "Plan không có trong dự án {project}, hoặc nhãn của nó cao hơn mức hiển thị của bạn.",
       "stepTitle": "Plan {plan} không có bước {step}",
       "stepDescription": "Kiểm lại mã bước trong đường dẫn, hoặc mở plan để xem danh sách bước."
     },
@@ -623,22 +942,34 @@
     "status": "Mã HTTP {status}",
     "apiMessage": "Thông báo từ API",
     "retry": "Thử lại",
-    "backHome": "Về danh sách dự án"
+    "backHome": "Về trang chủ",
+    "noResults": {
+      "inUse": "Bộ lọc đang dùng",
+      "filter": "{label}:",
+      "search": "Tìm",
+      "clear": "Xoá bộ lọc"
+    }
   },
   "table": {
     "sortAscending": "Đang xếp tăng dần",
     "sortDescending": "Đang xếp giảm dần",
-    "sortBy": "Xếp theo {column}"
+    "sortBy": "Xếp theo {column}",
+    "filters": {
+      "button": "Bộ lọc",
+      "buttonActive": "Bộ lọc ({count})",
+      "title": "Bộ lọc",
+      "description": "Danh sách đổi ngay khi bạn chọn.",
+      "descriptionForm": "Chọn bộ lọc rồi bấm Lọc để áp dụng.",
+      "close": "Đóng bộ lọc",
+      "clear": "Xoá bộ lọc",
+      "done": "Xem kết quả"
+    }
   },
   "memories": {
-    "projectEyebrow": "Dự án {project}",
-    "personalEyebrow": "Của riêng bạn",
     "projectTitle": "Memory",
     "personalTitle": "Memory cá nhân",
-    "projectDescription": "Các tệp memory của Claude Code mà thành viên đẩy lên hub từ harness và các repo của dự án.",
-    "personalDescription": "Memory ở các thư mục không thuộc dự án hub nào, đồng bộ giữa các máy của bạn.",
     "count": "{count, plural, other {# memory}}",
-    "projectVisibility": "Bạn thấy memory có nhãn tới mức <code>{level}</code> theo grant của bạn. Memory loại Người dùng và Góp ý chỉ người tạo ra nó thấy.",
+    "projectVisibility": "Mức hiển thị của bạn là <level></level>: bạn thấy memory có nhãn tới mức này. Memory loại Người dùng và Góp ý chỉ người tạo ra nó thấy.",
     "personalVisibility": "Chỉ bạn thấy các memory này.",
     "adminWithoutGrant": "Bạn là quản trị viên hub nhưng chưa có grant trên dự án này, nên không đọc được memory của nó. Nhờ quản trị viên dự án cấp grant nếu cần.",
     "search": {
@@ -662,7 +993,7 @@
     },
     "label": {
       "label": "Nhãn",
-      "level": "Mức nhãn",
+      "level": "Mức hiển thị",
       "location": "Vùng dữ liệu",
       "anyLocation": "Không giới hạn",
       "integrity": "Độ tin cậy",
@@ -687,15 +1018,13 @@
     "truncated": "Có nhiều memory hơn mức trang này tải: đang hiện {count} memory đầu tiên. Dùng ô tìm kiếm để tìm memory khác.",
     "empty": {
       "projectTitle": "Dự án chưa có memory nào",
-      "projectDescription": "Memory xuất hiện ở đây khi thành viên chạy <code>evo-agents hub memory push</code> trong harness hoặc một repo của dự án.",
+      "projectDescription": "Tệp memory của Claude Code do thành viên đẩy lên hiện ở đây khi họ chạy <code>evo-agents hub memory push</code> trong harness hoặc một repo của dự án.",
       "personalTitle": "Bạn chưa có memory cá nhân nào",
-      "personalDescription": "Memory ở thư mục ngoài các dự án hub được đẩy lên bằng <code>evo-agents hub memory push --all</code>."
+      "personalDescription": "Memory ở thư mục ngoài mọi dự án hub được đẩy lên bằng <code>evo-agents hub memory push --all</code> và đồng bộ giữa các máy của bạn."
     },
     "noResults": {
       "searchTitle": "Không tìm thấy memory nào cho “{q}”",
-      "searchDescription": "Thử từ khác, bỏ bớt bộ lọc, hoặc đặt cụm từ trong dấu ngoặc kép. Memory có nhãn cao hơn grant của bạn không bao giờ hiện ở đây.",
-      "filterTitle": "Không có memory nào khớp bộ lọc",
-      "filterDescription": "Bỏ bớt bộ lọc vị trí hoặc loại để thấy thêm."
+      "filterTitle": "Không có memory nào khớp bộ lọc"
     },
     "deleted": "Đã xoá",
     "markdown": {
@@ -712,8 +1041,6 @@
       "title": "Memory",
       "notFoundTitle": "Không tìm thấy memory",
       "notFoundDescription": "Memory này không tồn tại, thuộc chỗ khác, hoặc bạn không được xem nó.",
-      "backProject": "Memory của dự án",
-      "backPersonal": "Memory cá nhân",
       "deletedTitle": "Memory này đã bị xoá ở revision {revision}",
       "deletedDescription": "Nội dung trước đó vẫn còn trong lịch sử revision.",
       "revisionNotFoundTitle": "Không tìm thấy revision {revision}",
@@ -758,12 +1085,8 @@
     }
   },
   "skills": {
-    "projectEyebrow": "Dự án {project}",
-    "globalEyebrow": "Dùng chung toàn hub",
     "projectTitle": "Skill của dự án",
     "globalTitle": "Skill dùng chung",
-    "projectDescription": "Skill do thành viên dự án xuất bản; lệnh evo-agents hub skills sync cài chúng vào các runtime trên máy.",
-    "globalDescription": "Skill quản trị viên hub xuất bản cho mọi thành viên.",
     "count": "{count, plural, other {# skill}}",
     "bytes": "{count, number} byte",
     "copyHash": "Chép SHA-256",
@@ -783,23 +1106,22 @@
     },
     "empty": {
       "projectTitle": "Dự án chưa có skill nào",
-      "projectDescription": "Người có vai trò Ghi xuất bản skill bằng <code>evo-agents hub skills publish DIR --scope project:{project}</code>.",
+      "projectDescription": "Người có vai trò Ghi xuất bản skill bằng <code>evo-agents hub skills publish DIR --scope project:{project}</code>, và <code>evo-agents hub skills sync</code> cài nó vào các runtime trên máy.",
       "toGlobal": "Xem skill dùng chung",
       "globalTitle": "Hub chưa có skill dùng chung nào",
-      "globalDescription": "Quản trị viên hub xuất bản bằng <code>evo-agents hub skills publish DIR</code>."
+      "globalDescription": "Quản trị viên hub xuất bản skill cho mọi thành viên bằng <code>evo-agents hub skills publish DIR</code>."
     },
     "filter": {
       "label": "Lọc skill",
       "placeholder": "Lọc theo tên hoặc mô tả",
-      "clear": "Xoá bộ lọc"
+      "clear": "Xoá ô tìm"
     },
     "summary": {
       "all": "{count, plural, =0 {Không có skill nào} other {# skill}}",
       "filtered": "Hiện {shown} trên {count} skill"
     },
     "noResults": {
-      "title": "Không có skill nào khớp “{q}”",
-      "description": "Thử từ khác, hoặc xoá bộ lọc để xem toàn bộ."
+      "title": "Không có skill nào khớp “{q}”"
     },
     "blobStore": {
       "unconfiguredTitle": "Hub chưa cấu hình kho blob",
@@ -823,8 +1145,6 @@
     "detail": {
       "notFoundTitle": "Không tìm thấy skill {name}",
       "notFoundDescription": "Skill này chưa được xuất bản ở đây, hoặc tên được viết khác.",
-      "backProject": "Skill của dự án",
-      "backGlobal": "Skill dùng chung",
       "noVersions": "Skill chưa có phiên bản nào.",
       "latestTitle": "Phiên bản mới nhất: v{version}",
       "latestDescription": "Bundle là tệp tar.gz của thư mục skill, đúng như lúc xuất bản.",
@@ -842,7 +1162,6 @@
   },
   "kg": {
     "title": "Đồ thị tri thức",
-    "description": "Đồ thị hub dựng từ các lượt đẩy của dự án: trạng thái build, hàng đợi và tìm node. Bạn chỉ thấy node có nhãn trong mức tối đa của mình.",
     "readOnly": "Chỉ đọc",
     "copied": "Đã chép vào bộ nhớ tạm",
     "status": {
@@ -911,6 +1230,11 @@
     },
     "history": {
       "caption": "Các build gần nhất của dự án",
+      "filter": "Các build hiển thị",
+      "all": "Tất cả",
+      "failed": "Lỗi",
+      "captionFailed": "Các build lỗi gần nhất của dự án",
+      "noFailed": "Dự án này chưa có build nào lỗi.",
       "build": "Build",
       "status": "Trạng thái",
       "queued": "Xếp hàng lúc",
@@ -933,7 +1257,7 @@
     },
     "search": {
       "title": "Tìm node",
-      "description": "Tìm theo tên, id, đường dẫn, mã hoặc từ trong nội dung. Kết quả chỉ gồm node có nhãn trong mức bạn được xem.",
+      "description": "Tìm theo tên, id, đường dẫn, mã hoặc từ trong nội dung. Kết quả chỉ gồm node có nhãn trong mức hiển thị của bạn.",
       "query": "Từ khoá",
       "placeholder": "Ví dụ: runbook, KB-01, src/app.py",
       "kind": "Loại node",
@@ -943,12 +1267,12 @@
       "hint": "Tối đa 25 kết quả, xếp theo độ khớp.",
       "visible": "{count, plural, =0 {Bạn chưa xem được node nào trong đồ thị này.} other {Bạn xem được # node trong đồ thị này, theo loại:}}",
       "byKind": "Số node theo loại",
-      "nothingVisible": "Mọi node của đồ thị đều có nhãn cao hơn mức của bạn.",
+      "nothingVisible": "Mọi node của đồ thị đều có nhãn cao hơn mức hiển thị của bạn.",
       "seeLevels": "Xem thang nhãn của dự án",
       "count": "{count, plural, =0 {Không có kết quả} other {# kết quả}} cho “{query}”",
       "countKind": "Node {kind} khớp “{query}”: {count}",
       "emptyTitle": "Không có node nào khớp “{query}”",
-      "emptyDescription": "Thử từ khoá ngắn hơn, id đầy đủ của node, hoặc bỏ lọc loại. Node có nhãn cao hơn mức của bạn không bao giờ hiện ở đây.",
+      "emptyDescription": "Thử từ khoá ngắn hơn, id đầy đủ của node, hoặc bỏ lọc loại. Node có nhãn cao hơn mức hiển thị của bạn không bao giờ hiện ở đây.",
       "clearKind": "Tìm trong mọi loại",
       "columns": {
         "node": "Node",
@@ -959,7 +1283,6 @@
       }
     },
     "node": {
-      "back": "Về đồ thị tri thức",
       "facts": "Thông tin node",
       "id": "Id",
       "copyId": "Chép id của node",
@@ -974,7 +1297,7 @@
       "confidence": "Độ tin cậy",
       "aliases": "Bí danh",
       "notFoundTitle": "Không tìm thấy node",
-      "notFoundDescription": "Node không có trong đồ thị hiện tại, hoặc nhãn của nó cao hơn mức bạn được xem.",
+      "notFoundDescription": "Node không có trong đồ thị hiện tại, hoặc nhãn của nó cao hơn mức hiển thị của bạn.",
       "searchInstead": "Tìm trong đồ thị",
       "olderBuild": "Kho blob chưa trả lời nên trang đang đọc build #{id}, cũ hơn build mới nhất."
     },
@@ -1040,8 +1363,6 @@
   },
   "workers": {
     "title": "Worker",
-    "eyebrow": "Hub",
-    "description": "Laptop và máy bàn đã đăng ký để chạy các bước plan cho chủ máy. Worker gửi heartbeat mỗi 15 giây; quá 5 phút không có heartbeat thì worker offline, và các run nó đang giữ quay lại queue.",
     "registerButton": "Đăng ký worker",
     "register": {
       "title": "Đăng ký worker",
@@ -1101,7 +1422,7 @@
       "newCode": "Tạo code mới",
       "openWorker": "Mở worker",
       "joinedTitle": "<strong>{name}</strong> đã kết nối lúc {time}.",
-      "joinedNotice": "Worker {name} đã kết nối với hub.",
+      "joinedNotice": "{name} đã kết nối với hub",
       "hostValue": "{hostname}, {os} {arch}",
       "firstHeartbeat": "Có sau heartbeat đầu tiên",
       "cliIntro": "Máy đã đăng nhập bằng <code>evo-agents hub login</code> đăng ký bằng chính token của bạn. Không cần pairing code.",
@@ -1117,16 +1438,10 @@
     "count": "{count, plural, other {# worker}}",
     "caption": "Worker",
     "hostLine": "{hostname}, {os} {arch}",
+    "mobileMeta": "Đang dùng {held}/{slots} slot, {host}",
     "slotsLabel": "Đang dùng {held} trên {slots} slot",
     "notReported": "Chưa báo",
     "never": "Chưa có",
-    "status": {
-      "idle": "Rảnh",
-      "busy": "Đang chạy",
-      "draining": "Ngừng nhận việc",
-      "offline": "Offline",
-      "revoked": "Đã thu hồi"
-    },
     "summary": {
       "label": "Tóm tắt",
       "idle": "Rảnh",
@@ -1150,9 +1465,9 @@
       "clear": "Xoá ô tìm"
     },
     "listSummary": {
-      "all": "{count, plural, =0 {Không có worker nào.} other {# worker.}}",
-      "filtered": "{count, plural, =0 {Không có worker nào khớp.} other {# worker khớp.}}",
-      "revokedHidden": "{count, plural, other {Đang ẩn # worker đã thu hồi; chọn Đã thu hồi để xem.}}"
+      "all": "{count, plural, =0 {Không có worker nào} other {# worker}}",
+      "filtered": "{count, plural, =0 {Không có worker nào khớp} other {# worker khớp}}",
+      "revokedHidden": "{count, plural, other {đang ẩn # worker đã thu hồi}}"
     },
     "columns": {
       "worker": "Worker",
@@ -1165,13 +1480,11 @@
     },
     "empty": {
       "title": "Chưa có worker nào",
-      "description": "Đăng ký một laptop hoặc máy bàn để chạy các bước plan cho bạn. Worker gọi hub qua HTTPS và không mở cổng nào trên máy.",
+      "description": "Đăng ký một laptop hoặc máy bàn để chạy các bước plan cho bạn; worker gọi hub qua HTTPS và không mở cổng nào.",
       "showRevoked": "Xem worker đã thu hồi"
     },
     "noResults": {
-      "title": "Không có worker nào khớp",
-      "description": "Đổi từ khoá tìm hoặc chọn trạng thái khác.",
-      "clear": "Xem mọi worker"
+      "title": "Không có worker nào khớp"
     },
     "copy": {
       "copy": "Sao chép",
@@ -1208,7 +1521,6 @@
     },
     "detail": {
       "title": "Worker",
-      "eyebrow": "Worker",
       "facts": "{os} {arch} trên {hostname}. Chủ {owner}. Daemon evo-agents {version}, đăng ký {date}.",
       "notFoundTitle": "Không tìm thấy worker",
       "notFoundDescription": "Worker này không tồn tại, hoặc thuộc về thành viên khác.",
@@ -1276,31 +1588,38 @@
       "drainNotOwner": "Sau đó chỉ {owner} cho nó nhận việc lại được.",
       "drainConfirm": "Ngừng nhận việc",
       "drainPending": "Đang dừng…",
-      "drainSuccess": "{name} đã ngừng nhận việc: chạy xong các run đang giữ rồi không nhận run mới.",
-      "undrainSuccess": "{name} nhận run trở lại.",
+      "drainSuccess": "{name} đã ngừng nhận việc",
+      "undrainSuccess": "{name} đã nhận việc trở lại",
       "revokeTitle": "Thu hồi worker {name}?",
       "revokeBody": "Token của worker hết hiệu lực ngay và tên của nó được giải phóng. Các run nó đang giữ quay lại queue, hoặc thất bại nếu được gắn cố định với worker này hay đã ở lần thử cuối.",
       "revokeHeld": "{count, plural, other {Worker đang giữ # run.}}",
       "audit": "Thao tác không hoàn tác được và được ghi vào audit.",
       "revokeConfirm": "Thu hồi worker",
       "revokePending": "Đang thu hồi…",
-      "revokeSuccess": "Đã thu hồi {name}. Token của worker không còn hiệu lực."
+      "revokeSuccess": "Đã thu hồi {name}",
+      "drainSuccessText": "Worker chạy xong các run đang giữ rồi không nhận run mới.",
+      "undrainSuccessText": "Worker nhận run trở lại.",
+      "revokeSuccessText": "Token của worker không còn hiệu lực.",
+      "drainFailed": "Không cho {name} ngừng nhận việc được",
+      "undrainFailed": "Không cho {name} nhận việc lại được",
+      "revokeFailed": "Không thu hồi được {name}"
     },
     "dispatchFrom": {
       "label": "Chỉ nhận run dispatch từ web",
       "hint": "Bật: worker này chỉ nhận run bạn dispatch khi đăng nhập trên web. Run dispatch bằng token, từ dòng lệnh hay do agent, chờ worker khác, và token không gắn được run vào worker này, nên token bị lộ không giao được việc cho nó.",
-      "webSuccess": "{name} giờ chỉ nhận run dispatch từ web.",
-      "anySuccess": "{name} lại nhận run dispatch từ dòng lệnh và từ web."
+      "webSuccess": "{name} chỉ nhận run dispatch từ web",
+      "webSuccessText": "Run dispatch bằng token, từ dòng lệnh hay do agent, chờ worker khác.",
+      "anySuccess": "{name} lại nhận run dispatch từ dòng lệnh",
+      "anySuccessText": "Worker nhận run dispatch bằng mọi credential của bạn, từ dòng lệnh lẫn từ web.",
+      "failed": "Không đổi được ai dispatch cho {name}"
     }
   },
   "secrets": {
-    "eyebrow": "Credential cho run của bạn",
     "title": "Secret",
-    "description": "Token mà hub giữ kín và giao cho run của các dự án bạn chọn, trên worker của bạn. Value chỉ gửi lên một lần và không bao giờ hiện lại, ở đây hay ở bất cứ đâu.",
     "count": "{count, plural, other {# secret}}",
     "addButton": "Thêm secret",
     "caption": "Secret của bạn",
-    "listSummary": "{count, plural, other {# secret, chỉ của bạn: không ai khác thấy, kể cả quản trị hub.}}",
+    "listSummary": "{count, plural, other {Chỉ của bạn: không ai khác thấy, kể cả quản trị hub, và value không bao giờ hiện lại.}}",
     "columns": {
       "secret": "Secret",
       "kind": "Loại",
@@ -1324,7 +1643,7 @@
     "deleteLabel": "Xoá secret {name}",
     "empty": {
       "title": "Chưa có secret nào",
-      "description": "Thêm thứ run cần, như <code>CLAUDE_CODE_OAUTH_TOKEN</code> cho Claude Code hay access token GitLab cho git. Từ terminal, <code>evo-agents hub secret set</code> làm việc tương tự."
+      "description": "Hub giữ kín token và giao cho run của các dự án bạn chọn, trên worker của bạn; value chỉ gửi lên một lần và không bao giờ hiện lại. Thêm thứ run cần, như <code>CLAUDE_CODE_OAUTH_TOKEN</code> cho Claude Code hay access token GitLab cho git, ở đây hoặc bằng <code>evo-agents hub secret set</code>."
     },
     "errors": {
       "forbidden": "Hub từ chối: secret cần vai trò writer ở mọi dự án nó gắn với, và chỉ gắn được với worker của chính bạn chưa bị thu hồi.",
@@ -1375,8 +1694,10 @@
       "add": "Thêm secret",
       "replace": "Thay secret",
       "saving": "Đang lưu…",
-      "added": "Đã thêm secret {name}. Hub đã niêm phong value và sẽ không hiện lại.",
-      "replaced": "Đã thay secret {name}. Run nào xin credential từ giờ sẽ nhận value mới.",
+      "added": "Đã thêm secret {name}",
+      "addedText": "Hub đã niêm phong value và sẽ không hiện lại.",
+      "replaced": "Đã thay secret {name}",
+      "replacedText": "Run nào xin credential từ giờ sẽ nhận value mới.",
       "problems": {
         "nameRequired": "Đặt tên cho secret.",
         "nameInvalid": "Chữ thường, số, dấu chấm, gạch ngang và gạch dưới, tối đa 64 ký tự, bắt đầu bằng chữ hoặc số.",
@@ -1406,34 +1727,18 @@
       "confirm": "Xoá secret",
       "pending": "Đang xoá…",
       "notFound": "Bạn không còn secret tên này. Danh sách vừa được tải lại.",
-      "success": "Đã xoá secret {name}. Hãy thu hồi token cả ở nơi đã tạo ra nó."
+      "success": "Đã xoá secret {name}",
+      "successText": "Hãy thu hồi token cả ở nơi đã tạo ra nó.",
+      "failed": "Không xoá được secret {name}"
     }
   },
   "runs": {
     "title": "Run",
     "metaTitle": "Run của {project}",
-    "description": "Mỗi run là một bước của plan, hoặc cả một plan (plan run), được giao cho một worker của bạn. Trạng thái, log và bằng chứng của run gửi về hub trong lúc chạy.",
     "dispatchButton": "Dispatch",
-    "liveBadge": "Trực tiếp",
-    "live": "Cập nhật mỗi 5 giây khi còn run đang hoạt động.",
     "count": "{count, plural, other {# run}}",
     "caption": "Run của dự án {project}",
     "pagerLabel": "run",
-    "dispatched": "{count, plural, =1 {Đã xếp run {ids} vào queue.} other {Đã xếp # run vào queue: {ids}.}}",
-    "state": {
-      "queued": "Đang chờ",
-      "leased": "Đã nhận",
-      "running": "Đang chạy",
-      "interactive": "Tương tác",
-      "verifying": "Đang kiểm",
-      "waiting": "Chờ quyết định",
-      "review": "Chờ duyệt",
-      "parked": "Tạm gác",
-      "done": "Xong",
-      "failed": "Thất bại",
-      "lost": "Mất lease",
-      "cancelled": "Đã huỷ"
-    },
     "runtime": {
       "any": "Bất kỳ",
       "claude-code": "Claude Code",
@@ -1443,7 +1748,8 @@
     "summary": {
       "label": "Tóm tắt",
       "running": "Đang chạy",
-      "runningHint": "{workers, plural, =0 {không worker nào đang giữ run} other {trên # worker}}",
+      "runningHint": "{workers, plural, other {trên # worker}}",
+      "runningIdle": "Rảnh",
       "queued": "Đang chờ",
       "queuedSince": "run chờ lâu nhất từ {time}",
       "queuedMany": "{count, plural, other {# run đang chờ worker}}",
@@ -1453,7 +1759,9 @@
       "reviewMany": "đang chờ bạn duyệt",
       "reviewNone": "không có gì cần duyệt",
       "failed": "Thất bại",
-      "failedHint": "{lost, plural, =0 {không mất lease nào} other {thêm # lần mất lease}}, {cancelled, plural, =0 {không run nào bị huỷ} other {# run đã huỷ}}"
+      "failedHint": "{lost, plural, =0 {Không run nào mất lease} other {và # run mất lease}}",
+      "quietTitle": "Mọi thứ yên ắng.",
+      "quietText": "Không run nào đang chạy, chờ trong queue hay chờ duyệt."
     },
     "facets": {
       "label": "Trạng thái",
@@ -1469,8 +1777,8 @@
       "clear": "Xoá ô tìm"
     },
     "listSummary": {
-      "all": "{count, plural, =0 {Không có run nào.} other {# run.}}",
-      "filtered": "{count, plural, =0 {Không có run nào khớp.} other {# run khớp.}}"
+      "all": "{count, plural, =0 {Không có run nào} other {# run}}",
+      "filtered": "{count, plural, =0 {Không có run nào khớp} other {# run khớp}}"
     },
     "columns": {
       "run": "Run",
@@ -1488,6 +1796,11 @@
     "planLine": "{plan}, mọi bước chưa xong, {repos, plural, other {# repo}}",
     "planLineProject": "{project}, {plan}, mọi bước chưa xong, {repos, plural, other {# repo}}",
     "untitled": "Bước chưa có tiêu đề",
+    "mobile": {
+      "runTitle": "Run #{id}",
+      "meta": "<ref>#{id}</ref>, {detail}",
+      "metaText": "#{id}, {detail}"
+    },
     "noWorkerYet": "chưa có",
     "pinnedWaiting": "đang chờ worker đã ghim",
     "queuedAt": "Vào queue lúc",
@@ -1500,13 +1813,11 @@
     },
     "empty": {
       "title": "Chưa có run nào",
-      "description": "Một run là một bước plan đã sẵn sàng, được dispatch tới một worker của bạn. Dispatch một run để bắt đầu.",
+      "description": "Dispatch một bước plan đã sẵn sàng tới một worker của bạn. Log và kết quả của nó gửi về đây.",
       "readerDescription": "Người có quyền ghi trên dự án này dispatch run tới worker của họ; mỗi run hiện ở đây kèm trạng thái."
     },
     "noResults": {
-      "title": "Không có run nào khớp",
-      "description": "Đổi từ khoá tìm, hoặc xem run ở mọi trạng thái.",
-      "clear": "Xem mọi run"
+      "title": "Không có run nào khớp"
     },
     "step": {
       "title": "Run của bước này",
@@ -1632,19 +1943,13 @@
       "timeoutHint": "Thời gian agent được chạy. Lúc chờ bạn trả lời hay lúc tạm gác không tính vào.",
       "submit": "Chạy plan",
       "submitting": "Đang đưa vào queue…",
-      "dispatched": "Đã đưa plan run #{id} của {plan} vào queue.",
       "holds": "<link>Plan run #{id}</link> ({state}, do {login} giao) giữ mọi bước của plan này tới khi kết thúc.",
       "listLink": "Plan run #{id}: {state}",
       "phase": {
-        "queued": "Đang chờ",
         "queuedLong": "Đang chờ worker",
-        "running": "Đang chạy",
         "runningLong": "Đang chạy",
-        "waiting": "Chờ quyết định",
         "waitingLong": "Đang chờ bạn quyết định",
-        "parked": "Tạm gác",
         "parkedLong": "Tạm gác",
-        "review": "Chờ duyệt",
         "reviewLong": "Chờ duyệt"
       },
       "lock": {
@@ -1726,20 +2031,25 @@
           "parked": "tạm gác",
           "review": "chờ duyệt"
         }
+      },
+      "toast": {
+        "dispatched": "Đã dispatch plan run #{id}",
+        "dispatchedText": "Plan run làm mọi bước chưa xong của {plan} trên một worker.",
+        "openRun": "Mở run"
       }
     },
     "openRun": "Mở run #{id}",
     "detail": {
       "metaTitle": "Run #{id} của {project}",
       "title": "Run",
-      "planTitle": "Plan run",
       "untitled": "Bước chưa có tên",
-      "description": "Plan <planLink>{plan}</planLink>, <stepLink>bước {step}: {title}</stepLink>",
-      "planDescription": "Plan <planLink>{plan}</planLink>: {title}. Mọi bước chưa xong, trong một phiên.",
+      "sub": "Plan <planLink>{plan}</planLink>, <stepLink>bước {step}: {title}</stepLink>",
+      "planSub": "Plan <planLink>{plan}</planLink>: {title}. Mọi bước chưa xong, trong một phiên.",
       "notFoundTitle": "Không tìm thấy run #{id}",
       "notFoundDescription": "Run này không có trong dự án, hoặc thuộc một plan bạn không được đọc.",
-      "stepper": {
-        "label": "Tiến trình của run",
+      "timeline": {
+        "section": "Dòng thời gian của run",
+        "label": "Các pha của run #{id}",
         "phase": {
           "queued": "Đang chờ",
           "leased": "Đã nhận",
@@ -1754,7 +2064,98 @@
           "stopped": "kết thúc ở đây",
           "todo": "chưa tới"
         },
-        "during": "kết thúc khi đang ở {phase}"
+        "since": "từ {time}",
+        "notYet": "chưa tới",
+        "skipped": "bỏ qua",
+        "waitingGap": "chờ {duration}",
+        "gapLabel": "Mất",
+        "gap": {
+          "seconds": "{seconds} giây",
+          "minutes": "{minutes} phút {seconds} giây",
+          "minutesOnly": "{minutes} phút",
+          "hours": "{hours} giờ {minutes} phút"
+        }
+      },
+      "trace": {
+        "label": "Trace của run #{id}",
+        "agent": "Agent",
+        "you": "Bạn",
+        "someone": "Ai đó",
+        "thought": "Suy nghĩ trong {duration}",
+        "thoughtBrief": "Suy nghĩ nhanh",
+        "plan": "Kế hoạch",
+        "planCount": "Xong {done} trên {total}",
+        "planStatus": {
+          "pending": "Chưa làm",
+          "in_progress": "Đang làm",
+          "completed": "Xong"
+        },
+        "youAnswered": "Bạn đã trả lời quyết định #{id}",
+        "answered": "{login} đã trả lời quyết định #{id}",
+        "askedYou": "Hỏi bạn",
+        "asked": "Hỏi {login}",
+        "answer": "Trả lời",
+        "viewDecision": "Xem quyết định",
+        "inInbox": "Mở trong Inbox",
+        "exit": "mã thoát {code}",
+        "noResult": "không có kết quả",
+        "status": {
+          "pending": "đang chờ",
+          "in_progress": "đang chạy",
+          "completed": "xong",
+          "failed": "lỗi"
+        },
+        "kind": {
+          "read": "Đọc",
+          "edit": "Sửa",
+          "delete": "Xoá",
+          "move": "Chuyển",
+          "search": "Tìm",
+          "execute": "Shell",
+          "think": "Suy nghĩ",
+          "fetch": "Tải",
+          "switch_mode": "Chế độ",
+          "other": "Tool"
+        },
+        "diff": "{added, plural, other {thêm # dòng}}, {removed, plural, other {bớt # dòng}}",
+        "showFull": "Hiện toàn bộ output ({count, plural, other {# dòng}})",
+        "showLess": "Chỉ hiện {count} dòng đầu",
+        "noOutput": "Không có output.",
+        "noOutputYet": "Chưa có output.",
+        "input": "Input",
+        "systemOutput": "Output",
+        "raw": "{count, plural, other {# sự kiện của runtime}}",
+        "nothing": "Chưa có gì để hiện. Các sự kiện đến giờ nằm trong Log thô.",
+        "working": "Agent đang làm việc.",
+        "latest": "Tới mục mới nhất",
+        "duration": {
+          "under": "dưới 0,1 giây",
+          "seconds": "{seconds},{tenths} giây",
+          "minutes": "{minutes} phút {seconds} giây",
+          "hours": "{hours} giờ {minutes} phút"
+        }
+      },
+      "usage": {
+        "title": "Mức dùng",
+        "soFar": "đến giờ",
+        "token": "token",
+        "tokens": "token",
+        "asReported": "theo runtime báo",
+        "costNotReported": "Runtime không báo chi phí",
+        "parts": {
+          "cacheRead": "Đọc cache",
+          "input": "Input",
+          "output": "Output",
+          "reasoning": "Suy luận"
+        },
+        "share": "{value}%",
+        "tiny": "dưới 0,1",
+        "bar": "Đọc cache {cacheRead} phần trăm, input {input}, output {output}, suy luận {reasoning}",
+        "cacheWrite": "Ghi cache {count}.",
+        "costNote": "Chi phí đúng như runtime báo.",
+        "noCostNote": "Runtime không báo chi phí.",
+        "none": "Hiện khi agent xong lượt đầu tiên và runtime báo mức đã dùng.",
+        "noneEnded": "Runtime không báo mức dùng của run này."
       },
       "planSteps": {
         "title": "Các bước của plan",
@@ -1786,6 +2187,7 @@
         "countFiltered": "{shown} trên {total, plural, other {# dòng}}",
         "lines": "{count, plural, other {# dòng}}",
         "filter": "Hiện",
+        "groupMenu": "Hiện: {group}",
         "groups": {
           "all": "Tất cả",
           "agent": "Agent",
@@ -1843,7 +2245,8 @@
         "tabs": {
           "label": "Cách xem phiên",
           "heading": "Phiên trực tiếp của run #{id}",
-          "log": "Log",
+          "trace": "Trace",
+          "log": "Log thô",
           "terminal": "Terminal"
         },
         "where": "TUI của agent trên {worker}, chuyển tiếp qua hub.",
@@ -1892,15 +2295,19 @@
       },
       "composer": {
         "label": "Nhắn cho agent",
-        "placeholder": "Ví dụ: phủ thêm trường hợp token đã bị thu hồi",
+        "placeholder": "Nhắn cho agent. Agent đọc tin nhắn ở lượt kế tiếp.",
         "send": "Gửi",
         "sending": "Đang gửi…",
-        "hint": "Worker chuyển tin nhắn cho agent ở lượt kế tiếp; Ctrl hoặc Cmd + Enter để gửi. Chỉ bạn thấy ô này vì bạn đã dispatch run.",
+        "hint": "Chỉ bạn thấy ô này vì bạn đã dispatch run.",
         "sent": "Đã gửi. Tin nhắn nằm trong inbox của run chờ lượt kế tiếp của agent.",
         "blank": "Hãy gõ tin nhắn trước.",
         "long": "Một tin nhắn tối đa {max} byte UTF-8. Hãy rút ngắn lại.",
         "bytes": "{count} trên {max} byte",
-        "conflict": "Run không nhận tin nhắn nữa: run đã kết thúc hoặc đang chờ duyệt."
+        "conflict": "Run không nhận tin nhắn nữa: run đã kết thúc hoặc đang chờ duyệt.",
+        "headlessOn": "Run headless trên {worker}.",
+        "interactiveOn": "Run tương tác trên {worker}.",
+        "headless": "Run headless.",
+        "interactive": "Run tương tác."
       },
       "facts": {
         "title": "Chi tiết",
@@ -1945,7 +2352,8 @@
         "duration": "Thời lượng",
         "waited": "Đã chờ",
         "revision": "Revision của plan",
-        "revisionValue": "r{revision}"
+        "revisionValue": "r{revision}",
+        "copySession": "Sao chép mã phiên"
       },
       "result": {
         "title": "Kết quả",
@@ -1960,8 +2368,8 @@
         "changes": "Thay đổi",
         "diffstat": "{files, plural, other {# file}}, +{insertions} -{deletions}",
         "viewDiff": "Xem diff",
-        "usage": "Mức dùng",
-        "evidence": "Bằng chứng"
+        "evidence": "Bằng chứng",
+        "copyCommit": "Sao chép SHA của commit"
       },
       "credentials": {
         "title": "Credential",
@@ -1991,6 +2399,7 @@
       },
       "actions": {
         "diff": "Xem diff",
+        "diffstat": "thêm {insertions} dòng, bớt {deletions} dòng",
         "rerun": "Chạy lại",
         "cancel": "Huỷ run",
         "takeover": "Tiếp quản",
@@ -2006,12 +2415,27 @@
           "pending": "Đang huỷ…",
           "keep": "Giữ lại"
         },
-        "notice": {
-          "cancelled": "Đã huỷ run #{id}.",
-          "cancelAsked": "Đã yêu cầu huỷ run #{id}: worker dừng agent ở heartbeat kế tiếp.",
-          "approved": "Đã duyệt run #{id}: bước {step} của {plan} đã xong.",
-          "takeover": "Đã yêu cầu tiếp quản run #{id}: worker dừng agent ở cuối lượt rồi mở {name}.",
-          "handback": "Đã yêu cầu trả run #{id} cho agent: agent chạy headless tiếp trong cùng session."
+        "toast": {
+          "rerun": "Đã dispatch run #{id}",
+          "rerunText": "Chạy lại #{of}, đang chờ trong queue tới khi có worker nhận.",
+          "openRun": "Mở run",
+          "cancelled": "Đã huỷ run #{id}",
+          "cancelAsked": "Đã yêu cầu huỷ run #{id}",
+          "cancelAskedText": "Worker dừng agent ở heartbeat kế tiếp.",
+          "approved": "Đã duyệt run #{id}",
+          "approvedText": "Bước {step} của {plan} đã xong.",
+          "openStep": "Mở bước",
+          "takeover": "Đã yêu cầu tiếp quản run #{id}",
+          "takeoverText": "Worker dừng agent ở cuối lượt rồi mở {name}.",
+          "handback": "Đã yêu cầu trả run #{id} cho agent",
+          "handbackText": "Agent chạy headless tiếp trong cùng session.",
+          "failed": {
+            "cancel": "Không huỷ được run #{id}",
+            "takeover": "Không tiếp quản được run #{id}",
+            "handback": "Không trả được run #{id} cho agent",
+            "approve": "Không duyệt được run #{id}",
+            "rerun": "Không chạy lại được #{id}"
+          }
         }
       },
       "takeover": {
@@ -2048,7 +2472,7 @@
     "diff": {
       "metaTitle": "Diff của run #{id} thuộc {project}",
       "title": "Diff của run",
-      "description": "{title}: {files, plural, other {# file}}, {size} KiB.",
+      "sub": "{title}: {files, plural, other {# file}}, {size} KiB.",
       "back": "Quay lại run",
       "download": "Tải .diff",
       "downloadStarted": "Đang tải {file}.",
@@ -2088,17 +2512,101 @@
         "title": "Không đọc được diff",
         "description": "Blob store không trả lời yêu cầu của web. Hãy tải diff về, hoặc tải lại trang sau."
       }
+    },
+    "toast": {
+      "dispatched": "{count, plural, =1 {Đã dispatch run {ids}} other {Đã dispatch # run: {ids}}}",
+      "dispatchedText": "{count, plural, =1 {Run chờ trong queue tới khi có worker nhận.} other {Các run chờ trong queue tới khi có worker nhận.}}",
+      "openRun": "Mở run",
+      "openRuns": "Mở các run đang hoạt động"
+    }
+  },
+  "insights": {
+    "title": "Thống kê",
+    "metaTitle": "Thống kê của {project}",
+    "range": {
+      "label": "Khoảng thời gian",
+      "days": "{days} ngày",
+      "span": "{first} đến {last}, theo ngày UTC"
+    },
+    "view": {
+      "label": "Xem {chart} dạng",
+      "chart": "Biểu đồ",
+      "table": "Bảng"
+    },
+    "chartKeys": "{chart} theo ngày. Dùng phím mũi tên trái và phải để đọc từng ngày.",
+    "legend": "Chú giải của {chart}",
+    "day": "Ngày",
+    "allDays": "Cả {days} ngày",
+    "none": "Không có",
+    "caption": "{chart} theo ngày UTC, từ {first} đến {last}",
+    "tableRegion": "{chart}, dạng bảng",
+    "empty": {
+      "title": "Không run nào kết thúc trong {days} ngày qua",
+      "description": "Run được đếm vào ngày UTC nó kết thúc: xong, thất bại, mất lease hay đã huỷ. Dispatch một bước từ trang run để thấy chúng ở đây.",
+      "runs": "Mở trang run",
+      "longer": "Xem 90 ngày"
+    },
+    "outcomes": {
+      "title": "Run theo kết quả",
+      "headline": "{ended, plural, other {# run đã kết thúc}}: {done} xong, {failed} thất bại, {lost} mất lease, {cancelled} đã huỷ",
+      "series": {
+        "done": "Xong",
+        "failed": "Thất bại",
+        "stopped": "Mất lease hoặc đã huỷ",
+        "lost": "Mất lease",
+        "cancelled": "Đã huỷ",
+        "total": "Tổng"
+      }
+    },
+    "failure": {
+      "title": "Tỉ lệ lỗi",
+      "headline": "{rate} trong {counted, plural, other {# run}} thất bại hoặc mất lease; run đã huỷ không được tính",
+      "headlineNone": "Không run nào kết thúc xong, thất bại hay mất lease",
+      "series": {
+        "rate": "Tỉ lệ lỗi",
+        "failing": "Thất bại hoặc mất lease",
+        "counted": "Xong, thất bại hoặc mất lease"
+      }
+    },
+    "duration": {
+      "title": "Thời lượng run",
+      "headline": "Trung vị {p50}, phân vị 90 là {p90}, từ lúc bắt đầu tới lúc kết thúc",
+      "headlineNone": "Chưa run nào đã bắt đầu rồi kết thúc",
+      "series": {
+        "p50": "Trung vị",
+        "p90": "Phân vị 90"
+      }
+    },
+    "tokens": {
+      "title": "Token theo loại",
+      "headline": "{count, plural, other {# token}} từ {runs, plural, other {# run}} có báo mức dùng",
+      "headlineNone": "Không run nào báo mức dùng",
+      "series": {
+        "cacheRead": "Đọc cache",
+        "input": "Input",
+        "output": "Output",
+        "reasoning": "Suy luận",
+        "total": "Tổng"
+      }
+    },
+    "format": {
+      "under": "dưới 1 giây",
+      "seconds": "{seconds} giây",
+      "minutes": "{minutes} phút {seconds} giây",
+      "hours": "{hours} giờ {minutes} phút",
+      "tickSeconds": "{seconds} giây",
+      "tickMinutes": "{minutes} phút",
+      "tickHours": "{hours} giờ"
     }
   },
   "inbox": {
     "title": "Inbox",
-    "description": "Các quyết định agent của plan run bạn giao cần bạn trả lời, và những điều agent báo cho bạn: push hay merge vào nhánh mặc định, plan đã xong, run thất bại. Quyết định đang chờ bạn trả lời nằm trên cùng.",
     "listTitle": "Thông báo",
     "unreadCount": "{count, plural, =0 {Không có mục chưa đọc} other {# chưa đọc}}",
     "openCount": "{count, plural, other {# quyết định chờ bạn}}",
     "markAll": "Đánh dấu tất cả đã đọc",
     "markShown": "Đánh dấu các mục này đã đọc",
-    "markedAll": "{count, plural, =0 {Không còn thông báo nào chưa đọc.} other {Đã đánh dấu # thông báo là đã đọc.}}",
+    "markedAll": "{count, plural, =0 {Không còn thông báo nào chưa đọc} other {Đã đánh dấu # thông báo là đã đọc}}",
     "count": "{count, plural, other {# thông báo}}",
     "waitingTitle": "Đang chờ bạn trả lời",
     "restTitle": "Thông báo và quyết định đã xong",
@@ -2138,12 +2646,6 @@
       "decision": "Quyết định",
       "notice": "Thông báo"
     },
-    "decisionState": {
-      "open": "Đang mở",
-      "answered": "Đã trả lời",
-      "expired": "Hết hạn",
-      "cancelled": "Đã huỷ"
-    },
     "category": {
       "deploy": "Triển khai",
       "delete_data": "Xoá dữ liệu",
@@ -2177,26 +2679,27 @@
       "moreCommits": "và {count} commit nữa",
       "fewerCommits": "Thu gọn"
     },
-    "panel": {
-      "back": "Mọi thông báo",
+    "sheet": {
+      "title": "Quyết định #{id}",
+      "titleUnknown": "Quyết định",
       "close": "Đóng",
       "notFoundTitle": "Không tìm thấy quyết định #{id}",
       "notFoundDescription": "Quyết định thuộc một dự án hay plan bạn không xem được, hoặc đường dẫn bị sai."
     },
+    "screen": {
+      "back": "Về Inbox",
+      "soFar": "Agent đã làm gì đến giờ",
+      "soFarList": "Những việc agent làm gần nhất, cũ trước mới sau",
+      "soFarEmpty": "Agent chưa báo việc gì.",
+      "soFarError": "Không đọc được agent đã làm gì.",
+      "soFarRetry": "Thử lại",
+      "soFarOpen": "Mở trace của run"
+    },
     "decision": {
-      "number": "Quyết định #{id}",
-      "project": "Dự án",
-      "run": "Run",
-      "runLink": "#{id}",
-      "plan": "Plan",
-      "step": "Bước",
-      "stepLink": "Bước {key}",
-      "asked": "Hỏi lúc",
-      "owner": "Người được hỏi",
+      "runLink": "Run #{id}",
+      "stepLink": "bước {key}",
+      "asked": "hỏi <time></time>",
       "context": "Bối cảnh agent đưa ra",
-      "options": "Các phương án",
-      "chosen": "Đã chọn",
-      "recommended": "Nên chọn",
       "answerTitle": "Câu trả lời",
       "answeredBy": "<who>{login}</who> đã trả lời",
       "answerOption": "Phương án:",
@@ -2207,25 +2710,38 @@
       "onlyOwner": "Chỉ {owner}, người đã giao run #{run}, mới trả lời được quyết định này.",
       "runGone": "Run #{run} đang ở trạng thái {state}: không còn agent nào nhận câu trả lời.",
       "expired": "Không ai trả lời trong 7 ngày run #{run} tạm gác, nên run đã bị huỷ và quyết định hết hạn.",
-      "cancelled": "Run #{run} đã kết thúc trước khi có câu trả lời, nên quyết định bị huỷ."
+      "cancelled": "Run #{run} đã kết thúc trước khi có câu trả lời, nên quyết định bị huỷ.",
+      "waitingYou": "Đang chờ bạn",
+      "waitingFor": "Đang chờ {owner}",
+      "parksIn": "tạm gác sau {duration}",
+      "parked": "tạm gác <time></time>",
+      "showMore": "Xem thêm",
+      "showLess": "Thu gọn",
+      "agentsPick": "Agent đề xuất"
     },
     "answer": {
       "title": "Trả lời quyết định #{id}",
-      "options": "Chọn một phương án",
-      "optionsHint": "Agent đề xuất một phương án; không phương án nào được chọn sẵn cho bạn.",
       "clearOption": "Bỏ chọn",
       "text": "Câu trả lời của bạn",
-      "textHint": "Không bắt buộc khi đã chọn phương án: điều agent cần biết thêm. Nếu không chọn phương án, lời bạn viết chính là câu trả lời.",
-      "placeholder": "Ví dụ: triển khai sau 18:00, khi bản sao lưu đã xong",
       "bytes": "{count} trên {max} byte",
       "empty": "Hãy chọn một phương án hoặc viết câu trả lời trước.",
       "long": "Lời trả lời tối đa {max} byte UTF-8. Hãy rút ngắn lại.",
-      "hint": "Câu trả lời tới agent của run #{run} qua inbox của run. Đã gửi thì không sửa được.",
-      "hintParked": "Run #{run} đang tạm gác: câu trả lời sẽ cho run chạy tiếp thành một run mới trên cùng worker, trong cùng phiên. Đã gửi thì không sửa được.",
       "send": "Gửi câu trả lời",
       "sending": "Đang gửi…",
-      "sent": "Đã gửi câu trả lời tới run #{run}. Worker chuyển cho agent ở lượt kế tiếp.",
-      "sentResumed": "Đã gửi câu trả lời. Run #{run} đang tạm gác nên chạy tiếp thành run #{next} trên cùng worker."
+      "sentResumed": "Run #{run} đang tạm gác nên chạy tiếp thành run #{next} trên cùng worker.",
+      "sentTitle": "Đã gửi câu trả lời tới run #{run}",
+      "sentText": "Worker chuyển cho agent ở lượt kế tiếp.",
+      "sentResumedTitle": "Đã gửi câu trả lời",
+      "openRun": "Mở run #{id}",
+      "failed": "Không gửi được câu trả lời",
+      "legend": "Câu trả lời của bạn",
+      "note": "Ghi chú cho agent (không bắt buộc)",
+      "notePlaceholder": "Thêm ghi chú cho agent",
+      "textPlaceholder": "Viết câu trả lời cho agent",
+      "foot": "Agent làm tiếp ngay khi bạn trả lời.",
+      "footParked": "Run chạy tiếp trên cùng worker ngay khi bạn trả lời.",
+      "takeOver": "Tiếp quản",
+      "takeOverLabel": "Tiếp quản run #{run} trong terminal"
     },
     "errors": {
       "forbidden": "Hub từ chối: chỉ {owner}, người đã giao run #{run}, mới trả lời được, và chỉ khi còn quyền ghi trên {project}.",
@@ -2234,6 +2750,44 @@
       "apiMessage": "Hub báo: {message}",
       "readForbidden": "Hub từ chối đánh dấu các thông báo này là đã đọc. Tải lại trang rồi thử lại.",
       "readGone": "Các thông báo này đã thay đổi trong lúc đó. Danh sách vừa được tải lại."
-    }
+    },
+    "markedOne": "Đã đánh dấu thông báo là đã đọc",
+    "markFailed": "Không đánh dấu đã đọc được"
+  },
+  "toast": {
+    "region": "Thông báo",
+    "dismiss": "Đóng thông báo",
+    "requestId": "Mã request: {id}"
+  },
+  "live": {
+    "label": "Cập nhật:",
+    "state": {
+      "live": "Trực tiếp",
+      "reconnecting": "Đang kết nối lại",
+      "paused": "Tạm dừng",
+      "offline": "Mất kết nối"
+    },
+    "detail": {
+      "updated": "cập nhật {ago}",
+      "lastUpdate": "lần cập nhật cuối {ago}",
+      "noUpdate": "chưa có lần cập nhật nào",
+      "paused": "do bạn dừng",
+      "retryIn": "thử lại sau {retry}, đọc lại mỗi {poll}",
+      "retryingNow": "đang thử lại, đọc lại mỗi {poll}",
+      "streamRetry": "thử lại luồng sau {retry}, trong lúc chờ đọc lại mỗi {poll}",
+      "streamReconnecting": "đang nối lại luồng"
+    },
+    "ago": {
+      "now": "vừa xong",
+      "seconds": "{count} giây trước",
+      "minutes": "{count} phút trước",
+      "hours": "{count} giờ trước"
+    },
+    "duration": {
+      "seconds": "{value} giây",
+      "minutes": "{value} phút"
+    },
+    "retry": "Thử lại ngay",
+    "resume": "Tiếp tục"
   }
 }

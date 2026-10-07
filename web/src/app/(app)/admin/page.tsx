@@ -1,11 +1,12 @@
-import { dehydrate, HydrationBoundary } from "@tanstack/react-query";
+import { dehydrate } from "@tanstack/react-query";
 import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
 
-import { AdminOverview } from "@/components/pages/admin-overview";
+import { adminOverviewQuery } from "@/components/admin/data";
+import { AdminOverviewPage } from "@/components/admin/overview-page";
+import { HydrationBoundary } from "@/lib/api/hydration-boundary";
 import { getQueryClient, prefetch } from "@/lib/api/prefetch";
 import { serverApi } from "@/lib/api/server";
-import { adminStatsQuery } from "@/lib/queries";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("admin");
@@ -16,10 +17,10 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function AdminPage() {
   const api = await serverApi();
   const client = getQueryClient();
-  const error = await prefetch(client, adminStatsQuery(() => api));
+  const error = await prefetch(client, adminOverviewQuery(() => api));
   return (
     <HydrationBoundary state={dehydrate(client)}>
-      <AdminOverview initialError={error} />
+      <AdminOverviewPage initialError={error} />
     </HydrationBoundary>
   );
 }

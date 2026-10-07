@@ -1,19 +1,23 @@
 "use client";
 
-import { Brain, Info, NotebookPen, SearchX, ShieldCheck, TriangleAlert } from "lucide-react";
+import { Brain, Info, NotebookPen, ShieldCheck, TriangleAlert } from "lucide-react";
 import type { Route } from "next";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useFormatter, useTranslations } from "next-intl";
 import { useMemo } from "react";
 
-import { DataTable, dataTableColumns } from "@/components/data/data-table";
+import { DataCard, DataToolbar } from "@/components/data/data-card";
+import { CellMain, DataTable, dataTableColumns } from "@/components/data/data-table";
 import { FacetGroup, type FacetOption } from "@/components/data/facet-group";
+import { ToolbarFilters } from "@/components/data/filter-sheet";
+import { NAME_LINK } from "@/components/data/identifier";
 import { SearchField } from "@/components/data/search-field";
+import { VisibilityLevel } from "@/components/data/visibility";
 import { projectHref } from "@/components/shell/nav";
 import { PageHeader } from "@/components/shell/page-header";
 import { type HubQueryState, QueryView, useHubQuery } from "@/components/states/query-view";
-import { ApiErrorState, EmptyState, NotFoundState, TableSkeleton } from "@/components/states/states";
+import { type ActiveFilter, ApiErrorState, EmptyState, NoResults, NotFoundState, TableSkeleton } from "@/components/states/states";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -21,6 +25,7 @@ import { browserApi } from "@/lib/api/browser";
 import type { Project } from "@/lib/api/client";
 import type { ApiErrorInfo } from "@/lib/api/errors";
 import { projectQuery } from "@/lib/queries";
+import { cn } from "@/lib/utils";
 
 import { LabelBadge, MemoryTypeBadge } from "./badges";
 import {
@@ -71,32 +76,23 @@ function MemoryTable({
         id: "name",
         header: () => t("columns.name"),
         sortFn: "alphanumeric",
+        meta: { primary: true },
         cell: (info) => {
           const row = info.row.original;
           const { title, description } = memoryTitle(row.name, row.body);
+          // One line under the title: what the memory is about, or its file name when the title is not the name.
+          const sub = description ?? (title !== row.name ? <span className="font-mono">{row.name}</span> : null);
           return (
-            <div className="flex min-w-0 flex-col gap-0.5 py-0.5">
+            <CellMain sub={sub} subTitle={description ?? row.name}>
               <Link
                 href={memoryHref(scope, row.id)}
-                className="w-fit font-medium text-primary underline-offset-4 [overflow-wrap:anywhere] hover:underline"
+                className={cn(NAME_LINK, "truncate")}
+                title={title !== row.name ? `${title} (${row.name})` : title}
                 data-memory-name={row.name}
               >
                 {title}
               </Link>
-              {title !== row.name ? (
-                <span className="font-mono text-xs text-muted-foreground [overflow-wrap:anywhere]">{row.name}</span>
-              ) : null}
-              {description ? (
-                <span className="line-clamp-2 max-w-prose text-xs text-pretty text-muted-foreground">{description}</span>
-              ) : null}
-              {/* The columns a phone hides, under the name instead. */}
-              <span className="flex flex-wrap items-center gap-1.5 pt-1 md:hidden">
-                {scope.kind === "project" ? (
-                  <LabelBadge label={row.label} unrestricted={unrestricted} className="sm:hidden" />
-                ) : null}
-                <span className="font-mono text-xs text-muted-foreground">{row.location}</span>
-              </span>
-            </div>
+            </CellMain>
           );
         },
       }),
@@ -108,7 +104,7 @@ function MemoryTable({
       helper.accessor("location", {
         header: () => t("columns.location"),
         sortFn: "text",
-        cell: (info) => <span className="font-mono text-xs [overflow-wrap:anywhere]">{info.getValue()}</span>,
+        cell: (info) => <span className="font-mono text-xs text-foreground">{info.getValue()}</span>,
       }),
       helper.accessor((row) => String(row.label.level ?? ""), {
         id: "label",
@@ -120,12 +116,15 @@ function MemoryTable({
         id: "updated",
         header: () => t("columns.updated"),
         sortFn: "datetime",
+        meta: { numeric: true },
         cell: (info) => (
-          <div className="flex flex-col text-xs">
-            <time dateTime={info.row.original.updated_at} className="tabular-nums">
+          <div className="flex flex-col items-end gap-px">
+            <time dateTime={info.row.original.updated_at} className="whitespace-nowrap">
               {format.dateTime(info.getValue(), { dateStyle: "medium", timeStyle: "short" })}
             </time>
-            <span className="text-muted-foreground">{t("by", { login: info.row.original.updated_by })}</span>
+            <span className="text-xs leading-4 whitespace-nowrap text-fg-subtle">
+              {t("by", { login: info.row.original.updated_by })}
+            </span>
           </div>
         ),
       }),
@@ -142,6 +141,19 @@ function MemoryTable({
       initialSorting={ranked ? [] : [{ id: "updated", desc: true }]}
       columnClassNames={NARROW_HIDDEN}
       testId="memories-table"
+      // On a phone: the memory's title opening it, its type, and what it is about (or its file name).
+      mobile={(row) => {
+        const { title, description } = memoryTitle(row.name, row.body);
+        return {
+          title,
+          titleText: title !== row.name ? `${title} (${row.name})` : title,
+          href: memoryHref(scope, row.id),
+          status: <MemoryTypeBadge type={row.type} />,
+          meta: description ?? <span className="font-mono">{row.name}</span>,
+          metaText: description ?? row.name,
+          data: { "memory-name": row.name },
+        };
+      }}
     />
   );
 }
@@ -238,10 +250,8 @@ function Memories({
   return (
     <>
       <PageHeader
-        eyebrow={isProject ? t("projectEyebrow", { project: scope.project }) : t("personalEyebrow")}
         title={isProject ? t("projectTitle") : t("personalTitle")}
-        description={isProject ? t("projectDescription") : t("personalDescription")}
-        meta={
+        tags={
           total !== null && !searching && !noGrant ? (
             <Badge variant="secondary">{t("count", { count: total })}</Badge>
           ) : null
@@ -275,39 +285,180 @@ function MemoryList({
   state: HubQueryState<{ items: Row[]; truncated: boolean }>;
 }) {
   const t = useTranslations("memories");
+  const tStates = useTranslations("states.noResults");
   const isProject = scope.kind === "project";
   const declared = isProject && project ? [HARNESS, ...project.repos.map((repo) => repo.name)] : [];
-  return (
-    <>
-      {!isProject ? (
-        <p className="flex items-start gap-2 text-sm text-muted-foreground">
-          <NotebookPen className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-          {t("personalVisibility")}
-        </p>
-      ) : null}
+  const searching = filters.q.length > 0;
+  const items = state.status === "success" ? state.data.items : null;
+
+  // No memory at all and no filter: the page says what memories are, without a toolbar over nothing.
+  if (items !== null && items.length === 0 && !isFiltered(filters)) {
+    return (
+      <>
+        {!isProject ? <PersonalNote /> : null}
+        {isProject ? (
+          <EmptyState
+            icon={Brain}
+            title={t("empty.projectTitle")}
+            description={t.rich("empty.projectDescription", { code: (chunks) => <code className="font-mono">{chunks}</code> })}
+          />
+        ) : (
+          <EmptyState
+            icon={NotebookPen}
+            title={t("empty.personalTitle")}
+            description={t.rich("empty.personalDescription", { code: (chunks) => <code className="font-mono">{chunks}</code> })}
+          />
+        )}
+      </>
+    );
+  }
+
+  const words: FacetWords = { all: t("facets.all"), harness: t("facets.harness"), type: (type) => t(`types.${type}`) };
+  const facets = items !== null ? memoryFacets(items, filters, declared, scope, words) : null;
+  const harness = (location: string) => location === HARNESS && isProject;
+  const inUse: ActiveFilter[] = [
+    ...(filters.q ? [{ label: tStates("search"), value: filters.q }] : []),
+    ...(filters.location
+      ? [{ label: t("facets.location"), value: harness(filters.location) ? t("facets.harness") : filters.location }]
+      : []),
+    ...(filters.type ? [{ label: t("facets.type"), value: t(`types.${filters.type}`) }] : []),
+  ];
+  const countLabel = (count: number) => t("count", { count });
+
+  const count =
+    facets && items
+      ? searching
+        ? t("summary.search", { count: facets.shown.length, q: filters.q })
+        : isFiltered(filters)
+          ? t("summary.filtered", { shown: facets.shown.length, count: items.length })
+          : t("summary.all", { count: items.length })
+      : undefined;
+  const toolbar = (
+    <DataToolbar label={isProject ? t("caption") : t("personalTitle")} count={count} countTestId="memories-summary">
       <SearchField
         value={filters.q}
         onCommit={(q) => setFilters({ ...filters, q })}
         label={t("search.label")}
         placeholder={t("search.placeholder")}
         clearLabel={t("search.clear")}
+        className="sm:w-64 max-md:flex-1"
         testId="memories-search"
       />
-      <QueryView state={state} loading={<TableSkeleton rows={6} />}>
-        {(data) => (
-          <Results
-            scope={scope}
-            items={data.items}
-            truncated={data.truncated}
-            filters={filters}
-            setFilters={setFilters}
-            declared={declared}
-            unrestricted={project?.locations[0]}
-          />
-        )}
-      </QueryView>
+      {facets ? (
+        <ToolbarFilters
+          active={(filters.location ? 1 : 0) + (filters.type ? 1 : 0)}
+          summary={count}
+          onClear={() => setFilters({ ...filters, location: null, type: null })}
+          testId="memories-filters"
+        >
+          <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2 max-md:flex-col max-md:items-stretch max-md:gap-5" data-testid="memories-facets">
+            {facets.locations.length > 2 || filters.location ? (
+              <FacetGroup
+                label={t("facets.location")}
+                showLabel
+                options={facets.locations}
+                selected={filters.location}
+                onSelect={(location) => setFilters({ ...filters, location })}
+                countLabel={countLabel}
+                testId="facet-location"
+              />
+            ) : null}
+            <FacetGroup
+              label={t("facets.type")}
+              showLabel
+              options={facets.types}
+              selected={filters.type}
+              onSelect={(type) => setFilters({ ...filters, type: type === null ? null : (type as MemoryFilters["type"]) })}
+              countLabel={countLabel}
+              testId="facet-type"
+            />
+          </div>
+        </ToolbarFilters>
+      ) : null}
+      {isFiltered(filters) && facets && facets.shown.length > 0 ? (
+        // On a phone the filter sheet has its own Clear filters, and the search field its clear button.
+        <Button variant="ghost" size="sm" onClick={() => setFilters(NO_FILTERS)} className="max-md:hidden">
+          {t("facets.clear")}
+        </Button>
+      ) : null}
+    </DataToolbar>
+  );
+
+  return (
+    <>
+      {!isProject ? <PersonalNote /> : null}
+      <DataCard toolbar={toolbar}>
+        <QueryView state={state} loading={<TableSkeleton rows={6} />}>
+          {(data) =>
+            facets && facets.shown.length === 0 ? (
+              <NoResults
+                title={searching ? t("noResults.searchTitle", { q: filters.q }) : t("noResults.filterTitle")}
+                filters={inUse}
+                onClear={() => setFilters(NO_FILTERS)}
+              />
+            ) : (
+              <>
+                {data.truncated ? (
+                  <p role="note" className="flex items-start gap-2 border-b bg-surface-sunken px-4 py-2.5 text-[13px] leading-[18px] text-muted-foreground">
+                    <TriangleAlert className="mt-px size-4 shrink-0" aria-hidden="true" />
+                    {t("truncated", { count: data.items.length })}
+                  </p>
+                ) : null}
+                <MemoryTable
+                  rows={facets?.shown ?? []}
+                  scope={scope}
+                  ranked={searching}
+                  unrestricted={project?.locations[0]}
+                />
+              </>
+            )
+          }
+        </QueryView>
+      </DataCard>
     </>
   );
+}
+
+/** Where personal memories come from, above their list. */
+function PersonalNote() {
+  const t = useTranslations("memories");
+  return (
+    <p className="flex items-start gap-2 text-sm text-muted-foreground">
+      <NotebookPen className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+      {t("personalVisibility")}
+    </p>
+  );
+}
+
+/** The words of the facets, from the page's messages. */
+type FacetWords = { all: string; harness: string; type: (type: (typeof MEMORY_TYPES)[number]) => string };
+
+/**
+ * The facets of the rows a list or a search returned, and the rows shown: the locations (the project's declared ones,
+ * and the one in force even when no memory sits there) and the types, each counted over the rows the other facet
+ * leaves. In a search the location is applied by the API, so only the type narrows here, and locations go uncounted.
+ */
+function memoryFacets(items: Row[], filters: MemoryFilters, declared: string[], scope: MemoryScope, words: FacetWords) {
+  const searching = filters.q.length > 0;
+  const shown = applyFilters(items, searching ? { ...filters, location: null } : filters);
+  const byLocation = countBy(applyFilters(items, { ...filters, location: null }), (item) => item.location);
+  const byType = countBy(applyFilters(items, { ...filters, type: null }), (item) => item.type);
+  const offered = filters.location && !declared.includes(filters.location) ? [...declared, filters.location] : declared;
+  const harness = (location: string) => location === HARNESS && scope.kind === "project";
+  const locations: FacetOption[] = [
+    { value: null, label: words.all, count: searching ? undefined : sum(byLocation) },
+    ...locationOptions(offered, items).map((location) => ({
+      value: location,
+      label: harness(location) ? words.harness : location,
+      mono: !harness(location),
+      count: searching ? undefined : (byLocation.get(location) ?? 0),
+    })),
+  ];
+  const types: FacetOption[] = [
+    { value: null, label: words.all, count: sum(byType) },
+    ...MEMORY_TYPES.map((type) => ({ value: type, label: words.type(type), icon: TYPE_ICONS[type], count: byType.get(type) ?? 0 })),
+  ];
+  return { shown, locations, types };
 }
 
 function Visibility({ project }: { project: Project }) {
@@ -325,136 +476,9 @@ function Visibility({ project }: { project: Project }) {
       <ShieldCheck className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
       <span>
         {t.rich("projectVisibility", {
-          level: project.max_level ?? "-",
-          code: (chunks) => <code className="rounded bg-muted px-1 font-mono text-xs text-foreground">{chunks}</code>,
+          level: () => <VisibilityLevel level={project.max_level} className="font-medium text-foreground" />,
         })}
       </span>
     </p>
-  );
-}
-
-function Results({
-  scope,
-  items,
-  truncated,
-  filters,
-  setFilters,
-  declared,
-  unrestricted,
-}: {
-  scope: MemoryScope;
-  items: Row[];
-  truncated: boolean;
-  filters: MemoryFilters;
-  setFilters: (next: MemoryFilters) => void;
-  declared: string[];
-  unrestricted?: string;
-}) {
-  const t = useTranslations("memories");
-  const searching = filters.q.length > 0;
-  // In a search the location is applied by the API, so only the type narrows here; in the list, both do.
-  const shown = applyFilters(items, searching ? { ...filters, location: null } : filters);
-  const byLocation = countBy(applyFilters(items, { ...filters, location: null }), (item) => item.location);
-  const byType = countBy(applyFilters(items, { ...filters, type: null }), (item) => item.type);
-  const countLabel = (count: number) => t("count", { count });
-
-  // The location in force stays offered even when no memory sits there (a search narrowed to it found none).
-  const offered = filters.location && !declared.includes(filters.location) ? [...declared, filters.location] : declared;
-  const harness = (location: string) => location === HARNESS && scope.kind === "project";
-  const locations: FacetOption[] = [
-    { value: null, label: t("facets.all"), count: searching ? undefined : sum(byLocation) },
-    ...locationOptions(offered, items).map((location) => ({
-      value: location,
-      label: harness(location) ? t("facets.harness") : location,
-      mono: !harness(location),
-      count: searching ? undefined : (byLocation.get(location) ?? 0),
-    })),
-  ];
-  const types: FacetOption[] = [
-    { value: null, label: t("facets.all"), count: sum(byType) },
-    ...MEMORY_TYPES.map((type) => ({
-      value: type,
-      label: t(`types.${type}`),
-      icon: TYPE_ICONS[type],
-      count: byType.get(type) ?? 0,
-    })),
-  ];
-
-  if (items.length === 0 && !isFiltered(filters)) {
-    return scope.kind === "project" ? (
-      <EmptyState
-        icon={Brain}
-        title={t("empty.projectTitle")}
-        description={t.rich("empty.projectDescription", { code: (chunks) => <code className="font-mono">{chunks}</code> })}
-      />
-    ) : (
-      <EmptyState
-        icon={NotebookPen}
-        title={t("empty.personalTitle")}
-        description={t.rich("empty.personalDescription", { code: (chunks) => <code className="font-mono">{chunks}</code> })}
-      />
-    );
-  }
-
-  return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-col gap-2.5 rounded-xl border bg-card p-3" data-testid="memories-facets">
-        {locations.length > 2 || filters.location ? (
-          <FacetGroup
-            label={t("facets.location")}
-            options={locations}
-            selected={filters.location}
-            onSelect={(location) => setFilters({ ...filters, location })}
-            countLabel={countLabel}
-            testId="facet-location"
-          />
-        ) : null}
-        <FacetGroup
-          label={t("facets.type")}
-          options={types}
-          selected={filters.type}
-          onSelect={(type) => setFilters({ ...filters, type: type === null ? null : (type as MemoryFilters["type"]) })}
-          countLabel={countLabel}
-          testId="facet-type"
-        />
-      </div>
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p aria-live="polite" className="text-sm text-muted-foreground" data-testid="memories-summary">
-          {searching
-            ? t("summary.search", { count: shown.length, q: filters.q })
-            : isFiltered(filters)
-              ? t("summary.filtered", { shown: shown.length, count: items.length })
-              : t("summary.all", { count: items.length })}
-        </p>
-        {isFiltered(filters) ? (
-          <Button variant="ghost" size="sm" onClick={() => setFilters(NO_FILTERS)}>
-            {t("facets.clear")}
-          </Button>
-        ) : null}
-      </div>
-      {truncated ? (
-        <Alert role="note">
-          <TriangleAlert aria-hidden="true" />
-          <AlertDescription>{t("truncated", { count: items.length })}</AlertDescription>
-        </Alert>
-      ) : null}
-      {shown.length === 0 ? (
-        <EmptyState
-          icon={SearchX}
-          title={searching ? t("noResults.searchTitle", { q: filters.q }) : t("noResults.filterTitle")}
-          description={searching ? t("noResults.searchDescription") : t("noResults.filterDescription")}
-        >
-          <Button
-            variant="outline"
-            size="lg"
-            onClick={() => setFilters(searching ? NO_FILTERS : { ...filters, location: null, type: null })}
-          >
-            {searching ? t("search.clear") : t("facets.clear")}
-          </Button>
-        </EmptyState>
-      ) : (
-        <MemoryTable rows={shown} scope={scope} ranked={searching} unrestricted={unrestricted} />
-      )}
-    </div>
   );
 }

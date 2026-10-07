@@ -1,38 +1,22 @@
 "use client";
 
-import { Eye, PenLine, ShieldCheck } from "lucide-react";
+import { Eye, PenLine, ShieldCheck, UserX } from "lucide-react";
 import { useTranslations } from "next-intl";
 
-import { Badge } from "@/components/ui/badge";
+import { Tag } from "@/components/data/identifier";
 
-/** A project role as text and icon, so the colour is never the only signal. */
+const ROLE_ICON = { admin: ShieldCheck, writer: PenLine, reader: Eye, none: UserX } as const;
+
+/** A project role as an icon and a word in a tag: a role names what someone may do, so it is not a round state pill. */
 export function RoleBadge({ role }: { role: string | null }) {
   const t = useTranslations("roles");
-  if (role === "admin")
-    return (
-      <Badge variant="warning" data-role="admin">
-        <ShieldCheck aria-hidden="true" />
-        {t("admin")}
-      </Badge>
-    );
-  if (role === "writer")
-    return (
-      <Badge variant="info" data-role="writer">
-        <PenLine aria-hidden="true" />
-        {t("writer")}
-      </Badge>
-    );
-  if (role === "reader")
-    return (
-      <Badge variant="secondary" data-role="reader">
-        <Eye aria-hidden="true" />
-        {t("reader")}
-      </Badge>
-    );
+  const key = roleLabelKey(role);
+  const Icon = ROLE_ICON[key];
   return (
-    <Badge variant="outline" data-role="none">
-      {t("none")}
-    </Badge>
+    <Tag data-role={key}>
+      <Icon aria-hidden="true" />
+      {t(key)}
+    </Tag>
   );
 }
 

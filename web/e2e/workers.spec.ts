@@ -1,7 +1,9 @@
 import type { Page } from "@playwright/test";
 
+import { signOut } from "./support/auth";
 import { expect, isDeployed, test } from "./support/fixtures";
 import { ADMIN_ACCOUNT, bearerClient, machineToken, newAccount, uniqueName } from "./support/hub";
+import { toast } from "./support/toast";
 import { CHECKOUTS, heartbeat, joinWithCode, registerWorker, RUNTIMES, workersOf } from "./support/workers";
 
 /**
@@ -74,7 +76,8 @@ test("the list shows each worker's status, filters by status and search, and ref
   await expect(page).toHaveURL(/\?q=gpu$/);
   await main.getByTestId("workers-search").fill("no-such-worker");
   await expect(main.getByTestId("state-empty")).toContainText("No worker matches");
-  await main.getByRole("button", { name: "Show all workers" }).click();
+  await expect(main.getByTestId("filters-in-use")).toHaveText("Search:no-such-worker");
+  await main.getByRole("button", { name: "Clear filters" }).click();
   await expect(main.getByTestId("workers-table").locator("tbody tr")).toHaveCount(3);
 
   // The machine comes back: the list shows it within one refresh, without a reload.
@@ -130,7 +133,7 @@ test("registering with a pairing code: the code counts down, and the dialog foll
 
   await expect(dialog.getByTestId("pairing-joined")).toContainText(name, { timeout: 10_000 });
   await expect(dialog.getByTestId("pairing-joined-facts")).toContainText(`${name}.local`);
-  await expect(page.getByTestId("admin-notice-status")).toContainText(`Worker ${name} joined the hub.`);
+  await expect(toast(page, `${name} joined the hub`)).toBeVisible();
   await dialog.getByTestId("pairing-open-worker").click();
   await page.waitForURL(`**/workers/${credential.worker.id}`);
   await expect(page.locator("#main").getByRole("heading", { level: 1 })).toContainText(name);
@@ -177,7 +180,7 @@ test("a worker's page shows what its heartbeat reports, and drain, resume and re
   await drain.getByTestId("drain-worker-dialog-name").fill(worker.name);
   await drain.getByTestId("drain-worker-dialog-confirm").click();
   await expect(drain).toBeHidden();
-  await expect(page.getByTestId("admin-notice-status")).toContainText(`${worker.name} is draining`);
+  await expect(toast(page, `${worker.name} is draining`)).toContainText("then claims no new ones");
   await expect(main.getByTestId("worker-status").first()).toHaveText("Draining");
   await expect(main.getByTestId("worker-draining")).toBeVisible();
   expect((await workersOf(me)).find((w) => w.id === worker.id)?.drained_at).not.toBeNull();
@@ -185,7 +188,7 @@ test("a worker's page shows what its heartbeat reports, and drain, resume and re
   // Resume needs no name: it only lets the worker claim again.
   await main.getByTestId("worker-undrain").click();
   await expect(main.getByTestId("worker-status").first()).toHaveText("Idle");
-  await expect(page.getByTestId("admin-notice-status")).toContainText(`${worker.name} claims runs again.`);
+  await expect(toast(page, `${worker.name} resumed`)).toContainText("It claims runs again.");
 
   // Revoke: Escape leaves it alone; the typed name ends it.
   await main.getByTestId("worker-revoke").click();
@@ -216,7 +219,7 @@ test("the owner keeps a worker to runs dispatched from the web, which a token ca
 
   await toggle.click();
   await expect(toggle).toBeChecked();
-  await expect(page.getByTestId("admin-notice-status")).toContainText(`${worker.name} now takes only runs dispatched from the web.`);
+  await expect(toast(page, `${worker.name} takes only runs dispatched from the web`)).toContainText("wait for another worker");
   await expect(main.getByTestId("worker-dispatch")).toHaveText(`${me.login} only, from the web`);
   expect(await dispatchFromOf()).toBe("web");
 
@@ -231,7 +234,7 @@ test("the owner keeps a worker to runs dispatched from the web, which a token ca
   expect(await dispatchFromOf()).toBe("web");
 
   // A hub admin sees the setting, without the switch.
-  await page.context().clearCookies(); // signed out of the hub and the fake GitHub
+  await signOut(page); // of the hub and the fake GitHub
   await signInAs(ADMIN_ACCOUNT);
   await page.goto(`/workers/${worker.id}`);
   await expect(main.getByTestId("worker-dispatch")).toHaveText(`${me.login} only, from the web`);
@@ -239,15 +242,13 @@ test("the owner keeps a worker to runs dispatched from the web, which a token ca
   await expect(main.getByTestId("worker-dispatch-from")).toHaveCount(0);
 
   // The owner turns it off again, from its label.
-  await page.context().clearCookies();
+  await signOut(page);
   await signInAs(me);
   await page.goto(`/workers/${worker.id}`);
   await expect(toggle).toBeChecked();
   await main.getByTestId("worker-dispatch-from").getByText("Only runs dispatched from the web").click();
   await expect(toggle).not.toBeChecked();
-  await expect(page.getByTestId("admin-notice-status")).toContainText(
-    `${worker.name} takes runs dispatched from the command line and the web again.`,
-  );
+  await expect(toast(page, `${worker.name} takes runs from the command line again`)).toContainText("any of your credentials");
   await expect(main.getByTestId("worker-dispatch")).toHaveText(`${me.login} only`);
   expect(await dispatchFromOf()).toBe("any");
 });
@@ -268,7 +269,7 @@ test("a worker token on the admin tokens page says so, and revoking it revokes t
   const dialog = page.getByTestId("revoke-token-dialog");
   await expect(dialog).toContainText("revoking its token revokes the worker too");
   await dialog.getByTestId("revoke-token-dialog-confirm").click();
-  await expect(page.getByTestId("admin-notice-status")).toContainText("Revoked token");
+  await expect(toast(page, /Token \d+ of .+ revoked/)).toBeVisible();
   expect((await workersOf(owner)).find((w) => w.id === worker.id)?.status).toBe("revoked");
 
   await page.goto(`/workers/${worker.id}`); // a hub admin sees every worker, revoked ones included

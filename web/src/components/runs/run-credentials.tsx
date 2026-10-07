@@ -1,12 +1,13 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { CircleDot, KeyRound, LockKeyhole, TimerOff, Undo2 } from "lucide-react";
+import { Ban, CircleDot, KeyRound, TimerOff } from "lucide-react";
 import Link from "next/link";
 import { useFormatter, useTranslations } from "next-intl";
 import { useId } from "react";
 
 import { GitHubMark } from "@/components/brand";
+import { Tag } from "@/components/data/identifier";
 import { useNow } from "@/components/kg/use-now";
 import { SECRETS_HREF } from "@/components/secrets/queries";
 import { Badge } from "@/components/ui/badge";
@@ -17,15 +18,17 @@ import { isActiveState, type Run, type RunLease, runCredentialsQuery } from "./q
 import { type LeaseState, leaseState, leaseTargets } from "./run-model";
 
 /**
- * The credentials a run got from the hub (docs/credentials.md, What a run got): each lease's name, provider, what it
- * answered for, when it was issued, when it ends and when it was given back. Never a value: the hub's answer carries
- * none. Shown to the member who dispatched the run alone, as the API answers only them.
+ * The credentials a run got from the hub (docs/credentials.md, What a run got), a card of the run page's side column:
+ * each lease's name, its provider as a tag, what it answered for, when it was issued, when it ends and when it was
+ * given back, and its state as a pill. Never a value: the hub's answer carries none. Shown to the member who
+ * dispatched the run alone, as the API answers only them.
  */
 
+/** A lease's state in the kit's tones: out is held by the run's worker now (`brand`), the others are over. */
 const STATES: Record<LeaseState, { icon: typeof CircleDot; variant: "info" | "secondary" | "outline" }> = {
   out: { icon: CircleDot, variant: "info" },
   expired: { icon: TimerOff, variant: "secondary" },
-  revoked: { icon: Undo2, variant: "outline" },
+  revoked: { icon: Ban, variant: "outline" },
 };
 
 function When({ at }: { at: string }) {
@@ -44,15 +47,15 @@ function LeaseItem({ lease, now }: { lease: RunLease; now: number | null }) {
   const { icon: StateIcon, variant } = STATES[state];
   const targets = leaseTargets(lease);
   return (
-    <li className="flex flex-col gap-1.5 py-2.5 first:pt-0 last:pb-0" data-testid="run-lease-item" data-lease-id={lease.id} data-state={state}>
+    <li className="flex flex-col gap-2 py-3 first:pt-0 last:pb-0" data-testid="run-lease-item" data-lease-id={lease.id} data-state={state}>
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-        <span className="font-mono text-sm font-medium [overflow-wrap:anywhere]" data-testid="run-lease-name">
+        <span className="font-mono text-[13px] leading-5 font-medium text-foreground [overflow-wrap:anywhere]" data-testid="run-lease-name">
           {lease.name}
         </span>
-        <Badge variant="secondary" data-testid="run-lease-provider" data-provider={lease.provider}>
-          {lease.provider === "github-app" ? <GitHubMark className="size-3" /> : <KeyRound aria-hidden="true" />}
+        <Tag data-testid="run-lease-provider" data-provider={lease.provider}>
+          {lease.provider === "github-app" ? <GitHubMark /> : <KeyRound aria-hidden="true" />}
           {t(`provider.${lease.provider === "github-app" ? "githubApp" : "secret"}`)}
-        </Badge>
+        </Tag>
         <Badge variant={variant} className="ml-auto" data-testid="run-lease-state">
           <StateIcon aria-hidden="true" />
           {t(`state.${state}`)}
@@ -69,12 +72,12 @@ function LeaseItem({ lease, now }: { lease: RunLease; now: number | null }) {
         </dd>
         <dt className="text-muted-foreground">{t("issued")}</dt>
         <dd className="min-w-0 [overflow-wrap:anywhere]" data-testid="run-lease-issued">
-          {t.rich("issuedTo", { worker: lease.worker, time: () => <When at={lease.issued_at} />, code: (chunks) => <span className="font-mono">{chunks}</span> })}
+          {t.rich("issuedTo", { worker: lease.worker, time: () => <When at={lease.issued_at} />, code: (chunks) => <span className="font-mono text-foreground">{chunks}</span> })}
         </dd>
         <dt className="text-muted-foreground">{t("expires")}</dt>
-        <dd data-testid="run-lease-expires">{lease.expires_at ? <When at={lease.expires_at} /> : <span className="text-muted-foreground">{t("noEnd")}</span>}</dd>
+        <dd data-testid="run-lease-expires">{lease.expires_at ? <When at={lease.expires_at} /> : <span className="text-fg-subtle">{t("noEnd")}</span>}</dd>
         <dt className="text-muted-foreground">{t("revoked")}</dt>
-        <dd data-testid="run-lease-revoked">{lease.revoked_at ? <When at={lease.revoked_at} /> : <span className="text-muted-foreground">{t("notRevoked")}</span>}</dd>
+        <dd data-testid="run-lease-revoked">{lease.revoked_at ? <When at={lease.revoked_at} /> : <span className="text-fg-subtle">{t("notRevoked")}</span>}</dd>
       </dl>
     </li>
   );
@@ -90,13 +93,12 @@ export function RunCredentials({ run }: { run: Run }) {
   const now = useNow(leases.some((lease) => lease.revoked_at === null && lease.expires_at !== null));
 
   return (
-    <section className="flex min-w-0 flex-col rounded-xl border bg-card" aria-labelledby={id} data-testid="run-credentials">
+    <section className="flex min-w-0 flex-col rounded-md border bg-card shadow-raised" aria-labelledby={id} data-testid="run-credentials">
       <div className="flex flex-col gap-0.5 border-b px-4 py-3">
-        <h2 id={id} className="flex items-center gap-2 text-base font-medium">
-          <LockKeyhole className="size-4 text-muted-foreground" aria-hidden="true" />
+        <h2 id={id} className="text-[15px] leading-[22px] font-semibold">
           {t("title")}
         </h2>
-        <p className="text-xs text-pretty text-muted-foreground">{t("description")}</p>
+        <p className="text-xs text-pretty text-fg-subtle">{t("description")}</p>
       </div>
       <div className="min-w-0 px-4 py-3 text-sm">
         {query.isPending ? (
@@ -105,7 +107,7 @@ export function RunCredentials({ run }: { run: Run }) {
             <Skeleton className="h-4 w-1/2" />
           </div>
         ) : query.isError ? (
-          <p className="text-pretty text-destructive" role="alert" data-testid="run-credentials-error">
+          <p className="text-pretty text-danger" role="alert" data-testid="run-credentials-error">
             {t("failed")}
           </p>
         ) : leases.length === 0 ? (
@@ -119,10 +121,14 @@ export function RunCredentials({ run }: { run: Run }) {
             ))}
           </ul>
         )}
-        <p className="mt-3 text-xs text-muted-foreground">
+        <p className="mt-3 border-t pt-3 text-xs text-fg-subtle">
           {t.rich("manage", {
             link: (chunks) => (
-              <Link href={SECRETS_HREF} className="text-primary underline underline-offset-4" data-testid="run-credentials-secrets-link">
+              <Link
+                href={SECRETS_HREF}
+                className="rounded-xs text-brand underline decoration-brand/40 underline-offset-4 hover:decoration-current"
+                data-testid="run-credentials-secrets-link"
+              >
                 {chunks}
               </Link>
             ),

@@ -18,14 +18,16 @@ import {
   sendNotice,
   workerInbox,
 } from "./support/runs";
+import { toast } from "./support/toast";
 
 /**
  * The Inbox and the bell against the real API: the bell in the top bar counts the member's unread notifications (read
  * every 10 seconds, its name says the number), the Inbox lists the decisions still open first and the notices after
  * (a push into a default branch with its repo, branch and commits), and filters and marks them read. The run's owner
- * answers a decision from the Inbox and from the run's page; the answer reaches the run's inbox for the worker, and a
- * decision once answered offers no form and the hub refuses a second answer. Another member reads the decision but
- * cannot answer it. The specs play the worker. Pages render in English.
+ * answers a decision in the sheet the Inbox opens over its list (the kit's DecisionCard, the agent's pick chosen) and
+ * from the run's page; the answer reaches the run's inbox for the worker, and a decision once answered offers no form
+ * and the hub refuses a second answer. Another member reads the decision but cannot answer it. The specs play the
+ * worker. Pages render in English.
  */
 test.skip(isDeployed, "asks decisions and sends notices through the local stack");
 
@@ -107,7 +109,7 @@ test("the bell counts unread notifications, and the Inbox lists open decisions f
 
   // Mark all as read leaves the decisions open: they still wait for an answer.
   await main(page).getByTestId("inbox-mark-all").click();
-  await expect(main(page).getByTestId("admin-notice-status")).toHaveText("Marked 2 notifications read.");
+  await expect(toast(page, "2 notifications marked as read")).toBeVisible();
   await expect(bell).toHaveAttribute("data-unread", "0");
   await expect(bell).toHaveAccessibleName("Inbox: no unread notification, 2 decisions wait for your answer");
   await expect(page.getByTestId("inbox-bell-count")).toHaveCount(0);
@@ -122,35 +124,43 @@ test("the owner answers a decision from the Inbox, and an answered decision take
   const { live, run, decision } = await planRunUnderway(me, project, uniqueName("inbox"), { waiting: true });
   if (decision === null) throw new Error("the plan run asked no decision");
 
-  // The notification's link opens the decision beside the list, and opening it reads the notification.
+  // The notification's link opens the decision in a sheet over the list, and opening it reads the notification.
   await open(page, `/inbox?decision=${decision}`);
-  const panel = main(page).getByTestId("decision-panel");
+  const panel = page.getByTestId("decision-sheet");
+  await expect(panel).toHaveAccessibleName(`Decision #${decision}`);
+  await expect(main(page).getByTestId("inbox-list")).toBeVisible();
   await expect(panel.getByRole("heading", { level: 2, name: QUESTION })).toBeVisible();
-  await expect(panel.getByTestId("decision-state")).toHaveText("Open");
+  await expect(panel.getByTestId("decision-state")).toHaveText("Waiting for you");
   await expect(panel.getByTestId("decision-category")).toHaveText("Deploy");
   await expect(panel.getByTestId("decision-context-markdown").locator("strong")).toHaveText("staging");
   await expect(panel.getByTestId("decision-run-link")).toHaveAttribute("href", runPath(project, run.id));
-  await expect(panel.getByTestId("decision-step-link")).toHaveText("Step 3");
-  await expect(panel.getByTestId("decision-choice-deploy").getByTestId("decision-recommended")).toHaveText("Recommended");
+  await expect(panel.getByTestId("decision-step-link")).toHaveText("step 3");
+  // The run waits for the answer: the head says when it parks, 24 hours after it started waiting.
+  await expect(panel.getByTestId("decision-parks")).toHaveText(/^parks in 23 h \d+ min$/);
+  await expect(panel.getByTestId("decision-choice-deploy").getByTestId("decision-recommended")).toHaveText("Agent's pick");
   await expect(panel.getByTestId("decision-choice-wait").getByTestId("decision-recommended")).toHaveCount(0);
-  await expect(panel.getByRole("radio", { checked: true })).toHaveCount(0);
+  await expect(panel.getByRole("radio", { checked: true })).toHaveAccessibleName("Deploy to staging now Agent's pick");
+  await expect(panel.getByTestId("decision-form-hint")).toHaveText("The agent continues as soon as you answer.");
+  // The run waits, and its worker keeps the web terminal closed: no Take over.
+  await expect(panel.getByTestId("decision-takeover")).toHaveCount(0);
   await expect(page.getByTestId("inbox-bell")).toHaveAttribute("data-unread", "0");
   const item = main(page).locator(`[data-testid="notification"][data-decision-id="${decision}"]`);
   await expect(item).toHaveAttribute("aria-current", "true");
 
-  // Nothing chosen or written is refused before the hub is asked.
+  // With the agent's pick cleared, nothing chosen or written is refused before the hub is asked.
+  await panel.getByTestId("decision-clear-option").click();
+  await expect(panel.getByRole("radio", { checked: true })).toHaveCount(0);
   await panel.getByTestId("decision-send").click();
   await expect(panel.getByTestId("decision-problem")).toHaveText("Pick an option or write an answer first.");
 
+  // Another option and a note, sent with Cmd or Ctrl and Enter from the note.
   await panel.getByRole("radio", { name: /Wait until tomorrow/ }).check();
   await panel.getByTestId("decision-text").fill("Staging is frozen until the backup finishes.");
-  await panel.getByTestId("decision-send").click();
-  await expect(panel.getByTestId("admin-notice-status")).toHaveText(
-    `Answer sent to run #${run.id}. The worker hands it to the agent at its next turn.`,
-  );
+  await panel.getByTestId("decision-text").press("ControlOrMeta+Enter");
+  await expect(toast(page, `Answer sent to run #${run.id}`)).toContainText("The worker hands it to the agent at its next turn.");
   await expect(panel.getByTestId("decision-state")).toHaveText("Answered");
   await expect(panel.getByTestId("decision-form")).toHaveCount(0);
-  await expect(panel.getByTestId("decision-answered-by")).toContainText(`Answered by ${me.login}`);
+  await expect(panel.getByTestId("decision-answered-by")).toContainText(`by ${me.login}`);
   await expect(panel.getByTestId("decision-answer-option")).toContainText("Wait until tomorrow");
   await expect(panel.getByTestId("decision-answer-text")).toContainText("Staging is frozen until the backup finishes.");
   await expect(panel.getByTestId("decision-delivery")).toHaveAttribute("data-delivered", "false");
@@ -170,13 +180,14 @@ test("the owner answers a decision from the Inbox, and an answered decision take
   await expect(panel.getByTestId("decision-answer")).toBeVisible();
   await expect(panel.getByTestId("decision-form")).toHaveCount(0);
   await expect(panel.getByTestId("decision-send")).toHaveCount(0);
-  await expect(panel.getByTestId("decision-option").and(page.locator("[data-chosen]"))).toHaveAttribute("data-key", "wait");
+  await expect(panel.getByTestId("decision-answer-option")).toHaveAttribute("data-key", "wait");
   expect((await decisionOf(me, project, decision)).answer_option).toBe("wait");
 
-  // Close goes back to the list, with the decision now among the past ones.
+  // Close goes back to the list, with the decision now among the past ones and focus on its link.
   await panel.getByTestId("decision-close").click();
   await expect(page).toHaveURL(/\/inbox$/);
-  await expect(main(page).getByTestId("decision-panel")).toHaveCount(0);
+  await expect(page.getByTestId("decision-sheet")).toHaveCount(0);
+  await expect(main(page).locator(`[data-decision-link="${decision}"]`)).toBeFocused();
   await expect(main(page).getByTestId("inbox-rest").locator(`[data-decision-id="${decision}"]`)).toHaveAttribute("data-decision-state", "answered");
 });
 
@@ -187,15 +198,18 @@ test("an answer sent while the page was open is refused with the hub's reason", 
   const { decision } = await planRunUnderway(me, project, uniqueName("race"), { waiting: true });
   if (decision === null) throw new Error("the plan run asked no decision");
   await open(page, `/inbox?decision=${decision}`);
-  const panel = main(page).getByTestId("decision-panel");
-  await panel.getByRole("radio", { name: /Deploy to staging now/ }).check();
+  const panel = page.getByTestId("decision-sheet");
+  await expect(panel.getByRole("radio", { name: /Deploy to staging now/ })).toBeChecked();
 
   // The owner answers from the command line before sending the form.
   expect(await answerByApi(me, project, decision, { option: "wait" })).toBe(200);
   await panel.getByTestId("decision-send").click();
-  const alert = panel.getByTestId("admin-notice-alert");
+  const alert = toast(page, "Couldn't send the answer");
+  await expect(alert).toHaveAttribute("role", "alert");
   await expect(alert).toContainText("The decision was answered or closed meanwhile, or its run ended.");
   await expect(alert).toContainText(`decision ${decision} is answered, not open`);
+  // The card reads the decision again and shows it as the hub holds it.
+  await expect(panel.getByTestId("decision-state")).toHaveText("Answered");
   await expect(panel.getByTestId("decision-form")).toHaveCount(0);
   await expect(panel.getByTestId("decision-answer-option")).toContainText("Wait until tomorrow");
   expect((await decisionOf(me, project, decision)).answer_option).toBe("wait");
@@ -217,7 +231,7 @@ test("the owner answers from the run's page, and another member reads the decisi
   await expect(view.getByRole("heading", { level: 3, name: QUESTION })).toBeVisible();
   await view.getByRole("radio", { name: /Deploy to staging now/ }).check();
   await view.getByTestId("decision-send").click();
-  await expect(view.getByTestId("admin-notice-status")).toHaveText(`Answer sent to run #${run.id}. The worker hands it to the agent at its next turn.`);
+  await expect(toast(page, `Answer sent to run #${run.id}`)).toContainText("The worker hands it to the agent at its next turn.");
   await expect(view.getByTestId("decision-form")).toHaveCount(0);
   await expect(view.getByTestId("decision-answer-option")).toContainText("Deploy to staging now");
   await expect(banner.getByRole("heading", { level: 2 })).toHaveText("Answer sent", { timeout: 12_000 });
@@ -235,8 +249,9 @@ test("the owner answers from the run's page, and another member reads the decisi
   try {
     await signIn(readerPage, colleague);
     await open(readerPage, `/inbox?decision=${other}`);
-    const panel = readerPage.locator("#main").getByTestId("decision-panel");
+    const panel = readerPage.getByTestId("decision-sheet");
     await expect(panel.getByRole("heading", { level: 2, name: SECOND })).toBeVisible();
+    await expect(panel.getByTestId("decision-state")).toHaveText(`Waiting for ${me.login}`);
     await expect(panel.getByTestId("decision-locked")).toHaveText(`Only ${me.login}, who dispatched run #${run.id}, can answer this decision.`);
     await expect(panel.getByTestId("decision-form")).toHaveCount(0);
     await expect(panel.getByTestId("decision-option")).toHaveCount(2);
@@ -244,6 +259,39 @@ test("the owner answers from the run's page, and another member reads the decisi
   } finally {
     await context.close();
   }
+});
+
+test("the owner takes over from a decision while the agent still works, in the run's Terminal tab", async ({ page, member }) => {
+  const me = await member([{ role: "writer", maxLevel: "internal" }]);
+  const project = me.projects[0];
+  await seedPlanRunPlan(me, project);
+  // The agent asks and goes on working: the run stays running, on a worker that allows the web terminal.
+  const { live, run } = await planRunUnderway(me, project, uniqueName("desk"), { terminal: true });
+  const decision = await askDecision(live, run.id, QUESTION);
+
+  await open(page, `/inbox?decision=${decision}`);
+  const sheet = page.getByTestId("decision-sheet");
+  await expect(sheet.getByTestId("decision-form")).toBeVisible();
+  // No park time while the agent works.
+  await expect(sheet.getByTestId("decision-parks")).toHaveCount(0);
+  const takeOver = sheet.getByTestId("decision-takeover");
+  await expect(takeOver).toHaveAttribute("href", `${runPath(project, run.id)}?view=terminal`);
+  await expect(takeOver).toHaveAccessibleName(`Take over run #${run.id} in the terminal`);
+  await takeOver.click();
+  await expect(page).toHaveURL(new RegExp(`${runPath(project, run.id)}\\?view=terminal$`));
+  const log = main(page).getByTestId("run-log");
+  await expect(log).toHaveAttribute("data-tab", "terminal");
+
+  // On the run's own page the card's Take over shows the Terminal tab without leaving it; the Trace is the first tab.
+  await open(page, runPath(project, run.id));
+  await expect(log).toHaveAttribute("data-tab", "trace");
+  const card = main(page).getByTestId("run-decisions").getByTestId("decision");
+  await card.getByTestId("decision-takeover").click();
+  await expect(log).toHaveAttribute("data-tab", "terminal");
+  await expect(main(page).getByTestId("run-tab-terminal")).toBeFocused();
+  // No navigation: the tab shown is kept in the URL in place.
+  await expect(page).toHaveURL(new RegExp(`${runPath(project, run.id)}\\?view=terminal$`));
+
 });
 
 test("the Inbox and a decision never scroll sideways at 375, 768 and 1024 px", async ({ page, member }) => {
@@ -264,15 +312,23 @@ test("the Inbox and a decision never scroll sideways at 375, 768 and 1024 px", a
     await page.setViewportSize({ width, height: 900 });
     for (const [path, ready] of [
       ["/inbox", "inbox-list"],
-      [`/inbox?decision=${decision}`, "decision-panel"],
+      [`/inbox?decision=${decision}`, "decision-form"],
       [runPath(project, run.id), "run-decisions"],
     ] as const) {
       await open(page, path);
-      await expect(main(page).getByTestId(ready)).toBeVisible();
-      await expect(main(page).getByTestId("state-loading")).toHaveCount(0);
+      await expect(page.getByTestId(ready)).toBeVisible();
+      await expect(page.getByTestId("state-loading")).toHaveCount(0);
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
       expect.soft(overflow, `${path} at ${width} px scrolls sideways`).toBeLessThanOrEqual(0);
     }
+    // The sheet fits the viewport, and its card does not scroll sideways inside it.
+    await open(page, `/inbox?decision=${decision}`);
+    const sheet = page.getByTestId("decision-sheet");
+    await expect(sheet.getByTestId("decision-form")).toBeVisible();
+    const box = await sheet.boundingBox();
+    expect.soft(box && box.x >= 0 && box.x + box.width <= width, `the sheet fits ${width} px`).toBe(true);
+    const inner = await sheet.getByTestId("decision-panel").evaluate((element) => element.scrollWidth - element.clientWidth);
+    expect.soft(inner, `the sheet scrolls sideways at ${width} px`).toBeLessThanOrEqual(0);
   }
 });
 
@@ -290,15 +346,18 @@ test.describe("in Vietnamese", () => {
     await expect(main(page).getByTestId("inbox-waiting").getByRole("heading", { level: 2 })).toHaveAccessibleName("Đang chờ bạn trả lời (1 thông báo)");
     await main(page).getByTestId("notification-answer").click();
     await expect(page).toHaveURL(new RegExp(`/inbox\\?decision=${decision}$`));
-    const panel = main(page).getByTestId("decision-panel");
+    const panel = page.getByTestId("decision-sheet");
     await expect(panel.getByRole("heading", { level: 2, name: QUESTION })).toBeFocused();
+    await expect(panel.getByTestId("decision-state")).toHaveText("Đang chờ bạn");
     await expect(panel.getByTestId("decision-category")).toHaveText("Triển khai");
-    await expect(panel.getByTestId("decision-recommended")).toHaveText("Nên chọn");
-    await expect(panel.getByTestId("decision-send")).toHaveText("Gửi câu trả lời");
-    await expect(panel.getByTestId("decision-form-hint")).toHaveText(`Câu trả lời tới agent của run #${run.id} qua inbox của run. Đã gửi thì không sửa được.`);
-    // Back closes the decision again.
+    await expect(panel.getByTestId("decision-run-link")).toHaveText(`Run #${run.id}`);
+    await expect(panel.getByTestId("decision-recommended")).toHaveText("Agent đề xuất");
+    await expect(panel.getByTestId("decision-send")).toHaveAccessibleName("Gửi câu trả lời");
+    await expect(panel.getByTestId("decision-form-hint")).toHaveText("Agent làm tiếp ngay khi bạn trả lời.");
+    // Back closes the decision again, and focus returns to the Answer button that opened it.
     await page.goBack();
     await expect(page).toHaveURL(/\/inbox$/);
-    await expect(main(page).getByTestId("decision-panel")).toHaveCount(0);
+    await expect(page.getByTestId("decision-sheet")).toHaveCount(0);
+    await expect(main(page).getByTestId("notification-answer")).toBeFocused();
   });
 });

@@ -1,6 +1,6 @@
 "use client";
 
-import { Loader2, type LucideIcon } from "lucide-react";
+import { type LucideIcon } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { type FormEvent, type ReactNode, useId, useState } from "react";
 
@@ -17,7 +17,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { cn } from "@/lib/utils";
 
 type Props = {
   open: boolean;
@@ -98,7 +97,7 @@ function ConfirmForm({
     <form onSubmit={submit} noValidate className="flex flex-col gap-4" aria-busy={pending || undefined}>
       <AlertDialogHeader>
         <AlertDialogMedia
-          className={tone === "danger" ? "bg-destructive/10 text-destructive" : "bg-warning text-warning-foreground"}
+          className={tone === "danger" ? "bg-danger-soft text-danger" : "bg-attention-soft text-attention"}
         >
           <Icon aria-hidden="true" />
         </AlertDialogMedia>
@@ -109,7 +108,7 @@ function ConfirmForm({
       </AlertDialogHeader>
       <div className="flex flex-col gap-1.5">
         <Label htmlFor={`${ids}-name`} className="block leading-normal">
-          {t.rich("typeName", { name, code: (chunks) => <code className="font-mono font-semibold break-all">{chunks}</code> })}
+          {t.rich("typeName", { name, code: (chunks) => <code className="font-mono font-medium break-all">{chunks}</code> })}
         </Label>
         <Input
           id={`${ids}-name`}
@@ -129,7 +128,7 @@ function ConfirmForm({
           data-testid={`${testId}-name`}
         />
         {tried && !matches ? (
-          <p id={`${ids}-error`} className="text-xs font-medium text-destructive">
+          <p id={`${ids}-error`} className="text-xs font-medium text-danger">
             {t("mismatch", { name })}
           </p>
         ) : null}
@@ -146,16 +145,11 @@ function ConfirmForm({
         </AlertDialogCancel>
         <Button
           type="submit"
+          variant={tone === "danger" ? "destructive" : "default"}
           size="lg"
-          className={cn(
-            tone === "danger"
-              ? "bg-destructive text-primary-foreground hover:bg-destructive/90"
-              : "bg-warning-foreground text-warning hover:bg-warning-foreground/90",
-          )}
-          aria-disabled={pending || undefined}
+          busy={pending}
           data-testid={`${testId}-confirm`}
         >
-          {pending ? <Loader2 className="animate-spin motion-reduce:animate-none" aria-hidden="true" /> : null}
           {pending ? pendingLabel : confirmLabel}
         </Button>
       </div>

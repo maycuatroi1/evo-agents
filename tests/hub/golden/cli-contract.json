@@ -3242,7 +3242,7 @@
     "openapi": "3.1.0",
     "info": {
       "title": "evo-agents hub",
-      "version": "0.5.0"
+      "version": "0.6.0"
     },
     "paths": {
       "/v1/health": {
@@ -3986,6 +3986,48 @@
                     },
                     "type": "object",
                     "title": "Response Stats V1 Admin Stats Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "403": {
+              "description": "Forbidden",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/admin/overview": {
+        "get": {
+          "tags": [
+            "admin"
+          ],
+          "summary": "Overview",
+          "description": "What may need an admin: members, tokens to rotate, grants by project, storage, failed graph builds, offline\nworkers and the last day of the audit trail.",
+          "operationId": "overview_v1_admin_overview_get",
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/AdminOverview"
                   }
                 }
               }
@@ -8482,25 +8524,20 @@
               "in": "query",
               "required": false,
               "schema": {
-                "anyOf": [
-                  {
-                    "enum": [
-                      "active",
-                      "revoked",
-                      "expired"
-                    ],
-                    "type": "string"
-                  },
-                  {
-                    "const": "any",
-                    "type": "string"
-                  }
+                "enum": [
+                  "active",
+                  "revoked",
+                  "expired",
+                  "expiring",
+                  "unused",
+                  "any"
                 ],
-                "description": "live tokens unless set",
+                "type": "string",
+                "description": "live tokens unless set; expiring: live ones expiring within 14 days; unused: not revoked and unused for 90 days",
                 "default": "active",
                 "title": "State"
               },
-              "description": "live tokens unless set"
+              "description": "live tokens unless set; expiring: live ones expiring within 14 days; unused: not revoked and unused for 90 days"
             },
             {
               "name": "cursor",
@@ -9882,6 +9919,110 @@
                 }
               },
               "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/runs/stats": {
+        "get": {
+          "tags": [
+            "runs"
+          ],
+          "summary": "Run Stats",
+          "description": "The runs of the plans the caller may read that ended on each of the last ``days`` days in UTC: how many in\neach end state, how long they ran and the tokens they used.",
+          "operationId": "run_stats_v1_projects__project__runs_stats_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "days",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 90,
+                "minimum": 7,
+                "description": "the last days in UTC to count, today included",
+                "default": 30,
+                "title": "Days"
+              },
+              "description": "the last days in UTC to count, today included"
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/RunStats"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
             }
           }
         }
@@ -12681,6 +12822,38 @@
           }
         }
       },
+      "/v1/me/overview": {
+        "get": {
+          "tags": [
+            "overview"
+          ],
+          "summary": "Overview",
+          "description": "What waits for you, what runs and what ended lately, over the projects you hold a grant on.",
+          "operationId": "overview_v1_me_overview_get",
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Overview"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "/v1/secrets": {
         "get": {
           "tags": [
@@ -13179,6 +13352,47 @@
           ],
           "title": "ActiveRun"
         },
+        "AdminOverview": {
+          "properties": {
+            "members": {
+              "$ref": "#/components/schemas/MemberCounts"
+            },
+            "tokens": {
+              "$ref": "#/components/schemas/TokenCounts"
+            },
+            "grants": {
+              "items": {
+                "$ref": "#/components/schemas/ProjectGrantCounts"
+              },
+              "type": "array",
+              "title": "Grants",
+              "description": "every project, by name, with its grants by role"
+            },
+            "storage": {
+              "$ref": "#/components/schemas/StorageCounts"
+            },
+            "kg_builds": {
+              "$ref": "#/components/schemas/FailedBuildCounts"
+            },
+            "workers": {
+              "$ref": "#/components/schemas/WorkerCounts"
+            },
+            "audit": {
+              "$ref": "#/components/schemas/AuditCounts"
+            }
+          },
+          "type": "object",
+          "required": [
+            "members",
+            "tokens",
+            "grants",
+            "storage",
+            "kg_builds",
+            "workers",
+            "audit"
+          ],
+          "title": "AdminOverview"
+        },
         "AdminToken": {
           "properties": {
             "id": {
@@ -13308,6 +13522,24 @@
           },
           "type": "object",
           "title": "AnswerIn"
+        },
+        "AuditCounts": {
+          "properties": {
+            "rows": {
+              "type": "integer",
+              "title": "Rows"
+            },
+            "hours": {
+              "type": "integer",
+              "title": "Hours"
+            }
+          },
+          "type": "object",
+          "required": [
+            "rows",
+            "hours"
+          ],
+          "title": "AuditCounts"
         },
         "AuditPage": {
           "properties": {
@@ -14073,6 +14305,27 @@
           ],
           "title": "Csrf"
         },
+        "DayCount": {
+          "properties": {
+            "day": {
+              "type": "string",
+              "format": "date",
+              "title": "Day",
+              "description": "a day in UTC"
+            },
+            "done": {
+              "type": "integer",
+              "title": "Done",
+              "description": "runs that ended done that day"
+            }
+          },
+          "type": "object",
+          "required": [
+            "day",
+            "done"
+          ],
+          "title": "DayCount"
+        },
         "Decision": {
           "properties": {
             "id": {
@@ -14818,6 +15071,34 @@
             "source"
           ],
           "title": "Evidence"
+        },
+        "FailedBuildCounts": {
+          "properties": {
+            "failed": {
+              "type": "integer",
+              "title": "Failed",
+              "description": "graph builds of every project that failed within days"
+            },
+            "days": {
+              "type": "integer",
+              "title": "Days"
+            },
+            "projects": {
+              "items": {
+                "$ref": "#/components/schemas/ProjectFailedBuilds"
+              },
+              "type": "array",
+              "title": "Projects",
+              "description": "the projects with such a build, latest failure first"
+            }
+          },
+          "type": "object",
+          "required": [
+            "failed",
+            "days",
+            "projects"
+          ],
+          "title": "FailedBuildCounts"
         },
         "Found": {
           "properties": {
@@ -15784,6 +16065,37 @@
           ],
           "title": "Live"
         },
+        "MemberCounts": {
+          "properties": {
+            "total": {
+              "type": "integer",
+              "title": "Total",
+              "description": "every user: people who signed in, and logins granted access before signing in"
+            },
+            "active": {
+              "type": "integer",
+              "title": "Active",
+              "description": "users the hub saw within active_days: any token or web session of theirs used"
+            },
+            "not_signed_in": {
+              "type": "integer",
+              "title": "Not Signed In",
+              "description": "logins granted access that have not signed in yet"
+            },
+            "active_days": {
+              "type": "integer",
+              "title": "Active Days"
+            }
+          },
+          "type": "object",
+          "required": [
+            "total",
+            "active",
+            "not_signed_in",
+            "active_days"
+          ],
+          "title": "MemberCounts"
+        },
         "Memory": {
           "properties": {
             "id": {
@@ -16637,6 +16949,502 @@
           ],
           "title": "OptionIn"
         },
+        "Overview": {
+          "properties": {
+            "counts": {
+              "$ref": "#/components/schemas/OverviewCounts"
+            },
+            "done_by_day": {
+              "items": {
+                "$ref": "#/components/schemas/DayCount"
+              },
+              "type": "array",
+              "maxItems": 7,
+              "minItems": 7,
+              "title": "Done By Day",
+              "description": "the last 7 days in UTC, oldest first, today last"
+            },
+            "active_runs": {
+              "items": {
+                "$ref": "#/components/schemas/OverviewRun"
+              },
+              "type": "array",
+              "maxItems": 20,
+              "title": "Active Runs",
+              "description": "at most 20 runs in leased, running, interactive, verifying, waiting, parked, queued: those whose agent works first, then waiting, parked and queued, the newest first within each"
+            },
+            "recent_runs": {
+              "items": {
+                "$ref": "#/components/schemas/OverviewRun"
+              },
+              "type": "array",
+              "maxItems": 10,
+              "title": "Recent Runs",
+              "description": "the 10 runs that ended last, the last first"
+            },
+            "open_decisions": {
+              "items": {
+                "$ref": "#/components/schemas/OverviewDecision"
+              },
+              "type": "array",
+              "maxItems": 20,
+              "title": "Open Decisions",
+              "description": "at most 20: yours first, then the oldest first"
+            },
+            "projects": {
+              "items": {
+                "$ref": "#/components/schemas/OverviewProject"
+              },
+              "type": "array",
+              "title": "Projects",
+              "description": "the projects you hold a grant on, by name"
+            }
+          },
+          "type": "object",
+          "required": [
+            "counts",
+            "done_by_day",
+            "active_runs",
+            "recent_runs",
+            "open_decisions",
+            "projects"
+          ],
+          "title": "Overview"
+        },
+        "OverviewCounts": {
+          "properties": {
+            "waiting_on_you": {
+              "type": "integer",
+              "title": "Waiting On You",
+              "description": "open decisions of the runs you dispatched, which only you may answer"
+            },
+            "running": {
+              "type": "integer",
+              "title": "Running",
+              "description": "runs whose agent works: leased, running, interactive, verifying"
+            },
+            "queued": {
+              "type": "integer",
+              "title": "Queued",
+              "description": "runs no worker has claimed yet"
+            },
+            "done_7d": {
+              "type": "integer",
+              "title": "Done 7D",
+              "description": "runs that ended done in the last 7 days in UTC, today included"
+            },
+            "failed_7d": {
+              "type": "integer",
+              "title": "Failed 7D",
+              "description": "runs that ended failed in the same days"
+            },
+            "lost_7d": {
+              "type": "integer",
+              "title": "Lost 7D",
+              "description": "runs whose worker stopped extending the lease, in the same days"
+            }
+          },
+          "type": "object",
+          "required": [
+            "waiting_on_you",
+            "running",
+            "queued",
+            "done_7d",
+            "failed_7d",
+            "lost_7d"
+          ],
+          "title": "OverviewCounts"
+        },
+        "OverviewDecision": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "run_id": {
+              "type": "integer",
+              "title": "Run Id",
+              "description": "the plan run the decision belongs to"
+            },
+            "run_state": {
+              "type": "string",
+              "enum": [
+                "queued",
+                "leased",
+                "running",
+                "interactive",
+                "verifying",
+                "waiting",
+                "review",
+                "parked",
+                "done",
+                "failed",
+                "lost",
+                "cancelled"
+              ],
+              "title": "Run State"
+            },
+            "plan_id": {
+              "type": "string",
+              "title": "Plan Id"
+            },
+            "plan_title": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Plan Title"
+            },
+            "step_key": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Step Key",
+              "description": "the step it is about, when the agent named one"
+            },
+            "category": {
+              "type": "string",
+              "enum": [
+                "deploy",
+                "delete_data",
+                "live_migration",
+                "external_send",
+                "spend_money",
+                "architecture",
+                "scope"
+              ],
+              "title": "Category"
+            },
+            "question": {
+              "type": "string",
+              "title": "Question"
+            },
+            "owner": {
+              "type": "string",
+              "title": "Owner",
+              "description": "the login of the run's owner, the one member who may answer"
+            },
+            "yours": {
+              "type": "boolean",
+              "title": "Yours",
+              "description": "whether you are that owner"
+            },
+            "asked_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Asked At"
+            },
+            "parks_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Parks At",
+              "description": "when the run parks for want of an answer: EVO_HUB_DECISION_WAIT_SECONDS after it started waiting, or when it parked; null while its agent still works"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "project",
+            "run_id",
+            "run_state",
+            "plan_id",
+            "plan_title",
+            "step_key",
+            "category",
+            "question",
+            "owner",
+            "yours",
+            "asked_at",
+            "parks_at"
+          ],
+          "title": "OverviewDecision"
+        },
+        "OverviewProject": {
+          "properties": {
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "role": {
+              "type": "string",
+              "title": "Role",
+              "description": "your role on the project"
+            },
+            "max_level": {
+              "type": "string",
+              "title": "Max Level",
+              "description": "the highest label level your grant reaches"
+            },
+            "repos": {
+              "type": "integer",
+              "title": "Repos",
+              "description": "the repos registered for the project"
+            },
+            "active_plans": {
+              "type": "integer",
+              "title": "Active Plans",
+              "description": "its plans in the active area that you can see"
+            },
+            "open_decisions": {
+              "type": "integer",
+              "title": "Open Decisions",
+              "description": "open decisions of the plans you can see, yours or not"
+            }
+          },
+          "type": "object",
+          "required": [
+            "name",
+            "role",
+            "max_level",
+            "repos",
+            "active_plans",
+            "open_decisions"
+          ],
+          "title": "OverviewProject"
+        },
+        "OverviewRun": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "step",
+                "plan"
+              ],
+              "title": "Kind"
+            },
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "plan_id": {
+              "type": "string",
+              "title": "Plan Id"
+            },
+            "plan_title": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Plan Title",
+              "description": "the plan's title as the hub holds it now"
+            },
+            "step_key": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Step Key",
+              "description": "null for a plan run"
+            },
+            "title": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Title",
+              "description": "the step's title when the run was dispatched; the plan's for a plan run"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "queued",
+                "leased",
+                "running",
+                "interactive",
+                "verifying",
+                "waiting",
+                "review",
+                "parked",
+                "done",
+                "failed",
+                "lost",
+                "cancelled"
+              ],
+              "title": "State"
+            },
+            "dispatched_by": {
+              "type": "string",
+              "title": "Dispatched By",
+              "description": "the login of the member who dispatched it, its owner"
+            },
+            "worker_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Worker Id",
+              "description": "the worker that claimed it; null while it is queued"
+            },
+            "worker": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Worker",
+              "description": "that worker's name"
+            },
+            "runtime": {
+              "type": "string",
+              "enum": [
+                "any",
+                "claude-code",
+                "opencode",
+                "codex"
+              ],
+              "title": "Runtime",
+              "description": "any until a worker claims the run"
+            },
+            "model": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Model"
+            },
+            "steps_total": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Steps Total",
+              "description": "the steps of a plan run's plan; null for a run of one step"
+            },
+            "steps_done": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Steps Done",
+              "description": "a plan run's steps the plan holds done now; null for a run of one step"
+            },
+            "run_seconds": {
+              "type": "integer",
+              "title": "Run Seconds",
+              "description": "the agent time the run has used, as the hub last counted it"
+            },
+            "queued_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Queued At"
+            },
+            "started_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Started At"
+            },
+            "finished_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Finished At"
+            },
+            "error": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error",
+              "description": "why the run failed, was lost or ended"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "kind",
+            "project",
+            "plan_id",
+            "plan_title",
+            "step_key",
+            "title",
+            "state",
+            "dispatched_by",
+            "worker_id",
+            "worker",
+            "runtime",
+            "model",
+            "steps_total",
+            "steps_done",
+            "run_seconds",
+            "queued_at",
+            "started_at",
+            "finished_at",
+            "error"
+          ],
+          "title": "OverviewRun"
+        },
         "Page": {
           "properties": {
             "items": {
@@ -17488,6 +18296,81 @@
             "updated_at"
           ],
           "title": "Project"
+        },
+        "ProjectFailedBuilds": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "failed": {
+              "type": "integer",
+              "title": "Failed",
+              "description": "builds of the project that failed within the window"
+            },
+            "last_failed_id": {
+              "type": "integer",
+              "title": "Last Failed Id"
+            },
+            "last_failed_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Last Failed At"
+            },
+            "latest_id": {
+              "type": "integer",
+              "title": "Latest Id",
+              "description": "the project's newest build, whatever its status"
+            },
+            "latest_status": {
+              "type": "string",
+              "enum": [
+                "queued",
+                "running",
+                "succeeded",
+                "failed"
+              ],
+              "title": "Latest Status"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "failed",
+            "last_failed_id",
+            "last_failed_at",
+            "latest_id",
+            "latest_status"
+          ],
+          "title": "ProjectFailedBuilds"
+        },
+        "ProjectGrantCounts": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "admins": {
+              "type": "integer",
+              "title": "Admins"
+            },
+            "writers": {
+              "type": "integer",
+              "title": "Writers"
+            },
+            "readers": {
+              "type": "integer",
+              "title": "Readers"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "admins",
+            "writers",
+            "readers"
+          ],
+          "title": "ProjectGrantCounts"
         },
         "ProjectPruned": {
           "properties": {
@@ -19017,6 +19900,101 @@
           ],
           "title": "RunControl"
         },
+        "RunDay": {
+          "properties": {
+            "done": {
+              "type": "integer",
+              "title": "Done",
+              "description": "runs that ended done"
+            },
+            "failed": {
+              "type": "integer",
+              "title": "Failed",
+              "description": "runs that ended failed"
+            },
+            "lost": {
+              "type": "integer",
+              "title": "Lost",
+              "description": "runs whose worker stopped extending the lease"
+            },
+            "cancelled": {
+              "type": "integer",
+              "title": "Cancelled",
+              "description": "runs that ended cancelled, queued or not"
+            },
+            "p50_seconds": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "P50 Seconds",
+              "description": "the median time the runs that ended ran, from started (else leased) to finished, as the runs pages count it; null when none of them started"
+            },
+            "p90_seconds": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "P90 Seconds",
+              "description": "the 90th percentile of that time; null when none of them started"
+            },
+            "input_tokens": {
+              "type": "integer",
+              "title": "Input Tokens",
+              "description": "input tokens not read from the cache, added up from the runs' usage as the run page's usage card reads it"
+            },
+            "output_tokens": {
+              "type": "integer",
+              "title": "Output Tokens",
+              "description": "output tokens, reasoning left out"
+            },
+            "cache_read_tokens": {
+              "type": "integer",
+              "title": "Cache Read Tokens",
+              "description": "input tokens read from the cache"
+            },
+            "reasoning_tokens": {
+              "type": "integer",
+              "title": "Reasoning Tokens",
+              "description": "reasoning (thinking) tokens"
+            },
+            "runs_with_usage": {
+              "type": "integer",
+              "title": "Runs With Usage",
+              "description": "the runs whose usage the hub could read: a run without usage, or with usage of no shape the card knows (Claude Code, Codex, opencode), adds no token"
+            },
+            "day": {
+              "type": "string",
+              "format": "date",
+              "title": "Day",
+              "description": "a day in UTC"
+            }
+          },
+          "type": "object",
+          "required": [
+            "done",
+            "failed",
+            "lost",
+            "cancelled",
+            "p50_seconds",
+            "p90_seconds",
+            "input_tokens",
+            "output_tokens",
+            "cache_read_tokens",
+            "reasoning_tokens",
+            "runs_with_usage",
+            "day"
+          ],
+          "title": "RunDay"
+        },
         "RunEvent": {
           "properties": {
             "seq": {
@@ -19118,6 +20096,95 @@
             "more"
           ],
           "title": "RunEvents"
+        },
+        "RunFigures": {
+          "properties": {
+            "done": {
+              "type": "integer",
+              "title": "Done",
+              "description": "runs that ended done"
+            },
+            "failed": {
+              "type": "integer",
+              "title": "Failed",
+              "description": "runs that ended failed"
+            },
+            "lost": {
+              "type": "integer",
+              "title": "Lost",
+              "description": "runs whose worker stopped extending the lease"
+            },
+            "cancelled": {
+              "type": "integer",
+              "title": "Cancelled",
+              "description": "runs that ended cancelled, queued or not"
+            },
+            "p50_seconds": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "P50 Seconds",
+              "description": "the median time the runs that ended ran, from started (else leased) to finished, as the runs pages count it; null when none of them started"
+            },
+            "p90_seconds": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "P90 Seconds",
+              "description": "the 90th percentile of that time; null when none of them started"
+            },
+            "input_tokens": {
+              "type": "integer",
+              "title": "Input Tokens",
+              "description": "input tokens not read from the cache, added up from the runs' usage as the run page's usage card reads it"
+            },
+            "output_tokens": {
+              "type": "integer",
+              "title": "Output Tokens",
+              "description": "output tokens, reasoning left out"
+            },
+            "cache_read_tokens": {
+              "type": "integer",
+              "title": "Cache Read Tokens",
+              "description": "input tokens read from the cache"
+            },
+            "reasoning_tokens": {
+              "type": "integer",
+              "title": "Reasoning Tokens",
+              "description": "reasoning (thinking) tokens"
+            },
+            "runs_with_usage": {
+              "type": "integer",
+              "title": "Runs With Usage",
+              "description": "the runs whose usage the hub could read: a run without usage, or with usage of no shape the card knows (Claude Code, Codex, opencode), adds no token"
+            }
+          },
+          "type": "object",
+          "required": [
+            "done",
+            "failed",
+            "lost",
+            "cancelled",
+            "p50_seconds",
+            "p90_seconds",
+            "input_tokens",
+            "output_tokens",
+            "cache_read_tokens",
+            "reasoning_tokens",
+            "runs_with_usage"
+          ],
+          "title": "RunFigures",
+          "description": "The runs that ended in a span of UTC days, of the plans the caller may read."
         },
         "RunLease": {
           "properties": {
@@ -19577,6 +20644,53 @@
             "missing"
           ],
           "title": "RunState"
+        },
+        "RunStats": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "days": {
+              "type": "integer",
+              "title": "Days",
+              "description": "the days counted, today in UTC the last"
+            },
+            "first_day": {
+              "type": "string",
+              "format": "date",
+              "title": "First Day",
+              "description": "the oldest day counted, in UTC"
+            },
+            "last_day": {
+              "type": "string",
+              "format": "date",
+              "title": "Last Day",
+              "description": "today in UTC"
+            },
+            "by_day": {
+              "items": {
+                "$ref": "#/components/schemas/RunDay"
+              },
+              "type": "array",
+              "title": "By Day",
+              "description": "every day counted, the oldest first: a day without a run has zeros and null percentiles"
+            },
+            "total": {
+              "$ref": "#/components/schemas/RunFigures",
+              "description": "the whole span: its counts and tokens are by_day's added up, its percentiles over every run"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "days",
+            "first_day",
+            "last_day",
+            "by_day",
+            "total"
+          ],
+          "title": "RunStats"
         },
         "RunUploadRequest": {
           "properties": {
@@ -20644,6 +21758,73 @@
           ],
           "title": "StepWritten"
         },
+        "StorageCounts": {
+          "properties": {
+            "objects": {
+              "type": "integer",
+              "title": "Objects",
+              "description": "distinct blobs in the bucket: projects holding the same bytes share one object"
+            },
+            "bytes": {
+              "type": "integer",
+              "title": "Bytes",
+              "description": "their size"
+            },
+            "pending_deletions": {
+              "type": "integer",
+              "title": "Pending Deletions",
+              "description": "objects nothing refers to any more whose deletion from the bucket has not succeeded yet; the next prune tries again"
+            },
+            "pending_bytes": {
+              "type": "integer",
+              "title": "Pending Bytes"
+            }
+          },
+          "type": "object",
+          "required": [
+            "objects",
+            "bytes",
+            "pending_deletions",
+            "pending_bytes"
+          ],
+          "title": "StorageCounts"
+        },
+        "TokenCounts": {
+          "properties": {
+            "live": {
+              "type": "integer",
+              "title": "Live",
+              "description": "tokens and web sessions neither revoked nor expired"
+            },
+            "expiring": {
+              "type": "integer",
+              "title": "Expiring",
+              "description": "live ones that expire within expiring_days; GET /v1/admin/tokens?state=expiring lists them"
+            },
+            "unused": {
+              "type": "integer",
+              "title": "Unused",
+              "description": "tokens not revoked whose last use, or issue when never used, is unused_days old or more; GET /v1/admin/tokens?state=unused lists them"
+            },
+            "expiring_days": {
+              "type": "integer",
+              "title": "Expiring Days"
+            },
+            "unused_days": {
+              "type": "integer",
+              "title": "Unused Days"
+            }
+          },
+          "type": "object",
+          "required": [
+            "live",
+            "expiring",
+            "unused",
+            "expiring_days",
+            "unused_days"
+          ],
+          "title": "TokenCounts"
+        },
         "TokenInfo": {
           "properties": {
             "id": {
@@ -21428,6 +22609,31 @@
             "revoked_at"
           ],
           "title": "Worker"
+        },
+        "WorkerCounts": {
+          "properties": {
+            "live": {
+              "type": "integer",
+              "title": "Live",
+              "description": "workers not revoked"
+            },
+            "offline": {
+              "type": "integer",
+              "title": "Offline",
+              "description": "live workers without a heartbeat for over offline_after_seconds, or without any"
+            },
+            "offline_after_seconds": {
+              "type": "integer",
+              "title": "Offline After Seconds"
+            }
+          },
+          "type": "object",
+          "required": [
+            "live",
+            "offline",
+            "offline_after_seconds"
+          ],
+          "title": "WorkerCounts"
         },
         "WorkerCredential": {
           "properties": {

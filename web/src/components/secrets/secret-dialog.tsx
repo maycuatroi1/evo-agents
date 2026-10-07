@@ -1,11 +1,12 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { Info, LockKeyhole, Loader2, RefreshCw, TriangleAlert, X } from "lucide-react";
+import { Info, LockKeyhole, RefreshCw, TriangleAlert, X } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { type FormEvent, type ReactNode, useEffect, useId, useMemo, useRef, useState } from "react";
 
-import { InlineError, type Notice } from "@/components/admin/notice";
+import { InlineError } from "@/components/admin/notice";
+import type { Notice } from "@/components/feedback/toast";
 import { Choice, Section } from "@/components/runs/dispatch-fields";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -84,7 +85,7 @@ export function SecretDialog({ open, onOpenChange, secret, taken, onSaved }: Pro
 function FieldError({ id, text, testId }: { id: string; text?: string | null; testId: string }) {
   if (!text) return null;
   return (
-    <p id={id} className="text-xs font-medium text-destructive" data-testid={testId}>
+    <p id={id} className="text-xs font-medium text-danger" data-testid={testId}>
       {text}
     </p>
   );
@@ -103,8 +104,8 @@ function Box({ tone, icon: Icon, children, testId }: { tone: "info" | "warning";
     <p
       className={
         tone === "warning"
-          ? "flex items-start gap-2.5 rounded-lg border border-warning-foreground/20 bg-warning px-3 py-2.5 text-sm text-warning-foreground"
-          : "flex items-start gap-2.5 rounded-lg border border-info-foreground/15 bg-info px-3 py-2.5 text-sm text-info-foreground"
+          ? "flex items-start gap-2.5 rounded-md border border-attention/20 bg-attention-soft px-3 py-2.5 text-sm text-attention"
+          : "flex items-start gap-2.5 rounded-md border bg-muted px-3 py-2.5 text-sm text-foreground"
       }
       data-testid={testId}
     >
@@ -196,7 +197,11 @@ function SecretFormBody({
       setForgotten(true);
       return; // the reason shows above the buttons, from the write's state
     }
-    onSaved({ tone: "success", text: written.created ? t("added", { name }) : t("replaced", { name }) });
+    onSaved(
+      written.created
+        ? { tone: "success", text: t("added", { name }), description: t("addedText") }
+        : { tone: "success", text: t("replaced", { name }), description: t("replacedText") },
+    );
     onClose();
   };
 
@@ -345,11 +350,11 @@ function SecretFormBody({
               <Skeleton className="h-10 w-full" />
             </div>
           ) : projects.isError ? (
-            <p className="text-sm text-destructive" role="alert">
+            <p className="text-sm text-danger" role="alert">
               {t("projectsFailed")}
             </p>
           ) : noProjects ? (
-            <p className="rounded-lg border border-dashed px-3 py-2.5 text-sm text-muted-foreground" data-testid="secret-no-projects">
+            <p className="rounded-md border border-dashed px-3 py-2.5 text-sm text-muted-foreground" data-testid="secret-no-projects">
               {t("noProjects")}
             </p>
           ) : (
@@ -359,8 +364,8 @@ function SecretFormBody({
                   key={name}
                   htmlFor={`${ids}-project-${index}`}
                   className={cn(
-                    "flex min-h-10 cursor-pointer items-center gap-2.5 rounded-lg border px-3 py-2 transition-colors hover:bg-muted/50",
-                    form.projects.includes(name) && "border-primary/40 bg-accent",
+                    "flex min-h-10 cursor-pointer items-center gap-2.5 rounded-md border px-3 py-2 transition-colors hover:bg-muted/50",
+                    form.projects.includes(name) && "border-brand/40 bg-surface-selected",
                   )}
                 >
                   <input
@@ -387,7 +392,7 @@ function SecretFormBody({
           {workers.isPending ? (
             <Skeleton className="h-10 w-full sm:w-1/2" aria-hidden="true" />
           ) : workerChoices.length === 0 ? (
-            <p className="rounded-lg border border-dashed px-3 py-2.5 text-sm text-muted-foreground" data-testid="secret-no-workers">
+            <p className="rounded-md border border-dashed px-3 py-2.5 text-sm text-muted-foreground" data-testid="secret-no-workers">
               {t("noWorkers")}
             </p>
           ) : (
@@ -485,8 +490,8 @@ function SecretFormBody({
               {t("cancel")}
             </Button>
           </DialogClose>
-          <Button type="submit" size="lg" disabled={noProjects} aria-disabled={pending || undefined} data-testid="secret-save">
-            {pending ? <Loader2 className="animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <LockKeyhole aria-hidden="true" />}
+          <Button type="submit" size="lg" disabled={noProjects} busy={pending} data-testid="secret-save">
+            <LockKeyhole aria-hidden="true" />
             {pending ? t("saving") : adding ? t("add") : t("replace")}
           </Button>
         </DialogFooter>

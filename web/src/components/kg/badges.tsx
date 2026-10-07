@@ -11,8 +11,9 @@ import {
   Tag,
 } from "lucide-react";
 import { useFormatter, useTranslations } from "next-intl";
-import { useEffect, useState } from "react";
 
+import { Tag as TagChip, useClipboard } from "@/components/data/identifier";
+import { useVisibilityName } from "@/components/data/visibility";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { type DurationParts, durationParts } from "@/lib/kg/format";
@@ -54,21 +55,25 @@ export function JobStatusBadge({ status }: { status: KgJob["status"] }) {
   );
 }
 
-/** A node's label by names: the level, and the location when it says more than "any". */
+/**
+ * A node's label as a tag: its visibility in words (Internal, the code in the tooltip with the location and the
+ * integrity), and the location when it says more than "any".
+ */
 export function LabelBadge({ label }: { label: NodeLabel }) {
   const t = useTranslations("kg.node");
-  const text = label.location && label.location !== "any" ? `${label.level} / ${label.location}` : label.level;
+  const visibility = useVisibilityName();
+  const level = visibility(label.level);
+  const text = label.location && label.location !== "any" ? `${level} / ${label.location}` : level;
   return (
-    <Badge
-      variant="outline"
-      className="font-mono"
+    <TagChip
       title={t("labelTitle", { level: label.level, location: label.location, integrity: label.integrity })}
+      data-level={label.level}
       data-testid="label-badge"
     >
       <Tag aria-hidden="true" />
       <span className="sr-only">{t("label")}: </span>
       {text}
-    </Badge>
+    </TagChip>
   );
 }
 
@@ -138,15 +143,10 @@ export function When({ iso, now = null }: { iso: string | null | undefined; now?
   );
 }
 
-/** Copies `value` and says so in a live region; the button keeps its name for screen readers. */
+/** Copies `value` and says so in a toast; the button keeps its name for screen readers. */
 export function CopyButton({ value, label }: { value: string; label: string }) {
   const t = useTranslations("kg");
-  const [copied, setCopied] = useState(false);
-  useEffect(() => {
-    if (!copied) return;
-    const timer = setTimeout(() => setCopied(false), 2_000);
-    return () => clearTimeout(timer);
-  }, [copied]);
+  const { state, copy } = useClipboard(value, null, { copied: t("copied") });
   return (
     <>
       <Button
@@ -156,15 +156,10 @@ export function CopyButton({ value, label }: { value: string; label: string }) {
         aria-label={label}
         title={label}
         className="cursor-pointer text-muted-foreground"
-        onClick={() => {
-          void navigator.clipboard?.writeText(value).then(() => setCopied(true), () => setCopied(false));
-        }}
+        onClick={() => void copy()}
       >
-        {copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
+        {state === "copied" ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
       </Button>
-      <span className="sr-only" aria-live="polite">
-        {copied ? t("copied") : ""}
-      </span>
     </>
   );
 }

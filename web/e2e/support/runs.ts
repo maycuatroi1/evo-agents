@@ -334,9 +334,9 @@ export async function seedPlanRunPlan(writer: Account, project: string, id = PLA
   );
 }
 
-/** A worker with checkouts of both repos of the plan run, whose Claude Code lists MODELS. */
-export function planRunWorker(account: Account, project: string, name: string): Promise<LiveWorker> {
-  return liveWorker(account, project, name, 1, { report: { repos: [REPO, HARNESS_REPO], models: MODELS } });
+/** A worker with checkouts of both repos of the plan run, whose Claude Code lists MODELS; `terminal` as liveWorker's. */
+export function planRunWorker(account: Account, project: string, name: string, { terminal = false }: { terminal?: boolean } = {}): Promise<LiveWorker> {
+  return liveWorker(account, project, name, 1, { terminal, report: { repos: [REPO, HARNESS_REPO], models: MODELS } });
 }
 
 /** Dispatch a plan run through the API as `account`, the way `evo-agents hub run plan` does. */
@@ -355,8 +355,16 @@ export async function reportStep(live: LiveWorker, runId: number, key: string, s
   await workerCall(live, `/v1/worker/runs/${runId}/steps/${key}`, { status, repo });
 }
 
+/** What an agent's ask may say beyond the default: its category, context, options and pick. */
+export type DecisionAsk = {
+  category?: string;
+  context?: string | null;
+  options?: { key: string; label: string; description?: string }[];
+  recommended?: string | null;
+};
+
 /** The agent's `evo-agents worker ask`: a decision of the run, answered by its owner. Returns its id. */
-export async function askDecision(live: LiveWorker, runId: number, question: string, step = "3"): Promise<number> {
+export async function askDecision(live: LiveWorker, runId: number, question: string, step = "3", ask: DecisionAsk = {}): Promise<number> {
   const decision = (await workerCall(live, `/v1/worker/runs/${runId}/decisions`, {
     category: "deploy",
     question,
@@ -367,21 +375,27 @@ export async function askDecision(live: LiveWorker, runId: number, question: str
     ],
     recommended: "deploy",
     step_key: step,
+    ...ask,
   })) as { id: number };
   return decision.id;
 }
 
 /**
  * A plan run the worker took and started, with step 2 in progress; with `waiting`, its agent then asked a decision and
- * the run waits for the answer. Returns the run and the decision's id, if any.
+ * the run waits for the answer. `terminal` registers its worker with `--allow-web-terminal`. Returns the run and the
+ * decision's id, if any.
  */
 export async function planRunUnderway(
   owner: Account,
   project: string,
   name: string,
-  { waiting = false, dispatch = {} }: { waiting?: boolean; dispatch?: Record<string, unknown> } = {},
+  {
+    waiting = false,
+    dispatch = {},
+    terminal = false,
+  }: { waiting?: boolean; dispatch?: Record<string, unknown>; terminal?: boolean } = {},
 ): Promise<{ live: LiveWorker; run: Run; decision: number | null }> {
-  const live = await planRunWorker(owner, project, name);
+  const live = await planRunWorker(owner, project, name, { terminal });
   const run = await dispatchPlan(owner, project, { worker_id: live.worker.id, runtime: "claude-code", model: MODELS[1], ...dispatch });
   const claimed = await claimRun(live);
   if (claimed?.id !== run.id) throw new Error(`the worker claimed ${claimed?.id ?? "nothing"}, not plan run #${run.id}`);

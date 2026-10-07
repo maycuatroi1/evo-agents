@@ -16,6 +16,8 @@ describe("skills helpers", () => {
     expect(sizeParts(512)).toEqual({ value: 512, unit: "byte" });
     expect(sizeParts(2048)).toEqual({ value: 2, unit: "kilobyte" });
     expect(sizeParts(3 * 1024 * 1024)).toEqual({ value: 3, unit: "megabyte" });
+    expect(sizeParts(1.5 * 1024 ** 3)).toEqual({ value: 1.5, unit: "gigabyte" });
+    expect(sizeParts(4096 * 1024 ** 4)).toEqual({ value: 4096, unit: "terabyte" });
     expect(shortHash("abcdef0123456789")).toBe("abcdef012345");
     expect(bundleFileName("team-notes", 3)).toBe("team-notes-v3.tar.gz");
   });

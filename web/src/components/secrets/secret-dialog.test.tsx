@@ -5,7 +5,7 @@ import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { Notice } from "@/components/admin/notice";
+import type { Notice } from "@/components/feedback/toast";
 import { createApiClient } from "@/lib/api/client";
 import { renderVi } from "@/test/render";
 
@@ -162,7 +162,13 @@ describe("SecretDialog", () => {
     await user.type(valueField(), VALUE);
     await user.click(within(dialog).getByRole("button", { name: "Thêm secret" }));
 
-    await waitFor(() => expect(saved).toHaveBeenCalledWith({ tone: "success", text: expect.stringContaining("Đã thêm secret claude-oauth.") }));
+    await waitFor(() =>
+      expect(saved).toHaveBeenCalledWith({
+        tone: "success",
+        text: "Đã thêm secret claude-oauth",
+        description: "Hub đã niêm phong value và sẽ không hiện lại.",
+      }),
+    );
     const put = api.seen.find((request) => request.method === "PUT");
     expect(new URL(put?.url ?? "").pathname).toBe("/v1/secrets/claude-oauth");
     expect(put?.headers.get("X-Evo-CSRF")).toBe("csrf-1");

@@ -2,9 +2,9 @@
 
 import { Check, Copy, ExternalLink, FolderGit2, GitCommitHorizontal, Globe } from "lucide-react";
 import { useFormatter, useTranslations } from "next-intl";
-import { useEffect, useRef, useState } from "react";
+import { useRef } from "react";
 
-import { Badge } from "@/components/ui/badge";
+import { Tag, useClipboard } from "@/components/data/identifier";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -17,7 +17,13 @@ export function ByteSize({ bytes }: { bytes: number }) {
   const { value, unit } = sizeParts(bytes);
   return (
     <span className="tabular-nums" title={t("bytes", { count: bytes })}>
-      {format.number(value, { style: "unit", unit, unitDisplay: "short", maximumFractionDigits: unit === "byte" ? 0 : 1 })}
+      {format.number(value, {
+        style: "unit",
+        unit,
+        // "230 bytes", not the short form's "230 byte"; kB and MB keep their symbols.
+        unitDisplay: unit === "byte" ? "long" : "short",
+        maximumFractionDigits: unit === "byte" ? 0 : 1,
+      })}
     </span>
   );
 }
@@ -25,24 +31,13 @@ export function ByteSize({ bytes }: { bytes: number }) {
 /** A SHA-256 shortened for reading, whole for copying and for assistive technology. */
 export function HashText({ sha256, full = false }: { sha256: string; full?: boolean }) {
   const t = useTranslations("skills");
-  const [copied, setCopied] = useState(false);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => () => {
-    if (timer.current) clearTimeout(timer.current);
-  }, []);
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(sha256);
-      setCopied(true);
-      if (timer.current) clearTimeout(timer.current);
-      timer.current = setTimeout(() => setCopied(false), 2000);
-    } catch {
-      setCopied(false);
-    }
-  };
+  const code = useRef<HTMLElement>(null);
+  const { state, copy } = useClipboard(sha256, code, { copied: t("copied") });
+  const copied = state === "copied";
   return (
     <span className="inline-flex max-w-full items-center gap-1">
       <code
+        ref={code}
         className={cn("rounded bg-muted px-1.5 py-0.5 font-mono text-xs", full && "[overflow-wrap:anywhere]")}
         title={sha256}
         data-sha256={sha256}
@@ -56,12 +51,9 @@ export function HashText({ sha256, full = false }: { sha256: string; full?: bool
           </>
         )}
       </code>
-      <Button type="button" variant="ghost" size="icon-xs" onClick={() => void copy()} aria-label={t("copyHash")}>
+      <Button type="button" variant="ghost" size="icon-sm" onClick={() => void copy()} aria-label={t("copyHash")}>
         {copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
       </Button>
-      <span className="sr-only" aria-live="polite">
-        {copied ? t("copied") : ""}
-      </span>
     </span>
   );
 }
@@ -102,7 +94,7 @@ export function SourceLink({
       href={url}
       target="_blank"
       rel="noopener noreferrer"
-      className="font-mono text-xs text-primary underline-offset-4 hover:underline"
+      className="font-mono text-xs text-brand underline-offset-4 hover:underline"
       title={`${repo}@${commit}`}
       data-testid="source-link"
     >
@@ -115,14 +107,14 @@ export function SourceLink({
 export function ScopeBadge({ project }: { project: string | null }) {
   const t = useTranslations("skills");
   return project === null ? (
-    <Badge variant="info" className="gap-1">
+    <Tag>
       <Globe aria-hidden="true" />
       {t("scopeGlobal")}
-    </Badge>
+    </Tag>
   ) : (
-    <Badge variant="outline" className="gap-1">
+    <Tag>
       <FolderGit2 aria-hidden="true" />
       {t("scopeProject", { project })}
-    </Badge>
+    </Tag>
   );
 }

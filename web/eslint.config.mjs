@@ -11,12 +11,43 @@ export default defineConfig([
       "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }],
       "@typescript-eslint/consistent-type-imports": ["error", { fixStyle: "inline-type-imports" }],
       "no-console": ["error", { allow: ["warn", "error"] }],
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            {
+              name: "@tanstack/react-query",
+              importNames: ["HydrationBoundary"],
+              message:
+                "Use HydrationBoundary from @/lib/api/hydration-boundary: it fills the entries the shell created empty during render, so the page renders its data on the server.",
+            },
+          ],
+        },
+      ],
     },
+  },
+  {
+    files: ["src/lib/api/hydration-boundary.tsx", "src/lib/api/hydration-boundary.test.tsx"],
+    rules: { "no-restricted-imports": "off" },
   },
   {
     files: ["scripts/**", "e2e/**", "playwright.config.ts"],
     // Playwright fixtures call `use`, which is not React's hook.
     rules: { "no-console": "off", "react-hooks/rules-of-hooks": "off" },
+  },
+  {
+    files: ["e2e/**"],
+    ignores: ["e2e/support/auth.ts"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: "CallExpression[callee.property.name='clearCookies']",
+          message:
+            "Sign out with signOut(page) from e2e/support/auth.ts: a page of the app left open answers its first 401 with a navigation to /login, which aborts the spec's next page.goto.",
+        },
+      ],
+    },
   },
   globalIgnores([
     ".next/**",

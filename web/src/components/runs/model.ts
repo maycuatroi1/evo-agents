@@ -101,6 +101,8 @@ export type RunsSummary = {
   /** ISO 8601; null when nothing waits, or the oldest waiting run is not among those read. */
   oldestQueuedAt: string | null;
   review: number;
+  /** Plan runs parked for want of an answer: active, and waiting for a person. */
+  parked: number;
   /** The one run waiting for review, when there is exactly one. */
   reviewRun: Run | null;
   done: number;
@@ -130,6 +132,7 @@ export function summarizeRuns(list: RunList): RunsSummary {
     queued: counts.queued,
     oldestQueuedAt,
     review: counts.review,
+    parked: counts.parked,
     reviewRun: counts.review === 1 && inReview.length === 1 ? inReview[0] : null,
     done: counts.done,
     failed: counts.failed,

@@ -17,6 +17,27 @@ A deployment has five parts:
 A reverse proxy in front sends `/v1` and `/mcp` to `api:8080` and every other path to `web:3000`, on one domain.
 The browser then sees the API on the web's own origin, and the session cookie reaches both.
 
+## The web
+
+The web reads the API only through a client generated from its OpenAPI document (`pnpm gen:api`, below), with the
+session cookie. From 0.6.0 it follows the evo-agents hub UI kit, in light and dark; `web/DESIGN.md` describes the
+design and `web/README.md` how to run and test it. The pages that read a route of their own:
+
+| Page | What it shows | Route |
+| --- | --- | --- |
+| Home, `/` | what waits on you, what runs and what ended lately over the projects of your grants, with your workers; a decision answered in a sheet over it, a failed step rerun from it | `GET /v1/me/overview` |
+| a run, `/p/{project}/runs/{id}` | its phases on a timeline; the Trace of its events (messages, thinking, each tool call with its argument, exit code, duration and output), the raw log and the owner's terminal as tabs; its tokens by type and the cost the agent reported | `.../runs/{id}`, `.../events`, `.../stream` |
+| Insights, `/p/{project}/insights` | the project's runs by UTC day over 7, 30 or 90 days: outcomes, failure rate, p50 and p90 run time, tokens by type, each chart with its table | `GET /v1/projects/{project}/runs/stats` |
+| Administration, `/admin` | what needs a hub admin, each row opening its list filtered; the rows of every table on `/admin/diagnostics` | `GET /v1/admin/overview`, `GET /v1/admin/stats` |
+
+Cmd K or Ctrl K, or the top bar's search field, opens a command palette: runs, plans, workers and pages to jump to,
+and the actions the visitor's grants allow (Run plan, Dispatch a step, Rerun, Register worker), never one that
+deletes, cancels, drains or revokes. `?` opens the list of keyboard shortcuts: G then H, I, P, R or W goes to Home,
+Inbox, Plans, Runs or Workers, D opens Dispatch for a writer, / focuses the page's search. A switch in that dialog turns
+the single keys off on the browser. Under 768 px tables become lists whose rows open their page, filters move into
+a sheet, controls are 44 px, and an Inbox decision is a screen of its own with its answer in a bar at the foot. The
+server renders the phone layout from the user agent and `Sec-CH-UA-Mobile`, so nothing swaps once the scripts run.
+
 ## The API
 
 Every route lives under `/v1` and answers JSON. Errors have one shape, `{error, message, request_id}`, whatever went
@@ -52,7 +73,7 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | health | `GET /v1/health`, `GET /v1/health/live` |
 | sign-in | `/v1/auth/config`, `/v1/auth/github`, `/v1/auth/whoami`, `/v1/auth/logout`, `/v1/auth/web/{login,callback,csrf,logout}` |
 | tokens | `GET /v1/tokens`, `DELETE /v1/tokens/{id}` |
-| admin | `/v1/admin/users`, `/v1/admin/stats`, `/v1/admin/projects/{project}/grants/{login}`, `/v1/admin/audit`, `/v1/admin/tokens`, `/v1/admin/kg/prune` |
+| admin | `/v1/admin/overview`, `/v1/admin/users`, `/v1/admin/stats`, `/v1/admin/projects/{project}/grants/{login}`, `/v1/admin/audit`, `/v1/admin/tokens`, `/v1/admin/kg/prune` |
 | projects | `GET /v1/projects`, `GET` and `PUT /v1/projects/{project}` |
 | plans | `/v1/projects/{project}/plans`, `.../plans/{plan_id}` (`GET`, `PUT`, `PATCH`), `.../revisions`, `.../diff`, `.../complete` |
 | memories | `/v1/memories` (`GET`, `PUT`), `/v1/memories/search`, `/v1/memories/{id}`, `.../revisions` |
@@ -61,9 +82,10 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | knowledge graphs | `/v1/kg/{project}/config`, `.../runs`, `.../blobs/check`, `.../builds`, `.../tools/{tool}`, and the web's `.../graph`, `.../nodes`, `.../node`, `.../neighbourhood` |
 | workers | `POST /v1/workers/pairings`, `GET /v1/workers/pairings/{id}`, `POST /v1/worker/join`, `GET` and `POST /v1/workers`, `GET /v1/workers/{id}`, `POST /v1/workers/{id}/{drain,undrain,dispatch-from,revoke}` |
 | secrets | `GET /v1/secrets`, `PUT` and `DELETE /v1/secrets/{name}`, the caller's own only (`docs/credentials.md`) |
-| runs | `/v1/projects/{project}/plans/{plan_id}/ready-steps`, `GET` and `POST /v1/projects/{project}/runs`, `POST /v1/projects/{project}/plan-runs`, `.../runs/{id}`, `.../events`, `.../stream`, `.../diff`, `.../messages`, `.../credentials`, `.../{cancel,approve,rerun,takeover,handback}` |
+| runs | `/v1/projects/{project}/plans/{plan_id}/ready-steps`, `GET` and `POST /v1/projects/{project}/runs`, `GET .../runs/stats`, `POST /v1/projects/{project}/plan-runs`, `.../runs/{id}`, `.../events`, `.../stream`, `.../diff`, `.../messages`, `.../credentials`, `.../{cancel,approve,rerun,takeover,handback}` |
 | decisions | `GET /v1/projects/{project}/decisions`, `.../decisions/{id}`, `POST .../decisions/{id}/answer` |
 | notifications | `GET /v1/me/notifications`, `GET /v1/me/notifications/count`, `POST /v1/me/notifications/read` |
+| overview | `GET /v1/me/overview`: counts, active, recent runs and open decisions over the projects you hold a grant on, for the web's Home |
 | worker protocol | `/v1/worker/{claim,heartbeat}`, `/v1/worker/runs/{id}/{state,events,inbox,uploads,blobs,plan,decisions,notices,credentials}`, `/v1/worker/runs/{id}/steps/{key}` |
 
 `/mcp` speaks MCP's Streamable HTTP transport, statelessly: each POST carries one JSON-RPC message and gets one JSON
@@ -152,7 +174,11 @@ evo-agents hub admin users
 evo-agents hub admin stats      # rows in every table
 ```
 
-The audit trail and every user's tokens are on the web's admin pages (`/v1/admin/audit`, `/v1/admin/tokens`).
+The audit trail and every user's tokens are on the web's admin pages (`/v1/admin/audit`, `/v1/admin/tokens`). The
+web's Administration page reads `/v1/admin/overview`: members seen within 30 days, tokens expiring within 14 days or
+unused for 90 (`/v1/admin/tokens?state=expiring` and `?state=unused` list them), each project's grants by role, the
+bytes the blob store holds and the deletions still pending, graph builds that failed within 7 days, offline workers
+and the audit rows of the last 24 hours. The rows of every table are on its Diagnostics page.
 
 ## Projects and who sees what
 
@@ -479,7 +505,7 @@ the variables in the platform's environment, never in a committed file. `deploy/
 
 | Variable | Used by | Meaning |
 | --- | --- | --- |
-| `EVO_HUB_VERSION` | compose | image tag, a released version such as `0.5.0` |
+| `EVO_HUB_VERSION` | compose | image tag, a released version such as `0.6.0` |
 | `EVO_HUB_DSN` | api, worker | `postgresql://` URI of the hub database (required) |
 | `EVO_HUB_ADMINS` | api | GitHub logins of hub admins, comma-separated |
 | `EVO_HUB_GITHUB_CLIENT_ID` | api | the OAuth App's client id; without it nobody can sign in |

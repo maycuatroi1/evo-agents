@@ -7,11 +7,13 @@ import {
   bellNumber,
   chosenOption,
   inboxQuery,
+  initialOption,
   inboxSearch,
   isFiltered,
   noticeFacts,
   NO_FILTERS,
   notificationOfDecision,
+  parkTiming,
   readInboxFilters,
   splitInbox,
   unreadIds,
@@ -132,5 +134,31 @@ describe("answers", () => {
     ];
     expect(chosenOption({ options, answer_option: "wait" })?.label).toBe("Wait");
     expect(chosenOption({ options, answer_option: null })).toBeNull();
+  });
+});
+
+describe("the decision card", () => {
+  const options = [
+    { key: "deploy", label: "Deploy", description: null, recommended: true },
+    { key: "wait", label: "Wait", description: null, recommended: false },
+  ];
+
+  it("picks the agent's pick for the owner, and nothing when it names no option offered", () => {
+    expect(initialOption({ options, recommended: "deploy" })).toBe("deploy");
+    expect(initialOption({ options, recommended: null })).toBe("deploy"); // the option's own flag
+    expect(initialOption({ options: options.map((option) => ({ ...option, recommended: false })), recommended: null })).toBeNull();
+    expect(initialOption({ options, recommended: "gone" })).toBeNull();
+  });
+
+  it("says when a waiting run parks, since when a parked one has, and nothing while its agent works", () => {
+    const now = Date.parse("2026-10-05T08:00:00Z");
+    const waiting = { state: "open", run_state: "waiting" } as const;
+    expect(parkTiming(waiting, "2026-10-05T09:30:00Z", now)).toEqual({ kind: "parksIn", ms: 90 * 60_000 });
+    expect(parkTiming(waiting, "2026-10-05T07:00:00Z", now)).toEqual({ kind: "parksIn", ms: 0 });
+    expect(parkTiming(waiting, "2026-10-05T09:30:00Z", null)).toBeNull(); // before the page hydrates
+    expect(parkTiming({ state: "open", run_state: "parked" }, "2026-10-05T07:00:00Z", now)).toEqual({ kind: "parked", at: "2026-10-05T07:00:00Z" });
+    expect(parkTiming({ state: "open", run_state: "running" }, null, now)).toBeNull();
+    expect(parkTiming(waiting, null, now)).toBeNull();
+    expect(parkTiming({ state: "answered", run_state: "waiting" }, "2026-10-05T09:30:00Z", now)).toBeNull();
   });
 });

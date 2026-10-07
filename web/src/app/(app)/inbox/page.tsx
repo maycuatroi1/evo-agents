@@ -1,4 +1,4 @@
-import { dehydrate, HydrationBoundary } from "@tanstack/react-query";
+import { dehydrate } from "@tanstack/react-query";
 import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
 
@@ -6,6 +6,7 @@ import { fromRecord } from "@/components/admin/data";
 import { InboxPage } from "@/components/inbox/inbox-page";
 import { inboxQuery, readInboxFilters } from "@/components/inbox/model";
 import { notificationCountQuery, notificationsQuery } from "@/components/inbox/queries";
+import { HydrationBoundary } from "@/lib/api/hydration-boundary";
 import { getQueryClient, prefetch } from "@/lib/api/prefetch";
 import { serverApi } from "@/lib/api/server";
 

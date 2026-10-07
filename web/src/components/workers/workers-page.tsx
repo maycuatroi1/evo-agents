@@ -1,25 +1,31 @@
 "use client";
 
-import { CircleCheck, Layers, Loader2, type LucideIcon, Plus, SearchX, Server, WifiOff } from "lucide-react";
+import { Activity, CircleCheck, Layers, Plus, Server, WifiOff } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useFormatter, useTranslations } from "next-intl";
 import { useMemo, useState } from "react";
 
-import { NoticeArea, useNotice } from "@/components/admin/notice";
-import { DataTable, dataTableColumns } from "@/components/data/data-table";
+import { DataCard, DataToolbar } from "@/components/data/data-card";
+import { CellMain, DataTable, dataTableColumns } from "@/components/data/data-table";
 import { FacetGroup, type FacetOption } from "@/components/data/facet-group";
+import { ToolbarFilters } from "@/components/data/filter-sheet";
+import { NAME_LINK } from "@/components/data/identifier";
+import { MetricStrip } from "@/components/data/metric-strip";
+import { notify } from "@/components/feedback/toast";
 import { SearchField } from "@/components/data/search-field";
 import { useNow } from "@/components/kg/use-now";
 import { PageHeader } from "@/components/shell/page-header";
+import { STATUS_LOOKS, StatusBadge, useStatusText } from "@/components/status/status-badge";
 import { QueryView, useHubQuery } from "@/components/states/query-view";
-import { EmptyState, PageSkeleton } from "@/components/states/states";
+import { type ActiveFilter, EmptyState, ListSkeleton, NoResults } from "@/components/states/states";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { browserApi } from "@/lib/api/browser";
 import type { ApiErrorInfo } from "@/lib/api/errors";
+import { cn } from "@/lib/utils";
 
-import { ChipList, VIEW_ICONS, WorkerStatusBadge } from "./badges";
+import { ChipList } from "./badges";
 import { useRecordPrefetched } from "./hooks";
 import {
   countByView,
@@ -55,21 +61,6 @@ function useFilters(): [WorkerFilters, (next: WorkerFilters) => void] {
   return [filters, set];
 }
 
-function Stat({ icon: Icon, label, value, hint, testId }: { icon: LucideIcon; label: string; value: number; hint: string; testId: string }) {
-  return (
-    <div className="flex flex-col gap-1 rounded-xl border bg-card px-4 py-3.5" data-testid={testId}>
-      <dt className="flex items-center gap-1.5 text-sm text-muted-foreground">
-        <Icon className="size-4 shrink-0" aria-hidden="true" />
-        {label}
-      </dt>
-      <dd className="text-2xl font-semibold tabular-nums" data-value={value}>
-        {value}
-      </dd>
-      <dd className="text-xs text-muted-foreground">{hint}</dd>
-    </div>
-  );
-}
-
 function Summary({ summary }: { summary: WorkerSummary }) {
   const t = useTranslations("workers.summary");
   const format = useFormatter();
@@ -84,21 +75,32 @@ function Summary({ summary }: { summary: WorkerSummary }) {
     : summary.neverSeen > 0
       ? t("offlineNever", { count: summary.neverSeen })
       : t("offlineNone");
+  // The fleet's state, not work in flight: the strip stays even when no worker is busy, so offline machines still show.
   return (
-    <section aria-label={t("label")}>
-      <dl className="grid grid-cols-2 gap-3 lg:grid-cols-4" data-testid="workers-summary">
-        <Stat icon={CircleCheck} label={t("idle")} value={summary.idle} hint={t("idleHint")} testId="summary-idle" />
-        <Stat icon={Loader2} label={t("busy")} value={summary.busy} hint={t("busyHint", { runs: summary.heldRuns })} testId="summary-busy" />
-        <Stat
-          icon={Layers}
-          label={t("freeSlots")}
-          value={summary.freeSlots}
-          hint={t("freeSlotsHint", { total: summary.totalSlots })}
-          testId="summary-free-slots"
-        />
-        <Stat icon={WifiOff} label={t("offline")} value={summary.offline} hint={offlineHint} testId="summary-offline" />
-      </dl>
-    </section>
+    <MetricStrip
+      label={t("label")}
+      testId="workers-summary"
+      metrics={[
+        { id: "idle", label: t("idle"), icon: CircleCheck, value: summary.idle, meta: t("idleHint") },
+        {
+          id: "busy",
+          label: t("busy"),
+          icon: Activity,
+          live: true,
+          tone: "running",
+          value: summary.busy,
+          meta: t("busyHint", { runs: summary.heldRuns }),
+        },
+        {
+          id: "free-slots",
+          label: t("freeSlots"),
+          icon: Layers,
+          value: summary.freeSlots,
+          meta: t("freeSlotsHint", { total: summary.totalSlots }),
+        },
+        { id: "offline", label: t("offline"), icon: WifiOff, value: summary.offline, meta: offlineHint },
+      ]}
+    />
   );
 }
 
@@ -110,21 +112,21 @@ function WorkersTable({ workers, caption }: { workers: Worker[]; caption: string
       helper.accessor("name", {
         header: () => t("columns.worker"),
         sortFn: "alphanumeric",
+        meta: { primary: true },
         cell: (info) => {
           const worker = info.row.original;
+          const host = t("hostLine", { hostname: worker.hostname, os: worker.os, arch: worker.arch });
           return (
-            <div className="flex min-w-0 flex-col gap-0.5 py-0.5 whitespace-normal">
+            <CellMain sub={host} subTitle={host}>
               <Link
                 href={workerHref(worker.id)}
-                className="w-fit font-mono text-sm font-medium text-primary underline-offset-4 [overflow-wrap:anywhere] hover:underline"
+                className={cn(NAME_LINK, "truncate font-mono text-[13px]")}
+                title={worker.name}
                 data-worker-name={worker.name}
               >
                 {worker.name}
               </Link>
-              <span className="text-xs text-muted-foreground [overflow-wrap:anywhere]">
-                {t("hostLine", { hostname: worker.hostname, os: worker.os, arch: worker.arch })}
-              </span>
-            </div>
+            </CellMain>
           );
         },
       }),
@@ -132,16 +134,17 @@ function WorkersTable({ workers, caption }: { workers: Worker[]; caption: string
         id: "status",
         header: () => t("columns.status"),
         sortFn: "basic",
-        cell: (info) => <WorkerStatusBadge view={workerView(info.row.original)} />,
+        cell: (info) => <StatusBadge kind="worker" status={workerView(info.row.original)} />,
       }),
       helper.accessor("held_runs", {
         id: "slots",
         header: () => t("columns.slots"),
         sortFn: "basic",
+        meta: { numeric: true },
         cell: (info) => {
           const worker = info.row.original;
           return (
-            <span className="font-mono text-xs tabular-nums">
+            <span className="font-mono text-xs">
               <span aria-hidden="true">
                 {worker.held_runs}/{worker.slots}
               </span>
@@ -171,12 +174,13 @@ function WorkersTable({ workers, caption }: { workers: Worker[]; caption: string
       helper.accessor("owner", {
         header: () => t("columns.owner"),
         sortFn: "alphanumeric",
-        cell: (info) => <span className="font-mono text-xs">{info.getValue()}</span>,
+        cell: (info) => <span className="font-mono text-xs text-foreground">{info.getValue()}</span>,
       }),
       helper.accessor((row) => (row.last_heartbeat_at ? new Date(row.last_heartbeat_at) : new Date(0)), {
         id: "heartbeat",
         header: () => t("columns.heartbeat"),
         sortFn: "datetime",
+        meta: { numeric: true },
         cell: (info) => <Ago value={info.row.original.last_heartbeat_at} never={t("never")} />,
       }),
     ]);
@@ -190,24 +194,41 @@ function WorkersTable({ workers, caption }: { workers: Worker[]; caption: string
       getRowId={(row) => String(row.id)}
       columnClassNames={NARROW_HIDDEN}
       testId="workers-table"
+      // On a phone: the worker's name opening its page, its status, and its slots in use with the machine it runs on.
+      mobile={(worker) => {
+        const host = t("hostLine", { hostname: worker.hostname, os: worker.os, arch: worker.arch });
+        const meta = t("mobileMeta", { held: worker.held_runs, slots: worker.slots, host });
+        return {
+          title: worker.name,
+          titleText: worker.name,
+          titleClassName: "font-mono text-[13px]",
+          href: workerHref(worker.id),
+          status: <StatusBadge kind="worker" status={workerView(worker)} />,
+          meta,
+          metaText: meta,
+          data: { "worker-name": worker.name },
+        };
+      }}
     />
   );
 }
 
 function WorkerList({ workers, onRegister }: { workers: Worker[]; onRegister: () => void }) {
   const t = useTranslations("workers");
+  const tStates = useTranslations("states.noResults");
+  const statusText = useStatusText("worker");
   const [filters, setFilters] = useFilters();
   const revoked = countByView(workers).revoked;
   // No live worker, and no filter asking for the revoked ones: the page is empty, with what to do next.
   if (workers.length === revoked && filters.status === null && !filters.q) {
     return (
       <EmptyState icon={Server} title={t("empty.title")} description={t("empty.description")}>
-        <Button size="lg" onClick={onRegister} data-testid="workers-empty-register">
+        <Button onClick={onRegister} data-testid="workers-empty-register">
           <Plus aria-hidden="true" />
           {t("registerButton")}
         </Button>
         {revoked > 0 ? (
-          <Button variant="outline" size="lg" onClick={() => setFilters({ status: "revoked", q: "" })}>
+          <Button variant="outline" onClick={() => setFilters({ status: "revoked", q: "" })}>
             {t("empty.showRevoked")}
           </Button>
         ) : null}
@@ -221,50 +242,64 @@ function WorkerList({ workers, onRegister }: { workers: Worker[]; onRegister: ()
   const hiddenRevoked = filters.status === null ? counts.revoked : 0;
   const options: FacetOption[] = [
     { value: null, label: t("facets.all"), count: searched.length - counts.revoked },
-    ...WORKER_VIEWS.map((view) => ({ value: view, label: t(`status.${view}`), icon: VIEW_ICONS[view], count: counts[view] })),
+    ...WORKER_VIEWS.map((view) => ({ value: view, label: statusText(view), icon: STATUS_LOOKS.worker[view].icon, count: counts[view] })),
   ];
+
+  const inUse: ActiveFilter[] = [
+    ...(filters.status ? [{ label: t("facets.label"), value: statusText(filters.status) }] : []),
+    ...(filters.q ? [{ label: tStates("search"), value: filters.q }] : []),
+  ];
+  const filtered = filters.status !== null || Boolean(filters.q);
+  const count = (
+    <>
+      {filtered ? t("listSummary.filtered", { count: shown.length }) : t("listSummary.all", { count: shown.length })}
+      {hiddenRevoked > 0 ? <>, {t("listSummary.revokedHidden", { count: hiddenRevoked })}</> : null}
+    </>
+  );
 
   return (
     <section aria-labelledby="workers-list-title" className="flex flex-col gap-4">
       <h2 id="workers-list-title" className="sr-only">
         {t("caption")}
       </h2>
-      <div className="flex flex-col gap-3 rounded-xl border bg-card p-4">
-        <SearchField
-          value={filters.q}
-          onCommit={(q) => setFilters({ ...filters, q })}
-          label={t("search.label")}
-          placeholder={t("search.placeholder")}
-          clearLabel={t("search.clear")}
-          debounce={150}
-          maxLength={100}
-          className="sm:max-w-sm"
-          testId="workers-search"
-        />
-        <FacetGroup
-          label={t("facets.label")}
-          options={options}
-          selected={filters.status}
-          onSelect={(status) => setFilters({ ...filters, status: status === null ? null : (status as WorkerFilters["status"]) })}
-          countLabel={(count) => t("count", { count })}
-          testId="workers-facets"
-        />
-      </div>
-      <p aria-live="polite" className="text-sm text-muted-foreground" data-testid="workers-list-summary">
-        {filters.status === null && !filters.q
-          ? t("listSummary.all", { count: shown.length })
-          : t("listSummary.filtered", { count: shown.length })}
-        {hiddenRevoked > 0 ? <> {t("listSummary.revokedHidden", { count: hiddenRevoked })}</> : null}
-      </p>
-      {shown.length === 0 ? (
-        <EmptyState icon={SearchX} title={t("noResults.title")} description={t("noResults.description")}>
-          <Button variant="outline" size="lg" onClick={() => setFilters({ status: null, q: "" })}>
-            {t("noResults.clear")}
-          </Button>
-        </EmptyState>
-      ) : (
-        <WorkersTable workers={shown} caption={t("caption")} />
-      )}
+      <DataCard
+        toolbar={
+          <DataToolbar label={t("caption")} count={count} countTestId="workers-list-summary">
+            <SearchField
+              value={filters.q}
+              onCommit={(q) => setFilters({ ...filters, q })}
+              label={t("search.label")}
+              placeholder={t("search.placeholder")}
+              clearLabel={t("search.clear")}
+              debounce={150}
+              maxLength={100}
+              className="sm:w-64 max-md:flex-1"
+              testId="workers-search"
+            />
+            <ToolbarFilters
+              active={filters.status ? 1 : 0}
+              summary={count}
+              onClear={() => setFilters({ ...filters, status: null })}
+              testId="workers-filters"
+            >
+              <FacetGroup
+                label={t("facets.label")}
+                options={options}
+                selected={filters.status}
+                onSelect={(status) => setFilters({ ...filters, status: status === null ? null : (status as WorkerFilters["status"]) })}
+                countLabel={(n) => t("count", { count: n })}
+                testId="workers-facets"
+              />
+            </ToolbarFilters>
+          </DataToolbar>
+        }
+      >
+        {shown.length === 0 ? (
+          <NoResults title={t("noResults.title")} filters={inUse} onClear={() => setFilters({ status: null, q: "" })} />
+        ) : (
+          <WorkersTable workers={shown} caption={t("caption")} />
+        )}
+      </DataCard>
     </section>
   );
 }
@@ -272,30 +307,25 @@ function WorkerList({ workers, onRegister }: { workers: Worker[]; onRegister: ()
 /** The workers the visitor owns (every worker for a hub admin), refreshed every 10 seconds. */
 export function WorkersPage({ initialError }: { initialError: ApiErrorInfo | null }) {
   const t = useTranslations("workers");
-  const state = useHubQuery(workersQuery(browserApi), initialError);
+  // The page's main query: the top bar says from it whether the page is current (every 10 seconds).
+  const state = useHubQuery(workersQuery(browserApi), initialError, { live: true });
   const [registering, setRegistering] = useState(false);
-  const { notice, show, clear } = useNotice();
   useRecordPrefetched(workerKeys.list, (data) => data as Worker[]);
   const live = state.status === "success" ? state.data.filter((worker) => worker.status !== "revoked").length : null;
 
   return (
     <>
       <PageHeader
-        eyebrow={t("eyebrow")}
         title={t("title")}
-        description={t("description")}
-        meta={
-          <>
-            {live !== null ? <Badge variant="secondary">{t("count", { count: live })}</Badge> : null}
-            <Button size="lg" onClick={() => setRegistering(true)} data-testid="workers-register">
-              <Plus aria-hidden="true" />
-              {t("registerButton")}
-            </Button>
-          </>
+        tags={live !== null ? <Badge variant="secondary">{t("count", { count: live })}</Badge> : null}
+        actions={
+          <Button onClick={() => setRegistering(true)} data-testid="workers-register">
+            <Plus aria-hidden="true" />
+            {t("registerButton")}
+          </Button>
         }
       />
-      <NoticeArea notice={notice} onDismiss={clear} />
-      <QueryView state={state} loading={<PageSkeleton />}>
+      <QueryView state={state} loading={<ListSkeleton metrics={4} />}>
         {(workers) => (
           <div className="flex flex-col gap-6">
             {workers.length > 0 ? <Summary summary={summarize(workers)} /> : null}
@@ -303,7 +333,7 @@ export function WorkersPage({ initialError }: { initialError: ApiErrorInfo | nul
           </div>
         )}
       </QueryView>
-      <RegisterDialog open={registering} onOpenChange={setRegistering} onJoined={show} />
+      <RegisterDialog open={registering} onOpenChange={setRegistering} onJoined={notify} />
     </>
   );
 }

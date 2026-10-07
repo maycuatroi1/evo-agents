@@ -6,14 +6,15 @@ import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useId, useState } from "react";
 
-import { NoticeArea, useNotice } from "@/components/admin/notice";
+import { useLiveQuery } from "@/components/live/live-context";
+import { ShortcutKeys, useDispatchShortcut } from "@/components/shell/shortcuts";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { browserApi } from "@/lib/api/browser";
 import { cn } from "@/lib/utils";
 
 import { DispatchDialog, PlanRunHoldNote, useNotReadyReason } from "./dispatch-dialog";
-import { useCanDispatch, useDispatchedNotice, useViewer } from "./hooks";
+import { useCanDispatch, useDispatchedToast, useViewer } from "./hooks";
 import { hasActiveRuns, LIVE_REFRESH_MS, readyStepsQuery, runsHref, runsQuery, stepRunsQuery } from "./queries";
 import { RunsTable } from "./runs-table";
 
@@ -27,8 +28,11 @@ export function StepRuns({ project, planId, stepKey }: { project: string; planId
   const ids = useId();
   const canDispatch = useCanDispatch(project);
   const viewer = useViewer();
-  const runs = useQuery(runsQuery(browserApi, project, stepRunsQuery(planId, stepKey)));
+  const runsOptions = runsQuery(browserApi, project, stepRunsQuery(planId, stepKey));
+  const runs = useQuery(runsOptions);
   const live = hasActiveRuns(runs.data);
+  // The step's runs are the work in progress on its page: the top bar follows them while one is active.
+  useLiveQuery(runsOptions, true);
   // While a run of the step, or the plan's plan run, is active, its end can make the step ready again: ask as often as
   // the list does.
   const ready = useQuery({
@@ -37,18 +41,19 @@ export function StepRuns({ project, planId, stepKey }: { project: string; planId
   });
   const reason = useNotReadyReason();
   const [dispatching, setDispatching] = useState(false);
-  const { notice, show, clear } = useNotice();
-  const dispatched = useDispatchedNotice();
+  const dispatched = useDispatchedToast();
   const readiness = ready.data?.steps.find((step) => step.key === stepKey) ?? null;
   const isReady = readiness?.ready === true;
   // While the plan has a plan run, every step is that run's: Run this step stays locked, and says which run holds it.
   const planRun = ready.data?.plan_run ? { planId: ready.data.plan_id, run: ready.data.plan_run } : null;
+  // D runs this step while it is ready; otherwise D opens the project's Dispatch, as on the project's other pages.
+  const dispatchKey = useDispatchShortcut(canDispatch && isReady ? () => setDispatching(true) : null);
 
   return (
-    <section className="flex flex-col gap-3 rounded-xl border bg-card p-4" aria-labelledby={`${ids}-title`} data-testid="step-runs">
+    <section className="flex flex-col gap-3 rounded-md border bg-card shadow-raised p-4" aria-labelledby={`${ids}-title`} data-testid="step-runs">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex min-w-0 flex-col gap-1">
-          <h2 id={`${ids}-title`} className="text-base font-medium">
+          <h2 id={`${ids}-title`} className="text-[15px] leading-[22px] font-semibold">
             {t("title")}
           </h2>
           {ready.isPending ? (
@@ -56,7 +61,7 @@ export function StepRuns({ project, planId, stepKey }: { project: string; planId
           ) : readiness ? (
             <p
               id={`${ids}-readiness`}
-              className={cn("flex items-start gap-1.5 text-sm", isReady ? "text-success-foreground" : "text-muted-foreground")}
+              className={cn("flex items-start gap-1.5 text-sm", isReady ? "text-success" : "text-muted-foreground")}
               data-testid="step-readiness"
               data-ready={isReady}
             >
@@ -73,10 +78,10 @@ export function StepRuns({ project, planId, stepKey }: { project: string; planId
         {canDispatch ? (
           <Button
             type="button"
-            size="lg"
             className="shrink-0 aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
             aria-disabled={!isReady || undefined}
             aria-describedby={readiness ? `${ids}-readiness` : undefined}
+            aria-keyshortcuts={dispatchKey ? "D" : undefined}
             onClick={() => {
               if (isReady) setDispatching(true);
             }}
@@ -85,19 +90,21 @@ export function StepRuns({ project, planId, stepKey }: { project: string; planId
           >
             <Play aria-hidden="true" />
             {t("run")}
+            {dispatchKey ? (
+              <ShortcutKeys id="dispatch" className="ml-0.5" keyClassName="border-current bg-transparent text-current opacity-70" />
+            ) : null}
           </Button>
         ) : null}
       </div>
       {planRun ? <PlanRunHoldNote project={project} hold={planRun} testId="step-plan-run" /> : null}
-      <NoticeArea notice={notice} onDismiss={clear} />
       {runs.isPending ? (
         <Skeleton className="h-24 w-full" />
-      ) : runs.isError ? (
-        <p className="text-sm text-destructive" role="alert">
+      ) : runs.data === undefined ? ( // a failed refetch keeps the runs it read; the top bar says they are not current
+        <p className="text-sm text-danger" role="alert">
           {t("failed")}
         </p>
       ) : runs.data.runs.length === 0 ? (
-        <p className="rounded-lg border border-dashed px-3 py-2.5 text-sm text-muted-foreground" data-testid="step-runs-empty">
+        <p className="rounded-md border border-dashed px-3 py-2.5 text-sm text-muted-foreground" data-testid="step-runs-empty">
           {t("empty")}
         </p>
       ) : (
@@ -113,7 +120,7 @@ export function StepRuns({ project, planId, stepKey }: { project: string; planId
             {runs.data.total > runs.data.runs.length ? (
               <span>{t("more", { shown: runs.data.runs.length, total: runs.data.total })}</span>
             ) : null}
-            <Link href={runsHref(project)} className="font-medium text-primary underline-offset-4 hover:underline">
+            <Link href={runsHref(project)} className="font-medium text-brand underline-offset-4 hover:underline">
               {t("all")}
             </Link>
           </p>
@@ -124,7 +131,7 @@ export function StepRuns({ project, planId, stepKey }: { project: string; planId
           project={project}
           open={dispatching}
           onOpenChange={setDispatching}
-          onDispatched={(queued) => show(dispatched(queued))}
+          onDispatched={dispatched}
           plan={planId}
           step={stepKey}
         />

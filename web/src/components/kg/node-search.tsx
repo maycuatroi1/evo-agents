@@ -4,9 +4,11 @@ import { Network, Search, SearchX } from "lucide-react";
 import Link from "next/link";
 import Form from "next/form";
 import { useTranslations } from "next-intl";
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 
 import { DataTable, dataTableColumns } from "@/components/data/data-table";
+import { NAME_LINK } from "@/components/data/identifier";
+import { useSearchShortcut } from "@/components/data/search-shortcut";
 import { projectHref } from "@/components/shell/nav";
 import { QueryView, useHubQuery } from "@/components/states/query-view";
 import { EmptyState, TableSkeleton } from "@/components/states/states";
@@ -14,15 +16,18 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { browserApi } from "@/lib/api/browser";
 import type { ApiErrorInfo } from "@/lib/api/errors";
+import { useCharacterKeys } from "@/lib/keyboard";
 import { displayName } from "@/lib/kg/graph";
 import { kgSearchQuery, MAX_QUERY } from "@/lib/kg/queries";
 import { kgHref, nodeHref } from "@/lib/kg/routes";
 import type { KgNode, KindCount, NodeSearch } from "@/lib/kg/types";
+import { cn } from "@/lib/utils";
 
 import { KindBadge, KindShape, LabelBadge } from "./badges";
 
+/** The kind select, drawn as the kit's input: 32 px, and 44 px with 16 px text under 768 px. */
 const FIELD =
-  "h-9 w-full min-w-0 rounded-lg border border-input bg-transparent px-2.5 text-sm transition-colors outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30";
+  "h-8 w-full min-w-0 rounded-sm border border-input bg-card px-2.5 text-sm transition-colors outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 max-md:h-11 max-md:text-base";
 
 /**
  * A GET form: the query lives in the URL (`?q=&kind=`), so a search can be shared, reloaded and walked back, and it
@@ -40,6 +45,9 @@ export function SearchForm({
   kinds: KindCount[];
 }) {
   const t = useTranslations("kg.search");
+  const input = useRef<HTMLInputElement>(null);
+  useSearchShortcut(input);
+  const slash = useCharacterKeys();
   const options = kind && !kinds.some((k) => k.kind === kind) ? [{ kind, count: 0 }, ...kinds] : kinds;
   return (
     <Form
@@ -54,16 +62,18 @@ export function SearchForm({
           {t("query")}
         </label>
         <Input
+          ref={input}
           id="kg-q"
           name="q"
           type="search"
+          className="max-md:h-11"
+          aria-keyshortcuts={slash ? "/" : undefined}
           defaultValue={query}
           required
           maxLength={MAX_QUERY}
           placeholder={t("placeholder")}
           autoComplete="off"
           spellCheck={false}
-          className="h-9"
           aria-describedby="kg-q-hint"
         />
       </div>
@@ -80,7 +90,7 @@ export function SearchForm({
           ))}
         </select>
       </div>
-      <Button type="submit" size="lg" className="cursor-pointer">
+      <Button type="submit" className="cursor-pointer">
         <Search aria-hidden="true" />
         {t("submit")}
       </Button>
@@ -101,7 +111,7 @@ export function KindSummary({ kinds, project }: { kinds: KindCount[]; project: s
       <ul className="flex flex-wrap gap-2" aria-label={t("byKind")}>
         {kinds.map((k) => (
           <li key={k.kind}>
-            <span className="inline-flex items-center gap-1.5 rounded-lg border bg-card px-2.5 py-1 text-xs">
+            <span className="inline-flex items-center gap-1.5 rounded-md border bg-card px-2.5 py-1 text-xs">
               <KindShape kind={k.kind} />
               <span className="font-medium">{k.kind}</span>
               <span className="text-muted-foreground tabular-nums">{k.count}</span>
@@ -112,7 +122,7 @@ export function KindSummary({ kinds, project }: { kinds: KindCount[]; project: s
       {kinds.length === 0 ? (
         <p className="text-sm text-muted-foreground">
           {t("nothingVisible")}{" "}
-          <Link href={projectHref(project)} className="text-primary underline-offset-4 hover:underline">
+          <Link href={projectHref(project)} className="text-brand underline-offset-4 hover:underline">
             {t("seeLevels")}
           </Link>
         </p>
@@ -136,7 +146,7 @@ function ResultsTable({ project, results, caption }: { project: string; results:
           <div className="flex min-w-0 flex-col gap-0.5">
             <Link
               href={nodeHref(project, info.row.original.id)}
-              className="font-medium break-words whitespace-normal text-primary underline-offset-4 hover:underline"
+              className={cn(NAME_LINK, "break-words whitespace-normal")}
               data-testid="kg-result-link"
               data-node-id={info.row.original.id}
             >
@@ -199,7 +209,7 @@ function Results({ project, query, kind, data }: { project: string; query: strin
       {data.results.length === 0 ? (
         <EmptyState icon={SearchX} title={t("emptyTitle", { query })} description={t("emptyDescription")}>
           {kind ? (
-            <Button asChild variant="outline" size="lg">
+            <Button asChild variant="outline">
               <Link href={kgHref(project, { q: query })}>{t("clearKind")}</Link>
             </Button>
           ) : null}

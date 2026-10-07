@@ -2,17 +2,20 @@
 
 import { KeyRound } from "lucide-react";
 import Link from "next/link";
-import { useTranslations } from "next-intl";
+import { useFormatter, useTranslations } from "next-intl";
 import { useCallback, useMemo, useState } from "react";
 
+import type { DataListRow } from "@/components/data/data-list";
 import { DataTable, dataTableColumns } from "@/components/data/data-table";
+import { NAME_LINK } from "@/components/data/identifier";
+import type { Notice } from "@/components/feedback/toast";
 import { Button } from "@/components/ui/button";
 import { LOGIN_PATH } from "@/lib/config";
 
 import { CurrentSessionBadge, TokenKindBadge, TokenStateBadge } from "./badges";
 import { ConfirmAction } from "./confirm-action";
 import { type AdminToken, memberHref, revokeToken } from "./data";
-import { type Notice, useWriteFailure } from "./notice";
+import { useWriteFailure } from "./notice";
 import { useAdminWrite } from "./use-admin-write";
 import { When } from "./when";
 
@@ -37,6 +40,7 @@ type Props = {
 export function TokensTable({ tokens, caption, showLogin = true, onNotice, testId = "tokens-table" }: Props) {
   const t = useTranslations("admin.tokens");
   const tRevoke = useTranslations("admin.revokeToken");
+  const format = useFormatter();
   const failure = useWriteFailure();
   const write = useAdminWrite((api, id: number) => revokeToken(api, id));
   const [target, setTarget] = useState<AdminToken | null>(null);
@@ -59,7 +63,7 @@ export function TokensTable({ tokens, caption, showLogin = true, onNotice, testI
             header: () => t("columns.login"),
             enableSorting: false,
             cell: (info) => (
-              <Link href={memberHref(info.getValue())} className="font-medium text-primary underline-offset-4 hover:underline">
+              <Link href={memberHref(info.getValue())} className={NAME_LINK}>
                 {info.getValue()}
               </Link>
             ),
@@ -70,7 +74,7 @@ export function TokensTable({ tokens, caption, showLogin = true, onNotice, testI
       helper.accessor("id", {
         header: () => t("columns.id"),
         enableSorting: false,
-        cell: (info) => <span className="font-mono text-xs text-muted-foreground tabular-nums">#{info.getValue()}</span>,
+        cell: (info) => <span className="font-mono text-[13px] tabular-nums">#{info.getValue()}</span>,
       }),
       ...login,
       helper.accessor("kind", {
@@ -88,27 +92,32 @@ export function TokensTable({ tokens, caption, showLogin = true, onNotice, testI
         enableSorting: false,
         cell: (info) =>
           info.getValue() ? (
-            <span className="font-mono text-xs break-all">{info.getValue()}</span>
+            <span className="block max-w-56 truncate font-mono text-xs text-foreground" title={info.getValue() ?? undefined}>
+              {info.getValue()}
+            </span>
           ) : (
-            <span className="text-muted-foreground">{t("noHost")}</span>
+            <span className="text-fg-subtle">{t("noHost")}</span>
           ),
       }),
       helper.accessor("created_at", {
         id: "created",
         header: () => t("columns.created"),
         enableSorting: false,
+        meta: { numeric: true },
         cell: (info) => <When value={info.getValue()} short />,
       }),
       helper.accessor("last_used_at", {
         id: "lastUsed",
         header: () => t("columns.lastUsed"),
         enableSorting: false,
+        meta: { numeric: true },
         cell: (info) => <When value={info.getValue()} never={t("never")} short />,
       }),
       helper.accessor("expires_at", {
         id: "expires",
         header: () => t("columns.expires"),
         enableSorting: false,
+        meta: { numeric: true },
         cell: (info) => <When value={info.getValue()} short />,
       }),
       helper.accessor("state", {
@@ -119,15 +128,15 @@ export function TokensTable({ tokens, caption, showLogin = true, onNotice, testI
       helper.display({
         id: "actions",
         header: () => <span className="sr-only">{t("columns.actions")}</span>,
+        meta: { actions: true },
         cell: (info) => {
           const token = info.row.original;
           if (token.state === "revoked") return null;
           return (
             <Button
               type="button"
-              variant="outline"
-              size="lg"
-              className="text-destructive hover:text-destructive"
+              variant="quiet-danger"
+              size="sm"
               aria-label={t("revokeLabel", { id: token.id, login: token.login })}
               onClick={() => startRevoke(token)}
               data-testid={`revoke-token-${token.id}`}
@@ -148,8 +157,8 @@ export function TokensTable({ tokens, caption, showLogin = true, onNotice, testI
     } catch (error) {
       const failed = failure(error, { 404: tRevoke("notFound"), 409: tRevoke("conflict") });
       if (failed.status === 404 || failed.status === 409) {
-        setOpen(false); // nothing left to do here: say so on the page, over the reloaded list
-        onNotice({ tone: "error", text: failed.text });
+        setOpen(false); // nothing left to do here: say so in a toast, over the reloaded list
+        onNotice({ tone: "error", text: tRevoke("failed", { id: target.id }), description: failed.text, requestId: failed.requestId });
       }
       return; // anything else is shown in the dialog, which stays open
     }
@@ -158,10 +167,43 @@ export function TokensTable({ tokens, caption, showLogin = true, onNotice, testI
       window.location.assign(LOGIN_PATH); // the admin revoked the session this page runs on
       return;
     }
-    onNotice({ tone: "success", text: tRevoke("success", { id: target.id, login: target.login }) });
+    onNotice({
+      tone: "success",
+      text: tRevoke("successTitle", { id: target.id, login: target.login }),
+      description: tRevoke("success"),
+      link: { label: tRevoke("openMember"), href: memberHref(target.login) },
+    });
   };
 
   const error = write.isError && open ? failure(write.error, { 404: tRevoke("notFound"), 409: tRevoke("conflict") }) : null;
+  // On a phone: the token's kind and number, its state, whose it is and the machine it was made on, and Revoke as an
+  // icon (its name says what it revokes). The login opens the member's page, where their tokens are listed again.
+  const mobile = (token: AdminToken): DataListRow => {
+    const meta = format.list([...(showLogin ? [token.login] : []), token.host ?? t("noHost")], { type: "unit" });
+    return {
+      title: t("mobileTitle", { kind: t(`kinds.${token.kind}`), id: token.id }),
+      href: showLogin ? memberHref(token.login) : undefined,
+      tags: token.current ? <CurrentSessionBadge /> : null,
+      status: <TokenStateBadge state={token.state} />,
+      meta,
+      metaText: meta,
+      actions:
+        token.state === "revoked" ? null : (
+          <Button
+            type="button"
+            variant="quiet-danger"
+            size="icon"
+            aria-label={t("revokeLabel", { id: token.id, login: token.login })}
+            title={t("revokeLabel", { id: token.id, login: token.login })}
+            onClick={() => startRevoke(token)}
+            data-testid={`revoke-token-${token.id}`}
+          >
+            <KeyRound aria-hidden="true" />
+          </Button>
+        ),
+      data: { "token-id": token.id },
+    };
+  };
   return (
     <>
       <DataTable
@@ -171,6 +213,7 @@ export function TokensTable({ tokens, caption, showLogin = true, onNotice, testI
         getRowId={(row) => String(row.id)}
         columnClassNames={NARROW_HIDDEN}
         testId={testId}
+        mobile={mobile}
       />
       <ConfirmAction
         open={open}
@@ -186,7 +229,7 @@ export function TokensTable({ tokens, caption, showLogin = true, onNotice, testI
                     ? tRevoke("worker", { host: target.host ?? "" })
                     : tRevoke("web")}
               </p>
-              {target.current ? <p className="font-medium text-destructive">{tRevoke("current")}</p> : null}
+              {target.current ? <p className="font-medium text-danger">{tRevoke("current")}</p> : null}
               <p>{tRevoke("audit")}</p>
             </>
           ) : null

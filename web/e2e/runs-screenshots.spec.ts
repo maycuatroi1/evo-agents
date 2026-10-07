@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import path from "node:path";
 
 import { expect, test } from "./support/fixtures";
@@ -184,7 +185,12 @@ test.describe("runs screenshots", () => {
         await open(page, runPath(project, running.id));
         await expect(page.locator("#main").getByTestId("log-status")).toHaveAttribute("data-status", "live");
         await expect(page.locator("#main").getByTestId("log-line")).toHaveCount(SESSION.length + 2);
+        await expect(page.locator("#main").getByTestId("trace-item").first()).toBeVisible();
         await shot("run-live");
+        await page.locator("#main").getByRole("tab", { name: "Raw log" }).click();
+        await expect(page.locator("#main").getByTestId("log-line").first()).toBeVisible();
+        await shot("run-raw-log");
+        await page.locator("#main").getByRole("tab", { name: "Trace" }).click();
         await page.locator("#main").getByTestId("run-takeover").click();
         await expect(page.getByTestId("takeover-dialog")).toBeVisible();
         await page.screenshot({ path: path.join(dir!, `run-takeover${suffix}-${scheme}.png`) });
@@ -196,6 +202,36 @@ test.describe("runs screenshots", () => {
         await open(page, `${runPath(project, review.id)}/diff`);
         await expect(page.locator("#main").getByTestId("diff-file")).toHaveCount(1);
         await shot("run-diff");
+      }
+    });
+  }
+
+  // The events of real runs of each runtime's adapter (src/test/fixtures/trace), as their worker sends them.
+  for (const runtime of ["claude-code", "opencode", "codex"] as const) {
+    test(`trace of a real ${runtime} run`, async ({ page, member }) => {
+      const fixture = JSON.parse(readFileSync(new URL(`../src/test/fixtures/trace/${runtime}.json`, import.meta.url), "utf8")) as {
+        usage: Record<string, unknown>;
+        events: { kind: string; body: Record<string, unknown> }[];
+      };
+      const me = await member([{ role: "writer", maxLevel: "internal" }]);
+      const project = me.projects[0];
+      await seedRunPlan(me, project);
+      const live = await liveWorker(me, project, uniqueName("laptop"));
+      const [run] = await dispatch(me, project, ["2"]);
+      await claimRun(live);
+      await startRun(live, run.id);
+      await sendEvents(live, run.id, fixture.events.filter((event) => event.kind !== "state"));
+      for (const scheme of ["light", "dark"] as const) {
+        await page.emulateMedia({ colorScheme: scheme });
+        for (const [width, height, suffix] of [
+          [1440, 1100, ""],
+          [375, 812, "-375"],
+        ] as const) {
+          await page.setViewportSize({ width, height });
+          await open(page, runPath(project, run.id));
+          await expect(page.locator("#main").getByTestId("trace-tool").first()).toBeVisible();
+          await page.screenshot({ path: path.join(dir!, `trace-${runtime}${suffix}-${scheme}.png`), fullPage: true });
+        }
       }
     });
   }

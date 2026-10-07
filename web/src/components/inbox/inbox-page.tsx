@@ -1,26 +1,25 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Bell, CheckCheck, Inbox, Loader2, MessageCircleQuestionMark, SearchX, X } from "lucide-react";
+import { Bell, CheckCheck, Inbox, MessageCircleQuestionMark, SearchX } from "lucide-react";
 import type { Route } from "next";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 
-import { NoticeArea, useNotice } from "@/components/admin/notice";
+import { notify, notifyFailure } from "@/components/feedback/toast";
 import { Pager } from "@/components/admin/pager";
 import { usePagedQuery } from "@/components/admin/use-paged-query";
 import { FacetGroup } from "@/components/data/facet-group";
 import { PageHeader } from "@/components/shell/page-header";
 import { QueryView } from "@/components/states/query-view";
-import { ApiErrorState, EmptyState, LoadingState, StatePanel, TableSkeleton } from "@/components/states/states";
+import { EmptyState, TableSkeleton } from "@/components/states/states";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
 import { browserApi } from "@/lib/api/browser";
 import type { ApiErrorInfo } from "@/lib/api/errors";
 
-import { DecisionView } from "./decision-view";
+import { DecisionSheet } from "./decision-sheet";
 import { useInboxViewer, useMarkRead, useReadFailure } from "./hooks";
 import {
   type InboxFilters,
@@ -35,8 +34,6 @@ import {
 } from "./model";
 import { NotificationItem } from "./notification-item";
 import {
-  decisionQuery,
-  locateDecisionQuery,
   MAX_READ_IDS,
   type Notification,
   type NotificationList,
@@ -87,106 +84,22 @@ function ListSection({
 }
 
 /**
- * The decision shown beside the list. Its project comes from its notification on the page when there is one; a link
- * that names only the decision (`/inbox?decision=ID`, as the notifications and the plan page give it) asks each project
- * the visitor holds a grant on. The question's heading takes focus when the visitor opened it from the list.
- */
-function DecisionPanel({
-  id,
-  projectHint,
-  focus,
-  onClose,
-}: {
-  id: number;
-  projectHint: string | null;
-  focus: boolean;
-  onClose: () => void;
-}) {
-  const t = useTranslations("inbox.panel");
-  const viewer = useInboxViewer();
-  const located = useQuery({
-    ...locateDecisionQuery(browserApi, id, viewer.projects),
-    enabled: projectHint === null && viewer.login !== null,
-  });
-  const project = projectHint ?? located.data?.project ?? null;
-  const decision = useQuery({
-    ...decisionQuery(browserApi, project ?? "-", id),
-    enabled: project !== null,
-    initialData: located.data && located.data.project === project ? located.data.decision : undefined,
-  });
-  const heading = useRef<HTMLHeadingElement>(null);
-  const loaded = decision.data !== undefined;
-  useEffect(() => {
-    if (focus && loaded) heading.current?.focus();
-  }, [focus, loaded, id]);
-
-  const close = (
-    <>
-      <Button type="button" variant="outline" size="sm" className="lg:hidden" onClick={onClose} data-testid="decision-back">
-        <ArrowLeft aria-hidden="true" />
-        {t("back")}
-      </Button>
-      <Button type="button" variant="ghost" size="sm" className="hidden lg:inline-flex" onClick={onClose} data-testid="decision-close">
-        <X aria-hidden="true" />
-        {t("close")}
-      </Button>
-    </>
-  );
-
-  let body: ReactNode;
-  const notFound =
-    (projectHint === null && located.isSuccess && located.data === null) ||
-    (decision.isError && decision.error.info.status === 404) ||
-    (projectHint === null && viewer.login !== null && viewer.projects.length === 0);
-  if (notFound) {
-    body = (
-      <StatePanel icon={SearchX} title={t("notFoundTitle", { id })} description={t("notFoundDescription")} testId="decision-not-found" className="border-solid">
-        {close}
-      </StatePanel>
-    );
-  } else if (decision.data) {
-    body = <DecisionView decision={decision.data} where="inbox" headingRef={heading} actions={close} />;
-  } else if (decision.isError || located.isError) {
-    const error = decision.error ?? located.error;
-    body = error ? <ApiErrorState error={error.info} onRetry={() => void (decision.isError ? decision.refetch() : located.refetch())} /> : null;
-  } else {
-    body = (
-      <LoadingState>
-        <div className="flex flex-col gap-3">
-          <Skeleton className="h-4 w-40" />
-          <Skeleton className="h-6 w-full" />
-          <Skeleton className="h-4 w-2/3" />
-          <Skeleton className="h-24 w-full" />
-          <Skeleton className="h-10 w-full" />
-        </div>
-      </LoadingState>
-    );
-  }
-  return (
-    <div className="min-w-0 rounded-xl border bg-card p-4 md:p-5" data-testid="decision-panel" data-decision-id={id}>
-      {body}
-    </div>
-  );
-}
-
-/**
  * The member's Inbox: the decisions the agents of their plan runs ask them, open ones first, then the notices (a push or
  * merge into a default branch with its repo, branch and commits, a plan finished, a run failed) and the decisions
  * already answered, expired or cancelled, newest first. Filters by kind, project and unread live in the URL; a decision
- * opens beside the list with its answer form. The list and the bell are read every 10 seconds.
+ * opens in a sheet over the list (`/inbox?decision=ID`) with its answer form, a screen of its own on a phone (the kit's
+ * MobileDecision), and closes back to the list where it was. The list and the bell are read every 10 seconds.
  */
 export function InboxPage({ initialError }: { initialError: ApiErrorInfo | null }) {
   const t = useTranslations("inbox");
   const { filters, href, replace, push } = useInboxUrl();
   const viewer = useInboxViewer();
-  const { state, stale } = usePagedQuery(notificationsQuery(browserApi, inboxQuery(filters)), initialError);
+  // The page's main query: the top bar says from it whether the Inbox is current (every 10 seconds).
+  const { state, stale } = usePagedQuery(notificationsQuery(browserApi, inboxQuery(filters)), initialError, { live: true });
   const count = useQuery(notificationCountQuery(browserApi));
   const markRead = useMarkRead();
   const readFailure = useReadFailure();
-  const { notice, show, clear } = useNotice();
   const [reading, setReading] = useState<number | "all" | null>(null);
-  const [focusDecision, setFocusDecision] = useState<number | null>(null);
-  const [returnTo, setReturnTo] = useState<number | null>(null);
   const list: NotificationList | null = state.status === "success" ? state.data : null;
   const selected = filters.decision;
   const selectedNotification = selected !== null && list ? notificationOfDecision(list.notifications, selected) : null;
@@ -195,10 +108,9 @@ export function InboxPage({ initialError }: { initialError: ApiErrorInfo | null 
     setReading(marker);
     markRead.mutate(target, {
       onSettled: () => setReading(null),
-      onSuccess: (result) => {
-        if (marker === "all") show({ tone: "success", text: t("markedAll", { count: result.read }) });
-      },
-      onError: (error) => show({ tone: "error", ...readFailure(error) }),
+      onSuccess: (result) =>
+        void notify({ tone: "success", text: marker === "all" ? t("markedAll", { count: result.read }) : t("markedOne") }),
+      onError: (error) => void notifyFailure(t("markFailed"), readFailure(error)),
     });
   };
 
@@ -212,21 +124,9 @@ export function InboxPage({ initialError }: { initialError: ApiErrorInfo | null 
     markOne({ ids: [openUnread] });
   }, [openUnread, markOne]);
 
-  const openDecision = (id: number) => {
-    setFocusDecision(id);
-    setReturnTo(null);
-    push({ ...filters, decision: id });
-  };
-  const closeDecision = () => {
-    setFocusDecision(null);
-    setReturnTo(selected);
-    push({ ...filters, decision: null });
-  };
-  // Once the panel is gone and the list shows again, focus goes back to the decision's link in it, if the page has it.
-  useEffect(() => {
-    if (selected !== null || returnTo === null) return;
-    document.querySelector<HTMLElement>(`[data-decision-link="${returnTo}"]`)?.focus();
-  }, [selected, returnTo]);
+  const openDecision = (id: number) => push({ ...filters, decision: id });
+  // Closing pushes the list's URL, so Back opens the decision again, as Back from it closed it.
+  const closeDecision = () => push({ ...filters, decision: null });
   const setFilters = (next: InboxFilters) => replace(next);
 
   const counts = count.data;
@@ -239,53 +139,47 @@ export function InboxPage({ initialError }: { initialError: ApiErrorInfo | null 
     <>
       <PageHeader
         title={t("title")}
-        description={t("description")}
-        meta={
-          <>
-            {counts ? (
-              <>
-                <Badge variant={counts.unread > 0 ? "info" : "secondary"} className="h-7 px-2.5" data-testid="inbox-unread-count" data-count={counts.unread}>
-                  <Bell aria-hidden="true" />
-                  {t("unreadCount", { count: counts.unread })}
+        tags={
+          counts ? (
+            <>
+              <Badge variant={counts.unread > 0 ? "info" : "secondary"} data-testid="inbox-unread-count" data-count={counts.unread}>
+                <Bell aria-hidden="true" />
+                {t("unreadCount", { count: counts.unread })}
+              </Badge>
+              {counts.open_decisions > 0 ? (
+                <Badge variant="warning" data-testid="inbox-open-count" data-count={counts.open_decisions}>
+                  <MessageCircleQuestionMark aria-hidden="true" />
+                  {t("openCount", { count: counts.open_decisions })}
                 </Badge>
-                {counts.open_decisions > 0 ? (
-                  <Badge variant="warning" className="h-7 px-2.5" data-testid="inbox-open-count" data-count={counts.open_decisions}>
-                    <MessageCircleQuestionMark aria-hidden="true" />
-                    {t("openCount", { count: counts.open_decisions })}
-                  </Badge>
-                ) : null}
-              </>
-            ) : null}
-            <Button
-              type="button"
-              size="lg"
-              variant="outline"
-              className="aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
-              aria-disabled={nothingToRead || reading !== null || undefined}
-              onClick={() => {
-                if (nothingToRead || reading !== null) return;
-                if (filtered) read({ ids: pageUnread }, "all");
-                else read({ all: true }, "all");
-              }}
-              data-testid="inbox-mark-all"
-            >
-              {reading === "all" ? <Loader2 className="animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <CheckCheck aria-hidden="true" />}
-              {filtered ? t("markShown") : t("markAll")}
-            </Button>
-          </>
+              ) : null}
+            </>
+          ) : null
+        }
+        actions={
+          <Button
+            type="button"
+            variant="outline"
+            className="aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
+            aria-disabled={nothingToRead || reading !== null || undefined}
+            busy={reading === "all"}
+            onClick={() => {
+              if (nothingToRead || reading !== null) return;
+              if (filtered) read({ ids: pageUnread }, "all");
+              else read({ all: true }, "all");
+            }}
+            data-testid="inbox-mark-all"
+          >
+            <CheckCheck aria-hidden="true" />
+            {filtered ? t("markShown") : t("markAll")}
+          </Button>
         }
       />
-      <NoticeArea notice={notice} onDismiss={clear} />
-      <div className={selected !== null ? "grid items-start gap-6 lg:grid-cols-[minmax(0,26rem)_minmax(0,1fr)]" : "flex flex-col gap-6"}>
-        <section
-          aria-labelledby="inbox-list-title"
-          className={selected !== null ? "hidden min-w-0 flex-col gap-4 lg:flex" : "flex min-w-0 flex-col gap-4"}
-          data-testid="inbox-list"
-        >
+      <div className="flex flex-col gap-6">
+        <section aria-labelledby="inbox-list-title" className="flex min-w-0 flex-col gap-4" data-testid="inbox-list">
           <h2 id="inbox-list-title" className="sr-only">
             {t("listTitle")}
           </h2>
-          <div className="flex flex-col gap-3 rounded-xl border bg-card p-4" role="search" aria-label={t("filters.label")} data-testid="inbox-filters">
+          <div className="flex flex-col gap-3 rounded-md border bg-card shadow-raised p-4" role="search" aria-label={t("filters.label")} data-testid="inbox-filters">
             <FacetGroup
               label={t("filters.show")}
               options={[
@@ -340,16 +234,13 @@ export function InboxPage({ initialError }: { initialError: ApiErrorInfo | null 
             )}
           </QueryView>
         </section>
-        {selected !== null ? (
-          <DecisionPanel
-            key={selected}
-            id={selected}
-            projectHint={selectedNotification?.project ?? null}
-            focus={focusDecision === selected}
-            onClose={closeDecision}
-          />
-        ) : null}
       </div>
+      <DecisionSheet
+        target={selected !== null ? { id: selected, project: selectedNotification?.project ?? null } : null}
+        onClose={closeDecision}
+        screen
+        returnFocus={(id) => document.querySelector<HTMLElement>(`[data-decision-link="${id}"]`)}
+      />
     </>
   );
 }
@@ -399,7 +290,7 @@ function InboxList({
       {page.notifications.length === 0 ? (
         filtered || filters.page > 1 ? (
           <EmptyState icon={SearchX} title={t("noResults.title")} description={t("noResults.description")}>
-            <Button variant="outline" size="lg" onClick={onClear} data-testid="inbox-clear-filters">
+            <Button variant="outline" onClick={onClear} data-testid="inbox-clear-filters">
               {t("noResults.clear")}
             </Button>
           </EmptyState>

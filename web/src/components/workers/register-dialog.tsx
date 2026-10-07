@@ -18,7 +18,8 @@ import Link from "next/link";
 import { useFormatter, useTranslations } from "next-intl";
 import { type FormEvent, type ReactNode, useEffect, useId, useRef, useState } from "react";
 
-import { InlineError, type Notice } from "@/components/admin/notice";
+import { InlineError } from "@/components/admin/notice";
+import type { Notice } from "@/components/feedback/toast";
 import { useNow } from "@/components/kg/use-now";
 import { Button } from "@/components/ui/button";
 import {
@@ -70,6 +71,8 @@ type Props = {
   onOpenChange: (open: boolean) => void;
   /** Called once a machine joins with the code, for the page to say so after the dialog closes. */
   onJoined: (notice: Notice) => void;
+  /** Where focus goes once the dialog has closed, for a dialog opened without a trigger (the command palette). */
+  onCloseAutoFocus?: (event: Event) => void;
 };
 
 /**
@@ -78,7 +81,7 @@ type Props = {
  * the hub every 2 seconds whether a machine has joined with it. Its content mounts each time it opens, so a new
  * opening starts with an empty form; a code made before stays valid until it expires.
  */
-export function RegisterDialog({ open, onOpenChange, onJoined }: Props) {
+export function RegisterDialog({ open, onOpenChange, onJoined, onCloseAutoFocus }: Props) {
   const write = useWorkerWrite((api, body: PairingRequest) => createPairing(api, body));
   const pending = write.isPending;
   const guard = (event: Event) => {
@@ -91,6 +94,7 @@ export function RegisterDialog({ open, onOpenChange, onJoined }: Props) {
         className="flex max-h-[calc(100dvh-2rem)] flex-col gap-5 overflow-y-auto sm:max-w-2xl"
         onEscapeKeyDown={guard}
         onInteractOutside={guard}
+        onCloseAutoFocus={onCloseAutoFocus}
         data-testid="register-dialog"
       >
         <RegisterFlow write={write} onClose={() => onOpenChange(false)} onJoined={onJoined} />
@@ -211,7 +215,7 @@ function RegisterFlow({ write, onClose, onJoined }: { write: Write; onClose: () 
 function FullPermissions({ text }: { text: string }) {
   return (
     <p
-      className="flex items-start gap-2.5 rounded-lg border border-warning-foreground/20 bg-warning px-3 py-2.5 text-sm text-warning-foreground"
+      className="flex items-start gap-2.5 rounded-md border border-attention/20 bg-attention-soft px-3 py-2.5 text-sm text-attention"
       data-testid="register-warning"
     >
       <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
@@ -223,7 +227,7 @@ function FullPermissions({ text }: { text: string }) {
 function FieldError({ id, text }: { id: string; text?: string }) {
   if (!text) return null;
   return (
-    <p id={id} className="text-xs font-medium text-destructive">
+    <p id={id} className="text-xs font-medium text-danger">
       {text}
     </p>
   );
@@ -332,11 +336,11 @@ function PairingForm({
             <Skeleton className="h-10 w-full" />
           </div>
         ) : projectsFailed ? (
-          <p className="text-sm text-destructive" role="alert">
+          <p className="text-sm text-danger" role="alert">
             {t("projectsFailed")}
           </p>
         ) : noProjects ? (
-          <p className="rounded-lg border border-dashed px-3 py-2.5 text-sm text-muted-foreground" data-testid="register-no-projects">
+          <p className="rounded-md border border-dashed px-3 py-2.5 text-sm text-muted-foreground" data-testid="register-no-projects">
             {t("noProjects")}
           </p>
         ) : (
@@ -348,8 +352,8 @@ function PairingForm({
                   key={name}
                   htmlFor={`${ids}-project-${index}`}
                   className={cn(
-                    "flex min-h-10 cursor-pointer items-center gap-2.5 rounded-lg border px-3 py-2 transition-colors hover:bg-muted/50",
-                    checked && "border-primary/40 bg-accent",
+                    "flex min-h-10 cursor-pointer items-center gap-2.5 rounded-md border px-3 py-2 transition-colors hover:bg-muted/50",
+                    checked && "border-brand/40 bg-surface-selected",
                   )}
                 >
                   <input
@@ -432,7 +436,7 @@ function PairingForm({
 
       <label
         htmlFor={`${ids}-terminal`}
-        className="flex cursor-pointer items-start gap-2.5 rounded-lg border px-3 py-2.5 transition-colors hover:bg-muted/50"
+        className="flex cursor-pointer items-start gap-2.5 rounded-md border px-3 py-2.5 transition-colors hover:bg-muted/50"
       >
         <input
           id={`${ids}-terminal`}
@@ -467,8 +471,8 @@ function PairingForm({
             {t("cancel")}
           </Button>
         </DialogClose>
-        <Button type="submit" size="lg" disabled={noProjects} aria-disabled={pending || undefined} data-testid="register-create">
-          {pending ? <Loader2 className="animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <KeyRound aria-hidden="true" />}
+        <Button type="submit" size="lg" disabled={noProjects} busy={pending} data-testid="register-create">
+          <KeyRound aria-hidden="true" />
           {pending ? t("creating") : t("create")}
         </Button>
       </DialogFooter>
@@ -559,8 +563,12 @@ function PairingProgress({
   useEffect(() => {
     if (status !== "joined") return;
     void queryClient.invalidateQueries({ queryKey: workerKeys.list });
-    onJoined({ tone: "success", text: t("joinedNotice", { name: pairing.name }) });
-    // Once per pairing: the notice is the page's record that the machine joined.
+    onJoined({
+      tone: "success",
+      text: t("joinedNotice", { name: pairing.name }),
+      link: workerId !== null ? { label: t("openWorker"), href: workerHref(workerId) } : null,
+    });
+    // Once per pairing: the toast is the page's record that the machine joined.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status]);
 
@@ -576,7 +584,7 @@ function PairingProgress({
         ) : status === "expired" || status === "locked" ? (
           <Ended status={status} />
         ) : (
-          <p className="flex items-center gap-2 rounded-lg border bg-accent px-3 py-2.5 text-sm text-accent-foreground" data-testid="pairing-waiting">
+          <p className="flex items-center gap-2 rounded-md border bg-accent px-3 py-2.5 text-sm text-accent-foreground" data-testid="pairing-waiting">
             <Loader2 className="size-4 shrink-0 animate-spin motion-reduce:animate-none" aria-hidden="true" />
             {t("waiting")}
           </p>
@@ -585,7 +593,7 @@ function PairingProgress({
 
       {status === "waiting" ? (
         <>
-          <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 rounded-xl border bg-card px-4 py-3">
+          <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 rounded-md border bg-card shadow-raised px-4 py-3">
             <div className="flex min-w-0 flex-col gap-1">
               <span className="text-xs text-muted-foreground">{t("code")}</span>
               <span
@@ -602,7 +610,7 @@ function PairingProgress({
                   : t("expiresIn", { time: clock(left) })}
               </span>
               {state.data && state.data.tries_left < 5 ? (
-                <span className="text-xs text-warning-foreground" data-testid="pairing-tries">
+                <span className="text-xs text-attention" data-testid="pairing-tries">
                   {t("triesLeft", { count: state.data.tries_left })}
                 </span>
               ) : null}
@@ -659,10 +667,10 @@ function Ended({ status }: { status: "expired" | "locked" }) {
   const t = useTranslations("workers.register");
   const Icon = status === "locked" ? Lock : TimerOff;
   return (
-    <div className="flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-3 text-sm" data-testid="pairing-ended">
-      <Icon className="mt-0.5 size-4 shrink-0 text-destructive" aria-hidden="true" />
+    <div className="flex items-start gap-3 rounded-md border border-danger/30 bg-danger-soft px-3 py-3 text-sm" data-testid="pairing-ended">
+      <Icon className="mt-0.5 size-4 shrink-0 text-danger" aria-hidden="true" />
       <div className="flex flex-col gap-1">
-        <p className="font-medium text-destructive">{status === "locked" ? t("lockedTitle") : t("expiredTitle")}</p>
+        <p className="font-medium text-danger">{status === "locked" ? t("lockedTitle") : t("expiredTitle")}</p>
         <p className="text-muted-foreground">{status === "locked" ? t("lockedBody") : t("expiredBody")}</p>
       </div>
     </div>
@@ -679,13 +687,13 @@ function Joined({ name, usedAt, workerId }: { name: string; usedAt: string | nul
   const checkouts = data ? readCheckouts(data.checkouts) : [];
   return (
     <div className="flex flex-col gap-4" data-testid="pairing-joined">
-      <p className="flex items-start gap-2.5 rounded-lg border border-success-foreground/20 bg-success px-3 py-2.5 text-sm text-success-foreground">
+      <p className="flex items-start gap-2.5 rounded-md border border-success/20 bg-success-soft px-3 py-2.5 text-sm text-success">
         <CircleCheck className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
         <span>
           {t.rich("joinedTitle", {
             name,
             time: usedAt ? format.dateTime(new Date(usedAt), { timeStyle: "medium" }) : "",
-            strong: (chunks) => <strong className="font-mono font-semibold">{chunks}</strong>,
+            strong: (chunks) => <strong className="font-mono font-medium">{chunks}</strong>,
           })}
         </span>
       </p>

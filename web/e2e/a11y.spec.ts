@@ -3,6 +3,7 @@ import type { Page } from "@playwright/test";
 import { expectNoSeriousViolations } from "./support/a11y";
 import { expect, isDeployed, type Member, test } from "./support/fixtures";
 import { ADMIN_ACCOUNT, machineToken, newAccount, uniqueName } from "./support/hub";
+import { seedInsights } from "./support/insights";
 import { graphReady, grantOn, HUB_NODE, kgPath, nodePath, sharedKg } from "./support/kg";
 import { apiOf, memoryFile, putMemory } from "./support/memories";
 import { ACTIVE_PLAN, EVIDENCE_STEP, open, seedPlans } from "./support/plans";
@@ -94,9 +95,16 @@ async function seedLiveRun(me: Member) {
   const [run] = await dispatch(me, project, ["2"]);
   await claimRun(live);
   await startRun(live, run.id);
+  // A trace with an item of each kind: thinking, words, a plan, a failed call (open, its output on term-bg), a raw
+  // runtime event, a usage report and a verify line.
   await sendEvents(live, run.id, [
+    { kind: "agent_thought_chunk", body: { content: { type: "text", text: "Step 2 needs the queue table first." } } },
     say("Reading the plan."),
+    { kind: "plan", body: { entries: [{ content: "Read the plan", status: "completed" }, { content: "Run the tests", status: "in_progress" }] } },
     tool("Bash", "pnpm test"),
+    { kind: "tool_call_update", body: { toolCallId: "call-9", status: "failed", rawOutput: { exitCode: 1 }, content: [{ type: "content", content: { type: "text", text: "FAIL src/queue.test.ts" } }] } },
+    { kind: "output", body: { raw: { type: "rate_limit_event" } } },
+    { kind: "usage_update", body: { usage: { input_tokens: 40, cache_read_input_tokens: 9000, output_tokens: 300 }, cost: { amount: 0.05, currency: "USD" } } },
     { kind: "system", body: { text: "verify: `pnpm test` exited 1 after 900 ms", exit_code: 1 } },
   ]);
   return { project, live, run };
@@ -122,13 +130,58 @@ async function seedSkill(me: Member) {
   await publishSkill(await apiOf(me), bundle, "team-notes", me.projects[0], { repo: "example-org/skills", commit: "0123abc" });
 }
 
+/**
+ * Home's every card, in the first project of `me`: a plan run waiting for their decision, a step run at work and one
+ * that failed (with Rerun), and their two workers.
+ */
+async function seedHome(me: Member) {
+  const project = me.projects[0];
+  await seedPlanRunPlan(me, project);
+  await planRunUnderway(me, project, uniqueName("a11y-home"), { waiting: true });
+  const { live, waiting } = await seedRuns(me);
+  await claimRun(live);
+  await startRun(live, waiting.id);
+}
+
 const PAGES: Entry[] = [
   {
-    name: "my projects",
+    name: "home",
     deployed: true,
     open: async ({ page }) => {
       await page.goto("/");
       await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+      await expect(page.locator("#main").getByTestId("state-loading")).toHaveCount(0);
+    },
+  },
+  {
+    name: "home with a decision, runs in flight, a failed run and the fleet",
+    open: async ({ page, me }) => {
+      await seedHome(me);
+      await open(page, "/");
+      const main = page.locator("#main");
+      await expect(main.getByTestId("needs-you-item")).toHaveCount(1);
+      await expect(main.getByTestId("in-flight-item").first()).toBeVisible();
+      await expect(main.getByTestId("recent-rerun")).toBeVisible();
+      await expect(main.getByTestId("fleet-worker").first()).toBeVisible();
+      await expect(main.getByTestId("summary-done-series")).toHaveCount(1);
+    },
+  },
+  {
+    name: "home with the decision sheet open from Needs you",
+    open: async ({ page, me }) => {
+      await seedHome(me);
+      await open(page, "/");
+      await page.locator("#main").getByTestId("needs-you-answer").click();
+      await expect(page.getByTestId("decision-sheet").getByTestId("decision-form")).toBeVisible();
+    },
+  },
+  {
+    name: "home on a small screen",
+    open: async ({ page, me }) => {
+      await seedHome(me);
+      await page.setViewportSize({ width: 375, height: 812 });
+      await open(page, "/");
+      await expect(page.locator("#main").getByTestId("needs-you-item")).toHaveCount(1);
     },
   },
   {
@@ -492,16 +545,115 @@ const PAGES: Entry[] = [
     },
   },
   {
+    name: "insights with no run ended yet",
+    open: async ({ page, me }) => {
+      await open(page, `/p/${me.projects[0]}/insights`);
+      await expect(page.locator("#main").getByTestId("state-empty")).toBeVisible();
+    },
+  },
+  {
+    name: "insights with its four charts, a chart's table and a tooltip",
+    open: async ({ page, me }) => {
+      await seedInsights(me, me.projects[0]);
+      await open(page, `/p/${me.projects[0]}/insights`);
+      const main = page.locator("#main");
+      for (const chart of ["outcomes", "failure", "duration", "tokens"]) {
+        await expect(main.getByTestId(`insights-${chart}-chart`).locator("svg.recharts-surface")).toBeVisible();
+      }
+      await expectNoSeriousViolations(page, "insights, charts");
+      await main.getByTestId("insights-outcomes-view-table").click();
+      await expect(main.getByTestId("insights-outcomes-table-region")).toBeVisible();
+      await main.getByTestId("insights-duration-chart").locator("svg.recharts-surface").focus();
+      await expect(main.getByTestId("insights-duration").getByTestId("insights-tooltip")).toBeVisible();
+    },
+  },
+  {
+    name: "insights on a small screen",
+    open: async ({ page, me }) => {
+      await seedInsights(me, me.projects[0]);
+      await page.setViewportSize({ width: 375, height: 812 });
+      await open(page, `/p/${me.projects[0]}/insights`);
+      const main = page.locator("#main");
+      await expect(main.getByTestId("insights-tokens-chart").locator("svg.recharts-surface")).toBeVisible();
+      await main.getByTestId("insights-tokens-view-table").click();
+      await expect(main.getByTestId("insights-tokens-table-region")).toBeVisible();
+    },
+  },
+  {
+    name: "command palette with actions, runs, plans, workers and pages, and with no match",
+    open: async ({ page, me }) => {
+      const { project } = await seedRuns(me);
+      await open(page, `/p/${project}/runs`);
+      await expect(page.getByTestId("palette-trigger-key")).toBeAttached(); // the shell has hydrated
+      await page.keyboard.press("ControlOrMeta+k");
+      const palette = page.getByTestId("command-palette");
+      for (const group of ["actions", "runs", "plans", "workers", "goto"]) {
+        await expect(palette.getByTestId(`palette-group-${group}`)).toBeVisible();
+      }
+      await expect(palette.locator('[data-item^="action:rerun:"]')).toBeVisible();
+      await expectNoSeriousViolations(page, "command palette");
+      await palette.getByRole("combobox").fill("no-such-thing-here");
+      await expect(palette.getByTestId("palette-empty")).toBeVisible();
+    },
+  },
+  {
+    name: "command palette on a small screen",
+    open: async ({ page, me }) => {
+      await seedRuns(me);
+      await page.setViewportSize({ width: 375, height: 812 });
+      await open(page, `/p/${me.projects[0]}/runs`);
+      await expect(page.getByTestId("palette-trigger-key")).toBeAttached();
+      await page.getByTestId("palette-trigger").click();
+      await expect(page.getByTestId("command-palette").getByTestId("palette-group-runs")).toBeVisible();
+    },
+  },
+  {
+    name: "keyboard shortcuts dialog, and the keys beside the runs page's Dispatch and a sidebar item",
+    open: async ({ page, me }) => {
+      await seedRuns(me);
+      await open(page, `/p/${me.projects[0]}/runs`);
+      await expect(page.getByTestId("palette-trigger-key")).toBeAttached(); // the shell has hydrated
+      await expect(page.locator('#main [data-testid="runs-dispatch"] [data-shortcut="dispatch"]')).toBeVisible();
+      await page.getByTestId("nav-workers").hover();
+      await expect(page.locator('[data-testid="nav-workers"] [data-shortcut="goWorkers"]')).toBeVisible();
+      await expectNoSeriousViolations(page, "the keys beside their actions");
+      await page.keyboard.press("Shift+Slash");
+      await expect(page.getByTestId("shortcuts-dialog")).toBeVisible();
+    },
+  },
+  {
+    name: "keyboard shortcuts dialog on a small screen, single keys off",
+    open: async ({ page }) => {
+      await page.setViewportSize({ width: 375, height: 812 });
+      await open(page, "/");
+      await expect(page.getByTestId("palette-trigger-key")).toBeAttached();
+      await page.getByTestId("palette-trigger").click();
+      await expect(page.getByTestId("command-palette").getByRole("combobox")).toBeFocused();
+      await page.keyboard.type("shortcuts");
+      await page.keyboard.press("Enter");
+      const dialog = page.getByTestId("shortcuts-dialog");
+      await expect(dialog).toBeVisible();
+      await dialog.getByTestId("shortcuts-single").click();
+      await expect(dialog.locator('[data-shortcut="search"]')).toHaveAttribute("data-off", "true");
+    },
+  },
+  {
     name: "run page with its live log, the owner's controls and the Take over dialog",
     open: async ({ page, me }) => {
       const { project, run } = await seedLiveRun(me);
       await open(page, runPath(project, run.id));
       await expect(page.locator("#main").getByTestId("log-status")).toHaveAttribute("data-status", "live");
-      await expect(page.locator("#main").getByTestId("log-line").first()).toBeVisible();
+      await expect(page.locator("#main").getByTestId("trace-tool")).toHaveAttribute("open", "");
+      await expect(page.locator("#main").getByTestId("run-usage-total")).toBeVisible();
       await expect(page.locator("#main").getByTestId("run-composer")).toBeVisible();
+      await page.locator("#main").getByTestId("trace-thought").getByText(/^Thought/).click();
+      await page.locator("#main").getByTestId("trace-raw").getByText("1 runtime event").click();
+      await expectNoSeriousViolations(page, "run page, its trace");
+      await page.locator("#main").getByRole("tab", { name: "Raw log" }).click();
+      await expect(page.locator("#main").getByTestId("log-line").first()).toBeVisible();
       await page.locator("#main").getByTestId("log-search").fill("plan");
       await expect(page.locator("#main").getByTestId("log-lines").locator("mark").first()).toBeVisible();
-      await expectNoSeriousViolations(page, "run page");
+      await expectNoSeriousViolations(page, "run page, its raw log");
       await page.locator("#main").getByTestId("run-takeover").click();
       await expect(page.getByTestId("takeover-dialog")).toBeVisible();
     },
@@ -539,7 +691,8 @@ const PAGES: Entry[] = [
       const { project, run } = await seedLiveRun(me);
       await page.setViewportSize({ width: 375, height: 812 });
       await open(page, runPath(project, run.id));
-      await expect(page.locator("#main").getByTestId("log-line").first()).toBeVisible();
+      await expect(page.locator("#main").getByTestId("trace-item").first()).toBeVisible();
+      await expect(page.locator("#main").getByTestId("run-timeline")).toBeVisible();
     },
   },
   {
@@ -643,12 +796,15 @@ const PAGES: Entry[] = [
       await seedPlanRunPlan(me, project);
       const { decision } = await planRunUnderway(me, project, uniqueName("a11y"), { waiting: true });
       await open(page, `/inbox?decision=${decision}`);
-      const panel = page.locator("#main").getByTestId("decision-panel");
-      await expect(panel.getByTestId("decision-form")).toBeVisible();
-      await expect(panel.getByTestId("decision-context-markdown")).toBeVisible();
+      const sheet = page.getByTestId("decision-sheet");
+      await expect(sheet.getByTestId("decision-form")).toBeVisible();
+      await expect(sheet.getByTestId("decision-context-markdown")).toBeVisible();
+      await expect(sheet.getByTestId("decision-parks")).toBeVisible();
       await expectNoSeriousViolations(page, "decision with its answer form");
-      await panel.getByTestId("decision-send").click();
-      await expect(panel.getByTestId("decision-problem")).toBeVisible();
+      // The agent's pick is chosen for the owner; clear it to send nothing.
+      await sheet.getByTestId("decision-clear-option").click();
+      await sheet.getByTestId("decision-send").click();
+      await expect(sheet.getByTestId("decision-problem")).toBeVisible();
     },
   },
   {
@@ -658,16 +814,17 @@ const PAGES: Entry[] = [
       await seedPlanRunPlan(me, project);
       const { decision } = await planRunUnderway(me, project, uniqueName("a11y"), { waiting: true });
       await open(page, `/inbox?decision=${decision}`);
-      const panel = page.locator("#main").getByTestId("decision-panel");
-      await panel.getByRole("radio").first().check();
-      await panel.getByTestId("decision-text").fill("After the backup.");
-      await panel.getByTestId("decision-send").click();
-      await expect(panel.getByTestId("decision-answer")).toBeVisible();
-      await expect(panel.getByTestId("admin-notice-status")).not.toBeEmpty();
+      const sheet = page.getByTestId("decision-sheet");
+      await sheet.getByRole("radio").first().check();
+      await sheet.getByTestId("decision-text").fill("After the backup.");
+      await sheet.getByTestId("decision-send").click();
+      await expect(sheet.getByTestId("decision-answer")).toBeVisible();
+      // The answer's toast is on screen while axe looks.
+      await expect(page.getByTestId("toast").first()).toBeVisible();
     },
   },
   {
-    name: "plan run page waiting for a decision, with the answer form in its banner",
+    name: "plan run page waiting for a decision, with the answer form in its side column",
     open: async ({ page, me }) => {
       const project = me.projects[0];
       await seedPlanRunPlan(me, project);
@@ -689,8 +846,13 @@ const PAGES: Entry[] = [
       await expect(page.locator("#main").getByTestId("notification")).toHaveCount(1);
       await expectNoSeriousViolations(page, "inbox at 375 px");
       await open(page, `/inbox?decision=${decision}`);
-      await expect(page.locator("#main").getByTestId("decision-back")).toBeVisible();
-      await expect(page.locator("#main").getByTestId("inbox-list")).toBeHidden();
+      // The decision is a screen of its own: the phone's whole width, Back to Inbox at hand, the answer's bar at its foot.
+      const screen = page.getByTestId("decision-sheet");
+      await expect(screen).toHaveAttribute("data-layout", "screen");
+      await expect(screen.getByTestId("decision-form")).toBeVisible();
+      await expect(screen.getByTestId("decision-back")).toBeVisible();
+      await expect(screen.getByTestId("decision-bar")).toBeInViewport();
+      expect((await screen.boundingBox())?.width).toBe(375);
     },
   },
   {
@@ -706,6 +868,24 @@ const PAGES: Entry[] = [
 
 /** The admin area, opened by the stack's hub admin; each entry waits for its content (step 25). */
 const ADMIN_PAGES: { name: string; open: (page: Page) => Promise<void> }[] = [
+  {
+    name: "admin diagnostics",
+    open: async (page) => {
+      await page.goto("/admin/diagnostics");
+      await expect(page.locator("#main").getByTestId("diagnostics-table")).toBeVisible();
+    },
+  },
+  {
+    name: "admin overview and diagnostics on a small screen",
+    open: async (page) => {
+      await page.setViewportSize({ width: 375, height: 812 });
+      await page.goto("/admin");
+      await expect(page.locator("#main").getByTestId("admin-overview")).toBeVisible();
+      await expectNoSeriousViolations(page, "overview at 375 px");
+      await page.goto("/admin/diagnostics");
+      await expect(page.locator("#main").getByTestId("diagnostics-table")).toHaveAttribute("data-layout", "list");
+    },
+  },
   {
     name: "admin members",
     open: async (page) => {
@@ -831,8 +1011,15 @@ for (const scheme of ["light", "dark"] as const) {
       test.skip(isDeployed, "signs in as the stack's hub admin");
       await signInAs(ADMIN_ACCOUNT);
       await page.goto("/admin");
-      await expect(page.getByTestId("admin-stats")).toBeVisible();
+      await expect(page.locator("#main").getByTestId("admin-overview")).toBeVisible();
       await expectNoSeriousViolations(page, `/admin as hub admin (${scheme})`);
+    });
+
+    test(`home of a member without a grant has no serious axe violation (${scheme})`, async ({ page, signInAs }) => {
+      test.skip(isDeployed, "signs in a new member through the local stack");
+      await signInAs(newAccount("a11y-nogrant"));
+      await expect(page.locator("#main").getByTestId("state-empty")).toBeVisible();
+      await expectNoSeriousViolations(page, `home without a grant (${scheme})`);
     });
 
     for (const entry of ADMIN_PAGES) {

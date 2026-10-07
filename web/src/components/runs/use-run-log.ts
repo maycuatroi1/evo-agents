@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
+import type { LiveSignal } from "@/components/live/live-model";
 import { browserApi } from "@/lib/api/browser";
 import { type ApiErrorInfo, isApiError, toInfo } from "@/lib/api/errors";
 import { LOGIN_PATH } from "@/lib/config";
@@ -39,6 +40,8 @@ const MAX_POLL_BACKOFF_MS = 15_000;
 
 export type RunLog = {
   lines: LogLine[];
+  /** The events themselves, in seq order, each once: what the Trace and the usage card read. */
+  events: RunEvent[];
   moves: RunMove[];
   status: LogStatus;
   /** The final state the stream (or a read of the events) reported; null while the run goes on. */
@@ -47,6 +50,12 @@ export type RunLog = {
   lastSeq: number;
   /** Why the log could not be read at all (403 or 404 while reading events). */
   failure: ApiErrorInfo | null;
+  /** When the log last heard from the hub (ms since the epoch): events, the stream opening, or a read of events. */
+  updatedAt: number;
+  /** While the page reads events instead: when it tries the stream again (ms since the epoch), null if it will not. */
+  streamRetryAt: number | null;
+  /** The last read of events failed (no answer, or a 5xx); the page tries again, waiting longer each time. */
+  pollFailing: boolean;
 };
 
 type Options = {
@@ -84,11 +93,15 @@ const defaultSource = (url: string) => new EventSource(url);
 
 export function useRunLog({ project, runId, knownLastSeq, describe, openSource = defaultSource }: Options): RunLog {
   const [lines, setLines] = useState<LogLine[]>([]);
+  const [events, setEvents] = useState<RunEvent[]>([]);
   const [moves, setMoves] = useState<RunMove[]>([]);
   const [status, setStatus] = useState<LogStatus>("connecting");
   const [endState, setEndState] = useState<RunState | null>(null);
   const [failure, setFailure] = useState<ApiErrorInfo | null>(null);
   const [shownSeq, setShownSeq] = useState(0);
+  const [updatedAt, setUpdatedAt] = useState(0);
+  const [streamRetryAt, setStreamRetryAt] = useState<number | null>(null);
+  const [pollFailing, setPollFailing] = useState(false);
 
   const describeRef = useRef(describe);
   const knownRef = useRef(knownLastSeq);
@@ -124,8 +137,10 @@ export function useRunLog({ project, runId, knownLastSeq, describe, openSource =
       const added = batch.map((event) => toLogLine(event, describeMove));
       const moved = batch.map(moveOf).filter((move): move is RunMove => move !== null);
       setLines((previous) => previous.concat(added));
+      setEvents((previous) => previous.concat(batch));
       if (moved.length) setMoves((previous) => previous.concat(moved));
       setShownSeq(lastSeq);
+      setUpdatedAt(Date.now());
     };
 
     /** Keep an event once: anything at or below the last seq kept is a repeat. */
@@ -155,6 +170,8 @@ export function useRunLog({ project, runId, knownLastSeq, describe, openSource =
       retryTimer = null;
       pollAbort?.abort();
       pollAbort = null;
+      setStreamRetryAt(null);
+      setPollFailing(false);
     };
 
     const finish = (state: RunState | null) => {
@@ -179,6 +196,8 @@ export function useRunLog({ project, runId, knownLastSeq, describe, openSource =
         const page = await runEvents(browserApi(), project, runId, lastSeq, controller.signal);
         if (disposed || controller.signal.aborted) return;
         pollFailures = 0;
+        setPollFailing(false);
+        setUpdatedAt(Date.now());
         for (const event of page.events) receive(event);
         if (page.more) return schedulePoll(0);
         if (isTerminalState(page.state) && lastSeq >= page.last_seq) return finish(page.state);
@@ -196,6 +215,7 @@ export function useRunLog({ project, runId, knownLastSeq, describe, openSource =
           return;
         }
         pollFailures += 1; // no answer, or a 5xx: try again, waiting longer each time
+        setPollFailing(true);
         schedulePoll(Math.min(POLL_MS * 2 ** pollFailures, MAX_POLL_BACKOFF_MS));
       }
     };
@@ -203,7 +223,11 @@ export function useRunLog({ project, runId, knownLastSeq, describe, openSource =
     const scheduleStreamRetry = () => {
       if (retryTimer) clearTimeout(retryTimer);
       retryTimer = null;
-      if (!streamUsable) return;
+      if (!streamUsable) {
+        setStreamRetryAt(null);
+        return;
+      }
+      setStreamRetryAt(Date.now() + STREAM_RETRY_MS);
       retryTimer = setTimeout(() => {
         retryTimer = null;
         if (!disposed && polling) openStream();
@@ -235,6 +259,7 @@ export function useRunLog({ project, runId, knownLastSeq, describe, openSource =
         errorsSinceOpen = 0;
         behindSince = null;
         stopPolling();
+        setUpdatedAt(Date.now());
         setStatus("live");
       };
       opened.onmessage = (message: MessageEvent<string>) => {
@@ -281,5 +306,28 @@ export function useRunLog({ project, runId, knownLastSeq, describe, openSource =
     };
   }, [project, runId]);
 
-  return { lines, moves, status, endState, lastSeq: shownSeq, failure };
+  return { lines, events, moves, status, endState, lastSeq: shownSeq, failure, updatedAt, streamRetryAt, pollFailing };
+}
+
+/**
+ * The log as a source of the top bar's LiveIndicator: Live while the stream is open; Reconnecting while the browser
+ * reconnects it (failing, so Offline after a while) or while the page reads events instead and will try the stream
+ * again (degraded: updates still arrive); Offline-bound when those reads fail too; Paused while the person holds the
+ * log. A stream that cannot be used at all leaves the reads as the transport, which is Live while they succeed. Null
+ * before the stream opens and once it ended: the run's own query speaks for the page then.
+ */
+export function logSignal(log: Pick<RunLog, "status" | "updatedAt" | "streamRetryAt" | "pollFailing">, paused: boolean): LiveSignal | null {
+  const base = { transport: "stream" as const, updatedAt: log.updatedAt, offline: false, paused, retryAt: null, pollMs: null };
+  switch (log.status) {
+    case "live":
+      return { ...base, failing: false, degraded: false };
+    case "reconnecting":
+      return { ...base, failing: true, degraded: false };
+    case "polling":
+      if (log.pollFailing) return { ...base, failing: true, degraded: false, pollMs: POLL_MS };
+      if (log.streamRetryAt === null) return { ...base, transport: "poll", failing: false, degraded: false, pollMs: POLL_MS };
+      return { ...base, failing: false, degraded: true, retryAt: log.streamRetryAt, pollMs: POLL_MS };
+    default:
+      return null;
+  }
 }

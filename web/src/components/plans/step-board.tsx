@@ -1,13 +1,17 @@
 "use client";
 
-import { Columns3, CornerDownRight, FolderGit2, LayoutList, Search } from "lucide-react";
+import { Columns3, CornerDownRight, FolderGit2, LayoutList } from "lucide-react";
 import Link from "next/link";
 import { useFormatter, useTranslations } from "next-intl";
 import { useId, useMemo, useState } from "react";
 
 import { DataTable, dataTableColumns } from "@/components/data/data-table";
+import { NAME_LINK } from "@/components/data/identifier";
+import { SearchField } from "@/components/data/search-field";
+import { Segmented } from "@/components/data/segmented";
+import { TONE_TEXT } from "@/components/status/status-badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { useIsMobile } from "@/hooks/use-mobile";
 import {
   filterSteps,
@@ -21,7 +25,7 @@ import {
 import { cn } from "@/lib/utils";
 
 import { stepHref } from "./links";
-import { BlockingBadge, STEP_LOOK, StepStatusBadge, StepStatusIcon, useStepStatusText } from "./status";
+import { BlockingBadge, StepStatusBadge, StepStatusIcon, stepLook, useStepStatusText } from "./status";
 
 /** A column shows this many cards before "show all", so a long column does not bury the others; fewer on a phone,
  * where the columns stack. */
@@ -57,7 +61,7 @@ export function DependsOn({ step, context, compact = false }: { step: PlanStep; 
           <Link
             key={key}
             href={stepHref(context.project, context.planId, key)}
-            className="relative z-10 inline-flex items-center gap-1 rounded font-mono text-primary underline-offset-4 hover:underline"
+            className="relative z-10 inline-flex items-center gap-1 rounded font-mono text-brand underline-offset-4 hover:underline"
             aria-label={t("dependencyLink", { key, title: stepLabel(target) })}
           >
             <StepStatusIcon group={target.group} raw={target.rawStatus} className="[&_svg]:size-3.5" />
@@ -75,7 +79,7 @@ function StepCard({ step, context }: { step: PlanStep; context: Context }) {
   const label = stepLabel(step);
   return (
     <li
-      className="group relative flex flex-col gap-2 rounded-lg border bg-card p-3 transition-colors hover:border-primary/40 hover:bg-accent/40"
+      className="group relative flex flex-col gap-2 rounded-md border bg-card p-3 transition-colors hover:border-brand/40 hover:bg-accent/40"
       data-testid="step-card"
       data-step={step.key}
     >
@@ -85,7 +89,7 @@ function StepCard({ step, context }: { step: PlanStep; context: Context }) {
         </span>
         <Link
           href={stepHref(context.project, context.planId, step.key)}
-          className="min-w-0 flex-1 text-sm leading-snug font-medium text-pretty [overflow-wrap:anywhere] after:absolute after:inset-0 after:rounded-lg after:content-[''] focus-visible:outline-none focus-visible:after:outline-2 focus-visible:after:outline-offset-2 focus-visible:after:outline-ring"
+          className="min-w-0 flex-1 text-sm leading-snug font-medium text-pretty [overflow-wrap:anywhere] after:absolute after:inset-0 after:rounded-md after:content-[''] focus-visible:outline-none focus-visible:after:outline-2 focus-visible:after:outline-offset-2 focus-visible:after:outline-ring"
           aria-label={t("open", { key: step.key, title: label })}
         >
           <span className="line-clamp-3">{label || t("untitled")}</span>
@@ -94,7 +98,7 @@ function StepCard({ step, context }: { step: PlanStep; context: Context }) {
       {step.group === "other" ? <StepStatusBadge group="other" raw={step.rawStatus} /> : null}
       <div className="flex flex-wrap items-center gap-1.5">
         {step.repo ? (
-          <span className="inline-flex max-w-full items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 font-mono text-xs text-muted-foreground">
+          <span className="inline-flex h-5 max-w-full items-center gap-1 rounded-xs bg-surface-sunken px-1.5 font-mono text-xs text-muted-foreground">
             <FolderGit2 className="size-3 shrink-0" aria-hidden="true" />
             <span className="truncate">{step.repo}</span>
           </span>
@@ -125,18 +129,18 @@ function Column({ group, steps, context }: { group: StepGroup; steps: PlanStep[]
   const label = useStepStatusText();
   const [expanded, setExpanded] = useState(false);
   const listId = useId();
-  const look = STEP_LOOK[group];
+  const look = stepLook(group);
   const limit = useIsMobile() ? PHONE_COLUMN_LIMIT : COLUMN_LIMIT;
   const shown = expanded ? steps : steps.slice(0, limit);
   const headingId = `${listId}-heading`;
   return (
     <section
       aria-labelledby={headingId}
-      className="flex min-w-0 flex-col gap-2 rounded-xl border bg-muted/30 p-2.5"
+      className="flex min-w-0 flex-col gap-2 rounded-md border bg-muted/30 p-2.5"
       data-testid={`board-column-${group}`}
     >
       <h3 id={headingId} className="flex items-center gap-2 px-1 text-sm font-medium">
-        <look.icon className={cn("size-4", look.tone)} aria-hidden="true" />
+        <look.icon className={cn("size-4", TONE_TEXT[look.tone])} aria-hidden="true" />
         {group === "other" ? t("otherColumn") : label(group)}
         <span className="ml-auto font-mono text-xs text-muted-foreground tabular-nums" data-testid="column-count">
           {steps.length}
@@ -154,7 +158,6 @@ function Column({ group, steps, context }: { group: StepGroup; steps: PlanStep[]
       {steps.length > limit ? (
         <Button
           variant="ghost"
-          size="lg"
           className="w-full text-muted-foreground"
           aria-expanded={expanded}
           aria-controls={listId}
@@ -183,7 +186,7 @@ function StepTable({ steps, context }: { steps: PlanStep[]; context: Context }) 
               <span className="mt-0.5 font-mono text-xs text-muted-foreground tabular-nums">{step.key}</span>
               <Link
                 href={stepHref(context.project, context.planId, step.key)}
-                className="font-medium text-pretty text-primary underline-offset-4 [overflow-wrap:anywhere] hover:underline"
+                className={cn(NAME_LINK, "text-pretty [overflow-wrap:anywhere]")}
               >
                 {stepLabel(step) || step.key}
               </Link>
@@ -236,6 +239,16 @@ function StepTable({ steps, context }: { steps: PlanStep[]; context: Context }) 
       columnClassNames={{ repo: "hidden md:table-cell", depends: "hidden lg:table-cell", done_at: "hidden xl:table-cell" }}
       testId="steps-table"
       empty={t("noMatch")}
+      // On a phone: the step's title opening its page, its status, and its key with the repo it changes.
+      mobile={(step) => ({
+        title: stepLabel(step) || step.key,
+        titleText: stepLabel(step) || step.key,
+        href: stepHref(context.project, context.planId, step.key),
+        tags: step.group === "done" ? null : <BlockingBadge blocking={step.blocking} />,
+        status: <StepStatusBadge group={step.group} raw={step.rawStatus} />,
+        meta: step.repo ? t("mobileMetaRepo", { key: step.key, repo: step.repo }) : t("mobileMeta", { key: step.key }),
+        data: { "step-key": step.key },
+      })}
     />
   );
 }
@@ -262,69 +275,50 @@ export function StepBoard({ project, planId, steps }: { project: string; planId:
   return (
     <section aria-labelledby="plan-steps-title" className="flex flex-col gap-3">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-        <h2 id="plan-steps-title" className="text-base font-medium">
+        <h2 id="plan-steps-title" className="text-[15px] leading-[22px] font-semibold">
           {t("title")}
         </h2>
         <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-          <div className="relative sm:w-60">
-            <Search
-              className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground"
-              aria-hidden="true"
-            />
-            <Input
-              type="search"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder={t("searchPlaceholder")}
-              aria-label={t("search")}
-              className="h-10 pl-8"
-              data-testid="steps-search"
-            />
-          </div>
+          <SearchField
+            value={query}
+            onCommit={setQuery}
+            label={t("search")}
+            placeholder={t("searchPlaceholder")}
+            clearLabel={t("clearSearch")}
+            debounce={150}
+            className="sm:w-60"
+            testId="steps-search"
+          />
           {repos.length > 1 ? (
             <div className="flex items-center gap-2">
-              <label htmlFor={repoId} className="text-sm text-muted-foreground">
+              <label htmlFor={repoId} className="text-[13px] text-muted-foreground">
                 {t("repo")}
               </label>
-              <select
+              <NativeSelect
                 id={repoId}
                 value={repo}
                 onChange={(event) => setRepo(event.target.value)}
-                className="h-10 min-w-0 flex-1 rounded-lg border border-input bg-background px-2.5 font-mono text-sm sm:flex-none"
+                className="min-w-0 flex-1 sm:flex-none [&>select]:max-md:h-11"
                 data-testid="steps-repo"
               >
-                <option value="">{t("allRepos")}</option>
+                <NativeSelectOption value="">{t("allRepos")}</NativeSelectOption>
                 {repos.map((name) => (
-                  <option key={name} value={name}>
+                  <NativeSelectOption key={name} value={name}>
                     {name}
-                  </option>
+                  </NativeSelectOption>
                 ))}
-              </select>
+              </NativeSelect>
             </div>
           ) : null}
-          <div role="group" aria-label={t("view")} className="inline-flex w-fit rounded-lg border bg-muted/40 p-0.5">
-            {(
-              [
-                ["board", Columns3],
-                ["list", LayoutList],
-              ] as const
-            ).map(([id, Icon]) => (
-              <button
-                key={id}
-                type="button"
-                aria-pressed={view === id}
-                onClick={() => setView(id)}
-                className={cn(
-                  "inline-flex min-h-9 items-center gap-1.5 rounded-md px-3 text-sm font-medium transition-colors",
-                  view === id ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
-                )}
-                data-testid={`steps-view-${id}`}
-              >
-                <Icon className="size-4" aria-hidden="true" />
-                {t(id === "board" ? "viewBoard" : "viewList")}
-              </button>
-            ))}
-          </div>
+          <Segmented
+            label={t("view")}
+            value={view}
+            onChange={setView}
+            options={[
+              { value: "board", label: t("viewBoard"), icon: Columns3, testId: "steps-view-board" },
+              { value: "list", label: t("viewList"), icon: LayoutList, testId: "steps-view-list" },
+            ]}
+          />
         </div>
       </div>
       <p className="sr-only" aria-live="polite">

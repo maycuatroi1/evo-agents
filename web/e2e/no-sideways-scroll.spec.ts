@@ -2,18 +2,23 @@ import type { Page } from "@playwright/test";
 
 import { expect, type Member, test } from "./support/fixtures";
 import { ADMIN_ACCOUNT, machineToken } from "./support/hub";
+import { seedInsights } from "./support/insights";
 import { grantOn, kgPath, nodePath, SHARED_NODE, sharedKg } from "./support/kg";
 import { apiOf, memoryFile, putMemory } from "./support/memories";
 import { ACTIVE_PLAN, open, seedPlans } from "./support/plans";
 import {
+  askDecision,
   claimRun,
   dispatch,
   leaseCredentials,
   liveWorker,
+  planRunUnderway,
+  reportState,
   RUN_PLAN,
   runPath,
   runToReview,
   say,
+  seedPlanRunPlan,
   seedRunPlan,
   sendEvents,
   startRun,
@@ -27,8 +32,8 @@ import { heartbeat, registerWorker, RUNTIMES } from "./support/workers";
  * A table wider than the page scrolls inside its own region; the document itself never scrolls sideways. Step 25
  * found a wide table widening the shell's <main> at 768 and 1024 px, where the open sidebar leaves the content its
  * narrowest for the breakpoint; the shell's inset is min-w-0 since. The pages with the widest tables of each area
- * (admin, plans, memories, skills, knowledge graph, workers, secrets, runs), seeded with long unbroken names, at 375, 768 and 1024
- * px.
+ * (admin, plans, memories, skills, knowledge graph, workers, secrets, runs), Insights with its charts and a wide table,
+ * and Home, seeded with long unbroken names, at 375, 768 and 1024 px.
  */
 const WIDTHS = [375, 768, 1024];
 const LONG = "a-rather-long-unbroken-name-that-never-wraps-in-a-table-cell";
@@ -157,10 +162,50 @@ test("runs pages never scroll sideways at 375, 768 and 1024 px", async ({ page, 
     {
       path: runPath(project, run.id),
       ready: async (page) => {
-        await shown("log-line")(page);
+        await shown("trace-item")(page);
         await shown("run-lease-item")(page);
       },
     },
+    { path: `${runPath(project, run.id)}?view=log`, ready: shown("log-line") },
     { path: `${runPath(project, run.id)}/diff`, ready: shown("diff-file") },
+  ]);
+});
+
+test("home never scrolls sideways at 375, 768 and 1024 px", async ({ page, member }) => {
+  const me = await member([{ role: "writer", maxLevel: "internal" }]);
+  const project = me.projects[0];
+  // Long unbroken names in every card: a worker, a decision's question and a failure.
+  await seedPlanRunPlan(me, project);
+  const { live, run } = await planRunUnderway(me, project, `${LONG}-plan`, { waiting: true });
+  await askDecision(live, run.id, `${LONG}${LONG}?`, "4");
+  await seedRunPlan(me, project);
+  const step = await liveWorker(me, project, `${LONG}-step`);
+  const [failing] = await dispatch(me, project, ["2"]);
+  await claimRun(step);
+  await reportState(step, failing.id, { state: "failed", error: `${LONG}${LONG}${LONG}` });
+  await noSidewaysScroll(page, [{ path: "/", ready: shown("needs-you-item") }]);
+});
+
+test("insights never scroll sideways at 375, 768 and 1024 px, charts or tables", async ({ page, member }) => {
+  const me = await member([{ role: "writer", maxLevel: "internal" }]);
+  const project = me.projects[0];
+  await seedInsights(me, project);
+  await noSidewaysScroll(page, [
+    {
+      path: `/p/${project}/insights`,
+      ready: async (page) => {
+        for (const chart of ["outcomes", "failure", "duration", "tokens"]) {
+          await expect(page.locator("#main").getByTestId(`insights-${chart}-chart`).locator("svg.recharts-surface")).toBeVisible();
+        }
+      },
+    },
+    {
+      path: `/p/${project}/insights?days=90`,
+      ready: async (page) => {
+        // The widest table: tokens by type, six columns of figures.
+        await page.locator("#main").getByTestId("insights-tokens-view-table").click();
+        await shown("insights-tokens-table-region")(page);
+      },
+    },
   ]);
 });

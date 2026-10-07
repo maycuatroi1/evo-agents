@@ -7,6 +7,9 @@ import { useFormatter, useTranslations } from "next-intl";
 import { type ReactNode, useCallback, useMemo, useState } from "react";
 
 import { DataTable, dataTableColumns } from "@/components/data/data-table";
+import { NAME_LINK } from "@/components/data/identifier";
+import { VisibilityLevel } from "@/components/data/visibility";
+import { type Notice, notify } from "@/components/feedback/toast";
 import { projectHref } from "@/components/shell/nav";
 import { PageHeader } from "@/components/shell/page-header";
 import { RoleBadge } from "@/components/shell/role-badge";
@@ -18,6 +21,7 @@ import { browserApi } from "@/lib/api/browser";
 import type { Project } from "@/lib/api/client";
 import type { ApiErrorInfo } from "@/lib/api/errors";
 import { projectsQuery } from "@/lib/queries";
+import { cn } from "@/lib/utils";
 
 import { AuditTable } from "./audit-table";
 import { HubAdminBadge, NotSignedInBadge } from "./badges";
@@ -38,7 +42,7 @@ import {
   type UserGrant,
 } from "./data";
 import { GrantDialog, type GrantPreset } from "./grant-dialog";
-import { type Notice, NoticeArea, useNotice, useWriteFailure } from "./notice";
+import { useWriteFailure } from "./notice";
 import { TokensTable } from "./tokens-table";
 import { useAdminWrite } from "./use-admin-write";
 import { When } from "./when";
@@ -98,7 +102,7 @@ function GrantsTable({
         header: () => t("columns.project"),
         sortFn: "alphanumeric",
         cell: (info) => (
-          <Link href={projectHref(info.getValue())} className="font-mono text-sm font-medium text-primary underline-offset-4 hover:underline">
+          <Link href={projectHref(info.getValue())} className={cn(NAME_LINK, "font-mono text-sm")}>
             {info.getValue()}
           </Link>
         ),
@@ -109,15 +113,15 @@ function GrantsTable({
         cell: (info) => (
           <span className="flex flex-col items-start gap-1">
             <RoleBadge role={info.getValue()} />
-            {/* The level column is hidden on a phone: show the level here instead. */}
-            <span className="font-mono text-xs text-muted-foreground sm:hidden">{info.row.original.max_level}</span>
+            {/* The visibility column is hidden on a phone: show the visibility here instead. */}
+            <VisibilityLevel level={info.row.original.max_level} className="text-xs text-muted-foreground sm:hidden" />
           </span>
         ),
       }),
       helper.accessor("max_level", {
-        header: () => t("columns.maxLevel"),
+        header: () => t("columns.visibility"),
         enableSorting: false,
-        cell: (info) => <span className="font-mono text-xs">{info.getValue()}</span>,
+        cell: (info) => <VisibilityLevel level={info.getValue()} />,
       }),
       helper.accessor("granted_by", {
         header: () => t("columns.grantedBy"),
@@ -125,7 +129,7 @@ function GrantsTable({
         cell: (info) => {
           const by = info.getValue();
           return by ? (
-            <Link href={memberHref(by)} className="text-primary underline-offset-4 hover:underline">
+            <Link href={memberHref(by)} className="text-brand underline-offset-4 hover:underline">
               {by}
             </Link>
           ) : (
@@ -149,7 +153,6 @@ function GrantsTable({
               <Button
                 type="button"
                 variant="outline"
-                size="lg"
                 aria-label={t("changeLabel", names)}
                 onClick={() => onChange(grant)}
                 data-testid={`change-grant-${grant.project}`}
@@ -160,8 +163,7 @@ function GrantsTable({
               <Button
                 type="button"
                 variant="outline"
-                size="lg"
-                className="text-destructive hover:text-destructive"
+                className="text-danger hover:text-danger"
                 aria-label={t("revokeLabel", names)}
                 onClick={() => onRevoke(grant)}
                 data-testid={`revoke-grant-${grant.project}`}
@@ -213,12 +215,17 @@ function RevokeGrant({
       const failed = failure(error, { 404: t("notFound") });
       if (failed.status === 404) {
         onOpenChange(false);
-        onNotice({ tone: "error", text: failed.text });
+        onNotice({ tone: "error", text: t("failed", names), description: failed.text, requestId: failed.requestId });
       }
       return;
     }
     onOpenChange(false);
-    onNotice({ tone: "success", text: t("success", names) });
+    onNotice({
+      tone: "success",
+      text: t("successTitle", names),
+      description: t("success", names),
+      link: { label: t("openMember"), href: memberHref(login) },
+    });
   };
   return (
     <ConfirmAction
@@ -240,7 +247,7 @@ function RevokeGrant({
 function MemberView({ user, projects }: { user: AdminUser; projects: Project[] }) {
   const t = useTranslations("admin.member");
   const format = useFormatter();
-  const { notice, show: onNotice, clear } = useNotice();
+  const onNotice = notify;
   const tMembers = useTranslations("admin.members");
   const tTokens = useTranslations("admin.tokens");
   const tAudit = useTranslations("admin.audit");
@@ -278,26 +285,28 @@ function MemberView({ user, projects }: { user: AdminUser; projects: Project[] }
   return (
     <>
       <PageHeader
-        eyebrow={t("eyebrow")}
-        title={<span className="font-mono">{user.login}</span>}
-        description={t("summary", {
+        title={user.login}
+        tags={
+          user.admin || !user.signed_in ? (
+            <>
+              {user.admin ? <HubAdminBadge /> : null}
+              {!user.signed_in ? <NotSignedInBadge /> : null}
+            </>
+          ) : null
+        }
+        sub={t("summary", {
           created: format.dateTime(new Date(user.created_at), { dateStyle: "medium" }),
           lastSeen: user.last_seen_at
             ? format.dateTime(new Date(user.last_seen_at), { dateStyle: "medium", timeStyle: "short" })
             : tMembers("never"),
         })}
-        meta={
-          <>
-            {user.admin ? <HubAdminBadge /> : null}
-            {!user.signed_in ? <NotSignedInBadge /> : null}
-            <Button type="button" size="lg" onClick={grantNew} data-testid="grant-open">
-              <ShieldPlus aria-hidden="true" />
-              {tMembers("grant")}
-            </Button>
-          </>
+        actions={
+          <Button type="button" onClick={grantNew} data-testid="grant-open">
+            <ShieldPlus aria-hidden="true" />
+            {tMembers("grant")}
+          </Button>
         }
       />
-      <NoticeArea notice={notice} onDismiss={clear} />
       <Section
         id="member-grants-section"
         icon={FolderLock}
@@ -321,7 +330,7 @@ function MemberView({ user, projects }: { user: AdminUser; projects: Project[] }
         title={t("tokensTitle")}
         description={t("tokensDescription")}
         action={
-          <Button asChild variant="ghost" size="lg">
+          <Button asChild variant="ghost">
             <Link href={tokensHref({ login: user.login, state: "any" })}>
               {t("allTokens", { login: user.login })}
               <ArrowRight aria-hidden="true" />
@@ -345,7 +354,7 @@ function MemberView({ user, projects }: { user: AdminUser; projects: Project[] }
         title={t("activityTitle")}
         description={t("activityDescription")}
         action={
-          <Button asChild variant="ghost" size="lg">
+          <Button asChild variant="ghost">
             <Link href={auditHref({ actor: user.login })}>
               {t("allActivity")}
               <ArrowRight aria-hidden="true" />

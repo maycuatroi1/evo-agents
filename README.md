@@ -121,8 +121,8 @@ Hooks:
   off.
 
 The plugin needs [uv](https://docs.astral.sh/uv/) on `PATH` and pins the release it runs: the server
-starts with `uvx --from evo-ak==0.5.0 evo-agents`, which downloads and caches that version on first start. The hooks
-run `uvx --offline --from evo-ak==0.5.0 evo-agents`, so they never wait on the network; they stay silent when `uvx`
+starts with `uvx --from evo-ak==0.6.0 evo-agents`, which downloads and caches that version on first start. The hooks
+run `uvx --offline --from evo-ak==0.6.0 evo-agents`, so they never wait on the network; they stay silent when `uvx`
 is missing or until the server has cached the package.
 
 ### The team hub
@@ -207,6 +207,25 @@ and `evo-agents hub worker` need the server extra: `pip install 'evo-ak[hub-serv
 covers the API and its OpenAPI document, sign-in from the CLI and the web, who sees what, the plan copies in git,
 workers and runs, blobs on R2, the job worker and its queue, and operations: migrations, backup, restore and
 health checks.
+
+### The web
+
+The hub's web interface (`web/`) is where people read the hub, answer decisions and dispatch runs. From 0.6.0 it
+follows the evo-agents hub UI kit, in light and dark ([web/DESIGN.md](web/DESIGN.md)):
+
+- Home shows what waits on you, what runs, what ended lately and your workers, over every project you hold a grant
+  on, in one request (`GET /v1/me/overview`). You answer a decision in a sheet over it and rerun a failed step from
+  it.
+- A run's page draws its phases on a timeline and reads its events as a Trace: the agent's messages, its thinking,
+  and each tool call with its argument, exit code, duration and output. The raw log and the owner's terminal are
+  tabs beside it, and a usage card adds up the run's tokens by type with the cost the agent reported.
+- Insights charts a project's runs by day over 7, 30 or 90 days: outcomes, failure rate, run time and tokens
+  (`GET /v1/projects/{project}/runs/stats`), each chart with its table.
+- Administration lists what needs a hub admin (`GET /v1/admin/overview`): tokens expiring or unused, failed graph
+  builds, offline workers, people granted a role who have not signed in yet.
+- Cmd K or Ctrl K opens a command palette that jumps to runs, plans and workers and offers the actions your grants
+  allow. `?` lists the keyboard shortcuts: G then H, I, P, R or W to move, D to dispatch, / to search.
+- Under 768 px tables become lists, filters move into a sheet, and a decision is a screen of its own.
 
 ### Running steps on your machine
 

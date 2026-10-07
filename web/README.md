@@ -64,9 +64,10 @@ drops it when Playwright stops. Ports default to 3324 (web), 18324 (API) and 183
 `E2E_REUSE_SERVERS=1` to reuse servers that are already up. The API log is `e2e/.stack/hub-serve.log`.
 
 `E2E_SCREENSHOT_DIR=<dir>` turns on `e2e/screenshots.spec.ts`, `e2e/memories-skills-screenshots.spec.ts`,
-`e2e/kg-screenshots.spec.ts` and `e2e/runs-screenshots.spec.ts`, which write review screenshots of the shell, the
-memories, skills, knowledge graph and runs pages (a run's page and its diff, the Run plan dialog, a plan run's banner
-and page included) in light and dark (the memories, skills and runs ones also at 375 px).
+`e2e/kg-screenshots.spec.ts`, `e2e/runs-screenshots.spec.ts` and `e2e/insights-screenshots.spec.ts`, which write review
+screenshots of the shell, the memories, skills, knowledge graph, runs and Insights pages (a run's page and its diff, the
+Run plan dialog, a plan run's banner and page included) in light and dark (the memories, skills, runs and Insights ones
+also at 375 px).
 
 The runs specs are the worker themselves: they claim runs, report states and send events, messages and diffs with a
 worker token, as the daemon does (`e2e/support/runs.ts`), and `e2e/run-detail.spec.ts` checks the run page's live log

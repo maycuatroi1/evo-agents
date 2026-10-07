@@ -24,12 +24,12 @@ import { GraphCanvas, type LayoutName, LAYOUTS } from "./graph-canvas";
 import { NeighbourTable } from "./neighbour-table";
 
 const SEGMENT =
-  "inline-flex h-8 items-center rounded-md px-3 text-sm font-medium transition-colors hover:bg-muted hover:text-foreground";
+  "inline-flex h-8 items-center rounded-sm px-3 text-sm font-medium transition-colors hover:bg-muted hover:text-foreground";
 
 function HopsToggle({ project, id, hops }: { project: string; id: string; hops: Hops }) {
   const t = useTranslations("kg.graph");
   return (
-    <div role="group" aria-label={t("hops")} className="inline-flex rounded-lg border bg-card p-0.5" data-testid="kg-hops">
+    <div role="group" aria-label={t("hops")} className="inline-flex rounded-md border bg-card p-0.5" data-testid="kg-hops">
       {([1, 2] as const).map((value) => (
         <Link
           key={value}
@@ -58,7 +58,7 @@ function Legend({ nodes }: { nodes: GraphNode[] }) {
           </li>
         ))}
         <li className="inline-flex items-center gap-1.5">
-          <span className="size-3 rounded-full border-[3px] border-primary" aria-hidden="true" />
+          <span className="size-3 rounded-full border-[3px] border-brand" aria-hidden="true" />
           {t("legendFocus")}
         </li>
         <li className="inline-flex items-center gap-1.5">
@@ -113,7 +113,7 @@ function View({ project, view }: { project: string; view: Neighbourhood }) {
                 id="kg-layout"
                 value={layout}
                 onChange={(event) => setLayout(event.target.value as LayoutName)}
-                className="h-8 cursor-pointer rounded-lg border border-input bg-transparent px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
+                className="h-8 cursor-pointer rounded-md border border-input bg-transparent px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
               >
                 {LAYOUTS.map((value) => (
                   <option key={value} value={value}>
@@ -137,7 +137,7 @@ function View({ project, view }: { project: string; view: Neighbourhood }) {
           <Legend nodes={view.nodes} />
         </div>
         <div className="flex min-w-0 flex-col gap-3">
-          <p className="flex items-start gap-2 rounded-lg border border-dashed px-3 py-2 text-xs text-muted-foreground md:hidden">
+          <p className="flex items-start gap-2 rounded-md border border-dashed px-3 py-2 text-xs text-muted-foreground md:hidden">
             <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
             {t("smallScreen")}
           </p>
@@ -177,7 +177,7 @@ export function NeighbourhoodSection({
           <HopsToggle project={project} id={id} hops={hops} />
         </CardHeader>
         <CardContent>
-          <QueryView state={state} loading={<Skeleton className="h-[28rem] w-full rounded-lg" />}>
+          <QueryView state={state} loading={<Skeleton className="h-[28rem] w-full rounded-md" />}>
             {(view) => <View key={`${view.focus}:${view.hops}`} project={project} view={view} />}
           </QueryView>
         </CardContent>

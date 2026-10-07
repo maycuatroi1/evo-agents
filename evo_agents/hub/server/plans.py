@@ -266,13 +266,20 @@ async def _visible(conn, access: ProjectAccess, plan_id: str, sink: str | None, 
     return held
 
 
-LIST_PLANS = """
-SELECT p.plan_id, p.area, p.label, p.revision, p.digest, p.body ->> 'title', p.updated_at, u.login,
-       CASE WHEN jsonb_typeof(p.body -> 'steps') = 'array' THEN jsonb_array_length(p.body -> 'steps') ELSE 0 END,
-       CASE WHEN jsonb_typeof(p.body -> 'steps') = 'array'
-            THEN (SELECT count(*) FROM jsonb_array_elements(p.body -> 'steps') s
+def step_counts(body: str) -> str:
+    """Two SQL columns over the plan body the expression ``body`` names: how many steps it has, and how many of them
+    are done, as GET .../plans and GET /v1/me/overview count them."""
+    steps = f"{body} -> 'steps'"
+    return f"""CASE WHEN jsonb_typeof({steps}) = 'array' THEN jsonb_array_length({steps}) ELSE 0 END,
+       CASE WHEN jsonb_typeof({steps}) = 'array'
+            THEN (SELECT count(*) FROM jsonb_array_elements({steps}) s
                    WHERE jsonb_typeof(s) = 'object' AND s ->> 'status' = 'done')
-            ELSE 0 END
+            ELSE 0 END"""
+
+
+LIST_PLANS = f"""
+SELECT p.plan_id, p.area, p.label, p.revision, p.digest, p.body ->> 'title', p.updated_at, u.login,
+       {step_counts("p.body")}
   FROM plans p JOIN users u ON u.id = p.updated_by
  WHERE p.project_id = %(project)s AND (%(area)s::text IS NULL OR p.area = %(area)s)
  ORDER BY p.plan_id

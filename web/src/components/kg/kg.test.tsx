@@ -17,7 +17,11 @@ import { KgNodePage } from "./kg-node-page";
 import { KgOverview } from "./kg-overview";
 import { NeighbourhoodSection } from "./neighbourhood";
 
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }), usePathname: () => "/p/demo/kg" }));
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn() }),
+  usePathname: () => "/p/demo/kg",
+  useSearchParams: () => new URLSearchParams(),
+}));
 
 const label = { level: "internal", location: "any", integrity: "U" };
 const node = (id: string, hop: number, name: string, kind = "Section"): GraphNode => ({

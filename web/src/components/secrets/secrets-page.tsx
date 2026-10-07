@@ -1,17 +1,19 @@
 "use client";
 
-import { CalendarX, GitBranch, LockKeyhole, Plus, RefreshCw, Trash2, Variable } from "lucide-react";
+import { GitBranch, Hourglass, LockKeyhole, Plus, RefreshCw, Trash2, Variable } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 
 import { ConfirmAction } from "@/components/admin/confirm-action";
-import { NoticeArea, type Notice, useNotice } from "@/components/admin/notice";
 import { When } from "@/components/admin/when";
-import { DataTable, dataTableColumns } from "@/components/data/data-table";
+import { DataCard } from "@/components/data/data-card";
+import { CellMain, DataTable, dataTableColumns } from "@/components/data/data-table";
+import { Tag } from "@/components/data/identifier";
+import { notify, notifyFailure } from "@/components/feedback/toast";
 import { useNow } from "@/components/kg/use-now";
 import { PageHeader } from "@/components/shell/page-header";
 import { QueryView, useHubQuery } from "@/components/states/query-view";
-import { EmptyState, PageSkeleton } from "@/components/states/states";
+import { EmptyState, TableSkeleton } from "@/components/states/states";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ChipList } from "@/components/workers/badges";
@@ -33,32 +35,34 @@ const NARROW_HIDDEN = {
 
 const KIND_ICONS: Record<SecretKind, typeof Variable> = { env: Variable, git: GitBranch };
 
-/** A secret's kind as an icon and a word. */
+/** A secret's kind as a tag, an icon and a word: it names what the secret is, never a state. */
 export function SecretKindBadge({ kind }: { kind: SecretKind }) {
   const t = useTranslations("secrets.kind");
   const Icon = KIND_ICONS[kind];
   return (
-    <Badge variant="secondary" data-kind={kind} data-testid="secret-kind-badge">
+    <Tag data-kind={kind} data-testid="secret-kind-badge">
       <Icon aria-hidden="true" />
       {t(kind)}
-    </Badge>
+    </Tag>
   );
 }
 
-/** What the secret is for: the variable it sets, or the origins it answers for and the user git sends. */
-function Target({ secret }: { secret: Secret }) {
+const MONO = (chunks: ReactNode) => <span className="font-mono">{chunks}</span>;
+const PLAIN = (chunks: string) => chunks;
+
+/**
+ * What the secret is for, the row's second line: the variable it sets, or the origins it answers for and the user git
+ * sends, with the same words as its tooltip.
+ */
+function useTarget() {
   const t = useTranslations("secrets");
-  if (secret.kind === "env") {
-    return <span className="font-mono text-xs text-muted-foreground [overflow-wrap:anywhere]">{secret.env_var}</span>;
-  }
-  return (
-    <span className="text-xs text-muted-foreground [overflow-wrap:anywhere]">
-      {t.rich("gitTarget", {
-        prefix: secret.url_prefix ?? "",
-        user: secret.username ?? "",
-        code: (chunks) => <span className="font-mono">{chunks}</span>,
-      })}
-    </span>
+  return useCallback(
+    (secret: Secret): { text: string; shown: ReactNode } => {
+      if (secret.kind === "env") return { text: secret.env_var ?? "", shown: MONO(secret.env_var ?? "") };
+      const values = { prefix: secret.url_prefix ?? "", user: secret.username ?? "" };
+      return { text: t.markup("gitTarget", { ...values, code: PLAIN }), shown: t.rich("gitTarget", { ...values, code: MONO }) };
+    },
+    [t],
   );
 }
 
@@ -66,18 +70,31 @@ function Target({ secret }: { secret: Secret }) {
 function Expiry({ secret }: { secret: Secret }) {
   const t = useTranslations("secrets");
   const now = useNow(secret.expires_at !== null);
-  if (!secret.expires_at) return <span className="text-xs text-muted-foreground">{t("never")}</span>;
+  if (!secret.expires_at) return <span className="text-fg-subtle">{t("never")}</span>;
   const expired = now !== null && isExpired(secret, now);
   return (
-    <span className="flex flex-col items-start gap-1">
+    <span className="inline-flex flex-col items-end gap-1">
       <When value={secret.expires_at} short />
       {expired ? (
         <Badge variant="warning" data-testid="secret-expired">
-          <CalendarX aria-hidden="true" />
+          <Hourglass aria-hidden="true" />
           {t("expired")}
         </Badge>
       ) : null}
     </span>
+  );
+}
+
+/** Expired, beside a secret's name in a phone's list, once its end is past by the browser's clock. */
+function MobileExpired({ secret }: { secret: Secret }) {
+  const t = useTranslations("secrets");
+  const now = useNow(secret.expires_at !== null);
+  if (now === null || !isExpired(secret, now)) return null;
+  return (
+    <Badge variant="warning" data-testid="secret-expired">
+      <Hourglass aria-hidden="true" />
+      {t("expired")}
+    </Badge>
   );
 }
 
@@ -91,19 +108,23 @@ function SecretsTable({
   onDelete: (secret: Secret) => void;
 }) {
   const t = useTranslations("secrets");
+  const targetOf = useTarget();
   const columns = useMemo(() => {
     const helper = dataTableColumns<Secret>();
     return helper.columns([
       helper.accessor("name", {
         header: () => t("columns.secret"),
         sortFn: "alphanumeric",
+        meta: { primary: true },
         cell: (info) => {
           const secret = info.row.original;
+          const target = targetOf(secret);
           return (
-            <div className="flex min-w-36 flex-col gap-0.5 py-0.5 whitespace-normal sm:min-w-48" data-secret-name={secret.name}>
-              <span className="font-mono text-sm font-medium [overflow-wrap:anywhere]">{secret.name}</span>
-              <Target secret={secret} />
-            </div>
+            <CellMain sub={target.shown} subTitle={target.text} subTestId="secret-target">
+              <span className="truncate font-mono text-[13px]" title={secret.name} data-secret-name={secret.name}>
+                {secret.name}
+              </span>
+            </CellMain>
           );
         },
       }),
@@ -126,25 +147,28 @@ function SecretsTable({
         id: "expires",
         header: () => t("columns.expires"),
         sortFn: "datetime",
+        meta: { numeric: true },
         cell: (info) => <Expiry secret={info.row.original} />,
       }),
       helper.accessor((row) => new Date(row.updated_at), {
         id: "updated",
         header: () => t("columns.updated"),
         sortFn: "datetime",
+        meta: { numeric: true },
         cell: (info) => <When value={info.row.original.updated_at} short />,
       }),
       helper.display({
         id: "actions",
         header: () => <span className="sr-only">{t("columns.actions")}</span>,
+        meta: { actions: true },
         cell: (info) => {
           const secret = info.row.original;
           return (
-            <div className="flex flex-nowrap justify-end gap-2">
+            <>
               <Button
                 type="button"
-                variant="outline"
-                size="lg"
+                variant="ghost"
+                size="sm"
                 aria-label={t("replaceLabel", { name: secret.name })}
                 onClick={() => onReplace(secret)}
                 data-testid="secret-replace"
@@ -154,9 +178,8 @@ function SecretsTable({
               </Button>
               <Button
                 type="button"
-                variant="outline"
-                size="lg"
-                className="text-destructive hover:text-destructive"
+                variant="quiet-danger"
+                size="sm"
                 aria-label={t("deleteLabel", { name: secret.name })}
                 onClick={() => onDelete(secret)}
                 data-testid="secret-delete"
@@ -164,12 +187,12 @@ function SecretsTable({
                 <Trash2 aria-hidden="true" />
                 <span className="hidden sm:inline">{t("delete")}</span>
               </Button>
-            </div>
+            </>
           );
         },
       }),
     ]);
-  }, [t, onReplace, onDelete]);
+  }, [t, targetOf, onReplace, onDelete]);
 
   return (
     <DataTable
@@ -180,21 +203,52 @@ function SecretsTable({
       initialSorting={[{ id: "name", desc: false }]}
       columnClassNames={NARROW_HIDDEN}
       testId="secrets-table"
+      // On a phone: the name, its kind, what it sets, Expired once past, and Replace and Delete as icons with their
+      // names. A secret has no page of its own; where it applies is in its Replace form.
+      mobile={(secret) => {
+        const target = targetOf(secret);
+        return {
+          title: secret.name,
+          titleText: secret.name,
+          titleClassName: "font-mono text-[13px]",
+          tags: <MobileExpired secret={secret} />,
+          status: <SecretKindBadge kind={secret.kind} />,
+          meta: target.shown,
+          metaText: target.text,
+          actions: (
+            <>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                aria-label={t("replaceLabel", { name: secret.name })}
+                title={t("replaceLabel", { name: secret.name })}
+                onClick={() => onReplace(secret)}
+                data-testid="secret-replace"
+              >
+                <RefreshCw aria-hidden="true" />
+              </Button>
+              <Button
+                type="button"
+                variant="quiet-danger"
+                size="icon"
+                aria-label={t("deleteLabel", { name: secret.name })}
+                title={t("deleteLabel", { name: secret.name })}
+                onClick={() => onDelete(secret)}
+                data-testid="secret-delete"
+              >
+                <Trash2 aria-hidden="true" />
+              </Button>
+            </>
+          ),
+          data: { "secret-name": secret.name },
+        };
+      }}
     />
   );
 }
 
-function DeleteSecret({
-  secret,
-  open,
-  onOpenChange,
-  onNotice,
-}: {
-  secret: Secret | null;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  onNotice: (notice: Notice) => void;
-}) {
+function DeleteSecret({ secret, open, onOpenChange }: { secret: Secret | null; open: boolean; onOpenChange: (open: boolean) => void }) {
   const t = useTranslations("secrets.deleteDialog");
   const failure = useSecretFailure();
   const write = useDeleteSecret();
@@ -210,13 +264,13 @@ function DeleteSecret({
     } catch (error) {
       const failed = failure(error, { 404: t("notFound") });
       if (failed.status === 404) {
-        onOpenChange(false); // nothing left to delete: say so on the page, over the reloaded list
-        onNotice({ tone: "error", text: failed.text });
+        onOpenChange(false); // nothing left to delete: say so in a toast, over the reloaded list
+        notifyFailure(t("failed", { name: secret.name }), failed);
       }
       return; // anything else is shown in the dialog, which stays open
     }
     onOpenChange(false);
-    onNotice({ tone: "success", text: t("success", { name: secret.name }) });
+    notify({ tone: "success", text: t("success", { name: secret.name }), description: t("successText") });
   };
 
   const error = write.isError && open ? failure(write.error, { 404: t("notFound") }) : null;
@@ -245,12 +299,12 @@ function DeleteSecret({
 
 /**
  * The visitor's secrets: what each one is for, where it goes and when it ends, never its value. Add opens an empty
- * form; Replace opens the form of a secret without its value, which the visitor types again; Delete asks first.
+ * form; Replace opens the form of a secret without its value, which the visitor types again; Delete asks first. Each
+ * result is a toast.
  */
 export function SecretsPage({ initialError }: { initialError: ApiErrorInfo | null }) {
   const t = useTranslations("secrets");
   const state = useHubQuery(secretsQuery(browserApi), initialError);
-  const { notice, show, clear } = useNotice();
   const [editing, setEditing] = useState<{ open: boolean; secret: Secret | null }>({ open: false, secret: null });
   const [deleting, setDeleting] = useState<{ open: boolean; secret: Secret | null }>({ open: false, secret: null });
   const secrets = state.status === "success" ? state.data : null;
@@ -263,44 +317,39 @@ export function SecretsPage({ initialError }: { initialError: ApiErrorInfo | nul
   return (
     <>
       <PageHeader
-        eyebrow={t("eyebrow")}
         title={t("title")}
-        description={t("description")}
-        meta={
-          <>
-            {secrets ? <Badge variant="secondary">{t("count", { count: secrets.length })}</Badge> : null}
-            <Button size="lg" onClick={add} data-testid="secrets-add">
-              <Plus aria-hidden="true" />
-              {t("addButton")}
-            </Button>
-          </>
+        tags={secrets ? <Badge variant="secondary">{t("count", { count: secrets.length })}</Badge> : null}
+        actions={
+          <Button onClick={add} data-testid="secrets-add">
+            <Plus aria-hidden="true" />
+            {t("addButton")}
+          </Button>
         }
+        sub={secrets && secrets.length > 0 ? <span data-testid="secrets-list-summary">{t("listSummary", { count: secrets.length })}</span> : null}
       />
-      <NoticeArea notice={notice} onDismiss={clear} />
-      <QueryView state={state} loading={<PageSkeleton />}>
+      <QueryView state={state} loading={<TableSkeleton rows={4} />}>
         {(list) =>
           list.length === 0 ? (
             <EmptyState
               icon={LockKeyhole}
               title={t("empty.title")}
               description={t.rich("empty.description", {
-                code: (chunks) => <code className="rounded bg-muted px-1 font-mono text-xs text-foreground">{chunks}</code>,
+                code: (chunks) => <code className="rounded-xs bg-muted px-1 font-mono text-xs text-foreground">{chunks}</code>,
               })}
             >
-              <Button size="lg" onClick={add} data-testid="secrets-empty-add">
+              <Button onClick={add} data-testid="secrets-empty-add">
                 <Plus aria-hidden="true" />
                 {t("addButton")}
               </Button>
             </EmptyState>
           ) : (
-            <section aria-labelledby="secrets-list-title" className="flex flex-col gap-3">
+            <section aria-labelledby="secrets-list-title">
               <h2 id="secrets-list-title" className="sr-only">
                 {t("caption")}
               </h2>
-              <p className="text-sm text-pretty text-muted-foreground" data-testid="secrets-list-summary">
-                {t("listSummary", { count: list.length })}
-              </p>
-              <SecretsTable secrets={list} onReplace={replace} onDelete={remove} />
+              <DataCard>
+                <SecretsTable secrets={list} onReplace={replace} onDelete={remove} />
+              </DataCard>
             </section>
           )
         }
@@ -310,13 +359,12 @@ export function SecretsPage({ initialError }: { initialError: ApiErrorInfo | nul
         onOpenChange={(open) => setEditing((current) => ({ ...current, open }))}
         secret={editing.secret}
         taken={names}
-        onSaved={show}
+        onSaved={notify}
       />
       <DeleteSecret
         secret={deleting.secret}
         open={deleting.open}
         onOpenChange={(open) => setDeleting((current) => ({ ...current, open }))}
-        onNotice={show}
       />
     </>
   );

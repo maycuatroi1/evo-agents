@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, Check, ChevronDown, GitBranch, GitCommitHorizontal, Loader2, MessageCircleQuestionMark } from "lucide-react";
+import { ArrowRight, Check, ChevronDown, GitBranch, GitCommitHorizontal, MessageCircleQuestionMark } from "lucide-react";
 import type { Route } from "next";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
@@ -8,11 +8,12 @@ import { type MouseEvent, useId, useState } from "react";
 
 import { Prose } from "@/components/plans/prose";
 import { runHref } from "@/components/runs/queries";
+import { StatusBadge } from "@/components/status/status-badge";
 import { Button } from "@/components/ui/button";
 import { Ago } from "@/components/workers/ago";
 import { cn } from "@/lib/utils";
 
-import { DecisionStateBadge, NOTICE_LOOK, NoticeKindBadge } from "./badges";
+import { NOTICE_LOOK, NoticeKindBadge } from "./badges";
 import { COMMITS_SHOWN, isBranchNotice, isOpenDecision, noticeFacts, shortCommit } from "./model";
 import type { Notification } from "./queries";
 
@@ -35,14 +36,14 @@ function FoldedText({ text }: { text: string }) {
         <Button
           type="button"
           variant="link"
-          size="xs"
-          className="h-auto px-0"
+          size="sm"
+          className="h-auto px-0 text-xs"
           aria-expanded={open}
           aria-controls={`${ids}-body`}
           onClick={() => setOpen(!open)}
           data-testid="notification-body-toggle"
         >
-          <ChevronDown className={cn("transition-transform duration-150 motion-reduce:transition-none", open && "rotate-180")} aria-hidden="true" />
+          <ChevronDown className={cn("transition-transform duration-base motion-reduce:transition-none", open && "rotate-180")} aria-hidden="true" />
           {open ? t("showLess") : t("showMore")}
         </Button>
       ) : null}
@@ -83,7 +84,7 @@ function BranchFacts({ notification }: { notification: Notification }) {
           <dd className="min-w-0">
             <ul className="flex flex-wrap items-center gap-1.5" data-testid="notice-commits">
               {shown.map((sha) => (
-                <li key={sha} className="inline-flex items-center gap-1 rounded border bg-muted/40 px-1.5 py-0.5 font-mono" data-sha={sha}>
+                <li key={sha} className="inline-flex h-5 items-center gap-1 rounded-xs bg-surface-sunken px-1.5 font-mono text-muted-foreground" data-sha={sha}>
                   <GitCommitHorizontal className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
                   <span title={sha}>{shortCommit(sha)}</span>
                   <span className="sr-only">{t("commitFull", { sha })}</span>
@@ -91,7 +92,7 @@ function BranchFacts({ notification }: { notification: Notification }) {
               ))}
               {more > 0 || all ? (
                 <li>
-                  <Button type="button" variant="link" size="xs" className="h-auto px-0" aria-expanded={all} onClick={() => setAll(!all)} data-testid="notice-commits-toggle">
+                  <Button type="button" variant="link" size="sm" className="h-auto px-0 text-xs" aria-expanded={all} onClick={() => setAll(!all)} data-testid="notice-commits-toggle">
                     {all ? t("fewerCommits") : t("moreCommits", { count: more })}
                   </Button>
                 </li>
@@ -112,9 +113,9 @@ function noticeHref(notification: Notification): Route | null {
 }
 
 /**
- * One notification of the Inbox. A decision opens beside the list (its title is a link to `/inbox?decision=ID`, which
- * `onOpenDecision` follows without leaving the page); a notice links to its run. An unread one is marked by a dot, a
- * heavier title and the words "Unread" for screen readers, and offers Mark as read.
+ * One notification of the Inbox. A decision opens in a sheet over the list (its title is a link to
+ * `/inbox?decision=ID`, which `onOpenDecision` follows without leaving the page); a notice links to its run. An unread
+ * one is marked by a dot, a heavier title and the words "Unread" for screen readers, and offers Mark as read.
  */
 export function NotificationItem({
   notification,
@@ -149,9 +150,9 @@ export function NotificationItem({
   return (
     <li
       className={cn(
-        "relative flex min-w-0 gap-3 rounded-xl border bg-card px-3.5 py-3 transition-colors sm:px-4",
-        selected && "border-primary/50 ring-1 ring-primary/30",
-        !selected && unread && "border-primary/25",
+        "relative flex min-w-0 gap-3 rounded-md border bg-card shadow-raised px-3.5 py-3 transition-colors sm:px-4",
+        selected && "border-brand/50 bg-surface-selected ring-1 ring-brand/30",
+        !selected && unread && "border-brand/25",
       )}
       aria-current={selected ? "true" : undefined}
       data-testid="notification"
@@ -165,7 +166,7 @@ export function NotificationItem({
       <span
         className={cn(
           "mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full",
-          open ? "bg-warning text-warning-foreground" : "bg-muted text-muted-foreground",
+          open ? "bg-attention-soft text-attention" : "bg-muted text-muted-foreground",
         )}
         aria-hidden="true"
       >
@@ -174,12 +175,12 @@ export function NotificationItem({
       <div className="flex min-w-0 flex-1 flex-col gap-1.5">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
           {unread ? (
-            <span className="inline-flex items-center gap-1.5 font-medium text-primary" data-testid="notification-unread">
-              <span className="size-2 rounded-full bg-primary" aria-hidden="true" />
+            <span className="inline-flex items-center gap-1.5 font-medium text-brand" data-testid="notification-unread">
+              <span className="size-2 rounded-full bg-brand" aria-hidden="true" />
               {t("unread")}
             </span>
           ) : null}
-          {decision && notification.decision_state ? <DecisionStateBadge state={notification.decision_state} /> : null}
+          {decision && notification.decision_state ? <StatusBadge kind="decision" status={notification.decision_state} /> : null}
           {!decision && notification.notice_kind ? <NoticeKindBadge kind={notification.notice_kind} /> : null}
           {notification.project ? <span className="font-mono [overflow-wrap:anywhere]">{notification.project}</span> : null}
           <Ago value={notification.created_at} never="-" />
@@ -189,7 +190,7 @@ export function NotificationItem({
             href={href}
             onClick={follow}
             className={cn(
-              "text-sm text-pretty text-foreground underline-offset-4 [overflow-wrap:anywhere] hover:text-primary hover:underline",
+              "text-sm text-pretty text-foreground underline-offset-4 [overflow-wrap:anywhere] hover:text-brand hover:underline",
               unread ? "font-semibold" : "font-medium",
             )}
             data-testid="notification-open"
@@ -219,7 +220,7 @@ export function NotificationItem({
               onClick={() => {
                 if (unread) onRead(notification.id);
               }}
-              className="inline-flex min-h-7 items-center gap-1 text-sm font-medium text-primary underline-offset-4 hover:underline"
+              className="inline-flex min-h-7 items-center gap-1 text-sm font-medium text-brand underline-offset-4 hover:underline"
               data-testid="notification-run-link"
             >
               {t("openRun", { id: notification.run_id })}
@@ -229,7 +230,7 @@ export function NotificationItem({
           {decision && notification.run_id !== null && notification.project ? (
             <Link
               href={runHref(notification.project, notification.run_id)}
-              className="inline-flex min-h-7 items-center gap-1 text-sm text-primary underline-offset-4 hover:underline"
+              className="inline-flex min-h-7 items-center gap-1 text-sm text-brand underline-offset-4 hover:underline"
               data-testid="notification-run-link"
             >
               {t("openRun", { id: notification.run_id })}
@@ -242,14 +243,14 @@ export function NotificationItem({
               variant="ghost"
               size="sm"
               className="ml-auto aria-disabled:opacity-60"
-              aria-disabled={reading || undefined}
+              busy={reading}
               aria-label={t("markReadLabel", { title: notification.title })}
               onClick={() => {
                 if (!reading) onRead(notification.id);
               }}
               data-testid="notification-mark-read"
             >
-              {reading ? <Loader2 className="animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <Check aria-hidden="true" />}
+              <Check aria-hidden="true" />
               {t("markRead")}
             </Button>
           ) : null}

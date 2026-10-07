@@ -8,11 +8,12 @@ import { useId, useState } from "react";
 
 import { QueryView, useHubQuery } from "@/components/states/query-view";
 import { ApiErrorState, LoadingState, PageSkeleton, TableSkeleton } from "@/components/states/states";
+import { StatusBadge } from "@/components/status/status-badge";
 import { Button } from "@/components/ui/button";
 import { browserApi } from "@/lib/api/browser";
 import type { ApiErrorInfo } from "@/lib/api/errors";
 import { planDiffQuery, planQuery, planRevisionsQuery } from "@/lib/plan-queries";
-import { comparedPair, type Plan, type PlanRevision, previousRevision } from "@/lib/plans";
+import { comparedPair, type Plan, type PlanRevision, planState, previousRevision } from "@/lib/plans";
 import { cn } from "@/lib/utils";
 
 import { revisionsHref } from "./links";
@@ -20,7 +21,6 @@ import { DiffView } from "./plan-diff";
 import { PlanHeader, ReadOnlyNotice } from "./plan-header";
 import { PlanNotFound } from "./plan-not-found";
 import { VERBATIM_MONO } from "./prose";
-import { AreaBadge } from "./status";
 
 /** The history shows this many revisions before "show all"; a busy plan has hundreds. */
 const HISTORY_LIMIT = 20;
@@ -40,7 +40,7 @@ function CompareForm({ project, planId, revisions, pair }: { project: string; pl
   const t = useTranslations("plans.history");
   const fromId = useId();
   const toId = useId();
-  const select = "h-10 w-full rounded-lg border border-input bg-background px-2.5 font-mono text-sm";
+  const select = "h-10 w-full rounded-md border border-input bg-background px-2.5 font-mono text-sm";
   const options = revisions.map((revision) => (
     <option key={revision.revision} value={revision.revision}>
       {t("option", { revision: revision.revision, login: revision.actor })}
@@ -49,7 +49,7 @@ function CompareForm({ project, planId, revisions, pair }: { project: string; pl
   return (
     <Form
       action={revisionsHref(project, planId)}
-      className="flex flex-col gap-3 rounded-xl border bg-card p-4 sm:flex-row sm:items-end"
+      className="flex flex-col gap-3 rounded-md border bg-card shadow-raised p-4 sm:flex-row sm:items-end"
       aria-label={t("compareLabel")}
       data-testid="compare-form"
     >
@@ -70,7 +70,7 @@ function CompareForm({ project, planId, revisions, pair }: { project: string; pl
           {options}
         </select>
       </div>
-      <Button type="submit" size="lg" className="h-10 px-4" data-testid="compare-submit">
+      <Button type="submit" size="lg" data-testid="compare-submit">
         <GitCompareArrows aria-hidden="true" />
         {t("compare")}
       </Button>
@@ -81,7 +81,7 @@ function CompareForm({ project, planId, revisions, pair }: { project: string; pl
 function RevisionMeta({ revision, label }: { revision: PlanRevision; label: string }) {
   const t = useTranslations("plans.history");
   return (
-    <div className="flex min-w-0 flex-1 flex-col gap-1 rounded-lg border bg-card px-3 py-2.5">
+    <div className="flex min-w-0 flex-1 flex-col gap-1 rounded-md border bg-card px-3 py-2.5">
       <span className="text-xs text-muted-foreground">{label}</span>
       <span className="font-mono text-sm font-medium">{t("revision", { revision: revision.revision })}</span>
       <span className="text-xs text-muted-foreground">
@@ -98,15 +98,15 @@ function Comparison({ project, planId, revisions, pair }: { project: string; pla
   const state = useHubQuery({ ...planDiffQuery(browserApi, project, planId, pair.from, pair.to), enabled: !same });
   return (
     <section aria-labelledby="plan-diff-title" className="flex min-w-0 flex-col gap-3">
-      <h2 id="plan-diff-title" className="text-base font-medium" data-testid="diff-title">
+      <h2 id="plan-diff-title" className="text-[15px] leading-[22px] font-semibold" data-testid="diff-title">
         {same ? t("compareTitle") : t("diffTitle", { from: pair.from, to: pair.to })}
       </h2>
       {revisions.length < 2 ? (
-        <p className="rounded-lg border border-dashed bg-card px-4 py-6 text-center text-sm text-muted-foreground">
+        <p className="rounded-md border border-dashed bg-card px-4 py-6 text-center text-sm text-muted-foreground">
           {t("onlyOne")}
         </p>
       ) : same ? (
-        <p className="rounded-lg border border-dashed bg-card px-4 py-6 text-center text-sm text-muted-foreground" data-testid="diff-same">
+        <p className="rounded-md border border-dashed bg-card px-4 py-6 text-center text-sm text-muted-foreground" data-testid="diff-same">
           {t("sameRevision")}
         </p>
       ) : (
@@ -134,7 +134,7 @@ function HistoryList({ project, planId, revisions, pair }: { project: string; pl
   const shown = all ? newest : newest.slice(0, HISTORY_LIMIT);
   return (
     <section aria-labelledby="plan-history-title" className="flex min-w-0 flex-col gap-3">
-      <h2 id="plan-history-title" className="flex items-center gap-2 text-base font-medium">
+      <h2 id="plan-history-title" className="flex items-center gap-2 text-[15px] leading-[22px] font-semibold">
         <History className="size-4 text-muted-foreground" aria-hidden="true" />
         {t("title")}
         <span className="font-mono text-xs text-muted-foreground tabular-nums">{revisions.length}</span>
@@ -149,8 +149,8 @@ function HistoryList({ project, planId, revisions, pair }: { project: string; pl
             <li
               key={revision.revision}
               className={cn(
-                "flex flex-col gap-1 rounded-lg border bg-card px-3 py-2.5",
-                current ? "border-primary/50 bg-accent/60" : null,
+                "flex flex-col gap-1 rounded-md border bg-card px-3 py-2.5",
+                current ? "border-brand/50 bg-surface-selected" : null,
               )}
               aria-current={current ? "true" : undefined}
               data-testid="revision-item"
@@ -158,7 +158,7 @@ function HistoryList({ project, planId, revisions, pair }: { project: string; pl
             >
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="font-mono text-sm font-medium">{t("revision", { revision: revision.revision })}</span>
-                {moved ? <AreaBadge area={revision.area} /> : null}
+                {moved ? <StatusBadge kind="plan" status={planState(revision.area, null)} /> : null}
               </div>
               <p className={cn(VERBATIM_MONO, "text-xs [overflow-wrap:anywhere]")} data-testid="revision-summary">
                 {revision.summary}
@@ -176,7 +176,7 @@ function HistoryList({ project, planId, revisions, pair }: { project: string; pl
                 ) : (
                   <Link
                     href={revisionsHref(project, planId, { from: previous, to: revision.revision })}
-                    className="w-fit rounded text-xs font-medium text-primary underline-offset-4 hover:underline"
+                    className="w-fit rounded text-xs font-medium text-brand underline-offset-4 hover:underline"
                     data-testid="revision-compare"
                   >
                     {t("compareWithPrevious", { previous, revision: revision.revision })}
@@ -190,7 +190,7 @@ function HistoryList({ project, planId, revisions, pair }: { project: string; pl
         })}
       </ol>
       {newest.length > HISTORY_LIMIT ? (
-        <Button variant="outline" size="lg" aria-expanded={all} aria-controls={listId} onClick={() => setAll((value) => !value)}>
+        <Button variant="outline" aria-expanded={all} aria-controls={listId} onClick={() => setAll((value) => !value)}>
           {all ? t("showFewer") : t("showAll", { count: newest.length })}
         </Button>
       ) : null}

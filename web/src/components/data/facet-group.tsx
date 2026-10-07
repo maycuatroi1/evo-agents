@@ -5,6 +5,8 @@ import { useId } from "react";
 
 import { cn } from "@/lib/utils";
 
+import { useInFilterSheet } from "./filter-sheet";
+
 export type FacetOption = {
   /** null is "all". */
   value: string | null;
@@ -17,6 +19,8 @@ export type FacetOption = {
 
 type FacetGroupProps = {
   label: string;
+  /** Show the label before the chips, where a toolbar holds more than one group; otherwise it only names the group. */
+  showLabel?: boolean;
   options: FacetOption[];
   selected: string | null;
   onSelect: (value: string | null) => void;
@@ -26,17 +30,34 @@ type FacetGroupProps = {
 };
 
 /**
- * One facet as a row of toggle buttons in a labelled group: the pressed one is the filter in force, with its state
- * told by aria-pressed, a check of weight and border, not colour alone. Counts are tabular numbers.
+ * One facet as the kit's filter chips: a labelled group of toggle buttons, 28 px with 6 px corners (44 px under
+ * 768 px), the count after the label in tabular figures. The pressed chip is the filter in force: aria-pressed says
+ * so, and it shows on `surface-selected` inside a `brand` edge in a heavier weight, so colour is not the only cue. In
+ * the phone's filter sheet (`FilterSheet`) the label always shows, above the chips.
  */
-export function FacetGroup({ label, options, selected, onSelect, countLabel, testId }: FacetGroupProps) {
+export function FacetGroup({ label, showLabel = false, options, selected, onSelect, countLabel, testId }: FacetGroupProps) {
   const id = useId();
+  const inSheet = useInFilterSheet();
+  const labelled = showLabel || inSheet;
   return (
-    <div className="flex flex-col gap-1.5 sm:flex-row sm:items-start sm:gap-3" data-testid={testId}>
-      <span id={id} className="shrink-0 pt-1.5 text-xs font-medium text-muted-foreground sm:w-20">
-        {label}
-      </span>
-      <div role="group" aria-labelledby={id} className="flex flex-wrap gap-1.5">
+    <div
+      className={cn("flex min-w-0", inSheet ? "flex-col gap-2" : "flex-wrap items-center gap-x-2 gap-y-1.5")}
+      data-testid={testId}
+    >
+      {labelled ? (
+        <span
+          id={id}
+          className={inSheet ? "text-[13px] leading-[18px] font-medium text-foreground" : "text-xs font-medium text-muted-foreground"}
+        >
+          {label}
+        </span>
+      ) : null}
+      <div
+        role="group"
+        aria-labelledby={labelled ? id : undefined}
+        aria-label={labelled ? undefined : label}
+        className={cn("flex min-w-0 flex-wrap", inSheet ? "gap-2" : "gap-1.5")}
+      >
         {options.map((option) => {
           const pressed = option.value === selected;
           const Icon = option.icon;
@@ -48,22 +69,16 @@ export function FacetGroup({ label, options, selected, onSelect, countLabel, tes
               data-facet-value={option.value ?? ""}
               onClick={() => onSelect(pressed && option.value !== null ? null : option.value)}
               className={cn(
-                "inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-full border px-3 text-xs transition-colors",
-                "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+                "inline-flex h-7 max-w-full min-w-0 cursor-pointer items-center gap-1.5 rounded-sm border px-2.5 text-xs whitespace-nowrap transition-colors max-md:min-h-11",
                 pressed
-                  ? "border-primary bg-accent font-semibold text-accent-foreground"
-                  : "border-border bg-card text-foreground hover:bg-muted",
+                  ? "border-brand bg-surface-selected font-semibold text-foreground"
+                  : "border-border-strong bg-card font-medium text-muted-foreground hover:bg-accent hover:text-foreground",
               )}
             >
               {Icon ? <Icon className="size-3.5 shrink-0" aria-hidden="true" /> : null}
-              <span className={cn(option.mono && "font-mono")}>{option.label}</span>{" "}
+              <span className={cn("truncate", option.mono && "font-mono")}>{option.label}</span>{" "}
               {option.count !== undefined ? (
-                <span
-                  className={cn(
-                    "rounded-full px-1.5 tabular-nums",
-                    pressed ? "bg-background/60 text-accent-foreground" : "bg-muted text-muted-foreground",
-                  )}
-                >
+                <span className="font-normal text-fg-subtle tabular-nums">
                   <span aria-hidden="true">{option.count}</span>
                   <span className="sr-only">{countLabel(option.count)}</span>
                 </span>

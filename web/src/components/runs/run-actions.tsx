@@ -1,13 +1,15 @@
 "use client";
 
-import { Ban, Check, FileDiff, Hand, Info, Loader2, type LucideIcon, RotateCcw, ShieldAlert, Square, TriangleAlert, Undo2 } from "lucide-react";
+import { Ban, Check, FileDiff, Hand, Info, type LucideIcon, RotateCcw, ShieldAlert, Square, TriangleAlert, Undo2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useFormatter, useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
 
 import { ConfirmAction } from "@/components/admin/confirm-action";
-import { InlineError, type Notice, type WriteFailure } from "@/components/admin/notice";
+import { InlineError, type WriteFailure } from "@/components/admin/notice";
+import { notify, notifyFailure } from "@/components/feedback/toast";
+import { stepHref } from "@/components/plans/links";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -22,7 +24,7 @@ import { cn } from "@/lib/utils";
 
 import { useRunControl, useRunFailure } from "./hooks";
 import { HELD_STATES, type Run, type RunControl, runDiffHref, runHref } from "./queries";
-import type { RunControls } from "./run-model";
+import { readDiffstat, type RunControls } from "./run-model";
 
 /** The tmux session a takeover opens on the worker, and the Remote Control name Claude Code gives it (docs/workers.md). */
 export function sessionName(id: number): string {
@@ -90,7 +92,7 @@ function TakeoverDialog({
             </li>
           ) : null}
         </ol>
-        <p className="flex items-start gap-2.5 rounded-lg border border-warning-foreground/20 bg-warning px-3 py-2.5 text-sm text-warning-foreground">
+        <p className="flex items-start gap-2.5 rounded-md border border-attention/20 bg-attention-soft px-3 py-2.5 text-sm text-attention">
           <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
           <span className="text-pretty">{t("warning")}</span>
         </p>
@@ -105,8 +107,8 @@ function TakeoverDialog({
           >
             {t("cancel")}
           </Button>
-          <Button type="button" size="lg" onClick={() => !pending && onConfirm()} aria-disabled={pending || undefined} data-testid="takeover-confirm">
-            {pending ? <Loader2 className="animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <Hand aria-hidden="true" />}
+          <Button type="button" size="lg" onClick={() => !pending && onConfirm()} busy={pending} data-testid="takeover-confirm">
+            <Hand aria-hidden="true" />
             {pending ? t("pending") : t("confirm")}
           </Button>
         </DialogFooter>
@@ -116,12 +118,15 @@ function TakeoverDialog({
 }
 
 /**
- * The run's actions in its header, as the state and the visitor's rights allow (`runControls`): Cancel (asked to
- * confirm), Take over (a dialog with the attach command and Remote Control), Hand back, Approve, Rerun, and the diff
- * once the worker uploaded one. Each control waits for the hub's answer, then says what happened in the page's notice.
+ * The run's actions in its header, as the state and the visitor's rights allow (`runControls`), in the kit's order:
+ * Take over (a dialog with the attach command and Remote Control), the diff once the worker uploaded one (with its
+ * `+12 −3` when the worker reported a diffstat), Rerun, Hand back, Approve, and Cancel last (asked to confirm). Each
+ * control waits for the hub's answer, then says what happened in a toast; a failure inside a dialog stays there, any
+ * other stays as a toast until dismissed.
  */
-export function RunActions({ run, controls, onNotice }: { run: Run; controls: RunControls; onNotice: (notice: Notice) => void }) {
+export function RunActions({ run, controls }: { run: Run; controls: RunControls }) {
   const t = useTranslations("runs.detail.actions");
+  const format = useFormatter();
   const router = useRouter();
   const control = useRunControl(run);
   const failure = useRunFailure();
@@ -137,72 +142,54 @@ export function RunActions({ run, controls, onNotice }: { run: Run; controls: Ru
       onSuccess: (answer) => {
         setConfirming(null);
         if (action === "rerun") {
+          notify({
+            tone: "success",
+            text: t("toast.rerun", { id: answer.id }),
+            description: t("toast.rerunText", { of: run.id }),
+            link: { label: t("toast.openRun"), href: runHref(answer.project, answer.id) },
+          });
           router.push(runHref(answer.project, answer.id));
           return;
         }
         const held = (HELD_STATES as readonly string[]).includes(answer.state);
-        const text =
-          action === "cancel"
-            ? held
-              ? t("notice.cancelAsked", { id: run.id })
-              : t("notice.cancelled", { id: run.id })
-            : action === "approve"
-              ? t("notice.approved", { id: run.id, step: run.step_key ?? "", plan: run.plan_id })
-              : action === "takeover"
-                ? t("notice.takeover", { id: run.id, name: sessionName(run.id) })
-                : t("notice.handback", { id: run.id });
-        onNotice({ tone: "success", text });
+        if (action === "cancel") {
+          notify(
+            held
+              ? { tone: "success", text: t("toast.cancelAsked", { id: run.id }), description: t("toast.cancelAskedText") }
+              : { tone: "success", text: t("toast.cancelled", { id: run.id }) },
+          );
+        } else if (action === "approve") {
+          notify({
+            tone: "success",
+            text: t("toast.approved", { id: run.id }),
+            description: t("toast.approvedText", { step: run.step_key ?? "", plan: run.plan_id }),
+            link: run.step_key ? { label: t("toast.openStep"), href: stepHref(run.project, run.plan_id, run.step_key) } : null,
+          });
+        } else if (action === "takeover") {
+          notify({ tone: "success", text: t("toast.takeover", { id: run.id }), description: t("toast.takeoverText", { name: sessionName(run.id) }) });
+        } else {
+          notify({ tone: "success", text: t("toast.handback", { id: run.id }), description: t("toast.handbackText") });
+        }
       },
       onError: (error) => {
         const result = failure(error);
         if (confirming) setDialogError(result);
-        else onNotice({ tone: "error", ...result });
+        else notifyFailure(t(`toast.failed.${action}`, { id: run.id }), result);
       },
       onSettled: () => setActing(null),
     });
   };
 
   const busy = (action: RunControl) => control.isPending && acting === action;
-  const icon = (action: RunControl, Icon: LucideIcon) =>
-    busy(action) ? <Loader2 className="animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <Icon aria-hidden="true" />;
+  const diffstat = readDiffstat(run.diffstat);
 
   return (
     <div className="flex flex-wrap items-center gap-2" data-testid="run-actions">
-      {run.diff_sha256 ? (
-        <Button asChild variant="outline" size="lg">
-          <Link href={runDiffHref(run.project, run.id)} data-testid="run-view-diff">
-            <FileDiff aria-hidden="true" />
-            {t("diff")}
-          </Link>
-        </Button>
-      ) : null}
-      {controls.rerun ? (
-        <Button type="button" variant="outline" size="lg" onClick={() => act("rerun")} aria-disabled={control.isPending || undefined} data-testid="run-rerun">
-          {icon("rerun", RotateCcw)}
-          {t("rerun")}
-        </Button>
-      ) : null}
-      {controls.cancel === "offer" ? (
-        <Button
-          type="button"
-          variant="destructive"
-          size="lg"
-          onClick={() => {
-            setDialogError(null);
-            setConfirming("cancel");
-          }}
-          aria-disabled={control.isPending || undefined}
-          data-testid="run-cancel"
-        >
-          <Square aria-hidden="true" />
-          {t("cancel")}
-        </Button>
-      ) : null}
+      {/* The kit's RunScreen order: Take over and the diff first, then what moves the run on, and Cancel last. */}
       {controls.takeover === "offer" ? (
         <Button
           type="button"
           variant="outline"
-          size="lg"
           onClick={() => {
             setDialogError(null);
             setConfirming("takeover");
@@ -214,16 +201,54 @@ export function RunActions({ run, controls, onNotice }: { run: Run; controls: Ru
           {t("takeover")}
         </Button>
       ) : null}
+      {run.diff_sha256 ? (
+        <Button asChild variant="outline">
+          <Link href={runDiffHref(run.project, run.id)} data-testid="run-view-diff">
+            <FileDiff aria-hidden="true" />
+            {t("diff")}
+            {diffstat ? (
+              <>
+                <span className="font-mono text-xs tabular-nums" aria-hidden="true" data-testid="run-view-diff-stat">
+                  <span className="text-success">+{format.number(diffstat.insertions)}</span>{" "}
+                  <span className="text-danger">−{format.number(diffstat.deletions)}</span>
+                </span>
+                <span className="sr-only">, {t("diffstat", { insertions: diffstat.insertions, deletions: diffstat.deletions })}</span>
+              </>
+            ) : null}
+          </Link>
+        </Button>
+      ) : null}
+      {controls.rerun ? (
+        <Button type="button" variant="outline" onClick={() => act("rerun")} aria-disabled={control.isPending || undefined} busy={busy("rerun")} data-testid="run-rerun">
+          <RotateCcw aria-hidden="true" />
+          {t("rerun")}
+        </Button>
+      ) : null}
       {controls.handback === "offer" ? (
-        <Button type="button" size="lg" onClick={() => act("handback")} aria-disabled={control.isPending || undefined} data-testid="run-handback">
-          {icon("handback", Undo2)}
+        <Button type="button" onClick={() => act("handback")} aria-disabled={control.isPending || undefined} busy={busy("handback")} data-testid="run-handback">
+          <Undo2 aria-hidden="true" />
           {t("handback")}
         </Button>
       ) : null}
       {controls.approve ? (
-        <Button type="button" size="lg" onClick={() => act("approve")} aria-disabled={control.isPending || undefined} data-testid="run-approve">
-          {icon("approve", Check)}
+        <Button type="button" onClick={() => act("approve")} aria-disabled={control.isPending || undefined} busy={busy("approve")} data-testid="run-approve">
+          <Check aria-hidden="true" />
           {t("approve")}
+        </Button>
+      ) : null}
+      {controls.cancel === "offer" ? (
+        <Button
+          type="button"
+          variant="quiet-danger"
+          onClick={() => {
+            setDialogError(null);
+            setConfirming("cancel");
+          }}
+          aria-disabled={control.isPending || undefined}
+          data-testid="run-cancel"
+        >
+          <Square aria-hidden="true" />
+          {t("cancel")}
         </Button>
       ) : null}
       <ConfirmAction
@@ -265,9 +290,9 @@ function Note({ tone, icon: Icon, children, testId }: { tone: "info" | "warning"
   return (
     <p
       className={cn(
-        "flex items-start gap-2.5 rounded-lg border px-3 py-2.5 text-sm",
-        tone === "info" && "border-info-foreground/15 bg-info text-info-foreground",
-        tone === "warning" && "border-warning-foreground/20 bg-warning text-warning-foreground",
+        "flex items-start gap-2.5 rounded-md border px-3 py-2.5 text-sm",
+        tone === "info" && "bg-muted text-foreground",
+        tone === "warning" && "border-attention/20 bg-attention-soft text-attention",
         tone === "muted" && "bg-card text-muted-foreground",
       )}
       data-testid={testId}
@@ -315,7 +340,7 @@ export function RunNotes({ run, controls }: { run: Run; controls: RunControls })
         {t.rich("interactive", {
           worker: run.worker ?? "-",
           command: attachCommand(run.id),
-          code: (chunks) => <code className="font-mono font-semibold">{chunks}</code>,
+          code: (chunks) => <code className="font-mono font-medium">{chunks}</code>,
         })}
       </Note>,
     );

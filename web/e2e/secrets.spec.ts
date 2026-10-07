@@ -4,6 +4,7 @@ import { expect, isDeployed, test } from "./support/fixtures";
 import { uniqueName } from "./support/hub";
 import { claimRun, dispatch, leaseCredentials, liveWorker, seedRunPlan, startRun } from "./support/runs";
 import { putSecretByApi, recordResponses, type RunLease, runCredentialsOf, secretsOf, secretValue } from "./support/secrets";
+import { toast } from "./support/toast";
 import { registerWorker } from "./support/workers";
 
 /**
@@ -78,7 +79,7 @@ test("a secret added on the page is listed without its value, which never comes 
     value: first,
   });
   await expect(dialog).toBeHidden();
-  await expect(page.getByTestId("admin-notice-status")).toContainText("Secret claude-oauth added.");
+  await expect(toast(page, "Secret claude-oauth added")).toContainText("The hub sealed its value");
   const listed = row(page, "claude-oauth");
   await expect(listed).toContainText("CLAUDE_CODE_OAUTH_TOKEN");
   await expect(listed.getByTestId("secret-kind-badge")).toHaveText("Variable");
@@ -114,7 +115,7 @@ test("a secret added on the page is listed without its value, which never comes 
   await dialog.getByTestId("secret-value").fill(second);
   await dialog.getByTestId("secret-save").click();
   await expect(dialog).toBeHidden();
-  await expect(page.getByTestId("admin-notice-status")).toContainText("Secret claude-oauth replaced.");
+  await expect(toast(page, "Secret claude-oauth replaced")).toContainText("get the new value");
   const after = (await secretsOf(me))[0];
   expect(Date.parse(after.updated_at)).toBeGreaterThan(Date.parse(before.updated_at));
   expect(after).toMatchObject({ name: "claude-oauth", kind: "env", env_var: "CLAUDE_CODE_OAUTH_TOKEN", projects: [project] });
@@ -176,7 +177,7 @@ test("a git secret for one worker with an end date, once the form's checks pass"
   await dialog.getByTestId("secret-value").fill(value);
   await dialog.getByTestId("secret-save").click();
   await expect(dialog).toBeHidden();
-  await expect(page.getByTestId("admin-notice-status")).toContainText("Secret gitlab-docs added.");
+  await expect(toast(page, "Secret gitlab-docs added")).toBeVisible();
 
   const listed = row(page, "gitlab-docs");
   await expect(listed.getByTestId("secret-kind-badge")).toHaveText("Git credential");
@@ -219,7 +220,7 @@ test("Delete asks first, then the secret is gone and the leases of it still out 
   await expect(dialog).toContainText("leases of it still out are revoked");
   await dialog.getByTestId("delete-secret-dialog-confirm").click();
   await expect(dialog).toBeHidden();
-  await expect(page.getByTestId("admin-notice-status")).toContainText("Secret claude-oauth deleted.");
+  await expect(toast(page, "Secret claude-oauth deleted")).toContainText("Revoke the token where it was made");
   await expect(main(page).getByTestId("state-empty")).toBeVisible();
   expect(await secretsOf(me)).toEqual([]);
 
