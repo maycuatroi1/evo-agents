@@ -32,6 +32,7 @@ def home(tmp_path, monkeypatch):
     monkeypatch.setattr(sys, "argv", [EVO])
     monkeypatch.setattr(service, "missing_extra", lambda: None)
     monkeypatch.setattr(service.time, "sleep", lambda seconds: None)
+    monkeypatch.setattr(service, "doctor_warnings", lambda spec: [])  # tests/worker/test_doctor.py covers it
     return path
 
 
@@ -176,6 +177,7 @@ def test_the_launch_agent_runs_the_daemon_with_the_path_of_the_install_and_again
             "EVO_WORKER_REVOKED_EXIT": "0",  # launchd starts again a job that exits other than 0
         },
         "WorkingDirectory": str(state),
+        "Umask": 63,  # 077: what the daemon and its agents write is the user's alone
         "RunAtLoad": True,
         "KeepAlive": {"SuccessfulExit": False},
         "ThrottleInterval": 10,
@@ -217,6 +219,7 @@ def test_the_systemd_unit_restarts_on_failure_and_quotes_what_systemd_would_read
     assert f"{environment} EVO_WORKER_HOME=/home/octo/.evo/worker" in lines
     for line in ("Type=simple", "Restart=on-failure", "RestartSec=10", "KillMode=mixed", "TimeoutStopSec=60"):
         assert line in lines
+    assert "UMask=0077" in lines[lines.index("[Service]") :], "what the daemon and its agents write is the user's alone"
     assert "RestartPreventExitStatus=3" in lines, "a daemon that is no longer a worker is not started again"
     assert not any("EVO_WORKER_REVOKED_EXIT" in line for line in lines), "systemd tells the exit statuses apart"
     assert lines[lines.index("[Install]") + 1] == "WantedBy=default.target"

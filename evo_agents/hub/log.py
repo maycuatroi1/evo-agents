@@ -2,7 +2,8 @@
 
 Secrets are removed when a record is formatted, so a library that logs a DSN or a token is covered too:
 every value registered with ``register_secret`` (the DSN password, the Sentry DSN, the GitHub client secret, the
-session secret, the S3 key pair) becomes ``***``, and so do the password of any URI or ``password=`` pair, hub tokens
+session secret, the S3 key pair; on a worker, its token and each lease while a run holds it, which
+``unregister_secret`` drops again) becomes ``***``, and so do the password of any URI or ``password=`` pair, hub tokens
 (``evh_...``) and web sessions (``evs_...``), GitHub tokens (``gho_...``, ``github_pat_...``), bearer credentials,
 the signature, access key id and session token of an S3 request or presigned URL, which is a bearer credential
 until it expires, and the value of every query parameter in ``QUERY_SECRETS`` (the OAuth code and state of a web
@@ -19,13 +20,14 @@ import logging
 import re
 import sys
 import threading
+from collections import Counter
 from datetime import datetime, timezone
 from urllib.parse import parse_qsl, quote, unquote, urlencode, urlsplit, urlunsplit
 
 MASK = "***"
 MIN_SECRET_LENGTH = 3  # shorter values would mask ordinary words; DSN passwords are never that short in use
 
-_secrets: set[str] = set()
+_secrets: Counter[str] = Counter()  # each form of a value to mask, with how many registrations want it masked
 _secrets_lock = threading.Lock()
 
 # Query parameters whose value is a credential, matched by name after ``?``, ``&`` or ``&amp;``, any case.
@@ -83,16 +85,36 @@ QUIET_LOGGERS = {
 _RECORD_ATTRS = set(vars(logging.LogRecord("", 0, "", 0, "", None, None))) | {"message", "asctime", "color_message"}
 
 
+def _forms(value: str) -> set[str]:
+    """``value`` as a log line may hold it: as it is, URL-encoded, and URL-decoded."""
+    forms = {value, quote(value, safe="")}
+    decoded = unquote(value)
+    if decoded != value and len(decoded) >= MIN_SECRET_LENGTH:
+        forms.add(decoded)
+    return forms
+
+
 def register_secret(value: str | None) -> None:
-    """Never log ``value``: every formatted line has it replaced by ``***``."""
+    """Never log ``value``: every formatted line has it replaced by ``***``, until ``unregister_secret`` undid each
+    time it was registered."""
     if not value or len(value) < MIN_SECRET_LENGTH:
         return
     with _secrets_lock:
-        _secrets.add(value)
-        decoded = unquote(value)
-        if decoded != value and len(decoded) >= MIN_SECRET_LENGTH:
-            _secrets.add(decoded)
-        _secrets.add(quote(value, safe=""))
+        for form in _forms(value):
+            _secrets[form] += 1
+
+
+def unregister_secret(value: str | None) -> None:
+    """Undo one ``register_secret`` of ``value``: it stays masked while another registration of it, or of a value one
+    of its forms equals, remains. For values held a while, such as the leases of the daemon's runs."""
+    if not value or len(value) < MIN_SECRET_LENGTH:
+        return
+    with _secrets_lock:
+        for form in _forms(value):
+            if _secrets[form] > 1:
+                _secrets[form] -= 1
+            else:
+                _secrets.pop(form, None)
 
 
 def scrub(text: str) -> str:

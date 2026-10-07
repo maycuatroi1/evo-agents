@@ -121,8 +121,8 @@ Hooks:
   off.
 
 The plugin needs [uv](https://docs.astral.sh/uv/) on `PATH` and pins the release it runs: the server
-starts with `uvx --from evo-ak==0.4.0 evo-agents`, which downloads and caches that version on first start. The hooks
-run `uvx --offline --from evo-ak==0.4.0 evo-agents`, so they never wait on the network; they stay silent when `uvx`
+starts with `uvx --from evo-ak==0.5.0 evo-agents`, which downloads and caches that version on first start. The hooks
+run `uvx --offline --from evo-ak==0.5.0 evo-agents`, so they never wait on the network; they stay silent when `uvx`
 is missing or until the server has cached the package.
 
 ### The team hub
@@ -161,6 +161,7 @@ uv tool install 'evo-ak[worker]'    # or: pip install 'evo-ak[worker]'; with gra
 evo-agents worker join --url https://hub.example.org --code K7QM-4XPD   # the code from the hub's Workers page
 evo-agents worker register --name mac-mini --project demo --slots 1    # or this, once signed in with hub login
 evo-agents worker service install   # keep the daemon running in the background
+evo-agents worker doctor            # what the machine still holds that a worker should not; exit 2 on a high finding
 ```
 
 Then, from any machine signed in to the hub:
@@ -187,6 +188,16 @@ evo-agents hub notifications --unread
 The agent on a worker runs with the full rights of the machine's owner, and only that owner dispatches runs to it.
 [docs/workers.md](docs/workers.md) describes the protocol and plan runs, [docs/hub.md](docs/hub.md) every `hub run`
 and `hub decision` command, and [docs/notifications.md](docs/notifications.md) decisions, notices and notifications.
+
+On a machine others also administer, keep your credentials on the hub as secrets instead: each run gets a lease of
+just what it needs, and the hub takes it back when the run ends ([docs/credentials.md](docs/credentials.md)). The
+value goes in on stdin, or at a prompt that does not echo it, and never comes back out:
+
+```sh
+pbpaste | evo-agents hub secret set claude-oauth --kind env --env-var CLAUDE_CODE_OAUTH_TOKEN --project demo
+evo-agents hub secret list
+evo-agents hub run credentials 41 --project demo   # the leases run 41 got, given back or not; never their values
+```
 
 ### Running a hub
 
@@ -237,7 +248,8 @@ plugins/      Claude Code marketplace (plugins evo-kg and evo-hub)
 web/          the hub's web interface (Next.js, its own image)
 deploy/hub/   the hub's Dockerfile and compose files
 docs/         hub.md: running and using the hub; workers.md: workers, runs, plan runs and the daemon;
-              notifications.md: decisions, notices and notifications
+              notifications.md: decisions, notices and notifications; credentials.md: secrets and the leases of
+              worker runs
 ```
 
 ## License

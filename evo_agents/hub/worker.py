@@ -21,14 +21,17 @@ Jobs (names in ``evo_agents.hub.jobs``):
 - ``hub.recover_runs``, every minute: runs whose worker stopped extending the lease become lost, and the next attempt
   of their step is queued, or fail on their last attempt; runs past their timeout fail; a plan run that waited
   EVO_HUB_DECISION_WAIT_SECONDS (24 hours by default) for an answer is parked, and one parked for 7 days cancelled
-  (``evo_agents.hub.server.run_state``).
+  (``evo_agents.hub.server.run_state``). The runs that end give back their leases, and the GitHub tokens of every lease
+  given back and not revoked at GitHub yet are revoked there (``evo_agents.hub.server.credentials``).
 - ``hub.deliver_notifications``, every minute: the notification deliveries that are due, each handed to its
   channel's class, tried again with a backoff and failed after 5 tries (``evo_agents.hub.server.notifications``).
-- ``hub.prune_run_events``, daily: the events of runs that ended more than EVO_HUB_RUN_LOG_DAYS ago.
+- ``hub.prune_run_events``, daily: the events of runs that ended more than EVO_HUB_RUN_LOG_DAYS ago, and the sealed
+  values of the GitHub tokens leased to runs that are past their end.
 
 procrastinate allows one App per process; ``queue`` is that App here. ``run`` gives it a connector of its own for
-the time it runs, and the jobs reach the hub's tables and the blob store through ``HubContext``. The worker handles
-SIGTERM and SIGINT itself rather than through procrastinate, which cannot tell a signal from a failure.
+the time it runs, and the jobs reach the hub's tables, the blob store, the sealing key and the GitHub App through
+``HubContext``. The worker handles SIGTERM and SIGINT itself rather than through procrastinate, which cannot tell a
+signal from a failure.
 """
 
 from __future__ import annotations
@@ -41,6 +44,7 @@ import socket
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from procrastinate import App, JobContext, PsycopgConnector
 from psycopg_pool import AsyncConnectionPool
@@ -52,6 +56,10 @@ from evo_agents.hub.config import HubConfig
 from evo_agents.hub.db import CONNECT_TIMEOUT
 from evo_agents.hub.log import redact_dsn
 from evo_agents.hub.migrate import migrate
+
+if TYPE_CHECKING:
+    from evo_agents.hub.server.github_app import GitHubApp
+    from evo_agents.hub.server.sealing import Sealer
 
 log = logging.getLogger(__name__)
 
@@ -73,6 +81,8 @@ class HubContext:
     pool: AsyncConnectionPool
     blobs: BlobStore
     data_dir: Path
+    sealer: Sealer | None = None  # None without EVO_HUB_SECRETS_KEY
+    github_app: GitHubApp | None = None  # None without EVO_HUB_GITHUB_APP_*: no GitHub token to revoke
 
 
 def hub(context: JobContext) -> HubContext:
@@ -137,7 +147,12 @@ async def recover_runs(context: JobContext, timestamp: int | None = None) -> dic
     from evo_agents.hub.server.run_state import recover_runs as recover
 
     found = hub(context)
-    return await recover(found.pool, decision_wait=timedelta(seconds=found.config.decision_wait_seconds))
+    return await recover(
+        found.pool,
+        decision_wait=timedelta(seconds=found.config.decision_wait_seconds),
+        sealer=found.sealer,
+        github_app=found.github_app,
+    )
 
 
 @queue.periodic(cron="* * * * *")
@@ -211,8 +226,14 @@ async def work(**options) -> bool:
 async def run(config: HubConfig, concurrency: int = 1) -> int:
     """Migrate, then run jobs until a signal stops the worker. The exit status: 0 when a signal stopped it, 1 when
     it could not start or stopped by itself."""
+    from evo_agents.hub.server.github_app import GitHubApp
+    from evo_agents.hub.server.sealing import Sealer
+
+    github_app = GitHubApp.from_config(config)  # a private key that does not open stops the start
     store = BlobStore.from_config(config)
     if store is None:
+        if github_app is not None:
+            await github_app.aclose()
         raise ValueError("the worker needs the blob store: " + ", ".join(config.blob_store_missing()))
     name = f"{socket.gethostname()}-{os.getpid()}"
     target = redact_dsn(config.dsn)
@@ -241,7 +262,9 @@ async def run(config: HubConfig, concurrency: int = 1) -> int:
                 log.error("worker cannot start", extra={"db": target, "error": f"{type(exc).__name__}: {exc}"})
                 return 1
             try:
-                context = HubContext(config, queue.connector.pool, store, config.data_dir)
+                context = HubContext(
+                    config, queue.connector.pool, store, config.data_dir, Sealer.from_config(config), github_app
+                )
                 log.info("worker ready", extra={"schema": ",".join(result.after), "applied": list(result.applied)})
                 signalled = await work(
                     name=name,
@@ -254,6 +277,8 @@ async def run(config: HubConfig, concurrency: int = 1) -> int:
                 await queue.close_async()
     finally:
         store.close()
+        if github_app is not None:
+            await github_app.aclose()
     if not signalled:
         log.error("worker stopped without being asked to; see the lines above", extra={"db": target})
         return 1

@@ -25,10 +25,18 @@ EVO_HUB_FORWARDED_ALLOW_IPS lists the addresses or networks of the reverse proxi
 believes, comma-separated, or ``*``; the client address it yields keys the limit on refused pairing codes. Unset, it
 keeps uvicorn's own default (its FORWARDED_ALLOW_IPS variable, else the loopback addresses), so nothing new is
 trusted. The session secret also keys the hashes of pairing codes, which therefore need it.
+
+Credentials of runs (``docs/credentials.md``) are optional configuration too. EVO_HUB_SECRETS_KEY is the AES-256-GCM
+key that seals them (``evo_agents.hub.server.sealing``), 32 bytes in base64url: without it a route that writes a
+secret answers 503 and a run asking for its leases gets none, with the reason. EVO_HUB_GITHUB_APP_ID (the App's ID
+or client ID) and EVO_HUB_GITHUB_APP_PRIVATE_KEY (its PEM, where ``\\n`` may stand for each line break, as one line
+of an environment file needs) go together or not at all: without them a run gets no GitHub token. The key and the
+PEM, its lines included, are registered as secrets, and no error names their value.
 """
 
 from __future__ import annotations
 
+import base64
 import ipaddress
 import os
 import re
@@ -67,6 +75,14 @@ MIN_SESSION_SECRET = 32  # characters; the secret keys HMAC-SHA256
 LOGIN = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,99}")  # a GitHub login, as the users table accepts it
 S3_VARIABLES = ("EVO_HUB_S3_ENDPOINT", "EVO_HUB_S3_BUCKET", "EVO_HUB_S3_ACCESS_KEY_ID", "EVO_HUB_S3_SECRET_ACCESS_KEY")
 BUCKET = re.compile(r"[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]")  # an S3 bucket name, as R2 accepts it
+SECRETS_KEY_BYTES = 32  # the AES-256-GCM key of evo_agents.hub.server.sealing
+SECRETS_KEY = re.compile(r"[A-Za-z0-9_-]{43}=?")  # 32 bytes in base64url, padded or not
+GITHUB_APP_VARIABLES = ("EVO_HUB_GITHUB_APP_ID", "EVO_HUB_GITHUB_APP_PRIVATE_KEY")
+GITHUB_APP_ID = re.compile(r"[0-9]{1,20}|Iv[0-9A-Za-z.]{1,40}")  # the App's ID, or its client ID; JWT's iss takes both
+# The PEM GitHub gives an App (PKCS#1), or the same key as PKCS#8; the second group is its base64.
+PRIVATE_KEY_PEM = re.compile(
+    r"-----BEGIN ((?:RSA )?)PRIVATE KEY-----\n([A-Za-z0-9+/=\n]+)\n-----END \1PRIVATE KEY-----"
+)
 
 
 class ConfigError(ValueError):
@@ -103,6 +119,9 @@ class HubConfig:
     run_lease_seconds: int = LEASE_SECONDS  # how long a claim and each heartbeat lease a run for
     decision_wait_seconds: int = DECISION_WAIT_SECONDS  # how long a plan run waits for an answer before it parks
     forwarded_allow_ips: str | None = None  # proxies whose X-Forwarded-For uvicorn believes; None: uvicorn's default
+    secrets_key: bytes | None = None  # seals the credentials of runs; never logged, returned or stored
+    github_app_id: str | None = None  # the GitHub App that makes the runs' tokens: its ID or client ID
+    github_app_private_key: str | None = None  # its PEM, with real line breaks; never logged or returned
 
     def __repr__(self) -> str:  # the DSNs and secrets are credentials; keep them out of tracebacks and debug output
         return f"HubConfig(data_dir={str(self.data_dir)!r}, host={self.host!r}, port={self.port})"
@@ -124,6 +143,15 @@ class HubConfig:
         """The EVO_HUB_S3_* variables the blob store still needs; empty when it is configured."""
         values = (self.s3_endpoint, self.s3_bucket, self.s3_access_key_id, self.s3_secret_access_key)
         return [name for name, value in zip(S3_VARIABLES, values, strict=True) if not value]
+
+    def credentials_missing(self) -> list[str]:
+        """The variable the hub needs to keep secrets and lease credentials; empty when it can."""
+        return [] if self.secrets_key else ["EVO_HUB_SECRETS_KEY"]
+
+    def github_app_missing(self) -> list[str]:
+        """The EVO_HUB_GITHUB_APP_* variables the runs' GitHub tokens still need; empty when the App is configured."""
+        values = (self.github_app_id, self.github_app_private_key)
+        return [name for name, value in zip(GITHUB_APP_VARIABLES, values, strict=True) if not value]
 
 
 def _text(env: Mapping[str, str], name: str) -> str | None:
@@ -255,6 +283,53 @@ def _blob_store(env: Mapping[str, str]) -> dict:
     return values
 
 
+def _secrets_key(env: Mapping[str, str]) -> bytes | None:
+    """EVO_HUB_SECRETS_KEY as its 32 bytes, registered as a secret before anything can fail; no error shows it."""
+    name = "EVO_HUB_SECRETS_KEY"
+    raw = _secret(env, name)
+    if raw is None:
+        return None
+    if not SECRETS_KEY.fullmatch(raw):
+        raise ConfigError(
+            name,
+            f"{name} must be {SECRETS_KEY_BYTES} bytes in base64url (43 characters of A-Z, a-z, 0-9, - and _), such as "
+            "python -c 'import secrets; print(secrets.token_urlsafe(32))' prints",
+        )
+    key = base64.urlsafe_b64decode(raw.rstrip("=") + "=")
+    register_secret(base64.b64encode(key).decode())  # the same key in standard base64, as a tool may print it
+    return key
+
+
+def _github_app(env: Mapping[str, str]) -> dict:
+    """The GitHub App's ID and private key, both or neither; the PEM and each of its lines are registered as secrets."""
+    id_name, key_name = GITHUB_APP_VARIABLES
+    app_id = _text(env, id_name)
+    raw = _secret(env, key_name)
+    pem = None
+    if raw is not None:
+        pem = raw.replace("\\n", "\n").replace("\r\n", "\n").strip()
+        match = PRIVATE_KEY_PEM.fullmatch(pem)
+        if not match:
+            raise ConfigError(
+                key_name,
+                f"{key_name} must be the App's private key, the whole .pem file GitHub gives, with line breaks or \\n "
+                "between its lines",
+            )
+        register_secret(pem)
+        for line in match.group(2).split("\n"):
+            if len(line) >= 16:  # a line of base64 shows up alone in a repr or a partial dump
+                register_secret(line)
+        pem += "\n"
+    if app_id is not None and not GITHUB_APP_ID.fullmatch(app_id):
+        raise ConfigError(id_name, f"{id_name} must be the GitHub App's ID or its client ID (Iv...), got {app_id!r}")
+    missing = [name for name, value in ((id_name, app_id), (key_name, pem)) if not value]
+    if len(missing) == 1:
+        raise ConfigError(
+            missing[0], f"{missing[0]} is not set: the GitHub App needs {id_name} and {key_name} together, or neither"
+        )
+    return {"github_app_id": app_id, "github_app_private_key": pem}
+
+
 def load_log_level(env: Mapping[str, str] | None = None) -> str:
     env = os.environ if env is None else env
     level = (_text(env, "EVO_HUB_LOG_LEVEL") or "INFO").upper()
@@ -328,4 +403,6 @@ def load_config(
         decision_wait_seconds=_decision_wait_seconds(env),
         forwarded_allow_ips=_forwarded_allow_ips(env),
         **_blob_store(env),
+        secrets_key=_secrets_key(env),
+        **_github_app(env),
     )

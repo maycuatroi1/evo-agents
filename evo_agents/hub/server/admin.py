@@ -5,7 +5,9 @@ A grant gives a login a role on a project (reader, writer or admin) and the high
 ladder it may see. The ladder is the project's own, as ``evo_agents.kg.policy.Policy`` reads it from the levels
 registered with the project, so a max level outside it is refused. A login that has not signed in yet can be
 granted: its users row waits for the first sign-in, which claims it. Granting and revoking add an audit row
-naming the project, the login and the role, never anything the grant gives access to.
+naming the project, the login and the role, never anything the grant gives access to. Revoking a grant, or lowering it
+to reader, gives back the credential leases still out of every run the member dispatched in the project
+(``credentials.end_member_leases``), whose worker can no longer ask for them.
 
 POST /v1/admin/kg/prune runs the retention of built graphs now (``evo_agents.hub.kg_prune``), as the worker does every
 hour: for one project or every one, keeping the artifacts of the ``keep`` newest graphs of each (default
@@ -21,6 +23,7 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Request, Response
 from psycopg import sql
 from pydantic import BaseModel, Field
 
+from evo_agents.hub.access import has_role
 from evo_agents.hub.blobs import BlobStoreUnavailable
 from evo_agents.hub.config import MAX_KG_KEEP_ARTIFACTS, HubConfig
 from evo_agents.hub.server import audit
@@ -167,7 +170,31 @@ async def grant(request: Request, body: GrantRequest, project: ProjectName, logi
         (created,) = await cursor.fetchone()
         target = f"{project}/{grantee} role={body.role} max_level={body.max_level}"
         await audit.record(conn, actor_id=user.user_id, token_id=user.token_id, action=audit.GRANT_PUT, target=target)
+        taken = []
+        if not has_role(body.role, "writer"):
+            taken = await _take_back_leases(conn, user, project_id, grantee_id, f"grant-{body.role}")
+    await _revoke_taken(request, taken)
     return Grant(project=project, login=grantee, role=body.role, max_level=body.max_level, created=created)
+
+
+async def _take_back_leases(conn, user, project_id: int, member_id: int, by: str) -> list[int]:
+    """The leases still out of the runs ``member_id`` dispatched in the project, given back now that the member no
+    longer holds writer on it; the runs, for ``_revoke_taken`` once the transaction commits."""
+    from evo_agents.hub.server import credentials  # it reads ProjectName of this module
+
+    return await credentials.end_member_leases(
+        conn, user_id=member_id, project_id=project_id, actor_id=user.user_id, token_id=user.token_id, by=by
+    )
+
+
+async def _revoke_taken(request: Request, run_ids: list[int]) -> None:
+    """Revoke at GitHub the tokens of the leases ``_take_back_leases`` gave back; GitHub failing leaves them to the
+    reaper."""
+    from evo_agents.hub.server import credentials
+
+    state = request.app.state
+    for run_id in run_ids:
+        await credentials.revoke_tokens(state.pool, state.sealer, state.github_app, run_id=run_id)
 
 
 @router.delete("/projects/{project}/grants/{login}", status_code=204, response_class=Response, responses=MISSING)
@@ -177,7 +204,7 @@ async def revoke(request: Request, project: ProjectName, login: Login, user: Adm
         project_id, _ = await _project(conn, project)
         cursor = await conn.execute(
             "DELETE FROM grants g USING users u WHERE g.user_id = u.id AND g.project_id = %s "
-            "AND lower(u.login) = lower(%s) RETURNING u.login",
+            "AND lower(u.login) = lower(%s) RETURNING u.login, u.id",
             (project_id, login),
         )
         row = await cursor.fetchone()
@@ -187,6 +214,8 @@ async def revoke(request: Request, project: ProjectName, login: Login, user: Adm
         await audit.record(
             conn, actor_id=user.user_id, token_id=user.token_id, action=audit.GRANT_DELETE, target=target
         )
+        taken = await _take_back_leases(conn, user, project_id, row[1], "grant-deleted")
+    await _revoke_taken(request, taken)
     return Response(status_code=204)
 
 

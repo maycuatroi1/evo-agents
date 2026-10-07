@@ -16,6 +16,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { KNOWN_RUNTIMES } from "@/components/workers/model";
 import { workersQuery } from "@/components/workers/queries";
 import { browserApi } from "@/lib/api/browser";
+import { isApiError } from "@/lib/api/errors";
 import { plansQuery } from "@/lib/plan-queries";
 import { whoamiQuery } from "@/lib/queries";
 
@@ -173,6 +174,7 @@ function DispatchForm({
   const error = write.isError
     ? failure(write.error, { 403: t("errors.forbidden"), 404: t("errors.notFound"), 409: t("errors.conflict"), 422: t("errors.invalid") })
     : null;
+  const apiDetail = write.isError && isApiError(write.error) && write.error.info.status === 409 ? t("errors.hubSays", { message: write.error.info.message }) : null;
 
   return (
     <form onSubmit={(event) => void submit(event)} noValidate className="flex min-h-0 flex-1 flex-col" aria-busy={pending || undefined}>
@@ -323,7 +325,7 @@ function DispatchForm({
             {t("tooMany", { max: MAX_DISPATCH_STEPS })}
           </p>
         ) : null}
-        {error ? <InlineError text={error.text} detail={error.detail} requestId={error.requestId} /> : null}
+        {error ? <InlineError text={error.text} detail={apiDetail ?? error.detail} requestId={error.requestId} /> : null}
       </div>
 
       <div className="flex flex-col gap-3 border-t bg-muted/50 px-4 py-3 sm:flex-row sm:items-center sm:px-5">

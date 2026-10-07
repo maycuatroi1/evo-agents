@@ -83,6 +83,7 @@ const WORKER = {
   runtimes: {},
   checkouts: {},
   allow_web_terminal: false,
+  dispatch_from: "any",
   held_runs: 0,
   created_at: new Date().toISOString(),
   last_heartbeat_at: null,

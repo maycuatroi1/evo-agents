@@ -369,6 +369,70 @@ def test_a_plan_run_is_claimed_only_by_a_worker_with_a_checkout_of_every_repo(cl
     assert "# Steps not done yet: 3 of 5" in prompt
 
 
+def on_version(client, worker: dict, agent_version: str) -> dict:
+    """``worker`` after a heartbeat that reports its daemon at ``agent_version``."""
+    body = {"runtimes": worker["runtimes"], "checkouts": worker["checkouts"], "agent_version": agent_version}
+    response = client.post(
+        "/v1/worker/heartbeat", json={**body, "free_slots": 1, "runs": []}, headers=worker["headers"]
+    )
+    assert response.status_code == 200, response.text
+    return worker
+
+
+def test_only_a_daemon_that_runs_plan_runs_takes_one(client, hub, hub_db):
+    old = on_version(client, fleet_worker(client, hub["owner"], "old-box"), "0.3.0")
+    run = dispatched_plan(client, hub["owner"])
+    assert claim(client, old) is None and state_of(hub_db, run["id"]) == "queued"
+    (step,) = dispatch_steps(client, hub["owner"], [2], plan_id="rollout").json()
+    assert claim(client, old)["id"] == step["id"]  # a run of one step it still takes
+    for version in ("0.4.0", "0.4.1.dev3+g1a2b3c4", "1.0"):
+        assert runs.takes_plan_runs(version), version
+    for version in ("0.3.9", "dev", "", None):
+        assert not runs.takes_plan_runs(version), version
+    new = on_version(client, fleet_worker(client, hub["owner"], "new-box"), "0.4.1")
+    assert claim(client, new)["id"] == run["id"]
+
+
+def test_a_run_pinned_to_a_worker_that_cannot_claim_it_gets_409_and_nothing_is_queued(client, hub, hub_db):
+    half = fleet_worker(
+        client, hub["owner"], "half-box", checkouts={f"{PROJECT}/evo-agents": CHECKOUTS[f"{PROJECT}/evo-agents"]}
+    )
+    refused = plan_run(client, hub["owner"], worker_id=half["id"])
+    assert refused.status_code == 409, refused.text
+    assert refused.json()["message"].startswith(
+        f"worker half-box cannot take this run: it has no checkout of {PROJECT}/agent-skills: clone each one"
+    )
+    assert refused.json()["message"].endswith("or dispatch it to another worker; nothing was dispatched")
+    old = on_version(client, fleet_worker(client, hub["owner"], "old-box"), "0.3.0")
+    too_old = plan_run(client, hub["owner"], worker_id=old["id"])
+    assert too_old.status_code == 409, too_old.text
+    assert "it runs evo-agents 0.3.0, and a plan run needs 0.4.0 or later" in too_old.json()["message"]
+    full = fleet_worker(client, hub["owner"], "full-box")
+    no_codex = plan_run(client, hub["owner"], worker_id=full["id"], runtime="codex")
+    assert no_codex.status_code == 409 and "it does not report codex available" in no_codex.json()["message"]
+    idle = fleet_worker(client, hub["owner"], "idle-box", runtimes={})
+    none_at_all = plan_run(client, hub["owner"], worker_id=idle["id"])
+    assert none_at_all.status_code == 409 and "it reports no runtime available" in none_at_all.json()["message"]
+    # a run of one step needs the checkout of its own repo alone, and an old daemon runs it
+    loose = plan_body("loose")
+    del loose["steps"][2]["depends_on"]  # step 3, of agent-skills, is ready next to step 2
+    push(client, hub["owner"], loose)
+
+    def pinned_steps(steps, worker):
+        body = {"plan_id": "loose", "steps": steps, "worker_id": worker["id"]}
+        return client.post(f"/v1/projects/{PROJECT}/runs", json=body, headers=hub["owner"])
+
+    step_refused = pinned_steps([2, 3], half)
+    assert step_refused.status_code == 409, step_refused.text
+    assert f"it has no checkout of {PROJECT}/agent-skills" in step_refused.json()["message"]
+    assert sql(hub_db, "SELECT count(*) FROM runs") == [(0,)]  # step 2 was not queued without step 3
+    taken = pinned_steps([2], old)
+    assert taken.status_code == 201, taken.text
+    assert claim(client, old)["id"] == taken.json()[0]["id"]
+    run = dispatched_plan(client, hub["owner"], worker_id=full["id"])
+    assert claim(client, full)["id"] == run["id"]
+
+
 def test_a_run_of_one_step_is_still_claimed_by_a_worker_with_its_repo_alone(client, hub):
     half = fleet_worker(
         client, hub["owner"], "half-box", checkouts={f"{PROJECT}/evo-agents": CHECKOUTS[f"{PROJECT}/evo-agents"]}

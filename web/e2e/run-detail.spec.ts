@@ -8,6 +8,7 @@ import {
   COMMIT,
   dispatch,
   eventsOf,
+  leaseCredentials,
   liveWorker,
   planRunUnderway,
   reportState,
@@ -26,6 +27,7 @@ import {
   uploadDiff,
   workerInbox,
 } from "./support/runs";
+import { putSecretByApi, recordResponses, runCredentialsOf, secretValue } from "./support/secrets";
 import { toast } from "./support/toast";
 
 /**
@@ -33,7 +35,8 @@ import { toast } from "./support/toast";
  * events, messages and diff the way the daemon does (docs/workers.md). The page follows the run's stream, so a line the
  * worker sends shows within 2 seconds; a stream that drops comes back with Last-Event-ID and repeats no line; a stream
  * that cannot be used gives way to reading events. The owner approves, cancels, takes over, hands back and messages
- * the agent; anyone else reads only. Pages render in English.
+ * the agent; anyone else reads only. The owner alone sees the credentials the run got, never a value. Pages render in
+ * English.
  */
 test.skip(isDeployed, "runs a fake worker against the local stack");
 
@@ -380,6 +383,66 @@ test("someone other than the owner reads the run but gets no message box, no Tak
   await expect(main(page).getByTestId("run-takeover")).toHaveCount(0);
   await expect(main(page).getByTestId("run-cancel")).toHaveCount(0);
   await expect(main(page).getByTestId("run-worker").getByRole("link")).toHaveCount(0); // another member's worker
+});
+
+test("the owner sees the credentials the run got, never a value, and nobody else sees them", async ({
+  page,
+  member,
+  admin,
+  signInAs,
+}) => {
+  const me = await member([{ role: "writer", maxLevel: "internal" }]);
+  const project = me.projects[0];
+  const oauth = secretValue("oauth");
+  const git = secretValue("git");
+  await putSecretByApi(me, "claude-oauth", { kind: "env", env_var: "CLAUDE_CODE_OAUTH_TOKEN", projects: [project], value: oauth });
+  await putSecretByApi(me, "github-org", { kind: "git", url_prefix: "https://github.com/example-org", projects: [project], value: git });
+  const { live, run } = await runningRun(me);
+  // The worker gets the values, as the daemon does right after its claim.
+  const leased = await leaseCredentials(live, run.id);
+  expect(Object.fromEntries(leased.leases.map((lease) => [lease.name, lease.value]))).toEqual({ "claude-oauth": oauth, "github-org": git });
+  const received = recordResponses(page);
+
+  await open(page, runPath(project, run.id));
+  const card = main(page).getByTestId("run-credentials");
+  await expect(card.getByRole("heading", { name: "Credentials" })).toBeVisible();
+  await expect(card.getByTestId("run-lease-item")).toHaveCount(2);
+  const env = card.getByTestId("run-lease-item").filter({ hasText: "claude-oauth" });
+  await expect(env.getByTestId("run-lease-provider")).toHaveText("Your secret");
+  await expect(env.getByTestId("run-lease-target")).toHaveText("CLAUDE_CODE_OAUTH_TOKEN");
+  await expect(env.getByTestId("run-lease-issued")).toContainText(live.worker.name);
+  await expect(env.getByTestId("run-lease-expires")).toHaveText("no end");
+  await expect(env.getByTestId("run-lease-revoked")).toHaveText("not yet");
+  await expect(env.getByTestId("run-lease-state")).toHaveText("Out");
+  const repo = card.getByTestId("run-lease-item").filter({ hasText: "github-org" });
+  await expect(repo.getByTestId("run-lease-target")).toHaveText("https://github.com/example-org/api");
+  await expect(repo.getByTestId("run-lease-state")).toHaveText("Out");
+
+  // The run ends: the hub takes its leases back, and the page shows it without a reload.
+  await reportState(live, run.id, { state: "failed", error: "the agent stopped" });
+  await expect(main(page).getByTestId("run-state")).toHaveText("Failed", { timeout: 4_000 });
+  await expect(card.locator('[data-testid="run-lease-item"][data-state="revoked"]')).toHaveCount(2, { timeout: 10_000 });
+  await expect(env.getByTestId("run-lease-state")).toHaveText("Revoked");
+  await expect(env.getByTestId("run-lease-revoked")).not.toHaveText("not yet");
+
+  const html = await page.content();
+  expect(html).not.toContain(oauth);
+  expect(html).not.toContain(git);
+  for (const body of await received()) {
+    expect(body.includes(oauth) || body.includes(git), "a response the browser received holds a value").toBe(false);
+  }
+
+  // Another writer of the project reads the run, but not what it got.
+  const other = newAccount("colleague");
+  await admin.grant(project, other.login, "writer", "internal");
+  await page.context().clearCookies();
+  await signInAs(other);
+  await open(page, runPath(project, run.id));
+  await expect(main(page).getByTestId("run-details")).toBeVisible();
+  await expect(main(page).getByTestId("run-credentials")).toHaveCount(0);
+  const refused = await runCredentialsOf(other, project, run.id);
+  expect(refused.status).toBe(403);
+  expect(JSON.stringify(refused.body)).toContain(`only ${me.login}, who dispatched run ${run.id}`);
 });
 
 test("the diff page shows the diff the worker uploaded, file by file, and downloads it", async ({ page, member }) => {

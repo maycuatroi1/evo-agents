@@ -29,9 +29,10 @@ A request carries one of three credentials:
 - a web session (`evs_...`) in the `evo_hub_session` cookie. A write made with the cookie (POST, PUT, PATCH,
   DELETE) also needs the `X-Evo-CSRF` header, whose value `GET /v1/auth/web/csrf` hands out;
 - a worker token (`evw_...`) as `Authorization: Bearer`, which a worker gets once when it joins or registers. It
-  works only on `/v1/worker/*`, where machine tokens and web sessions get 403, and gets 403 everywhere else
-  (`docs/workers.md`). Revoking it (`DELETE /v1/tokens/{id}`, or `DELETE /v1/admin/tokens/{id}`) revokes its worker
-  too and releases the runs the worker holds.
+  works only on `/v1/worker/*`, where machine tokens and web sessions get 403, and gets 403 everywhere else under
+  `/v1` (`docs/workers.md`); outside `/v1` it opens `/mcp` for the agent of a run its worker holds (below). Revoking
+  it (`DELETE /v1/tokens/{id}`, or `DELETE /v1/admin/tokens/{id}`) revokes its worker too and releases the runs the
+  worker holds.
 
 Only the health checks, the OpenAPI document, the first steps of sign-in (`/v1/auth/config`, `/v1/auth/github`,
 `/v1/auth/web/login`, `/v1/auth/web/callback`) and a worker's join with a pairing code (`/v1/worker/join`) answer
@@ -58,19 +59,40 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | skills | `GET /v1/skills`, `/v1/skills/global/{name}` and `/v1/skills/projects/{project}/{name}`, each with `/versions` and `/bundle` |
 | blobs | `POST /v1/blobs/uploads`, `POST /v1/blobs/commit` |
 | knowledge graphs | `/v1/kg/{project}/config`, `.../runs`, `.../blobs/check`, `.../builds`, `.../tools/{tool}`, and the web's `.../graph`, `.../nodes`, `.../node`, `.../neighbourhood` |
-| workers | `POST /v1/workers/pairings`, `GET /v1/workers/pairings/{id}`, `POST /v1/worker/join`, `GET` and `POST /v1/workers`, `GET /v1/workers/{id}`, `POST /v1/workers/{id}/{drain,undrain,revoke}` |
-| runs | `/v1/projects/{project}/plans/{plan_id}/ready-steps`, `GET` and `POST /v1/projects/{project}/runs`, `POST /v1/projects/{project}/plan-runs`, `.../runs/{id}`, `.../events`, `.../stream`, `.../diff`, `.../messages`, `.../{cancel,approve,rerun,takeover,handback}` |
+| workers | `POST /v1/workers/pairings`, `GET /v1/workers/pairings/{id}`, `POST /v1/worker/join`, `GET` and `POST /v1/workers`, `GET /v1/workers/{id}`, `POST /v1/workers/{id}/{drain,undrain,dispatch-from,revoke}` |
+| secrets | `GET /v1/secrets`, `PUT` and `DELETE /v1/secrets/{name}`, the caller's own only (`docs/credentials.md`) |
+| runs | `/v1/projects/{project}/plans/{plan_id}/ready-steps`, `GET` and `POST /v1/projects/{project}/runs`, `POST /v1/projects/{project}/plan-runs`, `.../runs/{id}`, `.../events`, `.../stream`, `.../diff`, `.../messages`, `.../credentials`, `.../{cancel,approve,rerun,takeover,handback}` |
 | decisions | `GET /v1/projects/{project}/decisions`, `.../decisions/{id}`, `POST .../decisions/{id}/answer` |
 | notifications | `GET /v1/me/notifications`, `GET /v1/me/notifications/count`, `POST /v1/me/notifications/read` |
 | overview | `GET /v1/me/overview`: counts, active, recent runs and open decisions over the projects you hold a grant on, for the web's Home |
-| worker protocol | `/v1/worker/{claim,heartbeat}`, `/v1/worker/runs/{id}/{state,events,inbox,uploads,blobs,plan,decisions,notices}`, `/v1/worker/runs/{id}/steps/{key}` |
+| worker protocol | `/v1/worker/{claim,heartbeat}`, `/v1/worker/runs/{id}/{state,events,inbox,uploads,blobs,plan,decisions,notices,credentials}`, `/v1/worker/runs/{id}/steps/{key}` |
 
 `/mcp` speaks MCP's Streamable HTTP transport, statelessly: each POST carries one JSON-RPC message and gets one JSON
-answer. It takes machine tokens only, and the `Host` header must be the host of `EVO_HUB_PUBLIC_URL` or a loopback
-name. Runtimes reach it through `evo-agents hub mcp`, a stdio proxy that adds the token, the session's project
-(`X-Evo-Project`) and its sink (`X-Evo-Sink`, `claude-code@anthropic` by default). Its 15 tools are the seven
-`kg_*` tools of `evo-agents kg serve` plus `memory_search`, `memory_get`, `memory_write`, `plan_list`, `plan_show`,
-`plan_step`, `skill_list` and `hub_projects`, and they follow the same rules as the REST routes.
+answer. It takes a machine token, or the worker token of the agent of a run (below), never a web session, and the
+`Host` header must be the host of `EVO_HUB_PUBLIC_URL` or a loopback name. Runtimes reach it through
+`evo-agents hub mcp`, a stdio proxy that adds the token, the session's project (`X-Evo-Project`) and its sink
+(`X-Evo-Sink`, `claude-code@anthropic` by default). Its 15 tools are the seven `kg_*` tools of `evo-agents kg serve`
+plus `memory_search`, `memory_get`, `memory_write`, `plan_list`, `plan_show`, `plan_step`, `skill_list` and
+`hub_projects`, and they follow the same rules as the REST routes.
+
+The agent of a run on a worker reaches `/mcp` with its worker's token. Inside a run (`EVO_RUN_ID`, which the daemon
+sets, and a token in the worker's state, `$EVO_WORKER_HOME` or `~/.evo/worker`) `evo-agents hub mcp` sends that
+token with `X-Evo-Run: <run id>` instead of the machine token of `~/.evo/hub/token`, and no `X-Evo-Project`; a
+worker machine needs no machine token at all. The hub opens the session only while the worker holds the run (leased,
+running, interactive, verifying or waiting) and the run's owner still holds a grant on its project; any other run,
+another worker's, one that ended or one in review, gets 403, and so does a worker token without `X-Evo-Run`. A
+machine token with `X-Evo-Run` gets 400. The agent then acts as the run's owner, scoped to the run:
+
+- the session's project is the run's, and an `X-Evo-Project` naming another one gets 403;
+- every tool reaches the run's project alone: any other project answers as one that does not exist, `hub_projects`
+  lists that one, and `skill_list` the global skills and that project's;
+- the owner's role there counts as writer at most, and the level as the owner's grant allows, through the session's
+  sink as for anyone;
+- the agent is never a hub admin, whoever owns the run, and it neither reads nor writes its owner's personal
+  memories;
+- every write is audited with the worker's token, and the log line of each tool call names the run.
+
+Once the run leaves those states, its id opens nothing, and revoking the worker ends its token.
 
 ### OpenAPI
 
@@ -260,6 +282,7 @@ evo-agents hub run handback 41                                # the agent goes o
 evo-agents hub run approve 41                                 # a run in review: the run and its step are done
 evo-agents hub run cancel 41
 evo-agents hub run rerun 41                                   # the step again, after a run that ended
+evo-agents hub run credentials 41                             # the leases the run got, never their values
 ```
 
 Every command after `dispatch`, `plan` and `list` takes the id of a run, as `list` shows it, and finds its project as
@@ -290,6 +313,34 @@ on that bring nothing, not even the hub's ping, the command gives up and names t
 since. `--json` prints what the hub answered, with the keys the command line contract declares; for `logs` that is
 every event read as one object, so it does not go with `--follow`. `send`, `cancel`, `approve`, `takeover`,
 `handback` and `rerun` belong to the member who dispatched the run: another member gets 403.
+
+`run credentials` lists the leases the run got (`GET /v1/projects/{project}/runs/{id}/credentials`): for each, the
+secret's name or `github-app:<account>`, its provider, its target (the variable it set, or the origins it answered
+for), the worker, when it was issued and when it ends, and whether it is still out, expired, or revoked and when. A
+lease given back stays in the list; no value is ever in it. It belongs to the member who dispatched the run too, since
+it names their secrets: another member gets 403, a hub admin included. Every refusal of the hub is printed as its
+message on stderr, so `run dispatch`, `run plan` or `run rerun` pinned to a worker whose owner set it to take runs
+dispatched from the web only says that a token cannot hand that worker work, and that nothing was dispatched
+(`docs/credentials.md`).
+
+The secrets those leases come from are the member's own, written once and never read back:
+
+```sh
+pbpaste | evo-agents hub secret set claude-oauth --kind env --env-var CLAUDE_CODE_OAUTH_TOKEN --project demo
+evo-agents hub secret set gitlab-kb --kind git --url-prefix https://gitlab.example.org/group --project demo \
+  --worker mac-mini --expires 2027-01-31                      # at a terminal: asks for the value, without echo
+evo-agents hub secret list                                    # name, kind, target, projects, workers, dates
+evo-agents hub secret delete gitlab-kb                        # its leases still out are revoked
+```
+
+`secret set` creates the secret or replaces it whole (`PUT /v1/secrets/{name}`). It takes no flag for the value, which
+`ps` and the shell's history would see: the value comes from stdin when stdin is not a terminal, with one final line
+break dropped, and otherwise it is asked for without echo. Every argument is checked before the value is read, and no
+command prints the value, an error included. `--kind env` needs `--env-var`; `--kind git` needs `--url-prefix`, and
+`--username` defaults to `oauth2`. `--project` names a project whose runs get it, on which you hold writer, and
+`--worker` one of your workers that alone gets it; both repeat. `--expires YYYY-MM-DD` ends it at 00:00 UTC of that
+day, as GitLab ends an access token on its expiry date. `secret list` reads `GET /v1/secrets` (`--json` prints it),
+and `secret delete` is `DELETE /v1/secrets/{name}`. `docs/credentials.md` describes which leases a run gets of them.
 
 The agent of a plan run asks its owner the decisions it may not take alone (`docs/notifications.md`), and the hub
 tells the owner of them, and of pushes to a default branch, in notifications:
@@ -429,7 +480,7 @@ the variables in the platform's environment, never in a committed file. `deploy/
 
 | Variable | Used by | Meaning |
 | --- | --- | --- |
-| `EVO_HUB_VERSION` | compose | image tag, a released version such as `0.4.0` |
+| `EVO_HUB_VERSION` | compose | image tag, a released version such as `0.5.0` |
 | `EVO_HUB_DSN` | api, worker | `postgresql://` URI of the hub database (required) |
 | `EVO_HUB_ADMINS` | api | GitHub logins of hub admins, comma-separated |
 | `EVO_HUB_GITHUB_CLIENT_ID` | api | the OAuth App's client id; without it nobody can sign in |
@@ -442,6 +493,8 @@ the variables in the platform's environment, never in a committed file. `deploy/
 | `EVO_HUB_BLOB_CONCURRENCY` | api | uploads one process checks and copies in the blob store at once, every commit together; default `32`, at most `256` |
 | `EVO_HUB_KG_KEEP_ARTIFACTS` | api, worker | newest built graphs of each project whose artifact stays in the bucket; older ones are deleted every hour; default `3`, at least `1` |
 | `EVO_HUB_RUN_LOG_DAYS` | worker | days the events of a finished run are kept before the daily pruning deletes them; default `30`, from `1` to `3650` |
+| `EVO_HUB_SECRETS_KEY` | api, worker | 32 random bytes in base64url that seal the credentials of worker runs (`docs/credentials.md`); without it writing a secret answers 503 and runs get no lease. It is not in the database or its dumps |
+| `EVO_HUB_GITHUB_APP_ID`, `EVO_HUB_GITHUB_APP_PRIVATE_KEY` | api, worker | the GitHub App that makes each run a token for its repos only: its ID or client ID, and its private key in PEM, where `\n` may stand for each line break; both or neither |
 | `EVO_HUB_FORWARDED_ALLOW_IPS` | api | the reverse proxies whose `X-Forwarded-For` the api believes: IP addresses or networks, comma-separated, or `*`; unset keeps uvicorn's default, the loopback addresses (or its own `FORWARDED_ALLOW_IPS`) |
 | `EVO_HUB_WORKER_CPUS`, `EVO_HUB_WORKER_MEMORY` | compose | worker limits, default `2` and `4g` |
 | `EVO_HUB_API_INTERNAL_URL` | web | where the web server reaches the api, default `http://evo-agents-hub-api:8080` (the api's network alias) |
@@ -508,6 +561,10 @@ Dump first, then copy the bucket, with a copy that never deletes from the backup
 Blobs never change, and the only ones the hub deletes are artifacts of old graphs, so a bucket copy taken after the
 dump holds every blob the dump refers to, as long as no prune ran in between: the hourly prune runs at minute 31. Skip
 `uploads/` (transient) and the cache volumes.
+
+The dump holds the secrets of worker runs sealed, and never `EVO_HUB_SECRETS_KEY`. Keep the key in the operator's
+secret store, apart from the dumps: a dump restored without it keeps every secret sealed, so their owners set them
+again, and a dump and the key together open every secret.
 
 In a live database every hash that `blobs`, `skill_versions`, `kg_builds.artifact_sha256` and `kg_ingests.log_sha256`
 name has its object in the bucket, prunes included: a prune drops the references in one transaction, then deletes the

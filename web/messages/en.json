@@ -31,6 +31,7 @@
     "myMemories": "My memories",
     "globalSkills": "Shared skills",
     "workers": "Workers",
+    "secrets": "Secrets",
     "runDiff": "Diff",
     "inbox": "Inbox",
     "counts": {
@@ -1418,6 +1419,7 @@
         "permissionsValue": "Full, as {owner}",
         "dispatch": "Who dispatches",
         "dispatchValue": "{owner} only",
+        "dispatchWeb": "{owner} only, from the web",
         "terminal": "Web terminal",
         "terminalOn": "Allowed",
         "terminalOff": "Not allowed",
@@ -1467,6 +1469,133 @@
       "drainFailed": "Couldn't drain {name}",
       "undrainFailed": "Couldn't resume {name}",
       "revokeFailed": "Couldn't revoke {name}"
+    },
+    "dispatchFrom": {
+      "label": "Only runs dispatched from the web",
+      "hint": "On: this worker claims only runs you dispatch while signed in on the web. Runs dispatched with a token, from the command line or by an agent, wait for another worker, and a token cannot pin a run to it, so a token that leaked cannot hand it work.",
+      "webSuccess": "{name} takes only runs dispatched from the web",
+      "webSuccessText": "Runs dispatched with a token, from the command line or by an agent, wait for another worker.",
+      "anySuccess": "{name} takes runs from the command line again",
+      "anySuccessText": "It claims runs dispatched with any of your credentials, from the command line and the web.",
+      "failed": "Couldn't change who dispatches to {name}"
+    }
+  },
+  "secrets": {
+    "title": "Secrets",
+    "count": "{count, plural, one {# secret} other {# secrets}}",
+    "addButton": "Add secret",
+    "caption": "Your secrets",
+    "listSummary": "{count, plural, one {Yours alone: nobody else sees it, a hub admin included, and its value is never shown again.} other {Yours alone: nobody else sees them, a hub admin included, and no value is ever shown again.}}",
+    "columns": {
+      "secret": "Secret",
+      "kind": "Kind",
+      "projects": "Projects",
+      "workers": "Workers",
+      "expires": "Ends",
+      "updated": "Value written",
+      "actions": "Actions"
+    },
+    "kind": {
+      "env": "Variable",
+      "git": "Git credential"
+    },
+    "gitTarget": "<code>{prefix}</code> as <code>{user}</code>",
+    "anyWorker": "Any of yours",
+    "never": "No end",
+    "expired": "Expired",
+    "replace": "Replace",
+    "replaceLabel": "Replace secret {name}",
+    "delete": "Delete",
+    "deleteLabel": "Delete secret {name}",
+    "empty": {
+      "title": "No secret yet",
+      "description": "The hub keeps a token sealed and hands it to the runs of your projects on your workers; a value goes in once and is never shown again. Add what a run needs, such as <code>CLAUDE_CODE_OAUTH_TOKEN</code> for Claude Code or a GitLab access token for git, here or with <code>evo-agents hub secret set</code>."
+    },
+    "errors": {
+      "forbidden": "The hub refused: a secret needs the writer role on each project it names, and binds only to your own workers that are not revoked.",
+      "notFound": "A project you chose no longer exists, or you can no longer see it. The lists were reloaded.",
+      "conflict": "You keep 200 secrets already: delete one before you add another.",
+      "unavailable": "This hub keeps no secrets yet: its operator has not set the key that seals them.",
+      "apiMessage": "API message: {message}"
+    },
+    "form": {
+      "addTitle": "Add a secret",
+      "replaceTitle": "Replace secret {name}",
+      "addDescription": "The hub seals the value and never shows it again, not even to you. Runs of the projects you choose get it on your workers.",
+      "replaceDescription": "Everything is filled in as the hub holds it except the value: the hub keeps no copy it could show, so type or paste it again, the new one or the same.",
+      "close": "Close",
+      "name": "Name",
+      "namePlaceholder": "for example claude-oauth",
+      "nameHint": "Lower case letters, digits, dots, hyphens and underscores, at most 64 characters, starting with a letter or a digit.",
+      "kind": "Kind",
+      "kinds": {
+        "env": "Environment variable",
+        "envHint": "The agent's environment gets it, such as CLAUDE_CODE_OAUTH_TOKEN.",
+        "git": "Git credential",
+        "gitHint": "Git's credential helper answers with it for the origins under a URL prefix, such as a GitLab access token."
+      },
+      "envVar": "Variable",
+      "envVarHint": "Upper case letters, digits and underscores. Not PATH, HOME, SHELL, USER, TMPDIR or SSH_AUTH_SOCK, and no name starting with EVO_, GIT_, LD_, DYLD_ or PYTHON.",
+      "urlPrefix": "URL prefix",
+      "urlPrefixHint": "The https address the origins start with, without a user or a password. git@ and ssh:// origins on the same host and path match it too.",
+      "username": "Username",
+      "usernameHint": "What git sends with the value; {user} when left empty, as GitLab takes with an access token.",
+      "projects": "Projects whose runs get it",
+      "projectsHint": "Only projects where you hold the writer role are listed.",
+      "projectsFailed": "Could not load the projects. Close the dialog and try again.",
+      "noProjects": "You hold the writer role on no project, so no run could get a secret. Ask a project admin for the writer role.",
+      "workers": "Workers",
+      "workersHint": "Check none for any of your workers, or some to keep it to them.",
+      "noWorkers": "You have no worker yet: the secret goes to any worker you register.",
+      "expires": "Ends on",
+      "expiresHint": "Optional. No run gets it from 00:00 UTC of that day, the way GitLab ends an access token on its expiry date.",
+      "value": "Value",
+      "valueHint": "Sent once over HTTPS and sealed by the hub; this page forgets it as soon as it is sent.",
+      "valueReplaceHint": "The new value, or the same one again; this page forgets it as soon as it is sent.",
+      "valueOneLine": "One line, as git's credential protocol takes it.",
+      "valueLines": "One line here; a value of several lines goes in with evo-agents hub secret set, from stdin.",
+      "valueForgotten": "The value was not kept: paste it again before you retry.",
+      "warning": "The agent of a run reads this value in clear and could leak it. Give a token with only the rights its runs need, and an end date.",
+      "cancel": "Cancel",
+      "add": "Add secret",
+      "replace": "Replace secret",
+      "saving": "Saving…",
+      "added": "Secret {name} added",
+      "addedText": "The hub sealed its value and will not show it again.",
+      "replaced": "Secret {name} replaced",
+      "replacedText": "Runs that ask for their credentials from now on get the new value.",
+      "problems": {
+        "nameRequired": "Give the secret a name.",
+        "nameInvalid": "Lower case letters, digits, dots, hyphens and underscores, at most 64 characters, starting with a letter or a digit.",
+        "nameTaken": "You have a secret of this name already: use Replace on its row, or choose another name.",
+        "envVarRequired": "Name the variable it sets.",
+        "envVarInvalid": "Upper case letters, digits and underscores, not starting with a digit.",
+        "envVarDenied": "This variable steers the shell, git or the worker and cannot come from a secret.",
+        "urlPrefixRequired": "Give the https prefix of the origins it answers for.",
+        "urlPrefixInvalid": "An https address with a host and a path, without a query or a fragment, such as https://gitlab.example.org/group.",
+        "urlPrefixCredentials": "No user or password in the address: the user goes in Username, the token in Value.",
+        "usernameInvalid": "One line of at most 200 characters.",
+        "projectsRequired": "Choose at least one project.",
+        "expiresInvalid": "Pick a day.",
+        "expiresPast": "Pick a day after today: a secret ends in the future.",
+        "valueRequired": "Type or paste the value.",
+        "valueTooLong": "At most {max} bytes of UTF-8.",
+        "valueNul": "The value may not hold a NUL character.",
+        "valueLines": "One line: git's credential protocol has no other."
+      }
+    },
+    "deleteDialog": {
+      "title": "Delete secret {name}?",
+      "leases": "Runs no longer get it, and the leases of it still out are revoked. An agent that read it already still holds the value.",
+      "source": "The hub forgets the value: revoke the token where it was made, too.",
+      "audit": "This cannot be undone and is written to the audit.",
+      "cancel": "Cancel",
+      "confirm": "Delete secret",
+      "pending": "Deleting…",
+      "notFound": "You have no secret of this name any more. The list was reloaded.",
+      "success": "Secret {name} deleted",
+      "successText": "Revoke the token where it was made, too.",
+      "failed": "Couldn't delete secret {name}"
     }
   },
   "runs": {
@@ -1658,7 +1787,8 @@
       "errors": {
         "forbidden": "The hub refused: dispatching needs the writer role on this project, and a pinned worker must be one of yours.",
         "notFound": "The plan is no longer on the hub, or you can no longer read it.",
-        "conflict": "A step is no longer ready, or another dispatch took it first. The steps are updated; check them and try again.",
+        "conflict": "A step is no longer ready, another dispatch took it first, or the chosen worker cannot take it. The steps are updated; check them and try again.",
+        "hubSays": "The hub says: {message}",
         "invalid": "The hub did not accept the dispatch."
       }
     },
@@ -1729,7 +1859,7 @@
       "errors": {
         "forbidden": "The hub refused: running a plan needs the writer role on this project, and a pinned worker must be one of yours.",
         "notFound": "The plan is no longer on the hub, or you can no longer read it.",
-        "conflict": "The hub did not queue the plan run: the plan has an active run, or no pending step. The plan is read again; check it and try again.",
+        "conflict": "The hub did not queue the plan run: the plan has an active run or no pending step, or the chosen worker cannot take it. The plan is read again; check it and try again.",
         "invalid": "The hub did not accept the plan run.",
         "hubSays": "The hub says: {message}"
       },
@@ -2100,6 +2230,32 @@
         "viewDiff": "View the diff",
         "evidence": "Evidence",
         "copyCommit": "Copy the commit SHA"
+      },
+      "credentials": {
+        "title": "Credentials",
+        "description": "What the run got from the hub, never a value. Only you see this.",
+        "loading": "Loading the credentials",
+        "failed": "Could not read the credentials of this run.",
+        "emptyActive": "None yet: the worker asks for them right after it claims the run.",
+        "empty": "This run got no credential from the hub.",
+        "provider": {
+          "secret": "Your secret",
+          "githubApp": "GitHub App"
+        },
+        "state": {
+          "out": "Out",
+          "expired": "Expired",
+          "revoked": "Revoked"
+        },
+        "variable": "Variable",
+        "repos": "Repos",
+        "issued": "Issued",
+        "issuedTo": "<time></time> to <code>{worker}</code>",
+        "expires": "Ends",
+        "noEnd": "no end",
+        "revoked": "Revoked",
+        "notRevoked": "not yet",
+        "manage": "Your secrets are on the <link>Secrets</link> page."
       },
       "actions": {
         "diff": "View diff",

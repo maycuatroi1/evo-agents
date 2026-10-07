@@ -12,6 +12,7 @@ import {
   COMMIT,
   dispatch,
   HARNESS_REPO,
+  leaseCredentials,
   liveWorker,
   PLAN_RUN_PLAN,
   planRunUnderway,
@@ -29,6 +30,7 @@ import {
   tool,
   uploadDiff,
 } from "./support/runs";
+import { putSecretByApi, secretValue } from "./support/secrets";
 import { packSkill, publishSkill } from "./support/skills";
 import { CHECKOUTS, heartbeat, registerWorker, RUNTIMES } from "./support/workers";
 
@@ -105,6 +107,21 @@ async function seedLiveRun(me: Member) {
     { kind: "system", body: { text: "verify: `pnpm test` exited 1 after 900 ms", exit_code: 1 } },
   ]);
   return { project, live, run };
+}
+
+/** Two secrets of `me` for the first project: a variable, and a git credential for one worker that ends in 30 days. */
+async function seedSecrets(me: Member) {
+  const project = me.projects[0];
+  const worker = await registerWorker(me, { name: uniqueName("mini"), projects: [project] });
+  await putSecretByApi(me, "claude-oauth", { kind: "env", env_var: "CLAUDE_CODE_OAUTH_TOKEN", projects: [project], value: secretValue("a11y") });
+  await putSecretByApi(me, "gitlab-docs", {
+    kind: "git",
+    url_prefix: "https://gitlab.example.org/group",
+    projects: [project],
+    workers: [worker.name],
+    expires_at: new Date(Date.now() + 30 * 86_400_000).toISOString(),
+    value: secretValue("a11y"),
+  });
 }
 
 async function seedSkill(me: Member) {
@@ -428,6 +445,51 @@ const PAGES: Entry[] = [
     },
   },
   {
+    name: "secrets with no secret yet",
+    open: async ({ page }) => {
+      await page.goto("/secrets");
+      await expect(page.locator("#main").getByTestId("state-empty")).toBeVisible();
+    },
+  },
+  {
+    name: "secrets list, the add form with errors, and the delete confirmation",
+    open: async ({ page, me }) => {
+      await seedSecrets(me);
+      await page.goto("/secrets");
+      await expect(page.locator("#main").getByTestId("secrets-table").locator("tbody tr")).toHaveCount(2);
+      await expectNoSeriousViolations(page, "secrets list");
+      await page.locator("#main").getByTestId("secrets-add").click();
+      const dialog = page.getByTestId("secret-dialog");
+      await dialog.getByTestId("secret-kind-git").click();
+      await dialog.getByTestId("secret-save").click(); // shows the field errors
+      await expect(dialog.getByTestId("secret-name")).toHaveAttribute("aria-invalid", "true");
+      await expectNoSeriousViolations(page, "add secret with errors");
+      await page.keyboard.press("Escape");
+      await expect(dialog).toBeHidden();
+      await page.locator("#main").getByTestId("secret-delete").first().click();
+      await expect(page.getByTestId("delete-secret-dialog")).toBeVisible();
+    },
+  },
+  {
+    name: "secret replace form",
+    open: async ({ page, me }) => {
+      await seedSecrets(me);
+      await page.goto("/secrets");
+      await page.locator("#main").getByTestId("secret-replace").last().click();
+      await expect(page.getByTestId("secret-dialog")).toHaveAttribute("data-mode", "replace");
+      await expect(page.getByTestId("secret-dialog").getByTestId("secret-url-prefix")).toHaveValue("https://gitlab.example.org/group");
+    },
+  },
+  {
+    name: "secrets on a small screen",
+    open: async ({ page, me }) => {
+      await seedSecrets(me);
+      await page.setViewportSize({ width: 375, height: 812 });
+      await page.goto("/secrets");
+      await expect(page.locator("#main").getByTestId("secrets-table")).toBeVisible();
+    },
+  },
+  {
     name: "runs with no run yet",
     open: async ({ page, me }) => {
       await page.goto(`/p/${me.projects[0]}/runs`);
@@ -545,6 +607,16 @@ const PAGES: Entry[] = [
       await page.keyboard.press("Escape");
       await open(page, `${runPath(project, run.id)}/diff`);
       await expect(page.locator("#main").getByTestId("diff-file")).toHaveCount(1);
+    },
+  },
+  {
+    name: "run page with the credentials it got",
+    open: async ({ page, me }) => {
+      const { project, live, run } = await seedLiveRun(me);
+      await putSecretByApi(me, "claude-oauth", { kind: "env", env_var: "CLAUDE_CODE_OAUTH_TOKEN", projects: [project], value: secretValue("a11y") });
+      await leaseCredentials(live, run.id);
+      await open(page, runPath(project, run.id));
+      await expect(page.locator("#main").getByTestId("run-lease-item")).toHaveCount(1);
     },
   },
   {

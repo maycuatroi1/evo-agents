@@ -18,7 +18,7 @@ export type WorkerCredential = components["schemas"]["WorkerCredential"];
 
 export const PROTOCOL_HEADER = { "X-Evo-Worker-Protocol": "1" };
 
-export const HOST = { hostname: "e2e-host.local", os: "macOS 15", arch: "arm64", agent_version: "0.3.0" };
+export const HOST = { hostname: "e2e-host.local", os: "macOS 15", arch: "arm64", agent_version: "0.4.0" };
 
 /** What a daemon's heartbeat reports, in the shape the pages read. */
 export const RUNTIMES = {

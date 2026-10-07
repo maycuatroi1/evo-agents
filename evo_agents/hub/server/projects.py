@@ -14,7 +14,10 @@ cannot see get the same 404.
 
 ``project_access`` is where the routes for memories, plans, skills and the knowledge graph start: the project's
 rules (``evo_agents.hub.access``) and the caller's grant, with the read and write rules applied through them. A hub
-admin without a grant manages a project but reads and pushes nothing in it.
+admin without a grant manages a project but reads and pushes nothing in it. The agent of a run, on the hub's /mcp
+with its worker's token (``Principal.scope``), sees the run's project alone, every other one answering as a project
+that is not registered, and there uses its owner's grant capped by the scope (``scoped_grant``): the lower role and
+the lower level of the two.
 """
 
 from __future__ import annotations
@@ -29,7 +32,7 @@ from psycopg.types.json import Jsonb
 from pydantic import BaseModel, Field
 
 from evo_agents.harness import load_schema
-from evo_agents.hub.access import HUB_KIND, INTEGRITIES, ProjectRules, Refused
+from evo_agents.hub.access import HUB_KIND, INTEGRITIES, ROLES, ProjectRules, Refused
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.admin import PROJECT_NAME, ProjectName
 from evo_agents.hub.server.errors import ErrorBody
@@ -139,9 +142,27 @@ async def _one(conn, query: str, params=()):
     return await (await conn.execute(query, params)).fetchone()
 
 
+def _lower(ladder, held, cap):
+    """The lower of ``held`` and ``cap`` on ``ladder``; None when either is not on it."""
+    if held not in ladder or cap not in ladder:
+        return None
+    return held if ladder.index(held) <= ladder.index(cap) else cap
+
+
+def scoped_grant(user: Principal, levels, role: str | None, max_level: str | None) -> tuple:
+    """(role, max level) of the grant ``user`` holds, as ``user`` may use it: capped by a run's scope, when it has
+    one, to the lower role and the lower level (on ``levels``, the project's ladder) of the grant and the scope."""
+    if user.scope is None or role is None:
+        return role, max_level
+    return _lower(ROLES, role, user.scope.role), _lower(levels, max_level, user.scope.max_level)
+
+
 async def project_access(conn, user: Principal, name: str) -> ProjectAccess:
     """``user``'s access to project ``name``; 404 when it is not registered, or when ``user`` holds no grant on it
-    and is no hub admin, so a name tells nothing about the projects one cannot see."""
+    and is no hub admin, so a name tells nothing about the projects one cannot see. The agent of a run sees the run's
+    project alone, with the grant ``scoped_grant`` leaves it."""
+    if not user.reaches(name):
+        raise HTTPException(404, not_found(name))
     row = await _one(
         conn,
         "SELECT p.id, p.levels, p.locations, p.default_label, g.role, g.max_level FROM projects p "
@@ -151,6 +172,7 @@ async def project_access(conn, user: Principal, name: str) -> ProjectAccess:
     if row is None or (row[4] is None and not user.admin):
         raise HTTPException(404, not_found(name))
     project_id, levels, locations, default_label, role, max_level = row
+    role, max_level = scoped_grant(user, levels, role, max_level)
     cursor = await conn.execute(
         "SELECT sink_id, kind, clearance FROM project_sinks WHERE project_id = %s ORDER BY sink_id", (project_id,)
     )
@@ -276,12 +298,14 @@ SELECT p.id, p.name, p.cluster, p.workspace, p.harness_path, p.levels, p.locatio
        p.updated_at, g.role, g.max_level
   FROM projects p LEFT JOIN grants g ON g.project_id = p.id AND g.user_id = %(user)s
  WHERE (g.user_id IS NOT NULL OR %(admin)s) AND (%(name)s::text IS NULL OR p.name = %(name)s)
+   AND (%(only)s::text IS NULL OR p.name = %(only)s)
  ORDER BY p.name
 """
 
 
 async def _projects(conn, user: Principal, name: str | None = None) -> list[Project]:
-    rows = await (await conn.execute(PROJECTS, {"user": user.user_id, "admin": user.admin, "name": name})).fetchall()
+    params = {"user": user.user_id, "admin": user.admin, "name": name, "only": user.run_project}
+    rows = await (await conn.execute(PROJECTS, params)).fetchall()
     ids = [row[0] for row in rows]
     sinks: dict[int, list[Sink]] = {}
     repos: dict[int, list[Repo]] = {}
@@ -302,6 +326,7 @@ async def _projects(conn, user: Principal, name: str | None = None) -> list[Proj
     for row in rows:
         project_id, name, cluster, workspace, harness_path, levels, locations, label, created, updated = row[:10]
         harness = Harness(name=cluster, workspace=workspace, path=harness_path) if cluster else None
+        role, max_level = scoped_grant(user, levels, row[10], row[11])
         projects.append(
             Project(
                 name=name,
@@ -311,8 +336,8 @@ async def _projects(conn, user: Principal, name: str | None = None) -> list[Proj
                 default_label=label,
                 sinks=sinks.get(project_id, []),
                 repos=repos.get(project_id, []),
-                role=row[10],
-                max_level=row[11],
+                role=role,
+                max_level=max_level,
                 created_at=created,
                 updated_at=updated,
             )
@@ -368,7 +393,8 @@ async def register(request: Request, body: Registration, project: ProjectName, u
             grant = await _one(
                 conn, "SELECT role FROM grants WHERE user_id = %s AND project_id = %s", (user.user_id, project_id)
             )
-            if not user.admin and (grant is None or grant[0] != "admin"):
+            role = scoped_grant(user, body.levels, grant[0], None)[0] if grant else None  # a run's agent: writer
+            if not user.admin and role != "admin":
                 raise HTTPException(403, _refusal(project))
             changed = await _held(conn, project_id) != desired
             if changed:

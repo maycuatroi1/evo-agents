@@ -1,4 +1,5 @@
 import importlib.util
+import os
 
 import pytest
 
@@ -11,6 +12,16 @@ if pg.DSN:
             f"EVO_HUB_TEST_DSN is set but {', '.join(_missing)} is missing: "
             "python -m pip install -e '.[test,hub-server]'"
         )
+
+
+@pytest.fixture(autouse=True)
+def _no_worker_of_this_machine(monkeypatch):
+    """No variable of a worker or a run of the machine running pytest (EVO_WORKER_*, EVO_RUN_*): ``evo-agents hub
+    mcp`` sends a worker's token inside a run, and a test run inside a run of a worker must never send that worker's
+    token anywhere, nor read its state."""
+    for name in list(os.environ):
+        if name.startswith(("EVO_WORKER_", "EVO_RUN_")):
+            monkeypatch.delenv(name)
 
 
 @pytest.fixture(scope="session")

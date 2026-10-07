@@ -13,8 +13,13 @@ process. The lifespan of a mounted app does not run, so the hub's lifespan enter
   else 403. This is the DNS rebinding check of the SDK, which only takes localhost by default and checks the same
   lists again;
 - the caller needs a live machine token as ``Authorization: Bearer``, else 401: the web session cookie is not taken;
+- or the live token of a worker with X-Evo-Run, the id of a run that worker holds now (``runs.HELD_STATES``, waiting
+  among them) and whose owner still holds a grant on its project; else 403, as for a worker token without the header.
+  The caller is then the agent of that run: its owner with a ``RunScope`` (``security``), the run's project alone,
+  the owner's grant there capped at writer, and never a hub admin, so ``projects.project_access`` holds every tool to
+  it. Once the run leaves the held states, its id opens nothing. X-Evo-Run with a machine token is 400;
 - X-Evo-Project names the session's project and X-Evo-Sink its sink (default claude-code@anthropic); a malformed one is
-  400.
+  400. The session of a run's agent is the run's project: X-Evo-Project naming another is 403.
 
 Every refusal is the API's JSON error with the request id. Only then does the SDK see the request, with the caller in
 ``request.state``.
@@ -36,7 +41,7 @@ import json
 import logging
 import re
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date
 from urllib.parse import urlsplit
 
@@ -52,12 +57,14 @@ from pydantic import ValidationError
 from starlette.requests import Request
 
 from evo_agents import __version__
+from evo_agents.hub.access import has_role
 from evo_agents.hub.client import HubError
 from evo_agents.hub.config import HubConfig
 from evo_agents.hub.mcp_tools import (
     INSTRUCTIONS,
     KG_TOOL_NAMES,
     PROJECT_HEADER,
+    RUN_HEADER,
     SCHEMAS,
     SERVER_NAME,
     SINK_HEADER,
@@ -67,11 +74,22 @@ from evo_agents.hub.memory import AGENT_SINK, FRONTMATTER, HARNESS, frontmatter,
 from evo_agents.hub.mirror import ordered_plan, render
 from evo_agents.hub.plan_cli import ATTEMPTS, _check_retry
 from evo_agents.hub.plans import PlanProblem, step_index
+from evo_agents.hub.runs import HELD_STATES
 from evo_agents.hub.server import kg, memories, plans, projects, skills
 from evo_agents.hub.server.admin import PROJECT_NAME
 from evo_agents.hub.server.errors import error_response
 from evo_agents.hub.server.projects import ProjectAccess, project_access
-from evo_agents.hub.server.security import LOGIN_HINT, MACHINE, WWW_AUTHENTICATE, Principal, authenticate
+from evo_agents.hub.server.security import (
+    JOIN_HINT,
+    LOGIN_HINT,
+    MACHINE,
+    PREFIXES,
+    WORKER,
+    WWW_AUTHENTICATE,
+    Principal,
+    RunScope,
+    authenticate,
+)
 from evo_agents.kg.serve import Session, _error
 from evo_agents.schema import errors, validate
 
@@ -88,10 +106,29 @@ EXCERPT = 200  # characters of a memory shown by memory_search
 PLAN_WIDTH = 110  # as the copies in git
 _PROJECT = re.compile(PROJECT_NAME)
 _SINK = re.compile(r"[^\x00-\x1f\x7f]{1,100}")
+_RUN = re.compile(r"[1-9][0-9]{0,17}")  # a run's id, within bigint
 NO_PROJECT = (
     "this session has no project: start `evo-agents hub mcp` in a directory of the project or with --project, so it "
     "sends X-Evo-Project"
 )
+RUN_ONLY = (
+    f"a worker token opens {MOUNT} only for the agent of a run its worker holds, named in {RUN_HEADER}: "
+    "`evo-agents hub mcp` sends it inside a run"
+)
+NOT_HELD = (
+    f"this worker does not hold run {{run}} now: it ended, or another worker holds it, and {MOUNT} opens for the "
+    "agent of a run its worker holds only"
+)
+# The run a worker token names, when that worker (live) holds it for its owner: its state, its project and the owner's
+# grant there.
+RUN_SCOPE = """
+SELECT r.state, p.name, g.role, g.max_level
+  FROM workers w
+  JOIN runs r ON r.worker_id = w.id AND r.dispatched_by = w.owner_id
+  JOIN projects p ON p.id = r.project_id
+  LEFT JOIN grants g ON g.project_id = r.project_id AND g.user_id = w.owner_id
+ WHERE w.token_id = %(token)s AND w.revoked_at IS NULL AND r.id = %(run)s
+"""
 
 
 class Refusal(Exception):
@@ -196,6 +233,14 @@ class McpGate:
         project = request.headers.get(PROJECT_HEADER) or None
         if project is not None and not _PROJECT.fullmatch(project):
             return error_response(request, 400, f"{PROJECT_HEADER} must be the name of a project on the hub")
+        scope = request.state.principal.scope
+        if scope is not None:  # the agent of a run: its session is the run's project
+            if project is not None and project != scope.project:
+                message = (
+                    f"run {scope.run_id} is of project {scope.project}: its agent cannot open a session of {project}"
+                )
+                return error_response(request, 403, message)
+            project = scope.project
         sink = request.headers.get(SINK_HEADER) or AGENT_SINK
         if not _SINK.fullmatch(sink):
             message = f"{SINK_HEADER} must name a sink: printable text, 100 characters at most"
@@ -214,16 +259,47 @@ class McpGate:
         scheme, _, token = authorization.strip().partition(" ")
         if scheme.lower() != "bearer" or not token.strip():
             return _unauthorized(request, f"the Authorization header must be `Bearer <token>`: {LOGIN_HINT}")
-        config = request.app.state.config
+        token = token.strip()
+        kind = WORKER if token.startswith(PREFIXES[WORKER]) else MACHINE
+        run = request.headers.get(RUN_HEADER)
+        # Decided by the kind of token and the header alone, before the database.
+        if kind == WORKER and run is None:
+            return error_response(request, 403, RUN_ONLY)
+        if kind != WORKER and run is not None:
+            return error_response(request, 400, f"{RUN_HEADER} goes with a worker token: a machine token is no run's")
+        if run is not None and not _RUN.fullmatch(run):
+            return error_response(request, 400, f"{RUN_HEADER} must be the id of a run")
+        config, pool = request.app.state.config, request.app.state.pool
         try:
-            principal = await authenticate(request.app.state.pool, token.strip(), MACHINE, config)
+            principal = await authenticate(pool, token, kind, config)
+            if principal is not None and kind == WORKER:
+                async with pool.connection() as conn:
+                    principal = replace(principal, scope=await run_scope(conn, principal, int(run)))
         except psycopg.OperationalError as exc:  # PoolTimeout is one; bugs stay 500s
             log.warning("cannot check a credential: database unavailable", extra={"error": type(exc).__name__})
             return error_response(request, 503, "the hub database is unavailable; try again shortly")
+        except HTTPException as exc:  # a run its worker does not hold
+            log.warning("mcp request refused: run not held", extra={"run_id": int(run), "reason": _detail(exc)})
+            return error_response(request, exc.status_code, _detail(exc))
         if principal is None:
-            return _unauthorized(request, f"the token is revoked, expired or unknown: {LOGIN_HINT}")
+            hint = JOIN_HINT if kind == WORKER else LOGIN_HINT
+            what = "worker token" if kind == WORKER else "token"
+            return _unauthorized(request, f"the {what} is revoked, expired or unknown: {hint}")
         request.state.principal = principal
         return None
+
+
+async def run_scope(conn, user: Principal, run_id: int) -> RunScope:
+    """The scope of the agent of run ``run_id`` for the worker whose token ``user`` authenticated: the run's project,
+    the owner's grant there with its role capped at writer. HTTPException 403 when that worker does not hold the run
+    now (another worker's, one that ended, none) or the owner holds no grant on the project any more."""
+    row = await (await conn.execute(RUN_SCOPE, {"token": user.token_id, "run": run_id})).fetchone()
+    if row is None or row[0] not in HELD_STATES:
+        raise HTTPException(403, NOT_HELD.format(run=run_id))
+    _, project, role, max_level = row
+    if role is None:
+        raise HTTPException(403, f"the owner of run {run_id} holds no grant on project {project} any more")
+    return RunScope(run_id, project, "writer" if has_role(role, "writer") else role, max_level)
 
 
 def _unauthorized(request: Request, message: str):
@@ -327,6 +403,7 @@ class HubMcp(MCPServer):
                 "tool": name if name in SCHEMAS else "unknown",
                 "project": session.project if session else None,
                 "login": user.login if user else None,
+                "run_id": user.scope.run_id if user and user.scope else None,
                 "error": bool(result.get("isError")),
                 "duration_ms": round((time.perf_counter() - started) * 1000, 1),
                 "request_id": request_id,

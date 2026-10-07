@@ -27,7 +27,7 @@ describe("nav", () => {
     expect(PROJECT_NAV.filter((item) => item.count).map((item) => [item.label, item.count])).toEqual([
       ["runs", "activeRuns"],
     ]);
-    expect(HUB_NAV.map((item) => item.label)).toEqual(["workers", "myMemories", "globalSkills", "admin"]);
+    expect(HUB_NAV.map((item) => item.label)).toEqual(["workers", "secrets", "myMemories", "globalSkills", "admin"]);
     expect(HUB_NAV.filter((item) => item.adminOnly).map((item) => item.label)).toEqual(["admin"]);
   });
 

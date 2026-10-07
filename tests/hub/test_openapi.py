@@ -62,3 +62,18 @@ def test_errors_are_json_bodies_in_the_contract():
     assert {"error", "message"} <= set(schemas["ErrorBody"]["properties"])
     forbidden = spec["paths"]["/v1/admin/stats"]["get"]["responses"]["403"]
     assert forbidden["content"]["application/json"]["schema"]["$ref"] == "#/components/schemas/ErrorBody"
+
+
+def test_a_secrets_value_is_written_and_never_read_in_the_contract():
+    spec = document()
+    paths, schemas = spec["paths"], spec["components"]["schemas"]
+    assert set(paths["/v1/secrets"]) == {"get"} and set(paths["/v1/secrets/{name}"]) == {"put", "delete"}
+    value = schemas["SecretWrite"]["properties"]["value"]
+    assert (value["type"], value["format"], value["writeOnly"]) == ("string", "password", True)
+    for name in ("Secret", "SecretWritten"):
+        assert "value" not in schemas[name]["properties"]
+    listed = paths["/v1/secrets"]["get"]["responses"]["200"]["content"]["application/json"]["schema"]
+    assert listed["items"]["$ref"] == "#/components/schemas/Secret"
+    put = paths["/v1/secrets/{name}"]["put"]
+    assert {"403", "404", "409", "422", "503"} <= set(put["responses"])
+    assert put["requestBody"]["content"]["application/json"]["schema"]["$ref"] == "#/components/schemas/SecretWrite"

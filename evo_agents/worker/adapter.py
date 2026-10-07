@@ -46,7 +46,8 @@ Rules every adapter keeps, from what the runtimes do (research_notes/worker-runt
   its tools too. ``group_pid()`` names the leader of that group once the agent runs, so a daemon that starts after
   this one died can stop an agent it left (``evo_agents.worker.orphans``).
 - stdin is the message channel or ``/dev/null``, never a pipe left open by accident: some runtimes wait for its EOF.
-- ``context.env`` is the environment of the agent; it has no hub token.
+- ``context.env`` is the environment of the agent; it has no hub token. ``context.leased`` names the variables of it
+  that the run's leases set; ``environment_notes`` says what the runtime leaves out of it because of them.
 
 Adapters are found, by runtime name, in ``BUILTIN`` (the runtimes this package supports), in the entry points of
 the group ``evo_agents.worker.adapters``, and in ``EVO_WORKER_ADAPTERS`` (``runtime=module:Class`` separated by
@@ -174,6 +175,7 @@ class RunContext:
     prompt: str
     env: Mapping[str, str]  # the agent's environment
     resume_session: str | None = None  # a session of this runtime to go on with, instead of a new one
+    leased: frozenset[str] = frozenset()  # the variables of ``env`` the run's leases set (``credentials``)
 
     @property
     def run_id(self) -> int:
@@ -217,6 +219,12 @@ class Adapter(abc.ABC):
         """The runtime's terminal UI on the session ``session_id``, or on a new session that starts on
         ``context.prompt`` when it is None; only for an adapter whose ``interactive`` is true."""
         raise NotImplementedError(f"the {cls.runtime} adapter cannot hand its session to a terminal")
+
+    @classmethod
+    def environment_notes(cls, context: RunContext) -> list[str]:
+        """What the runtime's agent, headless or in its terminal UI, does not get of ``context.env`` and why, as lines
+        for the run's log; the daemon writes each once a run, as a ``system`` event, once the agent has started."""
+        return []
 
     def __init__(self, context: RunContext):
         self.context = context
