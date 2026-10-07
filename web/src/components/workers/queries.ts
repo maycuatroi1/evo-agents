@@ -10,8 +10,8 @@ import { recordHeartbeats } from "./heartbeats";
 
 /**
  * What the workers pages read and write (docs/workers.md). A member sees their own workers; a hub admin sees every
- * worker and may drain or revoke any of them, but only the owner undrains one. Another member's worker answers 404,
- * the same as an id the hub never gave out.
+ * worker and may drain or revoke any of them, but only the owner undrains one or sets who may dispatch to it.
+ * Another member's worker answers 404, the same as an id the hub never gave out.
  */
 type Schemas = components["schemas"];
 export type Worker = Schemas["Worker"];
@@ -89,6 +89,18 @@ export async function changeWorker(api: ApiClient, id: number, action: WorkerAct
   if (action === "drain") return call(api.POST("/v1/workers/{worker_id}/drain", { params, headers }));
   if (action === "undrain") return call(api.POST("/v1/workers/{worker_id}/undrain", { params, headers }));
   return call(api.POST("/v1/workers/{worker_id}/revoke", { params, headers }));
+}
+
+/** Who may hand a worker its runs: `any` credential of its owner, or only a dispatch made on the web (`web`). */
+export type DispatchFrom = Worker["dispatch_from"];
+
+/**
+ * Set who may hand the worker its runs. The hub takes this from the owner's web session only: a machine token gets
+ * 403, so a token that leaked cannot open the worker again.
+ */
+export async function setDispatchFrom(api: ApiClient, id: number, value: DispatchFrom): Promise<Worker> {
+  const headers = await csrfHeaders(api);
+  return call(api.POST("/v1/workers/{worker_id}/dispatch-from", { params: { path: { worker_id: id } }, body: { value }, headers }));
 }
 
 /** A worker id as the API accepts it: a positive bigint written in digits; null for anything else. */

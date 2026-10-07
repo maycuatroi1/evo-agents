@@ -13,6 +13,8 @@
   runs/<run>/decisions.jsonl    the decisions a plan run's agent asked (``evo-agents worker ask``), one id a line
   runs/<run>/agent.json         the process group of the run's latest agent while the run has not ended here, for the
                                 next daemon to stop when this one dies first (``orphans``)
+  runs/<run>/cred.sock    0600  the unix socket the daemon hands the run's leases through, to its own uid only, while
+                                the run holds them (``credentials``)
   worktrees/<project>-<run>/    the run's git worktree, removed 7 days after the run ended; for a plan run, the
                                 agent's directory: a worktree of each repo and .evo-run/ (plan.yaml, result.json)
 ```
@@ -64,7 +66,8 @@ class WorkerConfig:
     owner: str | None = None
     token_id: int | None = None
     joined_at: str | None = None
-    # project -> {"workspace": str | None, "repos": [{"name", "path", "default_branch"}]}, as the hub lists them
+    # project -> {"workspace": str | None, "repos": [{"name", "path", "default_branch"}], "harness": str | None},
+    # as the hub lists them
     repos: dict[str, dict] = field(default_factory=dict)
     # "<project>/<repo>" -> a path, set by hand; wins over what the registry and the hub say
     checkouts: dict[str, str] = field(default_factory=dict)

@@ -10,11 +10,13 @@ MAX_OPEN_DECISIONS open at once (409).
 
 POST /v1/projects/{p}/decisions/{id}/answer is for the run's owner alone, with a web session or a machine token of
 their own: another member gets 403, as does a worker's token (the middleware keeps it under /v1/worker/), and someone
-without a grant on the project 404. A decision that is no longer open gets 409. The answer names an option of the
-decision, gives text of the owner's own (at most 4 KiB), or both. Under the plan's dispatch lock and the run's row
-lock, the decision is answered, its notification read, and the answer goes to a run's inbox as a message that names
-the decision (``run_inbox.decision_id``), with a ``user_message`` event, so the heartbeat counts it and the worker
-hands it to the agent like any message of the owner's:
+without a grant on the project 404. A machine token also gets 403 when the run is on a worker set to take runs
+dispatched from the web only, held, pinned or parked there (``runs.web_only_steering``): its answer would steer that
+worker's agent, or resume the parked run on it. A decision that is no longer open gets 409. The answer names an
+option of the decision, gives text of the owner's own (at most 4 KiB), or both. Under the plan's dispatch lock and the
+run's row lock, the decision is answered, its notification read, and the answer goes to a run's inbox as a message
+that names the decision (``run_inbox.decision_id``), with a ``user_message`` event, so the heartbeat counts it and the
+worker hands it to the agent like any message of the owner's:
 
 - a run that is queued or held (``runs.MESSAGE_STATES``, waiting included) gets it in its own inbox;
 - a parked run is resumed: the hub queues a new plan run pinned to the parked run's worker, with
@@ -59,6 +61,7 @@ from evo_agents.hub.server.runs import (
     _held_plan_run,
     _lock_plan,
     visible_plans,
+    web_only_steering,
 )
 from evo_agents.hub.server.security import CurrentUser, Principal
 
@@ -424,16 +427,17 @@ READ_ITS_NOTIFICATION = """
 UPDATE notifications SET read_at = now() WHERE decision_id = %s AND user_id = %s AND read_at IS NULL
 """
 NEXT_RUN_ID = "SELECT nextval(pg_get_serial_sequence('runs', 'id'))"
-# The run that resumes a parked plan run: pinned to its worker, in its session, with the agent time it used, at the
-# plan's current revision (the one it was dispatched from when the plan is gone).
+# The run that resumes a parked plan run: pinned to its worker, in its session, with the agent time it used and the
+# credential it was dispatched with, at the plan's current revision (the one it was dispatched from when the plan is
+# gone).
 RESUME_RUN = """
-INSERT INTO runs (id, kind, project_id, plan_id, title, plan_revision, dispatched_by, pinned_worker_id,
+INSERT INTO runs (id, kind, project_id, plan_id, title, plan_revision, dispatched_by, dispatched_via, pinned_worker_id,
                   requested_runtime, runtime, model, mode, approval, timeout_s, max_attempts, repos, resume_of_run_id,
                   run_seconds, session_id)
 OVERRIDING SYSTEM VALUE
 SELECT %(new)s, 'plan', r.project_id, r.plan_id, r.title, coalesce(pl.revision, r.plan_revision), r.dispatched_by,
-       r.worker_id, r.runtime, r.runtime, r.model, r.mode, r.approval, r.timeout_s, r.max_attempts, r.repos, r.id,
-       r.run_seconds, r.session_id
+       r.dispatched_via, r.worker_id, r.runtime, r.runtime, r.model, r.mode, r.approval, r.timeout_s, r.max_attempts,
+       r.repos, r.id, r.run_seconds, r.session_id
   FROM runs r LEFT JOIN plans pl ON pl.project_id = r.project_id AND pl.plan_id = r.plan_id
  WHERE r.id = %(parked)s
 """
@@ -519,6 +523,7 @@ async def answer(
             raise HTTPException(
                 409, f"run {run_id} of decision {decision_id} is {run_state}: no agent can take an answer"
             )
+        await web_only_steering(conn, user, run_id, "answer its decisions", "answer on the web", "answered")
         params = {"id": decision_id, "option": body.option, "text": body.text, "user": user.user_id}
         await conn.execute(ANSWER, params)
         await conn.execute(READ_ITS_NOTIFICATION, (decision_id, user.user_id))

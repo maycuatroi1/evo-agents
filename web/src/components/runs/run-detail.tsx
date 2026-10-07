@@ -24,6 +24,7 @@ import type { RunMove } from "./log-model";
 import { isActiveState, LIVE_REFRESH_MS, openDecisionsQuery, type Run, RUN_VIEW_PARAM, runKey, runQuery } from "./queries";
 import { RunActions, RunNotes } from "./run-actions";
 import { RunComposer } from "./run-composer";
+import { RunCredentials } from "./run-credentials";
 import { RunDecisions } from "./run-decisions";
 import { RunDetails, RunResult } from "./run-facts";
 import { RunLogCard, SESSION_TABS, type SessionTab } from "./run-log";
@@ -217,6 +218,7 @@ function RunPage({ run }: { run: Run }) {
           <UsageMeter run={run} events={log.events} />
           {plan ? <RunPlanSteps run={run} /> : null}
           <RunResult run={run} />
+          {controls.owner ? <RunCredentials run={run} /> : null}
         </div>
       </div>
     </div>
@@ -225,8 +227,9 @@ function RunPage({ run }: { run: Run }) {
 
 /**
  * One run: its phases as a timeline, its trace and raw log (live), the owner's controls (cancel, take over, hand back,
- * approve, rerun, a message to the agent), its details, its usage and its result. A plan run also lists its plan's steps with their status, and
- * shows the decisions it waits on with the owner's answer form at the top of the side column. A run of a plan the visitor may not read, or of another
+ * approve, rerun, a message to the agent), its details, its usage and its result, and for its owner the credentials it
+ * got from the hub. A plan run also lists its plan's steps with their status, and shows the decisions it waits on with
+ * the owner's answer form at the top of the side column. A run of a plan the visitor may not read, or of another
  * project, is not found.
  */
 export function RunDetail({ project, runId, initialError }: { project: string; runId: number; initialError: ApiErrorInfo | null }) {

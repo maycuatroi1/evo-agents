@@ -8,7 +8,10 @@ string, which can carry OAuth codes. Every path under /v1 needs a credential exc
 ``security.PUBLIC_PATHS`` lists. The OpenAPI document is served at /v1/openapi.json for the web client's generated
 types. /mcp is the MCP endpoint (``evo_agents.hub.server.mcp``): its SDK app is mounted, so the lifespan runs its
 session manager. The only websockets are the two ends of a run's web terminal (``evo_agents.hub.server.terminal``),
-which check their own credential.
+which check their own credential. ``app.state.sealer`` seals the members' secrets (``evo_agents.hub.server.sealing``);
+it is None without EVO_HUB_SECRETS_KEY, and the routes that write secrets answer 503. ``app.state.github_app`` is the
+hub's GitHub App (``evo_agents.hub.server.github_app``), which makes and revokes the runs' GitHub tokens; the lifespan
+opens it, None without EVO_HUB_GITHUB_APP_*, and a private key that does not open stops the start.
 """
 
 from __future__ import annotations
@@ -33,6 +36,7 @@ from evo_agents.hub.log import redact_dsn, scrub_data
 from evo_agents.hub.migrate import migrate
 from evo_agents.hub.server import admin, auth, blobs, errors, health, projects, tokens, web_auth
 from evo_agents.hub.server.github import GitHub
+from evo_agents.hub.server.github_app import GitHubApp
 from evo_agents.hub.server.security import Authenticate
 
 log = logging.getLogger(__name__)
@@ -97,15 +101,20 @@ def create_app(config: HubConfig) -> FastAPI:
                 "pool": {"min": config.pool_min_size, "max": config.pool_max_size, "timeout_s": config.pool_timeout},
             },
         )
+        github_app = None
         try:
+            github_app = GitHubApp.from_config(config)  # a private key that does not open stops the start
             config.data_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
             result = await asyncio.to_thread(migrate, config.dsn)
             pool = await open_pool(config)
         except Exception as exc:
             log.error("hub cannot start", extra={"db": target, "error": f"{type(exc).__name__}: {exc}"})
+            if github_app is not None:
+                await github_app.aclose()
             raise
         app.state.pool = pool
         app.state.github = GitHub(config)
+        app.state.github_app = github_app  # None without EVO_HUB_GITHUB_APP_*: no GitHub token is leased
         app.state.blobs = BlobStore.from_config(config)
         app.state.jobs = await JobQueue.open(pool)
         app.state.kg_graphs = GraphCache(config.data_dir / "kg" / "graphs")  # built graphs, fetched by sha256
@@ -124,6 +133,8 @@ def create_app(config: HubConfig) -> FastAPI:
                 "device_login": bool(config.github_client_id),
                 "web_login_missing": config.web_login_missing(),
                 "blob_bucket": config.s3_bucket,
+                "credentials_missing": config.credentials_missing(),
+                "github_app_missing": config.github_app_missing(),
             },
         )
         try:
@@ -133,6 +144,8 @@ def create_app(config: HubConfig) -> FastAPI:
             await app.state.terminals.close_all()
             await app.state.listener.close()
             await app.state.github.aclose()
+            if app.state.github_app is not None:
+                await app.state.github_app.aclose()
             if app.state.blobs is not None:
                 app.state.blobs.close()
             await pool.close()
@@ -215,6 +228,14 @@ def create_app(config: HubConfig) -> FastAPI:
     app.include_router(terminal.router)
     app.include_router(terminal.worker_router)
     app.state.terminals = terminal.Terminals()  # the web terminals open in this process, one per run
+
+    from evo_agents.hub.server import credentials, secrets
+    from evo_agents.hub.server.sealing import Sealer
+
+    app.include_router(secrets.router)
+    app.include_router(credentials.router)
+    app.include_router(credentials.worker_router)
+    app.state.sealer = Sealer.from_config(config)  # None without EVO_HUB_SECRETS_KEY: the secret routes answer 503
     return app
 
 

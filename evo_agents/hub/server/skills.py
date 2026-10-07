@@ -4,8 +4,9 @@ the skills directories of every runtime.
 A skill is global (every signed-in member reads it, a hub admin publishes it) or belongs to a project (the members
 of the project read it; publishing follows the write rule of ``evo_agents.hub.access``: the writer role, and a hub
 sink that clears the project's default label). Asking about a project skill without a grant on the project is a
-403, the same whether the project exists or not; a hub admin without a grant reads nothing there either. Names are
-unique in their scope ignoring case, since a name is a directory name on every machine.
+403, the same whether the project exists or not; a hub admin without a grant reads nothing there either, and the
+agent of a run (``Principal.scope``) reads the global skills and those of the run's project alone. Names are unique in
+their scope ignoring case, since a name is a directory name on every machine.
 
 A version records the bundle's SHA-256, size and key (blobs/sha256/<sha256>), the name and description of its
 SKILL.md, who published it and when, and optionally the repo and commit it was built from. The bytes stay in the
@@ -163,6 +164,8 @@ async def _readable(conn, user: Principal, project: str | None) -> Place:
     for a project that does not exist."""
     if project is None:
         return GLOBAL_PLACE
+    if not user.reaches(project):  # the agent of a run reads the skills of the run's project alone
+        raise _no_grant(project)
     cursor = await conn.execute(
         "SELECT p.id FROM projects p JOIN grants g ON g.project_id = p.id AND g.user_id = %s WHERE p.name = %s",
         (user.user_id, project),
@@ -210,6 +213,11 @@ SELECT s.scope, p.name, s.name, v.version, v.description, v.sha256, v.size, v.so
     OR (s.scope = 'project' AND s.project_id = ANY(%(projects)s))
  ORDER BY s.scope, p.name NULLS FIRST, lower(s.name)
 """
+# The projects whose skills a caller lists: those it holds a grant on, the run's alone for the agent of a run.
+GRANTED = """
+SELECT g.project_id FROM grants g JOIN projects p ON p.id = g.project_id
+ WHERE g.user_id = %(user)s AND (%(only)s::text IS NULL OR p.name = %(only)s)
+"""
 
 
 @router.get("", response_model=list[Skill], responses={403: {"model": ErrorBody}})
@@ -227,7 +235,7 @@ async def list_skills(
         if project is not None:
             projects = [(await _readable(conn, user, project)).project_id]
         else:
-            cursor = await conn.execute("SELECT project_id FROM grants WHERE user_id = %s", (user.user_id,))
+            cursor = await conn.execute(GRANTED, {"user": user.user_id, "only": user.run_project})
             projects = [row[0] for row in await cursor.fetchall()]
         wanted = {
             "global": scope in (None, "global") and project is None,

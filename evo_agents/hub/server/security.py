@@ -19,7 +19,10 @@ A worker token arrives as ``Authorization: Bearer`` too, and works only under WO
 worker daemon, where machine tokens and web sessions get 403: neither side can stand in for the other, and the
 check happens before the database is asked. Every request under WORKER_PREFIX, the public /v1/worker/join included,
 carries ``X-Evo-Worker-Protocol: 1`` (``evo_agents.hub.runs``); any other value, or none, gets 426 so an old daemon
-learns it must be upgraded. A worker's principal is never a hub admin, whoever owns the worker.
+learns it must be upgraded. A worker's principal is never a hub admin, whoever owns the worker. Outside /v1, the
+hub's /mcp takes a worker token too, for the agent of one run its worker holds (``evo_agents.hub.server.mcp``): that
+principal carries a ``RunScope``, and ``evo_agents.hub.server.projects.project_access`` holds every read and write
+to it.
 
 The middleware reads credentials of HTTP requests only. A websocket under /v1 reaches the app only when its path is
 one of SELF_CHECKED_WEBSOCKETS, whose routes check their own credential (the web terminal's two ends, see
@@ -108,6 +111,17 @@ SELECT id, user_id, login FROM found
 
 
 @dataclass(frozen=True)
+class RunScope:
+    """What the agent of one run reaches with its worker's token: the run's project alone, with the owner's grant
+    there capped at ``role`` and ``max_level``."""
+
+    run_id: int
+    project: str
+    role: str  # the owner's role on the project when the request came, at most writer
+    max_level: str  # the owner's grant's, when the request came
+
+
+@dataclass(frozen=True)
 class Principal:
     """Who made a request, and with which credential."""
 
@@ -117,9 +131,20 @@ class Principal:
     token_id: int
     kind: str  # MACHINE or WORKER (a Bearer token), or WEB (the session cookie)
     token_hash: str
+    scope: RunScope | None = None  # the agent of a run, on /mcp only; None for everyone else
 
     def __repr__(self) -> str:
-        return f"Principal(login={self.login!r}, token_id={self.token_id}, kind={self.kind!r})"
+        run = "" if self.scope is None else f", run={self.scope.run_id}"
+        return f"Principal(login={self.login!r}, token_id={self.token_id}, kind={self.kind!r}{run})"
+
+    @property
+    def run_project(self) -> str | None:
+        """The one project the agent of a run reaches; None for any other principal, which reaches its grants'."""
+        return None if self.scope is None else self.scope.project
+
+    def reaches(self, project: str) -> bool:
+        """Whether a run's scope leaves ``project`` within reach; always, without a scope."""
+        return self.scope is None or self.scope.project == project
 
 
 @dataclass(frozen=True)

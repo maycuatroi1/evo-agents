@@ -5,6 +5,8 @@ Every call has a timeout (EVO_HUB_GITHUB_TIMEOUT) and never follows a redirect. 
 5xx or rate limiting raises ``GitHubUnavailable``, which the API turns into a 502 naming GitHub; GitHub turning
 down a token or a code raises ``GitHubRefused``. Tokens, codes and the client secret travel only in headers and
 form bodies, never in a URL, and the one log line per call carries the method, the path and the status.
+``GitHubClient`` holds those rules; ``GitHub`` here and the GitHub App of ``evo_agents.hub.server.github_app``
+build on it.
 """
 
 from __future__ import annotations
@@ -49,7 +51,10 @@ def _error_code(value) -> str:
     return value if isinstance(value, str) and _ERROR_CODE.fullmatch(value) else "unknown_error"
 
 
-class GitHub:
+class GitHubClient:
+    """HTTP to GitHub as the hub calls it: a timeout per call, no redirect followed, one log line per call, and
+    GitHub failing, rate limiting or not answering as ``GitHubUnavailable``."""
+
     def __init__(self, config: HubConfig, transport: httpx.AsyncBaseTransport | None = None):
         self.config = config
         self._http = httpx.AsyncClient(
@@ -95,6 +100,10 @@ class GitHub:
         if not isinstance(data, dict):
             raise GitHubUnavailable(f"GitHub answered {response.status_code} without a JSON object while {doing}")
         return data
+
+
+class GitHub(GitHubClient):
+    """The hub's OAuth App: whose a token is, whether this app issued it, and the web flow's code exchange."""
 
     async def user(self, token: str) -> GitHubUser:
         """The account behind ``token`` (GET /user)."""

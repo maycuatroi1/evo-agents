@@ -206,6 +206,7 @@ states and the phone top bar. Icons sit before their label and inherit its colou
 | Runs | `Activity` |
 | Plans | `ListChecks` |
 | Workers | `Server` |
+| Secrets | `LockKeyhole` |
 | Knowledge graph | `Network` |
 | Memories | `BookOpen` |
 | Skills | `Sparkles` |
@@ -270,6 +271,10 @@ changed where the defaults fell short:
   role (Shape), with `duration-slow` for dialogs and sheets and `duration-base` for menus.
 - `hooks/use-mobile.ts`: `useSyncExternalStore` instead of state set inside an effect.
 - `tabs.tsx` (Radix tabs): a line style, the selected tab underlined in `brand` and set in a heavier weight.
+- `switch.tsx` (Radix switch): for a setting that applies once flipped. The track is ink (`primary`) when on and
+  `border-control` (`input`, 3:1 on a card) when off, the thumb on `on-action` or `surface`, and the thumb moves, so
+  the state is not told by colour alone; the focus outline is the global `ring` and the hit area 44 by 44 px. A
+  `<label htmlFor>` names it.
 - Menus (`DropdownMenu`) are not modal, so the page behind stays readable by assistive technology.
 - `command.tsx`: shadcn's Command (cmdk 1.1.1), written by hand from upstream since the registry could not be reached:
   a 52 px input row over a hairline, `overline` group headings in `fg-subtle`, 36 px items (44 px under 768 px) with
@@ -475,7 +480,27 @@ Shared pieces built on them:
   from what the tab has read (`heartbeats.ts`): a received minute is a full bar, a missed one a short red bar, a
   minute nobody watched a dot, with the counts written out beside it. `HeartbeatBars` is the kit's compact strip of
   the same cells for Home's Fleet card: 60 bars 18 px high (a full `success-solid` bar, an 8 px `danger-solid` one, a
-  3 px `neutral-solid` stub), one image named with the counts.
+  3 px `neutral-solid` stub), one image named with the counts. On a worker's page its owner flips "Only runs
+  dispatched from the web" (`dispatch_from`) with a switch in the Scope card; the switch moves once the hub answered
+  and the worker was read again, the result is a toast, and nobody else sees the switch, only the value in "Who
+  dispatches".
+- `components/secrets`, the Secrets page (`/secrets`, in the sidebar's hub section after Workers): the head is the
+  title, the count as a tag and Add secret; its sub line says the secrets are the visitor's alone and no value comes
+  back. The visitor's own secrets sit in a `DataCard` table sorted by name: the name in mono with the variable it sets
+  or the https prefix and the user git sends as its second line, the kind as a tag (`Variable` or `GitBranch` and a
+  word), the projects, the workers or "Any of yours", the end with an Expired pill once past, and when the value was
+  last written; Replace (ghost) and Delete (`quiet-danger`) are the row's actions. With none, the empty state says what
+  a secret is and offers Add secret and `evo-agents hub secret set`. Add and Replace open one form
+  (`secret-dialog.tsx`): the name (adding only), the kind as two radio cards, the variable or the URL prefix and
+  username, the projects the visitor writes to, their own workers that are not revoked, an optional end day (00:00
+  UTC, as the CLI's `--expires`) and the value. The value is write-only: a password field without a `name`, never
+  filled from the hub (a replace asks for it again, since the hub keeps no copy it could show), read when the form is
+  sent and emptied at that moment whatever the hub answers. The PUT goes through plain state rather than a TanStack
+  mutation, whose cache would keep the body (`hooks.ts`). The form repeats the hub's checks (`model.ts`), so nothing
+  goes out while a field is wrong, and adding a name the visitor uses already is refused rather than replacing it; a
+  refusal of the hub stays in the dialog, the saved secret is a toast. Delete asks first (`ConfirmAction`) and says
+  that the leases still out are revoked and that the token should be revoked where it was made too; the result is a
+  toast.
 - `components/runs`: a run is in one of the API's states, waiting (a plan run's agent asked its owner a decision) and
   parked (nobody answered for 24 hours) included; both show in the running phase of a run's timeline, under their own
   name, on an `attention` node. The runs pages ask the hub every 5 seconds while the project (or the step, or the worker) has an
@@ -555,7 +580,8 @@ Shared pieces built on them:
   found answered after a 409, stays with its answer until the visitor leaves.
 - `components/runs`, a run's page (`/p/{project}/runs/{id}`), the kit's RunScreen: the page head, the `RunTimeline`,
   then the session card (Trace, Raw log, Terminal) on the left and, in a 23 rem side column from xl, the decision while
-  a plan run waits, Details, Usage, the plan's steps and the Result; below xl one column, the decision first. The head
+  a plan run waits, Details, Usage, the plan's steps, the Result and, for the run's owner, Credentials; below xl one
+  column, the decision first. The head
   is "Run #12" for every run, a plan run saying so in its Plan run tag, over the plan (in the body font) and step as
   `brand` links with a quiet underline, so colour is not all that sets them apart from the line. The owner's controls sit in the header, each shown only when the state and the visitor's rights allow it
   (`run-model.ts`, `runControls`), in the kit's order: Take over (a dialog with `evo-agents worker attach N` and, for
@@ -564,6 +590,13 @@ Shared pieces built on them:
   under the trace. Anyone but the run's owner reads only. The header puts these actions under the title until the xl
   breakpoint (`PageHeader`'s `actions`, which take a line of their own when the title leaves no room), so they wrap
   instead of pushing the page sideways.
+- `run-credentials.tsx`, the owner's Credentials card in the side column, drawn as the other side cards (`surface`,
+  `shadow-raised`, a `section-title` head with one `caption` line in `fg-subtle`): each lease the run got, its name in
+  mono, its provider as a tag (Your secret with `KeyRound`, or GitHub App with the GitHub mark), the variable or the
+  origins it answered for, when and to which worker it was issued, when it ends and when it was revoked, and its state
+  as a pill (Out in `brand`, Expired neutral, Revoked outlined with `Ban`); read every 5 seconds while the run is
+  active and again when it moves, and never a value. Nobody else gets the card, as the API answers them 403; its foot
+  links to the Secrets page.
 - `run-timeline.tsx`, the kit's RunTimeline (`timelineModel` in `run-model.ts`): the phases left to right (top to
   bottom under 768 px), the time from each phase to the next on the line between them, mono 11 px in `fg-muted` on
   `card`. Done phases are `fg-muted` nodes on a solid `fg-subtle` line; the current one is a `running` node with the
