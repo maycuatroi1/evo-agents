@@ -640,7 +640,12 @@ def test_two_machines_share_memories_plans_and_skills_through_the_hooks(hub_db, 
         pushed = hook_cli("stop", laptop, laptop_root)
         outputs.append(pushed)
         assert (pushed.returncode, pushed.stdout, pushed.stderr) == (0, "", "")
-        stored = live.sql(hub_db, "SELECT scope, location, name, revision, project_id IS NOT NULL FROM memories")
+        from sqlalchemy import select
+
+        from evo_agents.hub import tables
+
+        m = tables.memories
+        stored = live.sql(hub_db, select(m.c.scope, m.c.location, m.c.name, m.c.revision, m.c.project_id.is_not(None)))
         assert stored == [("project", "harness", "deploys.md", 1, True)]
 
         # The desktop's next session pulls it, writes the plan copy, and counts the skill to sync.
@@ -682,7 +687,7 @@ def test_two_machines_share_memories_plans_and_skills_through_the_hooks(hub_db, 
             racing = list(pool.map(lambda _: hook_cli("stop", laptop, laptop_root), range(3)))
         outputs += racing
         assert [(r.returncode, r.stdout, r.stderr) for r in racing] == [(0, "", "")] * 3
-        assert live.sql(hub_db, "SELECT revision FROM memories") == [(2,)]
+        assert live.sql(hub_db, select(m.c.revision)) == [(2,)]
         assert sorted(p.name for p in note.parent.iterdir()) == ["deploys.md"]
         state = json.loads((laptop / ".evo" / "hub" / "memory-state.json").read_text(encoding="utf-8"))
         assert state["hubs"][served.url]["files"][f"{slug(laptop_root)}/deploys.md"]["revision"] == 2
@@ -729,12 +734,17 @@ def test_stop_pushes_what_waited_while_the_hub_was_down(hub_db, tmp_path):
         started = hook_cli("session-start", home, root)
         told = context_of(started.stdout)
         assert started.returncode == 0 and told["context"].startswith(f"evo-hub {down}, project demo: the hub did not")
-        assert live.sql(hub_db, "SELECT count(*) FROM memories") == [(0,)]
+        from sqlalchemy import func, select
+
+        from evo_agents.hub import tables
+
+        m = tables.memories
+        assert live.sql(hub_db, select(func.count()).select_from(m)) == [(0,)]
 
         config.write_text(json.dumps({"url": served.url, "login": "alice"}), encoding="utf-8")
         pushed = hook_cli("stop", home, root)
         assert (pushed.returncode, pushed.stdout, pushed.stderr) == (0, "", "")
-        assert live.sql(hub_db, "SELECT name, revision FROM memories") == [("deploys.md", 1)]
+        assert live.sql(hub_db, select(m.c.name, m.c.revision)) == [("deploys.md", 1)]
 
 
 @needs_pg
@@ -763,7 +773,12 @@ def test_a_worker_run_in_a_harness_gets_no_plan_copy_and_pushes_no_memory(hub_db
         assert not copy.exists(), "no plan copy for the worker to commit"
         stopped = hook_cli("stop", home, root, EVO_RUN_ID="7")
         assert (stopped.returncode, stopped.stdout, stopped.stderr) == (0, "", "")
-        assert live.sql(hub_db, "SELECT count(*) FROM memories") == [(0,)]
+        from sqlalchemy import func, select
+
+        from evo_agents.hub import tables
+
+        m = tables.memories
+        assert live.sql(hub_db, select(func.count()).select_from(m)) == [(0,)]
 
         # The same directory in a session of its owner: the copy is written and the memory pushed.
         started = hook_cli("session-start", home, root)
@@ -771,7 +786,7 @@ def test_a_worker_run_in_a_harness_gets_no_plan_copy_and_pushes_no_memory(hub_db
         assert read_plan(copy).hub["revision"] == 1
         stopped = hook_cli("stop", home, root)
         assert (stopped.returncode, stopped.stdout, stopped.stderr) == (0, "", "")
-        assert live.sql(hub_db, "SELECT name FROM memories") == [("deploys.md",)]
+        assert live.sql(hub_db, select(m.c.name)) == [("deploys.md",)]
     assert MARKER not in served.log()
 
 

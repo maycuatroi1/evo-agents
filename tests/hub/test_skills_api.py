@@ -172,20 +172,22 @@ def test_without_a_blob_store_a_stranger_still_gets_403_and_a_member_a_503_namin
     with make_hub(hub_db, tmp_path) as client:
         who = headers_of(hub_db, client)
         # A version written straight into the database: without a blob store nothing can be published.
-        live.sql(
-            hub_db,
-            """
-            WITH s AS (
-                INSERT INTO skills (scope, project_id, name, created_by)
-                SELECT 'project', p.id, 'team-notes', u.id FROM projects p, users u
-                 WHERE p.name = 'demo' AND u.login = 'alice'
-                RETURNING id, created_by
+        from sqlalchemy import insert, select
+
+        from evo_agents.hub import tables
+
+        skills = tables.skills
+        with live.engine(hub_db).begin() as conn:
+            project_id = conn.execute(select(tables.projects.c.id).where(tables.projects.c.name == "demo")).scalar_one()
+            alice = conn.execute(select(tables.users.c.id).where(tables.users.c.login == "alice")).scalar_one()
+            skill = {"scope": "project", "project_id": project_id, "name": "team-notes", "created_by": alice}
+            skill_id = conn.execute(insert(skills).values(**skill).returning(skills.c.id)).scalar_one()
+            version = {"skill_id": skill_id, "version": 1, "name": "team-notes", "description": "notes"}
+            conn.execute(
+                insert(tables.skill_versions).values(
+                    **version, sha256="b" * 64, size=10, r2_key="blobs/sha256/" + "b" * 64, published_by=alice
+                )
             )
-            INSERT INTO skill_versions (skill_id, version, name, description, sha256, size, r2_key, published_by)
-            SELECT id, 1, 'team-notes', 'notes', %s, 10, %s, created_by FROM s
-            """,
-            ("b" * 64, "blobs/sha256/" + "b" * 64),
-        )
         path = "/v1/skills/projects/demo/team-notes/bundle"
         for credential in (who["stranger", "web"], who[live.ADMIN, "web"]):
             refused = client.get(path, headers=credential)
