@@ -17,6 +17,27 @@ A deployment has five parts:
 A reverse proxy in front sends `/v1` and `/mcp` to `api:8080` and every other path to `web:3000`, on one domain.
 The browser then sees the API on the web's own origin, and the session cookie reaches both.
 
+## The web
+
+The web reads the API only through a client generated from its OpenAPI document (`pnpm gen:api`, below), with the
+session cookie. From 0.6.0 it follows the evo-agents hub UI kit, in light and dark; `web/DESIGN.md` describes the
+design and `web/README.md` how to run and test it. The pages that read a route of their own:
+
+| Page | What it shows | Route |
+| --- | --- | --- |
+| Home, `/` | what waits on you, what runs and what ended lately over the projects of your grants, with your workers; a decision answered in a sheet over it, a failed step rerun from it | `GET /v1/me/overview` |
+| a run, `/p/{project}/runs/{id}` | its phases on a timeline; the Trace of its events (messages, thinking, each tool call with its argument, exit code, duration and output), the raw log and the owner's terminal as tabs; its tokens by type and the cost the agent reported | `.../runs/{id}`, `.../events`, `.../stream` |
+| Insights, `/p/{project}/insights` | the project's runs by UTC day over 7, 30 or 90 days: outcomes, failure rate, p50 and p90 run time, tokens by type, each chart with its table | `GET /v1/projects/{project}/runs/stats` |
+| Administration, `/admin` | what needs a hub admin, each row opening its list filtered; the rows of every table on `/admin/diagnostics` | `GET /v1/admin/overview`, `GET /v1/admin/stats` |
+
+Cmd K or Ctrl K, or the top bar's search field, opens a command palette: runs, plans, workers and pages to jump to,
+and the actions the visitor's grants allow (Run plan, Dispatch a step, Rerun, Register worker), never one that
+deletes, cancels, drains or revokes. `?` opens the list of keyboard shortcuts: G then H, I, P, R or W goes to Home,
+Inbox, Plans, Runs or Workers, D opens Dispatch for a writer, / focuses the page's search. A switch in that dialog turns
+the single keys off on the browser. Under 768 px tables become lists whose rows open their page, filters move into
+a sheet, controls are 44 px, and an Inbox decision is a screen of its own with its answer in a bar at the foot. The
+server renders the phone layout from the user agent and `Sec-CH-UA-Mobile`, so nothing swaps once the scripts run.
+
 ## The API
 
 Every route lives under `/v1` and answers JSON. Errors have one shape, `{error, message, request_id}`, whatever went
@@ -484,7 +505,7 @@ the variables in the platform's environment, never in a committed file. `deploy/
 
 | Variable | Used by | Meaning |
 | --- | --- | --- |
-| `EVO_HUB_VERSION` | compose | image tag, a released version such as `0.5.0` |
+| `EVO_HUB_VERSION` | compose | image tag, a released version such as `0.6.0` |
 | `EVO_HUB_DSN` | api, worker | `postgresql://` URI of the hub database (required) |
 | `EVO_HUB_ADMINS` | api | GitHub logins of hub admins, comma-separated |
 | `EVO_HUB_GITHUB_CLIENT_ID` | api | the OAuth App's client id; without it nobody can sign in |
