@@ -2,8 +2,9 @@
 
 The checks step 7 of the hub-ui-kit plan names: a reader of project A sees nothing of project B, a plan labelled
 customer is hidden from a grant that reaches internal, the counts match the lists, done_by_day follows UTC days, a
-member without a grant gets empty lists, and a machine token has the rights of its owner. The database's time zone is
-seven hours east of UTC throughout, so a day boundary taken in the session's zone would show."""
+member without a grant gets empty lists, and a machine token has the rights of its owner. Every session of the test
+database starts in a time zone seven hours east of UTC (PGTZ), so a day boundary taken in the session's zone would
+show."""
 
 from datetime import UTC, datetime, time, timedelta
 
@@ -15,8 +16,9 @@ if not pg.DSN:
     pytest.skip(pg.SKIP_REASON, allow_module_level=True)
 
 from fastapi.testclient import TestClient
-from psycopg.types.json import Jsonb
+from sqlalchemy import ColumnElement, Date, cast, func, insert, literal, null, select
 
+from evo_agents.hub import tables
 from evo_agents.hub.server.app import create_app
 from evo_agents.hub.server.overview import DAYS, MAX_ACTIVE, MAX_DECISIONS, MAX_RECENT, RUNNING_STATES
 from evo_agents.hub.server.security import SESSION_COOKIE, WEB
@@ -39,8 +41,8 @@ WAIT = timedelta(hours=24)  # EVO_HUB_DECISION_WAIT_SECONDS by default
 
 
 @pytest.fixture
-def client(hub_db, tmp_path, github):
-    sql(hub_db, f"ALTER DATABASE \"{hub_db.name}\" SET timezone TO '{SESSION_ZONE}'")
+def client(hub_db, tmp_path, github, monkeypatch):
+    monkeypatch.setenv("PGTZ", SESSION_ZONE)  # libpq starts each session of this process in that zone
     with TestClient(create_app(live.hub_config(hub_db, tmp_path, github)), base_url="https://hub.test") as client:
         yield client
 
@@ -78,25 +80,23 @@ def members(client, hub_db) -> dict:
 
 
 def db_now(db) -> datetime:
-    return sql(db, "SELECT now()")[0][0]
+    return sql(db, select(func.now()))[0][0]
 
 
 def utc_today_start(db) -> datetime:
-    today = sql(db, "SELECT (now() AT TIME ZONE 'UTC')::date")[0][0]
+    today = sql(db, select(cast(func.timezone("UTC", func.now()), Date)))[0][0]
     return datetime.combine(today, time.min, tzinfo=UTC)
 
 
-INSERT_RUN = """
-INSERT INTO runs (project_id, plan_id, kind, step_key, title, plan_revision, dispatched_by, worker_id,
-                  requested_runtime, runtime, mode, approval, timeout_s, state, repo, repos, queued_at, leased_at,
-                  lease_expires_at, started_at, finished_at, waiting_since, parked_at, error)
-SELECT p.id, pl.plan_id, %(kind)s, %(step)s, %(title)s, pl.revision, u.id, %(worker)s, 'claude-code', 'claude-code',
-       'headless', 'review', 3600, %(state)s, %(repo)s, %(repos)s, %(queued_at)s, %(leased_at)s, %(lease)s,
-       %(started_at)s, %(finished_at)s, %(waiting_since)s, %(parked_at)s, %(error)s
-  FROM projects p JOIN plans pl ON pl.project_id = p.id JOIN users u ON lower(u.login) = lower(%(owner)s)
- WHERE p.name = %(project)s AND pl.plan_id = %(plan)s
-RETURNING id
-"""
+def given(table, values: dict) -> list:
+    """``values`` as the columns of a SELECT that feeds an INSERT into ``table``: a value bound with its column's
+    type, a column expression as it is, and None as SQL NULL (bound alone, it would be JSON null in a JSONB column)."""
+    return [
+        null() if value is None else value if isinstance(value, ColumnElement) else literal(value, table.c[name].type)
+        for name, value in values.items()
+    ]
+
+
 HELD = ("leased", "running", "interactive", "verifying", "waiting")
 ENDED = ("done", "failed", "lost", "cancelled")
 
@@ -106,49 +106,62 @@ def add_run(db, worker_id, project, plan_id, state, owner, *, step=None, finishe
     waiting run started waiting, or when a parked run parked."""
     now = db_now(db)
     started = None if state == "queued" else (finished_at or now) - timedelta(minutes=50)
-    params = {
-        "project": project,
-        "plan": plan_id,
+    runs, projects, plans, users = tables.runs, tables.projects, tables.plans, tables.users
+    values = {
+        "project_id": projects.c.id,
+        "plan_id": plans.c.plan_id,
         "kind": "plan" if step is None else "step",
-        "step": step,
+        "step_key": step,
         "title": None if step is None else f"Step {step}",
-        "owner": owner,
-        "worker": None if state == "queued" else worker_id,
+        "plan_revision": plans.c.revision,
+        "dispatched_by": users.c.id,
+        "worker_id": None if state == "queued" else worker_id,
+        "requested_runtime": "claude-code",
+        "runtime": "claude-code",
+        "mode": "headless",
+        "approval": "review",
+        "timeout_s": 3600,
         "state": state,
         "repo": None if step is None else "evo-agents",
-        "repos": Jsonb([{"repo": "evo-agents", "branch": "main"}]) if step is None else None,
+        "repos": [{"repo": "evo-agents", "branch": "main"}] if step is None else None,
         "queued_at": (finished_at or now) - timedelta(hours=1),
         "leased_at": started,
-        "lease": now + timedelta(minutes=5) if state in HELD else None,
+        "lease_expires_at": now + timedelta(minutes=5) if state in HELD else None,
         "started_at": started,
         "finished_at": finished_at if state in ENDED else None,
         "waiting_since": since if state == "waiting" else None,
         "parked_at": since if state == "parked" else None,
         "error": "verify failed: pytest exited 1" if state in ("failed", "lost") else None,
     }
-    return sql(db, INSERT_RUN, params)[0][0]
+    found = (
+        select(*given(runs, values))
+        .join_from(projects, plans, plans.c.project_id == projects.c.id)
+        .join(users, func.lower(users.c.login) == func.lower(owner))
+        .where(projects.c.name == project, plans.c.plan_id == plan_id)
+    )
+    return sql(db, insert(runs).from_select(list(values), found).returning(runs.c.id))[0][0]
 
 
 def add_decision(db, run_id: int, asked_at: datetime, *, answered_by: str | None = None) -> int:
     """A decision of run ``run_id``, open, or answered by ``answered_by``."""
     answered = answered_by is not None
-    return sql(
-        db,
-        "INSERT INTO decisions (run_id, project_id, plan_id, step_key, category, question, options, asked_at, state, "
-        "answer_option, answered_by, answered_at) "
-        "SELECT r.id, r.project_id, r.plan_id, '2', 'scope', %s, %s, %s, %s, %s, "
-        "(SELECT id FROM users WHERE login = %s), %s FROM runs r WHERE r.id = %s RETURNING id",
-        (
-            f"Go on with run {run_id}?",
-            Jsonb(OPTIONS),
-            asked_at,
-            "answered" if answered else "open",
-            "yes" if answered else None,
-            answered_by,
-            asked_at + timedelta(minutes=1) if answered else None,
-            run_id,
-        ),
-    )[0][0]
+    decisions, runs, users = tables.decisions, tables.runs, tables.users
+    values = {
+        "run_id": runs.c.id,
+        "project_id": runs.c.project_id,
+        "plan_id": runs.c.plan_id,
+        "step_key": "2",
+        "category": "scope",
+        "question": f"Go on with run {run_id}?",
+        "options": OPTIONS,
+        "asked_at": asked_at,
+        "state": "answered" if answered else "open",
+        "answer_option": "yes" if answered else None,
+        "answered_by": select(users.c.id).where(users.c.login == answered_by).scalar_subquery(),
+        "answered_at": asked_at + timedelta(minutes=1) if answered else None,
+    }
+    found = select(*given(decisions, values)).where(runs.c.id == run_id)
+    return sql(db, insert(decisions).from_select(list(values), found).returning(decisions.c.id))[0][0]
 
 
 @pytest.fixture
@@ -392,10 +405,13 @@ def test_the_counts_match_the_lists(client, members, world, hub_db):
         OWNER,
         True,
     )
+    runs = tables.runs
     waiting_since, parked_at = sql(
         hub_db,
-        "SELECT (SELECT waiting_since FROM runs WHERE id = %s), (SELECT parked_at FROM runs WHERE id = %s)",
-        (world["waiting"], world["parked"]),
+        select(
+            select(runs.c.waiting_since).where(runs.c.id == world["waiting"]).scalar_subquery(),
+            select(runs.c.parked_at).where(runs.c.id == world["parked"]).scalar_subquery(),
+        ),
     )[0]
     assert datetime.fromisoformat(mine["parks_at"]) == waiting_since + WAIT
     other = by_id(decisions)[world["d_other"]]
@@ -409,7 +425,7 @@ def test_the_counts_match_the_lists(client, members, world, hub_db):
 
 
 def test_done_by_day_follows_utc_days(client, members, hub_db):
-    assert sql(hub_db, "SELECT current_setting('TimeZone')") == [(SESSION_ZONE,)]
+    assert sql(hub_db, select(func.current_setting("TimeZone"))) == [(SESSION_ZONE,)]
     wid = add_worker(client, members[OWNER], "mac-mini")["id"]
     today = utc_today_start(hub_db)
     first = today - timedelta(days=DAYS - 1)
