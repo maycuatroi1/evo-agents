@@ -27,8 +27,7 @@ from typing import Annotated
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
-from evo_agents.hub.db import legacy
-from evo_agents.hub.kg_graph import GRAPHS, ArtifactMismatch, BuiltGraph, GraphUnavailable
+from evo_agents.hub.kg_graph import ArtifactMismatch, BuiltGraph, GraphUnavailable, built_graphs
 from evo_agents.hub.kg_web import MAX_HOPS, MAX_NODES, SEARCH_LIMIT, GraphProblem, NotVisible, WebSession, read
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
@@ -168,8 +167,7 @@ async def _read(request: Request, user, project: str, reader):
     async with state.engine.begin() as conn:
         access = await project_access(conn, user, project)
         _reader(access)
-        cursor = await legacy(conn, GRAPHS, (access.project_id, GRAPHS_TRIED))
-        graphs = [BuiltGraph(*row) for row in await cursor.fetchall()]
+        graphs = await built_graphs(conn, access.project_id, GRAPHS_TRIED)
     if not graphs:
         return None, None
     ceiling = access.rules.grant_label(access.max_level)

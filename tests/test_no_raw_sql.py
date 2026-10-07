@@ -102,10 +102,6 @@ RAW_CONNECTION_HOME = "evo_agents/hub/db.py"  # where driver() is defined
 LEGACY: dict[str, int] = {
     "evo_agents/hub/blob_gc.py": 10,
     "evo_agents/hub/db.py": 3,
-    "evo_agents/hub/kg_build.py": 19,
-    "evo_agents/hub/kg_graph.py": 1,
-    "evo_agents/hub/kg_prune.py": 4,
-    "evo_agents/hub/kg_web.py": 1,
     "evo_agents/hub/migrate.py": 8,
     "evo_agents/hub/server/admin.py": 17,
     "evo_agents/hub/server/admin_console.py": 10,
@@ -113,7 +109,6 @@ LEGACY: dict[str, int] = {
     "evo_agents/hub/server/blobs.py": 9,
     "evo_agents/hub/server/credentials.py": 21,
     "evo_agents/hub/server/decisions.py": 18,
-    "evo_agents/hub/server/kg.py": 18,
     "evo_agents/hub/server/mcp.py": 1,
     "evo_agents/hub/server/memories.py": 16,
     "evo_agents/hub/server/notifications.py": 16,
