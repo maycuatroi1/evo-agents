@@ -493,26 +493,65 @@ The api and the worker each hold one psycopg 3 connection pool and a SQLAlchemy 
 (`evo_agents/hub/db.py`). The engine keeps no connection of its own (`NullPool`): it takes each one from the pool
 (`async_creator=pool.getconn`), and the pool is made with `close_returns=True`, so a connection the engine closes
 goes back to it. The pool's size, timeout and health check govern both. The lifespan opens the pool, then the engine,
-and disposes of the engine before it closes the pool.
+and disposes of the engine before it closes the pool. The worker's jobs reach the engine through `HubContext`.
 
-Queries are SQLAlchemy Core (`select()`, `insert()`, `update()`, `delete()`) on the tables of
-`evo_agents/hub/tables.py`, inside `engine.begin()`, whose transaction commits when the block ends cleanly and rolls
-back otherwise; the hub uses no ORM. `tables.py` describes the schema the migrations make, without CHECK constraints
-and triggers, and `tests/hub/test_schema_metadata.py` fails when the two differ. The migration environment
-(`migrations/env.py`) autogenerates from the same metadata.
+A request takes one `AsyncConnection` with `async with request.app.state.engine.begin() as conn:`; its transaction
+commits when the block ends cleanly and rolls back on any exception, an `HTTPException` included. A savepoint is
+`async with conn.begin_nested():`. Code that must commit part way (the migration lock, the dry run of the kg
+retention) uses `engine.connect()` and commits or rolls back itself. Helpers take that connection as their first
+argument, so the queries of one request share its transaction.
 
-`driver(conn)` returns the psycopg connection under an engine connection, in the same transaction. `jobs.py` hands it
-to procrastinate, so a job deferred with `connection=conn` exists only if the caller's transaction commits; a defer
-refused because one job waits already rolls back to a savepoint (`begin_nested()`) and the transaction goes on.
+Queries are SQLAlchemy Core (`select()`, `insert()`, `update()`, `delete()`, `func`, `case`, CTEs, and
+`sqlalchemy.dialects.postgresql.insert` for `ON CONFLICT`) on the tables of `evo_agents/hub/tables.py`, imported as
+a module (`from evo_agents.hub import tables`, then `tables.runs.c.state`). There is no ORM: no mapped classes, no
+session, no lazy loading. A row maps to a Pydantic model by column name, `Model(**row._mapping)` with the columns
+labelled as the model's fields, never by position. A JSONB column takes and returns plain dicts and lists, and an
+error of the database arrives as SQLAlchemy's wrapper (`sqlalchemy.exc.IntegrityError` and so on) with the psycopg
+error, which names the SQLSTATE, in `.orig`. `print(statement.compile(dialect=postgresql.psycopg.dialect()))` shows
+the SQL a statement sends.
+
+`driver(conn)` returns the psycopg connection under an engine connection, in the same transaction. Only `jobs.py`
+takes it, to hand it to procrastinate, so a job deferred with `connection=conn` exists only if the caller's
+transaction commits; a defer refused because one job waits already rolls back to a savepoint and the transaction
+goes on.
 
 `tests/test_no_raw_sql.py` reads `evo_agents/hub` and `tests/hub` and fails, naming the file and line, on a string
-that holds SQL, on `psycopg.sql`, SQLAlchemy's `text` or `exec_driver_sql`, and on `driver()` outside `jobs.py`.
-Three places keep SQL for good: the migrations 0001 to 0011, which have run; the `LISTEN` of
-`evo_agents/hub/server/listen.py`, which keeps a psycopg connection of its own because SQLAlchemy has no construct for
-it; and `CREATE` and `DROP` of a test's database and role in `tests/hub/pg.py`. While the hub moves to Core, the
-test's `LEGACY` list names the files that still hold SQL with the number of findings each may keep, a number that
-only goes down. When the test reports a finding, write the statement with Core on `tables.py`. A change that only raw
-SQL can make adds its place to the test's allowed list in the same pull request, with the reason.
+that holds SQL, on `psycopg.sql`, SQLAlchemy's `text` or `exec_driver_sql`, on `driver()` outside `jobs.py`, and on
+any other reach for the raw psycopg connection outside `db.py`. Three places keep SQL for good, each for a reason no
+query builder changes:
+
+- the migrations 0001 to 0011, which have run as they are and are the record of how those databases were built;
+- the `LISTEN` of `evo_agents/hub/server/listen.py`, which keeps a psycopg connection of its own in autocommit,
+  because SQLAlchemy has no construct for `LISTEN`;
+- `CREATE` and `DROP` of a test's database and role in `tests/hub/pg.py`, run by the superuser outside any hub
+  database, where SQLAlchemy has no construct either.
+
+When the test reports a finding, write the statement with Core on `tables.py`: a table the hub does not own (a
+`pg_*` catalog, `procrastinate_jobs`) is described where it is read with a lightweight `sqlalchemy.table()`. A test
+seeds and reads the database the same way, through `tests.hub.live.sql(db, statement)`, which runs a Core statement
+on a sync engine as the database's owner and raises the driver's error. A change that only raw SQL can make adds
+its place to the test's allowed lists (`ALLOWED_SQL`, `ALLOWED_PSYCOPG_SQL` or `ALLOWED_DRIVER`) in the same pull
+request, with the reason in a comment next to it.
+
+A new migration starts from `tables.py`: change the table there, then let Alembic compare the metadata with a
+scratch database that `evo-agents hub migrate` brought to head and write the revision, from a Python shell:
+
+```python
+from alembic import command
+from sqlalchemy import create_engine
+from evo_agents.hub.migrate import alembic_config
+
+config = alembic_config()
+with create_engine("postgresql+psycopg://user:password@localhost/db").connect() as conn:
+    config.attributes["connection"] = conn
+    command.revision(config, message="what changes", autogenerate=True, rev_id="0012")
+```
+
+Read the generated `versions/0012_*.py` before keeping it: autogenerate misses renames, compares neither CHECK
+constraints nor triggers, and orders operations by table. Name the file `NNNN_name.py`, add what it cannot see with
+Alembic's operations (`op.create_check_constraint(...)`, `op.create_index(...)`), and give the downgrade the same
+care, then run `ruff format` on it. `tests/hub/test_schema_metadata.py` checks that the migrated schema and
+`tables.py` agree.
 
 ## Deploying
 
