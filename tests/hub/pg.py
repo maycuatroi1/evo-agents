@@ -3,8 +3,11 @@
 EVO_HUB_TEST_DSN names a server and a superuser on it; without it every hub test module skips. Each test
 gets a database of its own, owned by a role of its own with a random password, so the hub runs without
 superuser rights, a re-run starts clean, nothing lands in the server's own databases, and a password that
-reaches a log line is easy to find. psycopg is imported inside the helpers: this module loads on a core
-install too.
+reaches a log line is easy to find. psycopg and SQLAlchemy are imported inside the helpers: this module loads on a
+core install too.
+
+The SQL kept here is the CREATE and DROP of databases and roles, which have no SQLAlchemy construct; the catalogs
+it reads and the functions it calls are Core statements on ``admin_engine()``.
 """
 
 import json
@@ -13,6 +16,7 @@ import secrets
 import socket
 import subprocess
 import sys
+import threading
 import time
 from dataclasses import dataclass
 from urllib.parse import quote
@@ -51,6 +55,8 @@ NOTIFICATION_TABLES = frozenset({"decisions", "notifications", "notification_cha
 # Tables of migration 0011: the secrets members keep, where they are bound, and the leases runs get of them
 CREDENTIAL_TABLES = frozenset({"secrets", "secret_bindings", "credential_leases"})
 HUB_ENV = ("EVO_HUB_",)  # variables a test environment must not inherit from the shell running pytest
+AWAY = "_away"  # suffix of the copy a database waits in while set_reachable keeps it from its clients
+END_EVERY = 0.05  # seconds between two rounds of ending the connections to a database being copied
 
 
 @dataclass(frozen=True)
@@ -67,19 +73,43 @@ def admin(dsn: str = DSN):
     return psycopg.connect(dsn, autocommit=True, connect_timeout=5)
 
 
+def admin_engine(dsn: str = DSN):
+    """A SQLAlchemy engine on ``dsn`` as the superuser, in autocommit like ``admin()``. It keeps no connection
+    (``NullPool``): each ``connect()`` connects, and closes once its block ends."""
+    if dsn not in _ADMIN_ENGINES:
+        from sqlalchemy import create_engine
+        from sqlalchemy.pool import NullPool
+
+        _ADMIN_ENGINES[dsn] = create_engine(
+            "postgresql+psycopg://", creator=lambda: admin(dsn), poolclass=NullPool, isolation_level="AUTOCOMMIT"
+        )
+    return _ADMIN_ENGINES[dsn]
+
+
+_ADMIN_ENGINES: dict = {}
+
+
+def _activity():
+    """The view of the server's backends, as much of it as this module reads."""
+    from sqlalchemy import Text, column, table
+
+    return table("pg_stat_activity", column("pid"), column("datname", Text))
+
+
 def wait_ready(timeout: float = READY_TIMEOUT) -> None:
     """Return once the server answers a query; fail the session after ``timeout`` seconds."""
-    import psycopg
+    from sqlalchemy import literal, select
+    from sqlalchemy.exc import OperationalError
 
     deadline = time.monotonic() + timeout
     while True:
         try:
-            with admin() as conn:
-                conn.execute("SELECT 1")
+            with admin_engine().connect() as conn:
+                conn.execute(select(literal(1)))
             return
-        except psycopg.OperationalError as exc:
+        except OperationalError as exc:
             if time.monotonic() >= deadline:
-                pytest.fail(f"Postgres at EVO_HUB_TEST_DSN not ready after {timeout:.0f}s: {exc}")
+                pytest.fail(f"Postgres at EVO_HUB_TEST_DSN not ready after {timeout:.0f}s: {exc.orig}")
             time.sleep(0.5)
 
 
@@ -104,12 +134,17 @@ def drop_database(db: Database) -> None:
 
     with admin() as conn:
         conn.execute(sql.SQL("DROP DATABASE IF EXISTS {} WITH (FORCE)").format(sql.Identifier(db.name)))
+        # the copy set_reachable keeps while the database is away, left by a test that failed before bringing it back
+        conn.execute(sql.SQL("DROP DATABASE IF EXISTS {} WITH (FORCE)").format(sql.Identifier(db.name + AWAY)))
         conn.execute(sql.SQL("DROP ROLE IF EXISTS {}").format(sql.Identifier(db.name)))
 
 
 def backends(name: str) -> int:
-    with admin() as conn:
-        return conn.execute("SELECT count(*) FROM pg_stat_activity WHERE datname = %s", (name,)).fetchone()[0]
+    from sqlalchemy import func, select
+
+    activity = _activity()
+    with admin_engine().connect() as conn:
+        return conn.execute(select(func.count()).select_from(activity).where(activity.c.datname == name)).scalar_one()
 
 
 def wait_no_backends(name: str, timeout: float = 5.0) -> int:
@@ -120,19 +155,51 @@ def wait_no_backends(name: str, timeout: float = 5.0) -> int:
     return left
 
 
+def _end_backends(name: str) -> None:
+    """End every connection to the database ``name``."""
+    from sqlalchemy import func, select
+
+    activity = _activity()
+    with admin_engine().connect() as conn:
+        conn.execute(
+            select(func.pg_terminate_backend(activity.c.pid)).where(
+                activity.c.datname == name, activity.c.pid != func.pg_backend_pid()
+            )
+        )
+
+
 def set_reachable(db: Database, reachable: bool) -> None:
-    """Stop the database for its clients (refuse new connections, end the open ones), or bring it back:
-    Postgres going away, without stopping a server other tests share."""
+    """Stop the database for its clients (refuse new connections, end the open ones), or bring it back with its
+    data: Postgres going away, without stopping a server other tests share.
+
+    Away, the database waits as a copy nobody may connect to, and its own name does not exist, so a client trying
+    to connect is refused; back, it is created again from that copy, for the same owner. Copying needs the database
+    to itself: while ``CREATE DATABASE ... TEMPLATE`` runs, a thread ends every connection to it, the ones open
+    before and any a client opened again before the copy took its lock, which new connections then wait for. A
+    write a client commits between the end of the copy and the drop is not in the copy."""
     from psycopg import sql
 
+    name, away = sql.Identifier(db.name), sql.Identifier(db.name + AWAY)
     with admin() as conn:
-        allow = sql.SQL("true" if reachable else "false")
-        conn.execute(sql.SQL("ALTER DATABASE {} ALLOW_CONNECTIONS {}").format(sql.Identifier(db.name), allow))
-        if not reachable:
-            conn.execute(
-                "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = %s AND pid <> pg_backend_pid()",
-                (db.name,),
-            )
+        if reachable:
+            conn.execute(sql.SQL("CREATE DATABASE {} OWNER {} TEMPLATE {}").format(name, name, away))
+            conn.execute(sql.SQL("DROP DATABASE {}").format(away))
+            return
+        copied = threading.Event()
+
+        def end_until_copied() -> None:
+            while not copied.is_set():
+                _end_backends(db.name)
+                copied.wait(END_EVERY)
+
+        ender = threading.Thread(target=end_until_copied, name=f"end-{db.name}", daemon=True)
+        ender.start()
+        try:
+            conn.execute(sql.SQL("CREATE DATABASE {} TEMPLATE {} ALLOW_CONNECTIONS false").format(away, name))
+        finally:
+            copied.set()
+            ender.join()
+        conn.execute(sql.SQL("DROP DATABASE {} WITH (FORCE)").format(name))
 
 
 def free_port() -> int:
