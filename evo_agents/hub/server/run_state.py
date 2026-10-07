@@ -62,7 +62,6 @@ from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
-import psycopg
 from fastapi import HTTPException
 from sqlalchemy import Integer, case, cast, delete, extract, func, insert, null, or_, select, update
 from sqlalchemy.exc import DBAPIError
@@ -463,7 +462,7 @@ async def write_step(
     except PlanProblem as exc:
         log.warning("run step not written to the plan", extra={**where, "why": str(exc)})
         refused = StepNotWritten(422, str(exc))
-    except (DBAPIError, psycopg.Error) as exc:  # Core wraps the driver's error; a query not in Core raises its own
+    except DBAPIError as exc:  # the database refused or went away; Core wraps the driver's error
         if strict:
             raise
         log.error("run step not written to the plan", extra={**where, "error": f"{type(exc).__name__}: {exc}"})
