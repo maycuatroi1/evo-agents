@@ -15,6 +15,7 @@ import queue
 import threading
 import time
 from contextlib import contextmanager
+from datetime import timedelta
 
 import pytest
 
@@ -25,8 +26,10 @@ if not pg.DSN:
 
 from fastapi import WebSocket
 from fastapi.testclient import TestClient
+from sqlalchemy import func, select, update
 from starlette.websockets import WebSocketDisconnect
 
+from evo_agents.hub import tables
 from evo_agents.hub import terminal as frames
 from evo_agents.hub.server import terminal
 from evo_agents.hub.server.app import create_app
@@ -99,11 +102,9 @@ def web_session(db, login: str, *, hours_old: int = 0) -> str:
     """A live web session of ``login``, created ``hours_old`` hours ago."""
     token = live.insert_token(db, login, WEB)
     if hours_old:
-        sql(
-            db,
-            "UPDATE tokens SET created_at = now() - make_interval(hours => %s) WHERE token_hash = %s",
-            (hours_old, hash_token(token)),
-        )
+        tokens = tables.tokens
+        older = func.now() - timedelta(hours=hours_old)
+        sql(db, update(tokens).values(created_at=older).where(tokens.c.token_hash == hash_token(token)))
     return token
 
 
@@ -179,11 +180,13 @@ def wait_until(check, what: str, timeout: float = WAIT) -> None:
 
 
 def audit_rows(db, *actions: str) -> list[tuple[str, str, str]]:
+    audit, users = tables.audit, tables.users
     return sql(
         db,
-        "SELECT a.action, a.target, u.login FROM audit a JOIN users u ON u.id = a.actor_id "
-        "WHERE a.action = ANY(%s) ORDER BY a.id",
-        (list(actions),),
+        select(audit.c.action, audit.c.target, users.c.login)
+        .join_from(audit, users, users.c.id == audit.c.actor_id)
+        .where(audit.c.action.in_(actions))
+        .order_by(audit.c.id),
     )
 
 
@@ -260,8 +263,14 @@ def test_bytes_pass_both_ways_and_a_resize_reaches_the_worker_of_its_run(client,
             assert closed(tab_b) == (1000, "the worker closed the terminal")
     rows = audit_rows(hub_db, "terminal.close")
     assert rows[-1] == ("terminal.close", f"{target(run_b, 4)} to_worker=18 to_browser=7 end=worker", OWNER)
-    in_project = "SELECT DISTINCT p.name FROM audit a JOIN projects p ON p.id = a.project_id WHERE a.action LIKE %s"
-    assert sql(hub_db, in_project, ("terminal.%",)) == [(PROJECT,)]
+    audit, projects = tables.audit, tables.projects
+    in_project = (
+        select(projects.c.name)
+        .distinct()
+        .join_from(audit, projects, projects.c.id == audit.c.project_id)
+        .where(audit.c.action.like("terminal.%"))
+    )
+    assert sql(hub_db, in_project) == [(PROJECT,)]
     # the run is free for another browser once the session ended
     with browser(client, run_a, token) as again:
         say_hello(client, again, token)
@@ -308,7 +317,8 @@ def test_the_browser_end_refuses_with_4403_or_4401(client, hub, hub_db):
     unknown = new_token(WEB)
     assert refused(unknown)[0] == 4401
     revoked = web_session(hub_db, OWNER)
-    sql(hub_db, "UPDATE tokens SET revoked_at = now() WHERE token_hash = %s", (hash_token(revoked),))
+    tokens = tables.tokens
+    sql(hub_db, update(tokens).values(revoked_at=func.now()).where(tokens.c.token_hash == hash_token(revoked)))
     assert refused(revoked)[0] == 4401
     assert refused(owner, csrf_value="not-the-token") == (
         4403,
@@ -391,7 +401,9 @@ def test_opening_the_terminal_of_a_headless_run_asks_for_a_takeover(client, hub,
         wait_until(lambda: terminal_open(client, worker, run_id), "terminal_open")
         (control,) = beat(client, worker, [run_id])["runs"]
         assert (control["takeover"], control["terminal_open"]) == (True, True)
-        assert sql(hub_db, "SELECT takeover_requested_at IS NOT NULL FROM runs WHERE id = %s", (run_id,)) == [(True,)]
+        runs = tables.runs
+        asked = select(runs.c.takeover_requested_at.is_not(None)).where(runs.c.id == run_id)
+        assert sql(hub_db, asked) == [(True,)]
         assert [row[0] for row in audit_rows(hub_db, "run.takeover", "terminal.open")] == [
             "run.takeover",
             "terminal.open",
