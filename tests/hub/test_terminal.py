@@ -348,6 +348,9 @@ def test_the_browser_end_refuses_with_4403_or_4401(client, hub, hub_db):
     with browser(client, run_id, young) as tab:
         say_hello(client, tab, young)
         wait_until(lambda: terminal_open(client, worker, run_id), "terminal_open")
+        # The terminal is reserved before the transaction that audits its opening commits; leaving the browser
+        # sooner can cancel that transaction, so wait for the row.
+        wait_until(lambda: audit_rows(hub_db, "terminal.open"), "the terminal.open audit row")
     assert [row[0] for row in audit_rows(hub_db, "terminal.open")] == ["terminal.open"]
 
 
