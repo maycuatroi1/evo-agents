@@ -17,9 +17,9 @@ if not pg.DSN:
     pytest.skip(pg.SKIP_REASON, allow_module_level=True)
 
 from fastapi.testclient import TestClient
-from psycopg.types.json import Jsonb
+from sqlalchemy import extract, func, insert, select, update
 
-from evo_agents.hub import jobs
+from evo_agents.hub import jobs, tables
 from evo_agents.hub.server import notifications
 from evo_agents.hub.server.app import create_app
 from evo_agents.hub.worker import queue
@@ -72,16 +72,18 @@ def fake(monkeypatch):
     return FakeChannel
 
 
+CHANNELS = tables.notification_channels
+DELIVERIES = tables.notification_deliveries
+NOTIFICATION_COUNT = select(func.count()).select_from(tables.notifications)
+
+
 def user_id(db, login: str) -> int:
-    return sql(db, "SELECT id FROM users WHERE login = %s", (login,))[0][0]
+    return sql(db, select(tables.users.c.id).where(tables.users.c.login == login))[0][0]
 
 
 def add_channel(db, login: str, kind: str, *, enabled: bool = True, config=None) -> int:
-    return sql(
-        db,
-        "INSERT INTO notification_channels (user_id, kind, config, enabled) VALUES (%s, %s, %s, %s) RETURNING id",
-        (user_id(db, login), kind, Jsonb(config or {}), enabled),
-    )[0][0]
+    added = insert(CHANNELS).values(user_id=user_id(db, login), kind=kind, config=config or {}, enabled=enabled)
+    return sql(db, added.returning(CHANNELS.c.id))[0][0]
 
 
 def notice(client, worker: dict, run_id: int, **body):
@@ -95,13 +97,21 @@ def deliver(client) -> dict:
 def deliveries(db) -> list[tuple]:
     return sql(
         db,
-        "SELECT coalesce(c.kind, 'web'), d.state, d.attempts, d.last_error FROM notification_deliveries d "
-        "LEFT JOIN notification_channels c ON c.id = d.channel_id ORDER BY d.id",
+        select(
+            func.coalesce(CHANNELS.c.kind, "web"), DELIVERIES.c.state, DELIVERIES.c.attempts, DELIVERIES.c.last_error
+        )
+        .select_from(DELIVERIES.outerjoin(CHANNELS, CHANNELS.c.id == DELIVERIES.c.channel_id))
+        .order_by(DELIVERIES.c.id),
     )
 
 
 def due_now(db) -> None:
-    sql(db, "UPDATE notification_deliveries SET next_at = now() WHERE state = 'pending'")
+    sql(db, update(DELIVERIES).values(next_at=func.now()).where(DELIVERIES.c.state == "pending"))
+
+
+def due_in(db, *where) -> list[tuple]:
+    """Seconds until each delivery that matches ``where`` is due."""
+    return sql(db, select(extract("epoch", DELIVERIES.c.next_at - func.now())).where(*where))
 
 
 def listed(client, headers, **params) -> dict:
@@ -144,7 +154,10 @@ def test_a_notice_notifies_the_owner_with_a_delivery_per_channel_that_is_on(clie
     assert (sent["body"], sent["read_at"], sent["decision_state"]) == ("Two commits of step 3.", None, None)
     # the web and the owner's channel that is on; not the one turned off, nor anyone else's
     assert deliveries(hub_db) == [("web", "pending", 0, None), ("fake", "pending", 0, None)]
-    events = sql(hub_db, "SELECT body FROM run_events WHERE run_id = %s AND kind = 'system'", (run["id"],))
+    run_events = tables.run_events
+    events = sql(
+        hub_db, select(run_events.c.body).where(run_events.c.run_id == run["id"], run_events.c.kind == "system")
+    )
     assert events[-1][0]["text"] == "notice push_default_branch: Pushed main of agent-skills"
     assert events[-1][0]["notice"]["notification_id"] == sent["id"]
     assert [item["id"] for item in listed(client, hub["owner"])["notifications"]] == [sent["id"]]
@@ -165,7 +178,7 @@ def test_a_notice_notifies_the_owner_with_a_delivery_per_channel_that_is_on(clie
 def test_a_notice_the_route_does_not_take_gets_422(client, hub, hub_db, body):
     worker, run = started(client, hub)
     assert notice(client, worker, run["id"], **body).status_code == 422
-    assert sql(hub_db, "SELECT count(*) FROM notifications") == [(0,)]
+    assert sql(hub_db, NOTIFICATION_COUNT) == [(0,)]
 
 
 def test_only_the_worker_holding_a_plan_run_sends_its_notices(client, hub, hub_db):
@@ -177,7 +190,7 @@ def test_only_the_worker_holding_a_plan_run_sends_its_notices(client, hub, hub_d
     (single,) = dispatch_steps(client, hub["owner"], [2], plan_id="rollout").json()
     assert claim(client, other)["id"] == single["id"]
     assert notice(client, other, single["id"], repo=None).status_code == 404  # a run of one step sends no notice
-    assert sql(hub_db, "SELECT count(*) FROM notifications") == [(0,)]
+    assert sql(hub_db, NOTIFICATION_COUNT) == [(0,)]
 
 
 def test_a_plan_run_that_finishes_or_fails_notifies_its_owner(client, hub, hub_db):
@@ -208,7 +221,7 @@ def test_a_plan_run_that_finishes_or_fails_notifies_its_owner(client, hub, hub_d
         "body": "the agent stopped",
         "details": {"plan_id": "second", "error": "the agent stopped"},
     }
-    assert sql(hub_db, "SELECT count(*) FROM notifications") == [(2,)]
+    assert sql(hub_db, NOTIFICATION_COUNT) == [(2,)]
 
 
 # Delivery
@@ -223,16 +236,12 @@ def test_the_job_delivers_on_the_web_at_once_and_tries_a_failing_channel_again(c
     web, channel = deliveries(hub_db)
     assert web == ("web", "delivered", 1, None)
     assert channel == ("fake", "pending", 1, "RuntimeError: the fake service answered 503 for chat 42")
-    ((wait,),) = sql(
-        hub_db, "SELECT extract(epoch FROM next_at - now()) FROM notification_deliveries WHERE channel_id IS NOT NULL"
-    )
+    ((wait,),) = due_in(hub_db, DELIVERIES.c.channel_id.is_not(None))
     assert 50 < wait <= 60  # tried again after a minute
     assert deliver(client) == {"delivered": 0, "retried": 0, "failed": 0}  # not due yet
     due_now(hub_db)
     assert deliver(client) == {"delivered": 0, "retried": 1, "failed": 0}
-    ((wait,),) = sql(
-        hub_db, "SELECT extract(epoch FROM next_at - now()) FROM notification_deliveries WHERE state = 'pending'"
-    )
+    ((wait,),) = due_in(hub_db, DELIVERIES.c.state == "pending")
     assert 110 < wait <= 120  # then after two
     due_now(hub_db)
     assert deliver(client) == {"delivered": 1, "retried": 0, "failed": 0}
@@ -270,12 +279,13 @@ def test_the_fifth_failure_fails_a_delivery_and_a_channel_without_a_class_fails_
     # a channel turned off after the notification was stored fails its delivery instead of sending
     channel = add_channel(hub_db, "someone-else", "fake")
     notification = client.portal.call(_notify, client.app.state.engine, user_id(hub_db, "someone-else"))
-    sql(hub_db, "UPDATE notification_channels SET enabled = false WHERE id = %s", (channel,))
+    sql(hub_db, update(CHANNELS).values(enabled=False).where(CHANNELS.c.id == channel))
     assert deliver(client) == {"delivered": 1, "retried": 0, "failed": 1}
     assert sql(
         hub_db,
-        "SELECT state, last_error FROM notification_deliveries WHERE notification_id = %s AND channel_id = %s",
-        (notification, channel),
+        select(DELIVERIES.c.state, DELIVERIES.c.last_error).where(
+            DELIVERIES.c.notification_id == notification, DELIVERIES.c.channel_id == channel
+        ),
     ) == [("failed", "the channel was turned off before the notification went out")]
 
 
