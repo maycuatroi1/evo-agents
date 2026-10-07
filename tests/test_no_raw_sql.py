@@ -122,7 +122,7 @@ LEGACY: dict[str, int] = {
     "evo_agents/hub/server/projects.py": 19,
     "evo_agents/hub/server/run_events.py": 15,
     "evo_agents/hub/server/run_state.py": 27,
-    "evo_agents/hub/server/runs.py": 41,
+    "evo_agents/hub/server/runs.py": 3,
     "evo_agents/hub/server/secrets.py": 11,
     "evo_agents/hub/server/skills.py": 12,
     "evo_agents/hub/server/terminal.py": 4,

@@ -99,10 +99,31 @@ from typing import Annotated, Literal
 
 import psycopg
 from fastapi import APIRouter, Header, HTTPException, Path, Query, Request
-from psycopg.types.json import Jsonb
 from pydantic import BaseModel, ConfigDict, Field, create_model, model_validator
+from sqlalchemy import (
+    BigInteger,
+    Date,
+    Numeric,
+    Text,
+    and_,
+    case,
+    cast,
+    column,
+    exists,
+    extract,
+    func,
+    insert,
+    literal,
+    or_,
+    select,
+    true,
+    update,
+)
+from sqlalchemy.dialects.postgresql import ARRAY, DOUBLE_PRECISION, JSONB
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import runs
+from evo_agents.hub import runs, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.credentials import DISPATCHED_VIA, dispatch_credential
 from evo_agents.hub.db import legacy
@@ -144,7 +165,6 @@ WRITER_ROLES = [role for role in ("reader", "writer", "admin") if has_role(role,
 NOT_HELD = "this worker does not hold run {id}: it may have been lost, cancelled or taken by another attempt"
 STEP_REPORT_STATUSES = ("in_progress", "done", "pending")  # what a plan run's worker reports of a step
 MAX_STEP_EVIDENCE_CHARS = MAX_EVIDENCE_BYTES  # the agent's evidence of one step; the hub's adds to it, within the bytes
-PLAN_LOCK = "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))"
 
 router = APIRouter(prefix="/v1/projects", tags=["runs"], responses={401: {"model": ErrorBody}})
 worker_router = APIRouter(prefix="/v1/worker", tags=["worker protocol"], responses={401: {"model": ErrorBody}})
@@ -476,38 +496,79 @@ class StepWritten(BaseModel):
 
 # Reading runs
 
-RUN_COLUMNS = """
-SELECT r.id, r.kind, p.name, r.plan_id, r.step_key, r.title, r.plan_revision, u.login, r.dispatched_via,
-       r.worker_id, w.name, r.pinned_worker_id, r.requested_runtime, r.runtime, r.model, r.mode, r.approval,
-       r.timeout_s / 60, r.run_seconds, r.attempt, r.max_attempts, r.parent_run_id, r.resume_of_run_id, r.state,
-       r.lease_expires_at, r.session_id, r.repo, r.branch, r.repos, r.commit_sha, r.diffstat, r.verify, r.evidence,
-       r.usage, r.error, r.log_sha256, r.diff_sha256, r.event_seq, r.cancel_requested_at, r.takeover_requested_at,
-       r.handback_requested_at, r.queued_at, r.leased_at, r.started_at, r.waiting_since, r.parked_at, r.finished_at
-  FROM runs r JOIN projects p ON p.id = r.project_id JOIN users u ON u.id = r.dispatched_by
-  LEFT JOIN workers w ON w.id = r.worker_id
-"""
-RUN_VIEW = RUN_COLUMNS + " WHERE r.id = ANY(%s) ORDER BY r.id"
+
+def _run_select():
+    """The fields of Run, each column labelled as its field: a run with the name of its project, the login of its
+    owner and the name of the worker that claimed it."""
+    r, p, u, w = tables.runs, tables.projects, tables.users, tables.workers
+    return (
+        select(
+            r.c.id,
+            r.c.kind,
+            p.c.name.label("project"),
+            r.c.plan_id,
+            r.c.step_key,
+            r.c.title,
+            r.c.plan_revision,
+            u.c.login.label("dispatched_by"),
+            r.c.dispatched_via,
+            r.c.worker_id,
+            w.c.name.label("worker"),
+            r.c.pinned_worker_id,
+            r.c.requested_runtime,
+            r.c.runtime,
+            r.c.model,
+            r.c.mode,
+            r.c.approval,
+            (r.c.timeout_s // 60).label("timeout_min"),
+            r.c.run_seconds,
+            r.c.attempt,
+            r.c.max_attempts,
+            r.c.parent_run_id,
+            r.c.resume_of_run_id,
+            r.c.state,
+            r.c.lease_expires_at,
+            r.c.session_id,
+            r.c.repo,
+            r.c.branch,
+            r.c.repos,
+            r.c.commit_sha,
+            r.c.diffstat,
+            r.c.verify,
+            r.c.evidence,
+            r.c.usage,
+            r.c.error,
+            r.c.log_sha256,
+            r.c.diff_sha256,
+            r.c.event_seq.label("last_seq"),
+            r.c.cancel_requested_at,
+            r.c.takeover_requested_at,
+            r.c.handback_requested_at,
+            r.c.queued_at,
+            r.c.leased_at,
+            r.c.started_at,
+            r.c.waiting_since,
+            r.c.parked_at,
+            r.c.finished_at,
+        )
+        .join_from(r, p, p.c.id == r.c.project_id)
+        .join(u, u.c.id == r.c.dispatched_by)
+        .outerjoin(w, w.c.id == r.c.worker_id)
+    )
 
 
 def _runs_of(rows) -> list[Run]:
-    return [Run(**dict(zip(Run.model_fields, row, strict=True))) for row in rows]
+    return [Run(**row._mapping) for row in rows]
 
 
-async def run_views(conn, run_ids: list[int]) -> list[Run]:
-    return _runs_of(await (await legacy(conn, RUN_VIEW, (list(run_ids),))).fetchall())
+async def run_views(conn: AsyncConnection, run_ids: list[int]) -> list[Run]:
+    r = tables.runs
+    return _runs_of(await conn.execute(_run_select().where(r.c.id.in_(list(run_ids))).order_by(r.c.id)))
 
 
-async def run_view(conn, run_id: int) -> Run:
+async def run_view(conn: AsyncConnection, run_id: int) -> Run:
     (found,) = await run_views(conn, [run_id])
     return found
-
-
-ACTIVE_RUNS = """
-SELECT r.kind, r.step_key, r.id, r.state, u.login
-  FROM runs r JOIN users u ON u.id = r.dispatched_by
- WHERE r.project_id = %s AND r.plan_id = %s AND r.state = ANY(%s)
- ORDER BY r.id
-"""
 
 
 @dataclass
@@ -518,15 +579,21 @@ class Activity:
     plan_run: ActiveRun | None
 
 
-async def _activity(conn, project_id: int, plan_id: str) -> Activity:
-    rows = await (await legacy(conn, ACTIVE_RUNS, (project_id, plan_id, list(runs.ACTIVE_STATES)))).fetchall()
+async def _activity(conn: AsyncConnection, project_id: int, plan_id: str) -> Activity:
+    r, u = tables.runs, tables.users
+    query = (
+        select(r.c.kind, r.c.step_key, r.c.id, r.c.state, u.c.login)
+        .join_from(r, u, u.c.id == r.c.dispatched_by)
+        .where(r.c.project_id == project_id, r.c.plan_id == plan_id, r.c.state.in_(runs.ACTIVE_STATES))
+        .order_by(r.c.id)
+    )
     activity = Activity(steps={}, plan_run=None)
-    for kind, key, run_id, state, login in rows:
-        active = ActiveRun(id=run_id, state=state, dispatched_by=login)
-        if kind == "plan":
+    for row in await conn.execute(query):
+        active = ActiveRun(id=row.id, state=row.state, dispatched_by=row.login)
+        if row.kind == "plan":
             activity.plan_run = active
         else:
-            activity.steps[key] = active
+            activity.steps[row.step_key] = active
     return activity
 
 
@@ -535,10 +602,11 @@ def plan_lock_key(project_id: int, plan_id: str) -> str:
     return f"evo-runs:{project_id}:{plan_id}"
 
 
-async def _lock_plan(conn, project_id: int, plan_id: str) -> None:
+async def _lock_plan(conn: AsyncConnection, project_id: int, plan_id: str) -> None:
     """Take the plan's dispatch lock until the caller's transaction ends: a dispatch of its steps and one of its plan
     run then each see the other's run, never both none."""
-    await legacy(conn, PLAN_LOCK, (plan_lock_key(project_id, plan_id),))
+    key = func.hashtextextended(plan_lock_key(project_id, plan_id), 0)
+    await conn.execute(select(func.pg_advisory_xact_lock(key)))
 
 
 def _text_or_none(value) -> str | None:
@@ -621,64 +689,90 @@ class RunList(BaseModel):
     offset: int
 
 
-PLAN_LABELS = "SELECT plan_id, label FROM plans WHERE project_id = %s"
-
-
-async def visible_plans(conn, access: ProjectAccess, sink: str | None) -> list[str]:
+async def visible_plans(conn: AsyncConnection, access: ProjectAccess, sink: str | None) -> list[str]:
     """The plans of the project whose runs the caller may read: those it may read through ``sink`` (the project's
     hub sink when None), by the plan's label. A run of a plan no longer on the hub is shown to nobody."""
     plan_routes._reader(access)
     through = plan_routes._sink(access, sink)
-    rows = await (await legacy(conn, PLAN_LABELS, (access.project_id,))).fetchall()
-    return [plan_id for plan_id, label in rows if access.visible(label, through)]
+    plans = tables.plans
+    rows = await conn.execute(select(plans.c.plan_id, plans.c.label).where(plans.c.project_id == access.project_id))
+    return [row.plan_id for row in rows if access.visible(row.label, through)]
 
 
-READABLE_RUN = "SELECT plan_id FROM runs WHERE id = %s AND project_id = %s"
-
-
-async def readable_run(conn, user: Principal, project: str, run_id: int, sink: str | None) -> ProjectAccess:
+async def readable_run(
+    conn: AsyncConnection, user: Principal, project: str, run_id: int, sink: str | None
+) -> ProjectAccess:
     """The caller's access to ``project`` when it may read run ``run_id`` of it: a grant on the project (404 without,
     403 for a hub admin without one) and the run's plan visible to it (404 otherwise, as for no run)."""
     access = await project_access(conn, user, project)
     plan_routes._reader(access)
-    row = await (await legacy(conn, READABLE_RUN, (run_id, access.project_id))).fetchone()
-    if row is None or row[0] not in await visible_plans(conn, access, sink):
+    r = tables.runs
+    found = select(r.c.plan_id).where(r.c.id == run_id, r.c.project_id == access.project_id)
+    plan_id = (await conn.execute(found)).scalar_one_or_none()
+    if plan_id is None or plan_id not in await visible_plans(conn, access, sink):
         raise HTTPException(404, f"project {project} has no run {run_id}: see GET /v1/projects/{project}/runs")
     return access
 
 
-LIST_FILTERS = """
- WHERE r.project_id = %(project)s AND r.plan_id = ANY(%(plans)s)
-   AND (%(plan)s::text IS NULL OR r.plan_id = %(plan)s)
-   AND (%(step)s::text IS NULL OR r.step_key = %(step)s)
-   AND (%(worker)s::bigint IS NULL OR r.worker_id = %(worker)s)
-   AND (%(login)s::text IS NULL OR lower(u.login) = lower(%(login)s))
-   AND (%(q)s::text IS NULL OR r.title ILIKE %(q)s OR r.step_key ILIKE %(q)s OR r.plan_id ILIKE %(q)s
-        OR r.repo ILIKE %(q)s OR r.branch ILIKE %(q)s OR w.name ILIKE %(q)s OR u.login ILIKE %(q)s
-        OR r.error ILIKE %(q)s OR r.id = %(run)s::bigint)
-"""
-LIST_PAGE = (
-    RUN_COLUMNS
-    + LIST_FILTERS
-    + """   AND (cardinality(%(states)s::text[]) = 0 OR r.state = ANY(%(states)s))
- ORDER BY r.id DESC
- LIMIT %(limit)s OFFSET %(offset)s
-"""
-)
-LIST_COUNTS = (
-    """
-SELECT r.state, count(*)
-  FROM runs r JOIN users u ON u.id = r.dispatched_by LEFT JOIN workers w ON w.id = r.worker_id
-"""
-    + LIST_FILTERS
-    + " GROUP BY r.state"
-)
 RUN_NUMBER = re.compile(r"#?([0-9]{1,18})")
 
 
 def _like(text: str) -> str:
     """``text`` as an ILIKE pattern that matches it anywhere, its own wildcards taken literally."""
     return "%" + text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+
+
+def _list_conditions(
+    project_id: int,
+    plans: list[str],
+    *,
+    plan_id: str | None,
+    step: str | None,
+    worker_id: int | None,
+    login: str | None,
+    text: str | None,
+) -> list:
+    """The filters of GET .../runs but the state's, which the counts by state leave out: the runs of the project and
+    of ``plans``, then each filter given (one not given leaves every run). ``text`` is stripped already."""
+    r, u, w = tables.runs, tables.users, tables.workers
+    found = [r.c.project_id == project_id, r.c.plan_id.in_(plans)]
+    if plan_id is not None:
+        found.append(r.c.plan_id == plan_id)
+    if step is not None:
+        found.append(r.c.step_key == step)
+    if worker_id is not None:
+        found.append(r.c.worker_id == worker_id)
+    if login is not None:
+        found.append(func.lower(u.c.login) == func.lower(login))
+    if text:
+        pattern = _like(text)
+        searched = (r.c.title, r.c.step_key, r.c.plan_id, r.c.repo, r.c.branch, w.c.name, u.c.login, r.c.error)
+        matches = [searched_column.ilike(pattern) for searched_column in searched]
+        number = RUN_NUMBER.fullmatch(text)
+        if number:
+            matches.append(r.c.id == int(number[1]))
+        found.append(or_(*matches))
+    return found
+
+
+def _list_page(conditions: list, states: list[str], limit: int, offset: int):
+    r = tables.runs
+    query = _run_select().where(*conditions)
+    if states:
+        query = query.where(r.c.state.in_(states))
+    return query.order_by(r.c.id.desc()).limit(limit).offset(offset)
+
+
+def _list_counts(conditions: list):
+    """How many runs in each state match ``conditions``, over the joins they read."""
+    r, u, w = tables.runs, tables.users, tables.workers
+    return (
+        select(r.c.state, func.count().label("runs"))
+        .join_from(r, u, u.c.id == r.c.dispatched_by)
+        .outerjoin(w, w.c.id == r.c.worker_id)
+        .where(*conditions)
+        .group_by(r.c.state)
+    )
 
 
 @router.get("/{project}/runs", response_model=RunList, responses={403: {"model": ErrorBody}, 404: {"model": ErrorBody}})
@@ -704,25 +798,15 @@ async def list_runs(
     sink: Annotated[str | None, Header(alias=plan_routes.SINK_HEADER)] = None,
 ) -> RunList:
     """The project's runs, newest first, of the plans the caller may read, with how many are in each state."""
-    text = q.strip() if q else None
-    number = RUN_NUMBER.fullmatch(text) if text else None
-    params = {
-        "plan": plan_id,
-        "step": step,
-        "worker": worker_id,
-        "login": dispatched_by,
-        "q": _like(text) if text else None,
-        "run": int(number[1]) if number else None,
-        "states": list(dict.fromkeys(state)),
-        "limit": limit,
-        "offset": offset,
-    }
+    filters = {"plan_id": plan_id, "step": step, "worker_id": worker_id, "login": dispatched_by}
+    states = list(dict.fromkeys(state))
     async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
-        params |= {"project": access.project_id, "plans": await visible_plans(conn, access, sink)}
-        page = _runs_of(await (await legacy(conn, LIST_PAGE, params)).fetchall())
-        counts = dict(await (await legacy(conn, LIST_COUNTS, params)).fetchall())
-    wanted = params["states"] or runs.RUN_STATES
+        plans = await visible_plans(conn, access, sink)
+        conditions = _list_conditions(access.project_id, plans, **filters, text=q.strip() if q else None)
+        page = _runs_of(await conn.execute(_list_page(conditions, states, limit, offset)))
+        counts = {row.state: row.runs for row in await conn.execute(_list_counts(conditions))}
+    wanted = states or runs.RUN_STATES
     return RunList(
         runs=page,
         total=sum(counts.get(name, 0) for name in wanted),
@@ -736,7 +820,6 @@ async def list_runs(
 
 STATS_DAYS = 30  # the days GET .../runs/stats covers without ?days, today in UTC the last of them
 MIN_STATS_DAYS, MAX_STATS_DAYS = 7, 90
-UTC_TODAY = "SELECT (now() AT TIME ZONE 'UTC')::date"
 
 
 class RunFigures(BaseModel):
@@ -790,99 +873,115 @@ USAGE_KEYS = (
 )
 
 
-def _usage_number(value: str) -> str:
+def _usage_number(value):
     """``value`` (a jsonb expression) when it is a positive number, else 0, as the usage card reads a number."""
-    return f"CASE WHEN jsonb_typeof({value}) = 'number' THEN greatest(({value})::numeric, 0) ELSE 0 END"
+    return case((func.jsonb_typeof(value) == "number", func.greatest(cast(value, Numeric), 0)), else_=0)
 
 
-def _usage_either(first: str, second: str) -> str:
+def _usage_either(first, second):
     """The number of ``first`` when it holds a value, null or missing being none, else the number of ``second``: the
     card's ``first ?? second``."""
-    return f"CASE WHEN {first} IS NOT NULL THEN {_usage_number(first)} ELSE {_usage_number(second)} END"
+    return case((first.is_not(None), _usage_number(first)), else_=_usage_number(second))
 
 
-def _usage_parts() -> dict[str, str]:
-    """A run's usage read as the usage card's readTokens reads it, from the keys of USAGE_KEYS taken apart once per
-    run (``k``): the shape that reported it, null for none the card knows, then the whole input, the part of it read
-    from the cache, the whole output and the reasoning part of it. Codex counts the cache in its input and reasoning in
-    its output, Claude Code counts thinking in its output, and opencode keeps the four apart."""
+def _usage_keys(usage):
+    """The keys of USAGE_KEYS taken apart once from a run's ``usage`` (``k``), each as jsonb: null for a key it does
+    not have, and for usage that is not a JSON object."""
+    whole = case((func.jsonb_typeof(usage) == "object", usage))
+    keys = func.jsonb_to_record(whole).table_valued(*(column(name, JSONB) for name in USAGE_KEYS))
+    return keys.render_derived(name="k", with_types=True).lateral("k")
 
-    def key(name: str) -> str:
-        return f'k."{name}"'
 
-    def has(*names: str) -> str:
-        return " OR ".join(f"jsonb_typeof({key(name)}) = 'number'" for name in names)
+def _usage_shape(k):
+    """The shape that reported the usage of ``k``: codex, claude or opencode, null for none the card knows."""
 
-    def by_shape(claude: str, codex: str, opencode: str) -> str:
-        return (
-            f"CASE s.shape WHEN 'claude' THEN {claude} WHEN 'codex' THEN {codex} WHEN 'opencode' THEN {opencode} "
-            "ELSE 0 END"
-        )
+    def has(*names: str):
+        return or_(*(func.jsonb_typeof(k.c[name]) == "number" for name in names))
 
-    number, either = _usage_number, _usage_either
     codex = has("inputTokens", "outputTokens", "cachedInputTokens", "cached_input_tokens", "reasoning_output_tokens")
     claude = has("input_tokens", "output_tokens", "cache_read_input_tokens")
-    opencode = has("input", "output", "reasoning", "cache_read") + f" OR jsonb_typeof({key('cache')}) = 'object'"
+    opencode = or_(has("input", "output", "reasoning", "cache_read"), func.jsonb_typeof(k.c.cache) == "object")
+    return case((codex, "codex"), (claude, "claude"), (opencode, "opencode"))
+
+
+def _usage_parts(k, shape) -> dict:
+    """A run's usage read as the usage card's readTokens reads it, from the keys of ``k`` by its ``shape``: the whole
+    input, the part of it read from the cache, the whole output and the reasoning part of it. Codex counts the cache
+    in its input and reasoning in its output, Claude Code counts thinking in its output, and opencode keeps the four
+    apart."""
+
+    def by_shape(claude, codex, opencode):
+        return case({"claude": claude, "codex": codex, "opencode": opencode}, value=shape, else_=0)
+
+    number, either = _usage_number, _usage_either
     return {
-        "keys": ", ".join(f'"{name}" jsonb' for name in USAGE_KEYS),
-        "shape": f"CASE WHEN {codex} THEN 'codex' WHEN {claude} THEN 'claude' WHEN {opencode} THEN 'opencode' END",
-        "whole_input": by_shape(
-            number(key("input_tokens")), either(key("inputTokens"), key("input_tokens")), number(key("input"))
-        ),
+        "whole_input": by_shape(number(k.c.input_tokens), either(k.c.inputTokens, k.c.input_tokens), number(k.c.input)),
         "cached": by_shape(
-            number(key("cache_read_input_tokens")),
-            either(key("cachedInputTokens"), key("cached_input_tokens")),
-            either(key("cache_read"), f"({key('cache')} -> 'read')"),
+            number(k.c.cache_read_input_tokens),
+            either(k.c.cachedInputTokens, k.c.cached_input_tokens),
+            either(k.c.cache_read, k.c.cache["read"]),
         ),
         "whole_output": by_shape(
-            number(key("output_tokens")), either(key("outputTokens"), key("output_tokens")), number(key("output"))
+            number(k.c.output_tokens), either(k.c.outputTokens, k.c.output_tokens), number(k.c.output)
         ),
         "thought": by_shape(
-            number(f"({key('output_tokens_details')} -> 'thinking_tokens')"),
-            either(key("reasoningOutputTokens"), key("reasoning_output_tokens")),
-            number(key("reasoning")),
+            number(k.c.output_tokens_details["thinking_tokens"]),
+            either(k.c.reasoningOutputTokens, k.c.reasoning_output_tokens),
+            number(k.c.reasoning),
         ),
     }
 
 
-def _run_stats_query() -> str:
-    parts = _usage_parts()
-    counts = ", ".join(f"count(*) FILTER (WHERE e.state = '{state}')" for state in runs.TERMINAL_STATES)
-    return f"""
-WITH ended AS (
-    SELECT (r.finished_at AT TIME ZONE 'UTC')::date AS day, r.state,
-           CASE WHEN coalesce(r.started_at, r.leased_at) IS NOT NULL
-                THEN greatest(extract(epoch FROM r.finished_at - coalesce(r.started_at, r.leased_at)), 0)::float8
-           END AS seconds,
-           s.shape,
-           CASE WHEN s.shape = 'codex' THEN least(u.cached, u.whole_input) ELSE u.cached END AS cache_read,
-           CASE WHEN s.shape = 'codex' THEN u.whole_input - least(u.cached, u.whole_input) ELSE u.whole_input END
-               AS input,
-           CASE WHEN s.shape = 'opencode' THEN u.thought ELSE least(u.thought, u.whole_output) END AS reasoning,
-           CASE WHEN s.shape = 'opencode' THEN u.whole_output ELSE u.whole_output - least(u.thought, u.whole_output) END
-               AS output
-      FROM runs r
-     CROSS JOIN LATERAL jsonb_to_record(CASE WHEN jsonb_typeof(r.usage) = 'object' THEN r.usage END)
-           AS k({parts["keys"]})
-     CROSS JOIN LATERAL (SELECT {parts["shape"]} AS shape) s
-     CROSS JOIN LATERAL (
-         SELECT {parts["whole_input"]} AS whole_input,
-                {parts["cached"]} AS cached,
-                {parts["whole_output"]} AS whole_output,
-                {parts["thought"]} AS thought
-     ) u
-     WHERE r.project_id = %(project)s AND r.plan_id = ANY(%(plans)s) AND r.state = ANY(%(ended)s)
-       AND r.finished_at >= %(since)s AND r.finished_at < %(until)s
-)
-SELECT e.day, grouping(e.day) = 1, {counts},
-       percentile_cont(0.5) WITHIN GROUP (ORDER BY e.seconds), percentile_cont(0.9) WITHIN GROUP (ORDER BY e.seconds),
-       sum(e.input), sum(e.output), sum(e.cache_read), sum(e.reasoning), count(e.shape)
-  FROM ended e
- GROUP BY ROLLUP (e.day)
-"""
-
-
-RUN_STATS = _run_stats_query()
+def _run_stats(project_id: int, plans: list[str], since: datetime, until: datetime):
+    """The runs of ``plans`` that ended in [since, until), by UTC day and over the whole span (the row whose
+    whole_span is true): how many in each end state, the percentiles of how long they ran and their tokens. Each run's
+    usage is taken apart once (``_usage_keys``), its shape read once (``s``) and its four numbers once (``u``)."""
+    r = tables.runs
+    k = _usage_keys(r.c.usage)
+    s = select(_usage_shape(k).label("shape")).correlate(k).lateral("s")
+    u = select(*(part.label(name) for name, part in _usage_parts(k, s.c.shape).items())).correlate(k, s).lateral("u")
+    began = func.coalesce(r.c.started_at, r.c.leased_at)
+    ran = func.greatest(extract("epoch", r.c.finished_at - began), 0)
+    codex, opencode = s.c.shape == "codex", s.c.shape == "opencode"
+    cache_read = func.least(u.c.cached, u.c.whole_input)
+    reasoning = func.least(u.c.thought, u.c.whole_output)
+    ended = (
+        select(
+            cast(func.timezone("UTC", r.c.finished_at), Date).label("day"),
+            r.c.state,
+            case((began.is_not(None), cast(ran, DOUBLE_PRECISION))).label("seconds"),
+            s.c.shape,
+            case((codex, cache_read), else_=u.c.cached).label("cache_read"),
+            case((codex, u.c.whole_input - cache_read), else_=u.c.whole_input).label("input"),
+            case((opencode, u.c.thought), else_=reasoning).label("reasoning"),
+            case((opencode, u.c.whole_output), else_=u.c.whole_output - reasoning).label("output"),
+        )
+        .select_from(r)
+        .join(k, true())
+        .join(s, true())
+        .join(u, true())
+        .where(
+            r.c.project_id == project_id,
+            r.c.plan_id.in_(plans),
+            r.c.state.in_(runs.TERMINAL_STATES),
+            r.c.finished_at >= since,
+            r.c.finished_at < until,
+        )
+        .cte("ended")
+    )
+    e = ended.c
+    return select(
+        e.day,
+        (func.grouping(e.day) == 1).label("whole_span"),
+        *(func.count().filter(e.state == state).label(state) for state in runs.TERMINAL_STATES),
+        func.percentile_cont(0.5).within_group(e.seconds).label("p50_seconds"),
+        func.percentile_cont(0.9).within_group(e.seconds).label("p90_seconds"),
+        func.sum(e.input).label("input_tokens"),
+        func.sum(e.output).label("output_tokens"),
+        func.sum(e.cache_read).label("cache_read_tokens"),
+        func.sum(e.reasoning).label("reasoning_tokens"),
+        func.count(e.shape).label("runs_with_usage"),
+    ).group_by(func.rollup(e.day))
 
 
 def _seconds(value: float | None) -> float | None:
@@ -890,22 +989,25 @@ def _seconds(value: float | None) -> float | None:
 
 
 def _figures(row) -> RunFigures:
-    """A row of RUN_STATS after its day and grouping: a sum over no run (null) is 0, a percentile kept to the
+    """A row of ``_run_stats``, by column name: a sum over no run (null) is 0, a percentile kept to the
     millisecond."""
-    *counts, p50, p90, input_tokens, output_tokens, cache_read, reasoning, with_usage = row
     return RunFigures(
-        **dict(zip(runs.TERMINAL_STATES, counts, strict=True)),
-        p50_seconds=_seconds(p50),
-        p90_seconds=_seconds(p90),
-        input_tokens=int(input_tokens or 0),
-        output_tokens=int(output_tokens or 0),
-        cache_read_tokens=int(cache_read or 0),
-        reasoning_tokens=int(reasoning or 0),
-        runs_with_usage=with_usage,
+        **{state: row[state] for state in runs.TERMINAL_STATES},
+        p50_seconds=_seconds(row["p50_seconds"]),
+        p90_seconds=_seconds(row["p90_seconds"]),
+        input_tokens=int(row["input_tokens"] or 0),
+        output_tokens=int(row["output_tokens"] or 0),
+        cache_read_tokens=int(row["cache_read_tokens"] or 0),
+        reasoning_tokens=int(row["reasoning_tokens"] or 0),
+        runs_with_usage=row["runs_with_usage"],
     )
 
 
-NO_RUN = _figures([0] * len(runs.TERMINAL_STATES) + [None, None, 0, 0, 0, 0, 0])
+NO_RUN = _figures(
+    dict.fromkeys(runs.TERMINAL_STATES, 0)
+    | dict.fromkeys(("input_tokens", "output_tokens", "cache_read_tokens", "reasoning_tokens", "runs_with_usage"), 0)
+    | {"p50_seconds": None, "p90_seconds": None}
+)
 
 
 @router.get(
@@ -928,22 +1030,17 @@ async def run_stats(
     async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
         plans = await visible_plans(conn, access, sink)
-        today: date = (await (await legacy(conn, UTC_TODAY)).fetchone())[0]
+        today: date = (await conn.execute(select(cast(func.timezone("UTC", func.now()), Date)))).scalar_one()
         first = today - timedelta(days=days - 1)
-        params = {
-            "project": access.project_id,
-            "plans": plans,
-            "ended": list(runs.TERMINAL_STATES),
-            "since": datetime.combine(first, time.min, tzinfo=UTC),
-            "until": datetime.combine(today + timedelta(days=1), time.min, tzinfo=UTC),
-        }
-        rows = await (await legacy(conn, RUN_STATS, params)).fetchall()
+        since = datetime.combine(first, time.min, tzinfo=UTC)
+        until = datetime.combine(today + timedelta(days=1), time.min, tzinfo=UTC)
+        rows = (await conn.execute(_run_stats(access.project_id, plans, since, until))).all()
     by_day, total = {}, NO_RUN
-    for day, whole_span, *values in rows:
-        if whole_span:
-            total = _figures(values)
+    for row in rows:
+        if row.whole_span:
+            total = _figures(row._mapping)
         else:
-            by_day[day] = _figures(values)
+            by_day[row.day] = _figures(row._mapping)
     shown = [first + timedelta(days=back) for back in range(days)]
     return RunStats(
         project=access.name,
@@ -983,14 +1080,6 @@ def _dispatcher(access: ProjectAccess) -> None:
         )
 
 
-PINNABLE = """
-SELECT w.owner_id, w.name, w.revoked_at,
-       EXISTS (SELECT 1 FROM worker_projects wp WHERE wp.worker_id = w.id AND wp.project_id = %s),
-       w.runtimes, w.checkouts, w.agent_version, w.dispatch_from
-  FROM workers w WHERE w.id = %s
-"""
-
-
 @dataclass(frozen=True)
 class Pinned:
     """The worker a dispatch pins its runs to, as its last heartbeat reported it."""
@@ -1002,26 +1091,38 @@ class Pinned:
     agent_version: str | None
 
 
-async def _pinnable(conn, user: Principal, access: ProjectAccess, worker_id: int) -> Pinned:
+async def _pinnable(conn: AsyncConnection, user: Principal, access: ProjectAccess, worker_id: int) -> Pinned:
     """403 unless worker ``worker_id`` is ``user``'s own, and unless ``user`` dispatches from a web session when the
     worker takes runs dispatched from the web only; 409 when it is revoked or does not serve the project."""
-    row = await (await legacy(conn, PINNABLE, (access.project_id, worker_id))).fetchone()
-    if row is None or row[0] != user.user_id:  # the same answer for another member's worker and for no worker
+    w, wp = tables.workers, tables.worker_projects
+    serves = exists().where(wp.c.worker_id == w.c.id, wp.c.project_id == access.project_id)
+    query = select(
+        w.c.owner_id,
+        w.c.name,
+        w.c.revoked_at,
+        serves.label("serves"),
+        w.c.runtimes,
+        w.c.checkouts,
+        w.c.agent_version,
+        w.c.dispatch_from,
+    ).where(w.c.id == worker_id)
+    row = (await conn.execute(query)).one_or_none()
+    if row is None or row.owner_id != user.user_id:  # the same answer for another member's worker and for no worker
         raise HTTPException(
             403, f"a run goes only to a worker of the member who dispatches it, and you have no worker {worker_id}"
         )
-    _, name, revoked_at, serves, reported, checkouts, agent_version, dispatch_from = row
-    if revoked_at is not None:
-        raise HTTPException(409, f"worker {name} was revoked at {revoked_at.isoformat()}; it takes no runs")
-    if not serves:
+    name = row.name
+    if row.revoked_at is not None:
+        raise HTTPException(409, f"worker {name} was revoked at {row.revoked_at.isoformat()}; it takes no runs")
+    if not row.serves:
         raise HTTPException(409, f"worker {name} does not take runs of project {access.name}: register it for it")
-    if dispatch_from == "web" and user.kind != WEB:
+    if row.dispatch_from == "web" and user.kind != WEB:
         raise HTTPException(
             403,
             f"worker {name} takes only runs dispatched from a web session, as its owner set it, so a token cannot "
             "hand it work: dispatch on the web, or to another worker; nothing was dispatched",
         )
-    return Pinned(worker_id, name, reported or {}, checkouts or {}, agent_version)
+    return Pinned(worker_id, name, row.runtimes or {}, row.checkouts or {}, row.agent_version)
 
 
 def _unfit(worker: Pinned, project: str, kind: str, repos: list[str], runtime: str) -> list[str]:
@@ -1061,21 +1162,21 @@ def _fits(worker: Pinned | None, access: ProjectAccess, kind: str, repos: list[s
         )
 
 
-INSERT_RUN = """
-INSERT INTO runs (project_id, plan_id, step_key, title, plan_revision, dispatched_by, dispatched_via, pinned_worker_id,
-                  requested_runtime, runtime, model, mode, approval, timeout_s, parent_run_id, repo, branch)
-VALUES (%(project)s, %(plan)s, %(step)s, %(title)s, %(revision)s, %(user)s, %(via)s, %(pinned)s, %(runtime)s,
-        %(runtime)s, %(model)s, %(mode)s, %(approval)s, %(timeout)s, %(parent)s, %(repo)s, %(branch)s)
-RETURNING id
-"""
-
-
 def _short(value) -> str | None:
     return value if isinstance(value, str) and value.strip() else None
 
 
+async def _insert_run(conn: AsyncConnection, values: dict) -> int:
+    """Insert a run with the column ``values`` in a savepoint and return its id. When the database refuses the row,
+    the savepoint is rolled back and the IntegrityError, with the psycopg error that says why in ``orig``, goes on to
+    the caller, whose transaction stays usable."""
+    r = tables.runs
+    async with conn.begin_nested():
+        return (await conn.execute(insert(r).values(**values).returning(r.c.id))).scalar_one()
+
+
 async def _queue_run(
-    conn,
+    conn: AsyncConnection,
     access: ProjectAccess,
     user: Principal,
     held,
@@ -1109,31 +1210,33 @@ async def _queue_run(
             422, f"step {key} names no repo and the plan does not list exactly one: give the step a repo"
         )
     _fits(pinned, access, "step", [name], runtime)
-    params = {
-        "project": access.project_id,
-        "plan": held.plan_id,
-        "step": key,
+    values = {
+        "project_id": access.project_id,
+        "plan_id": held.plan_id,
+        "step_key": key,
         "title": runs.step_title(step),
-        "revision": held.revision,
-        "user": user.user_id,
-        "via": dispatch_credential(user.kind),
-        "pinned": None if pinned is None else pinned.id,
+        "plan_revision": held.revision,
+        "dispatched_by": user.user_id,
+        "dispatched_via": dispatch_credential(user.kind),
+        "pinned_worker_id": None if pinned is None else pinned.id,
+        "requested_runtime": runtime,
         "runtime": runtime,
         "model": model,
         "mode": mode,
         "approval": approval,
-        "timeout": timeout_s,
-        "parent": parent,
+        "timeout_s": timeout_s,
+        "parent_run_id": parent,
         "repo": name,
         "branch": _short(repo.get("branch")),
     }
     try:
-        async with conn.begin_nested():
-            run_id = (await (await legacy(conn, INSERT_RUN, params)).fetchone())[0]
-    except psycopg.errors.UniqueViolation:  # another dispatch of the step got in first
-        raise HTTPException(409, f"step {key} of plan {held.plan_id} has an active run already") from None
-    except psycopg.errors.CheckViolation:
-        raise HTTPException(422, f"step {key}: its repo or branch name is not one a run can hold") from None
+        run_id = await _insert_run(conn, values)
+    except IntegrityError as exc:
+        if isinstance(exc.orig, psycopg.errors.UniqueViolation):  # another dispatch of the step got in first
+            raise HTTPException(409, f"step {key} of plan {held.plan_id} has an active run already") from None
+        if isinstance(exc.orig, psycopg.errors.CheckViolation):
+            raise HTTPException(422, f"step {key}: its repo or branch name is not one a run can hold") from None
+        raise
     active[key] = ActiveRun(id=run_id, state="queued", dispatched_by=user.login)
     await notify_queued(conn, run_id)
     return run_id
@@ -1204,15 +1307,6 @@ async def dispatch(request: Request, project: ProjectName, body: Dispatch, user:
     return views
 
 
-INSERT_PLAN_RUN = """
-INSERT INTO runs (kind, project_id, plan_id, title, plan_revision, dispatched_by, dispatched_via, pinned_worker_id,
-                  requested_runtime, runtime, model, mode, approval, timeout_s, repos)
-VALUES ('plan', %(project)s, %(plan)s, %(title)s, %(revision)s, %(user)s, %(via)s, %(pinned)s, %(runtime)s,
-        %(runtime)s, %(model)s, %(mode)s, 'auto', %(timeout)s, %(repos)s)
-RETURNING id
-"""
-
-
 def _pending(step) -> bool:
     """Whether a step counts as pending: a status of pending or none, or a bare string, which has none."""
     return not isinstance(step, dict) or step.get("status") in (None, "pending")
@@ -1274,30 +1368,35 @@ async def dispatch_plan(request: Request, project: ProjectName, body: PlanRunDis
             )
         repos = _plan_run_repos(held)
         _fits(pinned, access, "plan", [entry["repo"] for entry in repos], body.runtime)
-        params = {
-            "project": access.project_id,
-            "plan": held.plan_id,
+        values = {
+            "kind": "plan",
+            "project_id": access.project_id,
+            "plan_id": held.plan_id,
             "title": runs.step_title(held.body),
-            "revision": held.revision,
-            "user": user.user_id,
-            "via": dispatch_credential(user.kind),
-            "pinned": body.worker_id,
+            "plan_revision": held.revision,
+            "dispatched_by": user.user_id,
+            "dispatched_via": dispatch_credential(user.kind),
+            "pinned_worker_id": body.worker_id,
+            "requested_runtime": body.runtime,
             "runtime": body.runtime,
             "model": body.model,
             "mode": body.mode,
-            "timeout": body.timeout_h * 3600,
-            "repos": Jsonb(repos),
+            "approval": "auto",
+            "timeout_s": body.timeout_h * 3600,
+            "repos": repos,
         }
         try:
-            async with conn.begin_nested():
-                run_id = (await (await legacy(conn, INSERT_PLAN_RUN, params)).fetchone())[0]
-        except psycopg.errors.UniqueViolation:  # another plan run of the plan got in first
-            busy = f"plan {held.plan_id} has an active plan run already; nothing was dispatched"
-            raise HTTPException(409, busy) from None
-        except psycopg.errors.CheckViolation:
-            raise HTTPException(
-                422, f"plan {held.plan_id}: a repo or branch name, or the number of repos, is not one a run can hold"
-            ) from None
+            run_id = await _insert_run(conn, values)
+        except IntegrityError as exc:
+            if isinstance(exc.orig, psycopg.errors.UniqueViolation):  # another plan run of the plan got in first
+                busy = f"plan {held.plan_id} has an active plan run already; nothing was dispatched"
+                raise HTTPException(409, busy) from None
+            if isinstance(exc.orig, psycopg.errors.CheckViolation):
+                raise HTTPException(
+                    422,
+                    f"plan {held.plan_id}: a repo or branch name, or the number of repos, is not one a run can hold",
+                ) from None
+            raise
         await notify_queued(conn, run_id)
         target = _run_target(project, held.plan_id, None, run_id)
         await _audit_run(conn, user, access, audit.RUN_DISPATCH_PLAN, target)
@@ -1311,21 +1410,35 @@ async def dispatch_plan(request: Request, project: ProjectName, body: PlanRunDis
 
 # The owner's controls
 
-OWNED_RUN = """
-SELECT r.dispatched_by, u.login, r.state, r.plan_id, r.step_key, r.cancel_requested_at, r.requested_runtime, r.mode,
-       r.approval, r.timeout_s, r.pinned_worker_id, r.kind, r.model
-  FROM runs r JOIN users u ON u.id = r.dispatched_by
- WHERE r.id = %s AND r.project_id = %s
-   FOR UPDATE OF r
-"""
 
-
-async def _owned_run(conn, user: Principal, project: str, run_id: int, action: str):
-    """(access, row of OWNED_RUN) for a run of ``project`` that ``user`` dispatched, its row locked; 404 for a run
-    ``user`` cannot see, 403 for another member's."""
+async def _owned_run(conn: AsyncConnection, user: Principal, project: str, run_id: int, action: str):
+    """(access, row) for a run of ``project`` that ``user`` dispatched, its row locked: dispatched_by, login, state,
+    plan_id, step_key, cancel_requested_at, requested_runtime, mode, approval, timeout_s, pinned_worker_id, kind and
+    model. 404 for a run ``user`` cannot see, 403 for another member's."""
     access = await project_access(conn, user, project)
     plan_routes._reader(access)
-    row = await (await legacy(conn, OWNED_RUN, (run_id, access.project_id))).fetchone()
+    r, u = tables.runs, tables.users
+    query = (
+        select(
+            r.c.dispatched_by,
+            u.c.login,
+            r.c.state,
+            r.c.plan_id,
+            r.c.step_key,
+            r.c.cancel_requested_at,
+            r.c.requested_runtime,
+            r.c.mode,
+            r.c.approval,
+            r.c.timeout_s,
+            r.c.pinned_worker_id,
+            r.c.kind,
+            r.c.model,
+        )
+        .join_from(r, u, u.c.id == r.c.dispatched_by)
+        .where(r.c.id == run_id, r.c.project_id == access.project_id)
+        .with_for_update(of=r)
+    )
+    row = (await conn.execute(query)).one_or_none()
     if row is None:
         raise HTTPException(404, f"project {project} has no run {run_id}: see GET /v1/projects/{project}/runs")
     if row[0] != user.user_id:
@@ -1333,35 +1446,44 @@ async def _owned_run(conn, user: Principal, project: str, run_id: int, action: s
     return access, row
 
 
-# The worker set to take runs dispatched from the web only that a run is on, or may go to: the one holding it (or that
-# parked it), the one it is pinned to, or, for a run queued without a pin and dispatched from the web, one of its
-# owner's workers set so, which may claim it.
-WEB_ONLY_WORKER = """
-SELECT w.name,
-       CASE WHEN w.id = r.worker_id AND r.state = 'parked' THEN 'was parked on'
-            WHEN w.id = r.worker_id THEN 'is held by'
-            WHEN w.id = r.pinned_worker_id THEN 'is pinned to'
-            ELSE 'may go to' END
-  FROM runs r
-  JOIN workers w ON w.dispatch_from = 'web' AND w.revoked_at IS NULL
-   AND (w.id = r.worker_id OR w.id = r.pinned_worker_id
-        OR (r.state = 'queued' AND r.pinned_worker_id IS NULL AND r.dispatched_via = 'web'
-            AND w.owner_id = r.dispatched_by))
- WHERE r.id = %s
- ORDER BY w.id = r.worker_id DESC, w.id = r.pinned_worker_id DESC, w.name
- LIMIT 1
-"""
+def _web_only_worker(run_id: int):
+    """The worker set to take runs dispatched from the web only that run ``run_id`` is on, or may go to, with how:
+    the one holding it (or that parked it), the one it is pinned to, or, for a run queued without a pin and
+    dispatched from the web, one of its owner's workers set so, which may claim it; in that order, then by name."""
+    r, w = tables.runs, tables.workers
+    held, pinned = w.c.id == r.c.worker_id, w.c.id == r.c.pinned_worker_id
+    claimable = and_(
+        r.c.state == "queued",
+        r.c.pinned_worker_id.is_(None),
+        r.c.dispatched_via == "web",
+        w.c.owner_id == r.c.dispatched_by,
+    )
+    relation = case(
+        (and_(held, r.c.state == "parked"), "was parked on"),
+        (held, "is held by"),
+        (pinned, "is pinned to"),
+        else_="may go to",
+    )
+    return (
+        select(w.c.name, relation.label("relation"))
+        .join_from(r, w, and_(w.c.dispatch_from == "web", w.c.revoked_at.is_(None), or_(held, pinned, claimable)))
+        .where(r.c.id == run_id)
+        .order_by(held.desc(), pinned.desc(), w.c.name)
+        .limit(1)
+    )
 
 
-async def web_only_steering(conn, user: Principal, run_id: int, doing: str, instead: str, undone: str) -> None:
+async def web_only_steering(
+    conn: AsyncConnection, user: Principal, run_id: int, doing: str, instead: str, undone: str
+) -> None:
     """403 when ``user`` is a token, not a web session, and run ``run_id`` is on, or may go to, a worker whose owner
-    set it to take runs dispatched from the web only (``WEB_ONLY_WORKER``): a token that cannot hand such a worker
+    set it to take runs dispatched from the web only (``_web_only_worker``): a token that cannot hand such a worker
     work cannot steer the work it has either, by a message to its agent or the answer to a decision, which can resume
     a parked run on it. The refusal says ``doing`` was refused, what to do ``instead``, and that nothing was
     ``undone``."""
     if user.kind == WEB:
         return
-    row = await (await legacy(conn, WEB_ONLY_WORKER, (run_id,))).fetchone()
+    row = (await conn.execute(_web_only_worker(run_id))).one_or_none()
     if row is not None:
         name, relation = row
         raise HTTPException(
@@ -1388,7 +1510,8 @@ async def cancel(request: Request, project: ProjectName, run_id: RunId, user: Cu
         if state in runs.HELD_STATES:
             if cancel_requested_at is not None:  # asked already: nothing changes, nothing is audited
                 return await run_view(conn, run_id)
-            await legacy(conn, "UPDATE runs SET cancel_requested_at = now() WHERE id = %s", (run_id,))
+            r = tables.runs
+            await conn.execute(update(r).values(cancel_requested_at=func.now()).where(r.c.id == run_id))
         else:
             reason = f"{user.login} cancelled it"
             await move_run(conn, run_id, state, "cancelled", "owner", reason=reason, token_id=user.token_id)
@@ -1398,12 +1521,27 @@ async def cancel(request: Request, project: ProjectName, run_id: RunId, user: Cu
     return view
 
 
+# terminal.py still runs this through legacy() in this branch; it goes once terminal.py calls ask_takeover.
 ASK_TAKEOVER = """
 UPDATE runs SET takeover_requested_at = now() WHERE id = %s AND takeover_requested_at IS NULL RETURNING id
 """
-ASK_HANDBACK = """
-UPDATE runs SET handback_requested_at = now() WHERE id = %s AND handback_requested_at IS NULL RETURNING id
-"""
+
+
+async def _asked(conn: AsyncConnection, run_id: int, asked_at) -> bool:
+    """Set ``asked_at``, a column of runs, to now unless it is set already: True when this set it."""
+    r = tables.runs
+    ask = update(r).values({asked_at: func.now()}).where(r.c.id == run_id, asked_at.is_(None)).returning(r.c.id)
+    return (await conn.execute(ask)).one_or_none() is not None
+
+
+async def ask_takeover(conn: AsyncConnection, run_id: int) -> bool:
+    """Ask the worker holding run ``run_id`` for a takeover; False when one was asked already and is still open."""
+    return await _asked(conn, run_id, tables.runs.c.takeover_requested_at)
+
+
+async def ask_handback(conn: AsyncConnection, run_id: int) -> bool:
+    """Ask the worker holding run ``run_id`` for a handback; False when one was asked already and is still open."""
+    return await _asked(conn, run_id, tables.runs.c.handback_requested_at)
 
 
 async def _ask(request: Request, project: str, run_id: int, user: Principal, action: str) -> Run:
@@ -1421,8 +1559,8 @@ async def _ask(request: Request, project: str, run_id: int, user: Principal, act
                 why = "it runs headless" if state in runs.TAKEOVER_STATES else "no agent of it runs now"
                 needs = "interactive"
             raise HTTPException(409, f"run {run_id} is {state}, so {why}: one may {verb} a run that is {needs}")
-        asked = await (await legacy(conn, ASK_TAKEOVER if takeover else ASK_HANDBACK, (run_id,))).fetchone()
-        if asked is not None:  # an ask repeated while open changes nothing and is not audited again
+        asked = await (ask_takeover if takeover else ask_handback)(conn, run_id)
+        if asked:  # an ask repeated while open changes nothing and is not audited again
             await _audit_run(conn, user, access, action, _run_target(project, plan_id, key, run_id))
         view = await run_view(conn, run_id)
     log.info("run control asked", extra={"action": action, "run_id": run_id, "state": view.state, "login": user.login})
@@ -1548,53 +1686,97 @@ class RunWakeups:
             del self._tickets[worker_id]
 
 
-WORKER_OF_TOKEN = """
-SELECT id, owner_id, name, slots, runtimes, checkouts, drained_at, revoked_at, agent_version, dispatch_from
-  FROM workers WHERE token_id = %s
-   FOR UPDATE
-"""
-
-
-async def _worker_of(conn, user: Principal):
-    """The row of the worker whose token made the request, locked; 403 when there is none."""
-    row = await (await legacy(conn, WORKER_OF_TOKEN, (user.token_id,))).fetchone()
-    if row is None or row[7] is not None:
+async def _worker_of(conn: AsyncConnection, user: Principal):
+    """The row of the worker whose token made the request, locked: id, owner_id, name, slots, runtimes, checkouts,
+    drained_at, revoked_at, agent_version and dispatch_from. 403 when there is none."""
+    w = tables.workers
+    query = (
+        select(
+            w.c.id,
+            w.c.owner_id,
+            w.c.name,
+            w.c.slots,
+            w.c.runtimes,
+            w.c.checkouts,
+            w.c.drained_at,
+            w.c.revoked_at,
+            w.c.agent_version,
+            w.c.dispatch_from,
+        )
+        .where(w.c.token_id == user.token_id)
+        .with_for_update()
+    )
+    row = (await conn.execute(query)).one_or_none()
+    if row is None or row.revoked_at is not None:
         raise HTTPException(403, "this worker token belongs to no live worker: join the machine again")
     return row
 
 
-SERVED = """
-SELECT wp.project_id, p.name
-  FROM worker_projects wp JOIN projects p ON p.id = wp.project_id
- WHERE wp.worker_id = %(worker)s
-   AND EXISTS (SELECT 1 FROM grants g
-                WHERE g.user_id = %(owner)s AND g.project_id = wp.project_id AND g.role = ANY(%(writers)s))
-"""
-# A run of one step needs a checkout of its repo, and a plan run one of every repo in its repos and a daemon of
-# runs.PLAN_RUN_AGENT or later. A worker set to take runs dispatched from the web only passes over the others, those
-# dispatched before schema 0011 included.
-CLAIMABLE = """
-WITH checkouts (project_id, repo) AS (SELECT * FROM unnest(%(pids)s::bigint[], %(repos)s::text[]))
-SELECT r.id, r.runtime
-  FROM runs r
- WHERE r.state = 'queued' AND r.project_id = ANY(%(projects)s) AND r.dispatched_by = %(owner)s
-   AND (r.pinned_worker_id IS NULL OR r.pinned_worker_id = %(worker)s)
-   AND (%(dispatch_from)s <> 'web' OR r.dispatched_via = 'web')
-   AND (r.runtime = 'any' OR r.runtime = ANY(%(runtimes)s))
-   AND (r.kind <> 'plan' OR %(plan_runs)s)
-   AND CASE WHEN r.kind = 'plan'
-            THEN NOT EXISTS (SELECT 1 FROM jsonb_array_elements(r.repos) AS needed (entry)
-                              WHERE NOT EXISTS (SELECT 1 FROM checkouts c WHERE c.project_id = r.project_id
-                                                                             AND c.repo = needed.entry ->> 'repo'))
-            ELSE EXISTS (SELECT 1 FROM checkouts c WHERE c.project_id = r.project_id AND c.repo = r.repo)
-       END
- ORDER BY r.id
- LIMIT 1
-   FOR UPDATE OF r SKIP LOCKED
-"""
-HELD_COUNT = "SELECT count(*) FROM runs WHERE worker_id = %s AND state = ANY(%s)"
-REVISION_BODY = "SELECT body FROM plan_revisions WHERE project_id = %s AND plan_id = %s AND revision = %s"
+def _served(worker_id: int, owner_id: int):
+    """The projects worker ``worker_id`` serves on which its owner holds writer: their ids and names."""
+    wp, p, g = tables.worker_projects, tables.projects, tables.grants
+    writer = exists().where(g.c.user_id == owner_id, g.c.project_id == wp.c.project_id, g.c.role.in_(WRITER_ROLES))
+    return (
+        select(wp.c.project_id, p.c.name)
+        .join_from(wp, p, p.c.id == wp.c.project_id)
+        .where(wp.c.worker_id == worker_id, writer)
+    )
+
+
+def _claimable(
+    worker_id: int,
+    owner_id: int,
+    projects: list[int],
+    runtimes: list[str],
+    pairs: list[tuple[int, str]],
+    *,
+    plan_runs: bool,
+    web_only: bool,
+):
+    """The oldest queued run the worker may take now, locked, passing over one another claim holds locked: of its
+    owner, in ``projects``, pinned to no other worker, asking for any runtime or one of ``runtimes``, of a repo it
+    has a checkout of (``pairs`` of project id and repo). A run of one step needs a checkout of its repo, and a plan
+    run one of every repo in its repos and a daemon of runs.PLAN_RUN_AGENT or later (``plan_runs``). A worker set to
+    take runs dispatched from the web only (``web_only``) passes over the others, those dispatched before schema 0011
+    included."""
+    r = tables.runs
+    pids = literal([pid for pid, _ in pairs], ARRAY(BigInteger))
+    repos = literal([repo for _, repo in pairs], ARRAY(Text))
+    held = func.unnest(pids, repos).table_valued("project_id", "repo").render_derived(name="c")
+    checkouts = select(held.c.project_id, held.c.repo).cte("checkouts")
+    needed = func.jsonb_array_elements(r.c.repos).table_valued(column("entry", JSONB)).render_derived(name="needed")
+    # two levels down, the run is correlated by name: auto-correlation reaches only the enclosing level
+    has_needed = (
+        exists()
+        .where(checkouts.c.project_id == r.c.project_id, checkouts.c.repo == needed.c.entry["repo"].astext)
+        .correlate(r, needed)
+    )
+    every_repo = ~exists().select_from(needed).where(~has_needed)
+    own_repo = exists().where(checkouts.c.project_id == r.c.project_id, checkouts.c.repo == r.c.repo)
+    query = select(r.c.id, r.c.runtime).where(
+        r.c.state == "queued",
+        r.c.project_id.in_(projects),
+        r.c.dispatched_by == owner_id,
+        or_(r.c.pinned_worker_id.is_(None), r.c.pinned_worker_id == worker_id),
+        or_(r.c.runtime == "any", r.c.runtime.in_(runtimes)),
+        case((r.c.kind == "plan", every_repo), else_=own_repo),
+    )
+    if web_only:
+        query = query.where(r.c.dispatched_via == "web")
+    if not plan_runs:
+        query = query.where(r.c.kind != "plan")
+    return query.order_by(r.c.id).limit(1).with_for_update(of=r, skip_locked=True)
+
+
+# decisions.py still runs this through legacy() in this branch; it goes once decisions.py reads the plan in Core.
 CURRENT_PLAN = "SELECT body, revision FROM plans WHERE project_id = %s AND plan_id = %s"
+
+
+async def _current_plan(conn: AsyncConnection, project_id: int, plan_id: str):
+    """(body, revision) of the plan as the hub holds it now; None when it is not on the hub."""
+    plans = tables.plans
+    query = select(plans.c.body, plans.c.revision).where(plans.c.project_id == project_id, plans.c.plan_id == plan_id)
+    return (await conn.execute(query)).one_or_none()
 
 
 class ClaimAbandoned(Exception):
@@ -1622,14 +1804,14 @@ async def _try_claim(
         )
         if drained_at is not None:
             return None
-        held = (await (await legacy(conn, HELD_COUNT, (worker_id, list(runs.HELD_STATES)))).fetchone())[0]
-        if held >= slots:
+        r = tables.runs
+        holding = select(func.count()).select_from(r).where(r.c.worker_id == worker_id, r.c.state.in_(runs.HELD_STATES))
+        if (await conn.execute(holding)).scalar_one() >= slots:
             return None
         runtimes = [runtime for runtime in runs.RUNTIMES if available((reported or {}).get(runtime))]
         if not runtimes:
             return None
-        params = {"worker": worker_id, "owner": owner_id, "writers": WRITER_ROLES}
-        served = dict(await (await legacy(conn, SERVED, params)).fetchall())
+        served = {row.project_id: row.name for row in await conn.execute(_served(worker_id, owner_id))}
         by_name = {project: project_id for project_id, project in served.items()}
         pairs = []
         for checkout in checkouts or {}:
@@ -1638,15 +1820,16 @@ async def _try_claim(
                 pairs.append((by_name[project], repo))
         if not pairs:
             return None
-        params |= {
-            "projects": list(served),
-            "runtimes": runtimes,
-            "pids": [pid for pid, _ in pairs],
-            "repos": [repo for _, repo in pairs],
-            "plan_runs": runs.takes_plan_runs(version),
-            "dispatch_from": dispatch_from,
-        }
-        row = await (await legacy(conn, CLAIMABLE, params)).fetchone()
+        query = _claimable(
+            worker_id,
+            owner_id,
+            list(served),
+            runtimes,
+            pairs,
+            plan_runs=runs.takes_plan_runs(version),
+            web_only=dispatch_from == "web",
+        )
+        row = (await conn.execute(query)).one_or_none()
         if row is None:
             return None
         run_id, asked = row
@@ -1669,14 +1852,20 @@ async def _try_claim(
     return spec
 
 
-async def _run_spec(conn, run_id: int) -> RunSpec:
+async def _run_spec(conn: AsyncConnection, run_id: int) -> RunSpec:
     view = await run_view(conn, run_id)
-    project_id = (await (await legacy(conn, "SELECT project_id FROM runs WHERE id = %s", (run_id,))).fetchone())[0]
-    row = await (await legacy(conn, REVISION_BODY, (project_id, view.plan_id, view.plan_revision))).fetchone()
-    plan = row[0] if row else {"id": view.plan_id, "steps": []}
+    r, revisions = tables.runs, tables.plan_revisions
+    project_id = (await conn.execute(select(r.c.project_id).where(r.c.id == run_id))).scalar_one()
+    dispatched = select(revisions.c.body).where(
+        revisions.c.project_id == project_id,
+        revisions.c.plan_id == view.plan_id,
+        revisions.c.revision == view.plan_revision,
+    )
+    body = (await conn.execute(dispatched)).scalar_one_or_none()
+    plan = body if body is not None else {"id": view.plan_id, "steps": []}
     copy = None
     if view.kind == "plan":
-        current = await (await legacy(conn, CURRENT_PLAN, (project_id, view.plan_id))).fetchone()
+        current = await _current_plan(conn, project_id, view.plan_id)
         body, revision = current if current else (plan, view.plan_revision)  # the plan gone: as dispatched
         copy = PlanCopy(body=body, revision=revision)
         prompt = runs.build_plan_prompt(copy.body, [repo.model_dump() for repo in view.repos or []])
@@ -1752,29 +1941,30 @@ async def claim(request: Request, user: CurrentUser, body: ClaimRequest | None =
         wakeups.done(worker_id, number)
 
 
+# Still SQL in this branch: run_state.SETTLE becomes run_state.settle(), and this UPDATE goes to Core with it.
 EXTEND = f"""
 UPDATE runs SET lease_expires_at = now() + %(lease)s, {SETTLE}
  WHERE worker_id = %(worker)s AND id = ANY(%(ids)s) AND state = ANY(%(held)s)
 RETURNING id, state, cancel_requested_at IS NOT NULL, lease_expires_at, takeover_requested_at IS NOT NULL,
           handback_requested_at IS NOT NULL
 """
-# Runs of the worker it should let go of without cancelling: parked, or done because a new run resumes them, which
-# needs their session and worktrees on this worker.
-PARKED_HERE = """
-SELECT r.id, r.state
-  FROM runs r
- WHERE r.worker_id = %s AND r.id = ANY(%s)
-   AND (r.state = 'parked' OR (r.state = 'done' AND EXISTS (SELECT 1 FROM runs n WHERE n.resume_of_run_id = r.id)))
-"""
-INBOX = """
-SELECT run_id, count(*) FROM run_inbox WHERE run_id = ANY(%s) AND delivered_at IS NULL GROUP BY run_id
-"""
-OPEN_DECISIONS = "SELECT run_id, count(*) FROM decisions WHERE run_id = ANY(%s) AND state = 'open' GROUP BY run_id"
-RECORD_HEARTBEAT = """
-UPDATE workers SET last_heartbeat_at = now(), runtimes = %(runtimes)s, checkouts = %(checkouts)s,
-       free_slots = least(%(free)s, slots), agent_version = coalesce(%(version)s, agent_version)
- WHERE id = %(worker)s
-"""
+
+
+def _parked_here(worker_id: int, run_ids: list[int]):
+    """Runs of ``run_ids`` the worker should let go of without cancelling: parked, or done because a new run resumes
+    them, which needs their session and worktrees on this worker."""
+    r, resumed_by = tables.runs, tables.runs.alias("n")
+    resumed = exists().where(resumed_by.c.resume_of_run_id == r.c.id)
+    return select(r.c.id, r.c.state).where(
+        r.c.worker_id == worker_id,
+        r.c.id.in_(run_ids),
+        or_(r.c.state == "parked", and_(r.c.state == "done", resumed)),
+    )
+
+
+def _per_run(run_id, *conditions):
+    """How many rows match ``conditions`` for each run (``run_id``, a run_id column), runs without one left out."""
+    return select(run_id, func.count().label("rows")).where(*conditions).group_by(run_id)
 
 
 @worker_router.post("/heartbeat", response_model=HeartbeatAnswer, responses={403: {"model": ErrorBody}})
@@ -1784,16 +1974,17 @@ async def heartbeat(request: Request, body: HeartbeatRequest, user: CurrentUser)
     runtimes, checkouts = body.stored()
     async with request.app.state.engine.begin() as conn:
         worker_id, _, _, _, _, _, drained_at, *_ = await _worker_of(conn, user)
-        await legacy(
-            conn,
-            RECORD_HEARTBEAT,
-            {
-                "worker": worker_id,
-                "runtimes": Jsonb(runtimes),
-                "checkouts": Jsonb(checkouts),
-                "free": body.free_slots,
-                "version": body.agent_version,
-            },
+        w = tables.workers
+        await conn.execute(
+            update(w)
+            .values(
+                last_heartbeat_at=func.now(),
+                runtimes=runtimes,
+                checkouts=checkouts,
+                free_slots=func.least(body.free_slots, w.c.slots),
+                agent_version=func.coalesce(body.agent_version, w.c.agent_version),
+            )
+            .where(w.c.id == worker_id)
         )
         params = {
             "lease": lease_of(request),
@@ -1804,10 +1995,18 @@ async def heartbeat(request: Request, body: HeartbeatRequest, user: CurrentUser)
         }
         extended = {row[0]: row[1:] for row in await (await legacy(conn, EXTEND, params)).fetchall()}
         others = [run_id for run_id in reported if run_id not in extended]
-        parked = dict(await (await legacy(conn, PARKED_HERE, (worker_id, others))).fetchall()) if others else {}
+        parked = {}
+        if others:
+            parked = {row.id: row.state for row in await conn.execute(_parked_here(worker_id, others))}
         known = [*extended, *parked]
-        waiting = dict(await (await legacy(conn, INBOX, (list(extended),))).fetchall()) if extended else {}
-        open_decisions = dict(await (await legacy(conn, OPEN_DECISIONS, (known,))).fetchall()) if known else {}
+        inbox, decisions = tables.run_inbox, tables.decisions
+        waiting, open_decisions = {}, {}
+        if extended:
+            undelivered = _per_run(inbox.c.run_id, inbox.c.run_id.in_(list(extended)), inbox.c.delivered_at.is_(None))
+            waiting = {row.run_id: row.rows for row in await conn.execute(undelivered)}
+        if known:
+            still_open = _per_run(decisions.c.run_id, decisions.c.run_id.in_(known), decisions.c.state == "open")
+            open_decisions = {row.run_id: row.rows for row in await conn.execute(still_open)}
     terminals = request.app.state.terminals
     controls = []
     for run_id in reported:
@@ -1845,18 +2044,15 @@ async def heartbeat(request: Request, body: HeartbeatRequest, user: CurrentUser)
 
 
 SAME_COLUMNS = ("session_id", "commit_sha", "diffstat", "verify", "usage")  # what a report without a move may set
-SAME_STATE = """
-UPDATE runs SET session_id = coalesce(%(session_id)s, session_id), commit_sha = coalesce(%(commit_sha)s, commit_sha),
-       diffstat = coalesce(%(diffstat)s, diffstat), verify = coalesce(%(verify)s, verify),
-       usage = coalesce(%(usage)s, usage)
- WHERE id = %(id)s
-"""
-REPORTED_RUN = "SELECT state, approval, worker_id, cancel_requested_at, kind FROM runs WHERE id = %s FOR UPDATE"
-# What a run may wait for: a decision still open, or an answer the worker has not taken for the agent yet.
-WAITS_FOR = """
-SELECT EXISTS (SELECT 1 FROM decisions WHERE run_id = %(id)s AND state = 'open')
-    OR EXISTS (SELECT 1 FROM run_inbox WHERE run_id = %(id)s AND decision_id IS NOT NULL AND delivered_at IS NULL)
-"""
+
+
+def _waits_for(run_id: int):
+    """Whether run ``run_id`` has something to wait for: a decision still open, or an answer the worker has not taken
+    for the agent yet."""
+    decisions, inbox = tables.decisions, tables.run_inbox
+    open_decision = exists().where(decisions.c.run_id == run_id, decisions.c.state == "open")
+    answer = exists().where(inbox.c.run_id == run_id, inbox.c.decision_id.is_not(None), inbox.c.delivered_at.is_(None))
+    return select(or_(open_decision, answer))
 
 
 def _reported_columns(body: StateReport) -> dict:
@@ -1875,16 +2071,21 @@ async def report_state(request: Request, run_id: RunId, body: StateReport, user:
     """Move a run this worker holds, as the transition table lets a worker."""
     async with request.app.state.engine.begin() as conn:
         worker_id, _, name, *_ = await _worker_of(conn, user)
-        row = await (await legacy(conn, REPORTED_RUN, (run_id,))).fetchone()
-        if row is None or row[2] != worker_id:
+        r = tables.runs
+        reported_run = (
+            select(r.c.state, r.c.approval, r.c.worker_id, r.c.cancel_requested_at, r.c.kind)
+            .where(r.c.id == run_id)
+            .with_for_update()
+        )
+        row = (await conn.execute(reported_run)).one_or_none()
+        if row is None or row.worker_id != worker_id:
             raise HTTPException(404, NOT_HELD.format(id=run_id))
         state, approval, _, cancel_requested_at, kind = row
         columns = _reported_columns(body)
         if state == body.state:  # a resend, or news without a move: kept, and nothing moves
-            values = {
-                name: Jsonb(value) if isinstance(value, (dict, list)) else value for name, value in columns.items()
-            }
-            await legacy(conn, SAME_STATE, {"id": run_id, **{name: values.get(name) for name in SAME_COLUMNS}})
+            news = {name: value for name, value in columns.items() if name in SAME_COLUMNS}
+            if news:  # a column the report leaves out keeps its value
+                await conn.execute(update(r).values(**news).where(r.c.id == run_id))
             return await run_view(conn, run_id)
         if body.from_state is not None and body.from_state != state:
             raise HTTPException(409, f"run {run_id} is {state}, not {body.from_state}")
@@ -1895,7 +2096,7 @@ async def report_state(request: Request, run_id: RunId, body: StateReport, user:
         except runs.TransitionRefused as exc:
             raise HTTPException(409, f"run {run_id}: {exc}") from None
         _check_verdict(run_id, kind, approval, body)
-        if body.state == "waiting" and not (await (await legacy(conn, WAITS_FOR, {"id": run_id})).fetchone())[0]:
+        if body.state == "waiting" and not (await conn.execute(_waits_for(run_id))).scalar_one():
             raise HTTPException(
                 409,
                 f"run {run_id} has no open decision and no answer waiting for the agent: a run waits only for the "
@@ -1964,22 +2165,36 @@ def _check_verdict(run_id: int, kind: str, approval: str, body: StateReport) -> 
 # A plan run's plan and its steps
 
 StepKey = Annotated[str, Path(min_length=1, max_length=STEP_KEY_CHARS, description="the step's id, or its order")]
-HELD_PLAN_RUN = """
-SELECT r.state, r.worker_id, r.kind, r.project_id, p.name, r.plan_id, r.dispatched_by, u.login, r.repos
-  FROM runs r JOIN projects p ON p.id = r.project_id JOIN users u ON u.id = r.dispatched_by
- WHERE r.id = %s
-"""
 
 
-async def _held_plan_run(conn, user: Principal, run_id: int, *, lock: bool = False):
-    """(worker name, row of HELD_PLAN_RUN) of a plan run the worker of ``user`` holds, its row locked with ``lock``;
-    404 for any other run, a run of one step included."""
+async def _held_plan_run(conn: AsyncConnection, user: Principal, run_id: int, *, lock: bool = False):
+    """(worker name, row) of a plan run the worker of ``user`` holds, its row locked with ``lock``: state, worker_id,
+    kind, project_id, the project's name, plan_id, dispatched_by, the dispatcher's login and repos. 404 for any other
+    run, a run of one step included."""
     worker_id, _, name, *_ = await _worker_of(conn, user)
-    statement = HELD_PLAN_RUN + ("   FOR UPDATE OF r" if lock else "")
-    row = await (await legacy(conn, statement, (run_id,))).fetchone()
-    if row is None or row[1] != worker_id or row[0] not in runs.HELD_STATES:
+    r, p, u = tables.runs, tables.projects, tables.users
+    query = (
+        select(
+            r.c.state,
+            r.c.worker_id,
+            r.c.kind,
+            r.c.project_id,
+            p.c.name,
+            r.c.plan_id,
+            r.c.dispatched_by,
+            u.c.login,
+            r.c.repos,
+        )
+        .join_from(r, p, p.c.id == r.c.project_id)
+        .join(u, u.c.id == r.c.dispatched_by)
+        .where(r.c.id == run_id)
+    )
+    if lock:
+        query = query.with_for_update(of=r)
+    row = (await conn.execute(query)).one_or_none()
+    if row is None or row.worker_id != worker_id or row.state not in runs.HELD_STATES:
         raise HTTPException(404, NOT_HELD.format(id=run_id))
-    if row[2] != "plan":
+    if row.kind != "plan":
         raise HTTPException(
             404,
             f"run {run_id} is a run of one step, which has no plan to read or steps to report: report its state with "
@@ -1988,7 +2203,7 @@ async def _held_plan_run(conn, user: Principal, run_id: int, *, lock: bool = Fal
     return name, row
 
 
-async def _dispatcher_access(conn, row, user: Principal) -> ProjectAccess:
+async def _dispatcher_access(conn: AsyncConnection, row, user: Principal) -> ProjectAccess:
     """The access to the run's project of the member who dispatched it, as whom the worker reads and writes the plan."""
     actor = Principal(row[6], row[7], False, user.token_id, MACHINE, "")
     access = await project_access(conn, actor, row[4])
@@ -2053,7 +2268,7 @@ async def report_step(request: Request, run_id: RunId, key: StepKey, body: StepR
         _, row = await _held_plan_run(conn, user, run_id, lock=True)
         _, _, _, project_id, project, plan_id, dispatcher_id, _, repos = row
         _check_step_report(run_id, key, body)
-        current = await (await legacy(conn, CURRENT_PLAN, (project_id, plan_id))).fetchone()
+        current = await _current_plan(conn, project_id, plan_id)
         if current is None:
             raise HTTPException(404, f"plan {plan_id} of run {run_id} is not on the hub any more")
         plan = current[0]
@@ -2101,7 +2316,7 @@ async def report_step(request: Request, run_id: RunId, key: StepKey, body: StepR
                 target=target,
                 project_id=project_id,
             )
-        after = await (await legacy(conn, CURRENT_PLAN, (project_id, plan_id))).fetchone()
+        after = await _current_plan(conn, project_id, plan_id)
     log.info(
         "plan run step reported",
         extra={"run_id": run_id, "step": key, "status": body.status, "written": revision is not None},
