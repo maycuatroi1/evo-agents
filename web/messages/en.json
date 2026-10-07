@@ -1773,7 +1773,6 @@
     "detail": {
       "metaTitle": "Run #{id} of {project}",
       "title": "Run",
-      "planTitle": "Plan run",
       "untitled": "Untitled step",
       "sub": "Plan <planLink>{plan}</planLink>, <stepLink>step {step}: {title}</stepLink>",
       "planSub": "Plan <planLink>{plan}</planLink>: {title}. Every step not done yet, in one session.",
@@ -2104,6 +2103,7 @@
       },
       "actions": {
         "diff": "View diff",
+        "diffstat": "{insertions, plural, one {# line added} other {# lines added}}, {deletions, plural, one {# removed} other {# removed}}",
         "rerun": "Rerun",
         "cancel": "Cancel run",
         "takeover": "Take over",

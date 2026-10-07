@@ -3,20 +3,15 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   ArrowDownToLine,
-  CircleCheck,
-  Loader2,
   type LucideIcon,
   MessagesSquare,
   Pause,
   Play,
-  Radio,
-  RefreshCw,
   ListTree,
   ScrollText,
   Settings2,
   SquareTerminal,
   Terminal,
-  WifiOff,
   Wrench,
 } from "lucide-react";
 import { useFormatter, useTranslations } from "next-intl";
@@ -24,7 +19,6 @@ import { memo, type ReactNode, type RefObject, useDeferredValue, useId, useLayou
 
 import { FacetGroup } from "@/components/data/facet-group";
 import { SearchField } from "@/components/data/search-field";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
@@ -198,23 +192,26 @@ function VirtualRows({
   );
 }
 
-const STATUS_LOOK: Record<LogStatus, { icon: LucideIcon; variant: "info" | "warning" | "success" | "destructive" | "secondary"; spin?: boolean }> = {
-  connecting: { icon: Loader2, variant: "secondary", spin: true },
-  live: { icon: Radio, variant: "info" },
-  reconnecting: { icon: RefreshCw, variant: "warning", spin: true },
-  polling: { icon: RefreshCw, variant: "warning" },
-  ended: { icon: CircleCheck, variant: "success" },
-  failed: { icon: WifiOff, variant: "destructive" },
+/** The stream's state as the kit's live state beside the tabs: a dot in its tone (pulsing while live) and a word. */
+const STATUS_DOT: Record<LogStatus, string> = {
+  connecting: "bg-neutral-solid",
+  live: "bg-success-solid",
+  reconnecting: "bg-attention-solid",
+  polling: "bg-attention-solid",
+  ended: "bg-neutral-solid",
+  failed: "bg-danger-solid",
 };
 
-export function LogStatusBadge({ status }: { status: LogStatus }) {
+function LogStreamState({ status }: { status: LogStatus }) {
   const t = useTranslations("runs.detail.log.status");
-  const { icon: Icon, variant, spin } = STATUS_LOOK[status];
   return (
-    <Badge variant={variant} data-testid="log-status" data-status={status}>
-      <Icon className={cn(spin && "animate-spin motion-reduce:animate-none")} aria-hidden="true" />
+    <span className="inline-flex items-center gap-2 text-xs whitespace-nowrap text-fg-subtle" data-testid="log-status" data-status={status}>
+      <span className="relative inline-flex size-2 shrink-0" aria-hidden="true">
+        <span className={cn("size-2 rounded-full", STATUS_DOT[status])} />
+        {status === "live" ? <span className={cn("absolute inset-0 animate-live-ping rounded-full", STATUS_DOT.live)} /> : null}
+      </span>
       {t(status)}
-    </Badge>
+    </span>
   );
 }
 
@@ -312,11 +309,11 @@ export function RunLogCard({
 
   const status = (
     <span role="status" className="inline-flex">
-      <LogStatusBadge status={log.status} />
+      <LogStreamState status={log.status} />
     </span>
   );
   const count = (
-    <span className="ml-auto text-xs text-muted-foreground tabular-nums" data-testid="log-count">
+    <span className="text-xs text-muted-foreground tabular-nums" data-testid="log-count">
       {filtered ? t("countFiltered", { shown: shown.length, total: base.length }) : t("count", { total: base.length })}
     </span>
   );
@@ -408,8 +405,10 @@ export function RunLogCard({
           <h2 id={`${ids}-title`} className="text-[15px] leading-[22px] font-semibold">
             {t("title")}
           </h2>
-          {status}
-          {count}
+          <div className="ml-auto flex items-center gap-3">
+            {count}
+            {status}
+          </div>
         </div>
         {logBody}
         {composer}
@@ -464,8 +463,13 @@ export function RunLogCard({
               </TabsTrigger>
             ) : null}
           </TabsList>
-          {tab !== "terminal" ? status : null}
-          {tab === "log" ? count : null}
+          {/* The kit's tab bar: what the stream is doing at its right end, the Raw log's line count before it. */}
+          {tab !== "terminal" ? (
+            <div className="ml-auto flex items-center gap-3">
+              {tab === "log" ? count : null}
+              {status}
+            </div>
+          ) : null}
         </div>
         {trace ? (
           <TabsContent value="trace" forceMount className="gap-0 data-[state=inactive]:hidden">

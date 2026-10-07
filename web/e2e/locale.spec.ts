@@ -51,7 +51,7 @@ test.describe("choosing the language", () => {
     signInAs,
   }) => {
     await signInAs(newAccount("locale"));
-    await expect(page.getByRole("heading", { level: 1, name: "My projects" })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: "Home", exact: true })).toBeVisible();
 
     await page.getByTestId("user-menu").click();
     await page.getByRole("menuitem", { name: "Language" }).click();
@@ -60,19 +60,19 @@ test.describe("choosing the language", () => {
     await expect(english).toHaveAttribute("lang", "en");
     await page.getByRole("menuitemradio", { name: "Tiếng Việt" }).click();
 
-    await expect(page.getByRole("heading", { level: 1, name: "Dự án của tôi" })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: "Trang chủ", exact: true })).toBeVisible();
     await expect(page.locator("html")).toHaveAttribute("lang", "vi");
     const cookie = (await context.cookies()).find((saved) => saved.name === LOCALE_COOKIE);
     expect(cookie?.value).toBe("vi");
     expect(cookie?.sameSite).toBe("Lax");
 
     await page.reload();
-    await expect(page.getByRole("heading", { level: 1, name: "Dự án của tôi" })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: "Trang chủ", exact: true })).toBeVisible();
 
     await page.getByTestId("user-menu").click();
     await page.getByRole("menuitem", { name: "Ngôn ngữ" }).click();
     await page.getByRole("menuitemradio", { name: "English" }).click();
-    await expect(page.getByRole("heading", { level: 1, name: "My projects" })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: "Home", exact: true })).toBeVisible();
     await expect(page.locator("html")).toHaveAttribute("lang", "en");
   });
 });

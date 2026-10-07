@@ -165,7 +165,7 @@ test("a writer runs a plan from its page, and the page follows the run until it 
 
   // The run's page says it is a plan run, with its plan's steps, repos and model.
   await open(page, runPath(project, run.id));
-  await expect(main(page).getByRole("heading", { level: 1 })).toContainText(`Plan run #${run.id}`);
+  await expect(main(page).getByRole("heading", { level: 1 })).toHaveText(`Run #${run.id}`);
   await expect(main(page).getByTestId("run-kind")).toHaveText("Plan run");
   await expect(main(page).getByTestId("run-state").first()).toHaveText("Waiting for decision");
   await expect(main(page).getByTestId("run-model")).toHaveText(MODELS[0]);

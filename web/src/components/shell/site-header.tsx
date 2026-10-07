@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/breadcrumb";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { useWorkerName } from "@/components/workers/hooks";
+import { cn } from "@/lib/utils";
 
 import { HOME_NAV, HUB_NAV, type NavLabel, PROJECT_NAV, projectHref } from "./nav";
 
@@ -88,22 +89,28 @@ export function SiteHeader() {
       <SidebarTrigger label={t("toggleSidebar")} size="icon" className="-ml-1.5" />
       <Breadcrumb aria-label={t("breadcrumb")} className="min-w-0">
         <BreadcrumbList className="flex-nowrap gap-1.5 text-[13px] text-muted-foreground">
-          {crumbs.map((crumb, index) => (
-            <Fragment key={`${index}-${crumb.label}`}>
-              {index > 0 ? <BreadcrumbSeparator className="text-fg-subtle">/</BreadcrumbSeparator> : null}
-              <BreadcrumbItem className="min-w-0">
-                {crumb.href ? (
-                  <BreadcrumbLink asChild>
-                    <Link href={crumb.href as "/"} className="truncate rounded-xs">
-                      {crumb.label}
-                    </Link>
-                  </BreadcrumbLink>
-                ) : (
-                  <BreadcrumbPage className="truncate font-medium">{crumb.label}</BreadcrumbPage>
-                )}
-              </BreadcrumbItem>
-            </Fragment>
-          ))}
+          {crumbs.map((crumb, index) => {
+            // Under 768 px the trail keeps its first crumb and the page itself. The page keeps its width (up to three
+            // quarters of the trail) and the crumbs before it give way, so a run's "#12" is never cut down to "#.".
+            const last = index === crumbs.length - 1;
+            const middle = index > 0 && !last;
+            return (
+              <Fragment key={`${index}-${crumb.label}`}>
+                {index > 0 ? <BreadcrumbSeparator className={cn("text-fg-subtle", middle && "max-md:hidden")}>/</BreadcrumbSeparator> : null}
+                <BreadcrumbItem className={cn("min-w-0", middle && "max-md:hidden", last && "max-w-[75%] shrink-0")}>
+                  {crumb.href ? (
+                    <BreadcrumbLink asChild>
+                      <Link href={crumb.href as "/"} className="truncate rounded-xs">
+                        {crumb.label}
+                      </Link>
+                    </BreadcrumbLink>
+                  ) : (
+                    <BreadcrumbPage className="truncate font-medium">{crumb.label}</BreadcrumbPage>
+                  )}
+                </BreadcrumbItem>
+              </Fragment>
+            );
+          })}
         </BreadcrumbList>
       </Breadcrumb>
       <div className="ml-auto flex min-w-0 shrink-0 items-center gap-1">
