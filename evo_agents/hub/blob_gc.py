@@ -25,6 +25,7 @@ from dataclasses import dataclass
 from datetime import timedelta
 
 from evo_agents.hub.blobs import BlobStore, blob_key
+from evo_agents.hub.db import legacy
 
 log = logging.getLogger(__name__)
 
@@ -57,17 +58,17 @@ class Deleted:
 
 async def lock_exclusive(conn) -> None:
     """Hold the blob lock exclusively until ``conn``'s transaction ends: for dropping references and deleting."""
-    await conn.execute("SELECT pg_advisory_xact_lock(%s)", (LOCK_KEY,))
+    await legacy(conn, "SELECT pg_advisory_xact_lock(%s)", (LOCK_KEY,))
 
 
 async def lock_shared(conn) -> None:
     """Hold the blob lock shared until ``conn``'s transaction ends: for writing references (see the module)."""
-    await conn.execute("SELECT pg_advisory_xact_lock_shared(%s)", (LOCK_KEY,))
+    await legacy(conn, "SELECT pg_advisory_xact_lock_shared(%s)", (LOCK_KEY,))
 
 
 async def referenced(conn, hashes) -> set[str]:
     """The hashes of ``hashes`` that something refers to."""
-    cursor = await conn.execute(REFERENCED, {"hashes": sorted(set(hashes))})
+    cursor = await legacy(conn, REFERENCED, {"hashes": sorted(set(hashes))})
     return {row[0] for row in await cursor.fetchall()}
 
 
@@ -77,15 +78,15 @@ async def forget(conn, blobs: dict[str, tuple[int, str]]) -> list[str]:
     still = await referenced(conn, blobs)
     gone = sorted(sha for sha in blobs if sha not in still)
     if gone:
-        await conn.execute(FORGET, (gone, [blobs[sha][0] for sha in gone], [blobs[sha][1] for sha in gone]))
+        await legacy(conn, FORGET, (gone, [blobs[sha][0] for sha in gone], [blobs[sha][1] for sha in gone]))
     return gone
 
 
 async def revive(conn, hashes) -> list[str]:
     """The hashes of ``hashes`` recorded for deletion, whose rows this deletes: their objects may be gone, and the
     caller must put the bytes back before its transaction commits. Holding the lock shared."""
-    cursor = await conn.execute(
-        "DELETE FROM blob_deletions WHERE sha256 = ANY(%s) RETURNING sha256", (sorted(set(hashes)),)
+    cursor = await legacy(
+        conn, "DELETE FROM blob_deletions WHERE sha256 = ANY(%s) RETURNING sha256", (sorted(set(hashes)),)
     )
     return sorted(row[0] for row in await cursor.fetchall())
 
@@ -93,27 +94,27 @@ async def revive(conn, hashes) -> list[str]:
 async def pending(conn) -> tuple[int, int]:
     """How many blobs wait for their objects to be deleted, and their bytes."""
     row = await (
-        await conn.execute("SELECT count(*), coalesce(sum(size), 0) FROM blob_deletions WHERE deleted_at IS NULL")
+        await legacy(conn, "SELECT count(*), coalesce(sum(size), 0) FROM blob_deletions WHERE deleted_at IS NULL")
     ).fetchone()
     return int(row[0]), int(row[1])
 
 
-async def delete_pending(pool, store: BlobStore) -> Deleted:
+async def delete_pending(engine, store: BlobStore) -> Deleted:
     """Delete the objects of the blobs recorded for deletion, holding the lock exclusively, and mark their rows
     deleted; a blob referred to again meanwhile keeps its object and loses its row. Rows deleted over KEEP_DELETED
     ago go. Raises BlobStoreUnavailable when the bucket does not delete, leaving every row as it was."""
-    async with pool.connection() as conn:
+    async with engine.begin() as conn:
         await lock_exclusive(conn)
-        rows = await (await conn.execute(PENDING)).fetchall()
+        rows = await (await legacy(conn, PENDING)).fetchall()
         sizes = dict(rows)
         again = await referenced(conn, sizes)
         if again:
-            await conn.execute("DELETE FROM blob_deletions WHERE sha256 = ANY(%s)", (sorted(again),))
+            await legacy(conn, "DELETE FROM blob_deletions WHERE sha256 = ANY(%s)", (sorted(again),))
         doomed = sorted(sha for sha in sizes if sha not in again)
         if doomed:
             await asyncio.to_thread(store.delete, [blob_key(sha) for sha in doomed])
-            await conn.execute("UPDATE blob_deletions SET deleted_at = now() WHERE sha256 = ANY(%s)", (doomed,))
-        await conn.execute("DELETE FROM blob_deletions WHERE deleted_at < now() - %s", (KEEP_DELETED,))
+            await legacy(conn, "UPDATE blob_deletions SET deleted_at = now() WHERE sha256 = ANY(%s)", (doomed,))
+        await legacy(conn, "DELETE FROM blob_deletions WHERE deleted_at < now() - %s", (KEEP_DELETED,))
     result = Deleted(len(doomed), sum(sizes[sha] for sha in doomed), len(again))
     if doomed or again:
         log.info(

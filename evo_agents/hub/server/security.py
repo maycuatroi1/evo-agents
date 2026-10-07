@@ -46,9 +46,11 @@ from typing import Annotated
 
 import psycopg
 from fastapi import Depends, HTTPException, Request
+from sqlalchemy import exc as sa_exc
 from starlette.responses import Response
 from starlette.websockets import WebSocketClose
 
+from evo_agents.hub.db import legacy
 from evo_agents.hub.runs import PROTOCOL_HEADER, PROTOCOL_VERSION
 from evo_agents.hub.server.errors import error_response
 
@@ -226,7 +228,8 @@ def delete_session_cookie(response: Response) -> None:
 
 async def issue_token(conn, user_id: int, kind: str, host: str | None) -> Issued:
     token = new_token(kind)
-    cursor = await conn.execute(
+    cursor = await legacy(
+        conn,
         "INSERT INTO tokens (user_id, kind, token_hash, host, expires_at) VALUES (%s, %s, %s, %s, now() + %s) "
         "RETURNING id, expires_at",
         (user_id, kind, hash_token(token), host, TOKEN_TTL),
@@ -237,21 +240,22 @@ async def issue_token(conn, user_id: int, kind: str, host: str | None) -> Issued
 
 async def revoke_token(conn, token_id: int, user_id: int) -> bool:
     """Revoke a token of ``user_id``; False when it has none by that id that is not revoked already."""
-    cursor = await conn.execute(
+    cursor = await legacy(
+        conn,
         "UPDATE tokens SET revoked_at = now() WHERE id = %s AND user_id = %s AND revoked_at IS NULL RETURNING id",
         (token_id, user_id),
     )
     return await cursor.fetchone() is not None
 
 
-async def authenticate(pool, token: str, kind: str, config) -> Principal | None:
+async def authenticate(engine, token: str, kind: str, config) -> Principal | None:
     """The principal behind a live ``token`` of ``kind``, or None. A malformed value never reaches the database."""
     if not _TOKEN.fullmatch(token) or not token.startswith(PREFIXES[kind]):
         return None
     digest = hash_token(token)
     params = {"hash": digest, "kind": kind, "ttl": TOKEN_TTL, "every": TOUCH_EVERY}
-    async with pool.connection() as conn:
-        row = await (await conn.execute(AUTHENTICATE, params)).fetchone()
+    async with engine.begin() as conn:
+        row = await (await legacy(conn, AUTHENTICATE, params)).fetchone()
     if row is None:
         return None
     token_id, user_id, login = row
@@ -326,8 +330,12 @@ class Authenticate:
             if refusal is not None:
                 return refusal
         try:
-            principal = await authenticate(request.app.state.pool, token, kind, config)
-        except (psycopg.OperationalError, OSError) as exc:  # PoolTimeout is an OperationalError; bugs stay 500s
+            principal = await authenticate(request.app.state.engine, token, kind, config)
+        except (
+            psycopg.OperationalError,
+            sa_exc.OperationalError,
+            OSError,
+        ) as exc:  # PoolTimeout is an OperationalError; bugs stay 500s
             log.warning("cannot check a credential: database unavailable", extra={"error": type(exc).__name__})
             return error_response(request, 503, "the hub database is unavailable; try again shortly")
         if principal is None:

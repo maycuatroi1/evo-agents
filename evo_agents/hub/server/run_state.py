@@ -69,6 +69,7 @@ from psycopg.types.json import Jsonb
 
 from evo_agents.hub import runs
 from evo_agents.hub.access import has_role
+from evo_agents.hub.db import legacy
 from evo_agents.hub.plans import PlanProblem, step_index
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.projects import project_access
@@ -222,13 +223,13 @@ INSERT_SYSTEM_EVENT = "INSERT INTO run_events (run_id, seq, kind, body) VALUES (
 
 async def notify_queued(conn, run_id: int) -> None:
     """Wake the claims waiting on RUNS_CHANNEL once the caller's transaction commits."""
-    await conn.execute("SELECT pg_notify(%s, %s)", (RUNS_CHANNEL, str(run_id)))
+    await legacy(conn, "SELECT pg_notify(%s, %s)", (RUNS_CHANNEL, str(run_id)))
 
 
 async def notify_events(conn, run_id: int) -> None:
     """Wake the streams of run ``run_id`` on EVENTS_CHANNEL once the caller's transaction commits; the notifications
     of one transaction with the same run arrive as one."""
-    await conn.execute("SELECT pg_notify(%s, %s)", (EVENTS_CHANNEL, str(run_id)))
+    await legacy(conn, "SELECT pg_notify(%s, %s)", (EVENTS_CHANNEL, str(run_id)))
 
 
 def _column_value(value):
@@ -276,15 +277,17 @@ async def move_run(
         "lease": lease,
         **{f"set_{name}": _column_value(value) for name, value in columns.items()},
     }
-    row = await (await conn.execute(sql.SQL(MOVE).format(extra=extra), params)).fetchone()
+    row = await (await legacy(conn, sql.SQL(MOVE).format(extra=extra), params)).fetchone()
     if row is None:
         raise runs.TransitionRefused(f"run {run_id} is no longer {old}: it moved meanwhile")
     body = {"from": old, "to": new, "actor": actor, "reason": reason}
-    await conn.execute(
-        "INSERT INTO run_events (run_id, seq, kind, body) VALUES (%s, %s, 'state', %s)", (run_id, row[0], Jsonb(body))
+    await legacy(
+        conn,
+        "INSERT INTO run_events (run_id, seq, kind, body) VALUES (%s, %s, 'state', %s)",
+        (run_id, row[0], Jsonb(body)),
     )
     if new in runs.TERMINAL_STATES and decisions is not None:
-        await conn.execute(END_DECISIONS, (decisions, run_id))
+        await legacy(conn, END_DECISIONS, (decisions, run_id))
     if new not in runs.HELD_STATES:  # no worker holds it now: the hub takes back what it leased the run
         from evo_agents.hub.server import credentials  # its routes read runs through the routes that import this module
 
@@ -323,15 +326,15 @@ class RunStep:
 
 
 async def run_step(conn, run_id: int) -> RunStep:
-    row = await (await conn.execute(RUN_STEP, (run_id,))).fetchone()
+    row = await (await legacy(conn, RUN_STEP, (run_id,))).fetchone()
     return RunStep(*row)
 
 
 async def write_event(conn, run_id: int, body: dict) -> int:
     """Write a ``system`` event of the hub's own into the log of run ``run_id``, whose row the caller holds locked,
     and wake its streams; its seq. Like the ``state`` events, it is written past the run's limit of events."""
-    seq = (await (await conn.execute(NEXT_SEQ, (run_id,))).fetchone())[0]
-    await conn.execute(INSERT_SYSTEM_EVENT, (run_id, seq, Jsonb(body)))
+    seq = (await (await legacy(conn, NEXT_SEQ, (run_id,))).fetchone())[0]
+    await legacy(conn, INSERT_SYSTEM_EVENT, (run_id, seq, Jsonb(body)))
     await notify_events(conn, run_id)
     return seq
 
@@ -430,7 +433,7 @@ async def write_step(
     actor = Principal(found.dispatcher_id, found.dispatcher, False, token_id, MACHINE, "")
     where = {"run_id": found.run_id, "project": found.project, "plan_id": found.plan_id, "step": found.step_key}
     try:
-        async with conn.transaction():  # a savepoint: a refused write leaves the move in place
+        async with conn.begin_nested():  # a savepoint: a refused write leaves the move in place
             access = await project_access(conn, actor, found.project)
             if not has_role(access.role, "writer"):
                 raise _Skipped(403, f"{found.dispatcher} no longer holds the writer role on {found.project}")
@@ -448,7 +451,7 @@ async def write_step(
                 try:
                     # A savepoint per try: a conflict rolls it back, which frees the plan's row for the other
                     # writer until the next try reads the plan again.
-                    async with conn.transaction():
+                    async with conn.begin_nested():
                         stored, changed, _ = await plan_routes.apply_patch(
                             conn,
                             access,
@@ -533,7 +536,7 @@ def _natural(key: str) -> tuple:
 async def reported_steps(conn, run_id: int) -> list[str]:
     """The steps plan run ``run_id`` reported, it or an earlier attempt or parked run it went on from, in the order
     people number them."""
-    rows = await (await conn.execute(REPORTED_STEPS, (run_id,))).fetchall()
+    rows = await (await legacy(conn, REPORTED_STEPS, (run_id,))).fetchall()
     return sorted((row[0] for row in rows), key=_natural)
 
 
@@ -567,7 +570,7 @@ async def notify_plan_run_end(conn, found: RunStep, old: str, new: str, *, reaso
         )
     if new != "done" or old == "parked":
         return None
-    row = await (await conn.execute(PLAN_BODY, (found.project_id, found.plan_id))).fetchone()
+    row = await (await legacy(conn, PLAN_BODY, (found.project_id, found.plan_id))).fetchone()
     if row is None or not _every_step_done(row[0]):
         return None
     steps = await reported_steps(conn, found.run_id)
@@ -611,7 +614,7 @@ async def end_held(
         await move_run(conn, run_id, state, "failed", "reaper", reason=reason, error=f"{reason}, and {why}")
         return "failed"
     await move_run(conn, run_id, state, "lost", "reaper", reason=reason, error=reason)
-    next_id = (await (await conn.execute(NEXT_ATTEMPT, (run_id,))).fetchone())[0]
+    next_id = (await (await legacy(conn, NEXT_ATTEMPT, (run_id,))).fetchone())[0]
     await notify_queued(conn, next_id)
     return "lost"
 
@@ -624,7 +627,7 @@ async def release_runs(conn, worker_id: int, reason: str) -> int:
     worker has their session. Returns how many runs were moved."""
     moved = 0
     for run_id, state, attempt, max_attempts, pinned, cancel in await (
-        await conn.execute(HELD_RUNS, (worker_id, list(runs.HELD_STATES)))
+        await legacy(conn, HELD_RUNS, (worker_id, list(runs.HELD_STATES)))
     ).fetchall():
         await end_held(
             conn,
@@ -637,26 +640,26 @@ async def release_runs(conn, worker_id: int, reason: str) -> int:
             reason=reason,
         )
         moved += 1
-    for run_id, state in await (await conn.execute(PINNED_QUEUED, (worker_id,))).fetchall():
+    for run_id, state in await (await legacy(conn, PINNED_QUEUED, (worker_id,))).fetchall():
         error = f"{reason}, and the run was pinned to it"
         await move_run(conn, run_id, state, "failed", "reaper", reason=reason, error=error)
         moved += 1
-    for (run_id,) in await (await conn.execute(PARKED_ON, (worker_id,))).fetchall():
+    for (run_id,) in await (await legacy(conn, PARKED_ON, (worker_id,))).fetchall():
         why = f"{reason}, and only it has the session of the parked run"
         await move_run(conn, run_id, "parked", "cancelled", "reaper", reason=why)
         moved += 1
     return moved
 
 
-async def end_timed_out(pool, batch: int, ended: Counter) -> None:
+async def end_timed_out(engine, batch: int, ended: Counter) -> None:
     """Fail every held run whose agent time is past its timeout, or cancel it when its cancel was asked for, each in a
     transaction of its own; count them in ``ended``."""
     params = {"held": list(runs.HELD_STATES), "clock": list(runs.CLOCK_STATES), "batch": batch}
-    async with pool.connection() as conn:
-        late = [row[0] for row in await (await conn.execute(TIMED_OUT, params)).fetchall()]
+    async with engine.begin() as conn:
+        late = [row[0] for row in await (await legacy(conn, TIMED_OUT, params)).fetchall()]
     for run_id in late:
-        async with pool.connection() as conn:
-            row = await (await conn.execute(LOCK_TIMED_OUT, {**params, "id": run_id})).fetchone()
+        async with engine.begin() as conn:
+            row = await (await legacy(conn, LOCK_TIMED_OUT, {**params, "id": run_id})).fetchone()
             if row is None:  # it ended meanwhile, or another pass took it
                 continue
             state, timeout_s, cancel = row
@@ -666,15 +669,15 @@ async def end_timed_out(pool, batch: int, ended: Counter) -> None:
             ended[new] += 1
 
 
-async def park_waiting(pool, batch: int, wait: timedelta, ended: Counter) -> None:
+async def park_waiting(engine, batch: int, wait: timedelta, ended: Counter) -> None:
     """Park every run that has waited ``wait`` for its owner's answer, or cancel it when its cancel was asked for,
     each in a transaction of its own; count them in ``ended``."""
-    async with pool.connection() as conn:
-        waited = [row[0] for row in await (await conn.execute(WAITED_TOO_LONG, (wait, batch))).fetchall()]
+    async with engine.begin() as conn:
+        waited = [row[0] for row in await (await legacy(conn, WAITED_TOO_LONG, (wait, batch))).fetchall()]
     hours = _hours(wait)
     for run_id in waited:
-        async with pool.connection() as conn:
-            row = await (await conn.execute(LOCK_WAITED, (run_id, wait))).fetchone()
+        async with engine.begin() as conn:
+            row = await (await legacy(conn, LOCK_WAITED, (run_id, wait))).fetchone()
             if row is None:  # answered, ended or taken by another pass meanwhile
                 continue
             reason = f"nobody answered its decision within {hours}"
@@ -683,14 +686,14 @@ async def park_waiting(pool, batch: int, wait: timedelta, ended: Counter) -> Non
             ended[new] += 1
 
 
-async def expire_parked(pool, batch: int, parked_for: timedelta, ended: Counter) -> None:
+async def expire_parked(engine, batch: int, parked_for: timedelta, ended: Counter) -> None:
     """Cancel every run parked for ``parked_for``, its open decisions expired, each in a transaction of its own;
     count them in ``ended``."""
-    async with pool.connection() as conn:
-        parked = [row[0] for row in await (await conn.execute(PARKED_TOO_LONG, (parked_for, batch))).fetchall()]
+    async with engine.begin() as conn:
+        parked = [row[0] for row in await (await legacy(conn, PARKED_TOO_LONG, (parked_for, batch))).fetchall()]
     for run_id in parked:
-        async with pool.connection() as conn:
-            if (await (await conn.execute(LOCK_PARKED, (run_id, parked_for))).fetchone()) is None:
+        async with engine.begin() as conn:
+            if (await (await legacy(conn, LOCK_PARKED, (run_id, parked_for))).fetchone()) is None:
                 continue
             reason = f"it stayed parked for {_hours(parked_for)} without an answer"
             await move_run(conn, run_id, "parked", "cancelled", "reaper", reason=reason, decisions="expired")
@@ -708,7 +711,7 @@ def _hours(span: timedelta) -> str:
 
 
 async def recover_runs(
-    pool,
+    engine,
     batch: int = RECOVER_BATCH,
     *,
     decision_wait: timedelta = DECISION_WAIT,
@@ -723,12 +726,12 @@ async def recover_runs(
     ``github_app`` (``credentials.revoke_tokens``; nothing without the App or ``sealer``). Returns how many runs
     ended in each state, and how many were parked."""
     ended: Counter[str] = Counter()
-    await end_timed_out(pool, batch, ended)
-    async with pool.connection() as conn:
-        expired = [row[0] for row in await (await conn.execute(EXPIRED, (list(runs.HELD_STATES), batch))).fetchall()]
+    await end_timed_out(engine, batch, ended)
+    async with engine.begin() as conn:
+        expired = [row[0] for row in await (await legacy(conn, EXPIRED, (list(runs.HELD_STATES), batch))).fetchall()]
     for run_id in expired:
-        async with pool.connection() as conn:
-            row = await (await conn.execute(LOCK_EXPIRED, (run_id, list(runs.HELD_STATES)))).fetchone()
+        async with engine.begin() as conn:
+            row = await (await legacy(conn, LOCK_EXPIRED, (run_id, list(runs.HELD_STATES)))).fetchone()
             if row is None:  # a heartbeat extended it, or another pass took it
                 continue
             _, state, attempt, max_attempts, cancel, worker = row
@@ -745,10 +748,10 @@ async def recover_runs(
                     reason=reason,
                 )
             ] += 1
-    await park_waiting(pool, batch, decision_wait, ended)
-    await expire_parked(pool, batch, parked_for, ended)
-    async with pool.connection() as conn:
-        for run_id, worker in await (await conn.execute(UNCLAIMABLE, (batch,))).fetchall():
+    await park_waiting(engine, batch, decision_wait, ended)
+    await expire_parked(engine, batch, parked_for, ended)
+    async with engine.begin() as conn:
+        for run_id, worker in await (await legacy(conn, UNCLAIMABLE, (batch,))).fetchall():
             reason = f"its pinned worker {worker} was revoked"
             error = f"{reason}, so no worker may claim it"
             await move_run(conn, run_id, "queued", "failed", "reaper", reason=reason, error=error)
@@ -758,17 +761,17 @@ async def recover_runs(
         log.warning("runs recovered", extra=report)
     from evo_agents.hub.server import credentials
 
-    await credentials.revoke_tokens(pool, sealer, github_app)
+    await credentials.revoke_tokens(engine, sealer, github_app)
     return report
 
 
-async def prune_run_events(pool, days: int) -> dict:
+async def prune_run_events(engine, days: int) -> dict:
     """Delete the events of runs that ended more than ``days`` days ago, and drop the sealed values of the GitHub
     tokens leased to runs that are past their end (``credentials.drop_expired``)."""
     from evo_agents.hub.server import credentials
 
-    async with pool.connection() as conn:
-        deleted = (await conn.execute(PRUNE_EVENTS, (days,))).rowcount
+    async with engine.begin() as conn:
+        deleted = (await legacy(conn, PRUNE_EVENTS, (days,))).rowcount
         dropped = await credentials.drop_expired(conn)
     log.info("run events pruned", extra={"deleted": deleted, "days": days, "tokens_dropped": dropped})
     return {"deleted": deleted, "days": days, "tokens_dropped": dropped}

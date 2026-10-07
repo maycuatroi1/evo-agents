@@ -226,9 +226,13 @@ def test_requests_racing_over_a_stale_token_write_once(client, config, github, h
     async def race():
         from psycopg_pool import AsyncConnectionPool
 
-        async with AsyncConnectionPool(hub_db.dsn, min_size=8, max_size=8, open=False) as pool:
+        from evo_agents.hub.db import make_engine
+
+        async with AsyncConnectionPool(hub_db.dsn, min_size=8, max_size=8, open=False, close_returns=True) as pool:
             await pool.wait()
-            return await asyncio.gather(*(authenticate(pool, signed["token"], "machine", config) for _ in range(8)))
+            return await asyncio.gather(
+                *(authenticate(make_engine(pool), signed["token"], "machine", config) for _ in range(8))
+            )
 
     principals = asyncio.run(race())
     assert {p.token_id for p in principals} == {signed["token_id"]}

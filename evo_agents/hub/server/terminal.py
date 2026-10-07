@@ -44,10 +44,12 @@ from urllib.parse import urlsplit
 import anyio
 import psycopg
 from fastapi import APIRouter, HTTPException, WebSocket
+from sqlalchemy import exc as sa_exc
 from starlette.websockets import WebSocketDisconnect, WebSocketState
 
 from evo_agents.hub import runs
 from evo_agents.hub import terminal as frames
+from evo_agents.hub.db import legacy
 from evo_agents.hub.runs import PROTOCOL_HEADER, PROTOCOL_VERSION
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.admin import ProjectName
@@ -179,7 +181,7 @@ class Session:
             return
         target = f"{self.target} to_worker={self.to_worker} to_browser={self.to_browser} end={self.how}"
         try:
-            async with self.browser.app.state.pool.connection() as conn:
+            async with self.browser.app.state.engine.begin() as conn:
                 await audit.record(
                     conn,
                     actor_id=self.user.user_id,
@@ -188,7 +190,11 @@ class Session:
                     target=target,
                     project_id=self.project_id,
                 )
-        except (psycopg.Error, OSError) as exc:  # the session is over either way; the log keeps what was lost
+        except (
+            psycopg.Error,
+            sa_exc.DBAPIError,
+            OSError,
+        ) as exc:  # the session is over either way; the log keeps what was lost
             log.warning(
                 "terminal close not audited",
                 extra={"run_id": self.run_id, "target": target, "error": type(exc).__name__},
@@ -301,22 +307,26 @@ async def _open(websocket: WebSocket, project: str, run_id: int) -> Session | No
         except frames.FrameError as exc:
             raise Refusal(frames.CLOSE_UNSUPPORTED, f"the hello's size: {exc}") from None
         size = (hello["cols"], hello["rows"])
-    pool = app.state.pool
+    engine = app.state.engine
     terminals: Terminals = app.state.terminals
     try:
-        user = await authenticate(pool, token, WEB, config)
+        user = await authenticate(engine, token, WEB, config)
         if user is None:
             raise Refusal(frames.CLOSE_UNAUTHENTICATED, "the web session is revoked, expired or unknown: sign in again")
         session = Session(terminals, run_id=run_id, browser=websocket, user=user)
         session.size = size
         try:
-            async with pool.connection() as conn:  # the reservation stands only once the transaction committed
+            async with engine.begin() as conn:  # the reservation stands only once the transaction committed
                 await _open_session(conn, session, project)
         except BaseException:
             terminals.drop(session)
             raise
         return session
-    except (psycopg.OperationalError, OSError) as exc:  # PoolTimeout is an OperationalError; bugs stay errors
+    except (
+        psycopg.OperationalError,
+        sa_exc.OperationalError,
+        OSError,
+    ) as exc:  # PoolTimeout is an OperationalError; bugs stay errors
         log.warning("cannot open a terminal: database unavailable", extra={"error": type(exc).__name__})
         raise Refusal(frames.CLOSE_UNAVAILABLE, "the hub database is unavailable; try again shortly") from None
 
@@ -334,7 +344,7 @@ SELECT r.dispatched_by, u.login, r.state, r.plan_id, r.step_key, r.worker_id, w.
 async def _open_session(conn, session: Session, project: str) -> None:
     """Check the run and the session's age, reserve the run's terminal for ``session`` and audit it."""
     user, run_id = session.user, session.run_id
-    fresh = await (await conn.execute(FRESH_SESSION, (SESSION_MAX_AGE, user.token_id))).fetchone()
+    fresh = await (await legacy(conn, FRESH_SESSION, (SESSION_MAX_AGE, user.token_id))).fetchone()
     if not fresh or not fresh[0]:
         hours = int(SESSION_MAX_AGE.total_seconds() // 3600)
         raise Refusal(frames.CLOSE_FORBIDDEN, f"the web session is older than {hours} hours: sign in again")
@@ -342,7 +352,7 @@ async def _open_session(conn, session: Session, project: str) -> None:
         access = await readable_run(conn, user, project, run_id, None)
     except HTTPException as exc:
         raise Refusal(frames.CLOSE_FORBIDDEN, str(exc.detail)) from None
-    row = await (await conn.execute(TERMINAL_RUN, (run_id, access.project_id))).fetchone()
+    row = await (await legacy(conn, TERMINAL_RUN, (run_id, access.project_id))).fetchone()
     dispatched_by, owner, state, plan_id, key, worker_id, worker_owner, worker, allowed = row
     if dispatched_by != user.user_id:
         raise Refusal(frames.CLOSE_FORBIDDEN, f"only {owner}, who dispatched run {run_id}, may open its terminal")
@@ -359,7 +369,7 @@ async def _open_session(conn, session: Session, project: str) -> None:
     if not session.terminals.reserve(session):
         raise Refusal(frames.CLOSE_BUSY, f"the terminal of run {run_id} is open in another browser")
     target = _run_target(project, plan_id, key, run_id)
-    if state in runs.TAKEOVER_STATES and await (await conn.execute(ASK_TAKEOVER, (run_id,))).fetchone():
+    if state in runs.TAKEOVER_STATES and await (await legacy(conn, ASK_TAKEOVER, (run_id,))).fetchone():
         await _audit(conn, user, access.project_id, audit.RUN_TAKEOVER, target)
     await _audit(conn, user, access.project_id, audit.TERMINAL_OPEN, target)
     session.project_id = access.project_id
@@ -481,13 +491,13 @@ async def _attach(websocket: WebSocket, run_id: int) -> Session:
     token = _bearer(websocket)
     app = websocket.app
     try:
-        user = await authenticate(app.state.pool, token, WORKER, app.state.config)
+        user = await authenticate(app.state.engine, token, WORKER, app.state.config)
         if user is None:
             raise Refusal(frames.CLOSE_UNAUTHENTICATED, f"the worker token is revoked, expired or unknown: {JOIN_HINT}")
-        async with app.state.pool.connection() as conn:
-            worker = await (await conn.execute(HOLDING_WORKER, (user.token_id,))).fetchone()
-            held = await (await conn.execute(HELD_RUN, (run_id,))).fetchone()
-    except (psycopg.OperationalError, OSError) as exc:
+        async with app.state.engine.begin() as conn:
+            worker = await (await legacy(conn, HOLDING_WORKER, (user.token_id,))).fetchone()
+            held = await (await legacy(conn, HELD_RUN, (run_id,))).fetchone()
+    except (psycopg.OperationalError, sa_exc.OperationalError, OSError) as exc:
         log.warning("cannot attach a terminal: database unavailable", extra={"error": type(exc).__name__})
         raise Refusal(frames.CLOSE_UNAVAILABLE, "the hub database is unavailable; try again shortly") from None
     if worker is None or worker[2] is not None:

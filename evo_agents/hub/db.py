@@ -8,9 +8,8 @@ and a connection is checked before it is handed out, so the pool recovers by its
 
 ``engine.begin()`` gives an ``AsyncConnection`` whose transaction commits when the block ends cleanly and rolls
 back otherwise; queries on it are SQLAlchemy Core on ``evo_agents.hub.tables``. ``driver(conn)`` is the psycopg
-connection under it, in the same transaction: what procrastinate defers a job on (``evo_agents.hub.jobs``), and the
-bridge for code that still runs its statements on psycopg. ``pool.connection()`` gives such code a connection of
-its own, whose transaction likewise commits when the block ends cleanly.
+connection under it, in the same transaction: what procrastinate defers a job on (``evo_agents.hub.jobs``).
+``legacy(conn, query, params)`` runs a statement not yet written in Core on that connection, until none is left.
 """
 
 from __future__ import annotations
@@ -63,6 +62,12 @@ async def driver(conn: AsyncConnection) -> psycopg.AsyncConnection:
     """The psycopg connection under ``conn``, in the same transaction: what ``conn`` wrote, it sees, and what it
     writes commits or rolls back with ``conn``. Never commit, roll back or close it directly."""
     return (await conn.get_raw_connection()).driver_connection
+
+
+async def legacy(conn: AsyncConnection, query, params=None) -> psycopg.AsyncCursor:
+    """Run ``query``, a SQL string not yet written in Core, on the psycopg connection under ``conn``, in its
+    transaction. A bridge while the hub moves to Core: it goes once no module calls it."""
+    return await (await driver(conn)).execute(query, params)
 
 
 async def schema_revision(pool: AsyncConnectionPool, timeout: float) -> str | None:

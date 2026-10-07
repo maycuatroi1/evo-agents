@@ -54,7 +54,7 @@ from evo_agents import __version__
 from evo_agents.hub import jobs
 from evo_agents.hub.blobs import STALE_AFTER, BlobStore
 from evo_agents.hub.config import HubConfig
-from evo_agents.hub.db import CONNECT_TIMEOUT, make_engine
+from evo_agents.hub.db import CONNECT_TIMEOUT, legacy, make_engine
 from evo_agents.hub.log import redact_dsn
 from evo_agents.hub.migrate import migrate
 
@@ -86,7 +86,11 @@ class HubContext:
     data_dir: Path
     sealer: Sealer | None = None  # None without EVO_HUB_SECRETS_KEY
     github_app: GitHubApp | None = None  # None without EVO_HUB_GITHUB_APP_*: no GitHub token to revoke
-    engine: AsyncEngine | None = None  # on ``pool``; None only where a test builds a context without one
+    engine: AsyncEngine | None = None  # on ``pool``; made on it when not given
+
+    def __post_init__(self):
+        if self.engine is None:  # an engine keeps no connection of its own (NullPool): nothing to dispose of
+            object.__setattr__(self, "engine", make_engine(self.pool))
 
 
 def hub(context: JobContext) -> HubContext:
@@ -101,13 +105,13 @@ async def ping(context: JobContext, seconds: float = 0.0, note: str = "") -> dic
     return {"worker": context.worker_name, "job_id": context.job.id}
 
 
-async def remove_stale_uploads(store: BlobStore, pool: AsyncConnectionPool, now: datetime | None = None) -> dict:
+async def remove_stale_uploads(store: BlobStore, engine: AsyncEngine, now: datetime | None = None) -> dict:
     """Delete the objects under ``uploads/`` and the ``blob_uploads`` rows older than STALE_AFTER: uploads nobody
     committed in time. The rows go first, so an upload whose row is gone can no longer be committed while its object
     is being deleted."""
     cutoff = (now or datetime.now(UTC)) - STALE_AFTER
-    async with pool.connection() as conn:
-        rows = (await conn.execute("DELETE FROM blob_uploads WHERE created_at < %s", (cutoff,))).rowcount
+    async with engine.begin() as conn:
+        rows = (await legacy(conn, "DELETE FROM blob_uploads WHERE created_at < %s", (cutoff,))).rowcount
     objects = await asyncio.to_thread(store.remove_stale_uploads, cutoff)
     log.info("stale uploads removed", extra={"objects": objects, "rows": rows, "cutoff": cutoff.isoformat()})
     return {"objects": objects, "rows": rows}
@@ -117,7 +121,7 @@ async def remove_stale_uploads(store: BlobStore, pool: AsyncConnectionPool, now:
 @queue.task(name=jobs.CLEANUP_UPLOADS, pass_context=True, queueing_lock=jobs.CLEANUP_UPLOADS)
 async def cleanup_uploads(context: JobContext, timestamp: int | None = None) -> dict:
     found = hub(context)
-    return await remove_stale_uploads(found.blobs, found.pool)
+    return await remove_stale_uploads(found.blobs, found.engine)
 
 
 @queue.task(name=jobs.KG_BUILD, pass_context=True)
@@ -141,7 +145,7 @@ async def prune_kg_artifacts(context: JobContext, timestamp: int | None = None) 
     from evo_agents.hub.kg_prune import prune
 
     found = hub(context)
-    report = await prune(found.pool, found.blobs, found.config.kg_keep_artifacts)
+    report = await prune(found.engine, found.blobs, found.config.kg_keep_artifacts)
     return report.summary()
 
 
@@ -152,7 +156,7 @@ async def recover_runs(context: JobContext, timestamp: int | None = None) -> dic
 
     found = hub(context)
     return await recover(
-        found.pool,
+        found.engine,
         decision_wait=timedelta(seconds=found.config.decision_wait_seconds),
         sealer=found.sealer,
         github_app=found.github_app,
@@ -165,7 +169,7 @@ async def deliver_notifications(context: JobContext, timestamp: int | None = Non
     from evo_agents.hub.server.notifications import deliver_notifications as deliver
 
     found = hub(context)
-    return await deliver(found.pool, config=found.config)
+    return await deliver(found.engine, config=found.config)
 
 
 @queue.periodic(cron="13 4 * * *")
@@ -174,7 +178,7 @@ async def prune_run_events(context: JobContext, timestamp: int | None = None) ->
     from evo_agents.hub.server.run_state import prune_run_events as prune
 
     found = hub(context)
-    return await prune(found.pool, found.config.run_log_days)
+    return await prune(found.engine, found.config.run_log_days)
 
 
 @queue.periodic(cron="43 3 * * *")

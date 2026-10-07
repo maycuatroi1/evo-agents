@@ -46,6 +46,7 @@ from evo_agents.hub.credentials import (
     env_name_refusal,
     normalize_origin,
 )
+from evo_agents.hub.db import legacy
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.admin import PROJECT_NAME
 from evo_agents.hub.server.auth import NO_STORE
@@ -165,14 +166,14 @@ SECRET_FIELDS = (
 
 
 async def _secrets(conn, owner_id: int, name: str | None = None) -> list[Secret]:
-    cursor = await conn.execute(SECRETS, {"owner": owner_id, "name": name})
+    cursor = await legacy(conn, SECRETS, {"owner": owner_id, "name": name})
     return [Secret(**dict(zip(SECRET_FIELDS, row, strict=True))) for row in await cursor.fetchall()]
 
 
 @router.get("", response_model=list[Secret])
 async def list_secrets(request: Request, user: CurrentUser, response: Response) -> list[Secret]:
     """The caller's own secrets, by name, without their values; a hub admin's own too."""
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         found = await _secrets(conn, user.user_id)
     response.headers.update(NO_STORE)
     return found
@@ -277,7 +278,8 @@ async def _own_workers(conn, user: Principal, names: list[str]) -> list[int]:
     """The ids of the caller's workers ``names`` that are not revoked; 403 for any other name, whoever's it is."""
     if not names:
         return []
-    cursor = await conn.execute(
+    cursor = await legacy(
+        conn,
         "SELECT lower(name), id FROM workers WHERE owner_id = %s AND revoked_at IS NULL AND lower(name) = ANY(%s)",
         (user.user_id, [name.lower() for name in names]),
     )
@@ -307,15 +309,17 @@ RETURNING id, xmax = 0
 
 async def _bind(conn, secret_id: int, project_ids: list[int], worker_ids: list[int]) -> None:
     """The secret's bindings, replaced: each project on each of the workers, or on any worker of its owner."""
-    await conn.execute("DELETE FROM secret_bindings WHERE secret_id = %s", (secret_id,))
+    await legacy(conn, "DELETE FROM secret_bindings WHERE secret_id = %s", (secret_id,))
     if worker_ids:
-        await conn.execute(
+        await legacy(
+            conn,
             "INSERT INTO secret_bindings (secret_id, project_id, worker_id) "
             "SELECT %s, p, w FROM unnest(%s::bigint[]) AS p, unnest(%s::bigint[]) AS w",
             (secret_id, project_ids, worker_ids),
         )
     else:
-        await conn.execute(
+        await legacy(
+            conn,
             "INSERT INTO secret_bindings (secret_id, project_id) SELECT %s, unnest(%s::bigint[])",
             (secret_id, project_ids),
         )
@@ -337,12 +341,12 @@ async def put_secret(
         raise HTTPException(422, "expires_at is past already: a secret's end is in the future")
     projects, workers = _unique(body.projects), _unique(body.workers)
     sealed = sealer.seal(value, secret_aad(user.user_id, name, body.kind))
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         project_ids = await _writable(conn, user, projects)
         worker_ids = await _own_workers(conn, user, workers)
         # One write of a member's secrets at a time, so two of them cannot both pass the count.
-        await conn.execute("SELECT 1 FROM users WHERE id = %s FOR UPDATE", (user.user_id,))
-        live = (await (await conn.execute(LIVE_SECRETS, (user.user_id, name))).fetchone())[0]
+        await legacy(conn, "SELECT 1 FROM users WHERE id = %s FOR UPDATE", (user.user_id,))
+        live = (await (await legacy(conn, LIVE_SECRETS, (user.user_id, name))).fetchone())[0]
         if live >= MAX_SECRETS_PER_OWNER:
             raise HTTPException(
                 409, f"you keep {MAX_SECRETS_PER_OWNER} secrets already: delete one before adding another"
@@ -360,7 +364,7 @@ async def put_secret(
             "expires_at": body.expires_at,
         }
         try:
-            secret_id, created = await (await conn.execute(UPSERT_SECRET, params)).fetchone()
+            secret_id, created = await (await legacy(conn, UPSERT_SECRET, params)).fetchone()
         except psycopg.errors.CheckViolation:  # what the checks above let through and the table does not take
             raise HTTPException(422, "the secrets table refused this secret's kind, target or username") from None
         await _bind(conn, secret_id, project_ids, worker_ids)
@@ -383,14 +387,16 @@ RETURNING id
 @router.delete("/{name}", status_code=204, response_class=Response, responses=REFUSALS)
 async def delete_secret(request: Request, name: SecretName, user: CurrentUser) -> Response:
     """Delete the caller's secret ``name``: its value and bindings go, and its leases are revoked."""
-    async with request.app.state.pool.connection() as conn:
-        row = await (await conn.execute(DELETE_SECRET, (user.user_id, name))).fetchone()
+    async with request.app.state.engine.begin() as conn:
+        row = await (await legacy(conn, DELETE_SECRET, (user.user_id, name))).fetchone()
         if row is None:
             raise HTTPException(404, NO_SECRET.format(name=name))
         secret_id = row[0]
-        await conn.execute("DELETE FROM secret_bindings WHERE secret_id = %s", (secret_id,))
-        cursor = await conn.execute(
-            "UPDATE credential_leases SET revoked_at = now() WHERE secret_id = %s AND revoked_at IS NULL", (secret_id,)
+        await legacy(conn, "DELETE FROM secret_bindings WHERE secret_id = %s", (secret_id,))
+        cursor = await legacy(
+            conn,
+            "UPDATE credential_leases SET revoked_at = now() WHERE secret_id = %s AND revoked_at IS NULL",
+            (secret_id,),
         )
         revoked = cursor.rowcount
         target = audit_target(secret_id)

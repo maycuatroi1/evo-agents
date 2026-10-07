@@ -418,7 +418,7 @@ def test_a_worker_token_works_only_on_the_worker_routes(client, hub, hub_db):
     # a worker token is a Bearer token: as the session cookie it is no session
     assert client.get("/v1/projects", headers=cookie(token)).status_code == 401
     # the owner of a worker may be a hub admin; the worker is not
-    principal = client.portal.call(authenticate, client.app.state.pool, token, WORKER, client.app.state.config)
+    principal = client.portal.call(authenticate, client.app.state.engine, token, WORKER, client.app.state.config)
     assert principal.kind == WORKER and principal.login == OWNER and principal.admin is False
 
 
@@ -445,7 +445,7 @@ def test_the_existing_credentials_keep_their_routes(client, hub, github):
     assert client.get("/v1/projects", headers=bearer("evh_" + "A" * 43)).status_code == 401
     principal = client.portal.call(
         authenticate,
-        client.app.state.pool,
+        client.app.state.engine,
         live.sign_in(client, github, ADMIN, ADMIN_ID)["token"],
         MACHINE,
         client.app.state.config,

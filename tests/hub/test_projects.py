@@ -483,14 +483,15 @@ def add_probe(app) -> None:
     ``project_access``, the way those endpoints start, and audit a push in the transaction that writes it."""
     from fastapi import Body, Request
 
+    from evo_agents.hub.db import legacy
     from evo_agents.hub.server.projects import project_access
     from evo_agents.hub.server.security import CurrentUser
 
     async def read(project: str, sink: str, request: Request, user: CurrentUser) -> list[str]:
-        async with request.app.state.pool.connection() as conn:
+        async with request.app.state.engine.begin() as conn:
             access = await project_access(conn, user, project)
-            cursor = await conn.execute(
-                "SELECT name, label FROM memories WHERE project_id = %s ORDER BY name", (access.project_id,)
+            cursor = await legacy(
+                conn, "SELECT name, label FROM memories WHERE project_id = %s ORDER BY name", (access.project_id,)
             )
             rows = await cursor.fetchall()
         return [name for name, label in rows if access.visible(label, sink)]
@@ -500,10 +501,11 @@ def add_probe(app) -> None:
 
         from evo_agents.hub.server import audit
 
-        async with request.app.state.pool.connection() as conn:
+        async with request.app.state.engine.begin() as conn:
             access = await project_access(conn, user, project)
             label = access.push_label(data.get("label"))
-            await conn.execute(
+            await legacy(
+                conn,
                 "INSERT INTO memories (scope, project_id, location, name, type, owner_id, label, body, updated_by) "
                 "VALUES ('project', %s, 'harness', %s, 'project', %s, %s, %s, %s)",
                 (access.project_id, data["name"], user.user_id, Jsonb(label), data["body"], user.user_id),

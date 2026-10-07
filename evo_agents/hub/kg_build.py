@@ -43,6 +43,7 @@ import yaml
 
 from evo_agents.hub import blob_gc
 from evo_agents.hub.blobs import KIND_LIMITS, PARALLEL, BlobStore, BlobStoreUnavailable, blob_key
+from evo_agents.hub.db import legacy
 from evo_agents.hub.jobs import KG_BUILD, JobQueue, kg_lock
 from evo_agents.hub.kg_ingest import ONTOLOGY_FILE, blob_refs
 from evo_agents.kg.corpus import Corpus
@@ -283,11 +284,11 @@ INSERT INTO blobs (project_id, sha256, size, kind, created_by) VALUES (%s, %s, %
 """
 
 
-async def _reusable(pool, store: BlobStore, project_id: int, built: Built) -> tuple | None:
+async def _reusable(engine, store: BlobStore, project_id: int, built: Built) -> tuple | None:
     """The latest build of the project still holding an artifact, when it has ``built``'s content and its object is
     in the bucket with its size; None otherwise."""
-    async with pool.connection() as conn:
-        latest = await (await conn.execute(LATEST_ARTIFACT, (project_id,))).fetchone()
+    async with engine.begin() as conn:
+        latest = await (await legacy(conn, LATEST_ARTIFACT, (project_id,))).fetchone()
     if latest is None or latest[3] != built.content_hash:
         return None
     if await asyncio.to_thread(store.size, blob_key(latest[1])) != latest[2]:
@@ -296,15 +297,17 @@ async def _reusable(pool, store: BlobStore, project_id: int, built: Built) -> tu
     return latest
 
 
-async def record(pool, store: BlobStore, project_id: int, build_id: int, digest: str | None, built: Built) -> Artifact:
+async def record(
+    engine, store: BlobStore, project_id: int, build_id: int, digest: str | None, built: Built
+) -> Artifact:
     """Mark build ``build_id`` succeeded with ``built``, pointing at the artifact of the project's latest build that
     has the same content, or at ``built``'s file, uploaded now (see the module). The artifact it points at."""
-    latest = await _reusable(pool, store, project_id, built)
+    latest = await _reusable(engine, store, project_id, built)
     if latest is None:
         await asyncio.to_thread(store.put_file, built.sha256, built.path)
-    async with pool.connection() as conn:
+    async with engine.begin() as conn:
         await blob_gc.lock_shared(conn)
-        if latest is not None and await (await conn.execute(LATEST_ARTIFACT, (project_id,))).fetchone() == latest:
+        if latest is not None and await (await legacy(conn, LATEST_ARTIFACT, (project_id,))).fetchone() == latest:
             artifact = Artifact(latest[1], latest[2], latest[4] or latest[0])
         else:
             # Uploaded above, unless another build of the project finished meanwhile, which the queue's lock rules
@@ -313,8 +316,9 @@ async def record(pool, store: BlobStore, project_id: int, build_id: int, digest:
             if latest is not None or revived:
                 await asyncio.to_thread(store.put_file, built.sha256, built.path, replace=bool(revived))
             artifact = Artifact(built.sha256, built.size, None)
-        await conn.execute(ARTIFACT, (project_id, artifact.sha256, artifact.size, ARTIFACT_KIND))
-        await conn.execute(
+        await legacy(conn, ARTIFACT, (project_id, artifact.sha256, artifact.size, ARTIFACT_KIND))
+        await legacy(
+            conn,
             SUCCEEDED,
             (
                 digest,
@@ -331,16 +335,18 @@ async def record(pool, store: BlobStore, project_id: int, build_id: int, digest:
     return artifact
 
 
-async def _failed(pool, digest: str | None, runs: int, error: str, build_id: int) -> None:
-    async with pool.connection() as conn:
-        await conn.execute(FAILED, (digest, runs, error, build_id))
+async def _failed(engine, digest: str | None, runs: int, error: str, build_id: int) -> None:
+    async with engine.begin() as conn:
+        await legacy(conn, FAILED, (digest, runs, error, build_id))
 
 
-async def _stopped(pool, digest: str | None, runs: int, build_id: int, project_id: int, project: str, manager) -> None:
+async def _stopped(
+    engine, digest: str | None, runs: int, build_id: int, project_id: int, project: str, manager
+) -> None:
     """Record that the worker stopped before build ``build_id`` finished, and queue another so the runs it would
     have built are not left waiting for the next push."""
-    async with pool.connection() as conn:
-        await conn.execute(FAILED, (digest, runs, STOPPED if manager else STOPPED.split(";")[0], build_id))
+    async with engine.begin() as conn:
+        await legacy(conn, FAILED, (digest, runs, STOPPED if manager else STOPPED.split(";")[0], build_id))
         if manager is not None:
             await queue_build(JobQueue(manager), conn, project_id, project, None)
 
@@ -349,25 +355,26 @@ async def run_build(context, project: str, build_id: int | None, job_id: int | N
     """The job: build ``project`` and record the outcome on build ``build_id`` (a new row when it is None or gone).
     ``context`` is the worker's HubContext; ``manager``, procrastinate's job manager, queues the build again when
     the worker stops before this one finished."""
-    pool = context.pool
-    async with pool.connection() as conn:
-        row = await (await conn.execute("SELECT id FROM projects WHERE name = %s", (project,))).fetchone()
+    engine = context.engine
+    async with engine.begin() as conn:
+        row = await (await legacy(conn, "SELECT id FROM projects WHERE name = %s", (project,))).fetchone()
         if row is None:
             log.warning("kg build of a project the hub does not have", extra={"project": project, "job_id": job_id})
             return {"status": "skipped"}
         project_id = row[0]
         started = None
         if build_id is not None:
-            started = await (await conn.execute(START, (job_id, build_id))).fetchone()
+            started = await (await legacy(conn, START, (job_id, build_id))).fetchone()
         if started is None:
-            started = await (await conn.execute(START_UNQUEUED, (project_id, job_id))).fetchone()
+            started = await (await legacy(conn, START_UNQUEUED, (project_id, job_id))).fetchone()
         build_id = started[0]
         found = await (
-            await conn.execute(
-                "SELECT digest, knowledge, ontology FROM kg_configs WHERE project_id = %s", (project_id,)
+            await legacy(
+                conn, "SELECT digest, knowledge, ontology FROM kg_configs WHERE project_id = %s", (project_id,)
             )
         ).fetchone()
-        cursor = await conn.execute(
+        cursor = await legacy(
+            conn,
             "SELECT run_id::text, log_sha256, log_size FROM kg_ingests WHERE project_id = %s ORDER BY run_id",
             (project_id,),
         )
@@ -381,14 +388,14 @@ async def run_build(context, project: str, build_id: int | None, job_id: int | N
             )
         config = {"knowledge": found[1], "ontology": found[2]}
         built = await asyncio.to_thread(build_in_cache, context.blobs, context.data_dir, project, config, ingests)
-        artifact = await record(pool, context.blobs, project_id, build_id, digest, built)
+        artifact = await record(engine, context.blobs, project_id, build_id, digest, built)
     except asyncio.CancelledError:  # the worker is stopping and gave up waiting: say so, then let it stop
-        await asyncio.shield(_stopped(pool, digest, len(ingests), build_id, project_id, project, manager))
+        await asyncio.shield(_stopped(engine, digest, len(ingests), build_id, project_id, project, manager))
         log.warning("kg build stopped with the worker", extra={"project": project, "build_id": build_id})
         raise
     except Exception as exc:
         error = describe_failure(exc)
-        await _failed(pool, digest, len(ingests), error, build_id)
+        await _failed(engine, digest, len(ingests), error, build_id)
         log.error(
             "kg build failed",
             extra={"project": project, "build_id": build_id, "job_id": job_id, "error": error[:300]},
@@ -429,18 +436,20 @@ async def queue_build(
     key = kg_lock(project)
     for _ in range(QUEUE_ATTEMPTS):
         (build_id,) = await (
-            await conn.execute(
+            await legacy(
+                conn,
                 "INSERT INTO kg_builds (project_id, status, requested_by) VALUES (%s, 'queued', %s) RETURNING id",
                 (project_id, requested_by),
             )
         ).fetchone()
         job_id = await job_queue.defer_kg(KG_BUILD, project, connection=conn, project=project, build_id=build_id)
         if job_id is not None:
-            await conn.execute("UPDATE kg_builds SET job_id = %s WHERE id = %s", (job_id, build_id))
+            await legacy(conn, "UPDATE kg_builds SET job_id = %s WHERE id = %s", (job_id, build_id))
             return build_id, True
-        await conn.execute("DELETE FROM kg_builds WHERE id = %s", (build_id,))
+        await legacy(conn, "DELETE FROM kg_builds WHERE id = %s", (build_id,))
         waiting = await (
-            await conn.execute(
+            await legacy(
+                conn,
                 "SELECT j.id, b.id FROM procrastinate_jobs j LEFT JOIN kg_builds b ON b.job_id = j.id "
                 "WHERE j.queueing_lock = %s AND j.status = 'todo' FOR UPDATE OF j",
                 (key,),
@@ -461,8 +470,9 @@ async def recover_stalled(context, manager) -> dict:
     projects = set()
     for job in stalled:
         await manager.finish_job(job, Status.FAILED, delete_job=False)
-        async with context.pool.connection() as conn:
-            await conn.execute(
+        async with context.engine.begin() as conn:
+            await legacy(
+                conn,
                 "UPDATE kg_builds SET status = 'failed', error = %s, started_at = coalesce(started_at, now()), "
                 "finished_at = now() WHERE job_id = %s AND status IN ('queued', 'running')",
                 (STOPPED, job.id),
@@ -470,8 +480,8 @@ async def recover_stalled(context, manager) -> dict:
         projects.add(job.task_kwargs.get("project"))
     queued = []
     for project in sorted(p for p in projects if isinstance(p, str)):
-        async with context.pool.connection() as conn:
-            row = await (await conn.execute("SELECT id FROM projects WHERE name = %s", (project,))).fetchone()
+        async with context.engine.begin() as conn:
+            row = await (await legacy(conn, "SELECT id FROM projects WHERE name = %s", (project,))).fetchone()
             if row is not None:
                 await queue_build(JobQueue(manager), conn, row[0], project, None)
                 queued.append(project)

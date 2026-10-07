@@ -20,6 +20,7 @@ from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
 from evo_agents.hub.config import HubConfig
+from evo_agents.hub.db import legacy
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.github import GitHubRefused, GitHubUnavailable, GitHubUser
@@ -98,14 +99,14 @@ def github_errors(refused_status: int, hint: str):
 
 
 async def _one(conn, sql: str, params=()):
-    return await (await conn.execute(sql, params)).fetchone()
+    return await (await legacy(conn, sql, params)).fetchone()
 
 
 async def _move_aside(conn, user_id: int) -> None:
     """Give up the login of a row whose GitHub account was renamed since: ``_`` cannot occur in a GitHub login, so
     the new name collides with nobody, and the account gets its real login back when it signs in again."""
-    await conn.execute(
-        "UPDATE users SET login = left(login, 80) || '_' || coalesce(github_id, id) WHERE id = %s", (user_id,)
+    await legacy(
+        conn, "UPDATE users SET login = left(login, 80) || '_' || coalesce(github_id, id) WHERE id = %s", (user_id,)
     )
 
 
@@ -119,23 +120,25 @@ async def upsert_user(conn, user: GitHubUser) -> tuple[int, str]:
         if holder is not None and holder[1] != user.id:
             holder_id, holder_github_id = holder
             if holder_github_id is None and own is None:  # granted before the first sign-in: claim it
-                await conn.execute(
+                await legacy(
+                    conn,
                     "UPDATE users SET github_id = %s, login = %s, last_seen_at = now() WHERE id = %s",
                     (user.id, user.login, holder_id),
                 )
                 return holder_id, user.login
             if holder_github_id is None:  # granted to the new login of a known account: merge the grants into it
-                await conn.execute(
+                await legacy(
+                    conn,
                     "INSERT INTO grants (user_id, project_id, role, max_level, granted_by, granted_at) "
                     "SELECT %s, project_id, role, max_level, granted_by, granted_at FROM grants WHERE user_id = %s "
                     "ON CONFLICT (user_id, project_id) DO NOTHING",
                     (own[0], holder_id),
                 )
-                await conn.execute("DELETE FROM users WHERE id = %s", (holder_id,))
+                await legacy(conn, "DELETE FROM users WHERE id = %s", (holder_id,))
             else:
                 await _move_aside(conn, holder_id)
         if own is not None:
-            await conn.execute("UPDATE users SET login = %s, last_seen_at = now() WHERE id = %s", (user.login, own[0]))
+            await legacy(conn, "UPDATE users SET login = %s, last_seen_at = now() WHERE id = %s", (user.login, own[0]))
             return own[0], user.login
         row = await _one(
             conn,
@@ -166,7 +169,7 @@ async def sign_in(conn, config: HubConfig, user: GitHubUser, kind: str, host: st
 
 async def sign_out(request: Request, user: Principal) -> None:
     """Revoke the credential the request came with."""
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         if await revoke_token(conn, user.token_id, user.user_id):
             target = audit.token_target(user.token_id)
             await audit.record(conn, actor_id=user.user_id, token_id=user.token_id, action=audit.LOGOUT, target=target)
@@ -200,7 +203,7 @@ async def github_login(body: GitHubLogin, request: Request, response: Response) 
                 log.warning("sign-in refused: the GitHub token belongs to another app")
                 raise GitHubRefused("the GitHub token was not issued to this hub's OAuth App")
         user = await github.user(body.github_token)
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         signed = await sign_in(conn, config, user, MACHINE, host)
     response.headers.update(NO_STORE)
     return signed
@@ -208,13 +211,14 @@ async def github_login(body: GitHubLogin, request: Request, response: Response) 
 
 @router.get("/whoami", response_model=WhoAmI, responses={401: {"model": ErrorBody}})
 async def whoami(request: Request, user: CurrentUser) -> WhoAmI:
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         token = await _one(
             conn,
             "SELECT id, kind, host, created_at, last_used_at, expires_at FROM tokens WHERE id = %s",
             (user.token_id,),
         )
-        cursor = await conn.execute(
+        cursor = await legacy(
+            conn,
             "SELECT p.name, g.role, g.max_level FROM grants g JOIN projects p ON p.id = g.project_id "
             "WHERE g.user_id = %s ORDER BY p.name",
             (user.user_id,),

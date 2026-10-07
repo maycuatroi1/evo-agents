@@ -105,6 +105,7 @@ from pydantic import BaseModel, ConfigDict, Field, create_model, model_validator
 from evo_agents.hub import runs
 from evo_agents.hub.access import has_role
 from evo_agents.hub.credentials import DISPATCHED_VIA, dispatch_credential
+from evo_agents.hub.db import legacy
 from evo_agents.hub.plans import PlanProblem, step_index, step_key
 from evo_agents.hub.server import audit
 from evo_agents.hub.server import plans as plan_routes
@@ -493,7 +494,7 @@ def _runs_of(rows) -> list[Run]:
 
 
 async def run_views(conn, run_ids: list[int]) -> list[Run]:
-    return _runs_of(await (await conn.execute(RUN_VIEW, (list(run_ids),))).fetchall())
+    return _runs_of(await (await legacy(conn, RUN_VIEW, (list(run_ids),))).fetchall())
 
 
 async def run_view(conn, run_id: int) -> Run:
@@ -518,7 +519,7 @@ class Activity:
 
 
 async def _activity(conn, project_id: int, plan_id: str) -> Activity:
-    rows = await (await conn.execute(ACTIVE_RUNS, (project_id, plan_id, list(runs.ACTIVE_STATES)))).fetchall()
+    rows = await (await legacy(conn, ACTIVE_RUNS, (project_id, plan_id, list(runs.ACTIVE_STATES)))).fetchall()
     activity = Activity(steps={}, plan_run=None)
     for kind, key, run_id, state, login in rows:
         active = ActiveRun(id=run_id, state=state, dispatched_by=login)
@@ -537,7 +538,7 @@ def plan_lock_key(project_id: int, plan_id: str) -> str:
 async def _lock_plan(conn, project_id: int, plan_id: str) -> None:
     """Take the plan's dispatch lock until the caller's transaction ends: a dispatch of its steps and one of its plan
     run then each see the other's run, never both none."""
-    await conn.execute(PLAN_LOCK, (plan_lock_key(project_id, plan_id),))
+    await legacy(conn, PLAN_LOCK, (plan_lock_key(project_id, plan_id),))
 
 
 def _text_or_none(value) -> str | None:
@@ -567,7 +568,7 @@ async def ready_steps(
     sink: Annotated[str | None, Header(alias=plan_routes.SINK_HEADER)] = None,
 ) -> ReadySteps:
     """Every step of the plan with whether it may be dispatched now, and why not."""
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
         plan_routes._reader(access)
         held = await plan_routes._visible(conn, access, plan_id, sink)
@@ -628,7 +629,7 @@ async def visible_plans(conn, access: ProjectAccess, sink: str | None) -> list[s
     hub sink when None), by the plan's label. A run of a plan no longer on the hub is shown to nobody."""
     plan_routes._reader(access)
     through = plan_routes._sink(access, sink)
-    rows = await (await conn.execute(PLAN_LABELS, (access.project_id,))).fetchall()
+    rows = await (await legacy(conn, PLAN_LABELS, (access.project_id,))).fetchall()
     return [plan_id for plan_id, label in rows if access.visible(label, through)]
 
 
@@ -640,7 +641,7 @@ async def readable_run(conn, user: Principal, project: str, run_id: int, sink: s
     403 for a hub admin without one) and the run's plan visible to it (404 otherwise, as for no run)."""
     access = await project_access(conn, user, project)
     plan_routes._reader(access)
-    row = await (await conn.execute(READABLE_RUN, (run_id, access.project_id))).fetchone()
+    row = await (await legacy(conn, READABLE_RUN, (run_id, access.project_id))).fetchone()
     if row is None or row[0] not in await visible_plans(conn, access, sink):
         raise HTTPException(404, f"project {project} has no run {run_id}: see GET /v1/projects/{project}/runs")
     return access
@@ -716,11 +717,11 @@ async def list_runs(
         "limit": limit,
         "offset": offset,
     }
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
         params |= {"project": access.project_id, "plans": await visible_plans(conn, access, sink)}
-        page = _runs_of(await (await conn.execute(LIST_PAGE, params)).fetchall())
-        counts = dict(await (await conn.execute(LIST_COUNTS, params)).fetchall())
+        page = _runs_of(await (await legacy(conn, LIST_PAGE, params)).fetchall())
+        counts = dict(await (await legacy(conn, LIST_COUNTS, params)).fetchall())
     wanted = params["states"] or runs.RUN_STATES
     return RunList(
         runs=page,
@@ -924,10 +925,10 @@ async def run_stats(
 ) -> RunStats:
     """The runs of the plans the caller may read that ended on each of the last ``days`` days in UTC: how many in
     each end state, how long they ran and the tokens they used."""
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
         plans = await visible_plans(conn, access, sink)
-        today: date = (await (await conn.execute(UTC_TODAY)).fetchone())[0]
+        today: date = (await (await legacy(conn, UTC_TODAY)).fetchone())[0]
         first = today - timedelta(days=days - 1)
         params = {
             "project": access.project_id,
@@ -936,7 +937,7 @@ async def run_stats(
             "since": datetime.combine(first, time.min, tzinfo=UTC),
             "until": datetime.combine(today + timedelta(days=1), time.min, tzinfo=UTC),
         }
-        rows = await (await conn.execute(RUN_STATS, params)).fetchall()
+        rows = await (await legacy(conn, RUN_STATS, params)).fetchall()
     by_day, total = {}, NO_RUN
     for day, whole_span, *values in rows:
         if whole_span:
@@ -966,7 +967,7 @@ async def show_run(
     user: CurrentUser,
     sink: Annotated[str | None, Header(alias=plan_routes.SINK_HEADER)] = None,
 ) -> Run:
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         await readable_run(conn, user, project, run_id, sink)
         return await run_view(conn, run_id)
 
@@ -1004,7 +1005,7 @@ class Pinned:
 async def _pinnable(conn, user: Principal, access: ProjectAccess, worker_id: int) -> Pinned:
     """403 unless worker ``worker_id`` is ``user``'s own, and unless ``user`` dispatches from a web session when the
     worker takes runs dispatched from the web only; 409 when it is revoked or does not serve the project."""
-    row = await (await conn.execute(PINNABLE, (access.project_id, worker_id))).fetchone()
+    row = await (await legacy(conn, PINNABLE, (access.project_id, worker_id))).fetchone()
     if row is None or row[0] != user.user_id:  # the same answer for another member's worker and for no worker
         raise HTTPException(
             403, f"a run goes only to a worker of the member who dispatches it, and you have no worker {worker_id}"
@@ -1127,8 +1128,8 @@ async def _queue_run(
         "branch": _short(repo.get("branch")),
     }
     try:
-        async with conn.transaction():
-            run_id = (await (await conn.execute(INSERT_RUN, params)).fetchone())[0]
+        async with conn.begin_nested():
+            run_id = (await (await legacy(conn, INSERT_RUN, params)).fetchone())[0]
     except psycopg.errors.UniqueViolation:  # another dispatch of the step got in first
         raise HTTPException(409, f"step {key} of plan {held.plan_id} has an active run already") from None
     except psycopg.errors.CheckViolation:
@@ -1161,7 +1162,7 @@ def _no_plan_run(activity: Activity, plan_id: str) -> None:
 async def dispatch(request: Request, project: ProjectName, body: Dispatch, user: CurrentUser) -> list[Run]:
     """Queue a run of each step named, all of them or none; each one goes to a worker of the caller."""
     keys = list(dict.fromkeys(str(step) for step in body.steps))
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
         _dispatcher(access)
         held = await plan_routes._visible(conn, access, body.plan_id, None)
@@ -1254,7 +1255,7 @@ def _plan_run_repos(held) -> list[dict]:
 )
 async def dispatch_plan(request: Request, project: ProjectName, body: PlanRunDispatch, user: CurrentUser) -> Run:
     """Queue a plan run: one run, on a worker of the caller's, that does every step of the plan not done yet."""
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
         _dispatcher(access)
         held = await plan_routes._visible(conn, access, body.plan_id, None)
@@ -1288,8 +1289,8 @@ async def dispatch_plan(request: Request, project: ProjectName, body: PlanRunDis
             "repos": Jsonb(repos),
         }
         try:
-            async with conn.transaction():
-                run_id = (await (await conn.execute(INSERT_PLAN_RUN, params)).fetchone())[0]
+            async with conn.begin_nested():
+                run_id = (await (await legacy(conn, INSERT_PLAN_RUN, params)).fetchone())[0]
         except psycopg.errors.UniqueViolation:  # another plan run of the plan got in first
             busy = f"plan {held.plan_id} has an active plan run already; nothing was dispatched"
             raise HTTPException(409, busy) from None
@@ -1324,7 +1325,7 @@ async def _owned_run(conn, user: Principal, project: str, run_id: int, action: s
     ``user`` cannot see, 403 for another member's."""
     access = await project_access(conn, user, project)
     plan_routes._reader(access)
-    row = await (await conn.execute(OWNED_RUN, (run_id, access.project_id))).fetchone()
+    row = await (await legacy(conn, OWNED_RUN, (run_id, access.project_id))).fetchone()
     if row is None:
         raise HTTPException(404, f"project {project} has no run {run_id}: see GET /v1/projects/{project}/runs")
     if row[0] != user.user_id:
@@ -1360,7 +1361,7 @@ async def web_only_steering(conn, user: Principal, run_id: int, doing: str, inst
     ``undone``."""
     if user.kind == WEB:
         return
-    row = await (await conn.execute(WEB_ONLY_WORKER, (run_id,))).fetchone()
+    row = await (await legacy(conn, WEB_ONLY_WORKER, (run_id,))).fetchone()
     if row is not None:
         name, relation = row
         raise HTTPException(
@@ -1379,7 +1380,7 @@ async def _audit_run(conn, user: Principal, access: ProjectAccess, action: str, 
 @router.post("/{project}/runs/{run_id}/cancel", response_model=Run, responses=REFUSALS)
 async def cancel(request: Request, project: ProjectName, run_id: RunId, user: CurrentUser) -> Run:
     """Cancel a queued run or one in review at once; ask the worker holding a held run to stop it."""
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         access, row = await _owned_run(conn, user, project, run_id, "cancel")
         state, plan_id, key, cancel_requested_at = row[2], row[3], row[4], row[5]
         if state in runs.TERMINAL_STATES:
@@ -1387,7 +1388,7 @@ async def cancel(request: Request, project: ProjectName, run_id: RunId, user: Cu
         if state in runs.HELD_STATES:
             if cancel_requested_at is not None:  # asked already: nothing changes, nothing is audited
                 return await run_view(conn, run_id)
-            await conn.execute("UPDATE runs SET cancel_requested_at = now() WHERE id = %s", (run_id,))
+            await legacy(conn, "UPDATE runs SET cancel_requested_at = now() WHERE id = %s", (run_id,))
         else:
             reason = f"{user.login} cancelled it"
             await move_run(conn, run_id, state, "cancelled", "owner", reason=reason, token_id=user.token_id)
@@ -1409,7 +1410,7 @@ async def _ask(request: Request, project: str, run_id: int, user: Principal, act
     """Ask the worker holding run ``run_id`` for a takeover or a handback, which its next heartbeat says."""
     takeover = action == audit.RUN_TAKEOVER
     allowed, verb = (runs.TAKEOVER_STATES, "take over") if takeover else (runs.HANDBACK_STATES, "hand back")
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         access, row = await _owned_run(conn, user, project, run_id, verb)
         state, plan_id, key = row[2], row[3], row[4]
         if state not in allowed:
@@ -1420,7 +1421,7 @@ async def _ask(request: Request, project: str, run_id: int, user: Principal, act
                 why = "it runs headless" if state in runs.TAKEOVER_STATES else "no agent of it runs now"
                 needs = "interactive"
             raise HTTPException(409, f"run {run_id} is {state}, so {why}: one may {verb} a run that is {needs}")
-        asked = await (await conn.execute(ASK_TAKEOVER if takeover else ASK_HANDBACK, (run_id,))).fetchone()
+        asked = await (await legacy(conn, ASK_TAKEOVER if takeover else ASK_HANDBACK, (run_id,))).fetchone()
         if asked is not None:  # an ask repeated while open changes nothing and is not audited again
             await _audit_run(conn, user, access, action, _run_target(project, plan_id, key, run_id))
         view = await run_view(conn, run_id)
@@ -1445,7 +1446,7 @@ async def handback(request: Request, project: ProjectName, run_id: RunId, user: 
 @router.post("/{project}/runs/{run_id}/approve", response_model=Run, responses=REFUSALS)
 async def approve(request: Request, project: ProjectName, run_id: RunId, user: CurrentUser) -> Run:
     """Approve a run in review: the run is done, and so is its step."""
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         access, row = await _owned_run(conn, user, project, run_id, "approve")
         _dispatcher(access)
         state, plan_id, key = row[2], row[3], row[4]
@@ -1462,7 +1463,7 @@ async def approve(request: Request, project: ProjectName, run_id: RunId, user: C
 async def rerun(request: Request, project: ProjectName, run_id: RunId, user: CurrentUser) -> Run:
     """Queue the step of a run that ended again, with the same runtime, model, mode, approval, timeout and worker, at
     the plan's current revision."""
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         access, row = await _owned_run(conn, user, project, run_id, "rerun")
         _dispatcher(access)
         _, _, state, plan_id, key, _, runtime, mode, approval, timeout_s, pinned, kind, model = row
@@ -1556,7 +1557,7 @@ SELECT id, owner_id, name, slots, runtimes, checkouts, drained_at, revoked_at, a
 
 async def _worker_of(conn, user: Principal):
     """The row of the worker whose token made the request, locked; 403 when there is none."""
-    row = await (await conn.execute(WORKER_OF_TOKEN, (user.token_id,))).fetchone()
+    row = await (await legacy(conn, WORKER_OF_TOKEN, (user.token_id,))).fetchone()
     if row is None or row[7] is not None:
         raise HTTPException(403, "this worker token belongs to no live worker: join the machine again")
     return row
@@ -1610,25 +1611,25 @@ def lease_of(request: Request) -> timedelta:
 
 
 async def _try_claim(
-    pool, user: Principal, lease: timedelta, gone: Callable[[], Awaitable[bool]] | None = None
+    engine, user: Principal, lease: timedelta, gone: Callable[[], Awaitable[bool]] | None = None
 ) -> RunSpec | None:
     """Lease the run the worker of ``user`` may take now, if any, for ``lease`` (see the module's docstring). When
     ``gone`` says the worker hung up once the run is leased, raise ClaimAbandoned before the transaction commits,
     which rolls the lease back."""
-    async with pool.connection() as conn:
+    async with engine.begin() as conn:
         worker_id, owner_id, name, slots, reported, checkouts, drained_at, _, version, dispatch_from = await _worker_of(
             conn, user
         )
         if drained_at is not None:
             return None
-        held = (await (await conn.execute(HELD_COUNT, (worker_id, list(runs.HELD_STATES)))).fetchone())[0]
+        held = (await (await legacy(conn, HELD_COUNT, (worker_id, list(runs.HELD_STATES)))).fetchone())[0]
         if held >= slots:
             return None
         runtimes = [runtime for runtime in runs.RUNTIMES if available((reported or {}).get(runtime))]
         if not runtimes:
             return None
         params = {"worker": worker_id, "owner": owner_id, "writers": WRITER_ROLES}
-        served = dict(await (await conn.execute(SERVED, params)).fetchall())
+        served = dict(await (await legacy(conn, SERVED, params)).fetchall())
         by_name = {project: project_id for project_id, project in served.items()}
         pairs = []
         for checkout in checkouts or {}:
@@ -1645,7 +1646,7 @@ async def _try_claim(
             "plan_runs": runs.takes_plan_runs(version),
             "dispatch_from": dispatch_from,
         }
-        row = await (await conn.execute(CLAIMABLE, params)).fetchone()
+        row = await (await legacy(conn, CLAIMABLE, params)).fetchone()
         if row is None:
             return None
         run_id, asked = row
@@ -1670,12 +1671,12 @@ async def _try_claim(
 
 async def _run_spec(conn, run_id: int) -> RunSpec:
     view = await run_view(conn, run_id)
-    project_id = (await (await conn.execute("SELECT project_id FROM runs WHERE id = %s", (run_id,))).fetchone())[0]
-    row = await (await conn.execute(REVISION_BODY, (project_id, view.plan_id, view.plan_revision))).fetchone()
+    project_id = (await (await legacy(conn, "SELECT project_id FROM runs WHERE id = %s", (run_id,))).fetchone())[0]
+    row = await (await legacy(conn, REVISION_BODY, (project_id, view.plan_id, view.plan_revision))).fetchone()
     plan = row[0] if row else {"id": view.plan_id, "steps": []}
     copy = None
     if view.kind == "plan":
-        current = await (await conn.execute(CURRENT_PLAN, (project_id, view.plan_id))).fetchone()
+        current = await (await legacy(conn, CURRENT_PLAN, (project_id, view.plan_id))).fetchone()
         body, revision = current if current else (plan, view.plan_revision)  # the plan gone: as dispatched
         copy = PlanCopy(body=body, revision=revision)
         prompt = runs.build_plan_prompt(copy.body, [repo.model_dump() for repo in view.repos or []])
@@ -1722,9 +1723,9 @@ async def claim(request: Request, user: CurrentUser, body: ClaimRequest | None =
     wait = (body or ClaimRequest()).wait_s
     wakeups: RunWakeups = request.app.state.run_wakeups
     wakeups.start()
-    pool = request.app.state.pool
+    engine = request.app.state.engine
     lease = lease_of(request)
-    async with pool.connection() as conn:
+    async with engine.begin() as conn:
         worker_id = (await _worker_of(conn, user))[0]
     loop = asyncio.get_running_loop()
     deadline = loop.time() + wait
@@ -1736,7 +1737,7 @@ async def claim(request: Request, user: CurrentUser, body: ClaimRequest | None =
                 return Claim(run=None)
             seen = wakeups.generation
             try:
-                spec = await _try_claim(pool, user, lease, request.is_disconnected)
+                spec = await _try_claim(engine, user, lease, request.is_disconnected)
             except ClaimAbandoned as exc:
                 log.info("claim abandoned; the run stays queued", extra={"run_id": exc.run_id, "worker_id": worker_id})
                 wakeups.wake()  # the run is queued again: the other claims waiting here look at it
@@ -1781,9 +1782,10 @@ async def heartbeat(request: Request, body: HeartbeatRequest, user: CurrentUser)
     """Record the machine, extend the leases of the runs it holds, and say what it should do with them."""
     reported = list(dict.fromkeys(body.runs))
     runtimes, checkouts = body.stored()
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         worker_id, _, _, _, _, _, drained_at, *_ = await _worker_of(conn, user)
-        await conn.execute(
+        await legacy(
+            conn,
             RECORD_HEARTBEAT,
             {
                 "worker": worker_id,
@@ -1800,12 +1802,12 @@ async def heartbeat(request: Request, body: HeartbeatRequest, user: CurrentUser)
             "held": list(runs.HELD_STATES),
             "clock": list(runs.CLOCK_STATES),
         }
-        extended = {row[0]: row[1:] for row in await (await conn.execute(EXTEND, params)).fetchall()}
+        extended = {row[0]: row[1:] for row in await (await legacy(conn, EXTEND, params)).fetchall()}
         others = [run_id for run_id in reported if run_id not in extended]
-        parked = dict(await (await conn.execute(PARKED_HERE, (worker_id, others))).fetchall()) if others else {}
+        parked = dict(await (await legacy(conn, PARKED_HERE, (worker_id, others))).fetchall()) if others else {}
         known = [*extended, *parked]
-        waiting = dict(await (await conn.execute(INBOX, (list(extended),))).fetchall()) if extended else {}
-        open_decisions = dict(await (await conn.execute(OPEN_DECISIONS, (known,))).fetchall()) if known else {}
+        waiting = dict(await (await legacy(conn, INBOX, (list(extended),))).fetchall()) if extended else {}
+        open_decisions = dict(await (await legacy(conn, OPEN_DECISIONS, (known,))).fetchall()) if known else {}
     terminals = request.app.state.terminals
     controls = []
     for run_id in reported:
@@ -1871,9 +1873,9 @@ def _reported_columns(body: StateReport) -> dict:
 @worker_router.post("/runs/{run_id}/state", response_model=Run, responses=REFUSALS)
 async def report_state(request: Request, run_id: RunId, body: StateReport, user: CurrentUser) -> Run:
     """Move a run this worker holds, as the transition table lets a worker."""
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         worker_id, _, name, *_ = await _worker_of(conn, user)
-        row = await (await conn.execute(REPORTED_RUN, (run_id,))).fetchone()
+        row = await (await legacy(conn, REPORTED_RUN, (run_id,))).fetchone()
         if row is None or row[2] != worker_id:
             raise HTTPException(404, NOT_HELD.format(id=run_id))
         state, approval, _, cancel_requested_at, kind = row
@@ -1882,7 +1884,7 @@ async def report_state(request: Request, run_id: RunId, body: StateReport, user:
             values = {
                 name: Jsonb(value) if isinstance(value, (dict, list)) else value for name, value in columns.items()
             }
-            await conn.execute(SAME_STATE, {"id": run_id, **{name: values.get(name) for name in SAME_COLUMNS}})
+            await legacy(conn, SAME_STATE, {"id": run_id, **{name: values.get(name) for name in SAME_COLUMNS}})
             return await run_view(conn, run_id)
         if body.from_state is not None and body.from_state != state:
             raise HTTPException(409, f"run {run_id} is {state}, not {body.from_state}")
@@ -1893,7 +1895,7 @@ async def report_state(request: Request, run_id: RunId, body: StateReport, user:
         except runs.TransitionRefused as exc:
             raise HTTPException(409, f"run {run_id}: {exc}") from None
         _check_verdict(run_id, kind, approval, body)
-        if body.state == "waiting" and not (await (await conn.execute(WAITS_FOR, {"id": run_id})).fetchone())[0]:
+        if body.state == "waiting" and not (await (await legacy(conn, WAITS_FOR, {"id": run_id})).fetchone())[0]:
             raise HTTPException(
                 409,
                 f"run {run_id} has no open decision and no answer waiting for the agent: a run waits only for the "
@@ -1934,7 +1936,7 @@ async def report_state(request: Request, run_id: RunId, body: StateReport, user:
         from evo_agents.hub.server import credentials
 
         app_state = request.app.state
-        await credentials.revoke_tokens(app_state.pool, app_state.sealer, app_state.github_app, run_id=run_id)
+        await credentials.revoke_tokens(app_state.engine, app_state.sealer, app_state.github_app, run_id=run_id)
     return view
 
 
@@ -1974,7 +1976,7 @@ async def _held_plan_run(conn, user: Principal, run_id: int, *, lock: bool = Fal
     404 for any other run, a run of one step included."""
     worker_id, _, name, *_ = await _worker_of(conn, user)
     statement = HELD_PLAN_RUN + ("   FOR UPDATE OF r" if lock else "")
-    row = await (await conn.execute(statement, (run_id,))).fetchone()
+    row = await (await legacy(conn, statement, (run_id,))).fetchone()
     if row is None or row[1] != worker_id or row[0] not in runs.HELD_STATES:
         raise HTTPException(404, NOT_HELD.format(id=run_id))
     if row[2] != "plan":
@@ -1997,7 +1999,7 @@ async def _dispatcher_access(conn, row, user: Principal) -> ProjectAccess:
 @worker_router.get("/runs/{run_id}/plan", response_model=plan_routes.Plan, responses=REFUSALS)
 async def read_run_plan(request: Request, run_id: RunId, user: CurrentUser):
     """The plan of a plan run this worker holds, as the hub holds it now, read as the member who dispatched the run."""
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         _, row = await _held_plan_run(conn, user, run_id)
         access = await _dispatcher_access(conn, row, user)
         held = await plan_routes._visible(conn, access, row[5], None)
@@ -2047,11 +2049,11 @@ def _step_status(plan: dict, key: str) -> str | None:
 )
 async def report_step(request: Request, run_id: RunId, key: StepKey, body: StepReport, user: CurrentUser):
     """Write a step of the plan of a plan run this worker holds, as the member who dispatched the run."""
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         _, row = await _held_plan_run(conn, user, run_id, lock=True)
         _, _, _, project_id, project, plan_id, dispatcher_id, _, repos = row
         _check_step_report(run_id, key, body)
-        current = await (await conn.execute(CURRENT_PLAN, (project_id, plan_id))).fetchone()
+        current = await (await legacy(conn, CURRENT_PLAN, (project_id, plan_id))).fetchone()
         if current is None:
             raise HTTPException(404, f"plan {plan_id} of run {run_id} is not on the hub any more")
         plan = current[0]
@@ -2099,7 +2101,7 @@ async def report_step(request: Request, run_id: RunId, key: StepKey, body: StepR
                 target=target,
                 project_id=project_id,
             )
-        after = await (await conn.execute(CURRENT_PLAN, (project_id, plan_id))).fetchone()
+        after = await (await legacy(conn, CURRENT_PLAN, (project_id, plan_id))).fetchone()
     log.info(
         "plan run step reported",
         extra={"run_id": run_id, "step": key, "status": body.status, "written": revision is not None},

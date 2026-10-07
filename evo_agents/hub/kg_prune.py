@@ -27,6 +27,7 @@ from dataclasses import asdict, dataclass, field
 from evo_agents.hub import blob_gc
 from evo_agents.hub.blobs import BlobStore
 from evo_agents.hub.config import DEFAULT_KG_KEEP_ARTIFACTS, MAX_KG_KEEP_ARTIFACTS
+from evo_agents.hub.db import legacy
 from evo_agents.hub.kg_build import ARTIFACT_KIND
 
 log = logging.getLogger(__name__)
@@ -113,11 +114,11 @@ async def _drop(
 
     project_id = None
     if project is not None:
-        row = await (await conn.execute("SELECT id FROM projects WHERE name = %s", (project,))).fetchone()
+        row = await (await legacy(conn, "SELECT id FROM projects WHERE name = %s", (project,))).fetchone()
         if row is None:
             raise UnknownProject(f"project {project} is not registered on this hub")
         project_id = row[0]
-    rows = await (await conn.execute(PLAN, {"project_id": project_id})).fetchall()
+    rows = await (await legacy(conn, PLAN, {"project_id": project_id})).fetchall()
     found: dict[str, ProjectPruned] = {}
     doomed: dict[tuple[int, str], dict[str, int]] = {}  # (project id, name) -> {sha256: size}
     for name, pid, sha256, size, rank in rows:
@@ -133,9 +134,9 @@ async def _drop(
         found[project] = ProjectPruned(project)
     left: dict[str, tuple[int, str]] = {}
     for (pid, name), hashes in doomed.items():
-        cursor = await conn.execute(DROP_FROM_BUILDS, (pid, sorted(hashes)))
+        cursor = await legacy(conn, DROP_FROM_BUILDS, (pid, sorted(hashes)))
         found[name].builds = cursor.rowcount
-        await conn.execute(DROP_BLOBS, (pid, sorted(hashes)))
+        await legacy(conn, DROP_BLOBS, (pid, sorted(hashes)))
         left.update({sha: (size, ARTIFACT_KIND) for sha, size in hashes.items()})
         if audit:
             await audit_trail.record(
@@ -151,7 +152,7 @@ async def _drop(
 
 
 async def prune(
-    pool,
+    engine,
     store: BlobStore,
     keep: int = DEFAULT_KEEP,
     project: str | None = None,
@@ -165,18 +166,19 @@ async def prune(
     itself. Raises ValueError for ``keep`` below 1, UnknownProject, and BlobStoreUnavailable when the bucket does
     not delete: the builds are marked then, and the objects wait for the next run."""
     check_keep(keep)
-    async with pool.connection() as conn:
-        async with conn.transaction(force_rollback=dry_run):
-            await blob_gc.lock_exclusive(conn)
-            projects = await _drop(conn, keep, project, actor_id, token_id, audit=not dry_run)
-            waiting, waiting_bytes = await blob_gc.pending(conn)
+    async with engine.connect() as conn, conn.begin() as transaction:
+        await blob_gc.lock_exclusive(conn)
+        projects = await _drop(conn, keep, project, actor_id, token_id, audit=not dry_run)
+        waiting, waiting_bytes = await blob_gc.pending(conn)
+        if dry_run:  # what a run would do, written nowhere
+            await transaction.rollback()
     report = PruneReport(dry_run, keep, projects)
     if dry_run:
         report.deleted, report.deleted_bytes = waiting, waiting_bytes
         return report
-    deleted = await blob_gc.delete_pending(pool, store)
+    deleted = await blob_gc.delete_pending(engine, store)
     report.deleted, report.deleted_bytes = deleted.objects, deleted.bytes
-    async with pool.connection() as conn:
+    async with engine.begin() as conn:
         report.pending = (await blob_gc.pending(conn))[0]
     if any(p.pruned for p in projects):
         log.info(

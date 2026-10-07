@@ -31,7 +31,7 @@ from procrastinate.schema import SchemaManager
 
 from evo_agents.hub import jobs
 from evo_agents.hub.config import HubConfig
-from evo_agents.hub.db import open_pool
+from evo_agents.hub.db import make_engine, open_pool
 from evo_agents.hub.jobs import JobQueue
 from evo_agents.hub.migrate import alembic_config, migrate
 from evo_agents.hub.server.app import create_app
@@ -260,7 +260,7 @@ def test_kg_jobs_of_one_project_take_its_lock_and_queue_at_most_one(hub_db):
         first = await job_queue.defer_kg(jobs.PING, "alpha", note="first")
         again = await job_queue.defer_kg(jobs.PING, "alpha", note="again")
         other = await job_queue.defer_kg(jobs.PING, "beta")
-        async with pool.connection() as conn:  # a job deferred in a transaction that rolls back never exists
+        async with make_engine(pool).connect() as conn:  # a job deferred in a transaction that rolls back never exists
             await job_queue.defer_kg(jobs.PING, "gamma", connection=conn)
             await conn.rollback()
         return first, again, other

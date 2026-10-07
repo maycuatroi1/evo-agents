@@ -56,6 +56,7 @@ from psycopg.types.json import Jsonb
 from pydantic import BaseModel, Field, model_validator
 
 from evo_agents.hub.access import has_role
+from evo_agents.hub.db import legacy
 from evo_agents.hub.memory import (
     AGENT_SINK,
     HARNESS,
@@ -337,7 +338,7 @@ async def _accesses(conn, user: Principal, project: str | None) -> dict[str, Pro
     if project is not None:
         access = await project_access(conn, user, project)
         return {project: access} if access.role else {}
-    names = [row[0] for row in await (await conn.execute(GRANTED, (user.user_id,))).fetchall()]
+    names = [row[0] for row in await (await legacy(conn, GRANTED, (user.user_id,))).fetchall()]
     found = {name: await _access(conn, user, name) for name in names if user.reaches(name)}
     return {name: access for name, access in found.items() if access is not None and access.role}
 
@@ -396,7 +397,7 @@ async def list_memories(
         raise HTTPException(422, "a personal memory has no project: leave out project or scope")
     after_at, after_id = _after(cursor)
     sink = _through(user, sink)
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         accesses = await _accesses(conn, user, project)
         if project is not None and not accesses:
             return Page(items=[], next_cursor=None)  # a hub admin without a grant
@@ -404,7 +405,7 @@ async def list_memories(
         items: list[Memory] = []
         budget, scanned, following = PAGE_BYTES, 0, None
         while True:
-            rows = await (await conn.execute(LIST, {**params, "after_at": after_at, "after_id": after_id})).fetchall()
+            rows = await (await legacy(conn, LIST, {**params, "after_at": after_at, "after_id": after_id})).fetchall()
             for values in rows:
                 row = _row(values)
                 scanned += 1
@@ -436,7 +437,7 @@ async def search_memories(
     if "\x00" in q:
         raise HTTPException(422, "q holds a NUL character")
     sink = _through(user, sink)
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         accesses = await _accesses(conn, user, project)
         if project is not None and not accesses:
             return Results(items=[])  # a hub admin without a grant
@@ -444,7 +445,7 @@ async def search_memories(
         found: list[Found] = []
         budget = PAGE_BYTES
         for offset in range(0, SCAN_ROWS, BATCH):
-            rows = await (await conn.execute(SEARCH, {**params, "offset": offset})).fetchall()
+            rows = await (await legacy(conn, SEARCH, {**params, "offset": offset})).fetchall()
             for values in rows:
                 row = _row(values)
                 if _visible(row, user, accesses, sink):
@@ -462,7 +463,7 @@ def _not_found(memory_id: int) -> str:
 
 
 async def _load(conn, memory_id: int, *, lock: bool = False) -> Row | None:
-    found = await (await conn.execute(ONE + (" FOR UPDATE OF m" if lock else ""), (memory_id,))).fetchone()
+    found = await (await legacy(conn, ONE + (" FOR UPDATE OF m" if lock else ""), (memory_id,))).fetchone()
     return _row(found) if found else None
 
 
@@ -483,7 +484,7 @@ MemoryId = Annotated[int, Path(ge=1, le=MAX_ID)]
 
 @router.get("/{memory_id}", response_model=Memory, responses={404: {"model": ErrorBody}})
 async def show(request: Request, memory_id: MemoryId, user: CurrentUser, sink: ReadSink = None) -> Memory:
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         row, _ = await _readable(conn, user, memory_id, _through(user, sink))
     return row.memory
 
@@ -503,7 +504,7 @@ def _lock_key(body: MemoryIn, user: Principal, project_id: int | None) -> int:
 
 async def _written(conn, user: Principal, memory_id: int, action: str) -> Memory:
     """After a change: its revision row, its audit row, and the memory as it now is."""
-    await conn.execute(REVISION, (user.user_id, memory_id))
+    await legacy(conn, REVISION, (user.user_id, memory_id))
     await record(conn, actor_id=user.user_id, token_id=user.token_id, action=action, target=f"memory:{memory_id}")
     return (await _load(conn, memory_id)).memory
 
@@ -514,7 +515,7 @@ def _logged(memory: Memory, user: Principal, outcome: str) -> None:
 
 
 async def _has_repo(conn, project_id: int, name: str) -> bool:
-    found = await conn.execute("SELECT 1 FROM project_repos WHERE project_id = %s AND name = %s", (project_id, name))
+    found = await legacy(conn, "SELECT 1 FROM project_repos WHERE project_id = %s AND name = %s", (project_id, name))
     return await found.fetchone() is not None
 
 
@@ -527,7 +528,7 @@ async def put(request: Request, body: MemoryIn, user: CurrentUser, sink: Sink = 
             f"the agent of run {user.scope.run_id} writes memories of project {user.scope.project} only; a personal "
             "memory is its owner's",
         )
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         access = None
         if body.scope == "project":
             access = await project_access(conn, user, body.project)
@@ -540,7 +541,7 @@ async def put(request: Request, body: MemoryIn, user: CurrentUser, sink: Sink = 
                     "list --json`",
                 )
         project_id = access.project_id if access else None
-        await conn.execute("SELECT pg_advisory_xact_lock(%s, %s)", (LOCK_CLASS, _lock_key(body, user, project_id)))
+        await legacy(conn, "SELECT pg_advisory_xact_lock(%s, %s)", (LOCK_CLASS, _lock_key(body, user, project_id)))
         key = {
             "scope": body.scope,
             "project_id": project_id,
@@ -549,7 +550,7 @@ async def put(request: Request, body: MemoryIn, user: CurrentUser, sink: Sink = 
             "shared": body.scope == "project" and body.type in SHARED_TYPES,
             "user": user.user_id,
         }
-        found = await (await conn.execute(KEY, key)).fetchone()
+        found = await (await legacy(conn, KEY, key)).fetchone()
         current = _row(found) if found else None
         accesses = {body.project: access} if access else {}
         if current is not None and not _visible(current, user, accesses, sink):
@@ -588,12 +589,12 @@ async def put(request: Request, body: MemoryIn, user: CurrentUser, sink: Sink = 
         try:
             if held is None:
                 values = (body.scope, project_id, body.location, body.name, body.type, user.user_id)
-                inserted = await conn.execute(INSERT, (*values, Jsonb(label), body.body, user.user_id))
+                inserted = await legacy(conn, INSERT, (*values, Jsonb(label), body.body, user.user_id))
                 memory_id = (await inserted.fetchone())[0]
             else:
                 memory_id = held.id
                 update = (body.type, Jsonb(label), body.body, False, user.user_id, memory_id)
-                await conn.execute(UPDATE, update)
+                await legacy(conn, UPDATE, update)
             memory = await _written(conn, user, memory_id, PUT)
         except psycopg.errors.IntegrityError as exc:  # the checks above match the schema's; this is a backstop
             log.warning("memory write refused by the schema", extra={"constraint": exc.diag.constraint_name})
@@ -613,7 +614,7 @@ async def delete(
 ) -> Written | JSONResponse:
     """Leave a tombstone of memory ``memory_id``: deleted, no body, the next revision. Deleting a tombstone changes
     nothing."""
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         row, access = await _readable(conn, user, memory_id, sink, lock=True)
         held = row.memory
         if access is not None:
@@ -624,7 +625,7 @@ async def delete(
             return _conflict(
                 request, f"{held.name} changed on the hub: it is at revision {held.revision}, not {if_revision}", held
             )
-        await conn.execute(UPDATE, (held.type, Jsonb(held.label), "", True, user.user_id, memory_id))
+        await legacy(conn, UPDATE, (held.type, Jsonb(held.label), "", True, user.user_id, memory_id))
         memory = await _written(conn, user, memory_id, DELETE)
     _logged(memory, user, "deleted")
     return Written(**memory.model_dump(), created=False, changed=True)
@@ -702,12 +703,12 @@ async def revisions(
     sink = _through(user, sink)
     items: list[RevisionSummary] = []
     following = None
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         row, access = await _readable(conn, user, memory_id, sink)
         params = {"memory_id": memory_id, "before": before, "batch": BATCH}
         oldest_seen = False
         for _ in range(0, SCAN_ROWS, BATCH):
-            found = await (await conn.execute(REVISIONS, params)).fetchall()
+            found = await (await legacy(conn, REVISIONS, params)).fetchall()
             for values in found:
                 params["before"] = values[0]
                 summary = _revision_visible(row, values, user, access, sink)
@@ -735,9 +736,9 @@ async def show_revision(
 ) -> MemoryRevision:
     """One revision of a memory with its body; 404 when it does not exist or the caller could not read it."""
     sink = _through(user, sink)
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         row, access = await _readable(conn, user, memory_id, sink)
-        values = await (await conn.execute(ONE_REVISION, (memory_id, revision))).fetchone()
+        values = await (await legacy(conn, ONE_REVISION, (memory_id, revision))).fetchone()
     summary = None if values is None else _revision_visible(row, values, user, access, sink)
     if summary is None:
         raise HTTPException(404, f"no revision {revision} of memory {memory_id} that you can see on this hub")

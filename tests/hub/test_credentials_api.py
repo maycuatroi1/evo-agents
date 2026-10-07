@@ -240,7 +240,7 @@ def audit_rows(db, action: str) -> list[tuple]:
 
 def reap(client) -> dict:
     state = client.app.state
-    reaper = functools.partial(run_state.recover_runs, state.pool, sealer=state.sealer, github_app=state.github_app)
+    reaper = functools.partial(run_state.recover_runs, state.engine, sealer=state.sealer, github_app=state.github_app)
     return client.portal.call(reaper)
 
 
@@ -641,7 +641,7 @@ def test_the_pruning_drops_the_sealed_tokens_past_their_end(client, hub, github,
         hub_db,
         "UPDATE credential_leases SET issued_at = now() - interval '2 hours', expires_at = now() - interval '1 hour'",
     )
-    report_ = client.portal.call(run_state.prune_run_events, client.app.state.pool, 30)
+    report_ = client.portal.call(run_state.prune_run_events, client.app.state.engine, 30)
     assert report_ == {"deleted": 0, "days": 30, "tokens_dropped": 1}
     assert [(row[4], row[5]) for row in leases_of(hub_db, run_id)] == [(False, False)]
     assert report(client, worker, run_id, "failed", error="the agent gave up").status_code == 200

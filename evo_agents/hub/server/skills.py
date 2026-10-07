@@ -42,6 +42,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from evo_agents.hub.access import has_role
 from evo_agents.hub.blobs import BLOB_PREFIX, GET_TTL, BlobStoreUnavailable, blob_key
+from evo_agents.hub.db import legacy
 from evo_agents.hub.server.admin import PROJECT_NAME, ProjectName
 from evo_agents.hub.server.audit import record
 from evo_agents.hub.server.blobs import GLOBAL, blob_store
@@ -166,7 +167,8 @@ async def _readable(conn, user: Principal, project: str | None) -> Place:
         return GLOBAL_PLACE
     if not user.reaches(project):  # the agent of a run reads the skills of the run's project alone
         raise _no_grant(project)
-    cursor = await conn.execute(
+    cursor = await legacy(
+        conn,
         "SELECT p.id FROM projects p JOIN grants g ON g.project_id = p.id AND g.user_id = %s WHERE p.name = %s",
         (user.user_id, project),
     )
@@ -231,17 +233,17 @@ async def list_skills(
     caller has a grant on."""
     if project is not None and scope == "global":
         raise HTTPException(422, "a global skill belongs to no project: pass scope=project with a project, or neither")
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         if project is not None:
             projects = [(await _readable(conn, user, project)).project_id]
         else:
-            cursor = await conn.execute(GRANTED, {"user": user.user_id, "only": user.run_project})
+            cursor = await legacy(conn, GRANTED, {"user": user.user_id, "only": user.run_project})
             projects = [row[0] for row in await cursor.fetchall()]
         wanted = {
             "global": scope in (None, "global") and project is None,
             "projects": projects if scope in (None, "project") else [],
         }
-        rows = await (await conn.execute(SKILLS, wanted)).fetchall()
+        rows = await (await legacy(conn, SKILLS, wanted)).fetchall()
     fields = Skill.model_fields
     return [Skill(**dict(zip(fields, row, strict=True))) for row in rows]
 
@@ -259,7 +261,7 @@ SELECT id, name, created_at FROM skills
 
 async def _find(conn, place: Place, name: str, *, lock: bool = False):
     """(id, name, created_at) of skill ``name`` in ``place``, matched ignoring case; None when there is none."""
-    cursor = await conn.execute(FIND + (" FOR UPDATE" if lock else ""), (place.scope, place.project_id, name))
+    cursor = await legacy(conn, FIND + (" FOR UPDATE" if lock else ""), (place.scope, place.project_id, name))
     return await cursor.fetchone()
 
 
@@ -269,12 +271,12 @@ def _not_found(place: Place, name: str) -> HTTPException:
 
 
 async def _history(request: Request, user: Principal, project: str | None, name: str) -> SkillHistory:
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         place = await _readable(conn, user, project)
         found = await _find(conn, place, name)
         if found is None:
             raise _not_found(place, name)
-        rows = await (await conn.execute(VERSIONS, (found[0],))).fetchall()
+        rows = await (await legacy(conn, VERSIONS, (found[0],))).fetchall()
     versions = [Version(**dict(zip(Version.model_fields, row, strict=True))) for row in rows]
     return SkillHistory(scope=place.scope, project=place.project, name=found[1], created_at=found[2], versions=versions)
 
@@ -308,7 +310,7 @@ VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
 async def _committed(conn, place: Place, body: PublishRequest) -> None:
     """422 unless the place's holder has committed the bundle with the declared size."""
     holder = GLOBAL if place.project is None else f"project {place.project}"
-    row = await (await conn.execute(COMMITTED, (place.project_id, body.sha256))).fetchone()
+    row = await (await legacy(conn, COMMITTED, (place.project_id, body.sha256))).fetchone()
     if row is None:
         raise HTTPException(
             422,
@@ -322,22 +324,22 @@ async def _committed(conn, place: Place, body: PublishRequest) -> None:
 
 
 async def _latest(conn, skill_id: int) -> Version:
-    cursor = await conn.execute(VERSIONS + " LIMIT 1", (skill_id,))
+    cursor = await legacy(conn, VERSIONS + " LIMIT 1", (skill_id,))
     return Version(**dict(zip(Version.model_fields, await cursor.fetchone(), strict=True)))
 
 
 async def _publish(request: Request, user: Principal, project: str | None, name: str, body: PublishRequest):
     name = _checked_name(name)
     store = blob_store(request)
-    pool = request.app.state.pool
-    async with pool.connection() as conn:
+    engine = request.app.state.engine
+    async with engine.begin() as conn:
         place = await _writable(conn, user, project)
         await _committed(conn, place, body)
         found = await _find(conn, place, name)
         if found is not None:
             if found[1] != name:
                 raise HTTPException(422, f"the {place.describe()} have {found[1]}, a name differing only in case")
-            latest = await (await conn.execute(LATEST, (found[0],))).fetchone()
+            latest = await (await legacy(conn, LATEST, (found[0],))).fetchone()
             if latest is not None and latest[1] == body.sha256:
                 return Published(
                     scope=place.scope,
@@ -360,18 +362,19 @@ async def _publish(request: Request, user: Principal, project: str | None, name:
         contents = read_bundle(bundle.getvalue(), name)
     except BundleError as exc:
         raise HTTPException(422, f"bundle {body.sha256} is not a bundle of skill {name}: {exc}") from None
-    async with pool.connection() as conn:
+    async with engine.begin() as conn:
         place = await _writable(conn, user, project)  # the grant may have changed while the bundle was read
         await _committed(conn, place, body)
-        cursor = await conn.execute(INSERT_SKILL, (place.scope, place.project_id, name, user.user_id))
+        cursor = await legacy(conn, INSERT_SKILL, (place.scope, place.project_id, name, user.user_id))
         await cursor.fetchone()
         skill_id, held, _ = await _find(conn, place, name, lock=True)  # the version numbers follow one at a time
         if held != name:
             raise HTTPException(422, f"the {place.describe()} have {held}, a name differing only in case")
-        latest = await (await conn.execute(LATEST, (skill_id,))).fetchone()
+        latest = await (await legacy(conn, LATEST, (skill_id,))).fetchone()
         created = latest is None or latest[1] != body.sha256
         if created:
-            await conn.execute(
+            await legacy(
+                conn,
                 INSERT_VERSION,
                 (
                     skill_id,
@@ -419,10 +422,10 @@ SELECT v.version, v.sha256, v.size FROM skill_versions v
 
 
 async def _bundle(request: Request, user: Principal, project: str | None, name: str, version: int | None):
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         place = await _readable(conn, user, project)
         found = await _find(conn, place, name)
-        row = None if found is None else await (await conn.execute(BUNDLE, (found[0], version, version))).fetchone()
+        row = None if found is None else await (await legacy(conn, BUNDLE, (found[0], version, version))).fetchone()
     if row is None:
         if found is not None and version is not None:
             raise HTTPException(404, f"{found[1]} has no version {version}")

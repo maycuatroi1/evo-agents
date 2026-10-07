@@ -52,6 +52,7 @@ from evo_agents.hub.blobs import (
     Upload,
     new_upload_id,
 )
+from evo_agents.hub.db import driver, legacy
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.admin import PROJECT_NAME
 from evo_agents.hub.server.errors import ErrorBody, error_response
@@ -192,7 +193,7 @@ async def issue_uploads(
     Raises the HTTPException of ``holder`` and the blob store."""
     store = blob_store(request)
     items = _distinct(items)
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         access = await holder(conn, user, project, "uploading")
         if access.project_id is None and any(item.kind not in GLOBAL_KINDS for item in items):
             raise HTTPException(
@@ -201,7 +202,8 @@ async def issue_uploads(
         refusal = _over_limit(request, items)
         if refusal is not None:
             return refusal
-        cursor = await conn.execute(
+        cursor = await legacy(
+            conn,
             "SELECT sha256 FROM blobs WHERE project_id IS NOT DISTINCT FROM %s AND sha256 = ANY(%s)",
             (access.project_id, [item.sha256 for item in items]),
         )
@@ -210,7 +212,7 @@ async def issue_uploads(
             Upload(new_upload_id(), item.sha256, item.size, item.kind) for item in items if item.sha256 not in present
         ]
         if needed:
-            async with conn.cursor() as cursor:
+            async with (await driver(conn)).cursor() as cursor:
                 await cursor.executemany(
                     INSERT_UPLOAD,
                     [(u.upload_id, access.project_id, u.sha256, u.size, u.kind, user.user_id) for u in needed],
@@ -277,11 +279,11 @@ async def commit_uploads(
     sealed and matches, before anything is published: it may read the sealed copies (``sealed_key``), and whatever it
     raises discards every upload of the request, rows and objects, and goes to the caller."""
     store = blob_store(request)
-    pool = request.app.state.pool
+    engine = request.app.state.engine
     ids = sorted(set(upload_ids))
-    async with pool.connection() as conn:
+    async with engine.begin() as conn:
         access = await holder(conn, user, project, "committing")
-        cursor = await conn.execute(PENDING, (ids, access.project_id, user.user_id, STALE_AFTER))
+        cursor = await legacy(conn, PENDING, (ids, access.project_id, user.user_id, STALE_AFTER))
         uploads = [Upload(*row) for row in await cursor.fetchall() if kinds is None or row[3] in kinds]
     unknown = sorted(set(ids) - {upload.upload_id for upload in uploads})
     if unknown:
@@ -300,8 +302,8 @@ async def commit_uploads(
         if v.problem
     ]
     if problems:
-        async with pool.connection() as conn:
-            await conn.execute("DELETE FROM blob_uploads WHERE upload_id = ANY(%s::uuid[])", (ids,))
+        async with engine.begin() as conn:
+            await legacy(conn, "DELETE FROM blob_uploads WHERE upload_id = ANY(%s::uuid[])", (ids,))
         await _discard(store, ids)
         log.warning(
             "blob commit refused: uploads do not match",
@@ -314,20 +316,20 @@ async def commit_uploads(
         except BlobStoreUnavailable:
             raise HTTPException(503, UNAVAILABLE) from None  # the uploads stay, so the same commit can be sent again
         except Exception:
-            async with pool.connection() as conn:
-                await conn.execute("DELETE FROM blob_uploads WHERE upload_id = ANY(%s::uuid[])", (ids,))
+            async with engine.begin() as conn:
+                await legacy(conn, "DELETE FROM blob_uploads WHERE upload_id = ANY(%s::uuid[])", (ids,))
             await _discard(store, ids)
             raise
-    async with pool.connection() as conn:  # the blobs the hub records already: only those are looked for first
-        cursor = await conn.execute(
-            "SELECT DISTINCT sha256 FROM blobs WHERE sha256 = ANY(%s)", ([upload.sha256 for upload in uploads],)
+    async with engine.begin() as conn:  # the blobs the hub records already: only those are looked for first
+        cursor = await legacy(
+            conn, "SELECT DISTINCT sha256 FROM blobs WHERE sha256 = ANY(%s)", ([upload.sha256 for upload in uploads],)
         )
         held = frozenset(row[0] for row in await cursor.fetchall())
     try:
         written = await asyncio.to_thread(store.publish_all, uploads, held)
     except BlobStoreUnavailable:
         raise HTTPException(503, UNAVAILABLE) from None
-    async with pool.connection() as conn:
+    async with engine.begin() as conn:
         access = await holder(conn, user, project, "committing")  # the grant may have changed while the bytes were read
         blobs = list({upload.sha256: upload for upload in reversed(uploads)}.values())  # the first upload of a hash
         # A blob found held above may have lost its object to a deletion since (evo_agents.hub.blob_gc): copy those
@@ -339,7 +341,8 @@ async def commit_uploads(
                 await asyncio.to_thread(store.publish_all, [b for b in blobs if b.sha256 in revived])
             except BlobStoreUnavailable:
                 raise HTTPException(503, UNAVAILABLE) from None
-        cursor = await conn.execute(
+        cursor = await legacy(
+            conn,
             INSERT_BLOBS,
             (
                 access.project_id,
@@ -350,7 +353,7 @@ async def commit_uploads(
             ),
         )
         added = len(await cursor.fetchall())
-        await conn.execute("DELETE FROM blob_uploads WHERE upload_id = ANY(%s::uuid[])", (ids,))
+        await legacy(conn, "DELETE FROM blob_uploads WHERE upload_id = ANY(%s::uuid[])", (ids,))
         if added:
             await audit.record(
                 conn, actor_id=user.user_id, token_id=user.token_id, action=audit.BLOB_COMMIT, target=access.name

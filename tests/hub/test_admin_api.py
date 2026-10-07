@@ -15,12 +15,13 @@ from tests.hub import live, pg
 if not pg.DSN:
     pytest.skip(pg.SKIP_REASON, allow_module_level=True)
 
-import psycopg
 from alembic import command
 from fastapi.testclient import TestClient
 from psycopg.types.json import Jsonb
+from sqlalchemy.ext.asyncio import create_async_engine
 
 from evo_agents.hub import migrate as hub_migrate
+from evo_agents.hub.db import legacy
 from evo_agents.hub.migrate import alembic_config, migrate
 from evo_agents.hub.openapi import document
 from evo_agents.hub.server import audit
@@ -268,13 +269,19 @@ def test_a_memory_action_is_filed_under_the_memory_s_project(client, hub_db):
     )[0]
 
     async def write():
-        async with await psycopg.AsyncConnection.connect(hub_db.dsn, autocommit=True) as conn:
-            await audit.record(conn, actor_id=user_id, token_id=None, action="memory.put", target=f"memory:{memory_id}")
-            await audit.record(conn, actor_id=user_id, token_id=None, action="auth.logout", target="token:1")
-            other = await (await conn.execute("SELECT id FROM projects WHERE name = 'demo'")).fetchone()
-            await audit.record(
-                conn, actor_id=user_id, token_id=None, action="custom.thing", target="x", project_id=other[0]
-            )
+        engine = create_async_engine(hub_db.dsn.replace("postgresql://", "postgresql+psycopg://", 1))
+        try:
+            async with engine.begin() as conn:
+                await audit.record(
+                    conn, actor_id=user_id, token_id=None, action="memory.put", target=f"memory:{memory_id}"
+                )
+                await audit.record(conn, actor_id=user_id, token_id=None, action="auth.logout", target="token:1")
+                other = await (await legacy(conn, "SELECT id FROM projects WHERE name = 'demo'")).fetchone()
+                await audit.record(
+                    conn, actor_id=user_id, token_id=None, action="custom.thing", target="x", project_id=other[0]
+                )
+        finally:
+            await engine.dispose()
 
     asyncio.run(write())
     rows = sql(hub_db, "SELECT action, project_id FROM audit ORDER BY id")

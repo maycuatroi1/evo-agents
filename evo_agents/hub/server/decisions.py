@@ -42,6 +42,7 @@ from psycopg.types.json import Jsonb
 from pydantic import BaseModel, Field, model_validator
 
 from evo_agents.hub import runs
+from evo_agents.hub.db import legacy
 from evo_agents.hub.plans import PlanProblem, step_index, step_key
 from evo_agents.hub.server import audit
 from evo_agents.hub.server import plans as plan_routes
@@ -263,7 +264,7 @@ def _decision(row) -> Decision:
 
 
 async def decision_view(conn, decision_id: int) -> Decision:
-    row = await (await conn.execute(ONE_DECISION, (decision_id,))).fetchone()
+    row = await (await legacy(conn, ONE_DECISION, (decision_id,))).fetchone()
     return _decision(row)
 
 
@@ -281,7 +282,7 @@ async def readable_decision(conn, user: Principal, project: str, decision_id: in
     without, 403 for a hub admin without one) and the decision's plan visible to it (404 otherwise, as for none)."""
     access = await project_access(conn, user, project)
     plan_routes._reader(access)
-    row = await (await conn.execute(DECISION_PLAN, (decision_id, access.project_id))).fetchone()
+    row = await (await legacy(conn, DECISION_PLAN, (decision_id, access.project_id))).fetchone()
     if row is None or row[0] not in await visible_plans(conn, access, sink):
         raise _no_decision(project, decision_id)
     return access
@@ -311,11 +312,11 @@ async def list_decisions(
         "limit": limit,
         "offset": offset,
     }
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
         params |= {"project": access.project_id, "plans": await visible_plans(conn, access, sink)}
-        page = [_decision(row) for row in await (await conn.execute(LIST_PAGE, params)).fetchall()]
-        total = (await (await conn.execute(LIST_TOTAL, params)).fetchone())[0]
+        page = [_decision(row) for row in await (await legacy(conn, LIST_PAGE, params)).fetchall()]
+        total = (await (await legacy(conn, LIST_TOTAL, params)).fetchone())[0]
     return DecisionList(decisions=page, total=total, limit=limit, offset=offset)
 
 
@@ -331,7 +332,7 @@ async def show_decision(
     user: CurrentUser,
     sink: Annotated[str | None, Header(alias=plan_routes.SINK_HEADER)] = None,
 ) -> Decision:
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         await readable_decision(conn, user, project, decision_id, sink)
         return await decision_view(conn, decision_id)
 
@@ -366,15 +367,15 @@ def _asked_step(run_id: int, plan, key: str | None) -> str | None:
 )
 async def ask(request: Request, run_id: RunId, body: DecisionAsk, user: CurrentUser) -> Decision:
     """Ask the owner of a plan run this worker holds a decision, and notify them."""
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         _, row = await _held_plan_run(conn, user, run_id, lock=True)
         _, _, _, project_id, project, plan_id, dispatcher_id, _, _ = row
-        if (await (await conn.execute(OPEN_COUNT, (run_id,))).fetchone())[0] >= MAX_OPEN_DECISIONS:
+        if (await (await legacy(conn, OPEN_COUNT, (run_id,))).fetchone())[0] >= MAX_OPEN_DECISIONS:
             raise HTTPException(
                 409,
                 f"run {run_id} has {MAX_OPEN_DECISIONS} decisions open already: wait for an answer before asking more",
             )
-        current = await (await conn.execute(CURRENT_PLAN, (project_id, plan_id))).fetchone()
+        current = await (await legacy(conn, CURRENT_PLAN, (project_id, plan_id))).fetchone()
         key = _asked_step(run_id, current[0] if current else {}, body.step_key)
         params = {
             "run": run_id,
@@ -386,7 +387,7 @@ async def ask(request: Request, run_id: RunId, body: DecisionAsk, user: CurrentU
             "context": body.context,
             "options": Jsonb(body.stored_options()),
         }
-        decision_id = (await (await conn.execute(INSERT_DECISION, params)).fetchone())[0]
+        decision_id = (await (await legacy(conn, INSERT_DECISION, params)).fetchone())[0]
         about = f"plan {plan_id}" + (f", step {key}" if key else "")
         await notify(
             conn,
@@ -466,7 +467,7 @@ def _answer_target(project: str, plan_id: str, key: str | None, decision_id: int
 async def _resume(conn, user: Principal, parked_id: int, decision_id: int) -> int:
     """Queue the run that resumes parked run ``parked_id``, in the caller's transaction under the plan's lock, and end
     the parked one done; the new run's id. The parked run's decisions still open go to the new run."""
-    new_id = (await (await conn.execute(NEXT_RUN_ID)).fetchone())[0]
+    new_id = (await (await legacy(conn, NEXT_RUN_ID)).fetchone())[0]
     # The parked run leaves the active states first: a plan has one active plan run at a time.
     await move_run(
         conn,
@@ -478,8 +479,8 @@ async def _resume(conn, user: Principal, parked_id: int, decision_id: int) -> in
         token_id=user.token_id,
         decisions=None,
     )
-    await conn.execute(RESUME_RUN, {"new": new_id, "parked": parked_id})
-    await conn.execute(HAND_OVER_DECISIONS, (new_id, parked_id))
+    await legacy(conn, RESUME_RUN, {"new": new_id, "parked": parked_id})
+    await legacy(conn, HAND_OVER_DECISIONS, (new_id, parked_id))
     shown = f"resumes run #{parked_id} in its session, as {user.login} answered decision #{decision_id}"
     await write_event(conn, new_id, {"text": shown, "resume_of_run_id": parked_id})
     await notify_queued(conn, new_id)
@@ -496,9 +497,9 @@ async def answer(
 ) -> Decision:
     """Answer a decision of a run one dispatched: the answer goes to the agent through the run's inbox, and a parked
     run is resumed on its worker in its session."""
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         access = await readable_decision(conn, user, project, decision_id, None)
-        found = await (await conn.execute(ANSWERED_DECISION, (decision_id, access.project_id))).fetchone()
+        found = await (await legacy(conn, ANSWERED_DECISION, (decision_id, access.project_id))).fetchone()
         _, plan_id, key, owner_id, owner = found
         if owner_id != user.user_id:
             raise HTTPException(403, f"only {owner}, who dispatched its run, may answer decision {decision_id}")
@@ -506,9 +507,9 @@ async def answer(
         # Answers of the plan's decisions, and its dispatches, one at a time: the run a decision belongs to stays put
         # until the transaction ends. The run's row before the decision's, as every move of a run takes them.
         await _lock_plan(conn, access.project_id, plan_id)
-        run_id = (await (await conn.execute(DECISION_RUN, (decision_id,))).fetchone())[0]
-        run_state = (await (await conn.execute(LOCK_RUN, (run_id,))).fetchone())[0]
-        _, state, category, question, options = await (await conn.execute(LOCK_DECISION, (decision_id,))).fetchone()
+        run_id = (await (await legacy(conn, DECISION_RUN, (decision_id,))).fetchone())[0]
+        run_state = (await (await legacy(conn, LOCK_RUN, (run_id,))).fetchone())[0]
+        _, state, category, question, options = await (await legacy(conn, LOCK_DECISION, (decision_id,))).fetchone()
         if state != "open":
             raise HTTPException(409, f"decision {decision_id} is {state}, not open: it takes no answer any more")
         chosen = None
@@ -525,16 +526,16 @@ async def answer(
             )
         await web_only_steering(conn, user, run_id, "answer its decisions", "answer on the web", "answered")
         params = {"id": decision_id, "option": body.option, "text": body.text, "user": user.user_id}
-        await conn.execute(ANSWER, params)
-        await conn.execute(READ_ITS_NOTIFICATION, (decision_id, user.user_id))
+        await legacy(conn, ANSWER, params)
+        await legacy(conn, READ_ITS_NOTIFICATION, (decision_id, user.user_id))
         inbox_run = await _resume(conn, user, run_id, decision_id) if run_state == "parked" else run_id
         text = answer_message(decision_id, category, question, chosen, body.text)
         message_id = (
-            await (await conn.execute(INSERT_ANSWER, (inbox_run, user.user_id, text, decision_id))).fetchone()
+            await (await legacy(conn, INSERT_ANSWER, (inbox_run, user.user_id, text, decision_id))).fetchone()
         )[0]
-        seq = (await (await conn.execute(NEXT_SEQ, (inbox_run,))).fetchone())[0]
+        seq = (await (await legacy(conn, NEXT_SEQ, (inbox_run,))).fetchone())[0]
         event = {"text": text, "from": user.login, "message_id": message_id, "decision_id": decision_id}
-        await conn.execute(INSERT_USER_MESSAGE, (inbox_run, seq, Jsonb(event)))
+        await legacy(conn, INSERT_USER_MESSAGE, (inbox_run, seq, Jsonb(event)))
         await notify_events(conn, inbox_run)
         target = _answer_target(project, plan_id, key, decision_id, run_id, body.option)
         if inbox_run != run_id:
