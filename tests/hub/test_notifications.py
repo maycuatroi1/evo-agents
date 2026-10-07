@@ -361,6 +361,33 @@ def test_a_member_lists_counts_and_reads_their_notifications(client, hub, hub_db
     assert count(client, hub["owner"]) == {"unread": 0, "open_decisions": 0}
 
 
+def test_an_answered_decision_is_listed_by_age_and_the_project_filter_keeps_the_projects_own(client, hub):
+    worker, run = started(client, hub)
+    first = notice(client, worker, run["id"]).json()
+    ask = {
+        "category": "deploy",
+        "question": "Deploy to staging now?",
+        "options": [{"key": "yes", "label": "Deploy"}, {"key": "no", "label": "Wait"}],
+    }
+    asked = client.post(f"/v1/worker/runs/{run['id']}/decisions", json=ask, headers=worker["headers"])
+    assert asked.status_code == 201, asked.text
+    second = notice(client, worker, run["id"], kind="merge_default_branch", title="Merged into main").json()
+    answer = f"/v1/projects/{PROJECT}/decisions/{asked.json()['id']}/answer"
+    answered = client.post(answer, json={"option": "yes"}, headers=hub["owner"])
+    assert answered.status_code == 200, answered.text
+    page = listed(client, hub["owner"], project=PROJECT)
+    # no decision is open any more: the newest first, the answered decision among the notices
+    assert [(item["kind"], item["decision_state"]) for item in page["notifications"]] == [
+        ("notice", None),
+        ("decision", "answered"),
+        ("notice", None),
+    ]
+    assert [page["notifications"][0]["id"], page["notifications"][2]["id"]] == [second["id"], first["id"]]
+    assert page["total"] == 3
+    assert listed(client, hub["owner"], project=PROJECT, kind="decision")["total"] == 1
+    assert listed(client, hub["owner"], project=PROJECT, kind="notice", limit=1)["total"] == 2
+
+
 def test_a_notification_is_one_line_of_at_most_200_characters():
     assert notifications.one_line("Pushed\n\tmain   of\x00 evo-agents") == "Pushed main of evo-agents"
     long = notifications.one_line("x" * 300)
