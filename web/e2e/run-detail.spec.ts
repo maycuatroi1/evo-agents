@@ -1,5 +1,6 @@
 import type { Page } from "@playwright/test";
 
+import { signOut } from "./support/auth";
 import { expect, isDeployed, type Member, test } from "./support/fixtures";
 import { newAccount, uniqueName } from "./support/hub";
 import { open } from "./support/plans";
@@ -373,7 +374,7 @@ test("someone other than the owner reads the run but gets no message box, no Tak
   await sendEvents(live, run.id, [say("visible to every reader")]);
   const other = newAccount("colleague");
   await admin.grant(project, other.login, "writer", "internal");
-  await page.context().clearCookies(); // signed out of the hub and the fake GitHub
+  await signOut(page); // of the hub and the fake GitHub
   await signInAs(other);
 
   await open(page, runPath(project, run.id));
@@ -435,7 +436,7 @@ test("the owner sees the credentials the run got, never a value, and nobody else
   // Another writer of the project reads the run, but not what it got.
   const other = newAccount("colleague");
   await admin.grant(project, other.login, "writer", "internal");
-  await page.context().clearCookies();
+  await signOut(page);
   await signInAs(other);
   await open(page, runPath(project, run.id));
   await expect(main(page).getByTestId("run-details")).toBeVisible();

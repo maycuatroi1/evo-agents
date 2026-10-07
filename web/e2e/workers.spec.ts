@@ -1,5 +1,6 @@
 import type { Page } from "@playwright/test";
 
+import { signOut } from "./support/auth";
 import { expect, isDeployed, test } from "./support/fixtures";
 import { ADMIN_ACCOUNT, bearerClient, machineToken, newAccount, uniqueName } from "./support/hub";
 import { toast } from "./support/toast";
@@ -233,7 +234,7 @@ test("the owner keeps a worker to runs dispatched from the web, which a token ca
   expect(await dispatchFromOf()).toBe("web");
 
   // A hub admin sees the setting, without the switch.
-  await page.context().clearCookies(); // signed out of the hub and the fake GitHub
+  await signOut(page); // of the hub and the fake GitHub
   await signInAs(ADMIN_ACCOUNT);
   await page.goto(`/workers/${worker.id}`);
   await expect(main.getByTestId("worker-dispatch")).toHaveText(`${me.login} only, from the web`);
@@ -241,7 +242,7 @@ test("the owner keeps a worker to runs dispatched from the web, which a token ca
   await expect(main.getByTestId("worker-dispatch-from")).toHaveCount(0);
 
   // The owner turns it off again, from its label.
-  await page.context().clearCookies();
+  await signOut(page);
   await signInAs(me);
   await page.goto(`/workers/${worker.id}`);
   await expect(toggle).toBeChecked();
