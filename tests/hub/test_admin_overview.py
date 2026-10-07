@@ -18,15 +18,15 @@ if not pg.DSN:
     pytest.skip(pg.SKIP_REASON, allow_module_level=True)
 
 from fastapi.testclient import TestClient
-from psycopg.types.json import Jsonb
+from sqlalchemy import func, insert, select, update
 
+from evo_agents.hub import tables
 from evo_agents.hub.server.app import create_app
 from tests.hub.live import ADMIN, bearer, sql
 
 OVERVIEW = "/v1/admin/overview"
 DAY = timedelta(days=1)
 HEX = "0123456789abcdef" * 4
-TOKEN_COLUMNS = "user_id, kind, token_hash, host, created_at, last_used_at, expires_at, revoked_at"
 
 
 def sha(n: int) -> str:
@@ -43,19 +43,31 @@ def client(hub_db, tmp_path, github):
 def admin(client, hub_db) -> dict:
     """The hub admin's machine token; the admin signed in through GitHub and was seen just now."""
     headers = bearer(live.insert_token(hub_db, ADMIN))
-    sql(hub_db, "UPDATE users SET github_id = 1, last_seen_at = now() WHERE login = %s", (ADMIN,))
+    users = tables.users
+    sql(hub_db, update(users).values(github_id=1, last_seen_at=func.now()).where(users.c.login == ADMIN))
     return headers
+
+
+def ago(interval: timedelta | None):
+    """The database's now() less ``interval``; NULL without one."""
+    return None if interval is None else func.now() - interval
+
+
+def when(happened: bool):
+    """now() when it ``happened``; NULL otherwise."""
+    return func.now() if happened else None
 
 
 def seed(db: pg.Database) -> dict:
     """Rows on each side of every window, relative to the database's now(); the ids the token lists must return."""
     tokens = {}
-    with pg.admin(db.admin_dsn) as conn:
+    t = tables  # the module; ``tokens`` and ``users`` here are the seeded ids
+    with live.connect(db) as conn:
 
-        def one(statement: str, params=()):
-            return conn.execute(statement, params).fetchone()[0]
+        def one(statement):
+            return conn.execute(statement).scalar_one()
 
-        admin_id = one("SELECT id FROM users WHERE login = %s", (ADMIN,))
+        admin_id = one(select(t.users.c.id).where(t.users.c.login == ADMIN))
         users = {}
         # (login, GitHub id or None for a login granted access before signing in, last seen this long ago)
         for login, github_id, seen in (
@@ -65,8 +77,7 @@ def seed(db: pg.Database) -> dict:
             ("eve", 14, 29 * DAY),
         ):
             users[login] = one(
-                "INSERT INTO users (login, github_id, last_seen_at) VALUES (%s, %s, now() - %s::interval) RETURNING id",
-                (login, github_id, seen),
+                insert(t.users).values(login=login, github_id=github_id, last_seen_at=ago(seen)).returning(t.users.c.id)
             )
 
         # (name, owner, kind, issued, last used, expires (after now; negative: before), revoked) as times ago
@@ -81,19 +92,18 @@ def seed(db: pg.Database) -> dict:
             ("idle-new", "eve", "machine", 50 * DAY, None, 40 * DAY, None),  # live only, issued 50 days ago
         ):
             tokens[name] = one(
-                f"INSERT INTO tokens ({TOKEN_COLUMNS}) "
-                "VALUES (%s, %s, %s, %s, now() - %s::interval, now() - %s::interval, now() + %s::interval, "
-                "now() - %s::interval) RETURNING id",
-                (
-                    users[login],
-                    kind,
-                    sha(len(tokens) + 1),
-                    "laptop" if kind == "machine" else None,
-                    issued,
-                    used,
-                    expires,
-                    revoked,
-                ),
+                insert(t.tokens)
+                .values(
+                    user_id=users[login],
+                    kind=kind,
+                    token_hash=sha(len(tokens) + 1),
+                    host="laptop" if kind == "machine" else None,
+                    created_at=ago(issued),
+                    last_used_at=ago(used),
+                    expires_at=func.now() + expires,
+                    revoked_at=ago(revoked),
+                )
+                .returning(t.tokens.c.id)
             )
 
         # Workers of ann: (name, last heartbeat this long ago, drained, revoked); each with its worker token.
@@ -108,24 +118,46 @@ def seed(db: pg.Database) -> dict:
             )
         ):
             token = one(
-                f"INSERT INTO tokens ({TOKEN_COLUMNS}) "
-                "VALUES (%s, 'worker', %s, 'mini', now() - interval '1 day', now(), now() + interval '90 days', "
-                "CASE WHEN %s THEN now() END) RETURNING id",
-                (users["ann"], sha(100 + index), revoked),
+                insert(t.tokens)
+                .values(
+                    user_id=users["ann"],
+                    kind="worker",
+                    token_hash=sha(100 + index),
+                    host="mini",
+                    created_at=ago(DAY),
+                    last_used_at=func.now(),
+                    expires_at=func.now() + 90 * DAY,
+                    revoked_at=when(revoked),
+                )
+                .returning(t.tokens.c.id)
             )
             conn.execute(
-                "INSERT INTO workers (owner_id, token_id, name, hostname, os, arch, agent_version, last_heartbeat_at, "
-                "drained_at, revoked_at) VALUES (%s, %s, %s, 'mini', 'darwin', 'arm64', '0.5.0', "
-                "now() - %s::interval, CASE WHEN %s THEN now() - interval '1 hour' END, CASE WHEN %s THEN now() END)",
-                (users["ann"], token, name, beat, drained, revoked),
+                insert(t.workers).values(
+                    owner_id=users["ann"],
+                    token_id=token,
+                    name=name,
+                    hostname="mini",
+                    os="darwin",
+                    arch="arm64",
+                    agent_version="0.5.0",
+                    last_heartbeat_at=ago(beat),
+                    drained_at=ago(timedelta(hours=1)) if drained else None,
+                    revoked_at=when(revoked),
+                )
             )
 
         projects = {}
         for name in ("alpha", "beta", "gamma"):
             projects[name] = one(
-                "INSERT INTO projects (name, levels, locations, default_label, created_by) "
-                "VALUES (%s, %s, %s, %s, %s) RETURNING id",
-                (name, live.LEVELS, ["any"], Jsonb({"level": "public"}), admin_id),
+                insert(t.projects)
+                .values(
+                    name=name,
+                    levels=live.LEVELS,
+                    locations=["any"],
+                    default_label={"level": "public"},
+                    created_by=admin_id,
+                )
+                .returning(t.projects.c.id)
             )
         for project, login, role in (
             ("alpha", "ann", "admin"),
@@ -135,9 +167,13 @@ def seed(db: pg.Database) -> dict:
             ("gamma", "eve", "reader"),
         ):
             conn.execute(
-                "INSERT INTO grants (user_id, project_id, role, max_level, granted_by) "
-                "VALUES (%s, %s, %s, 'public', %s)",
-                (users[login], projects[project], role, admin_id),
+                insert(t.grants).values(
+                    user_id=users[login],
+                    project_id=projects[project],
+                    role=role,
+                    max_level="public",
+                    granted_by=admin_id,
+                )
             )
 
         # The same bytes in alpha and beta are one object.
@@ -148,14 +184,19 @@ def seed(db: pg.Database) -> dict:
             ("gamma", sha(3), 0),
         ):
             conn.execute(
-                "INSERT INTO blobs (project_id, sha256, size, kind, created_by) VALUES (%s, %s, %s, 'source', %s)",
-                (projects[project], digest, size, admin_id),
+                insert(t.blobs).values(
+                    project_id=projects[project], sha256=digest, size=size, kind="source", created_by=admin_id
+                )
             )
         for digest, size, deleted in ((sha(4), 30, False), (sha(5), 70, True), (sha(6), 5, False)):
             conn.execute(
-                "INSERT INTO blob_deletions (sha256, size, kind, requested_at, deleted_at) "
-                "VALUES (%s, %s, 'kg-graph', now() - interval '2 hours', CASE WHEN %s THEN now() END)",
-                (digest, size, deleted),
+                insert(t.blob_deletions).values(
+                    sha256=digest,
+                    size=size,
+                    kind="kg-graph",
+                    requested_at=ago(timedelta(hours=2)),
+                    deleted_at=when(deleted),
+                )
             )
 
         # Builds in id order, each project's newest last: (project, status, finished this long ago)
@@ -170,35 +211,33 @@ def seed(db: pg.Database) -> dict:
             ("gamma-running", "gamma", "running", None),
         ):
             done = status in ("succeeded", "failed")
+            started = (finished or timedelta()) + timedelta(minutes=2)
             builds[key] = one(
-                "INSERT INTO kg_builds (project_id, status, queued_at, started_at, finished_at, error, "
-                "artifact_sha256, artifact_size, content_hash, nodes, edges) VALUES (%(project)s, %(status)s, "
-                "now() - %(started)s::interval, now() - %(started)s::interval, now() - %(finished)s::interval, "
-                "%(error)s, %(artifact)s, %(size)s, %(hash)s, %(nodes)s, %(edges)s) RETURNING id",
-                {
-                    "project": projects[project],
-                    "status": status,
-                    "started": (finished or timedelta()) + timedelta(minutes=2),
-                    "finished": finished if done else None,
-                    "error": "extractor crashed" if status == "failed" else None,
-                    "artifact": HEX if status == "succeeded" else None,
-                    "size": 10 if status == "succeeded" else None,
-                    "hash": f"sha256:{HEX}" if status == "succeeded" else None,
-                    "nodes": 3 if status == "succeeded" else None,
-                    "edges": 2 if status == "succeeded" else None,
-                },
+                insert(t.kg_builds)
+                .values(
+                    project_id=projects[project],
+                    status=status,
+                    queued_at=ago(started),
+                    started_at=ago(started),
+                    finished_at=ago(finished if done else None),
+                    error="extractor crashed" if status == "failed" else None,
+                    artifact_sha256=HEX if status == "succeeded" else None,
+                    artifact_size=10 if status == "succeeded" else None,
+                    content_hash=f"sha256:{HEX}" if status == "succeeded" else None,
+                    nodes=3 if status == "succeeded" else None,
+                    edges=2 if status == "succeeded" else None,
+                )
+                .returning(t.kg_builds.c.id)
             )
 
-        for ago in (timedelta(hours=1), timedelta(hours=1), timedelta(hours=23), timedelta(hours=25), 3 * DAY):
-            conn.execute(
-                "INSERT INTO audit (at, actor_id, action, target) VALUES (now() - %s::interval, %s, 'grant.put', 'x')",
-                (ago, admin_id),
-            )
+        for age in (timedelta(hours=1), timedelta(hours=1), timedelta(hours=23), timedelta(hours=25), 3 * DAY):
+            conn.execute(insert(t.audit).values(at=ago(age), actor_id=admin_id, action="grant.put", target="x"))
     return {"tokens": tokens, "builds": builds}
 
 
 def failed_at(db: pg.Database, build_id: int):
-    return sql(db, "SELECT finished_at FROM kg_builds WHERE id = %s", (build_id,))[0][0]
+    kg_builds = tables.kg_builds
+    return sql(db, select(kg_builds.c.finished_at).where(kg_builds.c.id == build_id))[0][0]
 
 
 def test_only_a_hub_admin_reads_the_overview(client, hub_db, admin):
