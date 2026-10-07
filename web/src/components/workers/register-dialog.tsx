@@ -71,6 +71,8 @@ type Props = {
   onOpenChange: (open: boolean) => void;
   /** Called once a machine joins with the code, for the page to say so after the dialog closes. */
   onJoined: (notice: Notice) => void;
+  /** Where focus goes once the dialog has closed, for a dialog opened without a trigger (the command palette). */
+  onCloseAutoFocus?: (event: Event) => void;
 };
 
 /**
@@ -79,7 +81,7 @@ type Props = {
  * the hub every 2 seconds whether a machine has joined with it. Its content mounts each time it opens, so a new
  * opening starts with an empty form; a code made before stays valid until it expires.
  */
-export function RegisterDialog({ open, onOpenChange, onJoined }: Props) {
+export function RegisterDialog({ open, onOpenChange, onJoined, onCloseAutoFocus }: Props) {
   const write = useWorkerWrite((api, body: PairingRequest) => createPairing(api, body));
   const pending = write.isPending;
   const guard = (event: Event) => {
@@ -92,6 +94,7 @@ export function RegisterDialog({ open, onOpenChange, onJoined }: Props) {
         className="flex max-h-[calc(100dvh-2rem)] flex-col gap-5 overflow-y-auto sm:max-w-2xl"
         onEscapeKeyDown={guard}
         onInteractOutside={guard}
+        onCloseAutoFocus={onCloseAutoFocus}
         data-testid="register-dialog"
       >
         <RegisterFlow write={write} onClose={() => onOpenChange(false)} onJoined={onJoined} />

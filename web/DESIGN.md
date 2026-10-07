@@ -271,6 +271,10 @@ changed where the defaults fell short:
 - `hooks/use-mobile.ts`: `useSyncExternalStore` instead of state set inside an effect.
 - `tabs.tsx` (Radix tabs): a line style, the selected tab underlined in `brand` and set in a heavier weight.
 - Menus (`DropdownMenu`) are not modal, so the page behind stays readable by assistive technology.
+- `command.tsx`: shadcn's Command (cmdk 1.1.1), written by hand from upstream since the registry could not be reached:
+  a 52 px input row over a hairline, `overline` group headings in `fg-subtle`, 36 px items (44 px under 768 px) with
+  the control radius, the icon in `fg-muted` turning `brand` and the row `surface-selected` when selected. The
+  palette puts it in a Dialog itself, so upstream's CommandDialog is left out.
 
 Shared pieces built on them:
 
@@ -333,7 +337,7 @@ Shared pieces built on them:
   project switcher and the account menu (login, hub role, role and visibility in the current project, theme,
   language, sign out) are the kit's switch: a bordered `card` control, the name over an `fg-subtle` line. The top bar
   (`site-header.tsx`) holds the sidebar toggle, the breadcrumb (13 px, slashes, the trail starts at the project), the
-  page's LiveIndicator and the inbox bell. Page header below.
+  command palette's field, the page's LiveIndicator and the inbox bell. Page header below.
 - `components/shell/project-switcher.tsx`: the switcher opens a popover (`ui/popover.tsx`, a dialog named "Choose a
   project", to the right of the sidebar, below the trigger in the phone's sheet) with a search field on top, focused
   as it opens, that keeps the projects whose name holds every word typed, the count said in a polite live region. The
@@ -344,6 +348,35 @@ Shared pieces built on them:
   repos. The current project is `surface-selected` and `aria-current`. Down from the field enters the list, the arrows,
   Home and End move in it, up from the first goes back to the field; the first Escape empties the field, the next
   closes. Home sits at its foot.
+- `components/palette`, the kit's CommandPalette. The top bar's field (`palette-trigger.tsx`) reads "Search or jump
+  to" with its key (⌘K on Apple devices, Ctrl K elsewhere, once the page has hydrated) on `background` inside a
+  `border-strong` edge, 280 px from xl and 224 px at lg; below lg it folds to its magnifier, a 32 px square (44 px under
+  768 px), the words kept as its name. It, Cmd K and Ctrl K open the palette from anywhere but the web terminal (and
+  Ctrl K in a text field on an Apple keyboard, which cuts the line there), unless another dialog is open; the shortcut
+  closes it again. `palette-context.tsx` holds only that state in the shell; the palette, cmdk and the dialogs it opens
+  are a chunk of their own, fetched when the pointer or focus reaches the field or at the first shortcut. The palette
+  (`command-palette.tsx`, `model.ts`) is a dialog on `surface-raised` with `shadow-dialog` and the overlay radius,
+  640 px wide at 12 % of the height (the full width less 16 px gutters, 16 px from the top, on a phone): the combobox
+  in 15 px (16 px on phones) with the busy loader and Esc (an X under 768 px), then the listbox in groups. Actions come
+  first, only those whoami's grants allow: Run plan on each active plan with steps left where the visitor writes ("4
+  steps left"; three while nothing is typed), Dispatch a step in each such project, Rerun on the visitor's latest failed
+  or lost run of one step that no later run of the step replaced (Home's rule, "failed 5 minutes ago"), and Register
+  worker with the writer role anywhere. Runs follow: those of the overview, in flight first, while nothing is typed or
+  when looking in every project; the hub's search of the project (the runs list's `q`, which takes `#N`) once
+  something is typed, asked 150 ms after typing stops, the request of the last query cancelled. Then Plans (active
+  only until something is typed), Workers (the visitor's, those serving the project) and Go to (the project's pages,
+  the hub's pages, and the projects while looking in every project or typing). An item is an icon, its name and a
+  meta in `caption` `fg-subtle` at its end (a state, steps left, progress; the project first when looking in every
+  project), with ↵ on the selected one. A query keeps what holds every word typed, case and Vietnamese diacritics
+  folded; five items a group while nothing is typed, eight after. The palette starts in the page's project when the
+  visitor holds a grant on it, else in every project; Tab and Shift Tab, or the scope at the foot, move through the
+  projects of the grants and every project. The first item stays selected while groups load above it, until the arrows,
+  Home, End or the pointer move the selection. Choosing an item opens its page, or the dialog its page opens (Dispatch,
+  Run plan, Register worker) once the palette has closed; Rerun reruns as Home's does and says so in a toast. Nothing
+  in it deletes, cancels, drains or revokes. Esc closes it and gives focus back to what held it, and a dialog it
+  opened gives focus back there too. The foot says the keys (↑ ↓ move, ↵ open, Tab switch project; hidden under 768
+  px) and the scope; a polite live region says how many results the scope holds; no match names the query and the
+  scope, and a read that failed says some results could not be read.
 - `components/shell/page-header.tsx`: the page head of the kit, one row. `title` is the one h1 (`page-title`, Plex
   Sans, wrapping anywhere for a long unbroken name), `status` the state of what it names (a `StatusBadge` at `lg`),
   `tags` its kind, role, counts and identifier chips, `actions` the page's buttons on the right (`ml-auto`), and `sub`
@@ -611,6 +644,9 @@ so the server renders a page the same way for everyone who has not picked a lang
 - Text contrast at least 4.5:1 in both themes (tables above); a 2 px focus outline in `ring` (`focus-ring`, the
   brand cobalt) with a 2 px offset on every focusable element.
 - A skip link to `#main`, one `<main>`, a labelled `<nav>` and breadcrumb, an `h1` on every page.
+- Keys: Cmd K or Ctrl K opens the command palette, `/` focuses the page's search, Cmd or Ctrl with Enter sends an
+  answer or a message, Ctrl or Cmd with B folds the sidebar, Esc closes and gives focus back; each is shown in a `kbd`
+  beside what it does or in the palette's foot.
 - `e2e/a11y.spec.ts` runs axe (WCAG 2.2 A and AA rules) on every page and open menu in light and dark and
   fails on any serious or critical violation.
 

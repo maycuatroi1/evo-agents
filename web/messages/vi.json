@@ -65,6 +65,56 @@
     "plans": "{count, plural, =0 {không có plan đang chạy} other {# plan đang chạy}}",
     "decisions": "{count, plural, other {# quyết định đang mở}}"
   },
+  "palette": {
+    "trigger": "Tìm hoặc chuyển tới",
+    "title": "Bảng lệnh",
+    "description": "Tìm run, plan, worker hay trang, hoặc bắt đầu một việc. Tab đổi dự án.",
+    "label": "Tìm hoặc chạy lệnh",
+    "placeholder": "Tìm hoặc chạy lệnh",
+    "list": "Kết quả",
+    "close": "Đóng",
+    "groups": {
+      "actions": "Hành động",
+      "runs": "Run",
+      "plans": "Plan",
+      "workers": "Worker",
+      "goto": "Đi tới"
+    },
+    "actions": {
+      "runPlan": "Chạy plan {plan}",
+      "dispatch": "Dispatch một bước",
+      "dispatchIn": "Dispatch một bước trong {project}",
+      "rerun": "Chạy lại #{id}",
+      "register": "Đăng ký worker",
+      "stepsLeft": "{count, plural, other {còn # bước}}",
+      "failedAgo": "thất bại {ago}",
+      "lostAgo": "mất lease {ago}",
+      "failedJustNow": "vừa thất bại",
+      "lostJustNow": "vừa mất lease"
+    },
+    "plan": {
+      "progress": "xong {done} trên {total}",
+      "completed": "Đã hoàn thành"
+    },
+    "goto": {
+      "page": "{page} của {project}"
+    },
+    "scope": {
+      "all": "Mọi dự án",
+      "switch": "Đang tìm trong {scope}. Đổi dự án"
+    },
+    "hints": {
+      "move": "di chuyển",
+      "open": "mở",
+      "scope": "đổi dự án",
+      "close": "đóng"
+    },
+    "results": "{count, plural, =0 {Không có kết quả} other {# kết quả}} trong {scope}",
+    "noMatch": "Không có gì khớp “{query}” trong {scope}.",
+    "trySwitch": "Nhấn Tab để đổi dự án.",
+    "searching": "Đang tìm run",
+    "partial": "Một phần kết quả không đọc được. Thử lại sau giây lát."
+  },
   "userMenu": {
     "trigger": "Tài khoản {login}",
     "hubAdmin": "Quản trị viên hub",

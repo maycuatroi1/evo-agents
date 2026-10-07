@@ -66,7 +66,7 @@ test.describe("knowledge graph", () => {
     await expect(page.getByTestId("kg-kinds")).toContainText("Document");
 
     await page.getByLabel("Từ khoá").fill("runbook");
-    await page.getByRole("button", { name: "Tìm" }).click();
+    await page.getByTestId("kg-search-form").getByRole("button", { name: "Tìm" }).click();
     await page.waitForURL((url) => url.searchParams.get("q") === "runbook");
     const first = page.getByTestId("kg-result-link").first();
     await expect(first).toHaveAttribute("data-node-id", RUNBOOK);
@@ -247,7 +247,7 @@ test.describe("knowledge graph", () => {
     }
     // The pages read the build that kept its artifact.
     await page.getByLabel("Từ khoá").fill("note-extra");
-    await page.getByRole("button", { name: "Tìm" }).click();
+    await page.getByTestId("kg-search-form").getByRole("button", { name: "Tìm" }).click();
     await page.waitForURL((url) => url.searchParams.get("q") === "note-extra");
     await expect(page.getByTestId("kg-result-link").first()).toHaveAttribute("data-node-id", "docs:doc:note-extra");
   });

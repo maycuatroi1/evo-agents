@@ -482,6 +482,34 @@ const PAGES: Entry[] = [
     },
   },
   {
+    name: "command palette with actions, runs, plans, workers and pages, and with no match",
+    open: async ({ page, me }) => {
+      const { project } = await seedRuns(me);
+      await open(page, `/p/${project}/runs`);
+      await expect(page.getByTestId("palette-trigger-key")).toBeAttached(); // the shell has hydrated
+      await page.keyboard.press("ControlOrMeta+k");
+      const palette = page.getByTestId("command-palette");
+      for (const group of ["actions", "runs", "plans", "workers", "goto"]) {
+        await expect(palette.getByTestId(`palette-group-${group}`)).toBeVisible();
+      }
+      await expect(palette.locator('[data-item^="action:rerun:"]')).toBeVisible();
+      await expectNoSeriousViolations(page, "command palette");
+      await palette.getByRole("combobox").fill("no-such-thing-here");
+      await expect(palette.getByTestId("palette-empty")).toBeVisible();
+    },
+  },
+  {
+    name: "command palette on a small screen",
+    open: async ({ page, me }) => {
+      await seedRuns(me);
+      await page.setViewportSize({ width: 375, height: 812 });
+      await open(page, `/p/${me.projects[0]}/runs`);
+      await expect(page.getByTestId("palette-trigger-key")).toBeAttached();
+      await page.getByTestId("palette-trigger").click();
+      await expect(page.getByTestId("command-palette").getByTestId("palette-group-runs")).toBeVisible();
+    },
+  },
+  {
     name: "run page with its live log, the owner's controls and the Take over dialog",
     open: async ({ page, me }) => {
       const { project, run } = await seedLiveRun(me);
