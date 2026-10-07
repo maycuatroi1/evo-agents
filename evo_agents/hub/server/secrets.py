@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import logging
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Annotated, Literal
 from urllib.parse import urlsplit
 
@@ -333,7 +333,7 @@ async def put_secret(
     sealer = _sealer(request)
     env_var, url_prefix, username = _target(body)
     value = _value(body)
-    if body.expires_at is not None and body.expires_at <= datetime.now(timezone.utc):
+    if body.expires_at is not None and body.expires_at <= datetime.now(UTC):
         raise HTTPException(422, "expires_at is past already: a secret's end is in the future")
     projects, workers = _unique(body.projects), _unique(body.workers)
     sealed = sealer.seal(value, secret_aad(user.user_id, name, body.kind))

@@ -19,7 +19,7 @@ and a machine token gets 403 there."""
 import hashlib
 import hmac
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -36,7 +36,6 @@ from evo_agents.hub.server import audit
 from evo_agents.hub.server.app import create_app
 from evo_agents.hub.server.security import MACHINE, WORKER, authenticate, hash_token
 from evo_agents.hub.server.workers import CROCKFORD, RefusalLimit, normal_code
-from evo_agents.isotime import parse_iso
 from tests.hub.fake_github import Account
 from tests.hub.live import ADMIN, add_project, bearer, sql, table_dump
 from tests.hub.test_run_tables import PLAN, add_run
@@ -147,7 +146,7 @@ def test_a_pairing_code_joins_a_machine_once_and_the_hub_keeps_no_code_or_token(
         2,
         ["gpu"],
     )
-    expires = parse_iso(pairing["expires_at"]) - datetime.now(timezone.utc)
+    expires = datetime.fromisoformat(pairing["expires_at"]) - datetime.now(UTC)
     assert 9 * 60 < expires.total_seconds() <= 10 * 60
     state = client.get(f"/v1/workers/pairings/{pairing['id']}", headers=hub["owner"]).json()
     assert (state["status"], state["tries_left"], state["worker_id"]) == ("waiting", 5, None)
@@ -597,7 +596,7 @@ def test_a_hub_admin_revokes_a_worker_its_token_stops_and_its_runs_are_released(
     with pg.admin(hub_db.admin_dsn) as conn:
         history = add_run(conn, ids, "done", step="0")  # finished before: left alone
         retried = add_run(conn, ids, "running", step="1")
-        cancelled = add_run(conn, ids, "verifying", step="2", cancel_requested_at=datetime.now(timezone.utc))
+        cancelled = add_run(conn, ids, "verifying", step="2", cancel_requested_at=datetime.now(UTC))
         last = add_run(conn, ids, "interactive", step="3", attempt=3, parent_run_id=history)
         pinned_held = add_run(conn, ids, "leased", step="4", pinned_worker_id=worker_id)
         pinned_queued = add_run(conn, ids, "queued", step="5", pinned_worker_id=worker_id)

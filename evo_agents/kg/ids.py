@@ -8,8 +8,6 @@ import threading
 import time
 import uuid
 
-from evo_agents.isotime import parse_iso
-
 _lock = threading.Lock()
 _last = 0
 
@@ -34,15 +32,15 @@ def uuid7() -> str:
 
 
 def utc_now() -> str:
-    return dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+    return dt.datetime.now(dt.UTC).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
 
 
 def parse_utc(value: str) -> dt.datetime:
     """ISO 8601, with or without a trailing Z, as an aware UTC datetime. A naive value is taken as UTC."""
-    parsed = parse_iso(value)
+    parsed = dt.datetime.fromisoformat(value)
     if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=dt.timezone.utc)
-    return parsed.astimezone(dt.timezone.utc)
+        parsed = parsed.replace(tzinfo=dt.UTC)
+    return parsed.astimezone(dt.UTC)
 
 
 def normalize_time(value: str | None) -> str:
@@ -61,4 +59,4 @@ def rev_key(rev: str | None) -> str:
 
 
 def epoch_to_iso(seconds: float) -> str:
-    return dt.datetime.fromtimestamp(seconds, dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return dt.datetime.fromtimestamp(seconds, dt.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")

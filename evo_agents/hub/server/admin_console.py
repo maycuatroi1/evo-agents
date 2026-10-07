@@ -40,7 +40,6 @@ from evo_agents.hub.server.admin import (
 )
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.security import WEB, AdminUser, admin, delete_session_cookie
-from evo_agents.isotime import parse_iso
 
 log = logging.getLogger(__name__)
 
@@ -71,7 +70,7 @@ def decode_cursor(value: str) -> tuple[datetime, int]:
     try:
         text = base64.urlsafe_b64decode(value + "=" * (-len(value) % 4)).decode()
         at_text, _, id_text = text.partition("|")
-        at, row_id = parse_iso(at_text), int(id_text)
+        at, row_id = datetime.fromisoformat(at_text), int(id_text)
     except (ValueError, UnicodeError, binascii.Error):
         at, row_id = None, 0
     if at is None or at.tzinfo is None or not 1 <= row_id <= MAX_ID:

@@ -5,7 +5,7 @@ another shape, plans hidden by their label (through the grant, a hub sink below 
 sink, or the sink the caller names), 403 for a hub admin without a grant, and days out of range answered 422. The
 database's time zone is seven hours east of UTC throughout, so a day taken in the session's zone would show."""
 
-from datetime import datetime, time, timedelta, timezone
+from datetime import UTC, datetime, time, timedelta
 
 import pytest
 
@@ -137,7 +137,7 @@ def db_now(db) -> datetime:
 
 def utc_today_start(db) -> datetime:
     today = sql(db, "SELECT (now() AT TIME ZONE 'UTC')::date")[0][0]
-    return datetime.combine(today, time.min, tzinfo=timezone.utc)
+    return datetime.combine(today, time.min, tzinfo=UTC)
 
 
 INSERT_RUN = """

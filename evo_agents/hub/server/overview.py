@@ -22,7 +22,7 @@ use the indexes the runs, decisions and plans already have.
 from __future__ import annotations
 
 import logging
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Request
@@ -265,7 +265,7 @@ async def overview(request: Request, user: CurrentUser) -> Overview:
         pairs = []
         for access in accesses:
             pairs += [(access.project_id, plan_id) for plan_id in await visible_plans(conn, access, None)]
-        since = datetime.combine(today - timedelta(days=DAYS - 1), time.min, tzinfo=timezone.utc)
+        since = datetime.combine(today - timedelta(days=DAYS - 1), time.min, tzinfo=UTC)
         params = {
             "projects": [project_id for project_id, _ in pairs],
             "plans": [plan for _, plan in pairs],

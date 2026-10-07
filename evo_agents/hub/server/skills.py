@@ -34,7 +34,7 @@ import asyncio
 import io
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, HTTPException, Path, Query, Request
@@ -429,7 +429,7 @@ async def _bundle(request: Request, user: Principal, project: str | None, name: 
         raise _not_found(place, name)
     store = blob_store(request)  # after the read check: who may not read the skill learns nothing of the store
     number, sha256, size = row
-    expires_at = datetime.now(timezone.utc) + GET_TTL  # taken before signing, so never later than the URL
+    expires_at = datetime.now(UTC) + GET_TTL  # taken before signing, so never later than the URL
     filename = f"{found[1]}-v{number}.tar.gz"  # a skill name is [A-Za-z0-9._-], safe in a header as it is
     url = await asyncio.to_thread(store.presign_get, sha256, filename=filename)
     log.info(

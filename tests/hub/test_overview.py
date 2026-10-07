@@ -5,7 +5,7 @@ customer is hidden from a grant that reaches internal, the counts match the list
 member without a grant gets empty lists, and a machine token has the rights of its owner. The database's time zone is
 seven hours east of UTC throughout, so a day boundary taken in the session's zone would show."""
 
-from datetime import datetime, time, timedelta, timezone
+from datetime import UTC, datetime, time, timedelta
 
 import pytest
 
@@ -20,7 +20,6 @@ from psycopg.types.json import Jsonb
 from evo_agents.hub.server.app import create_app
 from evo_agents.hub.server.overview import DAYS, MAX_ACTIVE, MAX_DECISIONS, MAX_RECENT, RUNNING_STATES
 from evo_agents.hub.server.security import SESSION_COOKIE, WEB
-from evo_agents.isotime import parse_iso
 from tests.hub.live import ADMIN, bearer, sql
 from tests.hub.test_plan_runs import plan_body
 from tests.hub.test_plans import registration
@@ -84,7 +83,7 @@ def db_now(db) -> datetime:
 
 def utc_today_start(db) -> datetime:
     today = sql(db, "SELECT (now() AT TIME ZONE 'UTC')::date")[0][0]
-    return datetime.combine(today, time.min, tzinfo=timezone.utc)
+    return datetime.combine(today, time.min, tzinfo=UTC)
 
 
 INSERT_RUN = """
@@ -378,7 +377,7 @@ def test_the_counts_match_the_lists(client, members, world, hub_db):
     # recent: every end state, the last to end first
     ended = ("done_today", "cancelled_today", "vault_done", "beta_done", "failed_yesterday", "lost_3d", "done_8d")
     assert run_ids(recent) == {world[name] for name in ended}
-    order = [(parse_iso(item["finished_at"]), item["id"]) for item in recent]
+    order = [(datetime.fromisoformat(item["finished_at"]), item["id"]) for item in recent]
     assert order == sorted(order, reverse=True)
     assert by_id(recent)[world["failed_yesterday"]]["error"] == "verify failed: pytest exited 1"
     # open decisions: the caller's own first, the oldest first; answered ones are left out
@@ -398,9 +397,9 @@ def test_the_counts_match_the_lists(client, members, world, hub_db):
         "SELECT (SELECT waiting_since FROM runs WHERE id = %s), (SELECT parked_at FROM runs WHERE id = %s)",
         (world["waiting"], world["parked"]),
     )[0]
-    assert parse_iso(mine["parks_at"]) == waiting_since + WAIT
+    assert datetime.fromisoformat(mine["parks_at"]) == waiting_since + WAIT
     other = by_id(decisions)[world["d_other"]]
-    assert (other["owner"], other["yours"], parse_iso(other["parks_at"])) == (OTHER, False, parked_at)
+    assert (other["owner"], other["yours"], datetime.fromisoformat(other["parks_at"])) == (OTHER, False, parked_at)
     # projects: the open decisions of each add up to the list's
     assert [(p["name"], p["repos"], p["active_plans"], p["open_decisions"]) for p in shown["projects"]] == [
         (B, 1, 1, 1),

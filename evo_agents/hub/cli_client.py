@@ -24,7 +24,7 @@ from __future__ import annotations
 import functools
 import json
 import sys
-from datetime import timezone
+from datetime import UTC, datetime
 from urllib.parse import quote
 
 from evo_agents.hub.access import ROLES
@@ -39,7 +39,6 @@ from evo_agents.hub.client import (
     remove_credentials,
 )
 from evo_agents.hub.contract import json_option, returns_array, returns_map, returns_object
-from evo_agents.isotime import parse_iso
 
 EXIT_FAILED = 1
 
@@ -90,11 +89,11 @@ def _when(value: str | None) -> str:
     if not value:
         return "-"
     try:
-        moment = parse_iso(value)
+        moment = datetime.fromisoformat(value)
     except ValueError:
         return value
     if moment.tzinfo is not None:
-        moment = moment.astimezone(timezone.utc)
+        moment = moment.astimezone(UTC)
     return moment.strftime("%Y-%m-%d %H:%M")
 
 

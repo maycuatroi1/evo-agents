@@ -14,7 +14,7 @@ take runs dispatched from the web only claims no other, and a token pinning a ru
 
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import pytest
@@ -34,7 +34,6 @@ from evo_agents.hub.server import run_state
 from evo_agents.hub.server import runs as run_routes
 from evo_agents.hub.server.app import create_app
 from evo_agents.hub.worker import queue
-from evo_agents.isotime import parse_iso
 from tests.hub.fake_github import Account
 from tests.hub.live import ADMIN, bearer, sql
 from tests.hub.test_plans import registration
@@ -225,7 +224,7 @@ def audit_rows(db, family: str) -> list[tuple]:
 
 
 def today() -> str:
-    return datetime.now(timezone.utc).date().isoformat()
+    return datetime.now(UTC).date().isoformat()
 
 
 # Ready steps
@@ -379,7 +378,7 @@ def test_the_claimed_run_comes_with_its_spec_and_prompt(client, hub):
         30,
     )
     assert (spec["repo"], spec["branch"], spec["parent_run_id"]) == ("evo-agents", "feat/queue", None)
-    lease = parse_iso(spec["lease_expires_at"]) - datetime.now(timezone.utc)
+    lease = datetime.fromisoformat(spec["lease_expires_at"]) - datetime.now(UTC)
     assert 280 < lease.total_seconds() <= runs.LEASE_SECONDS
     prompt = spec["prompt"]
     assert prompt.startswith(f"You are running step 2 of the plan {PLAN} from the evo-agents hub.")
@@ -549,7 +548,7 @@ def test_a_heartbeat_records_the_machine_extends_the_lease_and_carries_the_cance
         "handback": False,
         "inbox": 1,
     }
-    assert parse_iso(held["lease_expires_at"]) >= parse_iso(spec["lease_expires_at"])
+    assert datetime.fromisoformat(held["lease_expires_at"]) >= datetime.fromisoformat(spec["lease_expires_at"])
     assert unknown == {
         "id": 999999,
         "held": False,

@@ -43,7 +43,7 @@ import asyncio
 import logging
 from collections.abc import AsyncIterable, Iterator
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
@@ -263,7 +263,7 @@ class Wakeup:
         notification after this moment wakes the next wait."""
         try:
             await asyncio.wait_for(self._event.wait(), timeout)
-        except asyncio.TimeoutError:  # not TimeoutError itself before Python 3.11
+        except TimeoutError:  # not TimeoutError itself before Python 3.11
             pass
         self._event.clear()
 
@@ -631,7 +631,7 @@ async def diff(
         sha256, size = await (await conn.execute(RUN_DIFF, (run_id,))).fetchone()
     if sha256 is None:
         raise HTTPException(404, f"run {run_id} has no diff: its worker uploads one when the run ends")
-    expires_at = datetime.now(timezone.utc) + GET_TTL  # taken before signing, so never later than the URL
+    expires_at = datetime.now(UTC) + GET_TTL  # taken before signing, so never later than the URL
     filename = f"run-{run_id}.diff" if download else None
     url = await asyncio.to_thread(store.presign_get, sha256, filename=filename)
     return DiffLink(sha256=sha256, size=size, url=url, expires_at=expires_at)

@@ -94,7 +94,7 @@ import logging
 import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, replace
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Annotated, Literal
 
 import psycopg
@@ -933,8 +933,8 @@ async def run_stats(
             "project": access.project_id,
             "plans": plans,
             "ended": list(runs.TERMINAL_STATES),
-            "since": datetime.combine(first, time.min, tzinfo=timezone.utc),
-            "until": datetime.combine(today + timedelta(days=1), time.min, tzinfo=timezone.utc),
+            "since": datetime.combine(first, time.min, tzinfo=UTC),
+            "until": datetime.combine(today + timedelta(days=1), time.min, tzinfo=UTC),
         }
         rows = await (await conn.execute(RUN_STATS, params)).fetchall()
     by_day, total = {}, NO_RUN
@@ -1529,7 +1529,7 @@ class RunWakeups:
             return
         try:
             await asyncio.wait_for(self._event.wait(), timeout)
-        except asyncio.TimeoutError:  # not TimeoutError itself before Python 3.11
+        except TimeoutError:  # not TimeoutError itself before Python 3.11
             pass
 
     async def ticket(self, worker_id: int) -> int:

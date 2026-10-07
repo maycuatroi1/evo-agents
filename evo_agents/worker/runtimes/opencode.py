@@ -165,7 +165,7 @@ class Server:
             kill_group(self.process.pid, signal.SIGTERM)
             try:
                 await asyncio.wait_for(self.process.wait(), STOP_GRACE)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 kill_group(self.process.pid, signal.SIGKILL)
                 with contextlib.suppress(asyncio.TimeoutError):
                     await asyncio.wait_for(self.process.wait(), STOP_GRACE)

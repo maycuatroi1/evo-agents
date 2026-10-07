@@ -12,7 +12,7 @@ import hashlib
 import secrets
 import shutil
 import subprocess
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -145,7 +145,7 @@ def add_lease(conn, ids, run: int, secret: int | None = None, token: str | None 
     sealed as the hub seals it: the row first, then the value bound to the row's id."""
     row = {"run_id": run, "worker_id": ids["worker"], "secret_id": secret, "target": GITLAB}
     if secret is None:
-        expires = datetime.now(timezone.utc) + timedelta(hours=1)
+        expires = datetime.now(UTC) + timedelta(hours=1)
         row |= {"provider": "github-app", "target": GITHUB, "external_id": "4242", "expires_at": expires}
     else:
         row["provider"] = "secret"
@@ -439,7 +439,7 @@ def test_constraints_of_0011_accept_good_rows(db):
         "INSERT INTO secret_bindings (secret_id, project_id, worker_id) VALUES (%s, %s, %s), (%s, %s, NULL)",
         (again, ids["project"], ids["other_worker"], again, ids["project"]),
     )
-    add_lease(conn, ids, ids["held"], secret=again, expires_at=datetime.now(timezone.utc) + timedelta(days=90))
+    add_lease(conn, ids, ids["held"], secret=again, expires_at=datetime.now(UTC) + timedelta(days=90))
     assert one(conn, "SELECT count(*) FROM secrets WHERE name = 'gitlab-ops'") == 2
     assert one(conn, "SELECT count(*) FROM secret_bindings WHERE secret_id = %s", again) == 2
     # the leases go with their run

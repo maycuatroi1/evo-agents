@@ -9,7 +9,7 @@ import asyncio
 import json
 import logging
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -107,7 +107,7 @@ def test_a_token_covers_only_the_repos_asked_for_with_the_permissions_of_a_run(f
     other = fake.install(THEIRS, "m1-identity", "m1-secbox-frontend")
     fake.collaborate(THEIRS, "m1-identity", Account(OWNER, OWNER_ID), "write")
     asked = [(OWNER, "evo-agents"), (OWNER, "evo-agents-harness"), (THEIRS, "m1-identity")]
-    before = datetime.now(timezone.utc)
+    before = datetime.now(UTC)
     result = tokens(config(fake, app_key), asked)
 
     assert result.missing == {}
