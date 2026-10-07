@@ -18,6 +18,7 @@ import psycopg
 from fastapi import APIRouter, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
+from sqlalchemy import exc as sa_exc
 
 from evo_agents import __version__
 from evo_agents.hub.db import schema_revision
@@ -52,8 +53,8 @@ async def health(request: Request, response: Response):
     store = request.app.state.blobs
     r2 = asyncio.ensure_future(store.status()) if store is not None else None
     try:
-        schema, db = await schema_revision(request.app.state.pool, HEALTH_TIMEOUT), "ok"
-    except (psycopg.Error, OSError, TimeoutError) as exc:  # PoolTimeout is a psycopg.Error
+        schema, db = await schema_revision(request.app.state.engine, HEALTH_TIMEOUT), "ok"
+    except (psycopg.Error, sa_exc.DBAPIError, OSError, TimeoutError) as exc:  # PoolTimeout arrives as a DBAPIError
         log.warning("health check failed: database unavailable", extra={"error": type(exc).__name__})
         schema, db = None, "unavailable"
     r2_status = "unconfigured" if r2 is None else await r2

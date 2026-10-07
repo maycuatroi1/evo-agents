@@ -100,17 +100,7 @@ RAW_CONNECTION_HOME = "evo_agents/hub/db.py"  # where driver() is defined
 
 # Files that still hold SQL, and how many findings each may keep. Only goes down; empty, it goes away.
 LEGACY: dict[str, int] = {
-    "evo_agents/hub/db.py": 3,
-    "evo_agents/hub/migrate.py": 8,
-    "evo_agents/hub/server/admin.py": 17,
-    "evo_agents/hub/server/admin_console.py": 10,
-    "evo_agents/hub/server/auth.py": 10,
-    "evo_agents/hub/server/projects.py": 19,
-    "tests/hub/test_admin_api.py": 17,
-    "tests/hub/test_admin_overview.py": 13,
-    "tests/hub/test_auth.py": 23,
-    "tests/hub/test_projects.py": 9,
-    "tests/hub/test_web_auth.py": 8,
+    "evo_agents/hub/db.py": 1,
 }
 
 
