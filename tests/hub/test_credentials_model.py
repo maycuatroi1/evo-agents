@@ -83,7 +83,7 @@ def test_lease_repr_leaves_out_the_value():
 
 
 def test_a_lease_from_the_hub_is_read_with_a_trailing_z():
-    """The hub's JSON writes a UTC time as ``...Z``, which datetime.fromisoformat of Python 3.10 refuses."""
+    """The hub's JSON writes a UTC time as ``...Z``, with or without a fraction of a second."""
     sent = {"id": 2, "kind": "git", "provider": "github-app", "expires_at": "2026-10-07T00:41:08Z"}
     assert Lease.from_json(sent).expires_at == datetime(2026, 10, 7, 0, 41, 8, tzinfo=UTC)
     sent["expires_at"] = "2026-10-07T00:41:08.123Z"
