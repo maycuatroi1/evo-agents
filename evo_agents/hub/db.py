@@ -18,6 +18,7 @@ import asyncio
 
 import psycopg
 from psycopg_pool import AsyncConnectionPool
+from sqlalchemy import column, func, select, table
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 from sqlalchemy.pool import NullPool
 
@@ -70,15 +71,16 @@ async def legacy(conn: AsyncConnection, query, params=None) -> psycopg.AsyncCurs
     return await (await driver(conn)).execute(query, params)
 
 
-async def schema_revision(pool: AsyncConnectionPool, timeout: float) -> str | None:
+async def schema_revision(engine: AsyncEngine, timeout: float) -> str | None:
     """The Alembic revision recorded in the database. ``timeout`` bounds the wait for a connection and the
-    query together, so a health check cannot hang on a database that stopped answering."""
+    query together, so a health check cannot hang on a database that stopped answering; the statement gets
+    ``timeout`` too, in its transaction only."""
+    version = table("alembic_version", column("version_num")).c.version_num  # Alembic's table, not in tables.py
 
     async def query() -> str | None:
-        async with pool.connection(timeout=timeout) as conn:
-            await conn.execute("SELECT set_config('statement_timeout', %s, true)", (f"{int(timeout * 1000)}ms",))
-            cursor = await conn.execute("SELECT version_num FROM alembic_version ORDER BY version_num")
-            rows = await cursor.fetchall()
-        return ",".join(row[0] for row in rows) or None
+        async with engine.begin() as conn:
+            await conn.execute(select(func.set_config("statement_timeout", f"{int(timeout * 1000)}ms", True)))
+            revisions = (await conn.execute(select(version).order_by(version))).scalars().all()
+        return ",".join(revisions) or None
 
     return await asyncio.wait_for(query(), timeout=timeout + 1)
