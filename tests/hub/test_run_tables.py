@@ -12,7 +12,7 @@ The checks step 2 of the plan-runs-and-decisions plan names: a plan run has no s
 have one; a second active plan run of one plan is refused by the partial unique index; a timeout of 24 hours is taken
 only by a plan run; and a database with runs goes up to 0010, down to 0009 with the schema 0009 had, and up again."""
 
-import json
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -22,17 +22,37 @@ from tests.hub import pg
 if not pg.DSN:
     pytest.skip(pg.SKIP_REASON, allow_module_level=True)
 
-from psycopg import errors, sql
-from psycopg.types.json import Jsonb
+from psycopg import errors
+from sqlalchemy import JSON, BigInteger, any_, delete, distinct, func, insert, literal, null, or_, select, update
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
+from sqlalchemy.ext.compiler import compiles
+from sqlalchemy.sql.expression import ClauseElement, Executable
 
-from evo_agents.hub import runs
+from evo_agents.hub import runs, tables
 from evo_agents.hub.migrate import migrate
-from tests.hub.test_migrate import SNAPSHOT, move_to, one, query, seed, tables
+from tests.hub import live
+from tests.hub.test_migrate import ALEMBIC_VERSION, SNAPSHOT, move_to, one, query, seed
+from tests.hub.test_migrate import tables as table_names
 
 PLAN = "worker-fleet"
 UNCLAIMED = ("queued", "cancelled", "failed")  # the states a run no worker claimed may be in
 REPOS = [{"repo": "evo-agents", "branch": "feat/plan-runs"}, {"repo": "evo-agents-harness", "branch": "main"}]
 DAY = 24 * 3600
+
+
+def later(**delta):
+    """``now()`` plus ``delta``, as the database reads its clock when the statement runs."""
+    return func.now() + timedelta(**delta)
+
+
+def new_id(conn, table, **values) -> int:
+    """Insert one row of ``table`` and return its id."""
+    return one(conn, insert(table).values(values).returning(table.c.id))
+
+
+def count(table, *where):
+    """The statement that counts the rows of ``table``, or those of them that match ``where``."""
+    return select(func.count()).select_from(table).where(*where)
 
 
 def add_run(conn, ids, state: str = "queued", step: str = "3", kind: str = "step", **columns) -> int:
@@ -68,57 +88,52 @@ def add_run(conn, ids, state: str = "queued", step: str = "3", kind: str = "step
     if state == "parked":
         row["parked_at"] = now
     if kind == "plan":
-        row |= {"kind": "plan", "step_key": None, "repo": None, "branch": None, "repos": Jsonb(REPOS)}
+        row |= {"kind": "plan", "step_key": None, "repo": None, "branch": None, "repos": REPOS}
     elif kind != "step":
         row["kind"] = kind
     row |= columns
     # a dispatch asked for the runtime a queued run has, or for any one a worker then picked
     row.setdefault("requested_runtime", "any" if row.get("worker_id") is not None else row["runtime"])
-    statement = sql.SQL("INSERT INTO runs ({}) VALUES ({}) RETURNING id").format(
-        sql.SQL(", ").join(map(sql.Identifier, row)), sql.SQL(", ").join(sql.Placeholder() * len(row))
-    )
-    return conn.execute(statement, list(row.values())).fetchone()[0]
+    # None is SQL NULL, in the JSONB column repos too, where SQLAlchemy would write the JSON null
+    return new_id(conn, tables.runs, **{name: null() if value is None else value for name, value in row.items()})
 
 
 def add_worker(conn, ids, name: str, token_hash: str) -> int:
-    token = one(
+    token = new_id(
         conn,
-        "INSERT INTO tokens (user_id, kind, token_hash, host, expires_at) "
-        "VALUES (%s, 'worker', %s, %s, now() + interval '90 days') RETURNING id",
-        ids["user"],
-        token_hash,
-        name,
+        tables.tokens,
+        user_id=ids["user"],
+        kind="worker",
+        token_hash=token_hash,
+        host=name,
+        expires_at=later(days=90),
     )
-    worker = one(
+    worker = new_id(
         conn,
-        "INSERT INTO workers (owner_id, token_id, name, hostname, os, arch, agent_version, slots, labels, runtimes, "
-        "checkouts) VALUES (%s, %s, %s, %s, 'darwin', 'arm64', '0.3.0', 2, %s, %s, %s) RETURNING id",
-        ids["user"],
-        token,
-        name,
-        f"{name}.local",
-        ["mac"],
-        Jsonb({"claude-code": {"version": "2.1.289"}, "codex": {"version": "0.153.4"}}),
-        Jsonb({"demo/evo-agents": {"path": "~/github/evo-agents"}}),
+        tables.workers,
+        owner_id=ids["user"],
+        token_id=token,
+        name=name,
+        hostname=f"{name}.local",
+        os="darwin",
+        arch="arm64",
+        agent_version="0.3.0",
+        slots=2,
+        labels=["mac"],
+        runtimes={"claude-code": {"version": "2.1.289"}, "codex": {"version": "0.153.4"}},
+        checkouts={"demo/evo-agents": {"path": "~/github/evo-agents"}},
     )
-    conn.execute("INSERT INTO worker_projects (worker_id, project_id) VALUES (%s, %s)", (worker, ids["project"]))
+    conn.execute(insert(tables.worker_projects).values(worker_id=worker, project_id=ids["project"]))
     return worker
 
 
-def add_plan(conn, ids, plan_id: str) -> None:
-    """The plan ``plan_id`` at revision 1 in the project of ``ids``, with two pending steps."""
-    body = {"id": plan_id, "steps": [{"id": 1, "status": "pending"}, {"id": 2, "status": "pending"}]}
-    digest = "sha256:" + "e" * 64
-    conn.execute(
-        "INSERT INTO plans (project_id, plan_id, area, label, body, digest, updated_by) "
-        "VALUES (%s, %s, 'active', '{}', %s, %s, %s)",
-        (ids["project"], plan_id, Jsonb(body), digest, ids["user"]),
-    )
-    conn.execute(
-        "INSERT INTO plan_revisions (project_id, plan_id, revision, area, label, body, digest, actor_id) "
-        "VALUES (%s, %s, 1, 'active', '{}', %s, %s, %s)",
-        (ids["project"], plan_id, Jsonb(body), digest, ids["user"]),
-    )
+def add_plan(conn, ids, plan_id: str, steps: list | None = None, digest: str = "sha256:" + "e" * 64) -> None:
+    """The plan ``plan_id`` at revision 1 in the project of ``ids``, with ``steps``: two pending ones unless named."""
+    steps = steps or [{"id": 1, "status": "pending"}, {"id": 2, "status": "pending"}]
+    row = {"project_id": ids["project"], "plan_id": plan_id, "area": "active", "label": {}, "digest": digest}
+    body = {"id": plan_id, "steps": steps}
+    conn.execute(insert(tables.plans).values(**row, body=body, updated_by=ids["user"]))
+    conn.execute(insert(tables.plan_revisions).values(**row, revision=1, body=body, actor_id=ids["user"]))
 
 
 def seed_runs(conn, ids: dict | None = None) -> dict:
@@ -126,95 +141,92 @@ def seed_runs(conn, ids: dict | None = None) -> dict:
     wrote, then a plan at revision 1, two workers of the user, a spare worker token, a pairing, a queued run of step
     3 and a done run of step 2 with events and a message."""
     ids = seed(conn) if ids is None else dict(ids)
-    body = {"id": PLAN, "steps": [{"id": 2, "status": "done"}, {"id": 3, "status": "pending"}]}
-    digest = "sha256:" + "f" * 64
-    conn.execute(
-        "INSERT INTO plans (project_id, plan_id, area, label, body, digest, updated_by) "
-        "VALUES (%s, %s, 'active', '{}', %s, %s, %s)",
-        (ids["project"], PLAN, Jsonb(body), digest, ids["user"]),
-    )
-    conn.execute(
-        "INSERT INTO plan_revisions (project_id, plan_id, revision, area, label, body, digest, actor_id) "
-        "VALUES (%s, %s, 1, 'active', '{}', %s, %s, %s)",
-        (ids["project"], PLAN, Jsonb(body), digest, ids["user"]),
-    )
+    steps = [{"id": 2, "status": "done"}, {"id": 3, "status": "pending"}]
+    add_plan(conn, ids, PLAN, steps, digest="sha256:" + "f" * 64)
     ids["worker"] = add_worker(conn, ids, "mac-mini", "b" * 64)
     ids["other_worker"] = add_worker(conn, ids, "linux-box", "c" * 64)
-    ids["worker_token"] = one(conn, "SELECT token_id FROM workers WHERE id = %s", ids["worker"])
-    ids["spare_token"] = one(
+    ids["worker_token"] = one(conn, select(tables.workers.c.token_id).where(tables.workers.c.id == ids["worker"]))
+    ids["spare_token"] = new_id(
         conn,
-        "INSERT INTO tokens (user_id, kind, token_hash, host, expires_at) "
-        "VALUES (%s, 'worker', %s, 'spare', now() + interval '90 days') RETURNING id",
-        ids["user"],
-        "d" * 64,
+        tables.tokens,
+        user_id=ids["user"],
+        kind="worker",
+        token_hash="d" * 64,
+        host="spare",
+        expires_at=later(days=90),
     )
-    ids["pairing"] = one(
+    ids["pairing"] = new_id(
         conn,
-        "INSERT INTO worker_pairings (code_selector, code_hash, owner_id, name, projects, expires_at) "
-        "VALUES ('ABCD', %s, %s, 'laptop', %s, now() + interval '10 minutes') RETURNING id",
-        "e" * 64,
-        ids["user"],
-        [ids["project"]],
+        tables.worker_pairings,
+        code_selector="ABCD",
+        code_hash="e" * 64,
+        owner_id=ids["user"],
+        name="laptop",
+        projects=[ids["project"]],
+        expires_at=later(minutes=10),
     )
     ids["run"] = add_run(conn, ids)
     ids["done_run"] = add_run(conn, ids, "done", step="2", event_seq=2, events_acked=1)
     conn.execute(
-        "INSERT INTO run_events (run_id, seq, kind, body) VALUES (%s, 1, 'agent_message_chunk', %s), "
-        "(%s, 2, 'state', %s)",
-        (ids["done_run"], Jsonb({"text": "hello"}), ids["done_run"], Jsonb({"from": "verifying", "to": "done"})),
+        insert(tables.run_events).values(
+            [
+                {"run_id": ids["done_run"], "seq": 1, "kind": "agent_message_chunk", "body": {"text": "hello"}},
+                {"run_id": ids["done_run"], "seq": 2, "kind": "state", "body": {"from": "verifying", "to": "done"}},
+            ]
+        )
     )
-    conn.execute(
-        "INSERT INTO run_inbox (run_id, sent_by, body) VALUES (%s, %s, 'also run ruff')", (ids["done_run"], ids["user"])
-    )
+    conn.execute(insert(tables.run_inbox).values(run_id=ids["done_run"], sent_by=ids["user"], body="also run ruff"))
     return ids
 
 
 @pytest.fixture
 def db(hub_db):
-    """A migrated database with ``seed_runs`` in it, and a superuser connection to it, in autocommit."""
+    """A migrated database with ``seed_runs`` in it, and a connection to it as its owner, in autocommit."""
     migrate(hub_db.dsn)
-    with pg.admin(hub_db.admin_dsn) as conn:
+    with live.connect(hub_db) as conn:
         yield conn, seed_runs(conn)
 
 
 def test_0009_goes_up_with_rows_down_to_the_schema_of_0008_and_up_again(hub_db):
     move_to(hub_db, "0008")
     at_0008 = query(hub_db, SNAPSHOT)
-    with pg.admin(hub_db.admin_dsn) as conn:
+    with live.connect(hub_db) as conn:
         machine = seed(conn)
     move_to(hub_db, "0009")
-    assert tables(hub_db) >= pg.RUN_TABLES
+    assert table_names(hub_db) >= pg.RUN_TABLES
     at_0009 = query(hub_db, SNAPSHOT)
-    with pg.admin(hub_db.admin_dsn) as conn:
+    with live.connect(hub_db) as conn:
         ids = seed_runs(conn, machine)
         conn.execute(
-            "INSERT INTO audit (actor_id, token_id, action, target) VALUES (%s, %s, 'worker.join', 'mac-mini')",
-            (ids["user"], ids["worker_token"]),
+            insert(tables.audit).values(
+                actor_id=ids["user"], token_id=ids["worker_token"], action="worker.join", target="mac-mini"
+            )
         )
 
     # Back at 0008: the schema is the one 0008 had, which release 0.2.3 accepts; the worker tokens are gone, and the
     # audit rows written with one keep their actor.
     move_to(hub_db, "0008", down=True)
     assert query(hub_db, SNAPSHOT) == at_0008
-    assert not tables(hub_db) & pg.RUN_TABLES
-    assert query(hub_db, "SELECT id, kind FROM tokens ORDER BY id") == [(machine["token"], "machine")]
-    trail = "SELECT action, actor_id, token_id FROM audit ORDER BY id"
+    assert not table_names(hub_db) & pg.RUN_TABLES
+    tokens, audit, revisions = tables.tokens, tables.audit, tables.plan_revisions
+    assert query(hub_db, select(tokens.c.id, tokens.c.kind).order_by(tokens.c.id)) == [(machine["token"], "machine")]
+    trail = select(audit.c.action, audit.c.actor_id, audit.c.token_id).order_by(audit.c.id)
     assert query(hub_db, trail) == [("memory.put", ids["user"], machine["token"]), ("worker.join", ids["user"], None)]
-    assert query(hub_db, "SELECT plan_id, revision FROM plan_revisions") == [(PLAN, 1)]
-    with pg.admin(hub_db.admin_dsn) as conn, pytest.raises(errors.CheckViolation):
+    assert query(hub_db, select(revisions.c.plan_id, revisions.c.revision)) == [(PLAN, 1)]
+    with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):
         conn.execute(
-            "INSERT INTO tokens (user_id, kind, token_hash, host, expires_at) "
-            "VALUES (%s, 'worker', repeat('9', 64), 'mac', now() + interval '1 day')",
-            (ids["user"],),
+            insert(tokens).values(
+                user_id=ids["user"], kind="worker", token_hash="9" * 64, host="mac", expires_at=later(days=1)
+            )
         )
-    with pg.admin(hub_db.admin_dsn) as conn:  # the audit trail is append-only again
+    with live.connect(hub_db) as conn:  # the audit trail is append-only again
         with pytest.raises(errors.RestrictViolation):
-            conn.execute("UPDATE audit SET target = 'edited'")
+            conn.execute(update(audit).values(target="edited"))
 
     move_to(hub_db, "0009")
-    assert query(hub_db, "SELECT version_num FROM alembic_version") == [("0009",)]
+    assert query(hub_db, select(ALEMBIC_VERSION.c.version_num)) == [("0009",)]
     assert query(hub_db, SNAPSHOT) == at_0009
-    with pg.admin(hub_db.admin_dsn) as conn:  # the plan and its revision stayed; workers and runs come back
+    with live.connect(hub_db) as conn:  # the plan and its revision stayed; workers and runs come back
         ids["worker"] = add_worker(conn, ids, "mac-mini", "b" * 64)
         add_run(conn, ids, "running")
 
@@ -234,15 +246,16 @@ def test_a_step_has_at_most_one_active_run(db, state):
 
 def test_run_events_are_never_updated(db):
     conn, ids = db
+    events = tables.run_events
     with pytest.raises(errors.RestrictViolation, match="run_events rows are never updated"):
-        conn.execute("UPDATE run_events SET body = '{}' WHERE run_id = %s", (ids["done_run"],))
+        conn.execute(update(events).values(body={}).where(events.c.run_id == ids["done_run"]))
     with pytest.raises(errors.RestrictViolation):
-        conn.execute("UPDATE run_events SET truncated = true")
+        conn.execute(update(events).values(truncated=True))
     # pruning deletes them, and they go with their run
-    conn.execute("DELETE FROM run_events WHERE run_id = %s AND seq = 1", (ids["done_run"],))
-    assert one(conn, "SELECT count(*) FROM run_events") == 1
-    conn.execute("DELETE FROM runs WHERE id = %s", (ids["done_run"],))
-    assert one(conn, "SELECT count(*) FROM run_events") == one(conn, "SELECT count(*) FROM run_inbox") == 0
+    conn.execute(delete(events).where(events.c.run_id == ids["done_run"], events.c.seq == 1))
+    assert one(conn, count(events)) == 1
+    conn.execute(delete(tables.runs).where(tables.runs.c.id == ids["done_run"]))
+    assert one(conn, count(events)) == one(conn, count(tables.run_inbox)) == 0
 
 
 def test_the_tables_take_every_state_kind_runtime_mode_and_approval_of_the_runs_module(db):
@@ -258,14 +271,11 @@ def test_the_tables_take_every_state_kind_runtime_mode_and_approval_of_the_runs_
             for approval in runs.APPROVALS:
                 step = f"{runtime}-{mode}-{approval}"
                 add_run(conn, ids, step=step, runtime=runtime, mode=mode, approval=approval)
+    events = tables.run_events
     for seq, kind in enumerate(runs.EVENT_KINDS, start=1):
-        conn.execute(
-            "INSERT INTO run_events (run_id, seq, kind, body) VALUES (%s, %s, %s, %s)",
-            (ids["run"], seq, kind, Jsonb({"kind": kind})),
-        )
-    assert one(conn, "SELECT count(DISTINCT kind) FROM run_events WHERE run_id = %s", ids["run"]) == len(
-        runs.EVENT_KINDS
-    )
+        conn.execute(insert(events).values(run_id=ids["run"], seq=seq, kind=kind, body={"kind": kind}))
+    kinds = select(func.count(distinct(events.c.kind))).where(events.c.run_id == ids["run"])
+    assert one(conn, kinds) == len(runs.EVENT_KINDS)
     for column, value in (
         ("state", "paused"),
         ("runtime", "gemini"),
@@ -278,264 +288,489 @@ def test_the_tables_take_every_state_kind_runtime_mode_and_approval_of_the_runs_
 
 
 def query_kinds(conn) -> set[str]:
-    return {row[0] for row in conn.execute("SELECT DISTINCT kind FROM runs")}
+    return set(conn.execute(select(tables.runs.c.kind).distinct()).scalars())
 
 
-EXPLAIN_CLAIM = """
-EXPLAIN SELECT id FROM runs
- WHERE state = 'queued' AND project_id = ANY(%s) AND dispatched_by = %s AND runtime IN ('any', 'claude-code')
-   AND (pinned_worker_id IS NULL OR pinned_worker_id = %s)
- ORDER BY id LIMIT 1 FOR UPDATE SKIP LOCKED
-"""
-EXPLAIN_REAPER = (
-    "EXPLAIN SELECT id FROM runs WHERE state IN ('leased', 'running', 'interactive', 'verifying', 'waiting') "
-    "AND lease_expires_at < now() FOR UPDATE SKIP LOCKED"
-)
-EXPLAIN_PARK = "EXPLAIN SELECT id FROM runs WHERE state = 'waiting' AND waiting_since < now() - interval '1 day'"
-EXPLAIN_EXPIRE = "EXPLAIN SELECT id FROM runs WHERE state = 'parked' AND parked_at < now() - interval '7 days'"
+class Explain(Executable, ClauseElement):
+    """The plan Postgres picks for a Core statement, a line of it per row. SQLAlchemy has no construct for EXPLAIN:
+    this one puts the keyword before the statement compiled as usual."""
+
+    inherit_cache = False
+
+    def __init__(self, statement):
+        self.statement = statement
+
+
+@compiles(Explain)
+def _explain(element, compiler, **kw):
+    return "EXPLAIN " + compiler.process(element.statement, **kw)
+
+
+class Analyze(Executable, ClauseElement):
+    """Statistics of a table's rows for the planner. SQLAlchemy has no construct for ANALYZE: this one puts the
+    keyword before the quoted name of the table."""
+
+    inherit_cache = False
+
+    def __init__(self, table):
+        self.table = table
+
+
+@compiles(Analyze)
+def _analyze(element, compiler, **kw):
+    return "ANALYZE " + compiler.preparer.format_table(element.table)
+
+
+def explained(conn, statement) -> str:
+    return "\n".join(conn.execute(Explain(statement)).scalars())
 
 
 def test_the_claim_and_the_reaper_read_through_an_index(db):
     conn, ids = db
     for number in range(300):  # a history of finished runs the claim and the reaper must not walk through
         add_run(conn, ids, "done", step=f"old-{number}")
-    conn.execute("ANALYZE runs")
-    conn.execute("SET enable_seqscan = off")
-    claim = "\n".join(row[0] for row in conn.execute(EXPLAIN_CLAIM, ([ids["project"]], ids["user"], ids["worker"])))
-    assert "runs_claim_idx" in claim, claim
-    reaper = "\n".join(row[0] for row in conn.execute(EXPLAIN_REAPER))
-    assert "runs_lease_idx" in reaper, reaper
-    for explain, index in ((EXPLAIN_PARK, "runs_waiting_idx"), (EXPLAIN_EXPIRE, "runs_parked_idx")):
-        plan = "\n".join(row[0] for row in conn.execute(explain))
+    conn.execute(Analyze(tables.runs))
+    conn.execute(select(func.set_config("enable_seqscan", "off", False)))  # for the session, as SET does
+    run = tables.runs
+    claim = (
+        select(run.c.id)
+        .where(
+            run.c.state == "queued",
+            run.c.project_id == any_(literal([ids["project"]], ARRAY(BigInteger))),
+            run.c.dispatched_by == ids["user"],
+            run.c.runtime.in_(["any", "claude-code"]),
+            or_(run.c.pinned_worker_id.is_(None), run.c.pinned_worker_id == ids["worker"]),
+        )
+        .order_by(run.c.id)
+        .limit(1)
+        .with_for_update(skip_locked=True)
+    )
+    plan = explained(conn, claim)
+    assert "runs_claim_idx" in plan, plan
+    held = ("leased", "running", "interactive", "verifying", "waiting")
+    reaper = select(run.c.id).where(run.c.state.in_(held), run.c.lease_expires_at < func.now())
+    plan = explained(conn, reaper.with_for_update(skip_locked=True))
+    assert "runs_lease_idx" in plan, plan
+    park = select(run.c.id).where(run.c.state == "waiting", run.c.waiting_since < func.now() - timedelta(days=1))
+    expire = select(run.c.id).where(run.c.state == "parked", run.c.parked_at < func.now() - timedelta(days=7))
+    for statement, index in ((park, "runs_waiting_idx"), (expire, "runs_parked_idx")):
+        plan = explained(conn, statement)
         assert index in plan, plan
+
+
+# The rows of the constraint tests are written before the fixture has run: a Ref stands for the id of a row it
+# wrote, and each case is a function of the fixture's ids that returns the statement.
+
+
+@dataclass(frozen=True)
+class Ref:
+    """The id ``ids[key]`` of a row the fixture wrote."""
+
+    key: str
+
+
+USER = Ref("user")
+PROJECT = Ref("project")
+WORKER = Ref("worker")
+OTHER_WORKER = Ref("other_worker")
+WORKER_TOKEN = Ref("worker_token")
+SPARE_TOKEN = Ref("spare_token")
+PAIRING = Ref("pairing")
+RUN = Ref("run")
+DONE_RUN = Ref("done_run")
+PLAN_RUN = Ref("plan_run")
+DECISION = Ref("decision")
+NOTIFICATION = Ref("notification")
+CHANNEL = Ref("channel")
+DELIVERY = Ref("delivery")
+
+
+def resolved(value, ids):
+    """``value`` with each Ref in it, alone or in a list, replaced by the id it stands for."""
+    if isinstance(value, Ref):
+        return ids[value.key]
+    if isinstance(value, list):
+        return [resolved(item, ids) for item in value]
+    return value
+
+
+def insert_of(table, **values):
+    """The INSERT of a row of ``table`` with ``values``."""
+    return lambda ids: insert(table).values({name: resolved(value, ids) for name, value in values.items()})
+
+
+def update_of(table, row: Ref, **values):
+    """The UPDATE that sets ``values`` on the row ``row`` of ``table``."""
+    return lambda ids: (
+        update(table)
+        .values({name: resolved(value, ids) for name, value in values.items()})
+        .where(table.c.id == ids[row.key])
+    )
+
+
+def delete_of(table, row: Ref):
+    """The DELETE of the row ``row`` of ``table``."""
+    return lambda ids: delete(table).where(table.c.id == ids[row.key])
+
+
+def spare_worker(**values):
+    """The INSERT of a worker on the spare token, with ``values`` instead of its defaults."""
+    row = {"owner_id": USER, "token_id": SPARE_TOKEN, "name": "spare", "hostname": "spare", "os": "linux"}
+    return insert_of(tables.workers, **{**row, "arch": "x86_64", "agent_version": "0.3.0", **values})
+
+
+def pairing(selector: str, name: str, **values):
+    """The INSERT of a pairing of the user for the project, its code hashed, for five minutes unless ``values`` say
+    otherwise."""
+    row = {"code_selector": selector, "code_hash": "2" * 64, "owner_id": USER, "name": name, "projects": [PROJECT]}
+    return insert_of(tables.worker_pairings, **{**row, "expires_at": later(minutes=5), **values})
 
 
 @pytest.mark.parametrize(
     "statement, error",
     [
         # tokens: worker is the one new kind
-        (
-            "INSERT INTO tokens (user_id, kind, token_hash, host, expires_at) "
-            "VALUES ({user}, 'robot', repeat('1', 64), 'pc', now() + interval '1 day')",
+        pytest.param(
+            insert_of(
+                tables.tokens, user_id=USER, kind="robot", token_hash="1" * 64, host="pc", expires_at=later(days=1)
+            ),
             errors.CheckViolation,
+            id="token-kind-robot",
         ),
-        (
-            "INSERT INTO tokens (user_id, kind, token_hash, expires_at) "
-            "VALUES ({user}, 'worker', repeat('1', 64), now() + interval '1 day')",
+        pytest.param(
+            insert_of(tables.tokens, user_id=USER, kind="worker", token_hash="1" * 64, expires_at=later(days=1)),
             errors.CheckViolation,
+            id="worker-token-without-host",
         ),
         # workers
-        (
-            "INSERT INTO workers (owner_id, token_id, name, hostname, os, arch, agent_version) "
-            "VALUES ({user}, {spare_token}, 'MAC-MINI', 'spare', 'linux', 'x86_64', '0.3.0')",
-            errors.UniqueViolation,
+        pytest.param(spare_worker(name="MAC-MINI"), errors.UniqueViolation, id="worker-name-taken-in-other-case"),
+        pytest.param(spare_worker(token_id=WORKER_TOKEN), errors.UniqueViolation, id="worker-token-taken"),
+        pytest.param(spare_worker(name="my mac"), errors.CheckViolation, id="worker-name-with-space"),
+        pytest.param(spare_worker(hostname="spare\nhost"), errors.CheckViolation, id="worker-hostname-two-lines"),
+        pytest.param(
+            update_of(tables.workers, WORKER, labels=["gpu", "two words"]), errors.CheckViolation, id="label-two-words"
         ),
-        (
-            "INSERT INTO workers (owner_id, token_id, name, hostname, os, arch, agent_version) "
-            "VALUES ({user}, {worker_token}, 'spare', 'spare', 'linux', 'x86_64', '0.3.0')",
-            errors.UniqueViolation,
+        pytest.param(update_of(tables.workers, WORKER, labels=["gpu", ""]), errors.CheckViolation, id="label-empty"),
+        pytest.param(update_of(tables.workers, WORKER, labels=["gpu", None]), errors.CheckViolation, id="label-null"),
+        pytest.param(update_of(tables.workers, WORKER, labels=[["gpu"]]), errors.CheckViolation, id="labels-2-dims"),
+        pytest.param(update_of(tables.workers, WORKER, labels=["l"] * 17), errors.CheckViolation, id="labels-17"),
+        pytest.param(update_of(tables.workers, WORKER, runtimes=[]), errors.CheckViolation, id="runtimes-array"),
+        pytest.param(
+            update_of(tables.workers, WORKER, checkouts=JSON.NULL), errors.CheckViolation, id="checkouts-json-null"
         ),
-        (
-            "INSERT INTO workers (owner_id, token_id, name, hostname, os, arch, agent_version) "
-            "VALUES ({user}, {spare_token}, 'my mac', 'spare', 'linux', 'x86_64', '0.3.0')",
-            errors.CheckViolation,
-        ),
-        (
-            "INSERT INTO workers (owner_id, token_id, name, hostname, os, arch, agent_version) "
-            "VALUES ({user}, {spare_token}, 'spare', E'spare\\nhost', 'linux', 'x86_64', '0.3.0')",
-            errors.CheckViolation,
-        ),
-        ("UPDATE workers SET labels = ARRAY['gpu', 'two words'] WHERE id = {worker}", errors.CheckViolation),
-        ("UPDATE workers SET labels = ARRAY['gpu', ''] WHERE id = {worker}", errors.CheckViolation),
-        ("UPDATE workers SET labels = ARRAY['gpu', NULL] WHERE id = {worker}", errors.CheckViolation),
-        ("UPDATE workers SET labels = ARRAY[['gpu']] WHERE id = {worker}", errors.CheckViolation),
-        ("UPDATE workers SET labels = array_fill('l'::text, ARRAY[17]) WHERE id = {worker}", errors.CheckViolation),
-        ("UPDATE workers SET runtimes = '[]' WHERE id = {worker}", errors.CheckViolation),
-        ("UPDATE workers SET checkouts = 'null' WHERE id = {worker}", errors.CheckViolation),
-        ("DELETE FROM workers WHERE id = {worker}", errors.ForeignKeyViolation),  # its runs keep it
-        ("DELETE FROM tokens WHERE id = {worker_token}", errors.ForeignKeyViolation),
+        pytest.param(delete_of(tables.workers, WORKER), errors.ForeignKeyViolation, id="worker-with-runs-deleted"),
+        pytest.param(delete_of(tables.tokens, WORKER_TOKEN), errors.ForeignKeyViolation, id="worker-token-deleted"),
         # pairings: an unused code holds its selector, the first four characters of the code
-        (
-            "INSERT INTO worker_pairings (code_selector, code_hash, owner_id, name, projects, expires_at) "
-            "VALUES ('ABCD', repeat('2', 64), {user}, 'again', ARRAY[{project}]::bigint[], "
-            "now() + interval '5 minutes')",
-            errors.UniqueViolation,
+        pytest.param(pairing("ABCD", "again"), errors.UniqueViolation, id="pairing-selector-taken"),
+        pytest.param(pairing("WXYZ", "plain", code_hash="ABCD-EFGH"), errors.CheckViolation, id="pairing-code-plain"),
+        pytest.param(pairing("ABCDEFGH", "long-selector"), errors.CheckViolation, id="pairing-selector-long"),
+        pytest.param(pairing("ABCU", "not-crockford"), errors.CheckViolation, id="pairing-selector-not-crockford"),
+        pytest.param(
+            pairing("WXYZ", "long", expires_at=later(minutes=11)), errors.CheckViolation, id="pairing-for-11-minutes"
         ),
-        (
-            "INSERT INTO worker_pairings (code_selector, code_hash, owner_id, name, projects, expires_at) "
-            "VALUES ('WXYZ', 'ABCD-EFGH', {user}, 'plain', ARRAY[{project}]::bigint[], now() + interval '5 minutes')",
+        pytest.param(pairing("WXYZ", "none", projects=[]), errors.CheckViolation, id="pairing-without-projects"),
+        pytest.param(
+            pairing("WXYZ", "null", projects=[PROJECT, None]), errors.CheckViolation, id="pairing-project-null"
+        ),
+        pytest.param(update_of(tables.worker_pairings, PAIRING, attempts=6), errors.CheckViolation, id="attempts-6"),
+        pytest.param(
+            update_of(tables.worker_pairings, PAIRING, used_at=func.now()),
             errors.CheckViolation,
+            id="pairing-used-without-worker",
         ),
-        (
-            "INSERT INTO worker_pairings (code_selector, code_hash, owner_id, name, projects, expires_at) "
-            "VALUES ('ABCDEFGH', repeat('2', 64), {user}, 'long-selector', ARRAY[{project}]::bigint[], "
-            "now() + interval '5 minutes')",
-            errors.CheckViolation,
-        ),
-        (
-            "INSERT INTO worker_pairings (code_selector, code_hash, owner_id, name, projects, expires_at) "
-            "VALUES ('ABCU', repeat('2', 64), {user}, 'not-crockford', ARRAY[{project}]::bigint[], "
-            "now() + interval '5 minutes')",
-            errors.CheckViolation,
-        ),
-        (
-            "INSERT INTO worker_pairings (code_selector, code_hash, owner_id, name, projects, expires_at) "
-            "VALUES ('WXYZ', repeat('2', 64), {user}, 'long', ARRAY[{project}]::bigint[], "
-            "now() + interval '11 minutes')",
-            errors.CheckViolation,
-        ),
-        (
-            "INSERT INTO worker_pairings (code_selector, code_hash, owner_id, name, projects, expires_at) "
-            "VALUES ('WXYZ', repeat('2', 64), {user}, 'none', '{{}}', now() + interval '5 minutes')",
-            errors.CheckViolation,
-        ),
-        (
-            "INSERT INTO worker_pairings (code_selector, code_hash, owner_id, name, projects, expires_at) "
-            "VALUES ('WXYZ', repeat('2', 64), {user}, 'null', ARRAY[{project}, NULL]::bigint[], "
-            "now() + interval '5 minutes')",
-            errors.CheckViolation,
-        ),
-        ("UPDATE worker_pairings SET attempts = 6 WHERE id = {pairing}", errors.CheckViolation),
-        ("UPDATE worker_pairings SET used_at = now() WHERE id = {pairing}", errors.CheckViolation),
-        ("UPDATE worker_pairings SET slots = 9 WHERE id = {pairing}", errors.CheckViolation),
+        pytest.param(update_of(tables.worker_pairings, PAIRING, slots=9), errors.CheckViolation, id="pairing-slots-9"),
         # runs
-        ("UPDATE runs SET timeout_s = 299 WHERE id = {run}", errors.CheckViolation),
-        ("UPDATE runs SET timeout_s = 14401 WHERE id = {run}", errors.CheckViolation),
-        ("UPDATE runs SET attempt = 2 WHERE id = {run}", errors.CheckViolation),  # names no run it retries
-        ("UPDATE runs SET attempt = 4, parent_run_id = {done_run} WHERE id = {run}", errors.CheckViolation),
-        ("UPDATE runs SET max_attempts = 4 WHERE id = {run}", errors.CheckViolation),
-        ("UPDATE runs SET parent_run_id = id WHERE id = {run}", errors.CheckViolation),
-        (
-            "UPDATE runs SET state = 'leased', runtime = 'codex', leased_at = now(), "
-            "lease_expires_at = now() + interval '5 minutes' WHERE id = {run}",
+        pytest.param(update_of(tables.runs, RUN, timeout_s=299), errors.CheckViolation, id="timeout-299"),
+        pytest.param(update_of(tables.runs, RUN, timeout_s=14401), errors.CheckViolation, id="timeout-14401"),
+        pytest.param(
+            update_of(tables.runs, RUN, attempt=2), errors.CheckViolation, id="attempt-2-retrying-no-run"
+        ),  # names no run it retries
+        pytest.param(
+            update_of(tables.runs, RUN, attempt=4, parent_run_id=DONE_RUN), errors.CheckViolation, id="attempt-4"
+        ),
+        pytest.param(update_of(tables.runs, RUN, max_attempts=4), errors.CheckViolation, id="max-attempts-4"),
+        pytest.param(
+            update_of(tables.runs, RUN, parent_run_id=tables.runs.c.id), errors.CheckViolation, id="parent-itself"
+        ),
+        pytest.param(
+            update_of(
+                tables.runs,
+                RUN,
+                state="leased",
+                runtime="codex",
+                leased_at=func.now(),
+                lease_expires_at=later(minutes=5),
+            ),
             errors.CheckViolation,  # claimed by no worker
+            id="leased-without-worker",
         ),
-        (
-            "UPDATE runs SET state = 'leased', worker_id = {worker}, leased_at = now(), "
-            "lease_expires_at = now() + interval '5 minutes' WHERE id = {run}",
+        pytest.param(
+            update_of(
+                tables.runs,
+                RUN,
+                state="leased",
+                worker_id=WORKER,
+                leased_at=func.now(),
+                lease_expires_at=later(minutes=5),
+            ),
             errors.CheckViolation,  # still runtime any
+            id="leased-runtime-any",
         ),
-        (
-            "UPDATE runs SET state = 'running', worker_id = {worker}, runtime = 'codex', leased_at = now() "
-            "WHERE id = {run}",
+        pytest.param(
+            update_of(tables.runs, RUN, state="running", worker_id=WORKER, runtime="codex", leased_at=func.now()),
             errors.CheckViolation,  # held without a lease
+            id="running-without-lease",
         ),
-        ("UPDATE runs SET state = 'done' WHERE id = {run}", errors.CheckViolation),  # never claimed
-        ("UPDATE runs SET runtime = 'codex' WHERE id = {run}", errors.CheckViolation),  # queued: as it was asked for
-        ("UPDATE runs SET requested_runtime = 'opencode' WHERE id = {done_run}", errors.CheckViolation),
-        ("UPDATE runs SET requested_runtime = 'gemini' WHERE id = {run}", errors.CheckViolation),
-        ("UPDATE workers SET free_slots = 9 WHERE id = {worker}", errors.CheckViolation),
-        ("UPDATE runs SET finished_at = NULL WHERE id = {done_run}", errors.CheckViolation),
-        ("UPDATE runs SET finished_at = now() WHERE id = {run}", errors.CheckViolation),
-        ("UPDATE runs SET state = 'failed', finished_at = now() WHERE id = {run}", errors.CheckViolation),
-        (
-            "UPDATE runs SET pinned_worker_id = {other_worker} WHERE id = {done_run}",
+        pytest.param(
+            update_of(tables.runs, RUN, state="done"), errors.CheckViolation, id="done-never-claimed"
+        ),  # never claimed
+        pytest.param(
+            update_of(tables.runs, RUN, runtime="codex"), errors.CheckViolation, id="queued-runtime-changed"
+        ),  # queued: as it was asked for
+        pytest.param(
+            update_of(tables.runs, DONE_RUN, requested_runtime="opencode"),
+            errors.CheckViolation,
+            id="claimed-requested-runtime-changed",
+        ),
+        pytest.param(
+            update_of(tables.runs, RUN, requested_runtime="gemini"), errors.CheckViolation, id="requested-gemini"
+        ),
+        pytest.param(update_of(tables.workers, WORKER, free_slots=9), errors.CheckViolation, id="free-slots-9"),
+        pytest.param(
+            update_of(tables.runs, DONE_RUN, finished_at=None), errors.CheckViolation, id="done-without-finished-at"
+        ),
+        pytest.param(update_of(tables.runs, RUN, finished_at=func.now()), errors.CheckViolation, id="queued-finished"),
+        pytest.param(
+            update_of(tables.runs, RUN, state="failed", finished_at=func.now()),
+            errors.CheckViolation,
+            id="failed-without-error",
+        ),
+        pytest.param(
+            update_of(tables.runs, DONE_RUN, pinned_worker_id=OTHER_WORKER),
             errors.CheckViolation,  # claimed by a worker other than the one it is pinned to
+            id="pinned-to-other-worker",
         ),
-        ("UPDATE runs SET plan_revision = 2 WHERE id = {run}", errors.ForeignKeyViolation),
-        ("UPDATE runs SET commit_sha = 'abc1234' WHERE id = {done_run}", errors.CheckViolation),
-        ("UPDATE runs SET verify = '{{}}' WHERE id = {done_run}", errors.CheckViolation),
-        ("UPDATE runs SET usage = '[]' WHERE id = {done_run}", errors.CheckViolation),
-        ("UPDATE runs SET events_acked = 3 WHERE id = {done_run}", errors.CheckViolation),
-        ("UPDATE runs SET step_key = '' WHERE id = {run}", errors.CheckViolation),
-        ("UPDATE runs SET log_sha256 = 'sha256:' || repeat('a', 64) WHERE id = {done_run}", errors.CheckViolation),
-        ("UPDATE runs SET title = '' WHERE id = {run}", errors.CheckViolation),
-        ("UPDATE runs SET title = repeat('t', 201) WHERE id = {run}", errors.CheckViolation),
-        ("UPDATE runs SET title = E'two\\nlines' WHERE id = {run}", errors.CheckViolation),
-        ("UPDATE runs SET takeover_requested_at = now() WHERE id = {run}", errors.CheckViolation),  # queued
-        ("UPDATE runs SET handback_requested_at = now() WHERE id = {done_run}", errors.CheckViolation),
-        ("DELETE FROM plans WHERE plan_id = 'worker-fleet'", errors.ForeignKeyViolation),
+        pytest.param(
+            update_of(tables.runs, RUN, plan_revision=2), errors.ForeignKeyViolation, id="plan-revision-missing"
+        ),
+        pytest.param(
+            update_of(tables.runs, DONE_RUN, commit_sha="abc1234"), errors.CheckViolation, id="commit-sha-short"
+        ),
+        pytest.param(update_of(tables.runs, DONE_RUN, verify={}), errors.CheckViolation, id="verify-object"),
+        pytest.param(update_of(tables.runs, DONE_RUN, usage=[]), errors.CheckViolation, id="usage-array"),
+        pytest.param(
+            update_of(tables.runs, DONE_RUN, events_acked=3), errors.CheckViolation, id="events-acked-past-seq"
+        ),
+        pytest.param(update_of(tables.runs, RUN, step_key=""), errors.CheckViolation, id="step-key-empty"),
+        pytest.param(
+            update_of(tables.runs, DONE_RUN, log_sha256="sha256:" + "a" * 64),
+            errors.CheckViolation,
+            id="log-sha256-prefixed",
+        ),
+        pytest.param(update_of(tables.runs, RUN, title=""), errors.CheckViolation, id="title-empty"),
+        pytest.param(update_of(tables.runs, RUN, title="t" * 201), errors.CheckViolation, id="title-201"),
+        pytest.param(update_of(tables.runs, RUN, title="two\nlines"), errors.CheckViolation, id="title-two-lines"),
+        pytest.param(
+            update_of(tables.runs, RUN, takeover_requested_at=func.now()), errors.CheckViolation, id="takeover-queued"
+        ),  # queued
+        pytest.param(
+            update_of(tables.runs, DONE_RUN, handback_requested_at=func.now()),
+            errors.CheckViolation,
+            id="handback-done",
+        ),
+        pytest.param(
+            lambda ids: delete(tables.plans).where(tables.plans.c.plan_id == PLAN),
+            errors.ForeignKeyViolation,
+            id="plan-with-runs-deleted",
+        ),
         # events and inbox
-        ("INSERT INTO run_events (run_id, seq, kind, body) VALUES ({run}, 1, 'stdout', '{{}}')", errors.CheckViolation),
-        ("INSERT INTO run_events (run_id, seq, kind, body) VALUES ({run}, 0, 'system', '{{}}')", errors.CheckViolation),
-        (
-            "INSERT INTO run_events (run_id, seq, kind, body) VALUES ({done_run}, 2, 'system', '{{}}')",
+        pytest.param(
+            insert_of(tables.run_events, run_id=RUN, seq=1, kind="stdout", body={}),
+            errors.CheckViolation,
+            id="event-kind-stdout",
+        ),
+        pytest.param(
+            insert_of(tables.run_events, run_id=RUN, seq=0, kind="system", body={}),
+            errors.CheckViolation,
+            id="event-seq-0",
+        ),
+        pytest.param(
+            insert_of(tables.run_events, run_id=DONE_RUN, seq=2, kind="system", body={}),
             errors.UniqueViolation,
+            id="event-seq-taken",
         ),
-        ("INSERT INTO run_inbox (run_id, sent_by, body) VALUES ({run}, {user}, '')", errors.CheckViolation),
-        (
-            "INSERT INTO run_inbox (run_id, sent_by, body) VALUES ({run}, {user}, repeat('é', 4097))",
+        pytest.param(
+            insert_of(tables.run_inbox, run_id=RUN, sent_by=USER, body=""), errors.CheckViolation, id="message-empty"
+        ),
+        pytest.param(
+            insert_of(tables.run_inbox, run_id=RUN, sent_by=USER, body="é" * 4097),
             errors.CheckViolation,  # 8194 bytes
+            id="message-8194-bytes",
         ),
-        ("UPDATE run_inbox SET delivered_at = created_at - interval '1 second'", errors.CheckViolation),
+        pytest.param(
+            lambda ids: update(tables.run_inbox).values(
+                delivered_at=tables.run_inbox.c.created_at - timedelta(seconds=1)
+            ),
+            errors.CheckViolation,
+            id="message-delivered-before-sent",
+        ),
     ],
 )
 def test_constraints_refuse_bad_rows(db, statement, error):
     conn, ids = db
+    refused = statement(ids)
     with pytest.raises(error):
-        conn.execute(statement.format(**ids))
+        conn.execute(refused)
 
 
 @pytest.mark.parametrize("slots", [0, 9])
 def test_a_worker_has_one_to_eight_slots(db, slots):
     conn, ids = db
+    refused = spare_worker(slots=slots)(ids)
     with pytest.raises(errors.CheckViolation):
-        conn.execute(
-            "INSERT INTO workers (owner_id, token_id, name, hostname, os, arch, agent_version, slots) "
-            "VALUES (%s, %s, 'spare', 'spare', 'linux', 'x86_64', '0.3.0', %s)",
-            (ids["user"], ids["spare_token"], slots),
-        )
+        conn.execute(refused)
 
 
 def test_constraints_accept_good_rows(db):
     conn, ids = db
     lost = add_run(conn, ids, "running", step="4")
-    values = {
-        "lost": lost,
-        "diffstat": json.dumps({"files": 3, "insertions": 120, "deletions": 4}),
-        "verify": json.dumps([{"command": "ruff check .", "exit_code": 0}]),
-        "usage": json.dumps({"input_tokens": 1200}),
-        "tool_call": json.dumps({"title": "pytest"}),
-        "raw": json.dumps("raw line"),
-    }
+    run, events, inbox, workers, pairings = (
+        tables.runs,
+        tables.run_events,
+        tables.run_inbox,
+        tables.workers,
+        tables.worker_pairings,
+    )
+    the_run = run.c.id == ids["run"]
     for statement in (
         # a run through its states as the worker reports them, pinned to the worker that claims it
-        "UPDATE runs SET state = 'leased', worker_id = {worker}, pinned_worker_id = {worker}, runtime = 'codex', "
-        "leased_at = now(), lease_expires_at = now() + interval '5 minutes' WHERE id = {run}",
-        "UPDATE runs SET state = 'running', started_at = now(), session_id = '0199a3c1-0000-7000-8000-00000000000a', "
-        "title = 'Log trực tiếp, inbox và kết quả', takeover_requested_at = now() WHERE id = {run}",
-        "UPDATE runs SET state = 'interactive', cancel_requested_at = now(), takeover_requested_at = NULL, "
-        "handback_requested_at = now() WHERE id = {run}",
-        "UPDATE runs SET state = 'verifying', event_seq = 40, events_acked = 37, handback_requested_at = NULL "
-        "WHERE id = {run}",
-        "UPDATE runs SET state = 'review', lease_expires_at = NULL, commit_sha = repeat('a', 40), "
-        "diffstat = '{diffstat}', verify = '{verify}', evidence = 'commit aaaaaaa; ruff 0', usage = '{usage}', "
-        "log_sha256 = repeat('b', 64), diff_sha256 = repeat('c', 64) WHERE id = {run}",
-        "UPDATE runs SET state = 'done', finished_at = now() WHERE id = {run}",
+        update(run)
+        .values(
+            state="leased",
+            worker_id=ids["worker"],
+            pinned_worker_id=ids["worker"],
+            runtime="codex",
+            leased_at=func.now(),
+            lease_expires_at=later(minutes=5),
+        )
+        .where(the_run),
+        update(run)
+        .values(
+            state="running",
+            started_at=func.now(),
+            session_id="0199a3c1-0000-7000-8000-00000000000a",
+            title="Log trực tiếp, inbox và kết quả",
+            takeover_requested_at=func.now(),
+        )
+        .where(the_run),
+        update(run)
+        .values(
+            state="interactive",
+            cancel_requested_at=func.now(),
+            takeover_requested_at=None,
+            handback_requested_at=func.now(),
+        )
+        .where(the_run),
+        update(run).values(state="verifying", event_seq=40, events_acked=37, handback_requested_at=None).where(the_run),
+        update(run)
+        .values(
+            state="review",
+            lease_expires_at=None,
+            commit_sha="a" * 40,
+            diffstat={"files": 3, "insertions": 120, "deletions": 4},
+            verify=[{"command": "ruff check .", "exit_code": 0}],
+            evidence="commit aaaaaaa; ruff 0",
+            usage={"input_tokens": 1200},
+            log_sha256="b" * 64,
+            diff_sha256="c" * 64,
+        )
+        .where(the_run),
+        update(run).values(state="done", finished_at=func.now()).where(the_run),
         # a lost run, the attempt that retries it, and its failure while queued, as the reaper writes them
-        "UPDATE runs SET state = 'lost', finished_at = now() WHERE id = {lost}",
-        "INSERT INTO runs (project_id, plan_id, step_key, plan_revision, dispatched_by, requested_runtime, runtime, "
-        "mode, approval, timeout_s, attempt, parent_run_id, repo) VALUES ({project}, 'worker-fleet', '4', 1, {user}, "
-        "'opencode', 'opencode', 'interactive', 'auto', 14400, 3, {lost}, 'evo-agents')",
-        "UPDATE runs SET state = 'failed', finished_at = now(), error = 'the lease of the last attempt ran out' "
-        "WHERE parent_run_id = {lost}",
+        update(run).values(state="lost", finished_at=func.now()).where(run.c.id == lost),
+        insert(run).values(
+            project_id=ids["project"],
+            plan_id="worker-fleet",
+            step_key="4",
+            plan_revision=1,
+            dispatched_by=ids["user"],
+            requested_runtime="opencode",
+            runtime="opencode",
+            mode="interactive",
+            approval="auto",
+            timeout_s=14400,
+            attempt=3,
+            parent_run_id=lost,
+            repo="evo-agents",
+        ),
+        update(run)
+        .values(state="failed", finished_at=func.now(), error="the lease of the last attempt ran out")
+        .where(run.c.parent_run_id == lost),
         # events of the worker, one of them cut, and a message of 8 KiB the worker has
-        "INSERT INTO run_events (run_id, seq, at, kind, body, truncated) VALUES "
-        "({run}, 1, now() - interval '1 minute', 'tool_call', '{tool_call}', false), "
-        "({run}, 2, now(), 'output', '{raw}', true)",
-        "INSERT INTO run_inbox (run_id, sent_by, body) VALUES ({run}, {user}, repeat('é', 4096))",
-        "UPDATE run_inbox SET delivered_at = now() WHERE run_id = {run}",
+        insert(events).values(
+            [
+                {
+                    "run_id": ids["run"],
+                    "seq": 1,
+                    "at": func.now() - timedelta(minutes=1),
+                    "kind": "tool_call",
+                    "body": {"title": "pytest"},
+                    "truncated": False,
+                },
+                {
+                    "run_id": ids["run"],
+                    "seq": 2,
+                    "at": func.now(),
+                    "kind": "output",
+                    "body": "raw line",
+                    "truncated": True,
+                },
+            ]
+        ),
+        insert(inbox).values(run_id=ids["run"], sent_by=ids["user"], body="é" * 4096),
+        update(inbox).values(delivered_at=func.now()).where(inbox.c.run_id == ids["run"]),
         # a revoked worker's name may be used again, in any case, and labels take letters, digits and ._-
-        "UPDATE workers SET revoked_at = now() WHERE id = {worker}",
-        "INSERT INTO workers (owner_id, token_id, name, hostname, os, arch, agent_version, slots, labels) "
-        "VALUES ({user}, {spare_token}, 'MAC-MINI', 'mac-mini.local', 'darwin', 'arm64', '0.3.0', 8, "
-        "ARRAY['GPU', 'mac.studio', 'x_1-2'])",
-        "UPDATE workers SET labels = '{{}}', last_heartbeat_at = now(), drained_at = now() WHERE id = {other_worker}",
+        update(workers).values(revoked_at=func.now()).where(workers.c.id == ids["worker"]),
+        insert(workers).values(
+            owner_id=ids["user"],
+            token_id=ids["spare_token"],
+            name="MAC-MINI",
+            hostname="mac-mini.local",
+            os="darwin",
+            arch="arm64",
+            agent_version="0.3.0",
+            slots=8,
+            labels=["GPU", "mac.studio", "x_1-2"],
+        ),
+        update(workers)
+        .values(labels=[], last_heartbeat_at=func.now(), drained_at=func.now())
+        .where(workers.c.id == ids["other_worker"]),
         # a pairing that made a worker, and another with the same code, locked by five wrong tries
-        "UPDATE worker_pairings SET used_at = now(), worker_id = {other_worker} WHERE id = {pairing}",
-        "INSERT INTO worker_pairings (code_selector, code_hash, owner_id, name, projects, slots, labels, "
-        "allow_web_terminal, attempts, expires_at) VALUES ('ABCD', repeat('e', 64), {user}, 'desk', "
-        "ARRAY[{project}]::bigint[], 4, ARRAY['linux'], true, 5, now() + interval '10 minutes')",
+        update(pairings)
+        .values(used_at=func.now(), worker_id=ids["other_worker"])
+        .where(pairings.c.id == ids["pairing"]),
+        insert(pairings).values(
+            code_selector="ABCD",
+            code_hash="e" * 64,
+            owner_id=ids["user"],
+            name="desk",
+            projects=[ids["project"]],
+            slots=4,
+            labels=["linux"],
+            allow_web_terminal=True,
+            attempts=5,
+            expires_at=later(minutes=10),
+        ),
     ):
-        conn.execute(statement.format(**ids, **values))
-    states = "SELECT step_key, attempt, state FROM runs ORDER BY id"
-    assert conn.execute(states).fetchall() == [
+        conn.execute(statement)
+    states = select(run.c.step_key, run.c.attempt, run.c.state).order_by(run.c.id)
+    assert conn.execute(states).all() == [
         ("3", 1, "done"),
         ("2", 1, "done"),
         ("4", 1, "lost"),
         ("4", 3, "failed"),
     ]
-    assert one(conn, "SELECT count(*) FROM workers WHERE owner_id = %s AND revoked_at IS NULL", ids["user"]) == 2
+    assert one(conn, count(workers, workers.c.owner_id == ids["user"], workers.c.revoked_at.is_(None))) == 2
 
 
 # Schema 0010: plan runs, decisions and notifications
@@ -555,13 +790,10 @@ def add_decision(conn, ids, run: int, **columns) -> int:
         "category": "architecture",
         "question": "Which database should the dashboard read?",
         "context": "## Why\nThe plan leaves it open.",
-        "options": Jsonb(OPTIONS),
+        "options": OPTIONS,
     }
     row |= columns
-    statement = sql.SQL("INSERT INTO decisions ({}) VALUES ({}) RETURNING id").format(
-        sql.SQL(", ").join(map(sql.Identifier, row)), sql.SQL(", ").join(sql.Placeholder() * len(row))
-    )
-    return conn.execute(statement, list(row.values())).fetchone()[0]
+    return new_id(conn, tables.decisions, **row)
 
 
 @pytest.fixture
@@ -573,56 +805,51 @@ def plan_db(db):
     add_plan(conn, ids, "rollout")
     ids["plan_run"] = add_run(conn, ids, "running", kind="plan", plan_id="rollout", timeout_s=DAY)
     ids["decision"] = add_decision(conn, ids, ids["plan_run"], plan_id="rollout", step_key="2")
-    ids["notification"] = one(
+    ids["notification"] = new_id(
         conn,
-        "INSERT INTO notifications (user_id, kind, project_id, run_id, decision_id, title, link) "
-        "VALUES (%s, 'decision', %s, %s, %s, 'Run #4 asks which database the dashboard reads', "
-        "'/projects/demo/decisions/1') RETURNING id",
-        ids["user"],
-        ids["project"],
-        ids["plan_run"],
-        ids["decision"],
+        tables.notifications,
+        user_id=ids["user"],
+        kind="decision",
+        project_id=ids["project"],
+        run_id=ids["plan_run"],
+        decision_id=ids["decision"],
+        title="Run #4 asks which database the dashboard reads",
+        link="/projects/demo/decisions/1",
     )
-    ids["channel"] = one(
-        conn,
-        "INSERT INTO notification_channels (user_id, kind, config) VALUES (%s, 'telegram', %s) RETURNING id",
-        ids["user"],
-        Jsonb({"chat_id": 42}),
+    ids["channel"] = new_id(
+        conn, tables.notification_channels, user_id=ids["user"], kind="telegram", config={"chat_id": 42}
     )
-    ids["delivery"] = one(
-        conn,
-        "INSERT INTO notification_deliveries (notification_id, channel_id) VALUES (%s, %s) RETURNING id",
-        ids["notification"],
-        ids["channel"],
-    )
-    ids["web_delivery"] = one(
-        conn, "INSERT INTO notification_deliveries (notification_id) VALUES (%s) RETURNING id", ids["notification"]
-    )
+    deliveries = tables.notification_deliveries
+    ids["delivery"] = new_id(conn, deliveries, notification_id=ids["notification"], channel_id=ids["channel"])
+    ids["web_delivery"] = new_id(conn, deliveries, notification_id=ids["notification"])
     return conn, ids
 
 
 def test_a_plan_run_has_no_step_key_and_a_run_of_one_step_needs_one(plan_db):
     conn, ids = plan_db
-    row = conn.execute("SELECT kind, step_key, repo, branch, repos FROM runs WHERE id = %s", (ids["plan_run"],))
-    assert row.fetchone() == ("plan", None, None, None, REPOS)
+    run = tables.runs
+    row = conn.execute(
+        select(run.c.kind, run.c.step_key, run.c.repo, run.c.branch, run.c.repos).where(run.c.id == ids["plan_run"])
+    )
+    assert row.one() == ("plan", None, None, None, REPOS)
     with pytest.raises(errors.CheckViolation, match="runs_kind_step_key_check"):
         add_run(conn, ids, kind="plan", step_key="3")
     with pytest.raises(errors.CheckViolation, match="runs_kind_step_key_check"):
         add_run(conn, ids, step=None)
     with pytest.raises(errors.CheckViolation, match="runs_kind_step_key_check"):
-        conn.execute("UPDATE runs SET step_key = NULL WHERE id = %s", (ids["run"],))
+        conn.execute(update(run).values(step_key=None).where(run.c.id == ids["run"]))
     # a run of one step has its repo and no repos, a plan run the other way round
     with pytest.raises(errors.CheckViolation, match="runs_kind_repo_check"):
         add_run(conn, ids, step="5", repo=None)
     with pytest.raises(errors.CheckViolation, match="runs_kind_repos_check"):
-        add_run(conn, ids, step="5", repos=Jsonb(REPOS))
+        add_run(conn, ids, step="5", repos=REPOS)
     with pytest.raises(errors.CheckViolation, match="runs_kind_repo_check"):
         add_run(conn, ids, kind="plan", repo="evo-agents")
     with pytest.raises(errors.CheckViolation, match="runs_kind_repos_check"):
         add_run(conn, ids, kind="plan", repos=None)
     # a run written as 0.3.0 writes it, without a kind, is a run of one step
-    legacy = add_run(conn, ids, step="5")
-    assert one(conn, "SELECT kind FROM runs WHERE id = %s", legacy) == "step"
+    unmarked = add_run(conn, ids, step="5")
+    assert one(conn, select(run.c.kind).where(run.c.id == unmarked)) == "step"
 
 
 @pytest.mark.parametrize("state", runs.RUN_STATES)
@@ -652,46 +879,47 @@ def test_a_timeout_of_a_day_is_for_plan_runs_only(db):
         with pytest.raises(errors.CheckViolation, match="runs_timeout_s_check"):
             add_run(conn, ids, step="6", kind=kind, plan_id="refused", timeout_s=timeout)
     with pytest.raises(errors.CheckViolation, match="runs_timeout_s_check"):
-        conn.execute("UPDATE runs SET timeout_s = %s WHERE id = %s", (DAY, ids["run"]))
+        conn.execute(update(tables.runs).values(timeout_s=DAY).where(tables.runs.c.id == ids["run"]))
 
 
 def test_0010_goes_up_with_runs_down_to_the_schema_of_0009_and_up_again(hub_db):
     move_to(hub_db, "0009")
     at_0009 = query(hub_db, SNAPSHOT)
-    with pg.admin(hub_db.admin_dsn) as conn:
+    with live.connect(hub_db) as conn:
         ids = seed_runs(conn)
         held = add_run(conn, ids, "running", step="4")
     move_to(hub_db, "0010")
-    assert tables(hub_db) >= pg.NOTIFICATION_TABLES
+    assert table_names(hub_db) >= pg.NOTIFICATION_TABLES
     # the runs of 0009 are runs of one step, with their step key and repo, and no agent time counted yet
-    assert query(hub_db, "SELECT id, kind, step_key, repo, repos, run_seconds, model FROM runs ORDER BY id") == [
+    run = tables.runs
+    listed = select(run.c.id, run.c.kind, run.c.step_key, run.c.repo, run.c.repos, run.c.run_seconds, run.c.model)
+    assert query(hub_db, listed.order_by(run.c.id)) == [
         (ids["run"], "step", "3", "evo-agents", None, 0, None),
         (ids["done_run"], "step", "2", "evo-agents", None, 0, None),
         (held, "step", "4", "evo-agents", None, 0, None),
     ]
     at_0010 = query(hub_db, SNAPSHOT)
 
-    with pg.admin(hub_db.admin_dsn) as conn:
+    with live.connect(hub_db) as conn:
         add_plan(conn, ids, "rollout")
         lost = add_run(conn, ids, "lost", kind="plan", plan_id="rollout", timeout_s=DAY)
         parked = add_run(conn, ids, "done", kind="plan", plan_id="rollout", attempt=2, parent_run_id=lost)
-        conn.execute("UPDATE runs SET parked_at = now(), session_id = 'session-1' WHERE id = %s", (parked,))
+        conn.execute(update(run).values(parked_at=func.now(), session_id="session-1").where(run.c.id == parked))
         resumed = add_run(conn, ids, "waiting", kind="plan", plan_id="rollout", resume_of_run_id=parked, model="opus")
         decision = add_decision(conn, ids, resumed, plan_id="rollout", step_key="2")
-        notification = one(
+        notification = new_id(
             conn,
-            "INSERT INTO notifications (user_id, kind, project_id, run_id, decision_id, title) "
-            "VALUES (%s, 'decision', %s, %s, %s, 'A decision waits') RETURNING id",
-            ids["user"],
-            ids["project"],
-            resumed,
-            decision,
+            tables.notifications,
+            user_id=ids["user"],
+            kind="decision",
+            project_id=ids["project"],
+            run_id=resumed,
+            decision_id=decision,
+            title="A decision waits",
         )
-        conn.execute("INSERT INTO notification_deliveries (notification_id) VALUES (%s)", (notification,))
-        conn.execute(
-            "INSERT INTO run_events (run_id, seq, kind, body) VALUES (%s, 1, 'system', %s)", (resumed, Jsonb({"x": 1}))
-        )
-        conn.execute("INSERT INTO run_inbox (run_id, sent_by, body) VALUES (%s, %s, 'B')", (resumed, ids["user"]))
+        conn.execute(insert(tables.notification_deliveries).values(notification_id=notification))
+        conn.execute(insert(tables.run_events).values(run_id=resumed, seq=1, kind="system", body={"x": 1}))
+        conn.execute(insert(tables.run_inbox).values(run_id=resumed, sent_by=ids["user"], body="B"))
         # runs of one step that only the protocol of 0010 could leave waiting or parked
         waiting = add_run(conn, ids, "waiting", step="6")
         parked_step = add_run(conn, ids, "parked", step="7")
@@ -700,207 +928,421 @@ def test_0010_goes_up_with_runs_down_to_the_schema_of_0009_and_up_again(hub_db):
     # messages, decisions and notifications; the runs of one step stayed, in states 0.3.0 knows.
     move_to(hub_db, "0009", down=True)
     assert query(hub_db, SNAPSHOT) == at_0009
-    assert not tables(hub_db) & pg.NOTIFICATION_TABLES
-    assert query(hub_db, "SELECT id, step_key, state, finished_at IS NOT NULL FROM runs ORDER BY id") == [
+    assert not table_names(hub_db) & pg.NOTIFICATION_TABLES
+    finished = select(run.c.id, run.c.step_key, run.c.state, run.c.finished_at.is_not(None)).order_by(run.c.id)
+    assert query(hub_db, finished) == [
         (ids["run"], "3", "queued", False),
         (ids["done_run"], "2", "done", True),
         (held, "4", "running", False),
         (waiting, "6", "running", False),
         (parked_step, "7", "cancelled", True),
     ]
-    assert query(hub_db, "SELECT DISTINCT run_id FROM run_events") == [(ids["done_run"],)]
-    assert query(hub_db, "SELECT run_id FROM run_inbox") == [(ids["done_run"],)]
-    assert query(hub_db, "SELECT plan_id FROM plans ORDER BY plan_id") == [("rollout",), (PLAN,)]
+    assert query(hub_db, select(tables.run_events.c.run_id).distinct()) == [(ids["done_run"],)]
+    assert query(hub_db, select(tables.run_inbox.c.run_id)) == [(ids["done_run"],)]
+    plans = tables.plans
+    assert query(hub_db, select(plans.c.plan_id).order_by(plans.c.plan_id)) == [("rollout",), (PLAN,)]
 
     move_to(hub_db, "0010")  # not to the head, which later revisions move on
     assert query(hub_db, SNAPSHOT) == at_0010
-    with pg.admin(hub_db.admin_dsn) as conn:  # the plan stayed, and takes a plan run again
+    with live.connect(hub_db) as conn:  # the plan stayed, and takes a plan run again
         add_run(conn, ids, "running", kind="plan", plan_id="rollout")
 
 
-VALUES_0010 = {
-    "options_one": json.dumps(OPTIONS[:1]),
-    "options_seven": json.dumps([{"key": f"k{n}", "label": f"Option {n}"} for n in range(7)]),
-    "options_bad_key": json.dumps([{"key": "two words", "label": "A"}, {"key": "b", "label": "B"}]),
-    "options_no_label": json.dumps([{"key": "a"}, {"key": "b", "label": "B"}]),
-    "options_two_lines": json.dumps([{"key": "a", "label": "A\nB"}, {"key": "b", "label": "B"}]),
-    "options_flag": json.dumps([{"key": "a", "label": "A", "recommended": "yes"}, {"key": "b", "label": "B"}]),
-    "options_two_flags": json.dumps([{**option, "recommended": True} for option in OPTIONS]),
-    "options_object": json.dumps({"a": "A", "b": "B"}),
-    "repos_empty": "[]",
-    "repos_object": json.dumps({"repo": "evo-agents"}),
-    "repos_no_name": json.dumps([{"branch": "main"}]),
-    "repos_blank": json.dumps([{"repo": ""}]),
-    "repos_number": json.dumps([{"repo": "evo-agents", "branch": 1}]),
-    "repos_many": json.dumps([{"repo": f"repo-{n}"} for n in range(51)]),
-}
+def options_of(options):
+    """The UPDATE of the open decision's options to ``options``."""
+    return update_of(tables.decisions, DECISION, options=options)
 
 
 @pytest.mark.parametrize(
     "statement, error",
     [
         # runs
-        ("UPDATE runs SET kind = 'plan' WHERE id = {run}", errors.CheckViolation),  # a step key and no repos
-        ("UPDATE runs SET repos = '{repos_empty}' WHERE id = {plan_run}", errors.CheckViolation),
-        ("UPDATE runs SET repos = '{repos_object}' WHERE id = {plan_run}", errors.CheckViolation),
-        ("UPDATE runs SET repos = '{repos_no_name}' WHERE id = {plan_run}", errors.CheckViolation),
-        ("UPDATE runs SET repos = '{repos_blank}' WHERE id = {plan_run}", errors.CheckViolation),
-        ("UPDATE runs SET repos = '{repos_number}' WHERE id = {plan_run}", errors.CheckViolation),
-        ("UPDATE runs SET repos = '{repos_many}' WHERE id = {plan_run}", errors.CheckViolation),
-        ("UPDATE runs SET model = '' WHERE id = {plan_run}", errors.CheckViolation),
-        ("UPDATE runs SET model = E'opus\\nfast' WHERE id = {plan_run}", errors.CheckViolation),
-        ("UPDATE runs SET run_seconds = -1 WHERE id = {plan_run}", errors.CheckViolation),
-        ("UPDATE runs SET state = 'waiting' WHERE id = {plan_run}", errors.CheckViolation),  # since when?
-        (
-            "UPDATE runs SET state = 'waiting', waiting_since = now(), lease_expires_at = NULL WHERE id = {plan_run}",
+        pytest.param(
+            update_of(tables.runs, RUN, kind="plan"), errors.CheckViolation, id="kind-plan-with-step-key"
+        ),  # a step key and no repos
+        pytest.param(update_of(tables.runs, PLAN_RUN, repos=[]), errors.CheckViolation, id="repos-empty"),
+        pytest.param(
+            update_of(tables.runs, PLAN_RUN, repos={"repo": "evo-agents"}), errors.CheckViolation, id="repos-object"
+        ),
+        pytest.param(
+            update_of(tables.runs, PLAN_RUN, repos=[{"branch": "main"}]), errors.CheckViolation, id="repo-without-name"
+        ),
+        pytest.param(update_of(tables.runs, PLAN_RUN, repos=[{"repo": ""}]), errors.CheckViolation, id="repo-blank"),
+        pytest.param(
+            update_of(tables.runs, PLAN_RUN, repos=[{"repo": "evo-agents", "branch": 1}]),
+            errors.CheckViolation,
+            id="repo-branch-number",
+        ),
+        pytest.param(
+            update_of(tables.runs, PLAN_RUN, repos=[{"repo": f"repo-{n}"} for n in range(51)]),
+            errors.CheckViolation,
+            id="repos-51",
+        ),
+        pytest.param(update_of(tables.runs, PLAN_RUN, model=""), errors.CheckViolation, id="model-empty"),
+        pytest.param(update_of(tables.runs, PLAN_RUN, model="opus\nfast"), errors.CheckViolation, id="model-two-lines"),
+        pytest.param(
+            update_of(tables.runs, PLAN_RUN, run_seconds=-1), errors.CheckViolation, id="run-seconds-negative"
+        ),
+        pytest.param(
+            update_of(tables.runs, PLAN_RUN, state="waiting"), errors.CheckViolation, id="waiting-since-when"
+        ),  # since when?
+        pytest.param(
+            update_of(tables.runs, PLAN_RUN, state="waiting", waiting_since=func.now(), lease_expires_at=None),
             errors.CheckViolation,  # waiting is held: it keeps its lease
+            id="waiting-without-lease",
         ),
-        ("UPDATE runs SET state = 'parked', lease_expires_at = NULL WHERE id = {plan_run}", errors.CheckViolation),
-        ("UPDATE runs SET resume_of_run_id = {plan_run} WHERE id = {plan_run}", errors.CheckViolation),
-        ("UPDATE runs SET resume_of_run_id = {plan_run} WHERE id = {run}", errors.CheckViolation),  # of one step
-        ("UPDATE runs SET resume_of_run_id = 999999 WHERE id = {plan_run}", errors.ForeignKeyViolation),
+        pytest.param(
+            update_of(tables.runs, PLAN_RUN, state="parked", lease_expires_at=None),
+            errors.CheckViolation,
+            id="parked-since-when",
+        ),
+        pytest.param(
+            update_of(tables.runs, PLAN_RUN, resume_of_run_id=PLAN_RUN), errors.CheckViolation, id="resumes-itself"
+        ),
+        pytest.param(
+            update_of(tables.runs, RUN, resume_of_run_id=PLAN_RUN), errors.CheckViolation, id="step-run-resumes"
+        ),  # of one step
+        pytest.param(
+            update_of(tables.runs, PLAN_RUN, resume_of_run_id=999999),
+            errors.ForeignKeyViolation,
+            id="resumes-missing-run",
+        ),
         # decisions
-        ("UPDATE decisions SET category = 'refactor' WHERE id = {decision}", errors.CheckViolation),
-        ("UPDATE decisions SET question = '' WHERE id = {decision}", errors.CheckViolation),
-        ("UPDATE decisions SET context = repeat('é', 8193) WHERE id = {decision}", errors.CheckViolation),
-        ("UPDATE decisions SET step_key = '' WHERE id = {decision}", errors.CheckViolation),
-        ("UPDATE decisions SET options = '{options_one}' WHERE id = {decision}", errors.CheckViolation),
-        ("UPDATE decisions SET options = '{options_seven}' WHERE id = {decision}", errors.CheckViolation),
-        ("UPDATE decisions SET options = '{options_bad_key}' WHERE id = {decision}", errors.CheckViolation),
-        ("UPDATE decisions SET options = '{options_no_label}' WHERE id = {decision}", errors.CheckViolation),
-        ("UPDATE decisions SET options = '{options_two_lines}' WHERE id = {decision}", errors.CheckViolation),
-        ("UPDATE decisions SET options = '{options_flag}' WHERE id = {decision}", errors.CheckViolation),
-        ("UPDATE decisions SET options = '{options_two_flags}' WHERE id = {decision}", errors.CheckViolation),
-        ("UPDATE decisions SET options = '{options_object}' WHERE id = {decision}", errors.CheckViolation),
-        ("UPDATE decisions SET state = 'pending' WHERE id = {decision}", errors.CheckViolation),
-        ("UPDATE decisions SET answer_text = 'B, and keep a backup' WHERE id = {decision}", errors.CheckViolation),
-        (
-            "UPDATE decisions SET state = 'answered', answered_at = now(), answered_by = {user} WHERE id = {decision}",
+        pytest.param(
+            update_of(tables.decisions, DECISION, category="refactor"), errors.CheckViolation, id="category-refactor"
+        ),
+        pytest.param(update_of(tables.decisions, DECISION, question=""), errors.CheckViolation, id="question-empty"),
+        pytest.param(
+            update_of(tables.decisions, DECISION, context="é" * 8193), errors.CheckViolation, id="context-too-long"
+        ),
+        pytest.param(
+            update_of(tables.decisions, DECISION, step_key=""), errors.CheckViolation, id="decision-step-key-empty"
+        ),
+        pytest.param(options_of(OPTIONS[:1]), errors.CheckViolation, id="one-option"),
+        pytest.param(
+            options_of([{"key": f"k{n}", "label": f"Option {n}"} for n in range(7)]),
+            errors.CheckViolation,
+            id="seven-options",
+        ),
+        pytest.param(
+            options_of([{"key": "two words", "label": "A"}, {"key": "b", "label": "B"}]),
+            errors.CheckViolation,
+            id="option-key-two-words",
+        ),
+        pytest.param(
+            options_of([{"key": "a"}, {"key": "b", "label": "B"}]),
+            errors.CheckViolation,
+            id="option-without-label",
+        ),
+        pytest.param(
+            options_of([{"key": "a", "label": "A\nB"}, {"key": "b", "label": "B"}]),
+            errors.CheckViolation,
+            id="option-label-two-lines",
+        ),
+        pytest.param(
+            options_of([{"key": "a", "label": "A", "recommended": "yes"}, {"key": "b", "label": "B"}]),
+            errors.CheckViolation,
+            id="option-recommended-string",
+        ),
+        pytest.param(
+            options_of([{**option, "recommended": True} for option in OPTIONS]),
+            errors.CheckViolation,
+            id="two-recommended",
+        ),
+        pytest.param(options_of({"a": "A", "b": "B"}), errors.CheckViolation, id="options-object"),
+        pytest.param(update_of(tables.decisions, DECISION, state="pending"), errors.CheckViolation, id="state-pending"),
+        pytest.param(
+            update_of(tables.decisions, DECISION, answer_text="B, and keep a backup"),
+            errors.CheckViolation,
+            id="answer-while-open",
+        ),
+        pytest.param(
+            update_of(tables.decisions, DECISION, state="answered", answered_at=func.now(), answered_by=USER),
             errors.CheckViolation,  # answered with nothing
+            id="answered-with-nothing",
         ),
-        (
-            "UPDATE decisions SET state = 'answered', answered_at = now(), answered_by = {user}, answer_option = 'c' "
-            "WHERE id = {decision}",
+        pytest.param(
+            update_of(
+                tables.decisions,
+                DECISION,
+                state="answered",
+                answered_at=func.now(),
+                answered_by=USER,
+                answer_option="c",
+            ),
             errors.CheckViolation,  # not an option of the decision
+            id="answer-not-an-option",
         ),
-        (
-            "UPDATE decisions SET state = 'answered', answer_option = 'b', answered_by = {user} WHERE id = {decision}",
+        pytest.param(
+            update_of(tables.decisions, DECISION, state="answered", answer_option="b", answered_by=USER),
             errors.CheckViolation,  # when?
+            id="answered-when",
         ),
-        (
-            "UPDATE decisions SET state = 'answered', answered_at = asked_at - interval '1 second', "
-            "answered_by = {user}, answer_option = 'b' WHERE id = {decision}",
+        pytest.param(
+            update_of(
+                tables.decisions,
+                DECISION,
+                state="answered",
+                answered_at=tables.decisions.c.asked_at - timedelta(seconds=1),
+                answered_by=USER,
+                answer_option="b",
+            ),
             errors.CheckViolation,
+            id="answered-before-asked",
         ),
-        (
-            "UPDATE decisions SET state = 'answered', answered_at = now(), answered_by = {user}, "
-            "answer_text = repeat('x', 4097) WHERE id = {decision}",
+        pytest.param(
+            update_of(
+                tables.decisions,
+                DECISION,
+                state="answered",
+                answered_at=func.now(),
+                answered_by=USER,
+                answer_text="x" * 4097,
+            ),
             errors.CheckViolation,
+            id="answer-too-long",
         ),
-        ("UPDATE decisions SET delivered_at = now() WHERE id = {decision}", errors.CheckViolation),  # no answer yet
-        ("UPDATE decisions SET run_id = 999999 WHERE id = {decision}", errors.ForeignKeyViolation),
+        pytest.param(
+            update_of(tables.decisions, DECISION, delivered_at=func.now()),
+            errors.CheckViolation,  # no answer yet
+            id="delivered-unanswered",
+        ),
+        pytest.param(
+            update_of(tables.decisions, DECISION, run_id=999999), errors.ForeignKeyViolation, id="decision-run-missing"
+        ),
         # notifications
-        ("UPDATE notifications SET kind = 'mail' WHERE id = {notification}", errors.CheckViolation),
-        ("UPDATE notifications SET decision_id = NULL WHERE id = {notification}", errors.CheckViolation),
-        (
-            "UPDATE notifications SET notice_kind = 'push_default_branch' WHERE id = {notification}",
-            errors.CheckViolation,
+        pytest.param(
+            update_of(tables.notifications, NOTIFICATION, kind="mail"), errors.CheckViolation, id="notification-mail"
         ),
-        (
-            "UPDATE notifications SET kind = 'notice', decision_id = NULL, notice_kind = 'deploy' "
-            "WHERE id = {notification}",
+        pytest.param(
+            update_of(tables.notifications, NOTIFICATION, decision_id=None),
             errors.CheckViolation,
+            id="decision-notification-without-decision",
         ),
-        ("UPDATE notifications SET title = E'two\\nlines' WHERE id = {notification}", errors.CheckViolation),
-        ("UPDATE notifications SET title = '' WHERE id = {notification}", errors.CheckViolation),
-        ("UPDATE notifications SET link = 'https://example.org/x' WHERE id = {notification}", errors.CheckViolation),
-        ("UPDATE notifications SET link = '//example.org/x' WHERE id = {notification}", errors.CheckViolation),
-        ("UPDATE notifications SET details = '[]' WHERE id = {notification}", errors.CheckViolation),
-        ("UPDATE notifications SET body = '' WHERE id = {notification}", errors.CheckViolation),
-        (
-            "UPDATE notifications SET read_at = created_at - interval '1 second' WHERE id = {notification}",
+        pytest.param(
+            update_of(tables.notifications, NOTIFICATION, notice_kind="push_default_branch"),
             errors.CheckViolation,
+            id="decision-notification-notice-kind",
         ),
-        (
-            "INSERT INTO notifications (user_id, kind, decision_id, title) "
-            "VALUES ({user}, 'decision', {decision}, 'Again')",
+        pytest.param(
+            update_of(tables.notifications, NOTIFICATION, kind="notice", decision_id=None, notice_kind="deploy"),
+            errors.CheckViolation,
+            id="notice-kind-deploy",
+        ),
+        pytest.param(
+            update_of(tables.notifications, NOTIFICATION, title="two\nlines"),
+            errors.CheckViolation,
+            id="notification-title-two-lines",
+        ),
+        pytest.param(
+            update_of(tables.notifications, NOTIFICATION, title=""),
+            errors.CheckViolation,
+            id="notification-title-empty",
+        ),
+        pytest.param(
+            update_of(tables.notifications, NOTIFICATION, link="https://example.org/x"),
+            errors.CheckViolation,
+            id="link-absolute",
+        ),
+        pytest.param(
+            update_of(tables.notifications, NOTIFICATION, link="//example.org/x"),
+            errors.CheckViolation,
+            id="link-protocol-relative",
+        ),
+        pytest.param(
+            update_of(tables.notifications, NOTIFICATION, details=[]), errors.CheckViolation, id="details-array"
+        ),
+        pytest.param(
+            update_of(tables.notifications, NOTIFICATION, body=""), errors.CheckViolation, id="notification-body-empty"
+        ),
+        pytest.param(
+            update_of(
+                tables.notifications, NOTIFICATION, read_at=tables.notifications.c.created_at - timedelta(seconds=1)
+            ),
+            errors.CheckViolation,
+            id="read-before-created",
+        ),
+        pytest.param(
+            insert_of(tables.notifications, user_id=USER, kind="decision", decision_id=DECISION, title="Again"),
             errors.UniqueViolation,  # a decision notifies a member once
+            id="decision-notified-twice",
         ),
         # channels and deliveries
-        ("INSERT INTO notification_channels (user_id, kind) VALUES ({user}, 'web')", errors.CheckViolation),
-        ("INSERT INTO notification_channels (user_id, kind) VALUES ({user}, 'Tele gram')", errors.CheckViolation),
-        ("INSERT INTO notification_channels (user_id, kind) VALUES ({user}, 'telegram')", errors.UniqueViolation),
-        ("UPDATE notification_channels SET config = '[]' WHERE id = {channel}", errors.CheckViolation),
-        ("UPDATE notification_deliveries SET state = 'sent' WHERE id = {delivery}", errors.CheckViolation),
-        ("UPDATE notification_deliveries SET attempts = 6 WHERE id = {delivery}", errors.CheckViolation),
-        ("UPDATE notification_deliveries SET state = 'failed' WHERE id = {delivery}", errors.CheckViolation),
-        ("UPDATE notification_deliveries SET state = 'delivered' WHERE id = {delivery}", errors.CheckViolation),
-        ("UPDATE notification_deliveries SET last_error = '' WHERE id = {delivery}", errors.CheckViolation),
-        (
-            "INSERT INTO notification_deliveries (notification_id) VALUES ({notification})",
-            errors.UniqueViolation,  # the web once
+        pytest.param(
+            insert_of(tables.notification_channels, user_id=USER, kind="web"), errors.CheckViolation, id="channel-web"
         ),
-        (
-            "INSERT INTO notification_deliveries (notification_id, channel_id) VALUES ({notification}, {channel})",
+        pytest.param(
+            insert_of(tables.notification_channels, user_id=USER, kind="Tele gram"),
+            errors.CheckViolation,
+            id="channel-kind-with-space",
+        ),
+        pytest.param(
+            insert_of(tables.notification_channels, user_id=USER, kind="telegram"),
             errors.UniqueViolation,
+            id="channel-twice",
+        ),
+        pytest.param(
+            update_of(tables.notification_channels, CHANNEL, config=[]), errors.CheckViolation, id="config-array"
+        ),
+        pytest.param(
+            update_of(tables.notification_deliveries, DELIVERY, state="sent"), errors.CheckViolation, id="state-sent"
+        ),
+        pytest.param(
+            update_of(tables.notification_deliveries, DELIVERY, attempts=6), errors.CheckViolation, id="attempts-6"
+        ),
+        pytest.param(
+            update_of(tables.notification_deliveries, DELIVERY, state="failed"),
+            errors.CheckViolation,
+            id="failed-before-five-attempts",
+        ),
+        pytest.param(
+            update_of(tables.notification_deliveries, DELIVERY, state="delivered"),
+            errors.CheckViolation,
+            id="delivered-when",
+        ),
+        pytest.param(
+            update_of(tables.notification_deliveries, DELIVERY, last_error=""),
+            errors.CheckViolation,
+            id="last-error-empty",
+        ),
+        pytest.param(
+            insert_of(tables.notification_deliveries, notification_id=NOTIFICATION),
+            errors.UniqueViolation,  # the web once
+            id="web-delivery-twice",
+        ),
+        pytest.param(
+            insert_of(tables.notification_deliveries, notification_id=NOTIFICATION, channel_id=CHANNEL),
+            errors.UniqueViolation,
+            id="channel-delivery-twice",
         ),
     ],
 )
 def test_constraints_of_0010_refuse_bad_rows(plan_db, statement, error):
     conn, ids = plan_db
+    refused = statement(ids)
     with pytest.raises(error):
-        conn.execute(statement.format(**ids, **VALUES_0010))
+        conn.execute(refused)
 
 
 def test_constraints_of_0010_accept_good_rows(plan_db):
     conn, ids = plan_db
-    values = {
-        "details": json.dumps({"repo": "evo-agents", "branch": "main", "commits": ["a" * 40]}),
-        "repos": json.dumps([{"repo": "evo-agents"}, {"repo": "web", "branch": None}, {"repo": "x", "branch": "y"}]),
-    }
+    run, decisions, notifications = tables.runs, tables.decisions, tables.notifications
+    channels, deliveries = tables.notification_channels, tables.notification_deliveries
+    the_run = run.c.id == ids["plan_run"]
+    the_decision = decisions.c.id == ids["decision"]
+    repos = [{"repo": "evo-agents"}, {"repo": "web", "branch": None}, {"repo": "x", "branch": "y"}]
+    resumed = select(
+        run.c.project_id,
+        run.c.plan_id,
+        run.c.kind,
+        run.c.plan_revision,
+        run.c.dispatched_by,
+        run.c.worker_id,
+        run.c.runtime,
+        run.c.runtime,
+        run.c.mode,
+        run.c.approval,
+        run.c.timeout_s,
+        run.c.repos,
+        run.c.id,
+        run.c.run_seconds,
+        run.c.session_id,
+    ).where(the_run)
+    options = [{"key": "yes", "label": "Deploy"}, {"key": "no", "label": "Wait"}]
+    asked = select(
+        run.c.id,
+        run.c.project_id,
+        run.c.plan_id,
+        literal("deploy"),
+        literal("Deploy to staging now?"),
+        literal(options, JSONB),
+    ).where(run.c.resume_of_run_id == ids["plan_run"])
     for statement in (
         # the plan run through waiting and parked, as the worker and the reaper move it
-        "UPDATE runs SET state = 'waiting', waiting_since = now(), run_seconds = 3600, model = 'claude-opus-4-1', "
-        "session_id = '0199a3c1-0000-7000-8000-00000000000b' WHERE id = {plan_run}",
-        "UPDATE runs SET state = 'running', waiting_since = NULL WHERE id = {plan_run}",
-        "UPDATE runs SET state = 'waiting', waiting_since = now(), repos = '{repos}' WHERE id = {plan_run}",
-        "UPDATE runs SET state = 'parked', parked_at = now(), lease_expires_at = NULL, waiting_since = NULL "
-        "WHERE id = {plan_run}",
+        update(run)
+        .values(
+            state="waiting",
+            waiting_since=func.now(),
+            run_seconds=3600,
+            model="claude-opus-4-1",
+            session_id="0199a3c1-0000-7000-8000-00000000000b",
+        )
+        .where(the_run),
+        update(run).values(state="running", waiting_since=None).where(the_run),
+        update(run).values(state="waiting", waiting_since=func.now(), repos=repos).where(the_run),
+        update(run)
+        .values(state="parked", parked_at=func.now(), lease_expires_at=None, waiting_since=None)
+        .where(the_run),
         # the owner answers with an option and text of their own: the parked run is done, and the run that resumes it
         # is queued on the same worker
-        "UPDATE decisions SET state = 'answered', answered_at = now(), answered_by = {user}, answer_option = 'b', "
-        "answer_text = 'And keep the SQLite file as a backup.' WHERE id = {decision}",
-        "UPDATE runs SET state = 'done', finished_at = now() WHERE id = {plan_run}",
-        "INSERT INTO runs (project_id, plan_id, kind, plan_revision, dispatched_by, pinned_worker_id, "
-        "requested_runtime, runtime, mode, approval, timeout_s, repos, resume_of_run_id, run_seconds, session_id) "
-        "SELECT project_id, plan_id, kind, plan_revision, dispatched_by, worker_id, runtime, runtime, mode, approval, "
-        "timeout_s, repos, id, run_seconds, session_id FROM runs WHERE id = {plan_run}",
-        "UPDATE decisions SET delivered_at = now() WHERE id = {decision}",
-        "UPDATE notifications SET read_at = now() WHERE id = {notification}",
+        update(decisions)
+        .values(
+            state="answered",
+            answered_at=func.now(),
+            answered_by=ids["user"],
+            answer_option="b",
+            answer_text="And keep the SQLite file as a backup.",
+        )
+        .where(the_decision),
+        update(run).values(state="done", finished_at=func.now()).where(the_run),
+        insert(run).from_select(
+            [
+                "project_id",
+                "plan_id",
+                "kind",
+                "plan_revision",
+                "dispatched_by",
+                "pinned_worker_id",
+                "requested_runtime",
+                "runtime",
+                "mode",
+                "approval",
+                "timeout_s",
+                "repos",
+                "resume_of_run_id",
+                "run_seconds",
+                "session_id",
+            ],
+            resumed,
+        ),
+        update(decisions).values(delivered_at=func.now()).where(the_decision),
+        update(notifications).values(read_at=func.now()).where(notifications.c.id == ids["notification"]),
         # the deliveries: the web at once, Telegram after a failed try
-        "UPDATE notification_deliveries SET state = 'delivered', delivered_at = now() WHERE id = {web_delivery}",
-        "UPDATE notification_deliveries SET attempts = 1, next_at = now() + interval '2 minutes', "
-        "last_error = 'telegram answered 429' WHERE id = {delivery}",
-        "UPDATE notification_deliveries SET state = 'failed', attempts = 5 WHERE id = {delivery}",
+        update(deliveries)
+        .values(state="delivered", delivered_at=func.now())
+        .where(deliveries.c.id == ids["web_delivery"]),
+        update(deliveries)
+        .values(attempts=1, next_at=later(minutes=2), last_error="telegram answered 429")
+        .where(deliveries.c.id == ids["delivery"]),
+        update(deliveries).values(state="failed", attempts=5).where(deliveries.c.id == ids["delivery"]),
         # a notice of a push to a default branch, read later, on the web only
-        "INSERT INTO notifications (user_id, kind, notice_kind, project_id, run_id, title, body, details, link) "
-        "VALUES ({user}, 'notice', 'push_default_branch', {project}, {plan_run}, 'Pushed main of evo-agents', "
-        "'2 commits', '{details}', '/')",
-        "INSERT INTO notification_channels (user_id, kind, enabled) VALUES ({user}, 'mail', false)",
+        insert(notifications).values(
+            user_id=ids["user"],
+            kind="notice",
+            notice_kind="push_default_branch",
+            project_id=ids["project"],
+            run_id=ids["plan_run"],
+            title="Pushed main of evo-agents",
+            body="2 commits",
+            details={"repo": "evo-agents", "branch": "main", "commits": ["a" * 40]},
+            link="/",
+        ),
+        insert(channels).values(user_id=ids["user"], kind="mail", enabled=False),
         # a decision without a step or context, open, and one the reaper let expire
-        "INSERT INTO decisions (run_id, project_id, plan_id, category, question, options) "
-        'SELECT id, project_id, plan_id, \'deploy\', \'Deploy to staging now?\', \'[{{"key": "yes", "label": '
-        '"Deploy"}}, {{"key": "no", "label": "Wait"}}]\' FROM runs WHERE resume_of_run_id = {plan_run}',
-        "UPDATE decisions SET state = 'expired' WHERE step_key IS NULL",
+        insert(decisions).from_select(["run_id", "project_id", "plan_id", "category", "question", "options"], asked),
+        update(decisions).values(state="expired").where(decisions.c.step_key.is_(None)),
     ):
-        conn.execute(statement.format(**ids, **values))
+        conn.execute(statement)
     rows = (
-        "SELECT kind, state, resume_of_run_id, session_id IS NOT NULL FROM runs WHERE plan_id = 'rollout' ORDER BY id"
+        select(run.c.kind, run.c.state, run.c.resume_of_run_id, run.c.session_id.is_not(None))
+        .where(run.c.plan_id == "rollout")
+        .order_by(run.c.id)
     )
-    assert conn.execute(rows).fetchall() == [("plan", "done", None, True), ("plan", "queued", ids["plan_run"], True)]
-    assert one(conn, "SELECT count(*) FROM notifications WHERE user_id = %s AND read_at IS NULL", ids["user"]) == 1
+    assert conn.execute(rows).all() == [("plan", "done", None, True), ("plan", "queued", ids["plan_run"], True)]
+    unread = count(notifications, notifications.c.user_id == ids["user"], notifications.c.read_at.is_(None))
+    assert one(conn, unread) == 1
     # a run, its decisions and their notifications go together
-    conn.execute("DELETE FROM runs WHERE resume_of_run_id = %s", (ids["plan_run"],))
-    conn.execute("DELETE FROM runs WHERE id = %s", (ids["plan_run"],))
-    for table in ("decisions", "notifications", "notification_deliveries"):
-        assert one(conn, f"SELECT count(*) FROM {table}") == 0, table
+    conn.execute(delete(run).where(run.c.resume_of_run_id == ids["plan_run"]))
+    conn.execute(delete(run).where(the_run))
+    for gone in (decisions, notifications, deliveries):
+        assert one(conn, count(gone)) == 0, gone.name
