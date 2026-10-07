@@ -30,7 +30,9 @@ from tests.hub.contract_keys import assert_json_keys
 if not pg.DSN:
     pytest.skip(pg.SKIP_REASON, allow_module_level=True)
 
-from evo_agents.hub import blob_gc
+from sqlalchemy import Boolean, Text, cast, column, func, select, table
+
+from evo_agents.hub import blob_gc, tables
 from evo_agents.hub.blobs import BLOB_PREFIX, BlobStore, blob_key
 from evo_agents.hub.client import Hub
 from evo_agents.hub.config import MAX_KG_KEEP_ARTIFACTS
@@ -53,6 +55,7 @@ from tests.hub.test_kg import (
     make_config,
     ok,
     open_hub,
+    procrastinate_jobs,
     push,
     query,
     sha,
@@ -60,13 +63,19 @@ from tests.hub.test_kg import (
     tool_ok,
 )
 
-# What the restore drill of the deployment reads, word for word: every hash these name must have its object.
+# What the restore drill of the deployment reads, statement for statement: the distinct (hash, size) pairs of these
+# four tables, the builds' only where they still hold an artifact. Every hash these name must have its object.
 DRILL = {
-    "blobs": "select distinct sha256, size from blobs",
-    "skill_versions": "select distinct sha256, size from skill_versions",
-    "kg_builds": "select distinct artifact_sha256, artifact_size from kg_builds where artifact_sha256 is not null",
-    "kg_ingests": "select distinct log_sha256, log_size from kg_ingests",
+    "blobs": select(tables.blobs.c.sha256, tables.blobs.c.size).distinct(),
+    "skill_versions": select(tables.skill_versions.c.sha256, tables.skill_versions.c.size).distinct(),
+    "kg_builds": select(tables.kg_builds.c.artifact_sha256, tables.kg_builds.c.artifact_size)
+    .distinct()
+    .where(tables.kg_builds.c.artifact_sha256.is_not(None)),
+    "kg_ingests": select(tables.kg_ingests.c.log_sha256, tables.kg_ingests.c.log_size).distinct(),
 }
+# The catalogs the concurrency tests watch the advisory locks in.
+pg_locks = table("pg_locks", column("database"), column("locktype"), column("granted", Boolean))
+pg_database = table("pg_database", column("oid"), column("datname", Text))
 BETA = "beta"
 
 
@@ -138,20 +147,22 @@ def objects(hub) -> dict[str, int]:
 def assert_drill_holds(hub) -> None:
     """The restore drill's check: no hash it reads lacks its object, and no object has another size."""
     present = objects(hub)
-    for table, statement in DRILL.items():
+    for name, statement in DRILL.items():
         rows = {(sha256, size) for sha256, size in query(hub.db, statement)}
         missing = sorted(sha256 for sha256, _ in rows if sha256 not in present)
         wrong = sorted(sha256 for sha256, size in rows if sha256 in present and present[sha256] != size)
-        assert (missing, wrong) == ([], []), f"{table}: missing {missing}, wrong size {wrong}"
+        assert (missing, wrong) == ([], []), f"{name}: missing {missing}, wrong size {wrong}"
 
 
 def corpus(hub) -> set[str]:
     """The hashes of every run log and source blob the hub holds."""
-    return {row[0] for row in query(hub.db, "SELECT sha256 FROM blobs WHERE kind IN ('kg-log', 'kg-blob')")}
+    blobs = tables.blobs
+    return {row[0] for row in query(hub.db, select(blobs.c.sha256).where(blobs.c.kind.in_(["kg-log", "kg-blob"])))}
 
 
 def kg_graphs(hub) -> set[str]:
-    return {row[0] for row in query(hub.db, "SELECT sha256 FROM blobs WHERE kind = 'kg-graph'")}
+    blobs = tables.blobs
+    return {row[0] for row in query(hub.db, select(blobs.c.sha256).where(blobs.c.kind == "kg-graph"))}
 
 
 def prune_api(hub, who: str = "admin", **body):
@@ -259,7 +270,8 @@ def test_prune_keeps_each_project_s_newest_graphs_and_deletes_only_older_artifac
     beta_build = graph_of(hub, Machine(tmp_path, "beta-laptop", project=BETA), BETA)
     kept_corpus = corpus(hub)
     before = objects(hub)
-    rows_before = query(hub.db, "SELECT * FROM kg_builds ORDER BY id")
+    all_builds = select(tables.kg_builds).order_by(tables.kg_builds.c.id)
+    rows_before = query(hub.db, all_builds)
 
     dry = prune_api(hub, keep=2, dry_run=True)
     assert dry.status_code == 200, dry.text
@@ -276,9 +288,9 @@ def test_prune_keeps_each_project_s_newest_graphs_and_deletes_only_older_artifac
         "deleted_bytes": old_bytes,
         "pending": 0,
     }
-    assert objects(hub) == before and query(hub.db, "SELECT * FROM kg_builds ORDER BY id") == rows_before
-    assert count(hub.db, "blob_deletions") == 0
-    assert query(hub.db, "SELECT count(*) FROM audit WHERE action = 'kg.prune'") == [(0,)]
+    assert objects(hub) == before and query(hub.db, all_builds) == rows_before
+    assert count(hub.db, tables.blob_deletions) == 0
+    assert query(hub.db, select(func.count()).where(tables.audit.c.action == "kg.prune")) == [(0,)]
 
     done = prune_api(hub, keep=2)
     assert done.status_code == 200, done.text
@@ -303,13 +315,16 @@ def test_prune_keeps_each_project_s_newest_graphs_and_deletes_only_older_artifac
     for kept in (b4, b5):
         assert builds[kept["id"]]["artifact_sha256"] == kept["artifact_sha256"]
         assert builds[kept["id"]]["artifact_pruned_at"] is None
-    assert query(hub.db, "SELECT sha256, kind FROM blob_deletions WHERE deleted_at IS NOT NULL ORDER BY 1") == sorted(
-        (sha256, "kg-graph") for sha256 in old
-    )
+    deletions = tables.blob_deletions
+    deleted = select(deletions.c.sha256, deletions.c.kind).where(deletions.c.deleted_at.is_not(None))
+    assert query(hub.db, deleted.order_by(deletions.c.sha256)) == sorted((sha256, "kg-graph") for sha256 in old)
+    trail, projects, users = tables.audit, tables.projects, tables.users
     audit = query(
         hub.db,
-        "SELECT a.target, p.name, u.login FROM audit a JOIN projects p ON p.id = a.project_id "
-        "JOIN users u ON u.id = a.actor_id WHERE a.action = 'kg.prune'",
+        select(trail.c.target, projects.c.name, users.c.login)
+        .join_from(trail, projects, projects.c.id == trail.c.project_id)
+        .join(users, users.c.id == trail.c.actor_id)
+        .where(trail.c.action == "kg.prune"),
     )
     assert audit == [(f"{PROJECT} keep=2", PROJECT, live.ADMIN)]
     assert_drill_holds(hub)
@@ -379,25 +394,28 @@ def test_every_hash_the_restore_drill_reads_has_its_object_after_the_hourly_prun
 
     asyncio.run(defer())
     run_worker(hub, keep=1)  # the worker's job, with EVO_HUB_KG_KEEP_ARTIFACTS=1
-    statuses = query(hub.db, "SELECT status::text FROM procrastinate_jobs WHERE task_name = %s", (PRUNE_KG_ARTIFACTS,))
+    jobs = procrastinate_jobs.c
+    statuses = query(hub.db, select(cast(jobs.status, Text)).where(jobs.task_name == PRUNE_KG_ARTIFACTS))
     assert statuses and {row[0] for row in statuses} == {"succeeded"}  # the hourly tick may have run one too
     assert len(kg_graphs(hub)) == 1 and first["artifact_sha256"] not in objects(hub)
     assert_drill_holds(hub)
-    pruned = query(hub.db, "SELECT count(*) FROM kg_builds WHERE artifact_pruned_at IS NOT NULL")[0][0]
+    builds, trail = tables.kg_builds, tables.audit
+    pruned = query(hub.db, select(func.count()).where(builds.c.artifact_pruned_at.is_not(None)))[0][0]
     assert pruned == 3  # two builds shared the first artifact
-    assert query(hub.db, "SELECT actor_id FROM audit WHERE action = 'kg.prune'") == [(None,)]  # the hub itself
+    assert query(hub.db, select(trail.c.actor_id).where(trail.c.action == "kg.prune")) == [(None,)]  # the hub itself
 
 
 # Concurrency
 
 
 def waiting_on_the_blob_lock(hub) -> int:
-    return query(
-        hub.db,
-        "SELECT count(*) FROM pg_locks l JOIN pg_database d ON d.oid = l.database "
-        "WHERE l.locktype = 'advisory' AND NOT l.granted AND d.datname = %s",
-        (hub.db.name,),
-    )[0][0]
+    waiting = (
+        select(func.count())
+        .select_from(pg_locks)
+        .join(pg_database, pg_database.c.oid == pg_locks.c.database)
+        .where(pg_locks.c.locktype == "advisory", ~pg_locks.c.granted, pg_database.c.datname == hub.db.name)
+    )
+    return query(hub.db, waiting)[0][0]
 
 
 def test_a_build_that_finishes_while_a_prune_runs_is_kept_and_nothing_dangles(hub, tmp_path, monkeypatch):
@@ -469,7 +487,8 @@ def test_two_prunes_at_once_delete_each_artifact_once(hub, tmp_path):
     assert sorted(sum(p.pruned for p in r.projects) for r in reports) == [0, 3]  # one of them marked all three
     assert sum(r.deleted for r in reports) == 3 and all(r.pending == 0 for r in reports)
     assert len(set(before) - set(objects(hub))) == 3
-    assert query(hub.db, "SELECT count(*) FROM blob_deletions WHERE deleted_at IS NOT NULL") == [(3,)]
+    deletions = tables.blob_deletions
+    assert query(hub.db, select(func.count()).where(deletions.c.deleted_at.is_not(None))) == [(3,)]
     assert_drill_holds(hub)
 
 
@@ -514,13 +533,16 @@ def test_an_artifact_s_bytes_committed_while_the_retention_deletes_them_are_put_
     assert committed.status_code == 200, committed.text
     assert pruned and pruned[0].deleted == 1
     assert hub.s3.get(blob_key(first["artifact_sha256"])) == data  # the commit put the bytes back
+    blobs, projects, deletions = tables.blobs, tables.projects, tables.blob_deletions
     holders = query(
         hub.db,
-        "SELECT p.name, b.kind FROM blobs b JOIN projects p ON p.id = b.project_id WHERE b.sha256 = %s",
-        (first["artifact_sha256"],),
+        select(projects.c.name, blobs.c.kind)
+        .join_from(blobs, projects, projects.c.id == blobs.c.project_id)
+        .where(blobs.c.sha256 == first["artifact_sha256"]),
     )
     assert holders == [(BETA, "kg-blob")]
-    assert query(hub.db, "SELECT count(*) FROM blob_deletions WHERE sha256 = %s", (first["artifact_sha256"],)) == [(0,)]
+    deleting = select(func.count()).where(deletions.c.sha256 == first["artifact_sha256"])
+    assert query(hub.db, deleting) == [(0,)]
     assert_drill_holds(hub)
     # nothing refers to it as an artifact any more, and a later prune leaves beta's blob alone
     assert prune_api(hub, keep=1).json()["deleted"] == 0
