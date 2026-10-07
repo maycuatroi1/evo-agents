@@ -65,6 +65,56 @@
     "plans": "{count, plural, =0 {no active plan} one {# active plan} other {# active plans}}",
     "decisions": "{count, plural, one {# open decision} other {# open decisions}}"
   },
+  "palette": {
+    "trigger": "Search or jump to",
+    "title": "Command palette",
+    "description": "Find a run, plan, worker or page, or start an action. Tab switches the project.",
+    "label": "Search or run a command",
+    "placeholder": "Search or run a command",
+    "list": "Results",
+    "close": "Close",
+    "groups": {
+      "actions": "Actions",
+      "runs": "Runs",
+      "plans": "Plans",
+      "workers": "Workers",
+      "goto": "Go to"
+    },
+    "actions": {
+      "runPlan": "Run plan {plan}",
+      "dispatch": "Dispatch a step",
+      "dispatchIn": "Dispatch a step in {project}",
+      "rerun": "Rerun #{id}",
+      "register": "Register worker",
+      "stepsLeft": "{count, plural, one {# step left} other {# steps left}}",
+      "failedAgo": "failed {ago}",
+      "lostAgo": "lost {ago}",
+      "failedJustNow": "failed just now",
+      "lostJustNow": "lost just now"
+    },
+    "plan": {
+      "progress": "{done} of {total} done",
+      "completed": "Completed"
+    },
+    "goto": {
+      "page": "{page} of {project}"
+    },
+    "scope": {
+      "all": "All projects",
+      "switch": "Looking in {scope}. Switch the project"
+    },
+    "hints": {
+      "move": "move",
+      "open": "open",
+      "scope": "switch project",
+      "close": "close"
+    },
+    "results": "{count, plural, =0 {No result} one {# result} other {# results}} in {scope}",
+    "noMatch": "No match for “{query}” in {scope}.",
+    "trySwitch": "Press Tab to switch the project.",
+    "searching": "Searching runs",
+    "partial": "Some results could not be read. Try again in a moment."
+  },
   "userMenu": {
     "trigger": "Account {login}",
     "hubAdmin": "Hub administrator",

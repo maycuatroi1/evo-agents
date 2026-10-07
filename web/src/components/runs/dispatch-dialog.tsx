@@ -45,6 +45,8 @@ type Props = {
   onOpenChange: (open: boolean) => void;
   /** Called with the runs the hub queued, for the page to say so once the dialog closes. */
   onDispatched: (runs: Run[]) => void;
+  /** Where focus goes once the dialog has closed, for a dialog opened without a trigger (the command palette). */
+  onCloseAutoFocus?: (event: Event) => void;
   /** The plan, and the step of it, to start from: the step page opens the dialog on its own step. */
   plan?: string;
   step?: string;
@@ -55,7 +57,7 @@ type Props = {
  * Steps that are not ready are listed with the reason and cannot be picked. The footer says which of the visitor's
  * workers could take the runs now. The content mounts each time the dialog opens, so it starts from the defaults.
  */
-export function DispatchDialog({ project, open, onOpenChange, onDispatched, plan, step }: Props) {
+export function DispatchDialog({ project, open, onOpenChange, onDispatched, plan, step, onCloseAutoFocus }: Props) {
   const write = useDispatch(project);
   const pending = write.isPending;
   const guard = (event: Event) => {
@@ -68,6 +70,7 @@ export function DispatchDialog({ project, open, onOpenChange, onDispatched, plan
         className="flex max-h-[calc(100dvh-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl"
         onEscapeKeyDown={guard}
         onInteractOutside={guard}
+        onCloseAutoFocus={onCloseAutoFocus}
         data-testid="dispatch-dialog"
       >
         <DispatchForm

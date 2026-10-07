@@ -47,6 +47,8 @@ type Props = {
   onOpenChange: (open: boolean) => void;
   /** Called with the plan run the hub queued, for the page to say so once the dialog closes. */
   onDispatched: (run: Run) => void;
+  /** Where focus goes once the dialog has closed, for a dialog opened without a trigger (the command palette). */
+  onCloseAutoFocus?: (event: Event) => void;
 };
 
 /**
@@ -55,7 +57,7 @@ type Props = {
  * repos, checkpoints, and where the agent may push and merge), takes the runtime, model, mode, worker and timeout, and
  * says in its footer which worker could take it now. The content mounts each time the dialog opens.
  */
-export function PlanRunDialog({ project, planId, open, onOpenChange, onDispatched }: Props) {
+export function PlanRunDialog({ project, planId, open, onOpenChange, onDispatched, onCloseAutoFocus }: Props) {
   const write = useDispatchPlanRun(project);
   const pending = write.isPending;
   const guard = (event: Event) => {
@@ -68,6 +70,7 @@ export function PlanRunDialog({ project, planId, open, onOpenChange, onDispatche
         className="flex max-h-[calc(100dvh-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl"
         onEscapeKeyDown={guard}
         onInteractOutside={guard}
+        onCloseAutoFocus={onCloseAutoFocus}
         data-testid="plan-run-dialog"
       >
         <PlanRunForm project={project} planId={planId} write={write} onClose={() => onOpenChange(false)} onDispatched={onDispatched} />
