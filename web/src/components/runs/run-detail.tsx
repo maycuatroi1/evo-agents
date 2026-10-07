@@ -35,6 +35,10 @@ import { terminalAccess } from "./terminal-model";
 import { UsageMeter } from "./usage-meter";
 import { logSignal, useRunLog } from "./use-run-log";
 
+/** The plan and step under the head: `brand` links with a quiet underline, told apart from the line's words without
+ * colour (the kit draws them bare; axe's link-in-text-block asks for more than a colour). */
+const SUB_LINK = "rounded-xs text-brand underline decoration-brand/40 underline-offset-4 hover:decoration-current";
+
 /** A move between states as the log says it: "Running to Verifying, by the worker: ..." */
 function useDescribeMove() {
   const t = useTranslations("runs.detail.log");
@@ -146,7 +150,7 @@ function RunPage({ run }: { run: Run }) {
 
   const title = run.title ?? (plan ? run.plan_id : t("untitled"));
   const planLink = (chunks: ReactNode) => (
-    <Link href={planHref(run.project, run.plan_id)} className="font-mono text-brand underline-offset-4 hover:underline" data-testid="run-plan-link">
+    <Link href={planHref(run.project, run.plan_id)} className={SUB_LINK} data-testid="run-plan-link">
       {chunks}
     </Link>
   );
@@ -154,9 +158,10 @@ function RunPage({ run }: { run: Run }) {
   return (
     <div className="flex flex-col gap-6" data-testid="run-detail" data-run-id={run.id} data-state={run.state} data-kind={run.kind}>
       <PageHeader
+        // "Run #12" for every run, as the kit's RunScreen: a plan run says what it is once, in its Plan run tag.
         title={
           <>
-            {plan ? t("planTitle") : t("title")} <span className="tabular-nums">#{run.id}</span>
+            {t("title")} <span className="tabular-nums">#{run.id}</span>
           </>
         }
         status={<StatusBadge kind="run" status={run.state} size="lg" />}
@@ -172,7 +177,7 @@ function RunPage({ run }: { run: Run }) {
                 stepLink: (chunks) => (
                   <Link
                     href={stepHref(run.project, run.plan_id, run.step_key ?? "")}
-                    className="text-brand underline-offset-4 hover:underline"
+                    className={SUB_LINK}
                     data-testid="run-step-link"
                   >
                     {chunks}

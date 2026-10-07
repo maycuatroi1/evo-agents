@@ -336,8 +336,9 @@ Shared pieces built on them:
   any is online, `danger` when every one is offline or draining, `neutral` before the first) and links there. The
   project switcher and the account menu (login, hub role, role and visibility in the current project, theme,
   language, sign out) are the kit's switch: a bordered `card` control, the name over an `fg-subtle` line. The top bar
-  (`site-header.tsx`) holds the sidebar toggle, the breadcrumb (13 px, slashes, the trail starts at the project), the
-  command palette's field, the page's LiveIndicator and the inbox bell. Page header below.
+  (`site-header.tsx`) holds the sidebar toggle, the breadcrumb (13 px, slashes, the trail starts at the project; under
+  768 px only its first crumb and the page itself, the page keeping up to three quarters of the trail while the crumbs
+  before it truncate), the command palette's field, the page's LiveIndicator and the inbox bell. Page header below.
 - `components/shell/project-switcher.tsx`: the switcher opens a popover (`ui/popover.tsx`, a dialog named "Choose a
   project", to the right of the sidebar, below the trigger in the phone's sheet) with a search field on top, focused
   as it opens, that keeps the projects whose name holds every word typed, the count said in a polite live region. The
@@ -421,9 +422,9 @@ Shared pieces built on them:
   the last failure's reason. With no run in flight and no decision open it gives way to the quiet line, which still says
   the week's figures. Then two columns from the lg breakpoint (300 px on the right, 340 px from xl), one below, in the
   order Needs you, In flight, Recent, Fleet, Projects; between md and lg Fleet and Projects sit side by side. Each card
-  has a 48 px head (the h2, a count pill said in words, a link on the right) over rows of a 20 px mark, the title over
-  one `caption` line in `fg-subtle`, and what ends the row; in a card narrower than 576 px (a container query) the end
-  moves under the line. Needs you lists only the open decisions the visitor answers (`yours`) and disappears when there
+  has a 48 px head (the h2, a count pill said in words, a link on the right) over rows of a 20 px mark centred on the
+  text, the title over one `caption` line in `fg-subtle`, and what ends the row; in a card narrower than 576 px (a
+  container query) the end moves under the line. Needs you lists only the open decisions the visitor answers (`yours`) and disappears when there
   is none: the question links to `/inbox?decision=ID`, a plain click and the primary Answer (named "Answer decision
   #7") open the DecisionSheet over Home, loaded on demand (`next/dynamic`, asked for when the pointer or focus reaches
   Answer), so Answer then Send answer answers with the agent's pick. In flight lists the active runs (the agent at work
@@ -554,10 +555,12 @@ Shared pieces built on them:
   found answered after a 409, stays with its answer until the visitor leaves.
 - `components/runs`, a run's page (`/p/{project}/runs/{id}`), the kit's RunScreen: the page head, the `RunTimeline`,
   then the session card (Trace, Raw log, Terminal) on the left and, in a 23 rem side column from xl, the decision while
-  a plan run waits, Details, Usage, the plan's steps and the Result; below xl one column, the decision first. The
-  owner's controls sit in the header, each shown only when the state and the visitor's rights allow it
-  (`run-model.ts`, `runControls`): Cancel (confirmed in a dialog), Take over (a dialog with `evo-agents worker attach
-  N` and, for Claude Code, the Remote Control session `evo-run-N`), Hand back, Approve and Rerun, plus the composer
+  a plan run waits, Details, Usage, the plan's steps and the Result; below xl one column, the decision first. The head
+  is "Run #12" for every run, a plan run saying so in its Plan run tag, over the plan (in the body font) and step as
+  `brand` links with a quiet underline, so colour is not all that sets them apart from the line. The owner's controls sit in the header, each shown only when the state and the visitor's rights allow it
+  (`run-model.ts`, `runControls`), in the kit's order: Take over (a dialog with `evo-agents worker attach N` and, for
+  Claude Code, the Remote Control session `evo-run-N`), the diff with its `+12 −3` in mono `success` and `danger` once
+  the worker reported a diffstat, Rerun, Hand back, Approve, and Cancel (confirmed in a dialog) last, plus the composer
   under the trace. Anyone but the run's owner reads only. The header puts these actions under the title until the xl
   breakpoint (`PageHeader`'s `actions`, which take a line of their own when the title leaves no room), so they wrap
   instead of pushing the page sideways.
@@ -573,8 +576,9 @@ Shared pieces built on them:
   each phase's status in words for screen readers.
 - The session card (`run-log.tsx`) holds the tabs, all kept mounted (Radix `forceMount`) and kept in the URL
   (`?view=log`, `?view=terminal`; the Trace has none), changed with `history.replaceState` so the page does not
-  navigate. The stream's status badge sits beside the tabs; the Raw log's line count sits in its tab and, on that tab,
-  beside it. The composer shows under the Trace and the Raw log, not under the Terminal.
+  navigate. What the stream is doing sits at the right end of the tab bar as the kit's live state (a dot in its tone,
+  pulsing while live, and the word in `caption` `fg-subtle`); the Raw log's line count sits in its tab and, on that tab,
+  before the stream's state. The composer shows under the Trace and the Raw log, not under the Terminal.
 - The Trace (`agent-trace.tsx`, `trace-model.ts`), the kit's AgentTrace and the first tab, reads the same events as
   the Raw log (`useRunLog` keeps them beside its lines): consecutive `agent_message_chunk` events are one message
   (SafeMarkdown), a turn ending at anything else shown or at a `usage_update`; `agent_thought_chunk` events fold into

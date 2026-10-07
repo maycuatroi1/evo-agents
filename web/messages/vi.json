@@ -1773,7 +1773,6 @@
     "detail": {
       "metaTitle": "Run #{id} của {project}",
       "title": "Run",
-      "planTitle": "Plan run",
       "untitled": "Bước chưa có tên",
       "sub": "Plan <planLink>{plan}</planLink>, <stepLink>bước {step}: {title}</stepLink>",
       "planSub": "Plan <planLink>{plan}</planLink>: {title}. Mọi bước chưa xong, trong một phiên.",
@@ -2104,6 +2103,7 @@
       },
       "actions": {
         "diff": "Xem diff",
+        "diffstat": "thêm {insertions} dòng, bớt {deletions} dòng",
         "rerun": "Chạy lại",
         "cancel": "Huỷ run",
         "takeover": "Tiếp quản",

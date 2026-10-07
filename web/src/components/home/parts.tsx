@@ -65,9 +65,9 @@ export function HomeCard({
 export const CARD_LINK = "rounded-xs text-[13px] font-medium text-brand underline-offset-4 hover:text-brand-hover hover:underline max-md:py-3";
 
 /**
- * One row of a card's list (the kit's `eh-li`): a 20 px mark, the title over one line of facts, and what ends the row on
- * the right. In a card narrower than 576 px (a phone, or the column beside Fleet at 1024 px) the end moves under the
- * facts, so the title keeps the width.
+ * One row of a card's list (the kit's `eh-li`): a 20 px mark centred on the title and its facts, the title over one
+ * line of facts, and what ends the row on the right. In a card narrower than 576 px (a phone, or the column beside Fleet
+ * at 1024 px) the end moves under the facts, so the title keeps the width; the mark stays centred on the text.
  */
 export function Row({ mark, title, sub, end, testId, data }: { mark: ReactNode; title: ReactNode; sub: ReactNode; end?: ReactNode; testId: string; data?: Record<string, string | number> }) {
   return (
@@ -76,7 +76,7 @@ export function Row({ mark, title, sub, end, testId, data }: { mark: ReactNode; 
       data-testid={testId}
       {...Object.fromEntries(Object.entries(data ?? {}).map(([key, value]) => [`data-${key}`, value]))}
     >
-      <span className="flex justify-center self-start pt-0.5">{mark}</span>
+      <span className="flex justify-center">{mark}</span>
       <div className="flex min-w-0 flex-col gap-0.5">
         <div className="flex min-w-0 items-center gap-2 text-sm leading-5 font-medium">{title}</div>
         <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-xs leading-4 text-fg-subtle">{sub}</div>
