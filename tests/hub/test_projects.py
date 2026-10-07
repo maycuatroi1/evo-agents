@@ -423,7 +423,7 @@ def test_registry_pull_skips_projects_without_paths_and_refuses_a_broken_registr
 def test_registry_pull_never_overwrites_a_registry_changed_while_it_ran(home, registry, monkeypatch):
     def another_program_writes():
         registry.write_bytes(skill_format({"clusters": [FOREIGN[0]]}))
-        return hub_registry.datetime.now(hub_registry.timezone.utc)
+        return hub_registry.datetime.now(hub_registry.UTC)
 
     monkeypatch.setattr(hub_registry, "_now", another_program_writes)
     with pytest.raises(HubError, match="changed while the pull ran"):
