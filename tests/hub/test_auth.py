@@ -9,6 +9,7 @@ import json
 import os
 import stat
 import time
+from contextlib import asynccontextmanager, contextmanager
 from datetime import timedelta
 
 import pytest
@@ -19,7 +20,7 @@ if not pg.DSN:
     pytest.skip(pg.SKIP_REASON, allow_module_level=True)
 
 from fastapi.testclient import TestClient
-from sqlalchemy import BigInteger, Column, DateTime, MetaData, Table, func, select, update
+from sqlalchemy import column, func, select, table, update
 
 from evo_agents.hub import client as hub_client
 from evo_agents.hub import tables
@@ -195,63 +196,69 @@ def test_a_token_unused_for_90_days_gets_401(client, github, hub_db):
     assert {t["id"]: t["state"] for t in listed} == {stale["token_id"]: "expired", fresh["token_id"]: "active"}
 
 
-EXPIRY_WRITES = Table(
-    "expiry_writes",
-    MetaData(),
-    Column("token_id", BigInteger),
-    Column("at", DateTime(timezone=True), server_default=func.clock_timestamp()),
-)
-# A row in expiry_writes for each write of a token's expiry. The trigger and its function are plpgsql, which no query
-# builder makes: tests/test_no_raw_sql.py allows this statement here.
-COUNT_EXPIRY_WRITES = """
-CREATE FUNCTION count_expiry_write() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER AS $$
-BEGIN
-    IF NEW.expires_at IS DISTINCT FROM OLD.expires_at THEN
-        INSERT INTO expiry_writes (token_id) VALUES (NEW.id);
-    END IF;
-    RETURN NEW;
-END $$;
-CREATE TRIGGER count_expiry_write AFTER UPDATE ON tokens FOR EACH ROW EXECUTE FUNCTION count_expiry_write();
-"""
+# The rows of tokens the current transaction updated so far, plus those of the backend's earlier transactions whose
+# counts it has not flushed yet (a backend flushes at most once a second, while idle): only the difference between
+# the start and the end of one transaction is that transaction's own.
+_XACT_TABLES = table("pg_stat_xact_user_tables", column("relname"), column("n_tup_upd"))
+TOKEN_UPDATES = select(_XACT_TABLES.c.n_tup_upd).where(_XACT_TABLES.c.relname == "tokens")
 
 
-def count_expiry_writes(db) -> None:
-    """Create expiry_writes as the database's owner, then the trigger that fills it as the superuser."""
-    EXPIRY_WRITES.create(live.engine(db))
-    with pg.admin(db.admin_dsn) as conn:
-        conn.execute(COUNT_EXPIRY_WRITES)
+class TokenWrites:
+    """An engine whose ``begin()`` counts, in ``writes``, the rows of tokens each transaction updated, read on the
+    transaction's own connection when it ends cleanly; anything else goes to the engine it wraps. With one token in
+    the database, ``writes`` counts the writes of its expiry and last use."""
+
+    def __init__(self, engine):
+        self.engine = engine
+        self.writes = 0
+
+    @asynccontextmanager
+    async def begin(self):
+        async with self.engine.begin() as conn:
+            before = (await conn.execute(TOKEN_UPDATES)).scalar_one()
+            yield conn
+            self.writes += (await conn.execute(TOKEN_UPDATES)).scalar_one() - before
+
+    def __getattr__(self, name):
+        return getattr(self.engine, name)
 
 
-def expiry_writes(db, token_id: int) -> int:
-    counted = select(func.count()).select_from(EXPIRY_WRITES).where(EXPIRY_WRITES.c.token_id == token_id)
-    return sql(db, counted)[0][0]
+@contextmanager
+def counting_token_writes(app):
+    """``app``'s engine swapped for a TokenWrites until the block ends."""
+    engine = app.state.engine
+    app.state.engine = counted = TokenWrites(engine)
+    try:
+        yield counted
+    finally:
+        app.state.engine = engine
 
 
 def test_two_uses_in_one_day_write_the_expiry_once(client, github, hub_db):
-    count_expiry_writes(hub_db)
-    signed = sign_in(client, github, "octo", 101)
-    token_id = signed["token_id"]
-    issued = expires_at(hub_db, token_id)
+    with counting_token_writes(client.app) as counted:
+        signed = sign_in(client, github, "octo", 101)
+        token_id = signed["token_id"]
+        issued = expires_at(hub_db, token_id)
 
-    assert client.get("/v1/auth/whoami", headers=bearer(signed["token"])).status_code == 200
-    after_first = expires_at(hub_db, token_id)
-    assert client.get("/v1/tokens", headers=bearer(signed["token"])).status_code == 200
-    after_second = expires_at(hub_db, token_id)
-    assert expiry_writes(hub_db, token_id) == 1
-    assert after_first > issued and after_second == after_first
-
-    # A day later the next use writes again, once.
-    tokens = tables.tokens
-    sql(hub_db, update(tokens).values(last_used_at=func.now() - timedelta(hours=25)).where(tokens.c.id == token_id))
-    for _ in range(3):
         assert client.get("/v1/auth/whoami", headers=bearer(signed["token"])).status_code == 200
-    assert expiry_writes(hub_db, token_id) == 2
+        after_first = expires_at(hub_db, token_id)
+        assert client.get("/v1/tokens", headers=bearer(signed["token"])).status_code == 200
+        after_second = expires_at(hub_db, token_id)
+        assert counted.writes == 1
+        assert after_first > issued and after_second == after_first
+
+        # A day later the next use writes again, once. The test's own write of last_used_at is not the hub's.
+        tokens = tables.tokens
+        stale = update(tokens).values(last_used_at=func.now() - timedelta(hours=25)).where(tokens.c.id == token_id)
+        sql(hub_db, stale)
+        for _ in range(3):
+            assert client.get("/v1/auth/whoami", headers=bearer(signed["token"])).status_code == 200
+        assert counted.writes == 2
     (seen,) = sql(hub_db, select(tables.users.c.last_seen_at).where(tables.users.c.login == "octo"))[0]
     assert seen is not None
 
 
 def test_requests_racing_over_a_stale_token_write_once(client, config, github, hub_db):
-    count_expiry_writes(hub_db)
     signed = sign_in(client, github, "octo", 101)
     tokens = tables.tokens
     stale = update(tokens).values(last_used_at=func.now() - timedelta(days=2)).where(tokens.c.id == signed["token_id"])
@@ -264,13 +271,15 @@ def test_requests_racing_over_a_stale_token_write_once(client, config, github, h
 
         async with AsyncConnectionPool(hub_db.dsn, min_size=8, max_size=8, open=False, close_returns=True) as pool:
             await pool.wait()
-            return await asyncio.gather(
-                *(authenticate(make_engine(pool), signed["token"], "machine", config) for _ in range(8))
+            counted = TokenWrites(make_engine(pool))
+            principals = await asyncio.gather(
+                *(authenticate(counted, signed["token"], "machine", config) for _ in range(8))
             )
+            return principals, counted.writes
 
-    principals = asyncio.run(race())
+    principals, writes = asyncio.run(race())
     assert {p.token_id for p in principals} == {signed["token_id"]}
-    assert expiry_writes(hub_db, signed["token_id"]) == 1
+    assert writes == 1
 
 
 # Server: roles

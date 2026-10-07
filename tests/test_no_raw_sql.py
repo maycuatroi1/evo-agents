@@ -87,9 +87,6 @@ ALLOWED_SQL: dict[str, re.Pattern] = {
     "evo_agents/hub/server/listen.py": re.compile(r"^LISTEN\b"),
     # A test's database and its owner role, made and dropped by a superuser outside any hub database.
     "tests/hub/pg.py": re.compile(r"^(?:CREATE|DROP)\s+(?:DATABASE|ROLE)\b"),
-    # A trigger counting the writes of a token's expiry, with its plpgsql function: SQLAlchemy has no construct for
-    # either.
-    "tests/hub/test_auth.py": re.compile(r"^CREATE FUNCTION count_expiry_write\(\)"),
 }
 ALLOWED_PSYCOPG_SQL = frozenset({"evo_agents/hub/server/listen.py", "tests/hub/pg.py"})  # quotes their identifiers
 ALLOWED_DRIVER = frozenset(
