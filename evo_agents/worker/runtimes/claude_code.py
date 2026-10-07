@@ -42,6 +42,13 @@ here.
 - Whether the turn completed comes from the last ``result`` (``subtype`` ``success``, not ``is_error``), never from
   the exit code: Claude Code exits 0 when it is interrupted.
 - The CLI is ``claude`` on PATH, started through the launcher of ``common`` (a session of its own).
+- Claude Code authenticates with the machine's own login, unless the environment says otherwise. A lease of the run
+  may set CLAUDE_CODE_OAUTH_TOKEN, a token of ``claude setup-token`` (docs/credentials.md). Claude Code takes
+  ANTHROPIC_API_KEY before that token, so when no lease sets the key too, the key of the daemon's environment is left
+  out of the agent's: the launcher unsets it (the SDK hands the CLI its own process's environment under
+  ``options.env``), and the daemon notes it in the run's log (``environment_notes``). Such a token only calls the
+  model and cannot open a Remote Control session, so the terminal UI then starts without ``--remote-control``
+  (``evo_agents.worker.interactive``).
 - The model is the run's ``model`` (``options.model``, the CLI's ``--model``), else ``EVO_WORKER_CLAUDE_CODE_MODEL``,
   else Claude Code's own choice. Claude Code has no command that lists its models; for the heartbeat, ``models``
   gives the aliases its ``--model`` help names (``'opus'``, ``'sonnet'`` and the like), and a run may name any model
@@ -93,6 +100,19 @@ MIN_VERSION = "2.1.289"  # Claude Code
 SDK = ("claude-agent-sdk", "0.2.163")
 # Variables of a parent Claude Code session that must not reach the agent, which is no child of it.
 DROPPED_ENV = ("CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT")
+# Claude Code's credentials in the agent's environment: a token of `claude setup-token`, and the API key that comes
+# before it in Claude Code's order of authentication.
+OAUTH_TOKEN = "CLAUDE_CODE_OAUTH_TOKEN"
+API_KEY = "ANTHROPIC_API_KEY"
+API_KEY_NOTE = (
+    f"{API_KEY} of this machine's environment is left out of Claude Code's: the run's lease sets {OAUTH_TOKEN}, and "
+    "Claude Code would take the API key before that token."
+)
+REMOTE_CONTROL_NOTE = (
+    f"Claude Code's terminal UI starts without --remote-control: the run's lease sets {OAUTH_TOKEN}, a token of "
+    "`claude setup-token`, which only calls the model and cannot open a Remote Control session, so the session does "
+    "not show in the Claude apps."
+)
 # System messages left out of the log: the CLI's list of slash commands (tens of KiB, twice a session), the start of
 # a hook (its response says the same and how it ended), and running estimates of thinking tokens.
 SKIPPED_SYSTEM = frozenset({"commands_changed", "hook_started", "thinking_tokens"})
@@ -140,6 +160,28 @@ TOOL_KINDS = {
     "Task": "think",
     "TodoWrite": "think",
 }
+
+
+def leased_oauth(context: RunContext) -> bool:
+    """Whether a lease of the run sets CLAUDE_CODE_OAUTH_TOKEN in the agent's environment."""
+    return OAUTH_TOKEN in context.leased and bool(context.env.get(OAUTH_TOKEN))
+
+
+def drops_api_key(context: RunContext) -> bool:
+    """Whether ANTHROPIC_API_KEY stays out of Claude Code's environment: a lease sets CLAUDE_CODE_OAUTH_TOKEN and none
+    sets the key, which Claude Code would take first."""
+    return leased_oauth(context) and API_KEY not in context.leased
+
+
+def dropped_env(context: RunContext) -> tuple[str, ...]:
+    """The variables of ``context.env`` Claude Code does not get: DROPPED_ENV, and ANTHROPIC_API_KEY when
+    ``drops_api_key``."""
+    return (*DROPPED_ENV, API_KEY) if drops_api_key(context) else DROPPED_ENV
+
+
+def auth_notes(context: RunContext) -> list[str]:
+    """API_KEY_NOTE when the daemon's ANTHROPIC_API_KEY is left out of the agent's environment."""
+    return [API_KEY_NOTE] if drops_api_key(context) and API_KEY in context.env else []
 
 
 def help_models(text: str | None) -> list[str] | None:
@@ -375,6 +417,10 @@ class ClaudeCodeAdapter(QueueAdapter):
 
         return ClaudeCodeTui(context, session_id)
 
+    @classmethod
+    def environment_notes(cls, context: RunContext) -> list[str]:
+        return auth_notes(context)
+
     def __init__(self, context: RunContext):
         super().__init__(context)
         self._session = context.resume_session or str(uuid.uuid4())
@@ -405,12 +451,13 @@ class ClaudeCodeAdapter(QueueAdapter):
     def build_options(self, cli_path: str):
         from claude_agent_sdk import ClaudeAgentOptions
 
+        dropped = dropped_env(self.context)
         settings = {
             "cwd": str(self.context.worktree),
             "cli_path": cli_path,
             "permission_mode": "bypassPermissions",
             "system_prompt": {"type": "preset", "preset": "claude_code", "append": SYSTEM_NOTE},
-            "env": {key: value for key, value in self.context.env.items() if key not in DROPPED_ENV},
+            "env": {key: value for key, value in self.context.env.items() if key not in dropped},
             "stderr": self._stderr.append,
         }
         if self.context.resume_session:
@@ -434,7 +481,8 @@ class ClaudeCodeAdapter(QueueAdapter):
         program = which(self.binary, self.context.env)
         self._dir = Path(tempfile.mkdtemp(prefix="evo-claude-"))
         self.pid_file = self._dir / "pid"
-        self.options = self.build_options(str(write_launcher(self._dir, program)))
+        unset = (API_KEY,) if drops_api_key(self.context) else ()  # the SDK passes on the daemon's own
+        self.options = self.build_options(str(write_launcher(self._dir, program, unset=unset)))
         self._client = self.make_client(self.options)
         self._input_open = True
         await self._client.connect(prompt=self._input())

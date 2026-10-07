@@ -1599,6 +1599,7 @@
           "title",
           "plan_revision",
           "dispatched_by",
+          "dispatched_via",
           "worker_id",
           "worker",
           "pinned_worker_id",
@@ -1680,6 +1681,7 @@
           "title",
           "plan_revision",
           "dispatched_by",
+          "dispatched_via",
           "worker_id",
           "worker",
           "pinned_worker_id",
@@ -1720,6 +1722,50 @@
           "finished_at"
         ],
         "schema": "Run"
+      }
+    },
+    "hub run credentials": {
+      "positionals": [
+        {
+          "name": "run",
+          "metavar": "RUN",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "array",
+        "keys": [
+          "id",
+          "name",
+          "provider",
+          "kind",
+          "target",
+          "worker",
+          "issued_at",
+          "expires_at",
+          "revoked_at"
+        ],
+        "schema": "RunLease"
       }
     },
     "hub run dispatch": {
@@ -1832,6 +1878,7 @@
           "title",
           "plan_revision",
           "dispatched_by",
+          "dispatched_via",
           "worker_id",
           "worker",
           "pinned_worker_id",
@@ -1913,6 +1960,7 @@
           "title",
           "plan_revision",
           "dispatched_by",
+          "dispatched_via",
           "worker_id",
           "worker",
           "pinned_worker_id",
@@ -2239,6 +2287,7 @@
           "title",
           "plan_revision",
           "dispatched_by",
+          "dispatched_via",
           "worker_id",
           "worker",
           "pinned_worker_id",
@@ -2320,6 +2369,7 @@
           "title",
           "plan_revision",
           "dispatched_by",
+          "dispatched_via",
           "worker_id",
           "worker",
           "pinned_worker_id",
@@ -2450,6 +2500,7 @@
           "title",
           "plan_revision",
           "dispatched_by",
+          "dispatched_via",
           "worker_id",
           "worker",
           "pinned_worker_id",
@@ -2531,6 +2582,7 @@
           "title",
           "plan_revision",
           "dispatched_by",
+          "dispatched_via",
           "worker_id",
           "worker",
           "pinned_worker_id",
@@ -2572,6 +2624,122 @@
         ],
         "schema": "Run"
       }
+    },
+    "hub secret delete": {
+      "positionals": [
+        {
+          "name": "name",
+          "metavar": "NAME",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [],
+      "json": null
+    },
+    "hub secret list": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "array",
+        "keys": [
+          "name",
+          "kind",
+          "env_var",
+          "url_prefix",
+          "username",
+          "projects",
+          "workers",
+          "expires_at",
+          "created_at",
+          "updated_at"
+        ],
+        "schema": "Secret"
+      }
+    },
+    "hub secret set": {
+      "positionals": [
+        {
+          "name": "name",
+          "metavar": "NAME",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--kind"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false,
+          "choices": [
+            "env",
+            "git"
+          ]
+        },
+        {
+          "flags": [
+            "--env-var"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--url-prefix"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--username"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--worker"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--expires"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": null
     },
     "hub serve": {
       "positionals": [],
@@ -3074,7 +3242,7 @@
     "openapi": "3.1.0",
     "info": {
       "title": "evo-agents hub",
-      "version": "0.4.1"
+      "version": "0.5.0"
     },
     "paths": {
       "/v1/health": {
@@ -9022,6 +9190,101 @@
           }
         }
       },
+      "/v1/workers/{worker_id}/dispatch-from": {
+        "post": {
+          "tags": [
+            "workers"
+          ],
+          "summary": "Set Dispatch From",
+          "description": "Set who may hand the worker its runs: its owner, from a web session only.",
+          "operationId": "set_dispatch_from_v1_workers__worker_id__dispatch_from_post",
+          "parameters": [
+            {
+              "name": "worker_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Worker Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DispatchFrom"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Worker"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
       "/v1/workers/{worker_id}/revoke": {
         "post": {
           "tags": [
@@ -12417,6 +12680,468 @@
             }
           }
         }
+      },
+      "/v1/secrets": {
+        "get": {
+          "tags": [
+            "secrets"
+          ],
+          "summary": "List Secrets",
+          "description": "The caller's own secrets, by name, without their values; a hub admin's own too.",
+          "operationId": "list_secrets_v1_secrets_get",
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "items": {
+                      "$ref": "#/components/schemas/Secret"
+                    },
+                    "type": "array",
+                    "title": "Response List Secrets V1 Secrets Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/secrets/{name}": {
+        "put": {
+          "tags": [
+            "secrets"
+          ],
+          "summary": "Put Secret",
+          "description": "Create the caller's secret ``name``, or replace it whole; the value is sealed and never shown again.",
+          "operationId": "put_secret_v1_secrets__name__put",
+          "parameters": [
+            {
+              "name": "name",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$",
+                "description": "unique among the caller's secrets",
+                "title": "Name"
+              },
+              "description": "unique among the caller's secrets"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SecretWrite"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SecretWritten"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            }
+          }
+        },
+        "delete": {
+          "tags": [
+            "secrets"
+          ],
+          "summary": "Delete Secret",
+          "description": "Delete the caller's secret ``name``: its value and bindings go, and its leases are revoked.",
+          "operationId": "delete_secret_v1_secrets__name__delete",
+          "parameters": [
+            {
+              "name": "name",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$",
+                "description": "unique among the caller's secrets",
+                "title": "Name"
+              },
+              "description": "unique among the caller's secrets"
+            }
+          ],
+          "responses": {
+            "204": {
+              "description": "Successful Response"
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/runs/{run_id}/credentials": {
+        "get": {
+          "tags": [
+            "runs"
+          ],
+          "summary": "Run Credentials",
+          "description": "Every lease the run got, given back or not, without a value; for the member who dispatched it.",
+          "operationId": "run_credentials_v1_projects__project__runs__run_id__credentials_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/RunLease"
+                    },
+                    "title": "Response Run Credentials V1 Projects  Project  Runs  Run Id  Credentials Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/worker/runs/{run_id}/credentials": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Lease Credentials",
+          "description": "The leases of a run this worker holds: the owner's secrets for its project and a GitHub token for its repos on\ngithub.com, with the reason of each repo nothing covers.",
+          "operationId": "lease_credentials_v1_worker_runs__run_id__credentials_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Credentials"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "delete": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Give Back Credentials",
+          "description": "Give back every lease this worker holds of the run, in whatever state the run is; GitHub tokens are revoked.",
+          "operationId": "give_back_credentials_v1_worker_runs__run_id__credentials_delete",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/GivenBack"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
       }
     },
     "components": {
@@ -13206,6 +13931,130 @@
           ],
           "title": "ConfigSaved"
         },
+        "CredentialLease": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id",
+              "description": "the lease; the same id when it is asked for again"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "env",
+                "git"
+              ],
+              "title": "Kind",
+              "description": "env: a variable of the agent; git: what git's helper answers"
+            },
+            "provider": {
+              "type": "string",
+              "enum": [
+                "secret",
+                "github-app"
+              ],
+              "title": "Provider",
+              "description": "secret: the owner's; github-app: a token the hub's App made"
+            },
+            "name": {
+              "type": "string",
+              "title": "Name",
+              "description": "the secret's name, or github-app:<account>"
+            },
+            "env_var": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Env Var",
+              "description": "kind env: the variable it sets"
+            },
+            "url_prefix": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Url Prefix",
+              "description": "kind git: the https prefix of the origins it answers for"
+            },
+            "username": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Username",
+              "description": "kind git: the user git sends with the value"
+            },
+            "value": {
+              "type": "string",
+              "title": "Value",
+              "description": "the credential itself: for memory only, never a file, a log line or an event"
+            },
+            "expires_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Expires At",
+              "description": "when it stops working; ask again before, for a GitHub token"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "kind",
+            "provider",
+            "name",
+            "env_var",
+            "url_prefix",
+            "username",
+            "value",
+            "expires_at"
+          ],
+          "title": "CredentialLease",
+          "description": "One credential a run holds, as ``evo_agents.hub.credentials.Lease`` reads it."
+        },
+        "Credentials": {
+          "properties": {
+            "leases": {
+              "items": {
+                "$ref": "#/components/schemas/CredentialLease"
+              },
+              "type": "array",
+              "title": "Leases"
+            },
+            "missing": {
+              "items": {
+                "$ref": "#/components/schemas/MissingOrigin"
+              },
+              "type": "array",
+              "title": "Missing"
+            }
+          },
+          "type": "object",
+          "required": [
+            "leases",
+            "missing"
+          ],
+          "title": "Credentials"
+        },
         "Csrf": {
           "properties": {
             "csrf": {
@@ -13752,6 +14601,24 @@
           ],
           "title": "Dispatch"
         },
+        "DispatchFrom": {
+          "properties": {
+            "value": {
+              "type": "string",
+              "enum": [
+                "any",
+                "web"
+              ],
+              "title": "Value",
+              "description": "any: runs dispatched with any credential of the owner; web: only runs dispatched from a web session, so a token cannot hand the worker work"
+            }
+          },
+          "type": "object",
+          "required": [
+            "value"
+          ],
+          "title": "DispatchFrom"
+        },
         "ErrorBody": {
           "properties": {
             "error": {
@@ -14071,6 +14938,20 @@
             "host"
           ],
           "title": "GitHubLogin"
+        },
+        "GivenBack": {
+          "properties": {
+            "revoked": {
+              "type": "integer",
+              "title": "Revoked",
+              "description": "leases of the run this worker gave back now; 0 when none was out any more"
+            }
+          },
+          "type": "object",
+          "required": [
+            "revoked"
+          ],
+          "title": "GivenBack"
         },
         "Grant": {
           "properties": {
@@ -15227,6 +16108,38 @@
             "missing"
           ],
           "title": "MissingBlobs"
+        },
+        "MissingOrigin": {
+          "properties": {
+            "repo": {
+              "type": "string",
+              "title": "Repo"
+            },
+            "origin": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Origin",
+              "description": "as the project registered it; null when it registered none"
+            },
+            "reason": {
+              "type": "string",
+              "title": "Reason"
+            }
+          },
+          "type": "object",
+          "required": [
+            "repo",
+            "origin",
+            "reason"
+          ],
+          "title": "MissingOrigin",
+          "description": "A repo of the run whose origin no lease covers: git uses the machine's own credentials for it."
         },
         "Neighbourhood": {
           "properties": {
@@ -17404,6 +18317,22 @@
               "title": "Dispatched By",
               "description": "the login of the member who dispatched it, its owner"
             },
+            "dispatched_via": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "machine",
+                    "web"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dispatched Via",
+              "description": "the credential it was dispatched with: web, a web session; machine, a token (the command line, an agent); null for a run dispatched before 0.5.0"
+            },
             "worker_id": {
               "anyOf": [
                 {
@@ -17822,6 +18751,7 @@
             "title",
             "plan_revision",
             "dispatched_by",
+            "dispatched_via",
             "worker_id",
             "worker",
             "pinned_worker_id",
@@ -18188,6 +19118,92 @@
             "more"
           ],
           "title": "RunEvents"
+        },
+        "RunLease": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "name": {
+              "type": "string",
+              "title": "Name",
+              "description": "the secret's name, or github-app:<account>"
+            },
+            "provider": {
+              "type": "string",
+              "enum": [
+                "secret",
+                "github-app"
+              ],
+              "title": "Provider",
+              "description": "secret: the owner's; github-app: a token the hub's App made"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "env",
+                "git"
+              ],
+              "title": "Kind",
+              "description": "env: a variable of the agent; git: what git's helper answered"
+            },
+            "target": {
+              "type": "string",
+              "title": "Target",
+              "description": "kind env: the variable it set; kind git: the origins of the run's repos it answered for, space-separated, in the form of normalize_origin"
+            },
+            "worker": {
+              "type": "string",
+              "title": "Worker",
+              "description": "the worker it was leased to"
+            },
+            "issued_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Issued At"
+            },
+            "expires_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Expires At",
+              "description": "when it stops working: a GitHub token's hour, a secret's end"
+            },
+            "revoked_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Revoked At",
+              "description": "when the run gave it back or the hub took it; null while out"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "name",
+            "provider",
+            "kind",
+            "target",
+            "worker",
+            "issued_at",
+            "expires_at",
+            "revoked_at"
+          ],
+          "title": "RunLease",
+          "description": "A lease a run got, as its owner sees it: everything but the value."
         },
         "RunList": {
           "properties": {
@@ -18669,6 +19685,327 @@
           ],
           "title": "RuntimeReport",
           "description": "One runtime as the daemon found it on the machine."
+        },
+        "Secret": {
+          "properties": {
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "env",
+                "git"
+              ],
+              "title": "Kind"
+            },
+            "env_var": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Env Var",
+              "description": "kind env: the variable it sets"
+            },
+            "url_prefix": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Url Prefix",
+              "description": "kind git: the https prefix of the origins it answers for"
+            },
+            "username": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Username",
+              "description": "kind git: the user git sends with it"
+            },
+            "projects": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Projects",
+              "description": "the projects whose runs get it"
+            },
+            "workers": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Workers",
+              "description": "the workers it is bound to; empty for any worker of its owner"
+            },
+            "expires_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Expires At"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "updated_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Updated At",
+              "description": "when its value was last written"
+            }
+          },
+          "type": "object",
+          "required": [
+            "name",
+            "kind",
+            "env_var",
+            "url_prefix",
+            "username",
+            "projects",
+            "workers",
+            "expires_at",
+            "created_at",
+            "updated_at"
+          ],
+          "title": "Secret",
+          "description": "A secret as its owner sees it: everything but the value."
+        },
+        "SecretWrite": {
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "env",
+                "git"
+              ],
+              "title": "Kind",
+              "description": "env: a variable of the agent's environment; git: what git's credential helper answers"
+            },
+            "env_var": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Env Var",
+              "description": "kind env only: the variable it sets, upper case, never one that steers the shell, git or the worker (PATH, HOME, EVO_*, GIT_* ...)"
+            },
+            "url_prefix": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 2000
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Url Prefix",
+              "description": "kind git only: the https prefix of the origins it answers for, such as https://gitlab.example.org/group; kept as https://host/path, without .git or a trailing slash"
+            },
+            "username": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "pattern": "^[^\\x00-\\x1f\\x7f]+$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Username",
+              "description": "kind git only: the user git sends with the value; oauth2 when left out"
+            },
+            "projects": {
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$"
+              },
+              "type": "array",
+              "maxItems": 100,
+              "minItems": 1,
+              "title": "Projects",
+              "description": "the projects whose runs get it; the writer role on each"
+            },
+            "workers": {
+              "items": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$"
+              },
+              "type": "array",
+              "maxItems": 100,
+              "title": "Workers",
+              "description": "names of the caller's own workers that are not revoked; left out or empty for any of them"
+            },
+            "expires_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Expires At",
+              "description": "after this no run gets it; in the future"
+            },
+            "value": {
+              "type": "string",
+              "maxLength": 16384,
+              "minLength": 1,
+              "format": "password",
+              "title": "Value",
+              "description": "the secret itself, 1 to 16384 bytes of UTF-8; written once, never shown again",
+              "writeOnly": true
+            }
+          },
+          "type": "object",
+          "required": [
+            "kind",
+            "projects",
+            "value"
+          ],
+          "title": "SecretWrite"
+        },
+        "SecretWritten": {
+          "properties": {
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "env",
+                "git"
+              ],
+              "title": "Kind"
+            },
+            "env_var": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Env Var",
+              "description": "kind env: the variable it sets"
+            },
+            "url_prefix": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Url Prefix",
+              "description": "kind git: the https prefix of the origins it answers for"
+            },
+            "username": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Username",
+              "description": "kind git: the user git sends with it"
+            },
+            "projects": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Projects",
+              "description": "the projects whose runs get it"
+            },
+            "workers": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Workers",
+              "description": "the workers it is bound to; empty for any worker of its owner"
+            },
+            "expires_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Expires At"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "updated_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Updated At",
+              "description": "when its value was last written"
+            },
+            "created": {
+              "type": "boolean",
+              "title": "Created",
+              "description": "false when a secret of this name was replaced"
+            }
+          },
+          "type": "object",
+          "required": [
+            "name",
+            "kind",
+            "env_var",
+            "url_prefix",
+            "username",
+            "projects",
+            "workers",
+            "expires_at",
+            "created_at",
+            "updated_at",
+            "created"
+          ],
+          "title": "SecretWritten"
         },
         "SignedIn": {
           "properties": {
@@ -20010,6 +21347,15 @@
               "type": "boolean",
               "title": "Allow Web Terminal"
             },
+            "dispatch_from": {
+              "type": "string",
+              "enum": [
+                "any",
+                "web"
+              ],
+              "title": "Dispatch From",
+              "description": "who may hand it runs: any, runs its owner dispatched with any credential; web, only runs dispatched from a web session"
+            },
             "held_runs": {
               "type": "integer",
               "title": "Held Runs",
@@ -20074,6 +21420,7 @@
             "checkouts",
             "free_slots",
             "allow_web_terminal",
+            "dispatch_from",
             "held_runs",
             "created_at",
             "last_heartbeat_at",

@@ -5,7 +5,21 @@ import { ADMIN_ACCOUNT, machineToken } from "./support/hub";
 import { grantOn, kgPath, nodePath, SHARED_NODE, sharedKg } from "./support/kg";
 import { apiOf, memoryFile, putMemory } from "./support/memories";
 import { ACTIVE_PLAN, open, seedPlans } from "./support/plans";
-import { claimRun, dispatch, liveWorker, RUN_PLAN, runPath, runToReview, say, seedRunPlan, sendEvents, startRun, uploadDiff } from "./support/runs";
+import {
+  claimRun,
+  dispatch,
+  leaseCredentials,
+  liveWorker,
+  RUN_PLAN,
+  runPath,
+  runToReview,
+  say,
+  seedRunPlan,
+  sendEvents,
+  startRun,
+  uploadDiff,
+} from "./support/runs";
+import { putSecretByApi, secretValue } from "./support/secrets";
 import { packSkill, publishSkill } from "./support/skills";
 import { heartbeat, registerWorker, RUNTIMES } from "./support/workers";
 
@@ -13,11 +27,13 @@ import { heartbeat, registerWorker, RUNTIMES } from "./support/workers";
  * A table wider than the page scrolls inside its own region; the document itself never scrolls sideways. Step 25
  * found a wide table widening the shell's <main> at 768 and 1024 px, where the open sidebar leaves the content its
  * narrowest for the breakpoint; the shell's inset is min-w-0 since. The pages with the widest tables of each area
- * (admin, plans, memories, skills, knowledge graph, workers, runs), seeded with long unbroken names, at 375, 768 and 1024
+ * (admin, plans, memories, skills, knowledge graph, workers, secrets, runs), seeded with long unbroken names, at 375, 768 and 1024
  * px.
  */
 const WIDTHS = [375, 768, 1024];
 const LONG = "a-rather-long-unbroken-name-that-never-wraps-in-a-table-cell";
+/** LONG as an environment variable a secret may set. */
+const LONG_VAR = LONG.toUpperCase().replaceAll("-", "_");
 
 type Visit = { path: string; ready: (page: Page) => Promise<void> };
 
@@ -104,6 +120,23 @@ test("workers pages never scroll sideways at 375, 768 and 1024 px", async ({ pag
   ]);
 });
 
+test("the secrets page never scrolls sideways at 375, 768 and 1024 px", async ({ page, member }) => {
+  const me = await member([{ role: "writer", maxLevel: "internal" }]);
+  const project = me.projects[0];
+  const worker = await registerWorker(me, { name: `${LONG}-worker`, projects: [project] });
+  await putSecretByApi(me, LONG, {
+    kind: "git",
+    url_prefix: `https://gitlab.example.org/${LONG}/${LONG}`,
+    username: LONG,
+    projects: [project],
+    workers: [worker.name],
+    expires_at: new Date(Date.now() + 30 * 86_400_000).toISOString(),
+    value: secretValue("wide"),
+  });
+  await putSecretByApi(me, `${LONG}-env`, { kind: "env", env_var: LONG_VAR, projects: [project], value: secretValue("wide") });
+  await noSidewaysScroll(page, [{ path: "/secrets", ready: shown("secrets-table") }]);
+});
+
 test("runs pages never scroll sideways at 375, 768 and 1024 px", async ({ page, member }) => {
   const me = await member([{ role: "writer", maxLevel: "internal" }]);
   const project = me.projects[0];
@@ -112,6 +145,8 @@ test("runs pages never scroll sideways at 375, 768 and 1024 px", async ({ page, 
   const [run] = await dispatch(me, project, ["2", "4"]);
   await claimRun(live);
   await startRun(live, run.id, `${LONG}-session`);
+  await putSecretByApi(me, LONG, { kind: "env", env_var: LONG_VAR, projects: [project], value: secretValue("wide") });
+  await leaseCredentials(live, run.id);
   await sendEvents(live, run.id, [say(`${LONG} ${LONG}`), { kind: "tool_call", body: { title: "Read", rawInput: { file_path: `/${LONG}/${LONG}/${LONG}.ts` } } }]);
   await runToReview(live, run.id);
   await uploadDiff(live, run.id, `diff --git a/${LONG}/${LONG}.ts b/${LONG}/${LONG}.ts\n--- a/${LONG}/${LONG}.ts\n+++ b/${LONG}/${LONG}.ts\n@@ -1 +1 @@\n-${LONG}${LONG}\n+${LONG}${LONG}${LONG}\n`);
@@ -119,7 +154,13 @@ test("runs pages never scroll sideways at 375, 768 and 1024 px", async ({ page, 
     { path: `/p/${project}/runs`, ready: shown("runs-table") },
     { path: `/p/${project}/plans/${RUN_PLAN}/steps/2`, ready: shown("step-runs-table") },
     { path: `/workers/${live.worker.id}`, ready: shown("worker-runs-table") },
-    { path: runPath(project, run.id), ready: shown("log-line") },
+    {
+      path: runPath(project, run.id),
+      ready: async (page) => {
+        await shown("log-line")(page);
+        await shown("run-lease-item")(page);
+      },
+    },
     { path: `${runPath(project, run.id)}/diff`, ready: shown("diff-file") },
   ]);
 });

@@ -23,12 +23,19 @@ token at once. Each of them answers 404 for another member's worker, so an id te
 own; a hub admin may see, drain and revoke any worker, but only its owner undrains one (403 for an admin). Revoking
 releases the runs the worker holds as the reaper would (``run_state.release_runs``): a run whose cancel was asked
 for is cancelled, a run pinned to this worker or on its last attempt fails, and any other becomes lost with a new
-attempt queued for the same step; the steps of the runs that ended go back to pending in their plans. Revoking a
-worker's token (DELETE /v1/tokens/{id}, DELETE /v1/admin/tokens/{id}) revokes its worker the same way, in the same
-transaction (``lock_worker_of_token``, then ``end_worker``).
+attempt queued for the same step; the steps of the runs that ended go back to pending in their plans. Every lease
+of the worker's runs is given back with them, and their GitHub tokens are revoked once the revocation commits
+(``credentials``). Revoking a worker's token (DELETE /v1/tokens/{id}, DELETE /v1/admin/tokens/{id}) revokes its worker
+the same way, in the same transaction (``lock_worker_of_token``, then ``end_worker``).
 
-Every pairing, join, registration, drain, undrain and revocation adds an audit row naming the pairing or worker, never
-the code or the token, and neither ever reaches a log line.
+POST /v1/workers/{id}/dispatch-from {"value": "any" | "web"} sets who may hand the worker its runs (``dispatch_from``,
+``evo_agents.hub.credentials.DISPATCH_FROM``): with ``web`` it claims only runs dispatched from a web session, and a
+dispatch pinned to it with a token gets 403 (``runs``). Only its owner sets it, signed in on the web: a machine token
+gets 403 whoever holds it, so a token that leaked cannot open the worker again, a hub admin who does not own the
+worker gets 403, and anyone else 404. Setting the value it has changes nothing and is not audited.
+
+Every pairing, join, registration, drain, undrain, change of dispatch_from and revocation adds an audit row naming the
+pairing or worker, never the code or the token, and neither ever reaches a log line.
 """
 
 from __future__ import annotations
@@ -47,7 +54,8 @@ from pydantic import BaseModel, Field
 
 from evo_agents.hub import runs
 from evo_agents.hub.access import ROLES, has_role
-from evo_agents.hub.server import audit
+from evo_agents.hub.credentials import DISPATCH_FROM
+from evo_agents.hub.server import audit, credentials
 from evo_agents.hub.server.admin import PROJECT_NAME
 from evo_agents.hub.server.auth import NO_STORE
 from evo_agents.hub.server.errors import ErrorBody
@@ -55,6 +63,7 @@ from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.run_state import release_runs
 from evo_agents.hub.server.security import (
     MACHINE,
+    WEB,
     WORKER,
     CurrentUser,
     Principal,
@@ -261,11 +270,22 @@ class Worker(BaseModel):
     )
     free_slots: int | None = Field(description="the free slots its last heartbeat reported; null before the first")
     allow_web_terminal: bool
+    dispatch_from: Literal[DISPATCH_FROM] = Field(
+        description="who may hand it runs: any, runs its owner dispatched with any credential; web, only runs "
+        "dispatched from a web session"
+    )
     held_runs: int = Field(description="runs it holds now (leased, running, interactive or verifying)")
     created_at: datetime
     last_heartbeat_at: datetime | None
     drained_at: datetime | None
     revoked_at: datetime | None
+
+
+class DispatchFrom(BaseModel):
+    value: Literal[DISPATCH_FROM] = Field(
+        description="any: runs dispatched with any credential of the owner; web: only runs dispatched from a web "
+        "session, so a token cannot hand the worker work"
+    )
 
 
 class WorkerCredential(BaseModel):
@@ -281,7 +301,7 @@ WORKERS = """
 SELECT w.id, w.name, u.login, w.hostname, w.os, w.arch, w.agent_version, w.slots, w.labels,
        ARRAY(SELECT p.name FROM worker_projects wp JOIN projects p ON p.id = wp.project_id
               WHERE wp.worker_id = w.id ORDER BY p.name),
-       w.runtimes, w.checkouts, w.free_slots, w.allow_web_terminal,
+       w.runtimes, w.checkouts, w.free_slots, w.allow_web_terminal, w.dispatch_from,
        (SELECT count(*) FROM runs r WHERE r.worker_id = w.id AND r.state = ANY(%(held)s)),
        w.created_at, w.last_heartbeat_at, w.drained_at, w.revoked_at, now()
   FROM workers w JOIN users u ON u.id = w.owner_id
@@ -303,6 +323,7 @@ WORKER_FIELDS = (
     "checkouts",
     "free_slots",
     "allow_web_terminal",
+    "dispatch_from",
     "held_runs",
     "created_at",
     "last_heartbeat_at",
@@ -728,6 +749,34 @@ async def undrain(request: Request, worker_id: WorkerId, user: CurrentUser) -> W
     return await _set_drain(request, user, worker_id, False)
 
 
+DISPATCH_FROM_SESSION = (
+    "who may dispatch to a worker is set from a web session only, so a token that leaked cannot open the worker "
+    "again: sign in on the web"
+)
+
+
+@router.post("/{worker_id}/dispatch-from", response_model=Worker, responses={**REFUSALS, 422: {"model": ErrorBody}})
+async def set_dispatch_from(request: Request, worker_id: WorkerId, body: DispatchFrom, user: CurrentUser) -> Worker:
+    """Set who may hand the worker its runs: its owner, from a web session only."""
+    if user.kind != WEB:
+        raise HTTPException(403, DISPATCH_FROM_SESSION)
+    async with request.app.state.pool.connection() as conn:
+        owner_id, owner, name, _, _, revoked_at = await _owned(conn, user, worker_id, lock=True)
+        if owner_id != user.user_id:
+            raise HTTPException(403, f"only {owner}, who owns worker {worker_id}, may set who dispatches to it")
+        if revoked_at is not None:
+            raise HTTPException(409, f"worker {worker_id} was revoked at {revoked_at.isoformat()}; it takes no runs")
+        row = await (await conn.execute("SELECT dispatch_from FROM workers WHERE id = %s", (worker_id,))).fetchone()
+        if row[0] != body.value:  # the value it has already: nothing changes, nothing is audited
+            statement = "UPDATE workers SET dispatch_from = %s WHERE id = %s"
+            await conn.execute(statement, (body.value, worker_id))
+            target = f"{_target(worker_id, name, owner)} dispatch_from={body.value}"
+            action = audit.WORKER_DISPATCH_FROM
+            await audit.record(conn, actor_id=user.user_id, token_id=user.token_id, action=action, target=target)
+            log.info("worker dispatch_from set", extra={"worker_id": worker_id, "dispatch_from": body.value})
+        return await _one_worker(conn, worker_id)
+
+
 @router.post("/{worker_id}/revoke", response_model=Worker, responses=REFUSALS)
 async def revoke(request: Request, worker_id: WorkerId, user: CurrentUser) -> Worker:
     """End the worker and its token at once, and release the runs it holds."""
@@ -738,6 +787,7 @@ async def revoke(request: Request, worker_id: WorkerId, user: CurrentUser) -> Wo
         released = await end_worker(conn, user, worker_id, name, owner, token_id)
         worker = await _one_worker(conn, worker_id)
     log.info("worker revoked", extra={"worker_id": worker_id, "by": user.login, "runs_released": released})
+    await revoke_leased_tokens(request.app.state, worker_id)
     return worker
 
 
@@ -759,11 +809,22 @@ async def lock_worker_of_token(conn, token_id: int, owner_id: int | None = None)
 
 
 async def end_worker(conn, actor: Principal, worker_id: int, name: str, owner: str, token_id: int) -> int:
-    """Revoke a live worker whose row the caller holds locked, and its token, release the runs it holds and add the
-    worker.revoke audit row, all in the caller's transaction. Returns how many runs were released."""
+    """Revoke a live worker whose row the caller holds locked, and its token, release the runs it holds, give back
+    every lease it still has and add the worker.revoke audit row, all in the caller's transaction; the caller revokes
+    their GitHub tokens once it commits (``revoke_leased_tokens``). Returns how many runs were released."""
     await conn.execute("UPDATE workers SET revoked_at = now() WHERE id = %s", (worker_id,))
     await conn.execute("UPDATE tokens SET revoked_at = now() WHERE id = %s AND revoked_at IS NULL", (token_id,))
     released = await release_runs(conn, worker_id, f"its worker {name} was revoked")
+    # The runs it released gave theirs back as they moved; this takes the rest, of runs that left it otherwise.
+    await credentials.end_leases(
+        conn, worker_id=worker_id, actor_id=actor.user_id, token_id=actor.token_id, by="worker-revoked"
+    )
     target, action = _target(worker_id, name, owner), audit.WORKER_REVOKE
     await audit.record(conn, actor_id=actor.user_id, token_id=actor.token_id, action=action, target=target)
     return released
+
+
+async def revoke_leased_tokens(app_state, worker_id: int) -> None:
+    """Once ``end_worker`` committed: revoke at GitHub the tokens the worker's leases held. GitHub failing leaves them
+    to the reaper's next pass."""
+    await credentials.revoke_tokens(app_state.pool, app_state.sealer, app_state.github_app, worker_id=worker_id)

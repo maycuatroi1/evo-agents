@@ -22,6 +22,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import copy
+import dataclasses
 import json
 import os
 import signal
@@ -73,7 +74,15 @@ def _version_binary(bin_dir: Path, name: str, output: str) -> Path:
     return _script(bin_dir / name, f"print({output!r})\n")
 
 
-def _context(tmp_path: Path, runtime: str, *, resume: str | None = None, env: dict | None = None, **run) -> RunContext:
+def _context(
+    tmp_path: Path,
+    runtime: str,
+    *,
+    resume: str | None = None,
+    env: dict | None = None,
+    leased: frozenset[str] = frozenset(),
+    **run,
+) -> RunContext:
     worktree = tmp_path / "worktree"
     worktree.mkdir(exist_ok=True)
     bin_dir = tmp_path / "bin"
@@ -82,7 +91,7 @@ def _context(tmp_path: Path, runtime: str, *, resume: str | None = None, env: di
         _script(bin_dir / name, "import sys\nsys.exit(3)\n")
     environment = {**os.environ, "PATH": f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}", **(env or {})}
     spec = {"id": 41, "project": "demo", "step_key": "9", "title": "adapters", "runtime": runtime, **run}
-    return RunContext(run=spec, worktree=worktree, prompt=PROMPT, env=environment, resume_session=resume)
+    return RunContext(run=spec, worktree=worktree, prompt=PROMPT, env=environment, resume_session=resume, leased=leased)
 
 
 async def _collect(adapter: Adapter, during=None) -> tuple[list[AgentEvent], Outcome]:
@@ -526,6 +535,65 @@ def test_claude_code_runs_on_the_model_of_the_run_else_the_environments(tmp_path
     assert model_flag(_claude(tmp_path, _samples, model=None, env=variable)) == ("sonnet", "sonnet")
     none = {"EVO_WORKER_CLAUDE_CODE_MODEL": ""}
     assert model_flag(_claude(tmp_path, _samples, env=none)) == (None, None), "Claude Code chooses, as it would"
+
+
+# Claude Code on a token of `claude setup-token` the run leased (claude_code's docstring)
+
+DAEMON_KEY = "sk-ant-api03-" + "k" * 32  # stands for an API key in the daemon's own environment
+LEASED_TOKEN = "sk-ant-oat01-" + "t" * 32  # stands for the value of a CLAUDE_CODE_OAUTH_TOKEN lease
+CLAUDE_KEYS = {"ANTHROPIC_API_KEY": DAEMON_KEY, "CLAUDE_CODE_OAUTH_TOKEN": LEASED_TOKEN}
+SHOW_KEYS = (
+    "import json, os\n"
+    "print(json.dumps({key: os.environ.get(key) for key in ('ANTHROPIC_API_KEY', 'CLAUDE_CODE_OAUTH_TOKEN')}))\n"
+)
+
+
+def test_the_launcher_unsets_the_variables_it_is_told_such_as_an_api_key(tmp_path):
+    program = _script(tmp_path / "program", SHOW_KEYS)
+    env = {**os.environ, **CLAUDE_KEYS}
+    plain = common.write_launcher(tmp_path, str(program))
+    done = subprocess.run([str(plain)], env=env, capture_output=True, text=True, check=True)
+    assert json.loads(done.stdout) == CLAUDE_KEYS
+    launcher = common.write_launcher(tmp_path, str(program), unset=("ANTHROPIC_API_KEY", "not a name"))
+    assert "unset ANTHROPIC_API_KEY\n" in launcher.read_text(encoding="utf-8")
+    assert "not a name" not in launcher.read_text(encoding="utf-8")
+    done = subprocess.run([str(launcher)], env=env, capture_output=True, text=True, check=True)
+    assert json.loads(done.stdout) == {"ANTHROPIC_API_KEY": None, "CLAUDE_CODE_OAUTH_TOKEN": LEASED_TOKEN}
+
+
+def test_claude_code_on_a_leased_oauth_token_leaves_the_daemons_api_key_out_and_says_so(tmp_path):
+    leased = frozenset({"CLAUDE_CODE_OAUTH_TOKEN", "GIT_CONFIG_COUNT"})
+    adapter = _claude(tmp_path, _samples, env=CLAUDE_KEYS, leased=leased)
+    seen = {}
+
+    async def look(adapter, events):
+        seen["launcher"] = Path(adapter.options.cli_path).read_text(encoding="utf-8")
+
+    events, outcome = asyncio.run(_collect(adapter, look))
+    options = adapter.options
+    assert options.env["CLAUDE_CODE_OAUTH_TOKEN"] == LEASED_TOKEN, "the leased token reaches Claude Code"
+    assert "ANTHROPIC_API_KEY" not in options.env, "Claude Code would take the daemon's API key before the token"
+    assert "CLAUDECODE" not in options.env
+    # The SDK starts the CLI with its own process's environment under options.env, the daemon's key in it: the
+    # launcher unsets it (test_the_launcher_unsets_the_variables_it_is_told_such_as_an_api_key).
+    launcher = seen["launcher"].splitlines()
+    assert launcher[1] == "unset ANTHROPIC_API_KEY" and launcher[2].startswith("exec ")
+    assert ClaudeCodeAdapter.environment_notes(adapter.context) == [claude_module.API_KEY_NOTE]
+    assert claude_module.API_KEY_NOTE.startswith("ANTHROPIC_API_KEY of this machine's environment is left out")
+    assert adapter.cli.log[-1] == ("end_input",)
+
+    # The daemon's own token, or an API key the owner leased as well: Claude Code's order is left as it is.
+    for kept in (frozenset(), frozenset({"CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY"})):
+        context = _context(tmp_path, "claude-code", env=CLAUDE_KEYS, leased=kept)
+        assert ClaudeCodeAdapter(context).build_options("/opt/bin/claude").env["ANTHROPIC_API_KEY"] == DAEMON_KEY
+        assert claude_module.dropped_env(context) == claude_module.DROPPED_ENV
+        assert ClaudeCodeAdapter.environment_notes(context) == []
+    # A leased token on a machine without an API key: nothing to leave out, nothing to note; the launcher still
+    # unsets the key, in case the SDK's process has one the daemon's environment did not show.
+    bare = dataclasses.replace(adapter.context, env={"CLAUDE_CODE_OAUTH_TOKEN": LEASED_TOKEN})
+    assert claude_module.drops_api_key(bare) and ClaudeCodeAdapter.environment_notes(bare) == []
+    unleased_token = dataclasses.replace(bare, leased=frozenset())
+    assert not claude_module.drops_api_key(unleased_token) and not claude_module.leased_oauth(unleased_token)
 
 
 # Claude Code's commands in the background, as 2.1.291 reports them (claude_code's docstring)

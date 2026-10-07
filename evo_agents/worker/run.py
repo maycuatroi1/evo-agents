@@ -1,6 +1,7 @@
 """One run on this worker, from the claim to its last report.
 
-1. ``leased``: the daemon fetches origin in the checkout of the run's repo and makes a worktree under
+1. ``leased``: the daemon takes the run's leases (``credentials``), so its git and its agent use them, then fetches
+   origin in the checkout of the run's repo and makes a worktree under
    ``~/.evo/worker/worktrees/<project>-<run>``, on the plan's branch for the repo, from ``origin/<branch>`` when the
    remote has it (else the local branch, else the remote's default branch). When that branch is checked out
    somewhere else, or has commits here that the start does not hold, the worktree is on ``evo-run/<run>`` instead,
@@ -27,17 +28,25 @@
 A hub that does not answer holds nothing up: events wait in the spool and each report is sent again with the
 backoff until the hub answers, or says the run is no longer this worker's.
 
+The leases stay in the daemon's memory (``credentials.RunCredentials``): the run's git gets them through
+``git_env``, its agent through ``agent_env``, each event goes through ``credentials.scrub`` before the spool, and
+they are given back once the run ends here, whether it ended, was parked, or the daemon stops. A push of the daemon
+that fails to authenticate on a leased origin takes the leases again once and pushes once more
+(``RunCredentials.with_renewal``). What the runtime leaves out of the agent's environment because of the leases (Claude
+Code drops the daemon's ANTHROPIC_API_KEY next to a leased CLAUDE_CODE_OAUTH_TOKEN) is noted once a run
+(``_note_environment``).
+
 Each time an agent starts, headless or in its terminal UI, the daemon notes its process group in
 ``runs/<run>/agent.json`` (``orphans``), and removes the file just before the run counts as ended here, so a daemon
 that starts after this one died finds the agents it left.
 
 A plan run (kind ``plan``, ``PlanRun``) does every step of a plan not done yet, in one session:
 
-1. ``leased``: the daemon makes the directory ``~/.evo/worker/worktrees/<project>-<run>`` with a worktree of each repo
-   of the run in it, each on the branch the plan names for that repo (``evo-run/<run>/<repo>`` when that branch is
-   checked out elsewhere; the push still goes to the plan's branch), and writes the plan as claimed to
-   ``.evo-run/plan.yaml`` there. A repo the plan names no branch for fails the run before the agent starts, and so does
-   a default branch the plan does not name for the repo.
+1. ``leased``: the daemon takes the run's leases for all its repos, then makes the directory
+   ``~/.evo/worker/worktrees/<project>-<run>`` with a worktree of each repo of the run in it, each on the branch the
+   plan names for that repo (``evo-run/<run>/<repo>`` when that branch is checked out elsewhere; the push still goes
+   to the plan's branch), and writes the plan as claimed to ``.evo-run/plan.yaml`` there. A repo the plan names no
+   branch for fails the run before the agent starts, and so does a default branch the plan does not name for the repo.
 2. ``running``: the agent works in that directory, with EVO_RUN_ID, EVO_RUN_KIND and EVO_WORKER_HOME, and reports
    each step itself through ``evo-agents worker step`` (which runs the step's verify commands again, commits, pushes
    the repo's branch and sends the step report), asks its owner through ``evo-agents worker ask``, and notifies with
@@ -72,9 +81,10 @@ from typing import TYPE_CHECKING
 import yaml
 
 from evo_agents.hub import runs
-from evo_agents.worker import gitops, interactive, orphans
+from evo_agents.worker import credentials, gitops, interactive, orphans
 from evo_agents.worker.adapter import AgentEvent, AgentFinished, Outcome, RunContext
 from evo_agents.worker.checkouts import default_branch_of
+from evo_agents.worker.credentials import RunCredentials
 from evo_agents.worker.hubapi import Backoff, HubProblem, Outdated, Refused, Unreachable
 from evo_agents.worker.spool import Spool, encode_event
 
@@ -335,6 +345,7 @@ class Run:
         self._report_lock = asyncio.Lock()
         self._delivering = False
         self._unsupported_noted: set[str] = set()
+        self._environment_noted: set[str] = set()  # the lines of environment_notes written already
         self._background: set[asyncio.Task] = set()
         home = daemon.home
         home.run_dir(self.id).mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -342,6 +353,7 @@ class Run:
         self.log_bytes = 0
         self.spool = Spool(home.spool_dir, self.id, daemon.budget)
         self.sender = Sender(daemon, self.spool)
+        self.credentials = RunCredentials(self.id, home, daemon.env, self.note)
         self.record = {
             "id": self.id,
             "kind": spec.get("kind") or "step",
@@ -360,7 +372,9 @@ class Run:
     # Events
 
     def event(self, kind: str, body: dict, at: datetime | None = None) -> None:
+        """Spool an event of the run and write it to its log, every lease value masked."""
         at = at or _now()
+        body = credentials.scrub(body)
         seq = self.spool.append(kind, body, at)
         if seq is not None:
             self.sender.poke()
@@ -642,6 +656,10 @@ class Run:
                 task.cancel()
             if self.terminal is not None:
                 await self.terminal.close()
+            try:  # the run ended here, was parked, or the daemon stops: its leases go back
+                await self.credentials.release(stop=self.daemon.hard_stop)
+            except Exception:
+                log.exception("the run's leases were not given back", extra={"run_id": self.id})
             self.sender.close()
             if not self.daemon.hard_stop.is_set():
                 with contextlib.suppress(asyncio.TimeoutError):
@@ -708,6 +726,8 @@ class Run:
             raise RunFailed(
                 f"the plan names no branch for {self.repo}, and the worker never works on the default branch"
             )
+        await self._take_credentials([self.repo])
+        self._check()
         await self._prepare(checkout)
         self._check()
         await self._run_agent(cls)
@@ -744,7 +764,7 @@ class Run:
                 raise RunFailed(f"the checkout at {checkout} has no remote named origin to fetch from and push to")
             self.note(f"Fetching origin in {checkout}.")
             try:
-                await gitops.fetch(checkout)
+                await gitops.fetch(checkout, env=self.git_env())
             except gitops.GitError as exc:
                 raise RunFailed(f"git fetch in {checkout} failed: {exc}") from None
             if not await gitops.check_branch_name(checkout, branch):
@@ -794,6 +814,22 @@ class Run:
         with contextlib.suppress(gitops.GitError, OSError):
             await gitops.detach(self.worktree)
 
+    # Credentials
+
+    async def _take_credentials(self, repos) -> None:
+        """Take the run's leases for ``repos``, handed to the origins of their checkouts here."""
+        origins: dict[str, list[str]] = {}
+        for name in dict.fromkeys(repo for repo in repos if isinstance(repo, str) and repo):
+            checkout = self.daemon.checkout_for(self.project, name)
+            if checkout is not None:
+                with contextlib.suppress(gitops.GitError, OSError):
+                    origins[name] = await gitops.remote_urls(checkout)
+        await self.credentials.take(self.daemon.hub, origins, stop=self.daemon.hard_stop)
+
+    def git_env(self) -> dict[str, str]:
+        """The environment of the run's git: the daemon's, with the run's credential helper for its leased origins."""
+        return {**self.daemon.env, **self.credentials.git_vars}
+
     # The agent
 
     def agent_env(self) -> dict[str, str]:
@@ -808,6 +844,7 @@ class Run:
                 "EVO_RUN_STEP": str(self.spec.get("step_key") or ""),
             }
         )
+        env.update(self.credentials.agent_vars)  # env leases, and git's configuration for the leased origins
         return env
 
     async def _run_agent(self, cls) -> None:
@@ -851,12 +888,26 @@ class Run:
 
     def _context(self, prompt: str, session_id: str | None) -> RunContext:
         return RunContext(
-            run=dict(self.spec), worktree=self.worktree, prompt=prompt, env=self.agent_env(), resume_session=session_id
+            run=dict(self.spec),
+            worktree=self.worktree,
+            prompt=prompt,
+            env=self.agent_env(),
+            resume_session=session_id,
+            leased=self.credentials.withheld,
         )
+
+    def _note_environment(self, cls, context: RunContext) -> None:
+        """What the runtime leaves out of the agent's environment because of the run's leases
+        (``Adapter.environment_notes``), each line once a run."""
+        for line in cls.environment_notes(context):
+            if line not in self._environment_noted:
+                self._environment_noted.add(line)
+                self.note(line)
 
     async def _headless(self, cls, prompt: str, session_id: str | None) -> Outcome:
         """The agent headless, on a new session or going on with ``session_id``, until its events end."""
-        adapter = cls(self._context(prompt, session_id))
+        context = self._context(prompt, session_id)
+        adapter = cls(context)
         self.adapter = adapter
         self.phase = "headless"
         self._inbox_waits = False
@@ -877,6 +928,7 @@ class Run:
             self.note(f"{self.runtime} goes on headless in session {session_id}.")
         else:
             self.note(f"{self.runtime} started in {self.worktree}.")
+        self._note_environment(cls, context)
         self._spawn(self._report_running((self.state,) if self.state in ("interactive", "waiting") else ("leased",)))
         if self.takeover_asked or self._park_requested():  # asked while the agent was starting
             self._spawn(self._stop_at_boundary(adapter))
@@ -894,7 +946,8 @@ class Run:
         self.handback_asked.clear()
         tmux = self.daemon.tmux
         name = interactive.session_name(self.id)
-        tui = cls.tui(self._context(prompt, session_id), session_id)
+        context = self._context(prompt, session_id)
+        tui = cls.tui(context, session_id)
         try:
             for line in await tui.prepare():
                 self.note(line)
@@ -906,6 +959,8 @@ class Run:
                 cwd=self.worktree,
                 scratch=self.daemon.home.run_dir(self.id),
                 drop=tui.drop_env,
+                withheld=self.credentials.withheld,
+                env_command=self.credentials.pane_command,
             )
         except Exception as exc:
             with contextlib.suppress(Exception):
@@ -920,6 +975,7 @@ class Run:
             self.note(f"The terminal UI of {self.runtime} did not open ({reason}); the agent goes on headless.")
             return session_id
         self.tui = tui
+        self._note_environment(cls, context)
         self._agent_starts()
         await self._note_agent(None)
         self.group_noted = False
@@ -1221,8 +1277,12 @@ class Run:
         commit_sha = await gitops.rev(wt, "HEAD")
         diffstat = await gitops.diffstat(wt, self.base)
         self._check()
+
+        async def push() -> gitops.Pushed:
+            return await gitops.push(wt, self.branch, protected=self.protected, kind="step", env=self.git_env())
+
         try:  # a default branch was refused before the agent started; gitops refuses it again before every push
-            pushed = await gitops.push(wt, self.branch, protected=self.protected, kind="step")
+            pushed = await self.credentials.with_renewal(self.repo, push)
         except gitops.PushRefused as exc:
             raise RunFailed(str(exc), verify=self.verify) from None
         except gitops.GitError as exc:
@@ -1354,6 +1414,8 @@ class PlanRun(Run):
                 raise RunFailed(f"this worker cannot run {self.runtime} interactive ({why}): run it headless")
         if not repos:
             raise RunFailed("the plan run names no repo to work in")
+        await self._take_credentials(entry.get("repo") for entry in repos)
+        self._check()
         await self._prepare_plan(repos)
         self._check()
         prompt, session_id = await self._first_turn()
@@ -1428,7 +1490,7 @@ class PlanRun(Run):
                 raise RunFailed(f"the checkout at {checkout} has no remote named origin to fetch from and push to")
             self.note(f"Fetching origin in {checkout}.")
             try:
-                await gitops.fetch(checkout)
+                await gitops.fetch(checkout, env=self.git_env())
             except gitops.GitError as exc:
                 raise RunFailed(f"git fetch in {checkout} failed: {exc}") from None
             if not await gitops.check_branch_name(checkout, branch):
@@ -1716,14 +1778,19 @@ class PlanRun(Run):
                     "branches, and the worker does not push it"
                 )
             self._check()
-            try:
-                pushed = await gitops.push(
+
+            async def push(path=path, workspace=workspace, name=name) -> gitops.Pushed:
+                return await gitops.push(
                     path,
                     workspace.branch,
                     protected=workspace.protected,
                     kind="plan",
                     plan_branch=named.get(name),
+                    env=self.git_env(),
                 )
+
+            try:
+                pushed = await self.credentials.with_renewal(name, push)
             except gitops.PushRefused as exc:
                 raise RunFailed(f"{name}: {exc}") from None
             except gitops.GitError as exc:

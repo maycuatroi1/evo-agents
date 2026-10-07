@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import secrets
 import signal
 import subprocess
 from pathlib import Path
@@ -24,6 +25,7 @@ import pytest
 pytest.importorskip("aiohttp", reason="the daemon needs the worker extra, evo-ak[worker]")
 
 from evo_agents.cli import main as cli_main
+from evo_agents.hub.credentials import Lease
 from evo_agents.worker import adapter as adapter_module
 from evo_agents.worker import checkouts as checkouts_module
 from evo_agents.worker import gitops
@@ -505,6 +507,46 @@ def test_a_decision_asked_then_answered_through_the_inbox_takes_the_run_from_wai
     assert any("waits for its owner's answer" in text for text in hub.texts(run_id))
     steps = {str(item["id"]): item["status"] for item in hub.plans[PLAN]["body"]["steps"]}
     assert steps == {"1": "done", "2": "done"}
+
+
+def test_what_the_runtime_leaves_out_for_a_leased_oauth_token_is_noted_once_a_run_of_two_turns(machine):
+    """The daemon's side of step 9 of the worker-credentials plan: the agent's context names what the leases set, and
+    the runtime's notes of the agent's environment (``Adapter.environment_notes``; Claude Code's API_KEY_NOTE) reach
+    the run's log once, though the agent starts once a turn."""
+    token = "sk-ant-oat01-" + secrets.token_hex(16)
+    machine.scenarios(
+        {
+            f"plan:{PLAN}": [
+                {"sh": 'test -n "$CLAUDE_CODE_OAUTH_TOKEN" && echo leased'},
+                {"write": {"alpha/a.txt": "a\n"}},
+                ask(),
+            ],
+            f"plan:{PLAN}/2": [
+                {"cli": ["step", "1", "done", "--verify", "test -f a.txt"]},
+                {"result": {"summary": "Step 1 done on the leased token."}},
+            ],
+        }
+    )
+    lease = Lease(1, "env", "secret", "claude-token", env_var="CLAUDE_CODE_OAUTH_TOKEN", value=token)
+    found = {}
+
+    async def run_it(hub: FakeHub, daemon: Daemon):
+        run_id = hub.queue_plan_run(PLAN, run_repos(plan_body()))
+        hub.leases[run_id] = {"leases": [lease.to_json()], "missing": []}  # before the daemon claims it
+        assert await hub.wait_state(run_id, "waiting", "done", "failed") == "waiting", hub.texts(run_id)
+        hub.answer(1, "yes")
+        assert await hub.wait_state(run_id, "done", "failed") == "done", (hub.runs[run_id], hub.texts(run_id))
+        found.update(run=run_id, hub=hub)
+
+    with_daemon(machine, run_it)
+    run_id, hub = found["run"], found["hub"]
+    assert [start["leased"] for start in machine.starts()] == [["CLAUDE_CODE_OAUTH_TOKEN"]] * 2
+    assert machine.commands()[0]["stdout"].strip() == "leased"
+    note = "The fake agent's environment has the leased CLAUDE_CODE_OAUTH_TOKEN."
+    texts = hub.texts(run_id)
+    assert texts.count(note) == 1, texts
+    assert texts.index(note) > texts.index(f"claude-code started in {machine.directory(run_id)}."), "once it started"
+    assert token not in json.dumps(hub.runs[run_id]["events"]), "the lease's value never reaches the log"
 
 
 def test_a_parked_run_keeps_its_worktrees_and_the_run_that_resumes_it_goes_on_in_them_and_its_session(machine):

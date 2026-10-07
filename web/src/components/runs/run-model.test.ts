@@ -4,6 +4,8 @@ import type { RunMove } from "./log-model";
 import type { Run } from "./queries";
 import {
   leaseSecondsLeft,
+  leaseState,
+  leaseTargets,
   readDiffstat,
   readUsage,
   readVerify,
@@ -146,5 +148,24 @@ describe("facts", () => {
       { key: "output.tokens", value: 2 },
     ]);
     expect(shortSha("7c1e9a2f00ddeeff")).toBe("7c1e9a2");
+  });
+});
+
+describe("a run's leases", () => {
+  const now = Date.parse("2026-10-07T09:00:00Z");
+
+  it("tells a lease given back, past its end, or still out", () => {
+    expect(leaseState({ revoked_at: "2026-10-07T08:59:00Z", expires_at: "2026-10-07T10:00:00Z" }, now)).toBe("revoked");
+    expect(leaseState({ revoked_at: null, expires_at: "2026-10-07T08:00:00Z" }, now)).toBe("expired");
+    expect(leaseState({ revoked_at: null, expires_at: "2026-10-07T10:00:00Z" }, now)).toBe("out");
+    expect(leaseState({ revoked_at: null, expires_at: null }, now)).toBe("out");
+  });
+
+  it("lists what a lease answered for: the variable, or each origin", () => {
+    expect(leaseTargets({ kind: "env", target: "CLAUDE_CODE_OAUTH_TOKEN" })).toEqual(["CLAUDE_CODE_OAUTH_TOKEN"]);
+    expect(leaseTargets({ kind: "git", target: "https://github.com/acme/api https://github.com/acme/web" })).toEqual([
+      "https://github.com/acme/api",
+      "https://github.com/acme/web",
+    ]);
   });
 });

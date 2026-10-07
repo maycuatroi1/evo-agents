@@ -1,4 +1,5 @@
-"""Workers on the hub: pairing codes, joining, direct registration, and the owner's drain, undrain and revoke.
+"""Workers on the hub: pairing codes, joining, direct registration, and the owner's drain, undrain, dispatch_from and
+revoke.
 
 The checks step 4 of the worker-fleet plan names: an expired code, a code used a second time and a code after 5
 wrong tries are all refused; a worker token gets 403 on /v1/projects and a machine token 403 on /v1/worker/claim; a
@@ -10,7 +11,10 @@ the database keeps neither a code nor a token in clear.
 
 And what a security review of the first version asked for: revoking a worker's token revokes the worker, refused
 joins are limited per client address, a code is kept as an HMAC under the session secret, only the owner undrains a
-worker, and a locked code counts against the member's five until it expires."""
+worker, and a locked code counts against the member's five until it expires.
+
+And step 10 of the worker-credentials plan: only the owner, from a web session, sets who may dispatch to a worker,
+and a machine token gets 403 there."""
 
 import hashlib
 import hmac
@@ -505,6 +509,63 @@ def test_drain_and_undrain_change_the_status_once_and_only_the_owner_undrains(cl
     drained = client.post(f"/v1/workers/{worker_id}/drain", headers=hub["admin"])
     assert drained.status_code == 200 and drained.json()["status"] == "draining"
     assert sorted(login for _, login in audit_rows(hub_db, "worker.drain")) == sorted([OWNER, ADMIN])
+
+
+def web_writes(client, github, login: str, github_id: int) -> dict:
+    """The headers of a write made with a web session of ``login``: its cookie and its CSRF header."""
+    session = web_sign_in(client, github, Account(login, github_id))
+    return {**cookie(session), "X-Evo-CSRF": csrf_for(client, session)}
+
+
+def test_dispatch_from_is_set_by_the_owner_from_a_web_session_only_and_audited(client, hub, hub_db, github):
+    answer = joined(client, paired(client, hub["owner"])["code"])
+    worker_id = answer["worker"]["id"]
+    path = f"/v1/workers/{worker_id}/dispatch-from"
+    assert answer["worker"]["dispatch_from"] == "any"  # as every worker before schema 0011
+    owner_web = web_writes(client, github, OWNER, OWNER_ID)
+
+    # a token never sets it, so one that leaked cannot open the worker again: the owner's machine token and a hub
+    # admin's get 403 before any worker is looked at, and the worker's own token is refused off its routes
+    for headers in (hub["owner"], hub["admin"]):
+        for some_id in (worker_id, 999999):
+            refused = client.post(f"/v1/workers/{some_id}/dispatch-from", json={"value": "web"}, headers=headers)
+            assert refused.status_code == 403 and "web session only" in refused.json()["message"], refused.text
+    assert client.post(path, json={"value": "web"}, headers=worker_headers(answer["token"])).status_code == 403
+    session_only = {"Cookie": owner_web["Cookie"]}  # the cookie without its CSRF header
+    assert client.post(path, json={"value": "web"}, headers=session_only).status_code == 403
+    assert sql(hub_db, "SELECT dispatch_from FROM workers") == [("any",)]
+    assert audit_rows(hub_db, "worker.dispatch_from") == []
+
+    for _ in range(2):  # the second changes nothing and writes no audit row
+        set_web = client.post(path, json={"value": "web"}, headers=owner_web)
+        assert set_web.status_code == 200, set_web.text
+        assert set_web.json()["dispatch_from"] == "web"
+    assert client.get(f"/v1/workers/{worker_id}", headers=hub["owner"]).json()["dispatch_from"] == "web"
+    assert [w["dispatch_from"] for w in client.get("/v1/workers", headers=hub["owner"]).json()] == ["web"]
+    target = f"worker:{worker_id} name=mac-mini owner={OWNER}"
+    assert audit_rows(hub_db, "worker.dispatch_from") == [(f"{target} dispatch_from=web", OWNER)]
+    for body in ({"value": "machine"}, {"value": None}, {}):
+        assert client.post(path, json=body, headers=owner_web).status_code == 422, body
+
+    # a hub admin signed in on the web sees the worker and may drain it, never open it again; another member gets the
+    # 404 of a worker they cannot see
+    refused = client.post(path, json={"value": "any"}, headers=web_writes(client, github, ADMIN, ADMIN_ID))
+    assert refused.status_code == 403 and f"only {OWNER}, who owns worker {worker_id}" in refused.json()["message"]
+    other_web = web_writes(client, github, OTHER, OTHER_ID)
+    assert client.post(path, json={"value": "any"}, headers=other_web).status_code == 404
+    assert sql(hub_db, "SELECT dispatch_from FROM workers") == [("web",)]
+
+    back = client.post(path, json={"value": "any"}, headers=owner_web)
+    assert back.status_code == 200 and back.json()["dispatch_from"] == "any"
+    assert sorted(audit_rows(hub_db, "worker.dispatch_from")) == [
+        (f"{target} dispatch_from=any", OWNER),
+        (f"{target} dispatch_from=web", OWNER),
+    ]
+
+    # a revoked worker takes no runs from anywhere
+    assert client.post(f"/v1/workers/{worker_id}/revoke", headers=hub["owner"]).status_code == 200
+    gone = client.post(path, json={"value": "web"}, headers=owner_web)
+    assert gone.status_code == 409 and "revoked" in gone.json()["message"]
 
 
 def seed_plan(db, project: str = "demo") -> dict:

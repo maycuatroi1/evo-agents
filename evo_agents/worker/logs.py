@@ -3,8 +3,10 @@ old files kept), and on stderr while it runs in the foreground.
 
 Lines go through the hub's ``JsonFormatter``, which removes worker tokens (``evw_...``), machine tokens, bearer
 credentials, pairing codes and the signatures of presigned URLs; the token the daemon holds is registered as a secret
-too, so it is masked wherever it shows up. The daemon never logs the text of an agent's events or of a message from
-the owner: those go to the hub only. Standard library only.
+too, so it is masked wherever it shows up, and so is the value of every lease a run gets while a run holds it
+(``mask``, which ``credentials`` calls as each lease arrives, after ``configure``, and ``unmask`` once every run that
+held it gave it back). The daemon never logs the text of an agent's events
+or of a message from the owner: those go to the hub only. Standard library only.
 """
 
 from __future__ import annotations
@@ -15,7 +17,7 @@ import os
 import sys
 from pathlib import Path
 
-from evo_agents.hub.log import QUIET_LOGGERS, JsonFormatter, register_secret
+from evo_agents.hub.log import QUIET_LOGGERS, JsonFormatter, register_secret, unregister_secret
 
 FILE_MODE = 0o600
 MAX_BYTES = 10 * 1024 * 1024
@@ -36,10 +38,23 @@ class _WorkerStream(logging.StreamHandler):
     """Marks the stderr handler this module installed."""
 
 
+def mask(*values: str) -> None:
+    """Mask ``values`` in every log line from now on, whichever handler writes it: the leases of a run, which come
+    after ``configure``."""
+    for value in values:
+        register_secret(value)
+
+
+def unmask(*values: str) -> None:
+    """Undo one ``mask`` of each of ``values``: the leases a run gave back, once no other run holds them."""
+    for value in values:
+        unregister_secret(value)
+
+
 def configure(log_path: Path, *, level: str = "INFO", stderr: bool = True, secrets=()) -> None:
-    """Send the process's log records to ``log_path`` (and stderr) as JSON lines, with ``secrets`` masked."""
-    for secret in secrets:
-        register_secret(secret)
+    """Send the process's log records to ``log_path`` (and stderr) as JSON lines, with ``secrets`` masked, and every
+    value given to ``mask`` later."""
+    mask(*secrets)
     root = logging.getLogger()
     for handler in list(root.handlers):
         if isinstance(handler, _WorkerFile | _WorkerStream):

@@ -17,6 +17,7 @@ from fastapi.testclient import TestClient
 from evo_agents.hub import runs
 from evo_agents.hub.config import ConfigError, load_config
 from evo_agents.hub.server.app import create_app
+from tests.hub.fake_github import Account
 from tests.hub.live import sql
 from tests.hub.test_plan_runs import (
     PLAN,
@@ -32,13 +33,16 @@ from tests.hub.test_plan_runs import (
     started,
 )
 from tests.hub.test_runs import (
+    GITHUB_IDS,
     OWNER,
     PROJECT,
     PROTOCOL,
+    WEB_ONLY,
     audit_rows,
     beat,
     claim,
     control,
+    dispatch_from,
     members,
     moved,
     moves,
@@ -46,6 +50,7 @@ from tests.hub.test_runs import (
     report,
     state_of,
 )
+from tests.hub.test_web_auth import cookie, csrf_for, web_sign_in
 
 SESSION = "0199a3c1-0000-7000-8000-00000000000c"
 QUESTION = "Which database should the dashboard read?"
@@ -447,6 +452,7 @@ def test_answering_a_parked_run_queues_a_run_that_resumes_it_on_the_same_worker(
             "attempt",
             "timeout_min",
             "dispatched_by",
+            "dispatched_via",
         )
     } == {
         "kind": "plan",
@@ -461,6 +467,7 @@ def test_answering_a_parked_run_queues_a_run_that_resumes_it_on_the_same_worker(
         "attempt": 1,
         "timeout_min": 4 * 60,
         "dispatched_by": OWNER,
+        "dispatched_via": "machine",  # the parked run's, which its owner dispatched with a token
     }
     assert ready(client, hub["reader"])["plan_run"]["id"] == new_id
     # the decision still open goes with the run that resumes, and may be answered there
@@ -525,6 +532,72 @@ def test_revoking_a_worker_cancels_the_runs_parked_on_it(client, hub, hub_db):
         (run["id"],),
     )
     assert reason == [("its worker mac-mini was revoked, and only it has the session of the parked run",)]
+
+
+# A worker set to take runs dispatched from the web only
+
+
+@pytest.fixture
+def web_client(hub_db, tmp_path, github):
+    """``client`` on a hub that also signs in on the web."""
+    config = live.hub_config(hub_db, tmp_path, github, **live.web_changes(github))
+    with TestClient(create_app(config), base_url="https://hub.test") as client:
+        yield client
+
+
+@pytest.fixture
+def web_hub(web_client, github) -> dict:
+    """``hub`` on ``web_client``, with ``owner_web``: the owner's web session and its CSRF header."""
+    headers = members(web_client, github)
+    push(web_client, headers["owner"], plan_body())
+    session = web_sign_in(web_client, github, Account(OWNER, GITHUB_IDS[OWNER]))
+    return headers | {"owner_web": {**cookie(session), "X-Evo-CSRF": csrf_for(web_client, session)}}
+
+
+def message(client, headers, run_id: int, text: str = "Use Postgres."):
+    return client.post(f"/v1/projects/{PROJECT}/runs/{run_id}/messages", json={"text": text}, headers=headers)
+
+
+def test_a_token_cannot_steer_a_run_on_a_worker_that_takes_runs_from_the_web_only(web_client, web_hub, hub_db):
+    client, hub = web_client, web_hub
+    worker, run, found = waiting(client, hub)  # dispatched with a token before the owner set the worker to web
+    run_id = run["id"]
+    dispatch_from(client, hub, worker, "web")
+    held_by = f"run {run_id} is held by worker mac-mini, which {WEB_ONLY}, as its owner set it, so a token cannot"
+
+    # Held there: neither a message nor an answer from a token reaches its agent.
+    refused = answer(client, hub["owner"], found["id"], option="postgres")
+    assert refused.status_code == 403
+    assert refused.json()["message"] == f"{held_by} answer its decisions: answer on the web; nothing was answered"
+    refused = message(client, hub["owner"], run_id)
+    assert refused.status_code == 403
+    assert refused.json()["message"] == f"{held_by} send its agent a message: send it from the web; nothing was sent"
+    assert decision(client, hub["owner"], found["id"])["state"] == "open"
+    assert inbox(client, worker, run_id) == []
+    actions = [row[0] for row in audit_rows(hub_db, "decision") + audit_rows(hub_db, "run")]
+    assert "decision.answer" not in actions and "run.message" not in actions
+
+    # Parked there: a token's answer would resume it on that worker, so nothing is answered and nothing queued.
+    park(hub_db, run_id)
+    recover(client)
+    refused = answer(client, hub["owner"], found["id"], option="postgres")
+    assert refused.status_code == 403
+    assert refused.json()["message"].startswith(f"run {run_id} was parked on worker mac-mini, which {WEB_ONLY}")
+    assert state_of(hub_db, run_id) == "parked"
+    assert sql(hub_db, "SELECT count(*) FROM runs WHERE resume_of_run_id = %s", (run_id,)) == [(0,)]
+
+    # From the web: the answer resumes it, pinned to the worker, where a token's message is refused too.
+    done = answered(client, hub["owner_web"], found["id"], option="postgres")
+    new_id = done["answer_run_id"]
+    refused = message(client, hub["owner"], new_id)
+    assert refused.status_code == 403 and refused.json()["message"].startswith(
+        f"run {new_id} is pinned to worker mac-mini, which {WEB_ONLY}"
+    )
+    assert message(client, hub["owner_web"], new_id).status_code == 201
+
+    # Once the owner lets the worker take runs from anywhere again, a token may steer it.
+    dispatch_from(client, hub, worker, "any")
+    assert message(client, hub["owner"], new_id).status_code == 201
 
 
 def test_the_decision_limits_are_the_models():

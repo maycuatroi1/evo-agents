@@ -5,6 +5,7 @@ import {
   isTerminalState,
   MESSAGE_STATES,
   type Run,
+  type RunLease,
   type RunState,
   TAKEOVER_STATES,
 } from "./queries";
@@ -164,6 +165,21 @@ export function utf8Bytes(text: string): number {
 export function leaseSecondsLeft(run: Pick<Run, "state" | "lease_expires_at">, now: number | null): number | null {
   if (now === null || !run.lease_expires_at || !(HELD_STATES as readonly string[]).includes(run.state)) return null;
   return Math.max(0, Math.round((Date.parse(run.lease_expires_at) - now) / 1000));
+}
+
+/** Where a lease of the run stands: given back or taken by the hub, past its end, or still out with the worker. */
+export type LeaseState = "revoked" | "expired" | "out";
+
+export function leaseState(lease: Pick<RunLease, "revoked_at" | "expires_at">, now: number): LeaseState {
+  if (lease.revoked_at) return "revoked";
+  if (lease.expires_at && Date.parse(lease.expires_at) <= now) return "expired";
+  return "out";
+}
+
+/** What a lease answered for: the variable of an env lease, or each origin of a git lease. */
+export function leaseTargets(lease: Pick<RunLease, "kind" | "target">): string[] {
+  if (lease.kind === "env") return [lease.target];
+  return lease.target.split(/\s+/).filter(Boolean);
 }
 
 export type Diffstat = { files: number; insertions: number; deletions: number };

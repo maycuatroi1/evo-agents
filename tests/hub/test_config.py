@@ -2,11 +2,14 @@
 named, a missing extra names the pip command, secrets never reach a log line, and the core CLI loads
 without the server stack."""
 
+import base64
 import io
 import logging
+import secrets
 import subprocess
 import sys
 from pathlib import Path
+from urllib.parse import quote
 
 import pytest
 
@@ -17,9 +20,19 @@ if not pg.DSN:
 
 from evo_agents.hub import log as hub_log
 from evo_agents.hub.config import ConfigError, HubConfig, load_config, load_dsn, load_log_level
-from evo_agents.hub.log import JsonFormatter, dsn_password, redact_dsn, register_secret, scrub
+from evo_agents.hub.log import JsonFormatter, dsn_password, redact_dsn, register_secret, scrub, unregister_secret
 
-SERVER_MODULES = ("fastapi", "starlette", "uvicorn", "psycopg", "psycopg_pool", "alembic", "sqlalchemy", "sentry_sdk")
+SERVER_MODULES = (
+    "fastapi",
+    "starlette",
+    "uvicorn",
+    "psycopg",
+    "psycopg_pool",
+    "alembic",
+    "sqlalchemy",
+    "sentry_sdk",
+    "cryptography",
+)
 
 
 @pytest.mark.parametrize("command", ["serve", "migrate"])
@@ -59,6 +72,11 @@ def test_missing_dsn_stops_the_command_and_names_the_variable(command):
         ("EVO_HUB_FORWARDED_ALLOW_IPS", "10.0.0.1/8"),  # host bits set: uvicorn would read it as a literal
         ("EVO_HUB_FORWARDED_ALLOW_IPS", " , "),
         ("EVO_HUB_FORWARDED_ALLOW_IPS", "*, 10.0.0.1"),
+        ("EVO_HUB_SECRETS_KEY", "too-short"),
+        ("EVO_HUB_SECRETS_KEY", "A" * 44),  # 33 bytes
+        ("EVO_HUB_SECRETS_KEY", "A" * 42 + "+/"),  # base64, not base64url
+        ("EVO_HUB_GITHUB_APP_ID", "my app"),
+        ("EVO_HUB_GITHUB_APP_PRIVATE_KEY", "not a key"),
     ],
 )
 def test_a_malformed_value_names_its_variable(variable, value):
@@ -148,6 +166,78 @@ def test_sign_in_settings_load_and_their_secrets_never_reach_a_log():
     assert device_only.admins == frozenset()
 
 
+def rsa_pem(traditional: bool = True) -> str:
+    """A private key of 2048 bits in PEM, as GitHub gives an App's (PKCS#1), or as PKCS#8."""
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    form = serialization.PrivateFormat.TraditionalOpenSSL if traditional else serialization.PrivateFormat.PKCS8
+    return key.private_bytes(serialization.Encoding.PEM, form, serialization.NoEncryption()).decode()
+
+
+def test_credential_settings_load_and_their_secrets_never_reach_a_log():
+    from cryptography.hazmat.primitives.serialization import load_pem_private_key
+
+    key = secrets.token_urlsafe(32)
+    pem = rsa_pem()
+    one_line = pem.strip().replace("\n", "\\n")  # as an environment file holds it
+    env = {
+        "EVO_HUB_DSN": "postgresql://hub@db/hub",
+        "EVO_HUB_SECRETS_KEY": key,
+        "EVO_HUB_GITHUB_APP_ID": "123456",
+        "EVO_HUB_GITHUB_APP_PRIVATE_KEY": one_line,
+    }
+    config = load_config(env)
+    assert config.secrets_key == base64.urlsafe_b64decode(key + "=") and len(config.secrets_key) == 32
+    assert load_config({**env, "EVO_HUB_SECRETS_KEY": key + "="}).secrets_key == config.secrets_key  # padded
+    assert config.github_app_id == "123456" and config.github_app_private_key == pem
+    assert load_config({**env, "EVO_HUB_GITHUB_APP_PRIVATE_KEY": pem}).github_app_private_key == pem
+    load_pem_private_key(config.github_app_private_key.encode(), password=None)
+    assert config.credentials_missing() == [] and config.github_app_missing() == []
+    pkcs8 = rsa_pem(traditional=False)
+    client_id = load_config(
+        {**env, "EVO_HUB_GITHUB_APP_ID": "Iv23liAbCdEf01234567", "EVO_HUB_GITHUB_APP_PRIVATE_KEY": pkcs8}
+    )
+    assert client_id.github_app_id == "Iv23liAbCdEf01234567" and client_id.github_app_private_key == pkcs8
+
+    assert key not in repr(config) and "PRIVATE" not in repr(config)
+    standard = base64.b64encode(config.secrets_key).decode()  # the same key as another tool may print it
+    lines = [line for line in pem.strip().splitlines()[1:-1] if len(line) >= 16]  # the key's base64, line by line
+    assert len(lines) >= 20
+    for leaked in (key, standard, pem, one_line, repr(pem), *lines):
+        line = scrub(f"loaded {leaked} at start")
+        assert "***" in line and not any(part in line for part in (key, standard, *lines)), line
+
+    nothing = load_config({"EVO_HUB_DSN": "postgresql://hub@db/hub"})
+    assert (nothing.secrets_key, nothing.github_app_id, nothing.github_app_private_key) == (None, None, None)
+    assert nothing.credentials_missing() == ["EVO_HUB_SECRETS_KEY"]
+    assert nothing.github_app_missing() == ["EVO_HUB_GITHUB_APP_ID", "EVO_HUB_GITHUB_APP_PRIVATE_KEY"]
+
+
+def test_the_github_app_needs_both_variables_and_no_error_shows_a_secret():
+    pem = rsa_pem()
+    base = {"EVO_HUB_DSN": "postgresql://hub@db/hub"}
+    for present, missing in (
+        ({"EVO_HUB_GITHUB_APP_ID": "123456"}, "EVO_HUB_GITHUB_APP_PRIVATE_KEY"),
+        ({"EVO_HUB_GITHUB_APP_PRIVATE_KEY": pem}, "EVO_HUB_GITHUB_APP_ID"),
+    ):
+        with pytest.raises(ConfigError) as caught:
+            load_config({**base, **present})
+        assert caught.value.variable == missing and "together, or neither" in str(caught.value)
+        assert pem.splitlines()[1] not in str(caught.value)
+    # a malformed key or PEM is named, never shown
+    for variable, value, shown in (
+        ("EVO_HUB_SECRETS_KEY", "Secret-Key-Value-13+" * 2, "Secret-Key-Value"),
+        ("EVO_HUB_GITHUB_APP_PRIVATE_KEY", pem.replace("PRIVATE KEY", "PUBLIC KEY"), pem.splitlines()[1]),
+        ("EVO_HUB_GITHUB_APP_PRIVATE_KEY", pem.splitlines()[1], pem.splitlines()[1]),
+    ):
+        with pytest.raises(ConfigError) as caught:
+            load_config({**base, variable: value})
+        assert caught.value.variable == variable
+        assert shown not in str(caught.value)
+
+
 def test_config_repr_keeps_the_dsns_out():
     config = HubConfig(dsn="postgresql://u:Repr-Secret-1@db/hub", data_dir=Path("/tmp/x"), sentry_dsn="https://k@s/1")
     assert "Repr-Secret-1" not in repr(config) and "https://k@s/1" not in repr(config)
@@ -171,6 +261,22 @@ def test_redact_dsn_hides_the_password_in_both_forms(dsn, password, redacted):
         assert out == redacted
     if password:
         assert password not in out
+
+
+def test_a_secret_stays_masked_until_each_registration_of_it_is_undone():
+    value = "Held Secret/" + secrets.token_hex(8)  # its URL-encoded form is masked with it
+    encoded = quote(value, safe="")
+    register_secret(value)
+    register_secret(value)  # two runs of a worker hold the same lease
+    unregister_secret(value)
+    assert scrub(f"a {value} b {encoded}") == "a *** b ***", "the other registration still masks it"
+    unregister_secret(value)
+    assert scrub(f"a {value} b {encoded}") == f"a {value} b {encoded}"
+    unregister_secret(value)  # once more than registered: nothing to undo, nothing breaks
+    register_secret(value)
+    assert scrub(value) == "***"
+    unregister_secret(value)
+    assert scrub(value) == value
 
 
 def test_json_lines_carry_no_secret(caplog):
