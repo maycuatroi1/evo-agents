@@ -198,12 +198,17 @@ class Store:
             leftover.unlink(missing_ok=True)
         return cls(stage)
 
+    def leave_wal(self) -> None:
+        """Write the WAL back into the file and leave WAL mode, so the file alone holds the whole store and can be
+        moved or copied as one."""
+        self.db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        self.db.execute("PRAGMA journal_mode=DELETE")
+
     def install(self, target: Path) -> Store:
         """Replace ``target`` with this store's file in one rename and return a store opened there. The
         file leaves WAL mode first, and the old file's WAL and shared memory go, so the new file never
         meets a log written for the old one."""
-        self.db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-        self.db.execute("PRAGMA journal_mode=DELETE")
+        self.leave_wal()
         self.db.close()
         for stale in (Path(f"{target}-wal"), Path(f"{target}-shm")):
             stale.unlink(missing_ok=True)
@@ -381,6 +386,15 @@ class Store:
         for table in ("nodes", "edges", "units", "derivations", "where_prov"):
             out[table] = self.db.execute(f"SELECT count(*) FROM {table} WHERE {LIVE}", {"b": b}).fetchone()[0]
         return out
+
+    def kind_counts(self, b: int) -> list[tuple[str, int, int, str, int]]:
+        """How many nodes live at build b each kind has under each label: rows of (kind, level, location,
+        integrity, count), in no particular order."""
+        return self.db.execute(
+            f"SELECT kind, label_lvl, label_loc, label_int, count(*) FROM nodes WHERE {LIVE}"
+            " GROUP BY kind, label_lvl, label_loc, label_int",
+            {"b": b},
+        ).fetchall()
 
     def summary(self) -> dict:
         b = self.latest_ready()
