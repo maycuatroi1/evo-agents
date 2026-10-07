@@ -6,14 +6,14 @@ import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useId, useState } from "react";
 
-import { NoticeArea, useNotice } from "@/components/admin/notice";
+import { useLiveQuery } from "@/components/live/live-context";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { browserApi } from "@/lib/api/browser";
 import { cn } from "@/lib/utils";
 
 import { DispatchDialog, PlanRunHoldNote, useNotReadyReason } from "./dispatch-dialog";
-import { useCanDispatch, useDispatchedNotice, useViewer } from "./hooks";
+import { useCanDispatch, useDispatchedToast, useViewer } from "./hooks";
 import { hasActiveRuns, LIVE_REFRESH_MS, readyStepsQuery, runsHref, runsQuery, stepRunsQuery } from "./queries";
 import { RunsTable } from "./runs-table";
 
@@ -27,8 +27,11 @@ export function StepRuns({ project, planId, stepKey }: { project: string; planId
   const ids = useId();
   const canDispatch = useCanDispatch(project);
   const viewer = useViewer();
-  const runs = useQuery(runsQuery(browserApi, project, stepRunsQuery(planId, stepKey)));
+  const runsOptions = runsQuery(browserApi, project, stepRunsQuery(planId, stepKey));
+  const runs = useQuery(runsOptions);
   const live = hasActiveRuns(runs.data);
+  // The step's runs are the work in progress on its page: the top bar follows them while one is active.
+  useLiveQuery(runsOptions, true);
   // While a run of the step, or the plan's plan run, is active, its end can make the step ready again: ask as often as
   // the list does.
   const ready = useQuery({
@@ -37,8 +40,7 @@ export function StepRuns({ project, planId, stepKey }: { project: string; planId
   });
   const reason = useNotReadyReason();
   const [dispatching, setDispatching] = useState(false);
-  const { notice, show, clear } = useNotice();
-  const dispatched = useDispatchedNotice();
+  const dispatched = useDispatchedToast();
   const readiness = ready.data?.steps.find((step) => step.key === stepKey) ?? null;
   const isReady = readiness?.ready === true;
   // While the plan has a plan run, every step is that run's: Run this step stays locked, and says which run holds it.
@@ -88,10 +90,9 @@ export function StepRuns({ project, planId, stepKey }: { project: string; planId
         ) : null}
       </div>
       {planRun ? <PlanRunHoldNote project={project} hold={planRun} testId="step-plan-run" /> : null}
-      <NoticeArea notice={notice} onDismiss={clear} />
       {runs.isPending ? (
         <Skeleton className="h-24 w-full" />
-      ) : runs.isError ? (
+      ) : runs.data === undefined ? ( // a failed refetch keeps the runs it read; the top bar says they are not current
         <p className="text-sm text-danger" role="alert">
           {t("failed")}
         </p>
@@ -123,7 +124,7 @@ export function StepRuns({ project, planId, stepKey }: { project: string; planId
           project={project}
           open={dispatching}
           onOpenChange={setDispatching}
-          onDispatched={(queued) => show(dispatched(queued))}
+          onDispatched={dispatched}
           plan={planId}
           step={stepKey}
         />

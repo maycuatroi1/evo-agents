@@ -5,6 +5,7 @@ import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { Notice } from "@/components/feedback/toast";
 import { createApiClient } from "@/lib/api/client";
 import type { Project } from "@/lib/api/client";
 import { renderVi } from "@/test/render";
@@ -12,7 +13,6 @@ import { renderVi } from "@/test/render";
 import { ConfirmAction } from "./confirm-action";
 import type { AdminUser } from "./data";
 import { GrantDialog, type GrantPreset } from "./grant-dialog";
-import type { Notice } from "./notice";
 
 const api = vi.hoisted(() => ({ answer: null as null | ((request: Request) => Response | Promise<Response>), seen: [] as Request[] }));
 
@@ -112,7 +112,12 @@ describe("GrantDialog", () => {
 
     await user.click(screen.getByRole("button", { name: "Xác nhận cấp quyền" }));
     await waitFor(() => expect(done).toHaveBeenCalledOnce());
-    expect(done.mock.calls[0][0]).toEqual({ tone: "success", text: "Đã cấp vai trò Đọc, mức hiển thị closed, cho newbie trong dự án other." });
+    expect(done.mock.calls[0][0]).toEqual({
+      tone: "success",
+      text: "Đã cấp quyền cho newbie",
+      description: "Vai trò Đọc, mức hiển thị closed, cho newbie trong dự án other.",
+      link: { label: "Mở thành viên", href: "/admin/members/newbie" },
+    });
     const put = api.seen.find((request) => request.method === "PUT");
     expect(put?.url).toBe("http://hub.test/v1/admin/projects/other/grants/newbie");
     expect(put?.headers.get("X-Evo-CSRF")).toBe("csrf-1");

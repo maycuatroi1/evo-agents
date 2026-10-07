@@ -16,6 +16,7 @@ import {
   WAITING_STEP,
   workerHeartbeat,
 } from "./support/runs";
+import { toast } from "./support/toast";
 
 /**
  * The Runs pages against the real API: the sidebar entry and the empty project; the Dispatch dialog offering only
@@ -104,12 +105,13 @@ test("dispatch queues runs of the ready steps only, and the list follows a worke
     });
   }
   const [newer, older] = runs;
-  await expect(page.getByTestId("admin-notice-status")).toContainText(`Queued 2 runs: #${older.id} and #${newer.id}.`);
+  await expect(toast(page, `2 runs dispatched: #${older.id} and #${newer.id}`)).toContainText("They wait in the queue for a worker.");
   await expect(runRow(page, older.id).getByTestId("run-state")).toHaveText("Queued");
   await expect(runRow(page, newer.id).getByTestId("run-state")).toHaveText("Queued");
   await expect(runRow(page, older.id)).toContainText(STEP_TITLES["2"]);
   await expect(main(page).getByTestId("summary-queued").locator("dd").first()).toHaveText("2");
-  await expect(main(page).getByTestId("runs-live")).toBeVisible();
+  // Active runs: the page reads every 5 seconds, and the top bar says it is live.
+  await expect(page.getByTestId("live-indicator")).toHaveAttribute("data-state", "live");
 
   // The worker claims the older run: the list shows it leased within one refresh, without a reload.
   const claimed = await claimRun(live);
@@ -217,7 +219,7 @@ test("a plan step's page runs the step, and lists its runs", async ({ page, memb
 
   const [run] = await runsOf(me, project);
   expect(run).toMatchObject({ step_key: "4", state: "queued", pinned_worker_id: live.worker.id, approval: "auto" });
-  await expect(section.getByTestId("admin-notice-status")).toContainText(`Queued run #${run.id}.`);
+  await expect(toast(page, `Run #${run.id} dispatched`)).toBeVisible();
   await expect(runRow(page, run.id, "step-runs-table").getByTestId("run-state")).toHaveText("Queued");
   await expect(runRow(page, run.id, "step-runs-table")).toContainText(me.login);
   await expect(section.getByTestId("step-readiness")).toHaveText(`Not ready to run: Run #${run.id} is Queued, dispatched by ${me.login}.`);

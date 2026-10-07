@@ -133,7 +133,8 @@
   "identifier": {
     "copy": "Sao chép {value}",
     "copied": "Đã chép {value} vào clipboard",
-    "selected": "Đã chọn sẵn: bấm Ctrl+C hoặc Cmd+C để chép"
+    "selected": "Đã chọn sẵn: bấm Ctrl+C hoặc Cmd+C để chép",
+    "refused": "Trình duyệt chặn clipboard. Hãy chọn đoạn chữ rồi bấm Ctrl+C hoặc Cmd+C."
   },
   "visibility": {
     "value": "Mức hiển thị: {level}",
@@ -246,7 +247,6 @@
       "loading": "Đang tải trang…"
     },
     "notice": {
-      "dismiss": "Đóng thông báo",
       "requestId": "Mã request: {id}"
     },
     "errors": {
@@ -356,7 +356,9 @@
       "confirm": "Xác nhận cấp quyền",
       "saving": "Đang lưu…",
       "notFound": "Dự án {project} không còn trên hub. Đóng hộp thoại rồi chọn dự án khác.",
-      "success": "Đã cấp vai trò {role}, mức hiển thị {level}, cho {login} trong dự án {project}."
+      "success": "Vai trò {role}, mức hiển thị {level}, cho {login} trong dự án {project}.",
+      "successTitle": "Đã cấp quyền cho {login}",
+      "openMember": "Mở thành viên"
     },
     "revokeGrant": {
       "title": "Thu hồi quyền của {login} trong dự án {project}?",
@@ -365,7 +367,10 @@
       "confirm": "Thu hồi quyền",
       "pending": "Đang thu hồi…",
       "notFound": "Quyền này đã được thu hồi trước đó. Danh sách vừa được tải lại.",
-      "success": "Đã thu hồi quyền của {login} trong dự án {project}."
+      "success": "{login} không còn vào được dự án {project}.",
+      "successTitle": "Đã thu hồi quyền của {login}",
+      "failed": "Không thu hồi được quyền của {login} trong {project}",
+      "openMember": "Mở thành viên"
     },
     "tokens": {
       "title": "Token và phiên đăng nhập",
@@ -418,7 +423,10 @@
       "pending": "Đang thu hồi…",
       "notFound": "Hub không còn token này. Danh sách vừa được tải lại.",
       "conflict": "Token này đã bị thu hồi trước đó. Danh sách vừa được tải lại.",
-      "success": "Đã thu hồi token {id} của {login}. Yêu cầu kế tiếp dùng token này sẽ nhận 401."
+      "success": "Yêu cầu kế tiếp dùng token này sẽ nhận 401.",
+      "successTitle": "Đã thu hồi token {id} của {login}",
+      "failed": "Không thu hồi được token {id}",
+      "openMember": "Mở thành viên"
     },
     "audit": {
       "title": "Nhật ký audit",
@@ -1146,7 +1154,7 @@
       "newCode": "Tạo code mới",
       "openWorker": "Mở worker",
       "joinedTitle": "<strong>{name}</strong> đã kết nối lúc {time}.",
-      "joinedNotice": "Worker {name} đã kết nối với hub.",
+      "joinedNotice": "{name} đã kết nối với hub",
       "hostValue": "{hostname}, {os} {arch}",
       "firstHeartbeat": "Có sau heartbeat đầu tiên",
       "cliIntro": "Máy đã đăng nhập bằng <code>evo-agents hub login</code> đăng ký bằng chính token của bạn. Không cần pairing code.",
@@ -1310,27 +1318,30 @@
       "drainNotOwner": "Sau đó chỉ {owner} cho nó nhận việc lại được.",
       "drainConfirm": "Ngừng nhận việc",
       "drainPending": "Đang dừng…",
-      "drainSuccess": "{name} đã ngừng nhận việc: chạy xong các run đang giữ rồi không nhận run mới.",
-      "undrainSuccess": "{name} nhận run trở lại.",
+      "drainSuccess": "{name} đã ngừng nhận việc",
+      "undrainSuccess": "{name} đã nhận việc trở lại",
       "revokeTitle": "Thu hồi worker {name}?",
       "revokeBody": "Token của worker hết hiệu lực ngay và tên của nó được giải phóng. Các run nó đang giữ quay lại queue, hoặc thất bại nếu được gắn cố định với worker này hay đã ở lần thử cuối.",
       "revokeHeld": "{count, plural, other {Worker đang giữ # run.}}",
       "audit": "Thao tác không hoàn tác được và được ghi vào audit.",
       "revokeConfirm": "Thu hồi worker",
       "revokePending": "Đang thu hồi…",
-      "revokeSuccess": "Đã thu hồi {name}. Token của worker không còn hiệu lực."
+      "revokeSuccess": "Đã thu hồi {name}",
+      "drainSuccessText": "Worker chạy xong các run đang giữ rồi không nhận run mới.",
+      "undrainSuccessText": "Worker nhận run trở lại.",
+      "revokeSuccessText": "Token của worker không còn hiệu lực.",
+      "drainFailed": "Không cho {name} ngừng nhận việc được",
+      "undrainFailed": "Không cho {name} nhận việc lại được",
+      "revokeFailed": "Không thu hồi được {name}"
     }
   },
   "runs": {
     "title": "Run",
     "metaTitle": "Run của {project}",
     "dispatchButton": "Dispatch",
-    "liveBadge": "Trực tiếp",
-    "live": "Cập nhật mỗi 5 giây khi còn run đang hoạt động.",
     "count": "{count, plural, other {# run}}",
     "caption": "Run của dự án {project}",
     "pagerLabel": "run",
-    "dispatched": "{count, plural, =1 {Đã xếp run {ids} vào queue.} other {Đã xếp # run vào queue: {ids}.}}",
     "runtime": {
       "any": "Bất kỳ",
       "claude-code": "Claude Code",
@@ -1351,7 +1362,9 @@
       "reviewMany": "đang chờ bạn duyệt",
       "reviewNone": "không có gì cần duyệt",
       "failed": "Thất bại",
-      "failedHint": "{lost, plural, =0 {Không run nào mất lease} other {và # run mất lease}}"
+      "failedHint": "{lost, plural, =0 {Không run nào mất lease} other {và # run mất lease}}",
+      "quietTitle": "Mọi thứ yên ắng.",
+      "quietText": "Không run nào đang chạy, chờ trong queue hay chờ duyệt."
     },
     "facets": {
       "label": "Trạng thái",
@@ -1527,7 +1540,6 @@
       "timeoutHint": "Thời gian agent được chạy. Lúc chờ bạn trả lời hay lúc tạm gác không tính vào.",
       "submit": "Chạy plan",
       "submitting": "Đang đưa vào queue…",
-      "dispatched": "Đã đưa plan run #{id} của {plan} vào queue.",
       "holds": "<link>Plan run #{id}</link> ({state}, do {login} giao) giữ mọi bước của plan này tới khi kết thúc.",
       "listLink": "Plan run #{id}: {state}",
       "phase": {
@@ -1616,6 +1628,11 @@
           "parked": "tạm gác",
           "review": "chờ duyệt"
         }
+      },
+      "toast": {
+        "dispatched": "Đã dispatch plan run #{id}",
+        "dispatchedText": "Plan run làm mọi bước chưa xong của {plan} trên một worker.",
+        "openRun": "Mở run"
       }
     },
     "openRun": "Mở run #{id}",
@@ -1872,12 +1889,27 @@
           "pending": "Đang huỷ…",
           "keep": "Giữ lại"
         },
-        "notice": {
-          "cancelled": "Đã huỷ run #{id}.",
-          "cancelAsked": "Đã yêu cầu huỷ run #{id}: worker dừng agent ở heartbeat kế tiếp.",
-          "approved": "Đã duyệt run #{id}: bước {step} của {plan} đã xong.",
-          "takeover": "Đã yêu cầu tiếp quản run #{id}: worker dừng agent ở cuối lượt rồi mở {name}.",
-          "handback": "Đã yêu cầu trả run #{id} cho agent: agent chạy headless tiếp trong cùng session."
+        "toast": {
+          "rerun": "Đã dispatch run #{id}",
+          "rerunText": "Chạy lại #{of}, đang chờ trong queue tới khi có worker nhận.",
+          "openRun": "Mở run",
+          "cancelled": "Đã huỷ run #{id}",
+          "cancelAsked": "Đã yêu cầu huỷ run #{id}",
+          "cancelAskedText": "Worker dừng agent ở heartbeat kế tiếp.",
+          "approved": "Đã duyệt run #{id}",
+          "approvedText": "Bước {step} của {plan} đã xong.",
+          "openStep": "Mở bước",
+          "takeover": "Đã yêu cầu tiếp quản run #{id}",
+          "takeoverText": "Worker dừng agent ở cuối lượt rồi mở {name}.",
+          "handback": "Đã yêu cầu trả run #{id} cho agent",
+          "handbackText": "Agent chạy headless tiếp trong cùng session.",
+          "failed": {
+            "cancel": "Không huỷ được run #{id}",
+            "takeover": "Không tiếp quản được run #{id}",
+            "handback": "Không trả được run #{id} cho agent",
+            "approve": "Không duyệt được run #{id}",
+            "rerun": "Không chạy lại được #{id}"
+          }
         }
       },
       "takeover": {
@@ -1954,6 +1986,12 @@
         "title": "Không đọc được diff",
         "description": "Blob store không trả lời yêu cầu của web. Hãy tải diff về, hoặc tải lại trang sau."
       }
+    },
+    "toast": {
+      "dispatched": "{count, plural, =1 {Đã dispatch run {ids}} other {Đã dispatch # run: {ids}}}",
+      "dispatchedText": "{count, plural, =1 {Run chờ trong queue tới khi có worker nhận.} other {Các run chờ trong queue tới khi có worker nhận.}}",
+      "openRun": "Mở run",
+      "openRuns": "Mở các run đang hoạt động"
     }
   },
   "inbox": {
@@ -1963,7 +2001,7 @@
     "openCount": "{count, plural, other {# quyết định chờ bạn}}",
     "markAll": "Đánh dấu tất cả đã đọc",
     "markShown": "Đánh dấu các mục này đã đọc",
-    "markedAll": "{count, plural, =0 {Không còn thông báo nào chưa đọc.} other {Đã đánh dấu # thông báo là đã đọc.}}",
+    "markedAll": "{count, plural, =0 {Không còn thông báo nào chưa đọc} other {Đã đánh dấu # thông báo là đã đọc}}",
     "count": "{count, plural, other {# thông báo}}",
     "waitingTitle": "Đang chờ bạn trả lời",
     "restTitle": "Thông báo và quyết định đã xong",
@@ -2083,8 +2121,12 @@
       "hintParked": "Run #{run} đang tạm gác: câu trả lời sẽ cho run chạy tiếp thành một run mới trên cùng worker, trong cùng phiên. Đã gửi thì không sửa được.",
       "send": "Gửi câu trả lời",
       "sending": "Đang gửi…",
-      "sent": "Đã gửi câu trả lời tới run #{run}. Worker chuyển cho agent ở lượt kế tiếp.",
-      "sentResumed": "Đã gửi câu trả lời. Run #{run} đang tạm gác nên chạy tiếp thành run #{next} trên cùng worker."
+      "sentResumed": "Run #{run} đang tạm gác nên chạy tiếp thành run #{next} trên cùng worker.",
+      "sentTitle": "Đã gửi câu trả lời tới run #{run}",
+      "sentText": "Worker chuyển cho agent ở lượt kế tiếp.",
+      "sentResumedTitle": "Đã gửi câu trả lời",
+      "openRun": "Mở run #{id}",
+      "failed": "Không gửi được câu trả lời"
     },
     "errors": {
       "forbidden": "Hub từ chối: chỉ {owner}, người đã giao run #{run}, mới trả lời được, và chỉ khi còn quyền ghi trên {project}.",
@@ -2093,6 +2135,44 @@
       "apiMessage": "Hub báo: {message}",
       "readForbidden": "Hub từ chối đánh dấu các thông báo này là đã đọc. Tải lại trang rồi thử lại.",
       "readGone": "Các thông báo này đã thay đổi trong lúc đó. Danh sách vừa được tải lại."
-    }
+    },
+    "markedOne": "Đã đánh dấu thông báo là đã đọc",
+    "markFailed": "Không đánh dấu đã đọc được"
+  },
+  "toast": {
+    "region": "Thông báo",
+    "dismiss": "Đóng thông báo",
+    "requestId": "Mã request: {id}"
+  },
+  "live": {
+    "label": "Cập nhật:",
+    "state": {
+      "live": "Trực tiếp",
+      "reconnecting": "Đang kết nối lại",
+      "paused": "Tạm dừng",
+      "offline": "Mất kết nối"
+    },
+    "detail": {
+      "updated": "cập nhật {ago}",
+      "lastUpdate": "lần cập nhật cuối {ago}",
+      "noUpdate": "chưa có lần cập nhật nào",
+      "paused": "do bạn dừng",
+      "retryIn": "thử lại sau {retry}, đọc lại mỗi {poll}",
+      "retryingNow": "đang thử lại, đọc lại mỗi {poll}",
+      "streamRetry": "thử lại luồng sau {retry}, trong lúc chờ đọc lại mỗi {poll}",
+      "streamReconnecting": "đang nối lại luồng"
+    },
+    "ago": {
+      "now": "vừa xong",
+      "seconds": "{count} giây trước",
+      "minutes": "{count} phút trước",
+      "hours": "{count} giờ trước"
+    },
+    "duration": {
+      "seconds": "{value} giây",
+      "minutes": "{value} phút"
+    },
+    "retry": "Thử lại ngay",
+    "resume": "Tiếp tục"
   }
 }

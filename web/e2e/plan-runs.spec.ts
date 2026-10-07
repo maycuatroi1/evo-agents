@@ -24,6 +24,7 @@ import {
   seedRunPlan,
   workerHeartbeat,
 } from "./support/runs";
+import { toast } from "./support/toast";
 
 /**
  * Plan runs from the web against the real API: Run plan shows only for a writer, on the plan's page and on its row of
@@ -126,7 +127,7 @@ test("a writer runs a plan from its page, and the page follows the run until it 
       { repo: HARNESS_REPO, branch: "main" },
     ],
   });
-  await expect(main(page).getByTestId("admin-notice-status")).toContainText(`Queued plan run #${run.id} of ${PLAN_RUN_PLAN}.`);
+  await expect(toast(page, `Plan run #${run.id} dispatched`)).toContainText(PLAN_RUN_PLAN);
   const banner = main(page).getByTestId("plan-run-banner");
   await expect(banner).toContainText(`Plan run #${run.id}`);
   await expect(banner.getByTestId("plan-run-phase")).toHaveText("Queued");

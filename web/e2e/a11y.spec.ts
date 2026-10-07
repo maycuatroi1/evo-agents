@@ -591,7 +591,8 @@ const PAGES: Entry[] = [
       await panel.getByTestId("decision-text").fill("After the backup.");
       await panel.getByTestId("decision-send").click();
       await expect(panel.getByTestId("decision-answer")).toBeVisible();
-      await expect(panel.getByTestId("admin-notice-status")).not.toBeEmpty();
+      // The answer's toast is on screen while axe looks.
+      await expect(page.getByTestId("toast").first()).toBeVisible();
     },
   },
   {

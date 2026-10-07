@@ -2,6 +2,7 @@ import type { Page } from "@playwright/test";
 
 import { expect, isDeployed, test } from "./support/fixtures";
 import { ADMIN_ACCOUNT, bearerClient, machineToken, newAccount, uniqueName } from "./support/hub";
+import { toast } from "./support/toast";
 import { CHECKOUTS, heartbeat, joinWithCode, registerWorker, RUNTIMES, workersOf } from "./support/workers";
 
 /**
@@ -130,7 +131,7 @@ test("registering with a pairing code: the code counts down, and the dialog foll
 
   await expect(dialog.getByTestId("pairing-joined")).toContainText(name, { timeout: 10_000 });
   await expect(dialog.getByTestId("pairing-joined-facts")).toContainText(`${name}.local`);
-  await expect(page.getByTestId("admin-notice-status")).toContainText(`Worker ${name} joined the hub.`);
+  await expect(toast(page, `${name} joined the hub`)).toBeVisible();
   await dialog.getByTestId("pairing-open-worker").click();
   await page.waitForURL(`**/workers/${credential.worker.id}`);
   await expect(page.locator("#main").getByRole("heading", { level: 1 })).toContainText(name);
@@ -177,7 +178,7 @@ test("a worker's page shows what its heartbeat reports, and drain, resume and re
   await drain.getByTestId("drain-worker-dialog-name").fill(worker.name);
   await drain.getByTestId("drain-worker-dialog-confirm").click();
   await expect(drain).toBeHidden();
-  await expect(page.getByTestId("admin-notice-status")).toContainText(`${worker.name} is draining`);
+  await expect(toast(page, `${worker.name} is draining`)).toContainText("then claims no new ones");
   await expect(main.getByTestId("worker-status").first()).toHaveText("Draining");
   await expect(main.getByTestId("worker-draining")).toBeVisible();
   expect((await workersOf(me)).find((w) => w.id === worker.id)?.drained_at).not.toBeNull();
@@ -185,7 +186,7 @@ test("a worker's page shows what its heartbeat reports, and drain, resume and re
   // Resume needs no name: it only lets the worker claim again.
   await main.getByTestId("worker-undrain").click();
   await expect(main.getByTestId("worker-status").first()).toHaveText("Idle");
-  await expect(page.getByTestId("admin-notice-status")).toContainText(`${worker.name} claims runs again.`);
+  await expect(toast(page, `${worker.name} resumed`)).toContainText("It claims runs again.");
 
   // Revoke: Escape leaves it alone; the typed name ends it.
   await main.getByTestId("worker-revoke").click();
@@ -218,7 +219,7 @@ test("a worker token on the admin tokens page says so, and revoking it revokes t
   const dialog = page.getByTestId("revoke-token-dialog");
   await expect(dialog).toContainText("revoking its token revokes the worker too");
   await dialog.getByTestId("revoke-token-dialog-confirm").click();
-  await expect(page.getByTestId("admin-notice-status")).toContainText("Revoked token");
+  await expect(toast(page, /Token \d+ of .+ revoked/)).toBeVisible();
   expect((await workersOf(owner)).find((w) => w.id === worker.id)?.status).toBe("revoked");
 
   await page.goto(`/workers/${worker.id}`); // a hub admin sees every worker, revoked ones included

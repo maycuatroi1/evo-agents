@@ -18,6 +18,7 @@ import {
   sendNotice,
   workerInbox,
 } from "./support/runs";
+import { toast } from "./support/toast";
 
 /**
  * The Inbox and the bell against the real API: the bell in the top bar counts the member's unread notifications (read
@@ -107,7 +108,7 @@ test("the bell counts unread notifications, and the Inbox lists open decisions f
 
   // Mark all as read leaves the decisions open: they still wait for an answer.
   await main(page).getByTestId("inbox-mark-all").click();
-  await expect(main(page).getByTestId("admin-notice-status")).toHaveText("Marked 2 notifications read.");
+  await expect(toast(page, "2 notifications marked as read")).toBeVisible();
   await expect(bell).toHaveAttribute("data-unread", "0");
   await expect(bell).toHaveAccessibleName("Inbox: no unread notification, 2 decisions wait for your answer");
   await expect(page.getByTestId("inbox-bell-count")).toHaveCount(0);
@@ -145,9 +146,7 @@ test("the owner answers a decision from the Inbox, and an answered decision take
   await panel.getByRole("radio", { name: /Wait until tomorrow/ }).check();
   await panel.getByTestId("decision-text").fill("Staging is frozen until the backup finishes.");
   await panel.getByTestId("decision-send").click();
-  await expect(panel.getByTestId("admin-notice-status")).toHaveText(
-    `Answer sent to run #${run.id}. The worker hands it to the agent at its next turn.`,
-  );
+  await expect(toast(page, `Answer sent to run #${run.id}`)).toContainText("The worker hands it to the agent at its next turn.");
   await expect(panel.getByTestId("decision-state")).toHaveText("Answered");
   await expect(panel.getByTestId("decision-form")).toHaveCount(0);
   await expect(panel.getByTestId("decision-answered-by")).toContainText(`Answered by ${me.login}`);
@@ -193,7 +192,8 @@ test("an answer sent while the page was open is refused with the hub's reason", 
   // The owner answers from the command line before sending the form.
   expect(await answerByApi(me, project, decision, { option: "wait" })).toBe(200);
   await panel.getByTestId("decision-send").click();
-  const alert = panel.getByTestId("admin-notice-alert");
+  const alert = toast(page, "Couldn't send the answer");
+  await expect(alert).toHaveAttribute("role", "alert");
   await expect(alert).toContainText("The decision was answered or closed meanwhile, or its run ended.");
   await expect(alert).toContainText(`decision ${decision} is answered, not open`);
   await expect(panel.getByTestId("decision-form")).toHaveCount(0);
@@ -217,7 +217,7 @@ test("the owner answers from the run's page, and another member reads the decisi
   await expect(view.getByRole("heading", { level: 3, name: QUESTION })).toBeVisible();
   await view.getByRole("radio", { name: /Deploy to staging now/ }).check();
   await view.getByTestId("decision-send").click();
-  await expect(view.getByTestId("admin-notice-status")).toHaveText(`Answer sent to run #${run.id}. The worker hands it to the agent at its next turn.`);
+  await expect(toast(page, `Answer sent to run #${run.id}`)).toContainText("The worker hands it to the agent at its next turn.");
   await expect(view.getByTestId("decision-form")).toHaveCount(0);
   await expect(view.getByTestId("decision-answer-option")).toContainText("Deploy to staging now");
   await expect(banner.getByRole("heading", { level: 2 })).toHaveText("Answer sent", { timeout: 12_000 });

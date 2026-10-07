@@ -18,7 +18,8 @@ import Link from "next/link";
 import { useFormatter, useTranslations } from "next-intl";
 import { type FormEvent, type ReactNode, useEffect, useId, useRef, useState } from "react";
 
-import { InlineError, type Notice } from "@/components/admin/notice";
+import { InlineError } from "@/components/admin/notice";
+import type { Notice } from "@/components/feedback/toast";
 import { useNow } from "@/components/kg/use-now";
 import { Button } from "@/components/ui/button";
 import {
@@ -559,8 +560,12 @@ function PairingProgress({
   useEffect(() => {
     if (status !== "joined") return;
     void queryClient.invalidateQueries({ queryKey: workerKeys.list });
-    onJoined({ tone: "success", text: t("joinedNotice", { name: pairing.name }) });
-    // Once per pairing: the notice is the page's record that the machine joined.
+    onJoined({
+      tone: "success",
+      text: t("joinedNotice", { name: pairing.name }),
+      link: workerId !== null ? { label: t("openWorker"), href: workerHref(workerId) } : null,
+    });
+    // Once per pairing: the toast is the page's record that the machine joined.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status]);
 

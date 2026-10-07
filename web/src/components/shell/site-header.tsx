@@ -7,6 +7,7 @@ import { Fragment } from "react";
 
 import { adminCrumbs } from "@/components/admin/crumbs";
 import { InboxBell } from "@/components/inbox/inbox-bell";
+import { LiveIndicator } from "@/components/live/live-indicator";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -72,8 +73,8 @@ function useCrumbs(): Crumb[] {
 
 /**
  * The kit's top bar: 52 px on the surface, sticky, with the sidebar toggle, the breadcrumb (13 px, slashes between
- * crumbs, the current page in the text colour) and the inbox bell on the right. Search and the live state join it in
- * later steps.
+ * crumbs, the current page in the text colour), then on the right whether the page is current (LiveIndicator, from what
+ * the page registered) and the inbox bell. Search joins it in a later step.
  */
 export function SiteHeader() {
   const t = useTranslations("nav");
@@ -104,7 +105,8 @@ export function SiteHeader() {
           ))}
         </BreadcrumbList>
       </Breadcrumb>
-      <div className="ml-auto flex shrink-0 items-center gap-1">
+      <div className="ml-auto flex min-w-0 shrink-0 items-center gap-1">
+        <LiveIndicator />
         <InboxBell />
       </div>
     </header>

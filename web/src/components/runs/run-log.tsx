@@ -224,6 +224,7 @@ export function RunLogCard({
   active,
   composer,
   terminal = null,
+  frozen,
 }: {
   runId: number;
   log: RunLog;
@@ -236,6 +237,11 @@ export function RunLogCard({
    * session and the log's place.
    */
   terminal?: ((shown: boolean) => ReactNode) | null;
+  /**
+   * Pause held by the page (the line count shown when paused, null while live), so the top bar's LiveIndicator can say
+   * Paused and resume it; without it the card holds Pause itself.
+   */
+  frozen?: { at: number | null; set: (at: number | null) => void };
 }) {
   const t = useTranslations("runs.detail.log");
   const tTabs = useTranslations("runs.detail.terminal.tabs");
@@ -244,7 +250,9 @@ export function RunLogCard({
   const [group, setGroup] = useState<LogGroup | null>(null);
   const [query, setQuery] = useState("");
   const [follow, setFollow] = useState(true);
-  const [frozenAt, setFrozenAt] = useState<number | null>(null);
+  const [ownFrozenAt, setOwnFrozenAt] = useState<number | null>(null);
+  const frozenAt = frozen ? frozen.at : ownFrozenAt;
+  const setFrozenAt = frozen ? frozen.set : setOwnFrozenAt;
   const deferredQuery = useDeferredValue(query);
 
   const all = log.lines;
@@ -332,7 +340,7 @@ export function RunLogCard({
             type="button"
             variant="outline"
             aria-pressed={frozenAt !== null}
-            onClick={() => setFrozenAt((value) => (value === null ? all.length : null))}
+            onClick={() => setFrozenAt(frozenAt === null ? all.length : null)}
             data-testid="log-pause"
           >
             {frozenAt === null ? <Pause aria-hidden="true" /> : <Play aria-hidden="true" />}

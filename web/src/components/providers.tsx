@@ -4,6 +4,8 @@ import { QueryCache, QueryClient, QueryClientProvider } from "@tanstack/react-qu
 import { ThemeProvider } from "next-themes";
 import { type ReactNode, useState } from "react";
 
+import { HubToaster } from "@/components/feedback/toast";
+import { LiveProvider } from "@/components/live/live-context";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { isApiError } from "@/lib/api/errors";
 import { LOGIN_PATH } from "@/lib/config";
@@ -25,7 +27,11 @@ export function Providers({ nonce, children }: { nonce?: string; children: React
   return (
     <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange nonce={nonce}>
       <QueryClientProvider client={queryClient}>
-        <TooltipProvider delayDuration={300}>{children}</TooltipProvider>
+        <LiveProvider>
+          <TooltipProvider delayDuration={300}>{children}</TooltipProvider>
+        </LiveProvider>
+        {/* Results of writes, bottom right (components/feedback/toast.tsx). */}
+        <HubToaster />
       </QueryClientProvider>
     </ThemeProvider>
   );

@@ -8,6 +8,7 @@ import { API_URL, BASE_URL } from "./support/env";
 import { expect, isDeployed, test } from "./support/fixtures";
 import { ADMIN_ACCOUNT, type Account, bearerClient, machineToken, newAccount, uniqueName } from "./support/hub";
 import { setUiLocale } from "./support/locale";
+import { toast } from "./support/toast";
 
 test.use({ uiLocale: "vi" }); // the assertions below read the Vietnamese copy of messages/vi.json
 
@@ -80,8 +81,8 @@ test.describe("members and grants", () => {
     await expect(confirm.getByTestId("grant-summary")).toContainText("Internal");
     await confirm.getByRole("button", { name: "Xác nhận cấp quyền" }).click();
     await expect(confirm).toBeHidden();
-    await expect(page.getByTestId("admin-notice-status")).toHaveText(
-      `Đã cấp vai trò Đọc, mức hiển thị Internal, cho ${account.login} trong dự án ${project}.`,
+    await expect(toast(page, `Đã cấp quyền cho ${account.login}`)).toContainText(
+      `Vai trò Đọc, mức hiển thị Internal, cho ${account.login} trong dự án ${project}.`,
     );
     const row = page.getByTestId("members-table").getByRole("row").filter({ hasText: account.login });
     await expect(row).toContainText(project);
@@ -101,7 +102,7 @@ test.describe("members and grants", () => {
     await expect(revoke.getByRole("button", { name: "Huỷ" })).toBeFocused();
     await revoke.getByRole("button", { name: "Thu hồi quyền" }).click();
     await expect(revoke).toBeHidden();
-    await expect(page.getByTestId("admin-notice-status")).toHaveText(`Đã thu hồi quyền của ${account.login} trong dự án ${project}.`);
+    await expect(toast(page, `Đã thu hồi quyền của ${account.login}`)).toContainText(`${account.login} không còn vào được dự án ${project}.`);
     await expect(page.getByTestId("member-grants-section")).toContainText("Chưa có quyền ở dự án nào");
 
     await member.page.goto("/");
@@ -157,8 +158,8 @@ test.describe("members and grants", () => {
     await levels.selectOption("customer");
     await dialog.getByRole("button", { name: "Tiếp tục" }).click();
     await page.getByRole("dialog", { name: "Xác nhận đổi quyền" }).getByRole("button", { name: "Xác nhận cấp quyền" }).click();
-    await expect(page.getByTestId("admin-notice-status")).toHaveText(
-      `Đã cấp vai trò Ghi, mức hiển thị Customer, cho ${account.login} trong dự án ${project}.`,
+    await expect(toast(page, `Đã cấp quyền cho ${account.login}`).last()).toContainText(
+      `Vai trò Ghi, mức hiển thị Customer, cho ${account.login} trong dự án ${project}.`,
     );
     await expect(page.getByTestId("member-grants")).toContainText("Customer");
   });
@@ -181,7 +182,7 @@ test.describe("tokens", () => {
     await expect(dialog).toContainText("Máy playwright sẽ nhận 401");
     await dialog.getByRole("button", { name: "Thu hồi token" }).click();
     await expect(dialog).toBeHidden();
-    await expect(page.getByTestId("admin-notice-status")).toContainText(`Đã thu hồi token ${me.token.id} của ${account.login}.`);
+    await expect(toast(page, `Đã thu hồi token ${me.token.id} của ${account.login}`)).toBeVisible();
     await expect(page.getByTestId("state-empty")).toBeVisible(); // it was their only live token
 
     const refused = await fetch(`${API_URL}/v1/auth/whoami`, { headers: { authorization: `Bearer ${token}` } });
@@ -203,7 +204,7 @@ test.describe("tokens", () => {
     // Another admin gets there first.
     await call((await adminApi()).DELETE("/v1/admin/tokens/{token_id}", { params: { path: { token_id: me.token.id } } }));
     await page.getByRole("alertdialog").getByRole("button", { name: "Thu hồi token" }).click();
-    await expect(page.getByTestId("admin-notice-alert")).toContainText("Token này đã bị thu hồi trước đó");
+    await expect(toast(page, "Token này đã bị thu hồi trước đó")).toHaveAttribute("role", "alert");
     await expect(page.getByTestId("state-empty")).toBeVisible();
   });
 });

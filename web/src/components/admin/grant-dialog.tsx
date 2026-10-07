@@ -6,6 +6,7 @@ import { useTranslations } from "next-intl";
 import { type FormEvent, useEffect, useId, useRef, useState } from "react";
 
 import { useVisibilityName, VisibilityLevel } from "@/components/data/visibility";
+import type { Notice } from "@/components/feedback/toast";
 import { RoleBadge } from "@/components/shell/role-badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -24,8 +25,8 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import type { Project } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 
-import { type AdminUser, type GrantInput, LOGIN_NAME, putGrant, type Role, ROLES } from "./data";
-import { InlineError, type Notice, useWriteFailure } from "./notice";
+import { type AdminUser, type GrantInput, LOGIN_NAME, memberHref, putGrant, type Role, ROLES } from "./data";
+import { InlineError, useWriteFailure } from "./notice";
 import { useAdminWrite } from "./use-admin-write";
 
 /** What the dialog opens with: empty, a user (from their page), or one of their grants (to change it). */
@@ -157,7 +158,9 @@ function GrantSteps({
     }
     onDone({
       tone: "success",
-      text: t("success", { role: roleName(grant.role), level: levelName(grant.max_level), login: grant.login, project: grant.project }),
+      text: t("successTitle", { login: grant.login }),
+      description: t("success", { role: roleName(grant.role), level: levelName(grant.max_level), login: grant.login, project: grant.project }),
+      link: { label: t("openMember"), href: memberHref(grant.login) },
     });
     onClose();
   };

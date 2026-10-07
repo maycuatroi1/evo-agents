@@ -2,9 +2,9 @@
 
 import { Check, Copy, ExternalLink, FolderGit2, GitCommitHorizontal, Globe } from "lucide-react";
 import { useFormatter, useTranslations } from "next-intl";
-import { useEffect, useRef, useState } from "react";
+import { useRef } from "react";
 
-import { Tag } from "@/components/data/identifier";
+import { Tag, useClipboard } from "@/components/data/identifier";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -31,24 +31,13 @@ export function ByteSize({ bytes }: { bytes: number }) {
 /** A SHA-256 shortened for reading, whole for copying and for assistive technology. */
 export function HashText({ sha256, full = false }: { sha256: string; full?: boolean }) {
   const t = useTranslations("skills");
-  const [copied, setCopied] = useState(false);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => () => {
-    if (timer.current) clearTimeout(timer.current);
-  }, []);
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(sha256);
-      setCopied(true);
-      if (timer.current) clearTimeout(timer.current);
-      timer.current = setTimeout(() => setCopied(false), 2000);
-    } catch {
-      setCopied(false);
-    }
-  };
+  const code = useRef<HTMLElement>(null);
+  const { state, copy } = useClipboard(sha256, code, { copied: t("copied") });
+  const copied = state === "copied";
   return (
     <span className="inline-flex max-w-full items-center gap-1">
       <code
+        ref={code}
         className={cn("rounded bg-muted px-1.5 py-0.5 font-mono text-xs", full && "[overflow-wrap:anywhere]")}
         title={sha256}
         data-sha256={sha256}
@@ -65,9 +54,6 @@ export function HashText({ sha256, full = false }: { sha256: string; full?: bool
       <Button type="button" variant="ghost" size="icon-sm" onClick={() => void copy()} aria-label={t("copyHash")}>
         {copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
       </Button>
-      <span className="sr-only" aria-live="polite">
-        {copied ? t("copied") : ""}
-      </span>
     </span>
   );
 }

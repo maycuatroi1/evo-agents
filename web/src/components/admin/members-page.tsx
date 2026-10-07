@@ -11,6 +11,7 @@ import { CellMain, DataTable, dataTableColumns } from "@/components/data/data-ta
 import { NAME_LINK } from "@/components/data/identifier";
 import { SearchField } from "@/components/data/search-field";
 import { VisibilityLevel } from "@/components/data/visibility";
+import { notify } from "@/components/feedback/toast";
 import { PageHeader } from "@/components/shell/page-header";
 import { RoleBadge, roleLabelKey } from "@/components/shell/role-badge";
 import { QueryView, useHubQuery } from "@/components/states/query-view";
@@ -28,7 +29,6 @@ import { cn } from "@/lib/utils";
 import { HubAdminBadge, NotSignedInBadge } from "./badges";
 import { type AdminUser, adminUsersQuery, filterMembers, memberHref, parseMemberFilters, tokensHref } from "./data";
 import { GrantDialog, type GrantPreset } from "./grant-dialog";
-import { NoticeArea, useNotice } from "./notice";
 import { useUrlView } from "./url-state";
 import { When } from "./when";
 
@@ -167,7 +167,6 @@ export function AdminMembers({ initialError }: { initialError: ApiErrorInfo | nu
   const state = useHubQuery(adminUsersQuery(browserApi), initialError);
   const { data: projects } = useQuery(projectsQuery(browserApi));
   const { view, go } = useUrlView(parseMemberFilters);
-  const { notice, show, clear } = useNotice();
   const [grantOpen, setGrantOpen] = useState(false);
   const [preset, setPreset] = useState<GrantPreset>({});
 
@@ -197,7 +196,6 @@ export function AdminMembers({ initialError }: { initialError: ApiErrorInfo | nu
           ) : null
         }
       />
-      <NoticeArea notice={notice} onDismiss={clear} />
       <QueryView state={state} loading={<TableSkeleton rows={6} toolbar />}>
         {(all) =>
           all.length === 0 ? (
@@ -269,7 +267,7 @@ export function AdminMembers({ initialError }: { initialError: ApiErrorInfo | nu
         users={users}
         projects={projectList}
         preset={preset}
-        onDone={show}
+        onDone={notify}
       />
     </>
   );

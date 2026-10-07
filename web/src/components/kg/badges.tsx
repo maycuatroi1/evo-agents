@@ -11,9 +11,8 @@ import {
   Tag,
 } from "lucide-react";
 import { useFormatter, useTranslations } from "next-intl";
-import { useEffect, useState } from "react";
 
-import { Tag as TagChip } from "@/components/data/identifier";
+import { Tag as TagChip, useClipboard } from "@/components/data/identifier";
 import { useVisibilityName } from "@/components/data/visibility";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -144,15 +143,10 @@ export function When({ iso, now = null }: { iso: string | null | undefined; now?
   );
 }
 
-/** Copies `value` and says so in a live region; the button keeps its name for screen readers. */
+/** Copies `value` and says so in a toast; the button keeps its name for screen readers. */
 export function CopyButton({ value, label }: { value: string; label: string }) {
   const t = useTranslations("kg");
-  const [copied, setCopied] = useState(false);
-  useEffect(() => {
-    if (!copied) return;
-    const timer = setTimeout(() => setCopied(false), 2_000);
-    return () => clearTimeout(timer);
-  }, [copied]);
+  const { state, copy } = useClipboard(value, null, { copied: t("copied") });
   return (
     <>
       <Button
@@ -162,15 +156,10 @@ export function CopyButton({ value, label }: { value: string; label: string }) {
         aria-label={label}
         title={label}
         className="cursor-pointer text-muted-foreground"
-        onClick={() => {
-          void navigator.clipboard?.writeText(value).then(() => setCopied(true), () => setCopied(false));
-        }}
+        onClick={() => void copy()}
       >
-        {copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
+        {state === "copied" ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
       </Button>
-      <span className="sr-only" aria-live="polite">
-        {copied ? t("copied") : ""}
-      </span>
     </>
   );
 }

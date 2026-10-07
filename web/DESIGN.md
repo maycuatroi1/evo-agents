@@ -226,7 +226,7 @@ shows at 20 px or larger beside the name in Plex Sans 600, and is never recolour
 - The shell is the kit's AppShell: the sidebar is 240 px wide (`15rem`), folds to 56 px of icons on desktop (Ctrl or
   Cmd + B, or the top bar's toggle) and becomes a sheet below 768 px; the top bar is 52 px on `surface` and sticks to
   the top.
-- z-index: header 10, sidebar rail 20, menus, sheets and tooltips 50.
+- z-index: header 10, sidebar rail 20, menus, sheets and tooltips 50, toasts 60 (above an open dialog).
 - The kit's sizes: controls 32 px (28 in dense toolbars, 40 in dialog footers), every control at least 44 px under
   768 px, table rows 44 px (36 compact), a 52 px top bar, a 240 px sidebar folding to 56 px, content at most 1280 px
   with a 24 px gutter (16 on phones).
@@ -278,7 +278,7 @@ Shared pieces built on them:
   shape of the content inside `role="status"`, faded in 300 ms after loading starts (`animate-appear-late`) so a quick
   answer never flashes it: `TableSkeleton` is the header on `surface-sunken` and 44 px rows of a short reference, a
   title over its secondary line, a pill and a figure (`toolbar` adds the toolbar's search and chips),
-  `ListSkeleton` puts the row of counts above it. A 401 sends the visitor to `/login`; 403 shows the no-access
+  `ListSkeleton` puts the metric strip's 78 px cells above it. A 401 sends the visitor to `/login`; 403 shows the no-access
   state, 404 the not-found state, 5xx or no answer the error state with the request id and a retry button. Every
   state is the kit's EmptyState: the icon in a 40 px `surface-sunken` square (`danger-soft` or `attention-soft` for
   errors and no access), a one-line title in 15 px 600, one sentence in `fg-muted` and the actions, the primary one
@@ -316,8 +316,8 @@ Shared pieces built on them:
   test ids stay those the e2e specs read (`run-state`, `worker-status`, `decision-state`).
 - `components/data/identifier.tsx`: names. `Identifier` is a mono chip on `surface-sunken` with 4 px corners for a
   worker, branch, revision, session or hash, a link in text colour turning `brand` on hover when it has a page, with
-  an optional copy button (24 px, a 44 px hit area under 768 px) that says what it copied in a polite live region and
-  selects the text where the clipboard is refused. `RunRef` writes a run as `#N` in mono with tabular figures.
+  an optional copy button (24 px, a 44 px hit area under 768 px) that says what it copied in a toast and
+  selects the text where the clipboard is refused (`useClipboard`, which every copy button of the web goes through). `RunRef` writes a run as `#N` in mono with tabular figures.
   `Tag` is a kind or a role (Admin, Plan run, Deploy, Blocking): an icon and a word on `surface-sunken` with 4 px
   corners, never round. `NAME_LINK` is the name in a table's first column or a list's primary cell: text colour,
   `brand` on hover.
@@ -332,8 +332,8 @@ Shared pieces built on them:
   any is online, `danger` when every one is offline or draining, `neutral` before the first) and links there. The
   project switcher and the account menu (login, hub role, role and visibility in the current project, theme,
   language, sign out) are the kit's switch: a bordered `card` control, the name over an `fg-subtle` line. The top bar
-  (`site-header.tsx`) holds the sidebar toggle, the breadcrumb (13 px, slashes, the trail starts at the project) and
-  the inbox bell. Page header below.
+  (`site-header.tsx`) holds the sidebar toggle, the breadcrumb (13 px, slashes, the trail starts at the project), the
+  page's LiveIndicator and the inbox bell. Page header below.
 - `components/shell/page-header.tsx`: the page head of the kit, one row. `title` is the one h1 (`page-title`, Plex
   Sans, wrapping anywhere for a long unbroken name), `status` the state of what it names (a `StatusBadge` at `lg`),
   `tags` its kind, role, counts and identifier chips, `actions` the page's buttons on the right (`ml-auto`), and `sub`
@@ -343,6 +343,45 @@ Shared pieces built on them:
   `EmptyState`, and parent pages are reached from the breadcrumb. The row wraps instead of squeezing: actions that do
   not fit beside the title move to their own line, still on the right, so a run's five controls never push the page
   sideways at 375 px. A plan's pages add their tabs under the head (`PlanHeader`).
+- `components/live`: the kit's LiveIndicator, in the top bar beside the bell. A page registers what keeps it current:
+  its main query through `useHubQuery(..., { live: true })` (or `usePagedQuery`, `useLiveQuery`), a stream through
+  `useLiveSignal` (the run page's event stream, with the log's Pause); a page that registered nothing shows none, and a
+  query that does not poll counts for nothing. `live-model.ts` is the state machine: Live while updates arrive (a
+  `success-solid` dot that pulses, "updated 3s ago"); Reconnecting from the first failed read (TanStack's
+  `fetchFailureCount`, or an error newer than the data) or while the log reads events instead of its stream (an
+  `attention-solid` dot, "retry in 4s, polling every 5s"; "stream retry in 25s, polling every 1.5s meanwhile");
+  Offline after 15 seconds of failures, or at once when the browser has no network (`danger-solid`, "last update
+  2 min ago", Retry now), and it stays Offline until data arrives again; Paused while the person holds the log
+  (`neutral-solid`, "by you", Resume). The clock is `useNow`, one ticker for every caller. The state's name is a
+  `role="status"` region ("Updates: Offline") and the ticking words sit outside it, so a screen reader hears each
+  change of state and not each second. Under 768 px the words fold away and the buttons keep their names for screen
+  readers only. A live query keeps what it last read on screen through a failed refetch (no answer or a 5xx,
+  `keepsStaleData`): the indicator, not an error state, says the page is not current; a 403 or 404 shows as before.
+- `components/data/metric-strip.tsx`: the kit's MetricStrip, the counts above the runs and workers lists. One `border`
+  container whose cells are divided by 1 px rules (a 1 px grid gap over `border`), four in a row from the lg
+  breakpoint and two below; each cell a `caption` label with its icon, the `metric` figure and one `fg-subtle` line
+  naming what is behind it. A zero is `fg-subtle`, a cell that needs a person (Review) is `attention` and the agents
+  at work (Running, Busy) `running` with the live dot in place of the icon while above zero. A cell can carry a
+  sparkline (`sparkline.tsx`, Recharts through shadcn's `ui/chart.tsx`: `chart-1` over a `brand-soft` area, a
+  `chart-grid` baseline, a dot on the latest value); the cell is a `role="img"` named with every value, the chart
+  itself is hidden from assistive technology, and it is loaded with `next/dynamic` behind a skeleton of the same 22 px,
+  so Recharts is not in any page's first load. With `quiet`, a strip whose in-flight cells are all zero gives way to
+  one line on `surface-sunken` ("All quiet. No run is in progress, queued or waiting for review." and Dispatch for a
+  writer): the runs page passes it while no plan run is parked; the workers page does not, since its counts are the
+  fleet's state and an offline machine must stay in view.
+- `components/feedback/toast.tsx` and `ui/sonner.tsx`: the kit's Toast through Sonner, mounted once in `providers.tsx`.
+  Bottom right, 24 px from the edges (16 on phones), 380 px wide, z-index 60, on `surface-raised` inside a `border` edge
+  with `shadow-popover` and 8 px corners: the tone's Lucide icon, a past-tense title in `body-strong` ("Run #13
+  dispatched", "Access granted to octo"), one sentence in `fg-muted`, and a `brand` link back to what changed ("Open
+  run", "Open member"), left out while that page is the one shown; a Dismiss button on every toast. A success closes
+  after 5 seconds (Sonner pauses the timer under the pointer and while the tab is hidden); a failure stays until it is
+  dismissed, titled with what could not be done ("Couldn't rerun #4"), then the words `useWriteFailure` chose, the
+  hub's message and the request id in `code-small`. Toasts sit in Sonner's polite region ("Notifications"), which a
+  modal dialog leaves readable; a failure is also `role="alert"`. Every write reports this way: dispatch, Run plan,
+  rerun, cancel, take over, hand back, approve, drain, resume and revoke a worker, register a worker, grant and revoke
+  a grant, revoke a token, answer a decision, mark as read, and copy. A failure inside a dialog that stays open is said
+  in the dialog instead (`InlineError`), next to the button that failed; no page keeps an inline notice that only says
+  something worked.
 - `components/data/visibility.tsx`: Visibility is the web's word for a label level, the reach of a grant (`max_level`)
   or of a memory's label. `VisibilityLevel` shows the default ladder's levels as Public, Internal, Customer and Secret
   (the same words in both languages, as the CLI's terms are English) with the code in the tooltip and in `data-level`;
@@ -351,7 +390,7 @@ Shared pieces built on them:
 - `plans/plan-header.tsx`, `ReadOnlyNotice`: every plan page carries the kit's info banner on `surface-sunken`, a lock,
   the one sentence "Read-only. Plans change from the CLI with `evo harness step`; each change adds a revision." and a
   ghost Copy button that copies the command (`useClipboard` of `identifier.tsx`: it selects the command where the
-  clipboard is refused, and says which in a polite live region). It is a `note` named "Read-only".
+  clipboard is refused, and says which in a toast). It is a `note` named "Read-only".
 - `components/data/search-field.tsx` and `facet-group.tsx`: the kit's search input, a magnifier, the field and the
   `/` key while it is empty, a clear button once it holds text, committed after a pause or on Enter; and a facet as
   the kit's filter chips, a labelled group of `aria-pressed` toggles, 28 px with 6 px corners, the count after the
@@ -417,9 +456,9 @@ Shared pieces built on them:
   agent's context as Markdown through the memories' `SafeMarkdown` (no raw HTML, no images loaded), then for the run's
   owner while it is open the answer form: the options as radio cards with the recommended one badged Recommended (a
   thumbs-up icon and the word) and none picked for them, a box for their own words (4 KiB of UTF-8, counted past 75%),
-  and Send answer. Nothing chosen or written, or too many bytes, is refused beside the field; the hub's answer shows
-  above the form (403, 404 and 409 in the decision's own words through `useWriteFailure`, the hub's message as a
-  detail). Once answered the form gives way to who answered, when, the option and words, whether the worker has handed
+  and Send answer. Nothing chosen or written, or too many bytes, is refused beside the field; the hub's answer is a
+  toast: "Answer sent to run #N" with a link to the run, or the refusal (403, 404 and 409 in the decision's own words
+  through `useWriteFailure`, the hub's message as a detail), which stays until dismissed. Once answered the form gives way to who answered, when, the option and words, whether the worker has handed
   it to the agent yet (read every 10 seconds until it has), and the run that resumed a parked one; the options list
   marks the one chosen. Anyone else reads the options and why they cannot answer. A plan run's page shows its open
   decisions in a "Waiting for your decision" banner above the stepper (`runs/run-decisions.tsx`) with the same view and
@@ -438,7 +477,7 @@ Shared pieces built on them:
   good. When the stream fails (closed by the browser, three errors without opening, or 10 seconds behind the run's
   `last_seq`), the page reads `events?after=` every 1.5 seconds and tries the stream again every 30. The lines sit in a
   `role="log"` region (polite), with filters by group, a search that highlights, Follow (scrolling up turns it off) and
-  Pause; past 2,000 lines shown only the rows in view render (`@tanstack/react-virtual`). Where the web forwards `/v1`
+  Pause (held by the page, so the top bar says Paused and resumes it); past 2,000 lines shown only the rows in view render (`@tanstack/react-virtual`). Where the web forwards `/v1`
   itself, `proxy.ts` asks for the stream unencoded: Next.js would gzip it and hold the events back.
 - The Terminal tab (`run-terminal.tsx`, `use-run-terminal.ts`, `terminal-model.ts`) shows beside the Log tab in the log
   card only for the run's owner on a worker of theirs registered with `--allow-web-terminal` (`terminalAccess`), while

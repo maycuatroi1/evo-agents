@@ -6,6 +6,7 @@ import { useTranslations } from "next-intl";
 import { useId, useState } from "react";
 
 import { DataCard } from "@/components/data/data-card";
+import { notify } from "@/components/feedback/toast";
 import { PageHeader } from "@/components/shell/page-header";
 import { QueryView } from "@/components/states/query-view";
 import { type ActiveFilter, EmptyState, NoResults, TableSkeleton } from "@/components/states/states";
@@ -26,7 +27,6 @@ import {
   tokensQuery,
 } from "./data";
 import { describedBy, field, FILTER_INPUT, FILTER_SELECT, FilterBar, FilterField, PageSizeField } from "./filter-bar";
-import { NoticeArea, useNotice } from "./notice";
 import { Pager } from "./pager";
 import { TokensTable } from "./tokens-table";
 import { useCursorTrail, useUrlView } from "./url-state";
@@ -46,7 +46,6 @@ export function AdminTokens({ initialError }: { initialError: ApiErrorInfo | nul
   const { state, stale: busy } = usePagedQuery(tokensQuery(browserApi, params), initialError);
   const { data: users } = useQuery(adminUsersQuery(browserApi));
   const trail = useCursorTrail(filterKey(view), view.cursor);
-  const { notice, show, clear: dismiss } = useNotice();
   const [loginError, setLoginError] = useState<string | null>(null);
 
   const apply = (form: FormData) => {
@@ -125,7 +124,6 @@ export function AdminTokens({ initialError }: { initialError: ApiErrorInfo | nul
   return (
     <>
       <PageHeader title={t("title")} />
-      <NoticeArea notice={notice} onDismiss={dismiss} />
       <section id={`${ids}-results`} aria-labelledby={`${ids}-results-title`} className="scroll-mt-20">
         <h2 id={`${ids}-results-title`} className="sr-only">
           {t("caption")}
@@ -179,7 +177,7 @@ export function AdminTokens({ initialError }: { initialError: ApiErrorInfo | nul
                   <EmptyState icon={KeyRound} title={t("emptyTitle")} description={t("emptyDescription")} />
                 )
               ) : (
-                <TokensTable tokens={data.items} caption={t("caption")} onNotice={show} />
+                <TokensTable tokens={data.items} caption={t("caption")} onNotice={notify} />
               )
             }
           </QueryView>

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 
-import { NoticeArea, useNotice } from "@/components/admin/notice";
+import { useLiveSignal } from "@/components/live/live-context";
 import { planHref, stepHref } from "@/components/plans/links";
 import { PageHeader } from "@/components/shell/page-header";
 import { QueryView, useHubQuery } from "@/components/states/query-view";
@@ -30,7 +30,7 @@ import { RunPlanSteps } from "./run-plan-steps";
 import { RunStepper } from "./run-stepper";
 import { RunTerminalPanel } from "./run-terminal";
 import { terminalAccess } from "./terminal-model";
-import { useRunLog } from "./use-run-log";
+import { logSignal, useRunLog } from "./use-run-log";
 
 /** A move between states as the log says it: "Running to Verifying, by the worker: ..." */
 function useDescribeMove() {
@@ -75,8 +75,11 @@ function RunPage({ run }: { run: Run }) {
   const controls = runControls(run, viewer);
   const terminal = useRunTerminalTab(run, viewer);
   const describe = useDescribeMove();
-  const { notice, show, clear } = useNotice();
   const log = useRunLog({ project: run.project, runId: run.id, knownLastSeq: run.last_seq, describe });
+  const [frozenAt, setFrozenAt] = useState<number | null>(null);
+  // While the stream (or its fallback) carries the run, it is what the top bar's LiveIndicator follows; before it opens
+  // and once it ended, the run's own query (every 5 seconds while active) does.
+  useLiveSignal(logSignal(log, frozenAt !== null), { resume: () => setFrozenAt(null) });
 
   // A move the log tells, or the end of the stream, changes the run: read it again at once rather than at the next tick.
   const moves = log.moves.length;
@@ -123,9 +126,8 @@ function RunPage({ run }: { run: Run }) {
                 ),
               })
         }
-        actions={<RunActions run={run} controls={controls} onNotice={show} />}
+        actions={<RunActions run={run} controls={controls} />}
       />
-      <NoticeArea notice={notice} onDismiss={clear} />
       {plan ? <RunDecisions run={run} owner={controls.owner} /> : null}
       <RunNotes run={run} controls={controls} />
       <RunStepper stepper={stepper} state={run.state} />
@@ -133,6 +135,7 @@ function RunPage({ run }: { run: Run }) {
         <RunLogCard
           runId={run.id}
           log={log}
+          frozen={{ at: frozenAt, set: setFrozenAt }}
           active={isActiveState(run.state)}
           composer={controls.message ? <RunComposer run={run} /> : null}
           terminal={
@@ -161,7 +164,7 @@ function RunPage({ run }: { run: Run }) {
  */
 export function RunDetail({ project, runId, initialError }: { project: string; runId: number; initialError: ApiErrorInfo | null }) {
   const t = useTranslations("runs.detail");
-  const state = useHubQuery(runQuery(browserApi, project, runId), initialError);
+  const state = useHubQuery(runQuery(browserApi, project, runId), initialError, { live: true });
   if (state.status === "error" && state.error.status === 404) {
     return <NotFoundState title={t("notFoundTitle", { id: runId })} description={t("notFoundDescription")} />;
   }

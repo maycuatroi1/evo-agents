@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { type ComponentProps, type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
 
+import { notify } from "@/components/feedback/toast";
 import { cn } from "@/lib/utils";
 
 /**
@@ -24,9 +25,15 @@ export type CopyState = "idle" | "copied" | "selected";
 
 /**
  * Copies `value` to the clipboard, or selects the text of `target` where the clipboard is refused (an insecure origin,
- * a denied permission), so Ctrl+C or Cmd+C still works. The state goes back to idle after 2 seconds.
+ * a denied permission), so Ctrl+C or Cmd+C still works; a toast says which ("<value> copied to the clipboard" unless
+ * `words` says it otherwise). The state, for the button's own icon, goes back to idle after 2 seconds.
  */
-export function useClipboard(value: string, target: RefObject<HTMLElement | null>) {
+export function useClipboard(
+  value: string,
+  target: RefObject<HTMLElement | null> | null,
+  words: { copied?: string; selected?: string } = {},
+) {
+  const t = useTranslations("identifier");
   const [state, setState] = useState<CopyState>("idle");
   useEffect(() => {
     if (state === "idle") return;
@@ -34,39 +41,36 @@ export function useClipboard(value: string, target: RefObject<HTMLElement | null
     return () => clearTimeout(timer);
   }, [state]);
 
-  const select = () => {
-    const node = target.current;
+  /** Selects the text of `target`; false when there is none to select. */
+  const select = (): boolean => {
+    const node = target?.current;
     const selection = typeof window === "undefined" ? null : window.getSelection();
-    if (!node || !selection) return;
+    if (!node || !selection) return false;
     const range = document.createRange();
     range.selectNodeContents(node);
     selection.removeAllRanges();
     selection.addRange(range);
-    setState("selected");
+    return true;
   };
   const copy = async () => {
     try {
       if (!navigator.clipboard) throw new Error("no clipboard");
       await navigator.clipboard.writeText(value);
       setState("copied");
+      notify({ tone: "success", text: words.copied ?? t("copied", { value }) });
     } catch {
-      select();
+      if (select()) {
+        setState("selected");
+        notify({ tone: "info", text: words.selected ?? t("selected") });
+      } else {
+        notify({ tone: "info", text: t("refused") });
+      }
     }
   };
   return { state, copy };
 }
 
-/** What a copy did, said in a polite live region: "<value> copied to the clipboard", or how to copy the selection. */
-export function CopyAnnouncement({ state, value }: { state: CopyState; value: string }) {
-  const t = useTranslations("identifier");
-  return (
-    <span className="sr-only" aria-live="polite">
-      {state === "copied" ? t("copied", { value }) : state === "selected" ? t("selected") : ""}
-    </span>
-  );
-}
-
-/** Copies `value`, or selects the chip's text where the clipboard is refused, and says which in a live region. */
+/** Copies `value`, or selects the chip's text where the clipboard is refused, and says which in a toast. */
 function CopyButton({ value, label, target }: { value: string; label: string; target: RefObject<HTMLElement | null> }) {
   const { state, copy } = useClipboard(value, target);
   return (
@@ -81,7 +85,6 @@ function CopyButton({ value, label, target }: { value: string; label: string; ta
       >
         {state === "copied" ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
       </button>
-      <CopyAnnouncement state={state} value={value} />
     </>
   );
 }

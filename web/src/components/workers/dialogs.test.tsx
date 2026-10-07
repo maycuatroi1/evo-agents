@@ -6,7 +6,7 @@ import { Pause } from "lucide-react";
 import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { Notice } from "@/components/admin/notice";
+import type { Notice } from "@/components/feedback/toast";
 import { createApiClient } from "@/lib/api/client";
 import { renderVi } from "@/test/render";
 
@@ -177,7 +177,11 @@ describe("RegisterDialog", () => {
     expect(await screen.findByTestId("pairing-joined", undefined, { timeout: 5_000 })).toHaveTextContent("lab-ws-01");
     expect(await screen.findByTestId("pairing-joined-facts")).toHaveTextContent("lab-ws-01.local, Linux x86_64");
     expect(screen.getByRole("link", { name: "Mở worker" })).toHaveAttribute("href", "/workers/9");
-    expect(joined).toHaveBeenCalledWith({ tone: "success", text: "Worker lab-ws-01 đã kết nối với hub." });
+    expect(joined).toHaveBeenCalledWith({
+      tone: "success",
+      text: "lab-ws-01 đã kết nối với hub",
+      link: { label: expect.any(String), href: "/workers/9" },
+    });
   });
 
   it("shows the CLI commands built from the form, and says when the hub cannot make codes", async () => {
