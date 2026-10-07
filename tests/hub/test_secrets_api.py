@@ -420,7 +420,7 @@ def test_a_delete_drops_the_sealed_value_and_bindings_revokes_the_leases_and_fre
     (row,) = stored(hub_db, OWNER, "claude-oauth")
     secret_id, owner_id, worker_id = row[0], user_id(hub_db, OWNER), box["worker"]["id"]
     projects, leases = tables.projects, tables.credential_leases
-    with pg.admin(hub_db.admin_dsn) as conn:
+    with live.connect(hub_db) as conn:
         ids = {"project": sql(hub_db, select(projects.c.id).where(projects.c.name == "demo"))[0][0], "user": owner_id}
         ids["worker"] = worker_id
         add_plan(conn, ids, PLAN)

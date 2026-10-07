@@ -603,7 +603,7 @@ def test_a_hub_admin_revokes_a_worker_its_token_stops_and_its_runs_are_released(
     token, worker_id = answer["token"], answer["worker"]["id"]
     spare = joined(client, paired(client, hub["owner"], name="spare")["code"])["worker"]["id"]
     ids = seed_plan(hub_db) | {"worker": worker_id}
-    with pg.admin(hub_db.admin_dsn) as conn:
+    with live.connect(hub_db) as conn:
         history = add_run(conn, ids, "done", step="0")  # finished before: left alone
         retried = add_run(conn, ids, "running", step="1")
         cancelled = add_run(conn, ids, "verifying", step="2", cancel_requested_at=datetime.now(UTC))
@@ -691,7 +691,7 @@ def test_revoking_a_worker_token_revokes_its_worker(client, hub, hub_db):
     answer = joined(client, paired(client, hub["owner"])["code"])
     token, token_id, worker_id = answer["token"], answer["token_id"], answer["worker"]["id"]
     ids = seed_plan(hub_db) | {"worker": worker_id}
-    with pg.admin(hub_db.admin_dsn) as conn:
+    with live.connect(hub_db) as conn:
         held = add_run(conn, ids, "running", step="1")
     # another member's token is unknown to them, and their worker stays as it was
     assert client.delete(f"/v1/tokens/{token_id}", headers=hub["other"]).status_code == 404
