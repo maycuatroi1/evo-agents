@@ -687,6 +687,17 @@ def test_listing_pages_by_cursor_and_search_ranks_full_text(client, who):
 
 
 @needs_pg
+def test_search_breaks_a_tie_in_rank_by_the_latest_change(client, who):
+    for name in ("a.md", "b.md", "c.md"):
+        assert put(client, who["alice"], name=name, body="one kiwi").status_code == 200
+    changed = put(client, who["alice"], name="a.md", type="reference", body="one kiwi", if_revision=1)
+    assert changed.status_code == 200 and changed.json()["revision"] == 2
+    found = client.get("/v1/memories/search", params={"q": "kiwi"}, headers=who["bob"]).json()["items"]
+    assert len({m["rank"] for m in found}) == 1
+    assert [m["name"] for m in found] == ["a.md", "c.md", "b.md"]
+
+
+@needs_pg
 def test_the_schema_holds_the_same_bounds(client, who, hub_db):
     from psycopg import errors
 
