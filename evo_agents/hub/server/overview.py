@@ -27,8 +27,9 @@ from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
+from sqlalchemy.dialects.postgresql import psycopg as pg_psycopg
 
-from evo_agents.hub import runs
+from evo_agents.hub import runs, tables
 from evo_agents.hub.db import legacy
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.plans import step_counts
@@ -160,6 +161,14 @@ ACTIVE_ORDER = (
 RECENT_ORDER = "r.finished_at DESC, r.id DESC"
 
 
+def _step_counts_text() -> str:
+    """plans.step_counts over pl.body, as the text the string queries below interpolate: a bridge until this module's
+    queries are Core and select step_counts itself."""
+    body = tables.plans.alias("pl").c.body
+    dialect = pg_psycopg.dialect()
+    return ", ".join(str(c.compile(dialect=dialect, compile_kwargs={"literal_binds": True})) for c in step_counts(body))
+
+
 def _run_rows(order: str) -> str:
     """The first runs by ``order`` in the states named, of the visible plans: picked from runs alone, so the joins
     that name their project, owner, worker and plan run for those few only."""
@@ -172,7 +181,7 @@ def _run_rows(order: str) -> str:
      LIMIT %(limit)s
 )
 SELECT r.id, r.kind, p.name, r.plan_id, pl.body ->> 'title', r.step_key, r.title, r.state, u.login, r.worker_id,
-       w.name, r.runtime, r.model, {step_counts("pl.body")}, r.run_seconds, r.queued_at, r.started_at,
+       w.name, r.runtime, r.model, {_step_counts_text()}, r.run_seconds, r.queued_at, r.started_at,
        r.finished_at, r.error
   FROM picked JOIN runs r ON r.id = picked.id
   JOIN projects p ON p.id = r.project_id JOIN users u ON u.id = r.dispatched_by

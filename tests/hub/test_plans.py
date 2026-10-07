@@ -554,8 +554,13 @@ def plan_url(plan_id: str | None = None, *rest: str) -> str:
 
 
 def counts(db) -> dict:
+    from sqlalchemy import func, select
+
+    from evo_agents.hub import tables
+
     return {
-        table: live.sql(db, f"SELECT count(*) FROM {table}")[0][0] for table in ("plans", "plan_revisions", "audit")
+        table.name: live.sql(db, select(func.count()).select_from(table))[0][0]
+        for table in (tables.plans, tables.plan_revisions, tables.audit)
     }
 
 
@@ -878,7 +883,13 @@ def test_audit_rows_and_logs_name_plans_never_their_content(client, github, hub_
     assert put(alice, draft()).status_code == 200
     patch_item(alice, PROJECT, "rollout", "steps", {"status": "done", "evidence": MARKER}, step=1)
     assert put(alice, {**draft(), "goal": MARKER * 2}, if_revision=2).status_code == 200
-    rows = live.sql(hub_db, "SELECT action, target FROM audit WHERE left(action, 5) = 'plan.' ORDER BY id")
+    from sqlalchemy import func, select
+
+    from evo_agents.hub import tables
+
+    audit = tables.audit
+    trail = select(audit.c.action, audit.c.target).where(func.left(audit.c.action, 5) == "plan.").order_by(audit.c.id)
+    rows = live.sql(hub_db, trail)
     assert rows == [
         ("plan.create", f"{PROJECT}/rollout@1"),
         ("plan.patch", f"{PROJECT}/rollout@2"),
@@ -887,7 +898,7 @@ def test_audit_rows_and_logs_name_plans_never_their_content(client, github, hub_
     outcomes = [r.outcome for r in caplog.records if r.getMessage() == "plan write"]
     assert outcomes == ["created", "patched", "replaced"]
     logged = caplog.text + json.dumps([vars(r) for r in caplog.records], default=str)
-    assert MARKER not in json.dumps(live.sql(hub_db, "SELECT * FROM audit"), default=str) and MARKER not in logged
+    assert MARKER not in json.dumps(live.sql(hub_db, select(audit)), default=str) and MARKER not in logged
 
 
 @needs_pg
