@@ -776,6 +776,22 @@ def test_reads_follow_the_label_rule_and_hide_what_they_refuse(client, github, h
 
 
 @needs_pg
+def test_the_list_orders_by_plan_id_and_narrows_to_an_area(client, github, hub_db):
+    hubs = setup_project(client, github)
+    for plan_id, area in (("zeta", "active"), ("beta", "completed"), ("alpha", "active")):
+        assert put(hubs["alice"], draft(plan_id), area=area).status_code == 200
+
+    def listed(**params) -> list[tuple]:
+        response = client.get(plan_url(), params=params, headers=hubs["reader"].headers)
+        assert response.status_code == 200, response.text
+        return [(p["plan_id"], p["area"]) for p in response.json()]
+
+    assert listed() == [("alpha", "active"), ("beta", "completed"), ("zeta", "active")]
+    assert listed(area="active") == [("alpha", "active"), ("zeta", "active")]
+    assert listed(area="completed") == [("beta", "completed")]
+
+
+@needs_pg
 def test_put_replaces_only_the_revision_it_names(client, github, hub_db):
     hubs = setup_project(client, github)
     alice = hubs["alice"]
