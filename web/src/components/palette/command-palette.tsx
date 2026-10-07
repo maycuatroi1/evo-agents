@@ -3,6 +3,7 @@
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   FolderKanban,
+  Keyboard,
   ListChecks,
   LoaderCircle,
   type LucideIcon,
@@ -32,6 +33,7 @@ import { controlRun, type Run, runHref, runKeys, runsQuery } from "@/components/
 import { HOME_NAV, HUB_NAV, PROJECT_NAV, projectHref } from "@/components/shell/nav";
 import { useCurrentProject } from "@/components/shell/project-switcher";
 import { roleLabelKey } from "@/components/shell/role-badge";
+import { NAV_SHORTCUTS, type ShortcutId, ShortcutKeys, useOpenShortcuts } from "@/components/shell/shortcuts";
 import { STATUS_LOOKS, useStatusText } from "@/components/status/status-badge";
 import { Command, CommandGroup, CommandInput, CommandItem, CommandList, CommandShortcut } from "@/components/ui/command";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
@@ -78,13 +80,23 @@ type PaletteDialog =
 
 type RerunTarget = Pick<OverviewRun, "project" | "id" | "plan_id">;
 
-/** What choosing an item does: open a page, open a dialog, or rerun a failed run as Home's Rerun does. */
-type Target = { kind: "page"; href: Route } | { kind: "dialog"; dialog: PaletteDialog } | { kind: "rerun"; run: RerunTarget };
+/**
+ * What choosing an item does: open a page, open a dialog, rerun a failed run as Home's Rerun does, or open the
+ * keyboard shortcuts.
+ */
+type Target =
+  | { kind: "page"; href: Route }
+  | { kind: "dialog"; dialog: PaletteDialog }
+  | { kind: "rerun"; run: RerunTarget }
+  | { kind: "shortcuts" };
 
-/** After the palette has closed: open the dialog chosen, leave focus to the page opened, or give focus back. */
-type After = { kind: "dialog"; dialog: PaletteDialog } | { kind: "navigate" } | { kind: "stay" };
+/**
+ * After the palette has closed: open the dialog chosen, leave focus to the page opened, give focus back, or give it
+ * back and open the shortcuts dialog (which gives it back there in turn).
+ */
+type After = { kind: "dialog"; dialog: PaletteDialog } | { kind: "navigate" } | { kind: "stay" } | { kind: "shortcuts" };
 
-type GroupKey = "actions" | "runs" | "plans" | "workers" | "goto";
+type GroupKey = "actions" | "runs" | "plans" | "workers" | "goto" | "help";
 
 type Entry = {
   /** cmdk's value: unique in the palette, stable while the item stays. */
@@ -94,6 +106,8 @@ type Entry = {
   /** What a query is matched against. */
   text: string;
   meta?: string;
+  /** The key that does the same from the page (G P, D), shown at the item's end. */
+  shortcut?: ShortcutId;
   target: Target;
 };
 
@@ -121,9 +135,12 @@ export function CommandPalette({ open, onOpenChange, restoreFocus }: Props) {
   const rerun = useRerun();
   const dispatched = useDispatchedToast();
   const planRunDispatched = usePlanRunToast();
+  const openShortcuts = useOpenShortcuts();
 
   const choose = (target: Target) => {
-    if (target.kind === "page") {
+    if (target.kind === "shortcuts") {
+      after.current = { kind: "shortcuts" };
+    } else if (target.kind === "page") {
       const here = `${window.location.pathname}${window.location.search}`;
       after.current = target.href === here ? { kind: "stay" } : { kind: "navigate" };
       if (target.href !== here) router.push(target.href);
@@ -156,6 +173,9 @@ export function CommandPalette({ open, onOpenChange, restoreFocus }: Props) {
             if (next?.kind === "dialog") {
               setDialog(next.dialog);
               setDialogOpen(true);
+            } else if (next?.kind === "shortcuts") {
+              restoreFocus();
+              openShortcuts?.();
             } else if (next?.kind !== "navigate") {
               restoreFocus();
             }
@@ -164,7 +184,7 @@ export function CommandPalette({ open, onOpenChange, restoreFocus }: Props) {
         >
           <DialogTitle className="sr-only">{t("title")}</DialogTitle>
           <DialogDescription className="sr-only">{t("description")}</DialogDescription>
-          <PaletteBody onChoose={choose} />
+          <PaletteBody onChoose={choose} shortcuts={openShortcuts !== null} />
         </DialogContent>
       </Dialog>
       {dialog?.kind === "dispatch" ? (
@@ -255,8 +275,11 @@ const WORKER_ORDER = { busy: 0, idle: 1, draining: 2, offline: 3, revoked: 4 } a
 /** The keys with which cmdk moves the selection. */
 const MOVE_KEYS = new Set(["ArrowDown", "ArrowUp", "Home", "End"]);
 
-/** The palette's search, groups and footer; mounted each time the palette opens, so it starts empty in the page's project. */
-function PaletteBody({ onChoose }: { onChoose: (target: Target) => void }) {
+/**
+ * The palette's search, groups and footer; mounted each time the palette opens, so it starts empty in the page's
+ * project. `shortcuts`: the shell can open the shortcuts dialog, offered once something typed matches it.
+ */
+function PaletteBody({ onChoose, shortcuts }: { onChoose: (target: Target) => void; shortcuts: boolean }) {
   const t = useTranslations("palette");
   const tNav = useTranslations("nav");
   const tRoles = useTranslations("roles");
@@ -375,6 +398,7 @@ function PaletteBody({ onChoose }: { onChoose: (target: Target) => void }) {
       icon: Send,
       label: <span className="truncate">{label}</span>,
       text: `${label} dispatch step ${project}`,
+      shortcut: project === current ? "dispatch" : undefined,
       target: { kind: "dialog", dialog: { kind: "dispatch", project } },
     };
   });
@@ -432,6 +456,8 @@ function PaletteBody({ onChoose }: { onChoose: (target: Target) => void }) {
             icon: item.icon,
             label: <span className="truncate">{label}</span>,
             text: label,
+            // G P and G R go to the plans and runs of the page's project.
+            shortcut: scope === current ? NAV_SHORTCUTS[item.label] : undefined,
             target: { kind: "page", href: projectHref(scope, item.segment) },
           };
         });
@@ -442,6 +468,7 @@ function PaletteBody({ onChoose }: { onChoose: (target: Target) => void }) {
       icon: item.icon,
       label: <span className="truncate">{tNav(item.label)}</span>,
       text: tNav(item.label),
+      shortcut: NAV_SHORTCUTS[item.label],
       target: { kind: "page", href: item.href },
     }));
   const projectLinks: Entry[] =
@@ -461,12 +488,28 @@ function PaletteBody({ onChoose }: { onChoose: (target: Target) => void }) {
       : [];
   const goto = take([...projectPages, ...hubPages, ...projectLinks], typed ? QUERY_LIMIT : Infinity);
 
+  // Help: the shortcuts dialog, once what is typed names it.
+  const help: Entry[] =
+    shortcuts && typed
+      ? take([
+          {
+            value: "help:shortcuts",
+            icon: Keyboard,
+            label: <span className="truncate">{t("shortcuts")}</span>,
+            text: `${t("shortcuts")} keyboard shortcuts keys help`,
+            shortcut: "help",
+            target: { kind: "shortcuts" },
+          },
+        ])
+      : [];
+
   const groups: { key: GroupKey; entries: Entry[] }[] = [
     { key: "actions", entries: actions },
     { key: "runs", entries: runs },
     { key: "plans", entries: planItems },
     { key: "workers", entries: workerItems },
     { key: "goto", entries: goto },
+    { key: "help", entries: help },
   ];
   const count = groups.reduce((total, group) => total + group.entries.length, 0);
   const partial = [overview, workers, ...plans, ...(remote ? [found] : [])].some((state) => state.isError);
@@ -549,6 +592,7 @@ function PaletteBody({ onChoose }: { onChoose: (target: Target) => void }) {
                       <span className="truncate">{entry.meta}</span>
                     </CommandShortcut>
                   ) : null}
+                  {entry.shortcut ? <ShortcutKeys id={entry.shortcut} className={entry.meta ? undefined : "ml-auto"} /> : null}
                   <Kbd className="hidden md:group-data-[selected=true]/command-item:inline-flex" aria-hidden="true">
                     ↵
                   </Kbd>

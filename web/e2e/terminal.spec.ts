@@ -80,10 +80,18 @@ test("the owner connects the terminal: keys echo through the worker's PTY, a res
   await expect(screen).toContainText("$ hello");
   await page.keyboard.press("Enter");
   await expect(screen).toContainText("echo: hello");
+  // The page's single keys are the agent's here: G then I, ?, D and / reach the PTY, and the page stays where it is.
+  const here = page.url();
+  await page.keyboard.type("gi?d/");
+  await page.keyboard.press("Enter");
+  await expect(screen).toContainText("echo: gi?d/");
+  expect(page.url()).toBe(here);
+  await expect(page.getByTestId("shortcuts-dialog")).toHaveCount(0);
+  await expect(page.getByTestId("dispatch-dialog")).toHaveCount(0);
   await page.keyboard.insertText("xin chào tiếng Việt");
   await page.keyboard.press("Enter");
   await expect(screen).toContainText("echo: xin chào tiếng Việt");
-  expect((await fakeTerminal(run.id)).lines).toEqual(["hello", "xin chào tiếng Việt"]);
+  expect((await fakeTerminal(run.id)).lines).toEqual(["hello", "gi?d/", "xin chào tiếng Việt"]);
 
   // A phone-wide window makes a narrower, taller terminal; the worker gets each new size as a resize frame, the last
   // one being the size the page shows once the layout settles.

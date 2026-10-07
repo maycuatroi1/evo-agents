@@ -8,6 +8,7 @@ import type { Overview, OverviewRun } from "@/components/home/model";
 import { createApiClient } from "@/lib/api/client";
 import { queryKeys } from "@/lib/queries";
 import { renderVi } from "@/test/render";
+import { ShortcutsProvider } from "@/components/shell/shortcuts";
 
 import { CommandPaletteProvider, isPaletteShortcut } from "./palette-context";
 import { PaletteTrigger } from "./palette-trigger";
@@ -136,20 +137,20 @@ const WRITER: Grant[] = [
 ];
 const READER: Grant[] = [{ project: "demo", role: "reader", max_level: "public" }];
 
-function setup(grants: Grant[] = WRITER) {
+/** The palette in its provider; `shell` puts the shell's shortcuts around it, as the app does. */
+function setup(grants: Grant[] = WRITER, { shell = false }: { shell?: boolean } = {}) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   const whoami = { login: "octo", admin: false, token: {}, grants };
   client.setQueryData(queryKeys.whoami, whoami);
   api.answers["/v1/auth/whoami"] = whoami;
   api.answers["/v1/me/overview"] = overview(grants);
-  renderVi(
-    <QueryClientProvider client={client}>
-      <CommandPaletteProvider>
-        <input aria-label="Lọc run" data-testid="outside-field" />
-        <PaletteTrigger />
-      </CommandPaletteProvider>
-    </QueryClientProvider>,
+  const palette = (
+    <CommandPaletteProvider>
+      <input aria-label="Lọc run" data-testid="outside-field" />
+      <PaletteTrigger />
+    </CommandPaletteProvider>
   );
+  renderVi(<QueryClientProvider client={client}>{shell ? <ShortcutsProvider>{palette}</ShortcutsProvider> : palette}</QueryClientProvider>);
   return userEvent.setup();
 }
 
@@ -348,6 +349,48 @@ describe("CommandPalette", () => {
     await user.keyboard("{Escape}");
     await waitFor(() => expect(screen.queryByTestId("dispatch-dialog")).toBeNull());
     await waitFor(() => expect(screen.getByTestId("palette-trigger")).toHaveFocus());
+  });
+
+  it("shows the keys that do an item's work from the page", async () => {
+    const user = setup(WRITER, { shell: true });
+    const palette = await openPalette(user);
+    await waitFor(() => expect(items(palette, "actions")).toContain("action:dispatch:demo"));
+    const keys = (item: string) => palette.querySelector(`[data-item="${item}"] [data-shortcut]`)?.textContent ?? null;
+    expect(keys("action:dispatch:demo")).toBe("D");
+    expect(keys("goto:demo:plans")).toBe("GP");
+    expect(keys("goto:demo:runs")).toBe("GR");
+    expect(keys("goto:hub:inbox")).toBe("GI");
+    expect(keys("goto:hub:workers")).toBe("GW");
+    expect(keys("goto:demo:memories")).toBeNull();
+    // Looking in another project, its pages are not the ones G P and G R open.
+    await user.keyboard("{Tab}");
+    await waitFor(() => expect(items(palette, "goto")[0]).toBe("goto:docs:overview"));
+    expect(keys("goto:docs:plans")).toBeNull();
+  });
+
+  it("opens the shortcuts dialog from the palette, and focus comes back to what held it", async () => {
+    const user = setup(WRITER, { shell: true });
+    const field = screen.getByTestId("outside-field");
+    await user.click(field);
+    await user.keyboard("{Control>}k{/Control}");
+    const palette = await screen.findByTestId("command-palette", {}, { timeout: 5_000 });
+    expect(within(palette).queryByTestId("palette-group-help")).toBeNull(); // offered once asked for
+    await user.type(within(palette).getByRole("combobox"), "phím tắt");
+    await waitFor(() => expect(items(palette, "help")).toEqual(["help:shortcuts"]));
+    await user.keyboard("{Enter}");
+    expect(await screen.findByRole("dialog", { name: "Phím tắt" })).toBeInTheDocument();
+    expect(screen.queryByTestId("command-palette")).toBeNull();
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(field).toHaveFocus());
+  });
+
+  it("offers no shortcuts dialog outside the shell", async () => {
+    const user = setup();
+    const palette = await openPalette(user);
+    await user.type(within(palette).getByRole("combobox"), "phím tắt");
+    await waitFor(() => expect(within(palette).getByTestId("palette-count")).toHaveTextContent("trong demo"));
+    expect(within(palette).queryByTestId("palette-group-help")).toBeNull();
   });
 
   it("reruns the latest failed run as Home does, and says so in a toast", async () => {

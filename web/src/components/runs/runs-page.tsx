@@ -14,6 +14,7 @@ import { MetricStrip, QuietLine } from "@/components/data/metric-strip";
 import { SearchField } from "@/components/data/search-field";
 import { useNow } from "@/components/kg/use-now";
 import { PageHeader } from "@/components/shell/page-header";
+import { ShortcutKeys, useDispatchShortcut } from "@/components/shell/shortcuts";
 import { QueryView, useHubQuery } from "@/components/states/query-view";
 import { type ActiveFilter, EmptyState, ListSkeleton, NoResults, TableSkeleton } from "@/components/states/states";
 import { STATUS_LOOKS } from "@/components/status/status-badge";
@@ -230,6 +231,8 @@ export function RunsPage({ project, initialError }: { project: string; initialEr
   const summary = useHubQuery(runsSummaryQuery(browserApi, project), initialError, { live: true });
   const [dispatching, setDispatching] = useState(false);
   const dispatched = useDispatchedToast();
+  // D opens this page's Dispatch, the one its button opens.
+  const dispatchKey = useDispatchShortcut(canDispatch ? () => setDispatching(true) : null);
 
   return (
     <>
@@ -237,9 +240,12 @@ export function RunsPage({ project, initialError }: { project: string; initialEr
         title={t("title")}
         actions={
           canDispatch ? (
-            <Button onClick={() => setDispatching(true)} data-testid="runs-dispatch">
+            <Button onClick={() => setDispatching(true)} aria-keyshortcuts={dispatchKey ? "D" : undefined} data-testid="runs-dispatch">
               <Send aria-hidden="true" />
               {t("dispatchButton")}
+              {dispatchKey ? (
+                <ShortcutKeys id="dispatch" className="ml-0.5" keyClassName="border-current bg-transparent text-current opacity-70" />
+              ) : null}
             </Button>
           ) : null
         }

@@ -2,30 +2,19 @@
 
 import { type RefObject, useEffect } from "react";
 
+import { characterKeyBlocked } from "@/lib/keyboard";
+
 /**
- * The `/` key of the kit: it moves focus to the search field of the page, unless focus is already in a field that
- * takes text (an input, a text area, a select, an editor or the web terminal) or a dialog is open. Fields register
- * with `useSearchShortcut`; the first one in document order that is shown and not hidden behind a modal wins, so a
- * page with two search fields focuses the one at the top.
+ * The `/` key of the kit: it moves focus to the search field of the page, unless focus is already where keys are
+ * typed (an input, a text area, a select, an editor, the web terminal, a menu) or a dialog is open, or the visitor
+ * turned single-key shortcuts off (`characterKeyBlocked` in lib/keyboard.ts, shared with the shell's other single
+ * keys in components/shell/shortcuts.tsx). Fields register with `useSearchShortcut`; the first one in document order
+ * that is shown and not hidden behind a modal wins, so a page with two search fields focuses the one at the top.
  */
 
+export { takesText } from "@/lib/keyboard";
+
 const fields = new Set<RefObject<HTMLInputElement | null>>();
-
-/** Input types that do not take typed text: "/" pressed on them still goes to the search field. */
-const NOT_TEXT = new Set(["button", "checkbox", "color", "file", "hidden", "image", "radio", "range", "reset", "submit"]);
-
-export function takesText(target: EventTarget | Element | null): boolean {
-  if (!(target instanceof Element)) return false;
-  if (target instanceof HTMLInputElement) return !NOT_TEXT.has(target.type);
-  if (target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) return true;
-  if (target instanceof HTMLElement && target.isContentEditable) return true;
-  const role = target.getAttribute("role");
-  return role === "textbox" || role === "combobox" || role === "searchbox";
-}
-
-function inModal(element: Element | null): boolean {
-  return Boolean(element?.closest('[role="dialog"], [role="alertdialog"]'));
-}
 
 function usable(input: HTMLInputElement): boolean {
   if (!input.isConnected || input.disabled || input.readOnly) return false;
@@ -44,11 +33,7 @@ export function shortcutTarget(): HTMLInputElement | null {
 }
 
 function onKeyDown(event: KeyboardEvent) {
-  if (event.key !== "/" || event.defaultPrevented || event.isComposing) return;
-  if (event.ctrlKey || event.metaKey || event.altKey) return;
-  const active = document.activeElement;
-  if (takesText(event.target) || takesText(active) || inModal(active)) return;
-  if (document.querySelector('[role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"]')) return;
+  if (event.key !== "/" || characterKeyBlocked(event)) return;
   const input = shortcutTarget();
   if (!input) return;
   event.preventDefault(); // the slash is not typed into the field

@@ -6,6 +6,7 @@ import { useFormatter, useTranslations } from "next-intl";
 import { type FormEvent, useId, useState } from "react";
 
 import { InlineError, type WriteFailure } from "@/components/admin/notice";
+import { shortcutText } from "@/components/shell/shortcuts";
 import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/kbd";
 import { browserApi } from "@/lib/api/browser";
@@ -123,7 +124,7 @@ export function RunComposer({ run }: { run: Pick<Run, "project" | "id"> & Partia
             {send.isPending ? t("sending") : t("send")}
             {modifier && !send.isPending ? (
               <Kbd className="ml-0.5 border-current bg-transparent text-current opacity-70" aria-hidden="true">
-                {modifier === "meta" ? "⌘↵" : "Ctrl ↵"}
+                {shortcutText("send", modifier)}
               </Kbd>
             ) : null}
           </Button>

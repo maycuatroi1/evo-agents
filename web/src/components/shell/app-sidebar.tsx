@@ -29,6 +29,7 @@ import { FleetLine } from "./fleet-line";
 import { countText, HOME_NAV, HUB_NAV, isActive, type NavCount, type NavLabel, PROJECT_NAV, projectHref } from "./nav";
 import { useNavCounts } from "./nav-counts";
 import { ProjectSwitcher, useCurrentProject } from "./project-switcher";
+import { NAV_SHORTCUTS, ShortcutKeys } from "./shortcuts";
 import { UserMenu } from "./user-menu";
 
 /** The tone of each count: a person is needed (attention), an agent is working (running). */
@@ -55,10 +56,12 @@ type ItemProps = {
 /**
  * One nav item of the kit: icon and label, surface-selected with a brand icon when it is the page shown, and its count
  * at the end in its tone. The number is drawn for the eye; screen readers hear it in words after the label, through
- * the link's name (browsers put a space between flex items, so the words are not left to the text content).
+ * the link's name (browsers put a space between flex items, so the words are not left to the text content). An item
+ * that G and a letter open shows those keys while the pointer is over it or it has keyboard focus (shell/shortcuts.tsx).
  */
 function NavItem({ label, icon: Icon, href, active, count, value, onNavigate }: ItemProps) {
   const t = useTranslations("nav");
+  const shortcut = NAV_SHORTCUTS[label];
   const shown = count !== undefined && value !== null && value > 0 ? value : null;
   const name = count !== undefined && shown !== null ? `${t(label)}, ${t(`counts.${count}`, { count: shown })}` : undefined;
   return (
@@ -74,6 +77,12 @@ function NavItem({ label, icon: Icon, href, active, count, value, onNavigate }: 
         >
           <Icon aria-hidden="true" />
           <span className="min-w-0 flex-1 truncate">{t(label)}</span>
+          {shortcut ? (
+            <ShortcutKeys
+              id={shortcut}
+              className="hidden group-data-[collapsible=icon]:hidden! md:group-hover/menu-item:inline-flex md:group-has-[:focus-visible]/menu-item:inline-flex"
+            />
+          ) : null}
           {count !== undefined && shown !== null ? (
             <>
               <span

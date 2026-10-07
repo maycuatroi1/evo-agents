@@ -80,7 +80,8 @@
       "runs": "Runs",
       "plans": "Plans",
       "workers": "Workers",
-      "goto": "Go to"
+      "goto": "Go to",
+      "help": "Help"
     },
     "actions": {
       "runPlan": "Run plan {plan}",
@@ -115,7 +116,55 @@
     "noMatch": "No match for “{query}” in {scope}.",
     "trySwitch": "Press Tab to switch the project.",
     "searching": "Searching runs",
-    "partial": "Some results could not be read. Try again in a moment."
+    "partial": "Some results could not be read. Try again in a moment.",
+    "shortcuts": "Keyboard shortcuts"
+  },
+  "shortcuts": {
+    "title": "Keyboard shortcuts",
+    "description": "Single keys work while focus is outside a text field and the terminal.",
+    "close": "Close",
+    "list": "All keyboard shortcuts",
+    "then": "then",
+    "off": "Off",
+    "groups": {
+      "general": "General",
+      "goto": "Go to",
+      "actions": "Actions"
+    },
+    "names": {
+      "palette": "Open the command palette",
+      "search": "Search this page",
+      "help": "Show keyboard shortcuts",
+      "sidebar": "Show or hide the sidebar",
+      "close": "Close a dialog or menu",
+      "goHome": "Home",
+      "goInbox": "Inbox",
+      "goPlans": "Plans",
+      "goRuns": "Runs",
+      "goWorkers": "Workers",
+      "dispatch": "Dispatch a step",
+      "send": "Send an answer or a message"
+    },
+    "where": {
+      "project": "Of the project you are in",
+      "writer": "On a project's pages, with the Writer role"
+    },
+    "keys": {
+      "command": "Command",
+      "control": "Control",
+      "enter": "Enter",
+      "escape": "Escape",
+      "slash": "Slash",
+      "question": "Question mark"
+    },
+    "single": {
+      "label": "Single-key shortcuts",
+      "hint": "/, ?, D and the G keys. Turn them off if they get in the way of speech input or another tool."
+    },
+    "needProject": {
+      "title": "Open a project first",
+      "text": "Plans and runs belong to a project. Pick one in the sidebar."
+    }
   },
   "userMenu": {
     "trigger": "Account {login}",
@@ -129,6 +178,7 @@
     "themeDark": "Dark",
     "themeSystem": "System",
     "language": "Language",
+    "shortcuts": "Keyboard shortcuts",
     "logout": "Sign out",
     "loggingOut": "Signing out…",
     "logoutFailed": "Sign-out did not go through. Try again in a moment."

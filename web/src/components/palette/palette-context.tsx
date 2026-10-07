@@ -3,8 +3,7 @@
 import dynamic from "next/dynamic";
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 
-import { takesText } from "@/components/data/search-shortcut";
-import { useModifierKey } from "@/lib/keyboard";
+import { takesText, useModifierKey } from "@/lib/keyboard";
 
 /**
  * The command palette's state, in the shell: whether it is open, what held focus when it opened, and Cmd K or Ctrl K
