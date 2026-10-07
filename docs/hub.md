@@ -487,6 +487,33 @@ uses 40 s). It exits 1 when it loses Postgres, which lets the restart policy bri
 memory, so the compose file caps the worker with `EVO_HUB_WORKER_CPUS` and `EVO_HUB_WORKER_MEMORY`. The worker
 refuses to start without a blob store, since builds read from it and write to it.
 
+## Data access
+
+The api and the worker each hold one psycopg 3 connection pool and a SQLAlchemy 2.1 engine on it
+(`evo_agents/hub/db.py`). The engine keeps no connection of its own (`NullPool`): it takes each one from the pool
+(`async_creator=pool.getconn`), and the pool is made with `close_returns=True`, so a connection the engine closes
+goes back to it. The pool's size, timeout and health check govern both. The lifespan opens the pool, then the engine,
+and disposes of the engine before it closes the pool.
+
+Queries are SQLAlchemy Core (`select()`, `insert()`, `update()`, `delete()`) on the tables of
+`evo_agents/hub/tables.py`, inside `engine.begin()`, whose transaction commits when the block ends cleanly and rolls
+back otherwise; the hub uses no ORM. `tables.py` describes the schema the migrations make, without CHECK constraints
+and triggers, and `tests/hub/test_schema_metadata.py` fails when the two differ. The migration environment
+(`migrations/env.py`) autogenerates from the same metadata.
+
+`driver(conn)` returns the psycopg connection under an engine connection, in the same transaction. `jobs.py` hands it
+to procrastinate, so a job deferred with `connection=conn` exists only if the caller's transaction commits; a defer
+refused because one job waits already rolls back to a savepoint (`begin_nested()`) and the transaction goes on.
+
+`tests/test_no_raw_sql.py` reads `evo_agents/hub` and `tests/hub` and fails, naming the file and line, on a string
+that holds SQL, on `psycopg.sql`, SQLAlchemy's `text` or `exec_driver_sql`, and on `driver()` outside `jobs.py`.
+Three places keep SQL for good: the migrations 0001 to 0011, which have run; the `LISTEN` of
+`evo_agents/hub/server/listen.py`, which keeps a psycopg connection of its own because SQLAlchemy has no construct for
+it; and `CREATE` and `DROP` of a test's database and role in `tests/hub/pg.py`. While the hub moves to Core, the
+test's `LEGACY` list names the files that still hold SQL with the number of findings each may keep, a number that
+only goes down. When the test reports a finding, write the statement with Core on `tables.py`. A change that only raw
+SQL can make adds its place to the test's allowed list in the same pull request, with the reason.
+
 ## Deploying
 
 GitHub Actions (`.github/workflows/images.yml`) builds two images. A push to a branch builds both and pushes
