@@ -13,7 +13,7 @@ have one; a second active plan run of one plan is refused by the partial unique 
 only by a plan run; and a database with runs goes up to 0010, down to 0009 with the schema 0009 had, and up again."""
 
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -40,7 +40,7 @@ def add_run(conn, ids, state: str = "queued", step: str = "3", kind: str = "step
     leased_at, a held one a lease, a final one finished_at, a failed one an error, a waiting one waiting_since and a
     parked one parked_at. A plan run (``kind`` plan) has repos instead of a step key and a repo. Columns of 0010 are
     named only when the run needs them, so the same helper writes runs at 0009."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     row = {
         "project_id": ids["project"],
         "plan_id": PLAN,

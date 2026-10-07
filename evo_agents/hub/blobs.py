@@ -241,7 +241,7 @@ class BlobStore:
         """``ok`` or ``unavailable``, for /v1/health."""
         try:
             await asyncio.wait_for(asyncio.to_thread(self.check), HEALTH_TIMEOUT + 1)
-        except (BlobStoreUnavailable, TimeoutError, asyncio.TimeoutError):
+        except (BlobStoreUnavailable, TimeoutError):
             return "unavailable"
         return "ok"
 

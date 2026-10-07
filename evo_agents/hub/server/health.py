@@ -53,7 +53,7 @@ async def health(request: Request, response: Response):
     r2 = asyncio.ensure_future(store.status()) if store is not None else None
     try:
         schema, db = await schema_revision(request.app.state.pool, HEALTH_TIMEOUT), "ok"
-    except (psycopg.Error, OSError, TimeoutError, asyncio.TimeoutError) as exc:  # PoolTimeout is a psycopg.Error
+    except (psycopg.Error, OSError, TimeoutError) as exc:  # PoolTimeout is a psycopg.Error
         log.warning("health check failed: database unavailable", extra={"error": type(exc).__name__})
         schema, db = None, "unavailable"
     r2_status = "unconfigured" if r2 is None else await r2

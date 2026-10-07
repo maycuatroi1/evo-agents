@@ -35,7 +35,7 @@ import urllib.error
 import urllib.request
 from collections.abc import Callable, Iterable, Iterator
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from urllib.parse import urlencode
 
 from evo_agents import __version__
@@ -53,7 +53,6 @@ from evo_agents.hub.runs import (
     RUNTIMES,
     TERMINAL_STATES,
 )
-from evo_agents.isotime import parse_iso
 
 EXIT_USAGE = 2
 REQUESTED_RUNTIMES = ("any", *RUNTIMES)
@@ -207,11 +206,11 @@ def _with_project(args, project: str) -> str:
 def _clock(value) -> str:
     """An event's time as HH:MM:SS UTC."""
     try:
-        moment = parse_iso(value)
+        moment = datetime.fromisoformat(value)
     except (TypeError, ValueError):
         return "--:--:--"
     if moment.tzinfo is not None:
-        moment = moment.astimezone(timezone.utc)
+        moment = moment.astimezone(UTC)
     return moment.strftime("%H:%M:%S")
 
 
@@ -645,10 +644,10 @@ def _lease_state(lease: dict, now: datetime) -> str:
     if lease["revoked_at"]:
         return f"revoked {_when(lease['revoked_at'])}"
     try:
-        ends = parse_iso(lease["expires_at"]) if lease["expires_at"] else None
+        ends = datetime.fromisoformat(lease["expires_at"]) if lease["expires_at"] else None
     except ValueError:
         ends = None
-    if ends is not None and (ends if ends.tzinfo else ends.replace(tzinfo=timezone.utc)) <= now:
+    if ends is not None and (ends if ends.tzinfo else ends.replace(tzinfo=UTC)) <= now:
         return "expired"
     return "out"
 
@@ -663,7 +662,7 @@ def cmd_credentials(args) -> int:
     if not leases:
         print(f"Run #{args.run} got no lease: its worker asked for none, or the hub had nothing for it.")
         return 0
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     rows = [
         (
             lease["name"],

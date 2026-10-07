@@ -14,7 +14,7 @@ import asyncio
 import copy
 import itertools
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from aiohttp import web
 
@@ -24,7 +24,7 @@ TOKEN = "evw_" + "f" * 43
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 class FakeHub:
@@ -235,7 +235,7 @@ class FakeHub:
                 return web.json_response({"run": None})
             try:
                 await asyncio.wait_for(self._queued.wait(), left)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 pass
         run_id = self.queue.pop(0)
         self._move(run_id, "leased")
@@ -265,7 +265,7 @@ class FakeHub:
                 )
             elif run["state"] in runs.HELD_STATES:
                 waiting = sum(1 for message in self.inbox[run_id] if not message["delivered"])
-                lease = (datetime.now(timezone.utc) + timedelta(seconds=300)).isoformat()
+                lease = (datetime.now(UTC) + timedelta(seconds=300)).isoformat()
                 controls.append(
                     {
                         "id": run_id,

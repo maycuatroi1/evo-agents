@@ -19,7 +19,7 @@ import contextlib
 import json
 import os
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from evo_agents.harness import MANIFEST, SKILL_REGISTRY
@@ -55,7 +55,7 @@ def default_registry() -> Path:
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def cluster_of(project: dict, hub_url: str, workspace: Path | None) -> dict | None:

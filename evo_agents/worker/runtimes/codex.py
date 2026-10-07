@@ -34,13 +34,9 @@ import os
 import re
 import shutil
 import tempfile
+import tomllib
 from collections.abc import Mapping
 from pathlib import Path
-
-try:  # Python 3.11 and later; on 3.10 the config's model lines are read with CONFIG_MODEL
-    import tomllib
-except ImportError:  # pragma: no cover - Python 3.10
-    tomllib = None
 
 from evo_agents.worker.adapter import AgentEvent, Detection, Outcome, RunContext
 from evo_agents.worker.runtimes.common import (
@@ -88,7 +84,6 @@ SKIPPED = frozenset(
     }
 )
 _CAMEL = re.compile(r"(?<!^)(?=[A-Z])")
-CONFIG_MODEL = re.compile(r"""^[ \t]*model[ \t]*=[ \t]*(?:"([^"\n]*)"|'([^'\n]*)')""", re.M)
 MODELS_CACHE = "models_cache.json"
 
 
@@ -102,8 +97,6 @@ def codex_home(env: Mapping[str, str]) -> Path:
 
 def config_models(text: str) -> list[str]:
     """The ``model`` of a codex ``config.toml``, then the ``model`` of each of its profiles."""
-    if tomllib is None:
-        return [first or second for first, second in CONFIG_MODEL.findall(text)]
     try:
         data = tomllib.loads(text)
     except ValueError:

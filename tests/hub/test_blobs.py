@@ -15,7 +15,7 @@ import threading
 import time
 import urllib.request
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from urllib.parse import parse_qs, urlsplit
 
@@ -48,7 +48,6 @@ from evo_agents.hub.log import JsonFormatter, scrub
 from evo_agents.hub.migrate import head_revision, migrate
 from evo_agents.hub.server.app import create_app
 from evo_agents.hub.worker import remove_stale_uploads
-from evo_agents.isotime import parse_iso
 
 HEAD = head_revision()
 
@@ -148,7 +147,7 @@ def test_an_upload_through_a_presigned_put_then_commit_writes_exactly_one_blob_r
     body = asked.json()
     (found,) = body["uploads"]
     assert body["present"] == [] and found["sha256"] == sha(data)
-    left = parse_iso(body["expires_at"]) - datetime.now(timezone.utc)
+    left = datetime.fromisoformat(body["expires_at"]) - datetime.now(UTC)
     assert timedelta(minutes=14) < left <= timedelta(minutes=15)
     url = urlsplit(found["url"])
     assert url.path == f"/{hub.s3.bucket}/uploads/{found['upload_id']}"
@@ -639,11 +638,11 @@ def test_uploads_left_for_a_day_are_removed_with_their_rows(hub, tmp_path):
             await pool.close()
 
     # Now: the row a day old goes; every object is younger than a day and stays.
-    assert asyncio.run(clean(datetime.now(timezone.utc))) == {"objects": 0, "rows": 1}
+    assert asyncio.run(clean(datetime.now(UTC))) == {"objects": 0, "rows": 1}
     assert live.sql(hub.db, "SELECT upload_id::text FROM blob_uploads") == [(fresh["upload_id"],)]
     assert len(hub.s3.keys("uploads/")) == 2
     # A day later: everything under uploads/ goes, and the blob stays.
-    assert asyncio.run(clean(datetime.now(timezone.utc) + timedelta(hours=25))) == {"objects": 2, "rows": 1}
+    assert asyncio.run(clean(datetime.now(UTC) + timedelta(hours=25))) == {"objects": 2, "rows": 1}
     assert hub.s3.keys("uploads/") == [] and pending(hub.db) == 0
     assert hub.s3.keys() == [blob_key(sha(kept))]
 

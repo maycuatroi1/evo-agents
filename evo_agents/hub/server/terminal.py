@@ -260,7 +260,7 @@ async def _hello(websocket: WebSocket) -> dict | None:
     """The browser's first message as a dict, or None when the browser left first."""
     try:
         message = await asyncio.wait_for(websocket.receive(), HELLO_SECONDS)
-    except asyncio.TimeoutError:  # not TimeoutError itself before Python 3.11
+    except TimeoutError:  # not TimeoutError itself before Python 3.11
         raise Refusal(frames.CLOSE_TIMEOUT, f"no hello within {HELLO_SECONDS:g} seconds") from None
     if message["type"] == "websocket.disconnect":
         return None
@@ -425,7 +425,7 @@ async def _watch(session: Session) -> None:
             return
         try:
             await asyncio.wait_for(session.ended.wait(), min(idle_left, open_left))
-        except asyncio.TimeoutError:
+        except TimeoutError:
             pass
 
 

@@ -8,7 +8,7 @@ by object, the same bytes held by two projects once, and the deletions still pen
 within 7 days by project, with each project's newest build; workers offline or never heard from, revoked ones left
 out; and the audit rows of the last 24 hours."""
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 import pytest
 
@@ -21,7 +21,6 @@ from fastapi.testclient import TestClient
 from psycopg.types.json import Jsonb
 
 from evo_agents.hub.server.app import create_app
-from evo_agents.isotime import parse_iso
 from tests.hub.live import ADMIN, bearer, sql
 
 OVERVIEW = "/v1/admin/overview"
@@ -218,7 +217,7 @@ def test_the_counts_match_the_rows_on_each_side_of_every_window(client, hub_db, 
     assert response.status_code == 200, response.text
     body = response.json()
     for item in body["kg_builds"]["projects"]:
-        item["last_failed_at"] = parse_iso(item["last_failed_at"])
+        item["last_failed_at"] = datetime.fromisoformat(item["last_failed_at"])
     assert body == {
         # octo-admin and ann, eve (29 days) seen lately; bob 40 days ago; cyd granted, never signed in
         "members": {"total": 5, "active": 3, "not_signed_in": 1, "active_days": 30},

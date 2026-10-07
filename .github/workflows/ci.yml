@@ -13,7 +13,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python: ["3.10", "3.12"]
+        python: ["3.11", "3.12"]
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -50,7 +50,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python: ["3.10", "3.12"]
+        python: ["3.11", "3.12"]
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4

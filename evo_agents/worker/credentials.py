@@ -51,7 +51,7 @@ import shlex
 import socket
 import struct
 from collections.abc import Awaitable, Callable, Iterable, Mapping, Sequence
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TypeVar
 from urllib.parse import urlsplit
@@ -93,7 +93,7 @@ T = TypeVar("T")
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 # What git and the agent get
@@ -489,7 +489,7 @@ class RunCredentials:
             answer = await self.answer(request if isinstance(request, dict) else {})
             writer.write(json.dumps(answer, ensure_ascii=False, separators=(",", ":")).encode() + b"\n")
             await asyncio.wait_for(writer.drain(), SOCKET_TIMEOUT)
-        except (asyncio.TimeoutError, ValueError, OSError) as exc:
+        except (TimeoutError, ValueError, OSError) as exc:
             log.warning(
                 "a request to the run's credential socket failed",
                 extra={"run_id": self.run_id, "error": type(exc).__name__},

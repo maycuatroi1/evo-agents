@@ -17,7 +17,7 @@ import json
 import threading
 import time
 from contextlib import ExitStack, contextmanager
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
@@ -143,7 +143,7 @@ def running(hub, step: int = 2, **dispatch) -> tuple[dict, int]:
 
 
 def event(seq: int, text: str = "", kind: str = "agent_message_chunk", **body) -> dict:
-    at = datetime.now(timezone.utc).isoformat()
+    at = datetime.now(UTC).isoformat()
     return {"seq": seq, "at": at, "kind": kind, "body": {"text": text or f"chunk {seq}", **body}}
 
 
@@ -414,10 +414,10 @@ def test_a_batch_sent_again_is_stored_once_and_ack_seq_stops_at_a_gap(hub):
     large = send(hub, worker, run_id, *(event(n, "x" * 300_000) for n in range(8, 12)))
     assert large.status_code == 413 and large.json()["detail"] == [{"limit": "batch_bytes"}]
     # a time ahead of the hub's clock is taken as the hub's now
-    future = {**event(8), "at": (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()}
+    future = {**event(8), "at": (datetime.now(UTC) + timedelta(days=1)).isoformat()}
     assert sent(hub, worker, run_id, future)["ack_seq"] == 8
     ((at,),) = sql(hub.db, "SELECT at FROM run_events WHERE run_id = %s AND seq = 10", (run_id,))
-    assert at <= datetime.now(timezone.utc)
+    assert at <= datetime.now(UTC)
 
     # only the worker that claimed the run sends its events
     other = add_worker(hub.client, hub.headers["owner"], "linux-box")

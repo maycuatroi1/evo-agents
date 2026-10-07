@@ -255,7 +255,7 @@ class Tmux:
         )
         try:
             out, _ = await asyncio.wait_for(proc.communicate(), timeout)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             with contextlib.suppress(ProcessLookupError):
                 proc.kill()
             await proc.wait()
@@ -834,7 +834,7 @@ class CodexTui(Tui):
             return ""
         try:
             out, _ = await asyncio.wait_for(proc.communicate(), HELP_TIMEOUT)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             with contextlib.suppress(ProcessLookupError):
                 proc.kill()
             await proc.wait()
@@ -1199,7 +1199,7 @@ class Attached:
                 self.proc.terminate()  # tmux attach detaches; the session goes on
             try:
                 await asyncio.wait_for(self.proc.wait(), 5)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 with contextlib.suppress(ProcessLookupError):
                     self.proc.kill()
                 await self.proc.wait()
@@ -1243,7 +1243,7 @@ class WebTerminal:
         self._closing.set()
         try:
             await asyncio.wait_for(asyncio.shield(task), CLOSE_GRACE)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             task.cancel()
             with contextlib.suppress(asyncio.CancelledError, Exception):
                 await task
@@ -1264,7 +1264,7 @@ class WebTerminal:
                 ),
                 CONNECT_TIMEOUT,
             )
-        except (aiohttp.ClientError, asyncio.TimeoutError, OSError, ValueError) as exc:
+        except (TimeoutError, aiohttp.ClientError, OSError, ValueError) as exc:
             log.warning("terminal not connected to the hub", extra={"run_id": self.run_id, "error": type(exc).__name__})
             return
         self.connections += 1
@@ -1308,7 +1308,7 @@ class WebTerminal:
         early: list[bytes] = []
         try:  # the hub sends the browser's size first when it knows it
             first = await asyncio.wait_for(ws.receive(), FIRST_FRAME_WAIT)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             first = None
         if first is not None:
             if first.type != aiohttp.WSMsgType.BINARY:

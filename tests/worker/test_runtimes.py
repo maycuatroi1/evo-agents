@@ -38,7 +38,6 @@ from evo_agents.worker import adapter as adapter_module
 from evo_agents.worker import selftest as selftest_module
 from evo_agents.worker.adapter import Adapter, AgentEvent, Detection, Outcome, RunContext
 from evo_agents.worker.runtimes import claude_code as claude_module
-from evo_agents.worker.runtimes import codex as codex_module
 from evo_agents.worker.runtimes import common
 from evo_agents.worker.runtimes import opencode as opencode_module
 from evo_agents.worker.runtimes.claude_code import ClaudeCodeAdapter, events_of
@@ -1739,11 +1738,8 @@ def test_codex_lists_the_models_of_its_config_then_of_its_model_picker(tmp_path,
     }
     (home / "models_cache.json").write_text(json.dumps(cache), encoding="utf-8")
     assert CodexAdapter.models() == ["gpt-6-astra", "gpt-5.6-luna", "gpt-5.6-sol"]
-    monkeypatch.setattr(codex_module, "tomllib", None)  # Python 3.10: the config's model lines
-    assert CodexAdapter.models() == ["gpt-6-astra", "gpt-5.6-luna", "gpt-5.6-sol"]
     (home / "models_cache.json").write_text("{", encoding="utf-8")
     (home / "config.toml").write_text("model = [", encoding="utf-8")
-    monkeypatch.setattr(codex_module, "tomllib", pytest.importorskip("tomllib"))
     assert CodexAdapter.models() is None, "files not in their shape add nothing"
 
 

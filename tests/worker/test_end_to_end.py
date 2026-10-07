@@ -36,7 +36,7 @@ import sys
 import time
 import urllib.request
 from contextlib import ExitStack
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -508,7 +508,7 @@ def world(hub_db, tmp_path, github, s3):
 
 
 def today() -> str:
-    return datetime.now(timezone.utc).date().isoformat()
+    return datetime.now(UTC).date().isoformat()
 
 
 def finishing(*, marker: str, text: str = "hello\n") -> list[dict]:

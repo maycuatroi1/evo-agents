@@ -14,7 +14,7 @@ import functools
 import json
 import logging
 import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -32,7 +32,6 @@ from evo_agents.hub.server import run_state
 from evo_agents.hub.server.app import create_app
 from evo_agents.hub.server.credentials import GITHUB_GIT_USERNAME
 from evo_agents.hub.server.sealing import KEY_BYTES, Sealed, Sealer, lease_aad
-from evo_agents.isotime import parse_iso
 from tests.hub.fake_github import Account
 from tests.hub.live import ADMIN, bearer, sql, table_dump
 from tests.hub.test_plans import registration as plans_registration
@@ -275,8 +274,8 @@ def test_a_run_gets_its_owners_secrets_and_an_app_token_for_its_own_github_repos
         f"https://github.com/{MINE}",
         GITHUB_GIT_USERNAME,
     )
-    expires = parse_iso(app["expires_at"])
-    assert timedelta(minutes=55) < expires - datetime.now(timezone.utc) <= timedelta(hours=1)
+    expires = datetime.fromisoformat(app["expires_at"])
+    assert timedelta(minutes=55) < expires - datetime.now(UTC) <= timedelta(hours=1)
     # the token opens the run's repo of that owner, and not another repo the App is installed on
     assert github.covers(app["value"], MINE, "evo-agents")
     assert not github.covers(app["value"], MINE, "agent-skills")

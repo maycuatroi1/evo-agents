@@ -34,7 +34,7 @@ import asyncio
 import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, HTTPException, Request
@@ -215,7 +215,7 @@ async def issue_uploads(
                     INSERT_UPLOAD,
                     [(u.upload_id, access.project_id, u.sha256, u.size, u.kind, user.user_id) for u in needed],
                 )
-    expires_at = datetime.now(timezone.utc) + UPLOAD_TTL  # taken before signing, so never later than the URLs
+    expires_at = datetime.now(UTC) + UPLOAD_TTL  # taken before signing, so never later than the URLs
 
     def sign() -> list[UploadTicket]:
         return [

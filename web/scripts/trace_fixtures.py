@@ -31,7 +31,7 @@ import sys
 import time
 from pathlib import Path
 
-FIXED_START = dt.datetime(2026, 10, 7, 3, 0, 0, tzinfo=dt.timezone.utc)
+FIXED_START = dt.datetime(2026, 10, 7, 3, 0, 0, tzinfo=dt.UTC)
 PROMPT = (
     "This is a self-test of an evo-agents worker. Do these in order, each with your shell tool: "
     "1. run `cat missing-file.txt` (it fails; that is expected, go on). "
@@ -53,7 +53,7 @@ TIMEOUT = 300.0
 
 
 def iso(moment: dt.datetime) -> str:
-    return moment.astimezone(dt.timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+    return moment.astimezone(dt.UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
 def state(seq: int, at: dt.datetime, before: str | None, after: str, reason: str) -> dict:

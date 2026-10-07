@@ -59,7 +59,7 @@ from __future__ import annotations
 import logging
 from collections import Counter
 from dataclasses import dataclass, replace
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 import psycopg
@@ -366,7 +366,7 @@ def evidence(found: RunStep, summary: str | None = None) -> str:
 
 
 def _today() -> str:
-    return datetime.now(timezone.utc).date().isoformat()
+    return datetime.now(UTC).date().isoformat()
 
 
 def step_updates(found: RunStep, old: str, new: str, reason: str):

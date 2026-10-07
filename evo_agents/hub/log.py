@@ -21,7 +21,7 @@ import re
 import sys
 import threading
 from collections import Counter
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from urllib.parse import parse_qsl, quote, unquote, urlencode, urlsplit, urlunsplit
 
 MASK = "***"
@@ -182,7 +182,7 @@ class JsonFormatter(logging.Formatter):
 
     def format(self, record: logging.LogRecord) -> str:
         entry = {
-            "ts": datetime.fromtimestamp(record.created, timezone.utc).isoformat(timespec="milliseconds"),
+            "ts": datetime.fromtimestamp(record.created, UTC).isoformat(timespec="milliseconds"),
             "level": record.levelname.lower(),
             "logger": record.name,
             "msg": scrub(record.getMessage()),

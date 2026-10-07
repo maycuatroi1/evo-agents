@@ -74,7 +74,7 @@ import logging
 import os
 import signal
 from collections.abc import Collection
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -165,7 +165,7 @@ class Stopped(Exception):
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _cut(text: str, limit: int) -> str:
@@ -1004,7 +1004,7 @@ class Run:
             await tui.close()  # sets logs_done: the log reads what came last, then ends
             try:
                 await asyncio.wait_for(asyncio.shield(logs), TERMINAL_LOG_GRACE)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 logs.cancel()
                 with contextlib.suppress(asyncio.CancelledError):
                     await logs
@@ -1122,7 +1122,7 @@ class Run:
             log.warning("the adapter's events failed", extra={"run_id": self.id}, exc_info=pump_task.exception())
         try:
             return await asyncio.wait_for(adapter.wait(), STOP_GRACE)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             return Outcome(False, f"{self.runtime} did not end within {STOP_GRACE:g}s of being stopped")
         except Exception as exc:
             return Outcome(False, f"{self.runtime} failed: {type(exc).__name__}: {exc}")

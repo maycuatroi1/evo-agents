@@ -11,7 +11,7 @@ record and no table holds a value."""
 import json
 import logging
 import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -26,7 +26,6 @@ from evo_agents.hub.credentials import DEFAULT_GIT_USERNAME, MAX_SECRET_BYTES
 from evo_agents.hub.server import secrets as secret_routes
 from evo_agents.hub.server.app import create_app
 from evo_agents.hub.server.sealing import KEY_BYTES, Sealed, Sealer, secret_aad
-from evo_agents.isotime import parse_iso
 from tests.hub.fake_github import Account
 from tests.hub.live import ADMIN, add_project, bearer, sql, table_dump
 from tests.hub.test_run_tables import PLAN, add_plan, add_run
@@ -239,7 +238,7 @@ def test_a_git_secret_keeps_its_url_prefix_normalized_and_oauth2_as_the_default_
 
 def test_a_put_replaces_the_secret_whole(client, hub, hub_db, config):
     first = written(client, hub["owner"], "token", env_secret(sample(), projects=["demo", "docs"]))
-    later = (datetime.now(timezone.utc) + timedelta(days=90)).replace(microsecond=0)
+    later = (datetime.now(UTC) + timedelta(days=90)).replace(microsecond=0)
     value = sample("glpat-")
     second = written(
         client,
@@ -254,9 +253,9 @@ def test_a_put_replaces_the_secret_whole(client, hub, hub_db, config):
         "https://gitlab.example.org/ops",
         "bot",
     )
-    assert second["projects"] == ["docs"] and parse_iso(second["expires_at"]) == later
+    assert second["projects"] == ["docs"] and datetime.fromisoformat(second["expires_at"]) == later
     assert second["created_at"] == first["created_at"]
-    assert parse_iso(second["updated_at"]) >= parse_iso(first["updated_at"])
+    assert datetime.fromisoformat(second["updated_at"]) >= datetime.fromisoformat(first["updated_at"])
     assert len(stored(hub_db, OWNER, "token")) == 1
     assert opened(config, hub_db, OWNER, "token") == value
     assert bindings(hub_db, "token") == [("docs", None)]
@@ -278,7 +277,7 @@ def test_a_secret_needs_a_value_of_1_to_max_bytes_a_future_end_and_the_fields_of
     assert put(client, hub["owner"], "empty", env_secret("")).status_code == 422
     assert written(client, hub["owner"], "exact", env_secret("x" * MAX_SECRET_BYTES))["created"] is True
 
-    past = (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat()
+    past = (datetime.now(UTC) - timedelta(minutes=1)).isoformat()
     refused = put(client, hub["owner"], "old", env_secret(sample(), expires_at=past))
     assert refused.status_code == 422 and "past" in refused.json()["message"]
     naive = (datetime.now() + timedelta(days=1)).replace(tzinfo=None).isoformat()  # no time zone: refused
@@ -405,7 +404,7 @@ def test_a_delete_drops_the_sealed_value_and_bindings_revokes_the_leases_and_fre
             "INSERT INTO credential_leases (run_id, worker_id, secret_id, provider, target, revoked_at) "
             "VALUES (%s, %s, %s, 'secret', 'CLAUDE_CODE_OAUTH_TOKEN', %s) RETURNING id"
         )
-        given_back = datetime.now(timezone.utc) - timedelta(minutes=5)
+        given_back = datetime.now(UTC) - timedelta(minutes=5)
         live_lease = conn.execute(lease, (run_id, worker_id, secret_id, None)).fetchone()[0]
         ended_lease = conn.execute(
             "INSERT INTO credential_leases (run_id, worker_id, secret_id, provider, target, issued_at, revoked_at) "

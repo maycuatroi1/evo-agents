@@ -42,7 +42,7 @@ import os
 import signal
 import socket
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -101,7 +101,7 @@ async def remove_stale_uploads(store: BlobStore, pool: AsyncConnectionPool, now:
     """Delete the objects under ``uploads/`` and the ``blob_uploads`` rows older than STALE_AFTER: uploads nobody
     committed in time. The rows go first, so an upload whose row is gone can no longer be committed while its object
     is being deleted."""
-    cutoff = (now or datetime.now(timezone.utc)) - STALE_AFTER
+    cutoff = (now or datetime.now(UTC)) - STALE_AFTER
     async with pool.connection() as conn:
         rows = (await conn.execute("DELETE FROM blob_uploads WHERE created_at < %s", (cutoff,))).rowcount
     objects = await asyncio.to_thread(store.remove_stale_uploads, cutoff)

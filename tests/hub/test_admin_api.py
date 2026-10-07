@@ -6,7 +6,7 @@ shows every user's tokens, and revoking one makes it 401 at once, answers 404 an
 and leaves an audit row naming the token and its owner."""
 
 import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -27,7 +27,6 @@ from evo_agents.hub.server import audit
 from evo_agents.hub.server.admin_console import decode_cursor, encode_cursor
 from evo_agents.hub.server.app import create_app
 from evo_agents.hub.server.security import SESSION_COOKIE
-from evo_agents.isotime import parse_iso
 from tests.hub.fake_github import Account
 from tests.hub.live import ADMIN, add_project, bearer, sql
 from tests.hub.test_web_auth import cookie, csrf_for, set_cookie, web_sign_in
@@ -127,7 +126,7 @@ def test_a_grant_shows_the_project_to_the_member_and_revoking_hides_it(client, g
         "internal",
         ADMIN,
     )
-    assert parse_iso(grant["granted_at"]) > datetime.now(timezone.utc) - timedelta(minutes=1)
+    assert datetime.fromisoformat(grant["granted_at"]) > datetime.now(UTC) - timedelta(minutes=1)
 
     assert client.delete(grant_path("demo", "member"), headers=admin).status_code == 204
     assert client.get("/v1/projects", headers=member).json() == []
@@ -233,7 +232,7 @@ def test_the_trail_refuses_bad_filters_with_422(client, admin, params):
 
 
 def test_a_cursor_round_trips_its_sort_key():
-    at = datetime(2026, 10, 4, 7, 30, 1, 123456, tzinfo=timezone.utc)
+    at = datetime(2026, 10, 4, 7, 30, 1, 123456, tzinfo=UTC)
     assert decode_cursor(encode_cursor(at, 42)) == (at, 42)
 
 

@@ -25,8 +25,6 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from urllib.parse import urlsplit
 
-from evo_agents.isotime import parse_iso
-
 SECRET_KINDS = ("env", "git")  # a variable of the agent's environment, or a credential git asks for
 PROVIDERS = ("secret", "github-app")  # a member's secret, or an installation token the hub's GitHub App makes
 
@@ -167,7 +165,7 @@ class Lease:
             url_prefix=data.get("url_prefix"),
             username=data.get("username"),
             value=str(data.get("value") or ""),
-            expires_at=parse_iso(expires) if expires else None,
+            expires_at=datetime.fromisoformat(expires) if expires else None,
         )
 
     def seconds_left(self, now: datetime) -> float | None:
