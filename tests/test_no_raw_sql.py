@@ -105,18 +105,11 @@ LEGACY: dict[str, int] = {
     "evo_agents/hub/server/admin.py": 17,
     "evo_agents/hub/server/admin_console.py": 10,
     "evo_agents/hub/server/auth.py": 10,
-    "evo_agents/hub/server/notifications.py": 16,
-    "evo_agents/hub/server/overview.py": 9,
     "evo_agents/hub/server/projects.py": 19,
-    "evo_agents/hub/server/terminal.py": 4,
     "tests/hub/test_admin_api.py": 17,
     "tests/hub/test_admin_overview.py": 13,
     "tests/hub/test_auth.py": 23,
-    "tests/hub/test_notifications.py": 12,
-    "tests/hub/test_overview.py": 7,
     "tests/hub/test_projects.py": 9,
-    "tests/hub/test_sealing.py": 88,
-    "tests/hub/test_terminal.py": 5,
     "tests/hub/test_web_auth.py": 8,
 }
 
