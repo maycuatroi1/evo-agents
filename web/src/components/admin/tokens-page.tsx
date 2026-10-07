@@ -19,9 +19,11 @@ import {
   adminUsersQuery,
   LOGIN_NAME,
   parseTokenFilters,
+  TOKEN_FILTER_DAYS,
   TOKEN_KINDS,
   TOKEN_STATES,
   type TokenFilters,
+  type TokenStateFilter,
   tokenParams,
   tokenSearch,
   tokensQuery,
@@ -65,6 +67,8 @@ export function AdminTokens({ initialError }: { initialError: ApiErrorInfo | nul
     document.getElementById(`${ids}-results`)?.scrollIntoView({ block: "start" });
   };
   const hasFilters = Boolean(view.login || view.kind || view.state !== "active");
+  const stateText = (state: TokenStateFilter) =>
+    t(`states.${state}`, { days: state === "unused" ? TOKEN_FILTER_DAYS.unused : TOKEN_FILTER_DAYS.expiring });
 
   const fields = (
     <>
@@ -103,7 +107,7 @@ export function AdminTokens({ initialError }: { initialError: ApiErrorInfo | nul
         <NativeSelect id={`${ids}-state`} name="state" defaultValue={view.state} className={FILTER_SELECT}>
           {TOKEN_STATES.map((value) => (
             <NativeSelectOption key={value} value={value}>
-              {t(`states.${value}`)}
+              {stateText(value)}
             </NativeSelectOption>
           ))}
         </NativeSelect>
@@ -114,7 +118,7 @@ export function AdminTokens({ initialError }: { initialError: ApiErrorInfo | nul
   const inUse: ActiveFilter[] = [
     ...(view.login ? [{ label: t("login"), value: view.login }] : []),
     ...(view.kind ? [{ label: t("kind"), value: t(`kinds.${view.kind}`) }] : []),
-    ...(view.state !== "active" ? [{ label: t("state"), value: t(`states.${view.state}`) }] : []),
+    ...(view.state !== "active" ? [{ label: t("state"), value: stateText(view.state) }] : []),
   ];
   // The number of results, while they fit on one page; otherwise the pager under the list says which page this is.
   const count =

@@ -165,7 +165,7 @@ test.describe("shell", () => {
     await expect(page).toHaveURL(/\/login$/);
   });
 
-  test("a hub admin sees the admin link and the hub's table counts", async ({ page, signInAs }) => {
+  test("a hub admin sees the admin link and the hub's overview", async ({ page, signInAs }) => {
     await signInAs(ADMIN_ACCOUNT);
     await page.getByTestId("user-menu").click();
     await expect(page.getByTestId("user-role")).toHaveText("Quản trị viên hub");
@@ -173,8 +173,9 @@ test.describe("shell", () => {
     await page.getByTestId("nav-admin").click();
     await expect(page).toHaveURL(/\/admin$/);
     await expect(page.getByRole("heading", { level: 1, name: "Quản trị hub" })).toBeVisible();
-    await expect(page.getByTestId("admin-stats")).toContainText("Người dùng");
-    await expect(page.getByTestId("admin-stats")).toContainText("Dự án");
+    await expect(page.getByTestId("admin-summary")).toContainText("Thành viên");
+    await expect(page.getByTestId("admin-attention").getByRole("heading", { level: 2 })).toHaveText("Cần xử lý");
+    await expect(page.getByTestId("admin-access").getByRole("heading", { level: 2 })).toHaveText("Quyền theo dự án");
   });
 
   test("the shell works at 375 px without sideways scrolling", async ({ page, member }) => {

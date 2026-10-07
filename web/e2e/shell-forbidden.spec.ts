@@ -9,7 +9,7 @@ test.describe("refusals from the API", () => {
   test("a 403 from the API shows the no-access state", async ({ page, member }) => {
     await member();
     // The API is what refuses: a member asking for the hub's admin data gets 403.
-    const direct = await page.request.get("/v1/admin/stats");
+    const direct = await page.request.get("/v1/admin/overview");
     expect(direct.status()).toBe(403);
     expect((await direct.json()).error).toBe("forbidden");
 
@@ -18,7 +18,7 @@ test.describe("refusals from the API", () => {
     await expect(state).toBeVisible();
     await expect(state.getByRole("heading", { name: "Bạn không có quyền xem trang này" })).toBeVisible();
     await expect(state.getByRole("link", { name: "Về trang chủ" })).toHaveAttribute("href", "/");
-    await expect(page.getByTestId("admin-stats")).toHaveCount(0);
+    await expect(page.getByTestId("admin-overview")).toHaveCount(0);
     // The shell is still there around the state.
     await expect(page.getByTestId("user-menu")).toBeVisible();
   });

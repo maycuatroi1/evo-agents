@@ -335,35 +335,92 @@
   },
   "admin": {
     "title": "Hub administration",
-    "groups": {
-      "access": "Users and access",
-      "projects": "Projects",
-      "content": "Content",
-      "other": "Other"
+    "overview": {
+      "metrics": {
+        "label": "Hub at a glance",
+        "members": "Members",
+        "membersMeta": "{count, plural, =0 {No one active} other {# active}} in the last {days} days",
+        "tokens": "Live tokens",
+        "tokensMeta": "{count, plural, =0 {None expire} one {# expires} other {# expire}} within {days} days",
+        "workers": "Workers",
+        "workersMeta": "{live, plural, =0 {None registered} other {{count, plural, =0 {All online} other {# offline}}}}",
+        "storage": "Blob storage",
+        "storageMeta": "{count, plural, one {# object} other {# objects}}",
+        "audit": "Audit rows",
+        "auditMeta": "In the last {hours} hours"
+      },
+      "attention": {
+        "title": "Needs attention",
+        "count": "{count, plural, one {# item needs attention} other {# items need attention}}",
+        "clearTitle": "All clear.",
+        "clear": "No token expires within {expiring} days, no graph build failed in the last {days} days, and every worker is online.",
+        "builds": {
+          "title": "{count, plural, one {# graph build} other {# graph builds}} failed in {project}",
+          "lastFailure": "Last failure: build #{id},",
+          "since": "Newest build #{id} {status, select, succeeded {has succeeded} running {is running} queued {is queued} other {has failed}}"
+        },
+        "offline": {
+          "title": "{count, plural, one {# worker is offline} other {# workers are offline}}",
+          "meta": "No heartbeat for over {minutes} minutes"
+        },
+        "expiring": {
+          "title": "{count, plural, one {# token expires} other {# tokens expire}} within {days} days",
+          "meta": "Each use moves a token's expiry forward; revoke the ones nobody needs"
+        },
+        "unused": {
+          "title": "{count, plural, one {# token} other {# tokens}} unused for {days} days",
+          "meta": "Never revoked; see whose they are"
+        },
+        "notSignedIn": {
+          "title": "{count, plural, one {# person has} other {# people have}} not signed in yet",
+          "meta": "Granted access, waiting for a first sign-in"
+        },
+        "deletions": {
+          "title": "{count, plural, one {# blob waits} other {# blobs wait}} to leave storage",
+          "meta": "{size} in all; the next prune tries again"
+        }
+      },
+      "access": {
+        "title": "Access by project",
+        "allMembers": "All members",
+        "admins": "{count, plural, one {# admin} other {# admins}}",
+        "writers": "{count, plural, one {# writer} other {# writers}}",
+        "readers": "{count, plural, one {# reader} other {# readers}}",
+        "nobody": "No one has access yet",
+        "noProjects": "No project is registered yet. Register one with <code>evo-agents hub project register</code>."
+      },
+      "diagnostics": "Row counts of every hub table are on <link>Diagnostics</link>."
     },
-    "tables": {
-      "users": "Users",
-      "tokens": "Tokens and sessions",
-      "grants": "Project grants",
-      "audit": "Audit rows",
-      "projects": "Projects",
-      "project_repos": "Project repos",
-      "project_sinks": "Project sinks",
-      "memories": "Memories",
-      "memory_revisions": "Memory revisions",
-      "plans": "Plans",
-      "plan_revisions": "Plan revisions",
-      "skills": "Skills",
-      "skill_versions": "Skill versions",
-      "kg_ingests": "Knowledge graph pushes"
+    "diagnostics": {
+      "title": "Diagnostics",
+      "caption": "Rows in every hub table",
+      "columns": {
+        "table": "Table",
+        "area": "Area",
+        "rows": "Rows"
+      },
+      "total": "{tables, plural, one {# table} other {# tables}}, {rows, plural, one {# row} other {# rows}} in all",
+      "empty": "The hub reported no table.",
+      "areas": {
+        "access": "Users and access",
+        "projects": "Projects",
+        "content": "Memories, plans and skills",
+        "runs": "Workers and runs",
+        "credentials": "Secrets and leases",
+        "notifications": "Notifications",
+        "graph": "Knowledge graph",
+        "storage": "Blob storage",
+        "queue": "Job queue",
+        "other": "Other"
+      }
     },
-    "rows": "{count, plural, one {# row} other {# rows}}",
     "nav": {
       "label": "Admin pages",
       "overview": "Overview",
       "members": "Members",
       "tokens": "Tokens",
-      "audit": "Audit"
+      "audit": "Audit",
+      "diagnostics": "Diagnostics"
     },
     "filters": {
       "apply": "Filter",
@@ -525,6 +582,8 @@
       "state": "State",
       "states": {
         "active": "Active",
+        "expiring": "Expiring within {days} days",
+        "unused": "Unused for {days} days",
         "revoked": "Revoked",
         "expired": "Expired",
         "any": "Any state"
@@ -1121,6 +1180,11 @@
     },
     "history": {
       "caption": "The project's latest builds",
+      "filter": "Builds shown",
+      "all": "All",
+      "failed": "Failed",
+      "captionFailed": "The project's latest failed builds",
+      "noFailed": "No build of this project failed.",
       "build": "Build",
       "status": "Status",
       "queued": "Queued at",

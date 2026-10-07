@@ -91,13 +91,15 @@ export function SiteHeader() {
         <BreadcrumbList className="flex-nowrap gap-1.5 text-[13px] text-muted-foreground">
           {crumbs.map((crumb, index) => {
             // Under 768 px the trail keeps its first crumb and the page itself. The page keeps its width (up to three
-            // quarters of the trail) and the crumbs before it give way, so a run's "#12" is never cut down to "#.".
+            // quarters of the trail) and the crumbs before it give way, so a run's "#12" is never cut down to "#.". A
+            // crumb alone takes the width it needs: three quarters of a trail that is only itself would cut it short.
             const last = index === crumbs.length - 1;
             const middle = index > 0 && !last;
+            const trailing = last && crumbs.length > 1;
             return (
               <Fragment key={`${index}-${crumb.label}`}>
                 {index > 0 ? <BreadcrumbSeparator className={cn("text-fg-subtle", middle && "max-md:hidden")}>/</BreadcrumbSeparator> : null}
-                <BreadcrumbItem className={cn("min-w-0", middle && "max-md:hidden", last && "max-w-[75%] shrink-0")}>
+                <BreadcrumbItem className={cn("min-w-0", middle && "max-md:hidden", trailing && "max-w-[75%] shrink-0")}>
                   {crumb.href ? (
                     <BreadcrumbLink asChild>
                       <Link href={crumb.href as "/"} className="truncate rounded-xs">

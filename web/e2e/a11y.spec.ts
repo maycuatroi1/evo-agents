@@ -839,6 +839,24 @@ const PAGES: Entry[] = [
 /** The admin area, opened by the stack's hub admin; each entry waits for its content (step 25). */
 const ADMIN_PAGES: { name: string; open: (page: Page) => Promise<void> }[] = [
   {
+    name: "admin diagnostics",
+    open: async (page) => {
+      await page.goto("/admin/diagnostics");
+      await expect(page.locator("#main").getByTestId("diagnostics-table")).toBeVisible();
+    },
+  },
+  {
+    name: "admin overview and diagnostics on a small screen",
+    open: async (page) => {
+      await page.setViewportSize({ width: 375, height: 812 });
+      await page.goto("/admin");
+      await expect(page.locator("#main").getByTestId("admin-overview")).toBeVisible();
+      await expectNoSeriousViolations(page, "overview at 375 px");
+      await page.goto("/admin/diagnostics");
+      await expect(page.locator("#main").getByTestId("diagnostics-table")).toHaveAttribute("data-layout", "list");
+    },
+  },
+  {
     name: "admin members",
     open: async (page) => {
       await page.goto("/admin/members");
@@ -963,7 +981,7 @@ for (const scheme of ["light", "dark"] as const) {
       test.skip(isDeployed, "signs in as the stack's hub admin");
       await signInAs(ADMIN_ACCOUNT);
       await page.goto("/admin");
-      await expect(page.getByTestId("admin-stats")).toBeVisible();
+      await expect(page.locator("#main").getByTestId("admin-overview")).toBeVisible();
       await expectNoSeriousViolations(page, `/admin as hub admin (${scheme})`);
     });
 

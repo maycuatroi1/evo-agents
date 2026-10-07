@@ -4013,6 +4013,48 @@
           }
         }
       },
+      "/v1/admin/overview": {
+        "get": {
+          "tags": [
+            "admin"
+          ],
+          "summary": "Overview",
+          "description": "What may need an admin: members, tokens to rotate, grants by project, storage, failed graph builds, offline\nworkers and the last day of the audit trail.",
+          "operationId": "overview_v1_admin_overview_get",
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/AdminOverview"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "403": {
+              "description": "Forbidden",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "/v1/admin/kg/prune": {
         "post": {
           "tags": [
@@ -8482,25 +8524,20 @@
               "in": "query",
               "required": false,
               "schema": {
-                "anyOf": [
-                  {
-                    "enum": [
-                      "active",
-                      "revoked",
-                      "expired"
-                    ],
-                    "type": "string"
-                  },
-                  {
-                    "const": "any",
-                    "type": "string"
-                  }
+                "enum": [
+                  "active",
+                  "revoked",
+                  "expired",
+                  "expiring",
+                  "unused",
+                  "any"
                 ],
-                "description": "live tokens unless set",
+                "type": "string",
+                "description": "live tokens unless set; expiring: live ones expiring within 14 days; unused: not revoked and unused for 90 days",
                 "default": "active",
                 "title": "State"
               },
-              "description": "live tokens unless set"
+              "description": "live tokens unless set; expiring: live ones expiring within 14 days; unused: not revoked and unused for 90 days"
             },
             {
               "name": "cursor",
@@ -13315,6 +13352,47 @@
           ],
           "title": "ActiveRun"
         },
+        "AdminOverview": {
+          "properties": {
+            "members": {
+              "$ref": "#/components/schemas/MemberCounts"
+            },
+            "tokens": {
+              "$ref": "#/components/schemas/TokenCounts"
+            },
+            "grants": {
+              "items": {
+                "$ref": "#/components/schemas/ProjectGrantCounts"
+              },
+              "type": "array",
+              "title": "Grants",
+              "description": "every project, by name, with its grants by role"
+            },
+            "storage": {
+              "$ref": "#/components/schemas/StorageCounts"
+            },
+            "kg_builds": {
+              "$ref": "#/components/schemas/FailedBuildCounts"
+            },
+            "workers": {
+              "$ref": "#/components/schemas/WorkerCounts"
+            },
+            "audit": {
+              "$ref": "#/components/schemas/AuditCounts"
+            }
+          },
+          "type": "object",
+          "required": [
+            "members",
+            "tokens",
+            "grants",
+            "storage",
+            "kg_builds",
+            "workers",
+            "audit"
+          ],
+          "title": "AdminOverview"
+        },
         "AdminToken": {
           "properties": {
             "id": {
@@ -13444,6 +13522,24 @@
           },
           "type": "object",
           "title": "AnswerIn"
+        },
+        "AuditCounts": {
+          "properties": {
+            "rows": {
+              "type": "integer",
+              "title": "Rows"
+            },
+            "hours": {
+              "type": "integer",
+              "title": "Hours"
+            }
+          },
+          "type": "object",
+          "required": [
+            "rows",
+            "hours"
+          ],
+          "title": "AuditCounts"
         },
         "AuditPage": {
           "properties": {
@@ -14976,6 +15072,34 @@
           ],
           "title": "Evidence"
         },
+        "FailedBuildCounts": {
+          "properties": {
+            "failed": {
+              "type": "integer",
+              "title": "Failed",
+              "description": "graph builds of every project that failed within days"
+            },
+            "days": {
+              "type": "integer",
+              "title": "Days"
+            },
+            "projects": {
+              "items": {
+                "$ref": "#/components/schemas/ProjectFailedBuilds"
+              },
+              "type": "array",
+              "title": "Projects",
+              "description": "the projects with such a build, latest failure first"
+            }
+          },
+          "type": "object",
+          "required": [
+            "failed",
+            "days",
+            "projects"
+          ],
+          "title": "FailedBuildCounts"
+        },
         "Found": {
           "properties": {
             "id": {
@@ -15940,6 +16064,37 @@
             "status"
           ],
           "title": "Live"
+        },
+        "MemberCounts": {
+          "properties": {
+            "total": {
+              "type": "integer",
+              "title": "Total",
+              "description": "every user: people who signed in, and logins granted access before signing in"
+            },
+            "active": {
+              "type": "integer",
+              "title": "Active",
+              "description": "users the hub saw within active_days: any token or web session of theirs used"
+            },
+            "not_signed_in": {
+              "type": "integer",
+              "title": "Not Signed In",
+              "description": "logins granted access that have not signed in yet"
+            },
+            "active_days": {
+              "type": "integer",
+              "title": "Active Days"
+            }
+          },
+          "type": "object",
+          "required": [
+            "total",
+            "active",
+            "not_signed_in",
+            "active_days"
+          ],
+          "title": "MemberCounts"
         },
         "Memory": {
           "properties": {
@@ -18141,6 +18296,81 @@
             "updated_at"
           ],
           "title": "Project"
+        },
+        "ProjectFailedBuilds": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "failed": {
+              "type": "integer",
+              "title": "Failed",
+              "description": "builds of the project that failed within the window"
+            },
+            "last_failed_id": {
+              "type": "integer",
+              "title": "Last Failed Id"
+            },
+            "last_failed_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Last Failed At"
+            },
+            "latest_id": {
+              "type": "integer",
+              "title": "Latest Id",
+              "description": "the project's newest build, whatever its status"
+            },
+            "latest_status": {
+              "type": "string",
+              "enum": [
+                "queued",
+                "running",
+                "succeeded",
+                "failed"
+              ],
+              "title": "Latest Status"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "failed",
+            "last_failed_id",
+            "last_failed_at",
+            "latest_id",
+            "latest_status"
+          ],
+          "title": "ProjectFailedBuilds"
+        },
+        "ProjectGrantCounts": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "admins": {
+              "type": "integer",
+              "title": "Admins"
+            },
+            "writers": {
+              "type": "integer",
+              "title": "Writers"
+            },
+            "readers": {
+              "type": "integer",
+              "title": "Readers"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "admins",
+            "writers",
+            "readers"
+          ],
+          "title": "ProjectGrantCounts"
         },
         "ProjectPruned": {
           "properties": {
@@ -21528,6 +21758,73 @@
           ],
           "title": "StepWritten"
         },
+        "StorageCounts": {
+          "properties": {
+            "objects": {
+              "type": "integer",
+              "title": "Objects",
+              "description": "distinct blobs in the bucket: projects holding the same bytes share one object"
+            },
+            "bytes": {
+              "type": "integer",
+              "title": "Bytes",
+              "description": "their size"
+            },
+            "pending_deletions": {
+              "type": "integer",
+              "title": "Pending Deletions",
+              "description": "objects nothing refers to any more whose deletion from the bucket has not succeeded yet; the next prune tries again"
+            },
+            "pending_bytes": {
+              "type": "integer",
+              "title": "Pending Bytes"
+            }
+          },
+          "type": "object",
+          "required": [
+            "objects",
+            "bytes",
+            "pending_deletions",
+            "pending_bytes"
+          ],
+          "title": "StorageCounts"
+        },
+        "TokenCounts": {
+          "properties": {
+            "live": {
+              "type": "integer",
+              "title": "Live",
+              "description": "tokens and web sessions neither revoked nor expired"
+            },
+            "expiring": {
+              "type": "integer",
+              "title": "Expiring",
+              "description": "live ones that expire within expiring_days; GET /v1/admin/tokens?state=expiring lists them"
+            },
+            "unused": {
+              "type": "integer",
+              "title": "Unused",
+              "description": "tokens not revoked whose last use, or issue when never used, is unused_days old or more; GET /v1/admin/tokens?state=unused lists them"
+            },
+            "expiring_days": {
+              "type": "integer",
+              "title": "Expiring Days"
+            },
+            "unused_days": {
+              "type": "integer",
+              "title": "Unused Days"
+            }
+          },
+          "type": "object",
+          "required": [
+            "live",
+            "expiring",
+            "unused",
+            "expiring_days",
+            "unused_days"
+          ],
+          "title": "TokenCounts"
+        },
         "TokenInfo": {
           "properties": {
             "id": {
@@ -22312,6 +22609,31 @@
             "revoked_at"
           ],
           "title": "Worker"
+        },
+        "WorkerCounts": {
+          "properties": {
+            "live": {
+              "type": "integer",
+              "title": "Live",
+              "description": "workers not revoked"
+            },
+            "offline": {
+              "type": "integer",
+              "title": "Offline",
+              "description": "live workers without a heartbeat for over offline_after_seconds, or without any"
+            },
+            "offline_after_seconds": {
+              "type": "integer",
+              "title": "Offline After Seconds"
+            }
+          },
+          "type": "object",
+          "required": [
+            "live",
+            "offline",
+            "offline_after_seconds"
+          ],
+          "title": "WorkerCounts"
         },
         "WorkerCredential": {
           "properties": {

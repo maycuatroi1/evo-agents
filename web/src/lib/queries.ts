@@ -13,7 +13,6 @@ export const queryKeys = {
   whoami: ["auth", "whoami"] as const,
   projects: ["projects"] as const,
   project: (name: string) => ["projects", name] as const,
-  adminStats: ["admin", "stats"] as const,
   /** What waits for the signed-in member, what runs and what ended, over every project of their grants. */
   overview: ["me", "overview"] as const,
 };
@@ -34,12 +33,6 @@ export const projectQuery = (api: ApiSource, name: string) =>
   queryOptions({
     queryKey: queryKeys.project(name),
     queryFn: ({ signal }) => call(api().GET("/v1/projects/{project}", { params: { path: { project: name } }, signal })),
-  });
-
-export const adminStatsQuery = (api: ApiSource) =>
-  queryOptions({
-    queryKey: queryKeys.adminStats,
-    queryFn: ({ signal }) => call(api().GET("/v1/admin/stats", { signal })),
   });
 
 /**
