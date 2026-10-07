@@ -607,6 +607,40 @@ def test_who_publishes_and_who_may_download_a_project_skill(hub, tmp_path):
     ]
 
 
+@needs_pg
+def test_the_list_orders_by_scope_then_project_then_name_ignoring_case_with_the_latest_version(hub):
+    from sqlalchemy import insert, select
+
+    from evo_agents.hub import tables
+
+    skills, versions = tables.skills, tables.skill_versions
+    with live.engine(hub.db).begin() as conn:
+        admin = conn.execute(select(tables.users.c.id).where(tables.users.c.login == live.ADMIN)).scalar_one()
+        projects = dict(conn.execute(select(tables.projects.c.name, tables.projects.c.id)).all())
+        for scope, project, name in (
+            ("project", "plain", "beta"),
+            ("global", None, "zeta"),
+            ("project", "demo", "Gamma"),
+            ("global", None, "Alpha"),
+            ("project", "demo", "delta"),
+        ):
+            values = {"scope": scope, "project_id": projects.get(project), "name": name, "created_by": admin}
+            skill_id = conn.execute(insert(skills).values(**values).returning(skills.c.id)).scalar_one()
+            for number in (1, 2):
+                digest = f"{number:064x}"
+                version = {"skill_id": skill_id, "version": number, "name": name, "sha256": digest, "size": number}
+                conn.execute(insert(versions).values(**version, r2_key=f"blobs/sha256/{digest}", published_by=admin))
+    listed = hub.client.get("/v1/skills", headers=hub.who["alice"])
+    assert listed.status_code == 200, listed.text
+    assert [(s["scope"], s["project"], s["name"], s["version"]) for s in listed.json()] == [
+        ("global", None, "Alpha", 2),
+        ("global", None, "zeta", 2),
+        ("project", "demo", "delta", 2),
+        ("project", "demo", "Gamma", 2),
+        ("project", "plain", "beta", 2),
+    ]
+
+
 # Sync
 
 
