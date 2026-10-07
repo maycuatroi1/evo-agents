@@ -941,6 +941,50 @@ def test_rerun_queues_the_step_again_after_a_run_that_ended(client, hub, hub_db)
     assert claim(client, worker)["id"] == new["id"]
 
 
+# Listing runs
+
+
+def test_the_run_list_shows_each_member_the_runs_of_the_plans_its_label_lets_it_read(client, hub):
+    sinks = [{"id": "hub", "kind": "hub", "clearance": {"level": "customer"}}]
+    assert client.put(f"/v1/projects/{PROJECT}", json=registration(sinks), headers=hub["admin"]).status_code == 200
+    grant = {"role": "writer", "max_level": "customer"}
+    path = f"/v1/admin/projects/{PROJECT}/grants/{OWNER}"
+    assert client.put(path, json=grant, headers=hub["admin"]).status_code == 200
+    vault = {**plan_body(), "id": "vault", "repos": [{"repo": "evo-agents", "branch": "feat/vault"}]}
+    body = {"body": vault, "label": {"level": "customer"}}
+    pushed = client.put(f"/v1/projects/{PROJECT}/plans/vault", json=body, headers=hub["owner"])
+    assert pushed.status_code == 200, pushed.text
+    first = dispatched(client, hub["owner"], [2])[0]["id"]
+    hidden = client.post(
+        f"/v1/projects/{PROJECT}/runs", json={"plan_id": "vault", "steps": [4]}, headers=hub["owner"]
+    ).json()[0]["id"]
+    last = dispatched(client, hub["owner"], [4])[0]["id"]
+    assert control(client, hub["owner"], last, "cancel").status_code == 200
+
+    def listed(headers, **params) -> dict:
+        response = client.get(f"/v1/projects/{PROJECT}/runs", params=params, headers=headers)
+        assert response.status_code == 200, response.text
+        return response.json()
+
+    # the reader's grant stops at internal: the run of vault is neither listed nor counted
+    seen = listed(hub["reader"])
+    assert ([run["id"] for run in seen["runs"]], seen["total"]) == ([last, first], 2)
+    assert {state: n for state, n in seen["counts"].items() if n} == {"queued": 1, "cancelled": 1}
+    assert listed(hub["reader"], plan_id="vault")["total"] == 0 and listed(hub["reader"], q="vault")["total"] == 0
+    shown = client.get(f"/v1/projects/{PROJECT}/runs/{hidden}", headers=hub["reader"])
+    assert shown.status_code == 404
+    # the owner's reaches customer, through the hub sink that clears it: every run, newest first
+    every = listed(hub["owner"])
+    assert ([run["id"] for run in every["runs"]], every["total"]) == ([last, hidden, first], 3)
+    assert {state: n for state, n in every["counts"].items() if n} == {"queued": 2, "cancelled": 1}
+    assert [run["plan_id"] for run in every["runs"]] == [PLAN, "vault", PLAN]
+    # text: the plan, the branch and the login match too
+    assert [run["id"] for run in listed(hub["owner"], q="VAULT")["runs"]] == [hidden]
+    assert [run["id"] for run in listed(hub["owner"], q="feat/queue")["runs"]] == [last, first]
+    assert listed(hub["owner"], q=OWNER)["total"] == 3 and listed(hub["owner"], q="nobody")["total"] == 0
+    assert [run["id"] for run in listed(hub["owner"], state="queued", plan_id="vault")["runs"]] == [hidden]
+
+
 # Dispatch from the web only
 
 
