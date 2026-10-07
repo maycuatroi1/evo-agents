@@ -122,9 +122,6 @@ LEGACY: dict[str, int] = {
     "evo_agents/hub/server/skills.py": 12,
     "evo_agents/hub/server/terminal.py": 4,
     "evo_agents/hub/server/workers.py": 23,
-    "tests/hub/conftest.py": 1,
-    "tests/hub/live.py": 8,
-    "tests/hub/pg.py": 4,
     "tests/hub/test_admin_api.py": 17,
     "tests/hub/test_admin_overview.py": 13,
     "tests/hub/test_auth.py": 23,
@@ -135,7 +132,6 @@ LEGACY: dict[str, int] = {
     "tests/hub/test_mcp.py": 9,
     "tests/hub/test_memory.py": 17,
     "tests/hub/test_memory_api.py": 2,
-    "tests/hub/test_migrate.py": 68,
     "tests/hub/test_notifications.py": 12,
     "tests/hub/test_overview.py": 7,
     "tests/hub/test_plan_runs.py": 18,
@@ -153,7 +149,6 @@ LEGACY: dict[str, int] = {
     "tests/hub/test_skills_api.py": 1,
     "tests/hub/test_terminal.py": 5,
     "tests/hub/test_web_auth.py": 8,
-    "tests/hub/test_wheel.py": 2,
     "tests/hub/test_workers.py": 32,
 }
 
