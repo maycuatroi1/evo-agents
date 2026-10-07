@@ -1,5 +1,12 @@
-"""Hub administration, for the logins listed in EVO_HUB_ADMINS only: users, grants, row counts, and the retention of
-built graphs.
+"""Hub administration, for the logins listed in EVO_HUB_ADMINS only: users, grants, what needs an admin, row counts,
+and the retention of built graphs.
+
+GET /v1/admin/overview answers what an admin may have to act on, in one read: members and how many were seen lately,
+tokens about to expire or long unused, the grants of each project, the bytes the blob store holds and the objects
+waiting to leave it, graph builds that failed lately, offline workers, and the audit rows of the last day. Each count
+names its window, so the web says it without knowing the hub's settings, and the token counts use the same conditions
+as GET /v1/admin/tokens?state=expiring and ?state=unused, which list them. GET /v1/admin/stats counts the rows of every
+table, for diagnostics.
 
 A grant gives a login a role on a project (reader, writer or admin) and the highest level of that project's label
 ladder it may see. The ladder is the project's own, as ``evo_agents.kg.policy.Policy`` reads it from the levels
@@ -26,6 +33,7 @@ from pydantic import BaseModel, Field
 from evo_agents.hub.access import has_role
 from evo_agents.hub.blobs import BlobStoreUnavailable
 from evo_agents.hub.config import MAX_KG_KEEP_ARTIFACTS, HubConfig
+from evo_agents.hub.runs import OFFLINE_AFTER_SECONDS
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.auth import GrantInfo
 from evo_agents.hub.server.errors import ErrorBody
@@ -35,6 +43,22 @@ from evo_agents.kg.policy import Policy
 PROJECT_NAME = r"^[a-z0-9][a-z0-9-]{0,99}$"  # as the projects table accepts it
 LOGIN_NAME = r"^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$"
 MISSING = {403: {"model": ErrorBody}, 404: {"model": ErrorBody}}
+
+ACTIVE_DAYS = 30  # a member the hub saw within this many days is active
+TOKEN_EXPIRING_DAYS = 14  # a live token expiring within this many days is about to expire
+TOKEN_UNUSED_DAYS = 90  # a token not used (or, never used, not issued) for this many days is unused
+FAILED_BUILD_DAYS = 7  # graph builds that failed within this many days
+AUDIT_HOURS = 24  # audit rows of the last this many hours
+
+# The conditions on a token row ``t`` that the overview counts and GET /v1/admin/tokens?state= lists, so a count and the
+# list it links to agree. A token expires TOKEN_TTL after its last use, so with TOKEN_TTL at 90 days an unused token is
+# also an expired one that nobody revoked.
+TOKEN_LIVE = "t.revoked_at IS NULL AND t.expires_at > now()"
+TOKEN_EXPIRING = f"{TOKEN_LIVE} AND t.expires_at <= now() + make_interval(days => {TOKEN_EXPIRING_DAYS})"
+TOKEN_UNUSED = (
+    "t.revoked_at IS NULL "
+    f"AND coalesce(t.last_used_at, t.created_at) <= now() - make_interval(days => {TOKEN_UNUSED_DAYS})"
+)
 ProjectName = Annotated[str, Path(pattern=PROJECT_NAME)]
 Login = Annotated[str, Path(pattern=LOGIN_NAME)]
 
@@ -100,6 +124,79 @@ class KgPruned(BaseModel):
     deleted: int = Field(description="objects deleted from the bucket; for a dry run, those that would be")
     deleted_bytes: int
     pending: int = Field(description="blobs whose object still waits to be deleted; the next prune tries again")
+
+
+class MemberCounts(BaseModel):
+    total: int = Field(description="every user: people who signed in, and logins granted access before signing in")
+    active: int = Field(description="users the hub saw within active_days: any token or web session of theirs used")
+    not_signed_in: int = Field(description="logins granted access that have not signed in yet")
+    active_days: int
+
+
+class TokenCounts(BaseModel):
+    live: int = Field(description="tokens and web sessions neither revoked nor expired")
+    expiring: int = Field(
+        description="live ones that expire within expiring_days; GET /v1/admin/tokens?state=expiring lists them"
+    )
+    unused: int = Field(
+        description="tokens not revoked whose last use, or issue when never used, is unused_days old or more; "
+        "GET /v1/admin/tokens?state=unused lists them"
+    )
+    expiring_days: int
+    unused_days: int
+
+
+class ProjectGrantCounts(BaseModel):
+    project: str
+    admins: int
+    writers: int
+    readers: int
+
+
+class StorageCounts(BaseModel):
+    objects: int = Field(description="distinct blobs in the bucket: projects holding the same bytes share one object")
+    bytes: int = Field(description="their size")
+    pending_deletions: int = Field(
+        description="objects nothing refers to any more whose deletion from the bucket has not succeeded yet; "
+        "the next prune tries again"
+    )
+    pending_bytes: int
+
+
+class ProjectFailedBuilds(BaseModel):
+    project: str
+    failed: int = Field(description="builds of the project that failed within the window")
+    last_failed_id: int
+    last_failed_at: datetime
+    latest_id: int = Field(description="the project's newest build, whatever its status")
+    latest_status: Literal["queued", "running", "succeeded", "failed"]
+
+
+class FailedBuildCounts(BaseModel):
+    failed: int = Field(description="graph builds of every project that failed within days")
+    days: int
+    projects: list[ProjectFailedBuilds] = Field(description="the projects with such a build, latest failure first")
+
+
+class WorkerCounts(BaseModel):
+    live: int = Field(description="workers not revoked")
+    offline: int = Field(description="live workers without a heartbeat for over offline_after_seconds, or without any")
+    offline_after_seconds: int
+
+
+class AuditCounts(BaseModel):
+    rows: int
+    hours: int
+
+
+class AdminOverview(BaseModel):
+    members: MemberCounts
+    tokens: TokenCounts
+    grants: list[ProjectGrantCounts] = Field(description="every project, by name, with its grants by role")
+    storage: StorageCounts
+    kg_builds: FailedBuildCounts
+    workers: WorkerCounts
+    audit: AuditCounts
 
 
 USERS = """
@@ -233,6 +330,135 @@ async def stats(request: Request) -> dict[str, int]:
         )
         counts = await (await conn.execute(query)).fetchall() if tables else []
     return {table: count for table, count in counts}
+
+
+# One row of every count. Each table is read once; blobs are counted by object, as several projects may hold one.
+OVERVIEW = f"""
+WITH members AS (
+    SELECT count(*) AS total,
+           count(*) FILTER (WHERE last_seen_at > now() - make_interval(days => {ACTIVE_DAYS})) AS active,
+           count(*) FILTER (WHERE github_id IS NULL) AS not_signed_in
+      FROM users
+), tokens AS (
+    SELECT count(*) FILTER (WHERE {TOKEN_LIVE}) AS live,
+           count(*) FILTER (WHERE {TOKEN_EXPIRING}) AS expiring,
+           count(*) FILTER (WHERE {TOKEN_UNUSED}) AS unused
+      FROM tokens t
+     WHERE t.revoked_at IS NULL
+), stored AS (
+    SELECT count(*) AS objects, coalesce(sum(size), 0)::bigint AS bytes
+      FROM (SELECT max(size) AS size FROM blobs GROUP BY sha256) AS objects
+), doomed AS (
+    SELECT count(*) AS objects, coalesce(sum(size), 0)::bigint AS bytes FROM blob_deletions WHERE deleted_at IS NULL
+), fleet AS (
+    SELECT count(*) AS live,
+           count(*) FILTER (
+               WHERE last_heartbeat_at IS NULL
+                  OR last_heartbeat_at < now() - make_interval(secs => {OFFLINE_AFTER_SECONDS})
+           ) AS offline
+      FROM workers
+     WHERE revoked_at IS NULL
+), trail AS (
+    SELECT count(*) AS rows FROM audit WHERE at > now() - make_interval(hours => {AUDIT_HOURS})
+)
+SELECT members.total, members.active, members.not_signed_in, tokens.live, tokens.expiring, tokens.unused,
+       stored.objects, stored.bytes, doomed.objects, doomed.bytes, fleet.live, fleet.offline, trail.rows
+  FROM members, tokens, stored, doomed, fleet, trail
+"""
+OVERVIEW_FIELDS = (
+    "members",
+    "active_members",
+    "not_signed_in",
+    "live_tokens",
+    "expiring_tokens",
+    "unused_tokens",
+    "objects",
+    "bytes",
+    "pending_deletions",
+    "pending_bytes",
+    "live_workers",
+    "offline_workers",
+    "audit_rows",
+)
+GRANT_COUNTS = """
+SELECT p.name,
+       count(*) FILTER (WHERE g.role = 'admin'),
+       count(*) FILTER (WHERE g.role = 'writer'),
+       count(*) FILTER (WHERE g.role = 'reader')
+  FROM projects p LEFT JOIN grants g ON g.project_id = p.id
+ GROUP BY p.id, p.name
+ ORDER BY p.name
+"""
+# The newest build of each project comes from kg_builds_project_idx, one probe per project with a failure.
+FAILED_BUILDS = f"""
+SELECT p.name, f.failed, f.last_id, f.last_at, latest.id, latest.status
+  FROM (
+    SELECT project_id, count(*) AS failed,
+           (array_agg(id ORDER BY finished_at DESC, id DESC))[1] AS last_id, max(finished_at) AS last_at
+      FROM kg_builds
+     WHERE status = 'failed' AND finished_at > now() - make_interval(days => {FAILED_BUILD_DAYS})
+     GROUP BY project_id
+  ) AS f
+  JOIN projects p ON p.id = f.project_id
+  CROSS JOIN LATERAL (
+    SELECT b.id, b.status FROM kg_builds b WHERE b.project_id = f.project_id ORDER BY b.id DESC LIMIT 1
+  ) AS latest
+ ORDER BY f.last_at DESC, p.name
+"""
+
+
+@router.get("/overview", response_model=AdminOverview, responses={403: {"model": ErrorBody}})
+async def overview(request: Request) -> AdminOverview:
+    """What may need an admin: members, tokens to rotate, grants by project, storage, failed graph builds, offline
+    workers and the last day of the audit trail."""
+    async with request.app.state.pool.connection() as conn:
+        counts = await (await conn.execute(OVERVIEW)).fetchone()
+        grants = await (await conn.execute(GRANT_COUNTS)).fetchall()
+        failed = await (await conn.execute(FAILED_BUILDS)).fetchall()
+    count = dict(zip(OVERVIEW_FIELDS, counts, strict=True))
+    projects = [
+        ProjectFailedBuilds(
+            project=project,
+            failed=failed_builds,
+            last_failed_id=last_id,
+            last_failed_at=last_at,
+            latest_id=latest_id,
+            latest_status=latest_status,
+        )
+        for project, failed_builds, last_id, last_at, latest_id, latest_status in failed
+    ]
+    return AdminOverview(
+        members=MemberCounts(
+            total=count["members"],
+            active=count["active_members"],
+            not_signed_in=count["not_signed_in"],
+            active_days=ACTIVE_DAYS,
+        ),
+        tokens=TokenCounts(
+            live=count["live_tokens"],
+            expiring=count["expiring_tokens"],
+            unused=count["unused_tokens"],
+            expiring_days=TOKEN_EXPIRING_DAYS,
+            unused_days=TOKEN_UNUSED_DAYS,
+        ),
+        grants=[
+            ProjectGrantCounts(project=project, admins=admins, writers=writers, readers=readers)
+            for project, admins, writers, readers in grants
+        ],
+        storage=StorageCounts(
+            objects=count["objects"],
+            bytes=count["bytes"],
+            pending_deletions=count["pending_deletions"],
+            pending_bytes=count["pending_bytes"],
+        ),
+        kg_builds=FailedBuildCounts(
+            failed=sum(item.failed for item in projects), days=FAILED_BUILD_DAYS, projects=projects
+        ),
+        workers=WorkerCounts(
+            live=count["live_workers"], offline=count["offline_workers"], offline_after_seconds=OFFLINE_AFTER_SECONDS
+        ),
+        audit=AuditCounts(rows=count["audit_rows"], hours=AUDIT_HOURS),
+    )
 
 
 @router.post("/kg/prune", response_model=KgPruned, responses={**MISSING, 503: {"model": ErrorBody}})

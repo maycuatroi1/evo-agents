@@ -10,7 +10,15 @@ test.use({ uiLocale: "vi" }); // the assertions below read the Vietnamese copy o
  */
 test.skip(isDeployed, "seeds users through the local stack");
 
-const PAGES = ["/admin", "/admin/members", "/admin/members/e2e-admin", "/admin/tokens", "/admin/audit?actor=e2e-admin"];
+const PAGES = [
+  "/admin",
+  "/admin/diagnostics",
+  "/admin/members",
+  "/admin/members/e2e-admin",
+  "/admin/tokens",
+  "/admin/tokens?state=expiring",
+  "/admin/audit?actor=e2e-admin",
+];
 
 test("a reader opening the admin area sees the no-access state on every page", async ({ page, member }) => {
   await member([{ role: "reader", maxLevel: "internal" }]);
@@ -21,6 +29,8 @@ test("a reader opening the admin area sees the no-access state on every page", a
     await expect(state, path).toBeVisible();
     await expect(state.getByRole("heading", { name: "Bạn không có quyền xem trang này" })).toBeVisible();
     await expect(page.getByTestId("admin-nav")).toHaveCount(0); // the admin tabs are not offered either
+    await expect(page.getByTestId("admin-overview")).toHaveCount(0);
+    await expect(page.getByTestId("diagnostics-table")).toHaveCount(0);
     await expect(page.getByTestId("members-table")).toHaveCount(0);
     await expect(page.getByTestId("tokens-table")).toHaveCount(0);
     await expect(page.getByTestId("audit-table")).toHaveCount(0);
@@ -35,12 +45,14 @@ test("a reader calling each admin API directly gets 403, writes included", async
   const header = { "X-Evo-CSRF": (await csrf.json()).csrf as string };
   const calls: { method: "GET" | "PUT" | "DELETE"; path: string; data?: unknown }[] = [
     { method: "GET", path: "/v1/admin/users" },
+    { method: "GET", path: "/v1/admin/overview" },
     { method: "GET", path: "/v1/admin/stats" },
     { method: "GET", path: "/v1/admin/audit" },
     { method: "GET", path: `/v1/admin/audit?actor=${me.login}` },
     { method: "GET", path: "/v1/admin/audit/actions" },
     { method: "GET", path: "/v1/admin/tokens" },
     { method: "GET", path: "/v1/admin/tokens?state=any" },
+    { method: "GET", path: "/v1/admin/tokens?state=expiring" },
     { method: "PUT", path: `/v1/admin/projects/${project}/grants/${me.login}`, data: { role: "admin", max_level: "secret" } },
     { method: "DELETE", path: `/v1/admin/projects/${project}/grants/${me.login}` },
     { method: "DELETE", path: "/v1/admin/tokens/1" },

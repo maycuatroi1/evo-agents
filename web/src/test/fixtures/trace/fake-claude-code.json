@@ -1,0 +1,169 @@
+{
+ "_about": "tests/worker/fake_adapter.py's samples of Claude Code's stream-json, translated as that adapter does, two seconds apart, between the state events the hub writes. Made by web/scripts/trace_fixtures.py.",
+ "runtime": "claude-code",
+ "version": "fake",
+ "usage": null,
+ "events": [
+  {
+   "seq": 1,
+   "at": "2026-10-07T03:00:00.000Z",
+   "kind": "state",
+   "body": {
+    "to": "leased",
+    "from": "queued",
+    "actor": "worker",
+    "reason": "worker dev-laptop claimed it"
+   },
+   "truncated": false
+  },
+  {
+   "seq": 2,
+   "at": "2026-10-07T03:00:01.000Z",
+   "kind": "state",
+   "body": {
+    "to": "running",
+    "from": "leased",
+    "actor": "worker",
+    "reason": "worker dev-laptop reported running"
+   },
+   "truncated": false
+  },
+  {
+   "seq": 3,
+   "at": "2026-10-07T03:00:02.000Z",
+   "kind": "output",
+   "body": {
+    "raw": {
+     "type": "system",
+     "subtype": "init"
+    }
+   },
+   "truncated": false
+  },
+  {
+   "seq": 4,
+   "at": "2026-10-07T03:00:04.000Z",
+   "kind": "tool_call",
+   "body": {
+    "toolCallId": "toolu_01P69eEarUZUJB9qpZopfcYy",
+    "title": "Bash",
+    "kind": "execute",
+    "status": "pending",
+    "rawInput": {
+     "command": "sleep 8 && echo slept",
+     "description": "..."
+    }
+   },
+   "truncated": false
+  },
+  {
+   "seq": 5,
+   "at": "2026-10-07T03:00:06.000Z",
+   "kind": "output",
+   "body": {
+    "raw": {
+     "type": "system",
+     "subtype": "task_started",
+     "task_type": "local_bash"
+    }
+   },
+   "truncated": false
+  },
+  {
+   "seq": 6,
+   "at": "2026-10-07T03:00:08.000Z",
+   "kind": "output",
+   "body": {
+    "raw": {
+     "type": "system",
+     "subtype": "task_notification",
+     "status": "completed"
+    }
+   },
+   "truncated": false
+  },
+  {
+   "seq": 7,
+   "at": "2026-10-07T03:00:10.000Z",
+   "kind": "tool_call_update",
+   "body": {
+    "toolCallId": "toolu_01P69eEarUZUJB9qpZopfcYy",
+    "status": "completed",
+    "content": [
+     {
+      "type": "content",
+      "content": {
+       "type": "text",
+       "text": "slept"
+      }
+     }
+    ]
+   },
+   "truncated": false
+  },
+  {
+   "seq": 8,
+   "at": "2026-10-07T03:00:12.000Z",
+   "kind": "agent_message_chunk",
+   "body": {
+    "content": {
+     "type": "text",
+     "text": "SECOND"
+    }
+   },
+   "truncated": false
+  },
+  {
+   "seq": 9,
+   "at": "2026-10-07T03:00:14.000Z",
+   "kind": "output",
+   "body": {
+    "raw": {
+     "type": "rate_limit_event"
+    }
+   },
+   "truncated": false
+  },
+  {
+   "seq": 10,
+   "at": "2026-10-07T03:00:16.000Z",
+   "kind": "usage_update",
+   "body": {
+    "usage": {
+     "input_tokens": 4,
+     "cache_creation_input_tokens": 23003,
+     "cache_read_input_tokens": 59938,
+     "output_tokens": 405
+    },
+    "cost": {
+     "amount": 0.2041276
+    }
+   },
+   "truncated": false
+  },
+  {
+   "seq": 11,
+   "at": "2026-10-07T03:00:17.000Z",
+   "kind": "state",
+   "body": {
+    "to": "verifying",
+    "from": "running",
+    "actor": "worker",
+    "reason": "worker dev-laptop reported verifying"
+   },
+   "truncated": false
+  },
+  {
+   "seq": 12,
+   "at": "2026-10-07T03:00:18.000Z",
+   "kind": "state",
+   "body": {
+    "to": "done",
+    "from": "verifying",
+    "actor": "worker",
+    "reason": "worker dev-laptop reported done"
+   },
+   "truncated": false
+  }
+ ]
+}

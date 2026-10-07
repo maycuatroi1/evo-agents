@@ -48,6 +48,18 @@ export async function machineToken(account: Account): Promise<string> {
   return signed.token;
 }
 
+/**
+ * A machine token of `account` that nobody used for `days` days: last used then, expiring 90 days after, as the hub
+ * leaves an idle token (hub_stack POST /tokens/idle); its id. Using it would move both forward, so it is not returned.
+ */
+export async function idleMachineToken(account: Account, days: number): Promise<number> {
+  const { token } = await stack<{ token: string }>("/github/token", account);
+  const api = createApiClient({ baseUrl: API_URL });
+  const signed = await call(api.POST("/v1/auth/github", { body: { github_token: token, host: "playwright" } }));
+  await stack("/tokens/idle", { token_id: signed.token_id, days });
+  return signed.token_id;
+}
+
 export function bearerClient(token: string): ApiClient {
   return createApiClient({ baseUrl: API_URL, headers: { authorization: `Bearer ${token}` } });
 }

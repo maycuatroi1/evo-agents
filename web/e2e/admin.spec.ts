@@ -6,13 +6,16 @@ import { call } from "../src/lib/api/client";
 import { signIn } from "./support/auth";
 import { API_URL, BASE_URL } from "./support/env";
 import { expect, isDeployed, test } from "./support/fixtures";
-import { ADMIN_ACCOUNT, type Account, bearerClient, machineToken, newAccount, uniqueName } from "./support/hub";
+import { ADMIN_ACCOUNT, type Account, bearerClient, idleMachineToken, machineToken, newAccount, uniqueName } from "./support/hub";
+import { kgProject, queueBuild } from "./support/kg";
 import { setUiLocale } from "./support/locale";
+import { toast } from "./support/toast";
 
 test.use({ uiLocale: "vi" }); // the assertions below read the Vietnamese copy of messages/vi.json
 
 /**
- * The admin area as a hub admin uses it, against the real API: granting and revoking a role (and what the member
+ * The admin area as a hub admin uses it, against the real API: the overview's list of what needs attention, each
+ * opening its list filtered, and the table counts on diagnostics; granting and revoking a role (and what the member
  * sees because of it), revoking a token (which then gets 401), and the audit trail's filters and cursor pages.
  */
 test.skip(isDeployed, "changes grants and tokens on the hub");
@@ -47,6 +50,76 @@ async function auditIds(table: Locator): Promise<number[]> {
   return ids.map(Number);
 }
 
+test.describe("overview", () => {
+  test("what needs attention opens each list already filtered, and the table counts are on diagnostics", async ({
+    page,
+    admin,
+    signInAs,
+  }) => {
+    const idle = newAccount("idle");
+    const tokenId = await idleMachineToken(idle, 80); // unused for 80 days: it expires in 10
+    const { project, writer } = await kgProject(admin, "failing");
+    const build = await queueBuild(project, writer, true); // no knowledge config was pushed, so the build fails
+    expect(build.status).toBe("failed");
+    await admin.grant(project, ADMIN_ACCOUNT.login, "reader", "internal"); // reading a project's graph takes a grant
+
+    await signInAs(ADMIN_ACCOUNT);
+    await page.goto("/admin");
+    const main = page.locator("#main");
+    await expect(main.getByRole("heading", { level: 1, name: "Quản trị hub" })).toBeVisible();
+    await expect(page.getByTestId("admin-nav").getByRole("link", { name: "Tổng quan" })).toHaveAttribute("aria-current", "page");
+    const strip = main.getByTestId("admin-summary");
+    await expect(strip.getByRole("link", { name: "Thành viên" })).toHaveAttribute("href", "/admin/members");
+    await expect(strip.getByRole("link", { name: "Token còn hiệu lực" })).toHaveAttribute("href", "/admin/tokens");
+    await expect(main.getByText(/blob_deletions|kg_pending_runs/)).toHaveCount(0); // no table names here any more
+
+    // The project whose newest graph build failed, opening its build history on the failed builds.
+    const attention = main.getByTestId("admin-attention");
+    const failing = attention.locator(`[data-kind="builds"][data-project="${project}"]`);
+    await expect(failing).toHaveAttribute("data-tone", "danger");
+    await expect(failing).toContainText(`1 lần build đồ thị lỗi ở ${project}`);
+    await expect(failing).toContainText(`Lỗi gần nhất: build #${build.id}`);
+    await failing.getByRole("link").click();
+    await expect(page).toHaveURL(new RegExp(`/p/${project}/kg\\?builds=failed#build-history$`));
+    const history = page.getByTestId("kg-history");
+    await expect(history).toHaveAttribute("data-filter", "failed");
+    await expect(history.getByTestId("history-failed")).toHaveAttribute("aria-pressed", "true");
+    const rows = history.getByTestId("kg-build-history").locator("tbody tr");
+    await expect(rows).toHaveCount(1);
+    await expect(rows.first()).toContainText(`#${build.id}`);
+    await history.getByTestId("history-all").click(); // every build again, and the URL without the filter
+    await expect(history).toHaveAttribute("data-filter", "all");
+    await expect(page).toHaveURL(new RegExp(`/p/${project}/kg$`));
+
+    // Tokens about to expire, opening the token list on them; the idle token is among them, still active.
+    await page.goto("/admin");
+    const expiring = main.getByTestId("admin-attention").locator('[data-kind="expiring"]');
+    await expect(expiring).toHaveAttribute("data-tone", "attention");
+    await expect(expiring).toContainText("hết hạn trong 14 ngày tới");
+    await expiring.getByRole("link").click();
+    await expect(page).toHaveURL(/\/admin\/tokens\?state=expiring$/);
+    const filters = page.getByTestId("token-filters");
+    await expect(filters.getByLabel("Trạng thái")).toHaveValue("expiring");
+    await filters.getByLabel("Người dùng").fill(idle.login);
+    await page.getByTestId("token-filters-apply").click();
+    await expect(page).toHaveURL(new RegExp(`state=expiring`));
+    const row = page.getByTestId("tokens-table").getByRole("row").filter({ hasText: `#${tokenId}` });
+    await expect(row).toContainText("Đang hoạt động");
+    await expect(page.getByTestId("tokens-table").locator("tbody tr")).toHaveCount(1);
+
+    // The row counts of every table moved to diagnostics, linked at the foot; the overview's tab stays selected.
+    await page.goto("/admin");
+    await main.getByTestId("admin-diagnostics-link").click();
+    await expect(page).toHaveURL(/\/admin\/diagnostics$/);
+    await expect(main.getByRole("heading", { level: 1, name: "Chẩn đoán" })).toBeVisible();
+    await expect(page.getByTestId("admin-nav").getByRole("link", { name: "Tổng quan" })).toHaveAttribute("aria-current", "page");
+    const table = main.getByTestId("diagnostics-table");
+    await expect(table.locator('[data-table="users"]')).toBeVisible();
+    await expect(table.getByRole("row").filter({ has: page.locator('[data-table="kg_builds"]') })).toContainText("Đồ thị tri thức");
+    await expect(main.getByTestId("diagnostics-total")).toContainText("bảng");
+  });
+});
+
 test.describe("members and grants", () => {
   test("an admin grants reader to a user, who then sees the project; revoking takes it away", async ({
     page,
@@ -72,16 +145,16 @@ test.describe("members and grants", () => {
     await expect(dialog.getByLabel("Tên đăng nhập GitHub")).toHaveValue(account.login);
     await dialog.getByLabel("Dự án").selectOption(project);
     await dialog.getByRole("radio", { name: "Đọc" }).click();
-    await dialog.getByLabel("Mức nhãn tối đa").selectOption("internal");
+    await dialog.getByLabel("Mức hiển thị").selectOption("internal");
     await dialog.getByRole("button", { name: "Tiếp tục" }).click();
 
     const confirm = page.getByRole("dialog", { name: "Xác nhận cấp quyền" });
     await expect(confirm.getByTestId("grant-summary")).toContainText(project);
-    await expect(confirm.getByTestId("grant-summary")).toContainText("internal");
+    await expect(confirm.getByTestId("grant-summary")).toContainText("Internal");
     await confirm.getByRole("button", { name: "Xác nhận cấp quyền" }).click();
     await expect(confirm).toBeHidden();
-    await expect(page.getByTestId("admin-notice-status")).toHaveText(
-      `Đã cấp vai trò Đọc, mức internal, cho ${account.login} trong dự án ${project}.`,
+    await expect(toast(page, `Đã cấp quyền cho ${account.login}`)).toContainText(
+      `Vai trò Đọc, mức hiển thị Internal, cho ${account.login} trong dự án ${project}.`,
     );
     const row = page.getByTestId("members-table").getByRole("row").filter({ hasText: account.login });
     await expect(row).toContainText(project);
@@ -101,7 +174,7 @@ test.describe("members and grants", () => {
     await expect(revoke.getByRole("button", { name: "Huỷ" })).toBeFocused();
     await revoke.getByRole("button", { name: "Thu hồi quyền" }).click();
     await expect(revoke).toBeHidden();
-    await expect(page.getByTestId("admin-notice-status")).toHaveText(`Đã thu hồi quyền của ${account.login} trong dự án ${project}.`);
+    await expect(toast(page, `Đã thu hồi quyền của ${account.login}`)).toContainText(`${account.login} không còn vào được dự án ${project}.`);
     await expect(page.getByTestId("member-grants-section")).toContainText("Chưa có quyền ở dự án nào");
 
     await member.page.goto("/");
@@ -132,15 +205,15 @@ test.describe("members and grants", () => {
     await admin.grant(project, account.login, "writer", "customer");
     await signInAs(ADMIN_ACCOUNT);
     await page.goto(`/admin/members/${account.login}`);
-    await expect(page.getByTestId("member-grants")).toContainText("customer");
+    await expect(page.getByTestId("member-grants")).toContainText("Customer");
     await page.getByRole("button", { name: `Đổi quyền của ${account.login} trong dự án ${project}` }).click();
     const dialog = page.getByRole("dialog", { name: "Cấp quyền theo dự án" });
-    await expect(dialog.getByTestId("grant-existing")).toContainText("đã có đúng vai trò và mức nhãn này");
+    await expect(dialog.getByTestId("grant-existing")).toContainText("đã có đúng vai trò và mức hiển thị này");
     await expect(dialog.getByRole("button", { name: "Tiếp tục" })).toBeDisabled();
-    await dialog.getByLabel("Mức nhãn tối đa").selectOption("secret");
+    await dialog.getByLabel("Mức hiển thị").selectOption("secret");
     await dialog.getByRole("button", { name: "Tiếp tục" }).click();
     const confirm = page.getByRole("dialog", { name: "Xác nhận đổi quyền" });
-    await expect(confirm.getByTestId("grant-summary")).toContainText("Ghi, mức customer");
+    await expect(confirm.getByTestId("grant-summary")).toContainText("Ghi, mức hiển thị Customer");
 
     // Meanwhile the project drops its top level, so the API refuses "secret" with 422.
     await admin.grant(project, account.login, "writer", "internal");
@@ -152,15 +225,15 @@ test.describe("members and grants", () => {
     await expect(confirm).toBeVisible();
 
     await confirm.getByRole("button", { name: "Quay lại" }).click();
-    const levels = dialog.getByLabel("Mức nhãn tối đa");
-    await expect(levels.locator("option")).toHaveText(["public", "internal", "customer"]); // the reloaded ladder
+    const levels = dialog.getByLabel("Mức hiển thị");
+    await expect(levels.locator("option")).toHaveText(["Public", "Internal", "Customer"]); // the reloaded ladder
     await levels.selectOption("customer");
     await dialog.getByRole("button", { name: "Tiếp tục" }).click();
     await page.getByRole("dialog", { name: "Xác nhận đổi quyền" }).getByRole("button", { name: "Xác nhận cấp quyền" }).click();
-    await expect(page.getByTestId("admin-notice-status")).toHaveText(
-      `Đã cấp vai trò Ghi, mức customer, cho ${account.login} trong dự án ${project}.`,
+    await expect(toast(page, `Đã cấp quyền cho ${account.login}`).last()).toContainText(
+      `Vai trò Ghi, mức hiển thị Customer, cho ${account.login} trong dự án ${project}.`,
     );
-    await expect(page.getByTestId("member-grants")).toContainText("customer");
+    await expect(page.getByTestId("member-grants")).toContainText("Customer");
   });
 });
 
@@ -181,7 +254,7 @@ test.describe("tokens", () => {
     await expect(dialog).toContainText("Máy playwright sẽ nhận 401");
     await dialog.getByRole("button", { name: "Thu hồi token" }).click();
     await expect(dialog).toBeHidden();
-    await expect(page.getByTestId("admin-notice-status")).toContainText(`Đã thu hồi token ${me.token.id} của ${account.login}.`);
+    await expect(toast(page, `Đã thu hồi token ${me.token.id} của ${account.login}`)).toBeVisible();
     await expect(page.getByTestId("state-empty")).toBeVisible(); // it was their only live token
 
     const refused = await fetch(`${API_URL}/v1/auth/whoami`, { headers: { authorization: `Bearer ${token}` } });
@@ -203,7 +276,7 @@ test.describe("tokens", () => {
     // Another admin gets there first.
     await call((await adminApi()).DELETE("/v1/admin/tokens/{token_id}", { params: { path: { token_id: me.token.id } } }));
     await page.getByRole("alertdialog").getByRole("button", { name: "Thu hồi token" }).click();
-    await expect(page.getByTestId("admin-notice-alert")).toContainText("Token này đã bị thu hồi trước đó");
+    await expect(toast(page, "Token này đã bị thu hồi trước đó")).toHaveAttribute("role", "alert");
     await expect(page.getByTestId("state-empty")).toBeVisible();
   });
 });
@@ -270,7 +343,14 @@ test.describe("audit trail", () => {
   });
 });
 
-const ADMIN_PATHS = ["/admin", "/admin/members", `/admin/members/${ADMIN_ACCOUNT.login}`, "/admin/tokens", "/admin/audit"];
+const ADMIN_PATHS = [
+  "/admin",
+  "/admin/diagnostics",
+  "/admin/members",
+  `/admin/members/${ADMIN_ACCOUNT.login}`,
+  "/admin/tokens",
+  "/admin/audit",
+];
 
 test("admin pages hydrate without a console error or a page error", async ({ page, signInAs }) => {
   await signInAs(ADMIN_ACCOUNT);

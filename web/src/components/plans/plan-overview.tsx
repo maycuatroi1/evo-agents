@@ -5,8 +5,8 @@ import { ChevronRight } from "lucide-react";
 import { useFormatter, useTranslations } from "next-intl";
 import { type ReactNode, useEffect, useRef } from "react";
 
-import { NoticeArea, useNotice } from "@/components/admin/notice";
-import { useCanDispatch, usePlanRunNotice } from "@/components/runs/hooks";
+import { Identifier } from "@/components/data/identifier";
+import { useCanDispatch, usePlanRunToast } from "@/components/runs/hooks";
 import { PlanRunBanner, RunPlanButton, usePlanActivity } from "@/components/runs/plan-run";
 import { LIVE_REFRESH_MS } from "@/components/runs/queries";
 import { QueryView, useHubQuery } from "@/components/states/query-view";
@@ -57,8 +57,8 @@ function isSectionName(key: string): key is SectionName {
 
 function Disclosure({ summary, count, children, testId }: { summary: ReactNode; count?: number; children: ReactNode; testId?: string }) {
   return (
-    <details className="group rounded-xl border bg-card" data-testid={testId}>
-      <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium hover:bg-muted/50 [&::-webkit-details-marker]:hidden">
+    <details className="group rounded-md border bg-card shadow-raised" data-testid={testId}>
+      <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 rounded-md px-4 py-2.5 text-sm font-medium hover:bg-muted/50 [&::-webkit-details-marker]:hidden">
         <ChevronRight
           className="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-90"
           aria-hidden="true"
@@ -78,8 +78,8 @@ function Intro({ view }: { view: PlanView }) {
   const format = useFormatter();
   if (!view.goal && !view.context && !view.createdAt && !view.status) return null;
   return (
-    <section aria-labelledby="plan-goal-title" className="flex flex-col gap-3 rounded-xl border bg-card p-4">
-      <h2 id="plan-goal-title" className="text-base font-medium">
+    <section aria-labelledby="plan-goal-title" className="flex flex-col gap-3 rounded-md border bg-card shadow-raised p-4">
+      <h2 id="plan-goal-title" className="text-[15px] leading-[22px] font-semibold">
         {t("goal")}
       </h2>
       {view.goal ? <Prose>{view.goal}</Prose> : <p className="text-sm text-muted-foreground">{t("noGoal")}</p>}
@@ -101,7 +101,7 @@ function Intro({ view }: { view: PlanView }) {
       ) : null}
       {view.context ? (
         <details className="group">
-          <summary className="inline-flex min-h-9 cursor-pointer list-none items-center gap-1.5 rounded-md text-sm font-medium text-primary [&::-webkit-details-marker]:hidden">
+          <summary className="inline-flex min-h-9 cursor-pointer max-md:min-h-11 list-none items-center gap-1.5 rounded-sm text-sm font-medium text-brand [&::-webkit-details-marker]:hidden">
             <ChevronRight className="size-4 transition-transform group-open:rotate-90" aria-hidden="true" />
             {t("context")}
           </summary>
@@ -118,13 +118,13 @@ function Repos({ repos }: { repos: PlanRepo[] }) {
   if (repos.length === 0) return null;
   return (
     <section aria-labelledby="plan-repos-title" className="flex flex-col gap-3">
-      <h2 id="plan-repos-title" className="text-base font-medium">
+      <h2 id="plan-repos-title" className="text-[15px] leading-[22px] font-semibold">
         {t("title")}
       </h2>
-      <div className="overflow-hidden rounded-xl border bg-card">
+      <div className="overflow-hidden rounded-md border bg-card shadow-raised">
         <Table scrollLabel={t("title")}>
           <TableCaption className="sr-only">{t("caption")}</TableCaption>
-          <TableHeader className="bg-muted/50">
+          <TableHeader className="bg-muted">
             <TableRow className="hover:bg-transparent">
               <TableHead className="h-10 px-3 text-xs text-muted-foreground">{t("order")}</TableHead>
               <TableHead className="h-10 px-3 text-xs text-muted-foreground">{t("repo")}</TableHead>
@@ -137,8 +137,10 @@ function Repos({ repos }: { repos: PlanRepo[] }) {
           <TableBody>
             {repos.map((repo, index) => (
               <TableRow key={`${repo.repo}-${index}`}>
-                <TableCell className="px-3 py-2.5 font-mono text-xs tabular-nums">{repo.order ?? "-"}</TableCell>
-                <TableCell className="px-3 py-2.5 font-mono text-xs font-medium">{repo.repo}</TableCell>
+                <TableCell className="px-3 py-2.5 text-muted-foreground tabular-nums">{repo.order ?? "-"}</TableCell>
+                <TableCell className="px-3 py-2.5">
+                  <Identifier value={repo.repo} className="text-foreground" />
+                </TableCell>
                 <TableCell className="px-3 py-2.5">
                   <div className="flex flex-col items-start gap-1">
                     <RepoStatusBadge status={repo.status} />
@@ -149,9 +151,19 @@ function Repos({ repos }: { repos: PlanRepo[] }) {
                     ) : null}
                   </div>
                 </TableCell>
-                <TableCell className="hidden px-3 py-2.5 font-mono text-xs md:table-cell">{repo.branch ?? "-"}</TableCell>
-                <TableCell className="hidden px-3 py-2.5 font-mono text-xs lg:table-cell">
-                  {repo.dependsOn.length ? repo.dependsOn.join(", ") : "-"}
+                <TableCell className="hidden px-3 py-2.5 md:table-cell">
+                  {repo.branch ? <Identifier value={repo.branch} /> : <span className="text-muted-foreground">-</span>}
+                </TableCell>
+                <TableCell className="hidden px-3 py-2.5 lg:table-cell">
+                  {repo.dependsOn.length ? (
+                    <span className="flex flex-wrap gap-1">
+                      {repo.dependsOn.map((name) => (
+                        <Identifier key={name} value={name} />
+                      ))}
+                    </span>
+                  ) : (
+                    <span className="text-muted-foreground">-</span>
+                  )}
                 </TableCell>
                 <TableCell className="hidden max-w-md px-3 py-2.5 text-xs whitespace-normal text-pretty xl:table-cell">
                   {repo.scope ?? "-"}
@@ -178,7 +190,7 @@ function OtherSections({ sections: given }: { sections: [string, unknown][] }) {
   if (sections.length === 0) return null;
   return (
     <section aria-labelledby="plan-sections-title" className="flex flex-col gap-3">
-      <h2 id="plan-sections-title" className="text-base font-medium">
+      <h2 id="plan-sections-title" className="text-[15px] leading-[22px] font-semibold">
         {t("title")}
       </h2>
       <div className="flex flex-col gap-2">
@@ -202,8 +214,7 @@ type Activity = ReturnType<typeof usePlanActivity>;
 function Overview({ project, plan, activity }: { project: string; plan: Plan; activity: Activity }) {
   const view = parsePlan(plan.body, plan.plan_id);
   const counts = countSteps(view.steps);
-  const { notice, show, clear } = useNotice();
-  const dispatched = usePlanRunNotice();
+  const dispatched = usePlanRunToast();
   const canDispatch = useCanDispatch(project);
   return (
     <>
@@ -211,6 +222,7 @@ function Overview({ project, plan, activity }: { project: string; plan: Plan; ac
         project={project}
         plan={plan}
         current="steps"
+        planRunActive={activity.planRun !== null}
         actions={
           plan.area === "active" && canDispatch ? (
             <RunPlanButton
@@ -219,13 +231,12 @@ function Overview({ project, plan, activity }: { project: string; plan: Plan; ac
               pending={counts.pending}
               runs={activity.active}
               loaded={activity.loaded}
-              onDispatched={(run) => show(dispatched(run))}
+              onDispatched={dispatched}
             />
           ) : null
         }
       />
       <ReadOnlyNotice />
-      <NoticeArea notice={notice} onDismiss={clear} />
       {activity.planRun ? <PlanRunBanner project={project} run={activity.planRun} steps={view.steps} /> : null}
       <div className="grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <Intro view={view} />
@@ -256,6 +267,7 @@ export function PlanOverview({
   const state = useHubQuery(
     { ...planQuery(browserApi, project, planId), enabled: !invalid, refetchInterval: runId !== null ? LIVE_REFRESH_MS : false },
     initialError,
+    { live: true }, // the top bar follows it while it polls, that is while a plan run works on the plan
   );
   // Once the run ends, read the plan once more for what it wrote last.
   const previous = useRef<number | null>(null);

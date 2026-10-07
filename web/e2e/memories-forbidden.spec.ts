@@ -52,11 +52,21 @@ test("a hub admin without a grant reads no memory and is told why", async ({ pag
 
 test("a server error while searching shows the error state with its request id, and a retry recovers", async ({
   page,
-  member,
+  admin,
+  signInAs,
 }) => {
-  const me = await member([{ role: "reader", maxLevel: "internal" }]);
-  await page.goto(`/p/${me.projects[0]}/memories`);
-  await expect(page.locator("#main").getByTestId("state-empty")).toBeVisible();
+  // One memory the reader may read, so the list and its search field show: a project with none shows only its
+  // first-use empty state, without a toolbar over nothing.
+  const project = uniqueName("mem-error");
+  await admin.registerProject(project, memoryProject());
+  const author = newAccount("author");
+  await admin.grant(project, author.login, "writer", "internal");
+  await putMemory(await apiOf(author), { project, name: "plan.md", body: memoryFile("Plan", "Team", "team only") });
+  const reader = newAccount("reader");
+  await admin.grant(project, reader.login, "reader", "internal");
+  await signInAs(reader);
+  await page.goto(`/p/${project}/memories`);
+  await expect(page.locator("#main").getByTestId("memories-table")).toBeVisible();
   await page.route("**/v1/memories/search?**", (route) =>
     route.fulfill({
       status: 500,

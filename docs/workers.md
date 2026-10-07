@@ -560,6 +560,7 @@ For members, with a web session or a machine token. `{p}` is a project, and run 
 | `POST /v1/projects/{p}/runs` | writer | dispatch steps, all or none |
 | `POST /v1/projects/{p}/plan-runs` | writer | dispatch a plan run: every step of the plan not done yet, on one worker |
 | `GET /v1/projects/{p}/runs`, `GET .../runs/{id}` | reader | list (filters, pages, counts by state) and show runs |
+| `GET /v1/projects/{p}/runs/stats?days=N` | reader | the runs that ended on each UTC day: end states, p50 and p90 time, tokens |
 | `GET .../runs/{id}/events?after=SEQ` | reader | events after a number |
 | `GET .../runs/{id}/stream` | reader | the same as server-sent events, with a ping every 15 s, resumed by `Last-Event-ID` |
 | `GET .../runs/{id}/diff` | reader | a presigned URL of the run's diff |
@@ -611,6 +612,15 @@ filters, every state present: what the summary cards and the state facet show, s
 the counts beside it. `GET .../runs/{id}` shows one run. A run carries the step's `title`, `last_seq` (its latest
 event, 0 before the first), `log_sha256` and `diff_sha256`, and the owner's open asks (`cancel_requested_at`,
 `takeover_requested_at`, `handback_requested_at`).
+
+`GET /v1/projects/{p}/runs/stats` counts, for the web's charts, the runs of the same plans that ended on each of the
+last `days` UTC days, today included (7 to 90, 30 by default; 422 outside). Each day of `by_day`, oldest first, and
+the `total` of the span have the runs that ended `done`, `failed`, `lost` and `cancelled`; `p50_seconds` and
+`p90_seconds`, the percentiles of how long they ran, from started (else leased) to finished as the runs pages count
+it, null when none of them started; and `input_tokens`, `cache_read_tokens`, `output_tokens` and `reasoning_tokens`
+added up from their `usage` as the run page's usage card reads it (Codex's cached input taken out of its input, the
+reasoning of Codex and Claude Code out of their output), with `runs_with_usage`, the runs whose usage has a shape the
+card knows. A day without a run has zeros and null percentiles.
 
 `GET .../runs/{id}/events?after=SEQ` answers the events after `SEQ` in seq order, at most `limit` (500 by default,
 1,000 at most), only the kinds named when `kind` is given, with the run's `state`, its `last_seq` and whether `more`

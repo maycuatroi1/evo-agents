@@ -16,12 +16,13 @@
   },
   "nav": {
     "label": "Main navigation",
+    "home": "Home",
     "hub": "Hub",
-    "projects": "My projects",
     "project": "Project",
     "overview": "Overview",
     "plans": "Plans",
     "runs": "Runs",
+    "insights": "Insights",
     "kg": "Knowledge graph",
     "admin": "Administration",
     "toggleSidebar": "Show or hide the sidebar",
@@ -33,23 +34,143 @@
     "workers": "Workers",
     "secrets": "Secrets",
     "runDiff": "Diff",
-    "inbox": "Inbox"
+    "inbox": "Inbox",
+    "counts": {
+      "openDecisions": "{count, plural, one {# decision waits for your answer} other {# decisions wait for your answer}}",
+      "activeRuns": "{count, plural, one {# active run} other {# active runs}}"
+    },
+    "fleet": {
+      "onlineBusy": "<b>{online, plural, one {# worker online} other {# workers online}}</b>, {busy} busy",
+      "onlineIdle": "<b>{online, plural, one {# worker online} other {# workers online}}</b>, none busy",
+      "offline": "<b>No workers online</b>, {registered} registered",
+      "none": "No workers yet",
+      "error": "Couldn't read your workers"
+    }
   },
   "projectSwitcher": {
     "label": "Projects",
+    "dialog": "Choose a project",
     "trigger": "Choose a project, current: {name}",
     "triggerEmpty": "Choose a project",
     "placeholder": "No project selected",
-    "allProjects": "All projects",
+    "hint": "Open a project to see its content",
+    "search": "Find a project",
+    "searchLabel": "Find a project by name",
+    "clear": "Clear the search",
+    "results": "{count, plural, =0 {No project matches} one {# project} other {# projects}}",
+    "noMatch": "No project matches “{query}”.",
     "none": "No project has been granted to you yet",
     "loadError": "The project list could not be loaded",
-    "hint": "Open a project to see its content"
+    "home": "Home",
+    "visibility": "Visibility: {level}",
+    "repos": "{count, plural, one {# repo} other {# repos}}",
+    "plans": "{count, plural, =0 {no active plan} one {# active plan} other {# active plans}}",
+    "decisions": "{count, plural, one {# open decision} other {# open decisions}}"
+  },
+  "palette": {
+    "trigger": "Search or jump to",
+    "title": "Command palette",
+    "description": "Find a run, plan, worker or page, or start an action. Tab switches the project.",
+    "label": "Search or run a command",
+    "placeholder": "Search or run a command",
+    "list": "Results",
+    "close": "Close",
+    "groups": {
+      "actions": "Actions",
+      "runs": "Runs",
+      "plans": "Plans",
+      "workers": "Workers",
+      "goto": "Go to",
+      "help": "Help"
+    },
+    "actions": {
+      "runPlan": "Run plan {plan}",
+      "dispatch": "Dispatch a step",
+      "dispatchIn": "Dispatch a step in {project}",
+      "rerun": "Rerun #{id}",
+      "register": "Register worker",
+      "stepsLeft": "{count, plural, one {# step left} other {# steps left}}",
+      "failedAgo": "failed {ago}",
+      "lostAgo": "lost {ago}",
+      "failedJustNow": "failed just now",
+      "lostJustNow": "lost just now"
+    },
+    "plan": {
+      "progress": "{done} of {total} done",
+      "completed": "Completed"
+    },
+    "goto": {
+      "page": "{page} of {project}"
+    },
+    "scope": {
+      "all": "All projects",
+      "switch": "Looking in {scope}. Switch the project"
+    },
+    "hints": {
+      "move": "move",
+      "open": "open",
+      "scope": "switch project",
+      "close": "close"
+    },
+    "results": "{count, plural, =0 {No result} one {# result} other {# results}} in {scope}",
+    "noMatch": "No match for “{query}” in {scope}.",
+    "trySwitch": "Press Tab to switch the project.",
+    "searching": "Searching runs",
+    "partial": "Some results could not be read. Try again in a moment.",
+    "shortcuts": "Keyboard shortcuts"
+  },
+  "shortcuts": {
+    "title": "Keyboard shortcuts",
+    "description": "Single keys work while focus is outside a text field and the terminal.",
+    "close": "Close",
+    "list": "All keyboard shortcuts",
+    "then": "then",
+    "off": "Off",
+    "groups": {
+      "general": "General",
+      "goto": "Go to",
+      "actions": "Actions"
+    },
+    "names": {
+      "palette": "Open the command palette",
+      "search": "Search this page",
+      "help": "Show keyboard shortcuts",
+      "sidebar": "Show or hide the sidebar",
+      "close": "Close a dialog or menu",
+      "goHome": "Home",
+      "goInbox": "Inbox",
+      "goPlans": "Plans",
+      "goRuns": "Runs",
+      "goWorkers": "Workers",
+      "dispatch": "Dispatch a step",
+      "send": "Send an answer or a message"
+    },
+    "where": {
+      "project": "Of the project you are in",
+      "writer": "On a project's pages, with the Writer role"
+    },
+    "keys": {
+      "command": "Command",
+      "control": "Control",
+      "enter": "Enter",
+      "escape": "Escape",
+      "slash": "Slash",
+      "question": "Question mark"
+    },
+    "single": {
+      "label": "Single-key shortcuts",
+      "hint": "/, ?, D and the G keys. Turn them off if they get in the way of speech input or another tool."
+    },
+    "needProject": {
+      "title": "Open a project first",
+      "text": "Plans and runs belong to a project. Pick one in the sidebar."
+    }
   },
   "userMenu": {
     "trigger": "Account {login}",
     "hubAdmin": "Hub administrator",
     "member": "Member",
-    "projectRole": "{project}: {role}, up to {level}",
+    "projectRole": "{project}: {role}, {level} visibility",
     "projectRoleNone": "{project}: no role",
     "grants": "{count, plural, =0 {No project grants yet} one {Granted on # project} other {Granted on # projects}}",
     "theme": "Theme",
@@ -57,6 +178,7 @@
     "themeDark": "Dark",
     "themeSystem": "System",
     "language": "Language",
+    "shortcuts": "Keyboard shortcuts",
     "logout": "Sign out",
     "loggingOut": "Signing out…",
     "logoutFailed": "Sign-out did not go through. Try again in a moment."
@@ -71,31 +193,166 @@
     "reader": "Reader",
     "none": "No role"
   },
-  "home": {
-    "title": "My projects",
-    "description": "The projects the hub returns for your account, with your role and the highest label level you may see.",
-    "count": "{count, plural, =0 {No projects} one {# project} other {# projects}}",
-    "emptyTitle": "No project has been granted to you yet",
-    "emptyDescription": "Ask a hub administrator to grant a role to {login}, then reload this page.",
-    "columns": {
-      "name": "Project",
-      "role": "Role",
-      "maxLevel": "Max label level",
-      "repos": "Repos",
-      "updated": "Updated"
+  "status": {
+    "run": {
+      "queued": "Queued",
+      "leased": "Leased",
+      "running": "Running",
+      "interactive": "Interactive",
+      "verifying": "Verifying",
+      "waiting": "Waiting for decision",
+      "review": "Review",
+      "parked": "Parked",
+      "done": "Done",
+      "failed": "Failed",
+      "lost": "Lost",
+      "cancelled": "Cancelled"
     },
-    "open": "Open project {name}"
+    "worker": {
+      "idle": "Idle",
+      "busy": "Busy",
+      "draining": "Draining",
+      "offline": "Offline",
+      "revoked": "Revoked"
+    },
+    "plan": {
+      "pending": "Pending",
+      "active": "Plan run active",
+      "blocked": "Blocked",
+      "completed": "Completed"
+    },
+    "step": {
+      "pending": "Pending",
+      "in_progress": "In progress",
+      "blocked": "Blocked",
+      "done": "Done"
+    },
+    "repo": {
+      "merged": "Merged",
+      "done": "Done",
+      "in_progress": "In progress",
+      "pending": "Pending",
+      "not-needed": "Not needed"
+    },
+    "decision": {
+      "open": "Open",
+      "answered": "Answered",
+      "expired": "Expired",
+      "cancelled": "Cancelled"
+    },
+    "other": "Other status: {status}"
+  },
+  "identifier": {
+    "copy": "Copy {value}",
+    "copied": "{value} copied to the clipboard",
+    "selected": "Selected: press Ctrl+C or Cmd+C to copy it",
+    "refused": "The browser refused the clipboard. Select the text and press Ctrl+C or Cmd+C."
+  },
+  "visibility": {
+    "value": "Visibility: {level}",
+    "levels": {
+      "public": "Public",
+      "internal": "Internal",
+      "customer": "Customer",
+      "secret": "Secret"
+    }
+  },
+  "home": {
+    "title": "Home",
+    "metrics": {
+      "label": "Your work across projects",
+      "waiting": "Waiting on you",
+      "waitingMeta": "#{run}, asked <time></time>",
+      "waitingNone": "nothing waits for your answer",
+      "running": "Running",
+      "runningMeta": "#{run} on {worker}",
+      "runningMetaMore": "#{run} on {worker}, and {more} more",
+      "runningNone": "no agent is at work",
+      "queued": "Queued",
+      "queuedMeta": "#{run}, queued <time></time>",
+      "queuedNone": "no run waits for a worker",
+      "done": "Done, 7 days",
+      "doneSeries": "Runs done per day, {from} to {to}: {values}",
+      "failed": "Failed, 7 days",
+      "failedLost": "and {count} lost",
+      "failedMeta": "#{run}: {error}",
+      "failedMetaPlain": "#{run}, {project}",
+      "failedNone": "none in the last 7 days",
+      "quietTitle": "All quiet.",
+      "quietText": "No run is in progress and nothing waits for you.",
+      "quietWeek": "Last 7 days: {done} done, {failed} failed, {lost} lost."
+    },
+    "needs": {
+      "title": "Needs you",
+      "count": "{count, plural, one {# decision waits for your answer} other {# decisions wait for your answer}}",
+      "inbox": "Open inbox",
+      "answer": "Answer",
+      "answerLabel": "Answer decision #{id}",
+      "where": "{project}, {plan}, step {step}",
+      "wherePlan": "{project}, {plan}",
+      "asked": "asked <time></time>",
+      "parksIn": "parks in {duration}",
+      "parked": "parked <time></time>",
+      "more": "{count, plural, one {# more in the inbox} other {# more in the inbox}}"
+    },
+    "flight": {
+      "title": "In flight",
+      "count": "{count, plural, one {# run in flight} other {# runs in flight}}",
+      "where": "{project}, {plan}, step {step}",
+      "wherePlan": "{project}, {plan}",
+      "steps": "{done} of {total} steps done",
+      "stepsShort": "{done}/{total}",
+      "waitingYou": "Waiting for you",
+      "waitingFor": "Waiting for {owner}",
+      "noWorker": "no worker yet",
+      "ran": "running for {duration}",
+      "queuedAgo": "queued <time></time>"
+    },
+    "recent": {
+      "title": "Recent",
+      "empty": "No run has ended yet. Runs show here once they finish, fail or are cancelled.",
+      "ranOn": "{duration} on {worker}",
+      "ran": "{duration}",
+      "cancelled": "Cancelled by {owner}",
+      "rerun": "Rerun",
+      "rerunLabel": "Rerun #{id}",
+      "rerunning": "Rerunning"
+    },
+    "fleet": {
+      "title": "Fleet",
+      "all": "All workers",
+      "busy": "Busy {held}/{slots}",
+      "line": "{runtimes}, {os} {arch}",
+      "noRuntime": "no runtime reported",
+      "heartbeat": "last heartbeat <time></time>",
+      "never": "no heartbeat yet",
+      "emptyTitle": "No worker of yours yet",
+      "emptyText": "A worker is a machine of yours that runs plan steps. Register one on the Workers page.",
+      "register": "Register a worker",
+      "error": "Couldn't read your workers.",
+      "retry": "Try again"
+    },
+    "projects": {
+      "title": "Projects",
+      "count": "{count, plural, one {# project} other {# projects}}",
+      "open": "Open project {name}"
+    },
+    "empty": {
+      "title": "No project has been granted to you yet",
+      "description": "A hub administrator grants roles on projects. Send them your login, {login}, then reload this page.",
+      "adminDescription": "You administer the hub but hold no role on a project. Grant yourself one in Administration, then reload this page.",
+      "admin": "Open Administration",
+      "copyLogin": "Copy your login"
+    }
   },
   "project": {
-    "title": "Project overview",
     "harness": "Harness",
     "noHarness": "The project was registered without its harness paths.",
     "role": "Your role",
-    "maxLevel": "Max label level",
     "adminWithoutGrant": "You are a hub administrator without a role in this project: you can manage it but cannot read its content.",
     "ladder": {
       "title": "Label ladder",
-      "description": "Levels from lowest to highest. You see content labelled up to your max level.",
+      "description": "Lowest first. You see content labelled up to your visibility.",
       "visible": "Visible",
       "hidden": "Not visible",
       "default": "Default label",
@@ -112,7 +369,7 @@
     },
     "sinks": {
       "title": "Sinks",
-      "description": "Where the project's content may go, with the highest label level allowed there.",
+      "description": "Where the project's content may go, with the highest level each one may receive.",
       "empty": "The project declares no sinks.",
       "id": "Sink",
       "kind": "Kind",
@@ -128,36 +385,92 @@
   },
   "admin": {
     "title": "Hub administration",
-    "description": "The number of rows in each hub table. Only hub administrators can see this page.",
-    "groups": {
-      "access": "Users and access",
-      "projects": "Projects",
-      "content": "Content",
-      "other": "Other"
+    "overview": {
+      "metrics": {
+        "label": "Hub at a glance",
+        "members": "Members",
+        "membersMeta": "{count, plural, =0 {No one active} other {# active}} in the last {days} days",
+        "tokens": "Live tokens",
+        "tokensMeta": "{count, plural, =0 {None expire} one {# expires} other {# expire}} within {days} days",
+        "workers": "Workers",
+        "workersMeta": "{live, plural, =0 {None registered} other {{count, plural, =0 {All online} other {# offline}}}}",
+        "storage": "Blob storage",
+        "storageMeta": "{count, plural, one {# object} other {# objects}}",
+        "audit": "Audit rows",
+        "auditMeta": "In the last {hours} hours"
+      },
+      "attention": {
+        "title": "Needs attention",
+        "count": "{count, plural, one {# item needs attention} other {# items need attention}}",
+        "clearTitle": "All clear.",
+        "clear": "No token expires within {expiring} days, no graph build failed in the last {days} days, and every worker is online.",
+        "builds": {
+          "title": "{count, plural, one {# graph build} other {# graph builds}} failed in {project}",
+          "lastFailure": "Last failure: build #{id},",
+          "since": "Newest build #{id} {status, select, succeeded {has succeeded} running {is running} queued {is queued} other {has failed}}"
+        },
+        "offline": {
+          "title": "{count, plural, one {# worker is offline} other {# workers are offline}}",
+          "meta": "No heartbeat for over {minutes} minutes"
+        },
+        "expiring": {
+          "title": "{count, plural, one {# token expires} other {# tokens expire}} within {days} days",
+          "meta": "Each use moves a token's expiry forward; revoke the ones nobody needs"
+        },
+        "unused": {
+          "title": "{count, plural, one {# token} other {# tokens}} unused for {days} days",
+          "meta": "Never revoked; see whose they are"
+        },
+        "notSignedIn": {
+          "title": "{count, plural, one {# person has} other {# people have}} not signed in yet",
+          "meta": "Granted access, waiting for a first sign-in"
+        },
+        "deletions": {
+          "title": "{count, plural, one {# blob waits} other {# blobs wait}} to leave storage",
+          "meta": "{size} in all; the next prune tries again"
+        }
+      },
+      "access": {
+        "title": "Access by project",
+        "allMembers": "All members",
+        "admins": "{count, plural, one {# admin} other {# admins}}",
+        "writers": "{count, plural, one {# writer} other {# writers}}",
+        "readers": "{count, plural, one {# reader} other {# readers}}",
+        "nobody": "No one has access yet",
+        "noProjects": "No project is registered yet. Register one with <code>evo-agents hub project register</code>."
+      },
+      "diagnostics": "Row counts of every hub table are on <link>Diagnostics</link>."
     },
-    "tables": {
-      "users": "Users",
-      "tokens": "Tokens and sessions",
-      "grants": "Project grants",
-      "audit": "Audit rows",
-      "projects": "Projects",
-      "project_repos": "Project repos",
-      "project_sinks": "Project sinks",
-      "memories": "Memories",
-      "memory_revisions": "Memory revisions",
-      "plans": "Plans",
-      "plan_revisions": "Plan revisions",
-      "skills": "Skills",
-      "skill_versions": "Skill versions",
-      "kg_ingests": "Knowledge graph pushes"
+    "diagnostics": {
+      "title": "Diagnostics",
+      "caption": "Rows in every hub table",
+      "columns": {
+        "table": "Table",
+        "area": "Area",
+        "rows": "Rows"
+      },
+      "total": "{tables, plural, one {# table} other {# tables}}, {rows, plural, one {# row} other {# rows}} in all",
+      "empty": "The hub reported no table.",
+      "areas": {
+        "access": "Users and access",
+        "projects": "Projects",
+        "content": "Memories, plans and skills",
+        "runs": "Workers and runs",
+        "credentials": "Secrets and leases",
+        "notifications": "Notifications",
+        "graph": "Knowledge graph",
+        "storage": "Blob storage",
+        "queue": "Job queue",
+        "other": "Other"
+      }
     },
-    "rows": "{count, plural, one {# row} other {# rows}}",
     "nav": {
       "label": "Admin pages",
       "overview": "Overview",
       "members": "Members",
       "tokens": "Tokens",
-      "audit": "Audit"
+      "audit": "Audit",
+      "diagnostics": "Diagnostics"
     },
     "filters": {
       "apply": "Filter",
@@ -177,7 +490,6 @@
       "loading": "Loading the page…"
     },
     "notice": {
-      "dismiss": "Dismiss",
       "requestId": "Request id: {id}"
     },
     "errors": {
@@ -191,11 +503,11 @@
     },
     "members": {
       "title": "Members",
-      "description": "People who signed in or were granted access ahead of time, with their role and highest label level in each project. Every grant and revocation is audited.",
       "count": "{count, plural, one {# user} other {# users}}",
       "shown": "Showing {shown} of {total} users",
       "search": "Search by login",
       "searchPlaceholder": "For example: octocat",
+      "clearSearch": "Clear search",
       "project": "Project",
       "allProjects": "All projects",
       "grant": "Grant access",
@@ -205,7 +517,6 @@
       "emptyTitle": "No users yet",
       "emptyDescription": "People show up here after their first sign-in, or once you grant access to their GitHub login.",
       "noMatchTitle": "No user matches the filters",
-      "noMatchDescription": "Try another login or pick all projects.",
       "columns": {
         "login": "User",
         "grants": "Project access",
@@ -214,24 +525,27 @@
         "actions": "Actions"
       },
       "noGrants": "No project access yet",
-      "grantSummary": "{project}: {role}, level {level}",
+      "moreGrants": "and {count} more: {projects}",
+      "mobileGrant": "{project}, {role}",
+      "mobileMore": "{grant}, and {count, plural, one {# more project} other {# more projects}}",
+      "grantSummary": "{project}: {role}, {level} visibility",
       "hubAdmin": "Hub admin",
       "notSignedIn": "Not signed in yet",
       "never": "Never"
     },
     "member": {
-      "eyebrow": "Member",
+      "metaTitle": "Member",
       "notFoundTitle": "No user {login}",
       "notFoundDescription": "The hub has no such user. The login may be misspelled, or the person has neither signed in nor been granted access.",
       "summary": "On the hub since {created}. Last seen: {lastSeen}.",
       "grantsTitle": "Project access",
-      "grantsDescription": "The role and the highest label level this person can see in each project.",
+      "grantsDescription": "The role and visibility of this person in each project.",
       "grantsEmptyTitle": "No project access yet",
       "grantsEmptyDescription": "{login} sees no project on the hub. Grant a role so they can read or write a project's content.",
       "columns": {
         "project": "Project",
         "role": "Role",
-        "maxLevel": "Highest level",
+        "visibility": "Visibility",
         "grantedBy": "Granted by",
         "grantedAt": "Granted at",
         "actions": "Actions"
@@ -250,7 +564,7 @@
     },
     "grant": {
       "title": "Grant project access",
-      "description": "Pick the user, the project, the role and the highest label level they may see. You confirm on the next step.",
+      "description": "Pick the user, the project, the role and the visibility. You confirm on the next step.",
       "login": "GitHub login",
       "loginHint": "You can grant access to someone who has never signed in; it takes effect at their first sign-in.",
       "loginRequired": "Enter a GitHub login.",
@@ -260,15 +574,15 @@
       "noProjects": "The hub has no project yet. Register one with evo-agents hub project register, then come back here.",
       "role": "Role",
       "roleHints": {
-        "reader": "Reads the project's memories, plans, skills and knowledge graph, up to the highest level.",
+        "reader": "Reads the project's memories, plans, skills and knowledge graph, up to their visibility.",
         "writer": "Reader, plus pushing memories, plans, skills and the knowledge graph to the hub.",
         "admin": "Writer, plus registering the project again from its harness."
       },
-      "maxLevel": "Highest label level",
-      "maxLevelHint": "The project's label ladder, lowest first. This person sees content labelled up to this level.",
-      "maxLevelRequired": "Pick a label level.",
-      "existing": "{login} is {role}, level {level} on this project. Saving replaces that with the new choice.",
-      "unchanged": "{login} already has exactly this role and level. Nothing to change.",
+      "visibility": "Visibility",
+      "visibilityHint": "The levels of the project's label ladder, lowest first. This person sees content labelled up to the one picked.",
+      "visibilityRequired": "Pick a visibility.",
+      "existing": "{login} is {role} with {level} visibility on this project. Saving replaces that with the new choice.",
+      "unchanged": "{login} already has exactly this role and visibility. Nothing to change.",
       "continue": "Continue",
       "cancel": "Cancel",
       "close": "Close",
@@ -279,15 +593,17 @@
         "login": "User",
         "project": "Project",
         "role": "Role",
-        "maxLevel": "Highest level",
+        "visibility": "Visibility",
         "previous": "Replaces"
       },
-      "previous": "{role}, level {level}",
+      "previous": "{role}, {level} visibility",
       "back": "Back",
       "confirm": "Confirm the grant",
       "saving": "Saving…",
       "notFound": "Project {project} is no longer on the hub. Close this dialog and pick another project.",
-      "success": "Granted {role}, level {level}, to {login} on project {project}."
+      "success": "{role} with {level} visibility for {login} on project {project}.",
+      "successTitle": "Access granted to {login}",
+      "openMember": "Open member"
     },
     "revokeGrant": {
       "title": "Revoke the access of {login} to project {project}?",
@@ -296,12 +612,15 @@
       "confirm": "Revoke access",
       "pending": "Revoking…",
       "notFound": "This access was revoked already. The list was reloaded.",
-      "success": "Revoked the access of {login} to project {project}."
+      "success": "{login} no longer reaches project {project}.",
+      "successTitle": "Access of {login} revoked",
+      "failed": "Couldn't revoke the access of {login} to {project}",
+      "openMember": "Open member"
     },
     "tokens": {
       "title": "Tokens and sessions",
-      "description": "CLI machine tokens and web sessions of every user. Revoking one makes the next request made with it get a 401, from any machine.",
       "caption": "Tokens and sessions",
+      "count": "{count, plural, one {# token} other {# tokens}}",
       "login": "User",
       "loginPlaceholder": "All users",
       "kind": "Kind",
@@ -313,6 +632,8 @@
       "state": "State",
       "states": {
         "active": "Active",
+        "expiring": "Expiring within {days} days",
+        "unused": "Unused for {days} days",
         "revoked": "Revoked",
         "expired": "Expired",
         "any": "Any state"
@@ -333,8 +654,10 @@
       "noHost": "None",
       "revoke": "Revoke",
       "revokeLabel": "Revoke token {id} of {login}",
-      "emptyTitle": "No token matches the filters",
-      "emptyDescription": "Change the user, kind or state to see other tokens."
+      "mobileTitle": "{kind} #{id}",
+      "emptyTitle": "No live tokens",
+      "emptyDescription": "Tokens show here once someone signs in to the hub from a browser, the CLI or a worker.",
+      "noMatchTitle": "No token matches the filters"
     },
     "revokeToken": {
       "title": "Revoke token {id} of {login}?",
@@ -348,12 +671,15 @@
       "pending": "Revoking…",
       "notFound": "The hub no longer has this token. The list was reloaded.",
       "conflict": "This token was revoked already. The list was reloaded.",
-      "success": "Revoked token {id} of {login}. The next request made with it gets a 401."
+      "success": "The next request made with it gets a 401.",
+      "successTitle": "Token {id} of {login} revoked",
+      "failed": "Couldn't revoke token {id}",
+      "openMember": "Open member"
     },
     "audit": {
       "title": "Audit trail",
-      "description": "Every action that changed something on the hub: who, with which token, what, on which target and in which project. The trail holds no content and no credential.",
       "caption": "Audit trail, newest first",
+      "count": "{count, plural, one {# entry} other {# entries}}",
       "actor": "Actor",
       "actorPlaceholder": "All users",
       "action": "Action",
@@ -371,9 +697,11 @@
         "token": "Token"
       },
       "hub": "Hub",
+      "mobileMeta": "{actor}, {target}",
       "noProject": "No project",
-      "emptyTitle": "No audit row matches the filters",
-      "emptyDescription": "Loosen the filters, for example drop the actor or widen the dates.",
+      "emptyTitle": "No audit entries yet",
+      "emptyDescription": "Sign-ins, grants, and changes to projects, plans, memories and skills add entries here.",
+      "noMatchTitle": "No audit entry matches the filters",
       "actions": {
         "auth_login": "Sign in",
         "auth_logout": "Sign out",
@@ -397,40 +725,23 @@
     }
   },
   "plans": {
-    "planEyebrow": "Plan",
-    "stepEyebrow": "Plan step",
-    "backToPlans": "All plans of the project",
-    "backToPlan": "Back to plan {name}",
     "revision": "Revision {revision}",
+    "copyId": "Copy the plan id {id}",
     "updated": "Last changed by <who>{login}</who> at {time}",
+    "stepOf": "In plan <plan>{name}</plan>, last changed by <who>{login}</who> at {time}",
     "emptyList": "Empty list",
     "readOnly": {
-      "label": "Read-only page",
-      "text": "The plan's content is read-only here: it changes with <code>evo harness step</code> or <code>evo-agents hub plan</code>, and every change adds a revision to the history. To have one of your workers carry the plan out, a writer uses Run plan."
+      "label": "Read-only",
+      "title": "Read-only.",
+      "text": "Plans change from the CLI with <code>evo harness step</code>; each change adds a revision.",
+      "copy": "Copy",
+      "copyLabel": "Copy the command {command}",
+      "copied": "Copied"
     },
     "tabs": {
       "label": "Parts of the plan",
       "steps": "Steps",
       "revisions": "Revision history"
-    },
-    "area": {
-      "active": "Active",
-      "completed": "Completed"
-    },
-    "status": {
-      "pending": "Pending",
-      "in_progress": "In progress",
-      "blocked": "Blocked",
-      "done": "Done",
-      "other": "Other status: {status}"
-    },
-    "repoStatus": {
-      "merged": "Merged",
-      "done": "Done",
-      "in_progress": "In progress",
-      "pending": "Pending",
-      "not-needed": "Not needed",
-      "other": "Other status: {status}"
     },
     "progress": {
       "title": "Progress",
@@ -443,7 +754,6 @@
     "list": {
       "metaTitle": "Plans of {project}",
       "title": "Plans",
-      "description": "The project's plans as the hub holds them, with progress counted in steps done.",
       "activeCount": "{count, plural, other {# active}}",
       "completedCount": "{count, plural, other {# completed}}",
       "active": "Active",
@@ -451,13 +761,19 @@
       "noActive": "The project has no active plan.",
       "noCompleted": "The project has no completed plan yet.",
       "emptyTitle": "The project has no plan on the hub yet",
-      "emptyDescription": "Push the harness's plans with evo-agents hub plan import, then reload this page. Plans labelled above your level do not show here.",
+      "emptyDescription": "Plans show here once a member pushes the harness's plans with evo-agents hub plan import; plans labelled above your visibility stay hidden.",
       "search": "Search plans by title or id",
-      "searchPlaceholder": "Search plans…",
+      "searchPlaceholder": "Search plans",
+      "clearSearch": "Clear search",
       "shown": "Showing {shown} of {total} plans",
+      "total": "{count, plural, one {# plan} other {# plans}}",
       "noMatch": "No plan matches the search.",
+      "noMatchTitle": "No plan matches",
       "activeCaption": "Active plans",
       "completedCaption": "Completed plans",
+      "revisionValue": "r{revision}",
+      "mobileMeta": "<id>{plan}</id>, {progress}",
+      "mobileMetaText": "{plan}, {progress}",
       "columns": {
         "plan": "Plan",
         "progress": "Progress",
@@ -477,7 +793,8 @@
     "board": {
       "title": "Steps",
       "search": "Search steps by id, title, repo or content",
-      "searchPlaceholder": "Search steps…",
+      "searchPlaceholder": "Search steps",
+      "clearSearch": "Clear search",
       "repo": "Repo",
       "allRepos": "All repos",
       "view": "How to show the steps",
@@ -490,6 +807,8 @@
       "showAll": "Show all {count} steps",
       "tableCaption": "The plan's steps in order",
       "noMatch": "No step matches the filters.",
+      "mobileMeta": "Step {key}",
+      "mobileMetaRepo": "Step {key}, {repo}",
       "columns": {
         "step": "Step",
         "status": "Status",
@@ -558,7 +877,7 @@
     },
     "notFound": {
       "title": "Plan {plan} not found",
-      "description": "The plan is not in project {project}, or its label is above the level you may read.",
+      "description": "The plan is not in project {project}, or its label is above your visibility.",
       "stepTitle": "Plan {plan} has no step {step}",
       "stepDescription": "Check the step id in the address, or open the plan to see its steps."
     },
@@ -623,22 +942,34 @@
     "status": "HTTP status {status}",
     "apiMessage": "Message from the API",
     "retry": "Try again",
-    "backHome": "Back to projects"
+    "backHome": "Back to Home",
+    "noResults": {
+      "inUse": "Filters in use",
+      "filter": "{label}:",
+      "search": "Search",
+      "clear": "Clear filters"
+    }
   },
   "table": {
     "sortAscending": "Sorted ascending",
     "sortDescending": "Sorted descending",
-    "sortBy": "Sort by {column}"
+    "sortBy": "Sort by {column}",
+    "filters": {
+      "button": "Filters",
+      "buttonActive": "Filters ({count})",
+      "title": "Filters",
+      "description": "The list changes as you choose.",
+      "descriptionForm": "Choose the filters, then press Filter to apply them.",
+      "close": "Close filters",
+      "clear": "Clear filters",
+      "done": "Show results"
+    }
   },
   "memories": {
-    "projectEyebrow": "Project {project}",
-    "personalEyebrow": "Yours only",
     "projectTitle": "Memories",
     "personalTitle": "My memories",
-    "projectDescription": "Claude Code memory files that members pushed to the hub from the project's harness and repos.",
-    "personalDescription": "Memories in directories outside every hub project, kept in step across your machines.",
     "count": "{count, plural, one {# memory} other {# memories}}",
-    "projectVisibility": "You see memories labelled up to <code>{level}</code>, as your grant allows. User and Feedback memories are visible to their author only.",
+    "projectVisibility": "Your visibility is <level></level>: you see memories labelled up to it. User and Feedback memories are visible to their author only.",
     "personalVisibility": "Only you see these memories.",
     "adminWithoutGrant": "You are a hub admin without a grant on this project, so its memories are not readable to you. Ask a project admin for a grant if you need them.",
     "search": {
@@ -662,7 +993,7 @@
     },
     "label": {
       "label": "Label",
-      "level": "Label level",
+      "level": "Visibility",
       "location": "Data location",
       "anyLocation": "Unrestricted",
       "integrity": "Integrity",
@@ -687,15 +1018,13 @@
     "truncated": "There are more memories than this page loads: showing the first {count}. Use search to find the others.",
     "empty": {
       "projectTitle": "This project has no memories yet",
-      "projectDescription": "Memories appear here once members run <code>evo-agents hub memory push</code> in the project's harness or one of its repos.",
+      "projectDescription": "Members' Claude Code memory files show here once they run <code>evo-agents hub memory push</code> in the project's harness or one of its repos.",
       "personalTitle": "You have no personal memories yet",
-      "personalDescription": "Memories in directories outside the hub's projects are pushed with <code>evo-agents hub memory push --all</code>."
+      "personalDescription": "Memories in directories outside every hub project are pushed with <code>evo-agents hub memory push --all</code> and kept in step across your machines."
     },
     "noResults": {
       "searchTitle": "No memories found for “{q}”",
-      "searchDescription": "Try other words, fewer filters, or put a phrase in double quotes. Memories labelled above your grant never show here.",
-      "filterTitle": "No memories match these filters",
-      "filterDescription": "Remove the location or type filter to see more."
+      "filterTitle": "No memories match these filters"
     },
     "deleted": "Deleted",
     "markdown": {
@@ -712,8 +1041,6 @@
       "title": "Memory",
       "notFoundTitle": "Memory not found",
       "notFoundDescription": "This memory does not exist, belongs elsewhere, or is not yours to see.",
-      "backProject": "Project memories",
-      "backPersonal": "My memories",
       "deletedTitle": "This memory was deleted at revision {revision}",
       "deletedDescription": "What it held before is still in the revision history.",
       "revisionNotFoundTitle": "Revision {revision} not found",
@@ -758,12 +1085,8 @@
     }
   },
   "skills": {
-    "projectEyebrow": "Project {project}",
-    "globalEyebrow": "Shared across the hub",
     "projectTitle": "Project skills",
     "globalTitle": "Shared skills",
-    "projectDescription": "Skills the project's members published; evo-agents hub skills sync installs them into every runtime on a machine.",
-    "globalDescription": "Skills the hub admins published for every member.",
     "count": "{count, plural, one {# skill} other {# skills}}",
     "bytes": "{count, number} bytes",
     "copyHash": "Copy SHA-256",
@@ -783,23 +1106,22 @@
     },
     "empty": {
       "projectTitle": "This project has no skills yet",
-      "projectDescription": "Members with the writer role publish one with <code>evo-agents hub skills publish DIR --scope project:{project}</code>.",
+      "projectDescription": "Writers publish one with <code>evo-agents hub skills publish DIR --scope project:{project}</code>, and <code>evo-agents hub skills sync</code> installs it into every runtime on a machine.",
       "toGlobal": "See shared skills",
       "globalTitle": "The hub has no shared skills yet",
-      "globalDescription": "Hub admins publish one with <code>evo-agents hub skills publish DIR</code>."
+      "globalDescription": "Hub admins publish one for every member with <code>evo-agents hub skills publish DIR</code>."
     },
     "filter": {
       "label": "Filter skills",
       "placeholder": "Filter by name or description",
-      "clear": "Clear filter"
+      "clear": "Clear search"
     },
     "summary": {
       "all": "{count, plural, =0 {No skills} one {# skill} other {# skills}}",
       "filtered": "Showing {shown} of {count} skills"
     },
     "noResults": {
-      "title": "No skills match “{q}”",
-      "description": "Try other words, or clear the filter to see them all."
+      "title": "No skills match “{q}”"
     },
     "blobStore": {
       "unconfiguredTitle": "The hub has no blob store",
@@ -823,8 +1145,6 @@
     "detail": {
       "notFoundTitle": "Skill {name} not found",
       "notFoundDescription": "This skill has not been published here, or its name is spelled differently.",
-      "backProject": "Project skills",
-      "backGlobal": "Shared skills",
       "noVersions": "This skill has no versions yet.",
       "latestTitle": "Latest version: v{version}",
       "latestDescription": "A bundle is the tar.gz of the skill directory, exactly as it was published.",
@@ -842,7 +1162,6 @@
   },
   "kg": {
     "title": "Knowledge graph",
-    "description": "The graph the hub builds from the project's pushes: build status, queue and node search. You only see nodes labelled within your maximum level.",
     "readOnly": "Read-only",
     "copied": "Copied to the clipboard",
     "status": {
@@ -911,6 +1230,11 @@
     },
     "history": {
       "caption": "The project's latest builds",
+      "filter": "Builds shown",
+      "all": "All",
+      "failed": "Failed",
+      "captionFailed": "The project's latest failed builds",
+      "noFailed": "No build of this project failed.",
       "build": "Build",
       "status": "Status",
       "queued": "Queued at",
@@ -933,7 +1257,7 @@
     },
     "search": {
       "title": "Find a node",
-      "description": "Search by name, id, path, code or words in the content. Results only include nodes labelled within your level.",
+      "description": "Search by name, id, path, code or words in the content. Results only include nodes labelled within your visibility.",
       "query": "Search for",
       "placeholder": "For example: runbook, KB-01, src/app.py",
       "kind": "Node kind",
@@ -943,12 +1267,12 @@
       "hint": "Up to 25 results, best match first.",
       "visible": "{count, plural, =0 {You cannot see any node of this graph yet.} one {You can see # node of this graph, by kind:} other {You can see # nodes of this graph, by kind:}}",
       "byKind": "Nodes by kind",
-      "nothingVisible": "Every node of the graph is labelled above your level.",
+      "nothingVisible": "Every node of the graph is labelled above your visibility.",
       "seeLevels": "See the project's label ladder",
       "count": "{count, plural, =0 {No results} one {# result} other {# results}} for “{query}”",
       "countKind": "{kind} nodes matching “{query}”: {count}",
       "emptyTitle": "No node matches “{query}”",
-      "emptyDescription": "Try a shorter word, a node's full id, or clear the kind filter. Nodes labelled above your level never show here.",
+      "emptyDescription": "Try a shorter word, a node's full id, or clear the kind filter. Nodes labelled above your visibility never show here.",
       "clearKind": "Search all kinds",
       "columns": {
         "node": "Node",
@@ -959,7 +1283,6 @@
       }
     },
     "node": {
-      "back": "Back to the knowledge graph",
       "facts": "Node details",
       "id": "Id",
       "copyId": "Copy the node id",
@@ -974,7 +1297,7 @@
       "confidence": "Confidence",
       "aliases": "Aliases",
       "notFoundTitle": "Node not found",
-      "notFoundDescription": "The node is not in the current graph, or its label is above your level.",
+      "notFoundDescription": "The node is not in the current graph, or its label is above your visibility.",
       "searchInstead": "Search the graph",
       "olderBuild": "The blob store did not answer, so this page reads build #{id}, older than the latest one."
     },
@@ -1040,8 +1363,6 @@
   },
   "workers": {
     "title": "Workers",
-    "eyebrow": "Hub",
-    "description": "Laptops and desktops registered to run plan steps for their owner. A worker sends a heartbeat every 15 seconds; after 5 minutes without one it is offline, and the runs it held go back to the queue.",
     "registerButton": "Register worker",
     "register": {
       "title": "Register a worker",
@@ -1101,7 +1422,7 @@
       "newCode": "Create a new code",
       "openWorker": "Open worker",
       "joinedTitle": "<strong>{name}</strong> joined at {time}.",
-      "joinedNotice": "Worker {name} joined the hub.",
+      "joinedNotice": "{name} joined the hub",
       "hostValue": "{hostname}, {os} {arch}",
       "firstHeartbeat": "Reported with its first heartbeat",
       "cliIntro": "A machine already signed in with <code>evo-agents hub login</code> registers with your own token. No pairing code is needed.",
@@ -1117,16 +1438,10 @@
     "count": "{count, plural, one {# worker} other {# workers}}",
     "caption": "Workers",
     "hostLine": "{hostname}, {os} {arch}",
+    "mobileMeta": "{held}/{slots} slots in use, {host}",
     "slotsLabel": "{held} of {slots} slots in use",
     "notReported": "Not reported",
     "never": "Never",
-    "status": {
-      "idle": "Idle",
-      "busy": "Busy",
-      "draining": "Draining",
-      "offline": "Offline",
-      "revoked": "Revoked"
-    },
     "summary": {
       "label": "Summary",
       "idle": "Idle",
@@ -1150,9 +1465,9 @@
       "clear": "Clear search"
     },
     "listSummary": {
-      "all": "{count, plural, =0 {No worker.} one {# worker.} other {# workers.}}",
-      "filtered": "{count, plural, =0 {No worker matches.} one {# worker matches.} other {# workers match.}}",
-      "revokedHidden": "{count, plural, one {# revoked worker is hidden; pick Revoked to see it.} other {# revoked workers are hidden; pick Revoked to see them.}}"
+      "all": "{count, plural, =0 {No workers} one {# worker} other {# workers}}",
+      "filtered": "{count, plural, =0 {No workers match} one {# worker matches} other {# workers match}}",
+      "revokedHidden": "{count, plural, one {# revoked worker is hidden} other {# revoked workers are hidden}}"
     },
     "columns": {
       "worker": "Worker",
@@ -1165,13 +1480,11 @@
     },
     "empty": {
       "title": "No worker yet",
-      "description": "Register a laptop or desktop to run plan steps for you. The worker calls the hub over HTTPS and opens no port on the machine.",
+      "description": "Register a laptop or desktop to run plan steps for you; it calls the hub over HTTPS and opens no port.",
       "showRevoked": "Show revoked workers"
     },
     "noResults": {
-      "title": "No worker matches",
-      "description": "Change the search or pick another status.",
-      "clear": "Show all workers"
+      "title": "No worker matches"
     },
     "copy": {
       "copy": "Copy",
@@ -1208,7 +1521,6 @@
     },
     "detail": {
       "title": "Worker",
-      "eyebrow": "Worker",
       "facts": "{os} {arch} on {hostname}. Owner {owner}. Daemon evo-agents {version}, registered {date}.",
       "notFoundTitle": "Worker not found",
       "notFoundDescription": "This worker does not exist, or it belongs to another member.",
@@ -1276,31 +1588,38 @@
       "drainNotOwner": "Only {owner} can resume it afterwards.",
       "drainConfirm": "Drain worker",
       "drainPending": "Draining…",
-      "drainSuccess": "{name} is draining: it finishes the runs it holds, then claims no new ones.",
-      "undrainSuccess": "{name} claims runs again.",
+      "drainSuccess": "{name} is draining",
+      "undrainSuccess": "{name} resumed",
       "revokeTitle": "Revoke worker {name}?",
       "revokeBody": "Its token stops working at once and its name becomes free. Runs it holds go back to the queue, or fail if they were pinned to it or on their last attempt.",
       "revokeHeld": "{count, plural, one {It holds # run now.} other {It holds # runs now.}}",
       "audit": "This cannot be undone, and it is audited.",
       "revokeConfirm": "Revoke worker",
       "revokePending": "Revoking…",
-      "revokeSuccess": "Revoked {name}. Its token no longer works."
+      "revokeSuccess": "{name} revoked",
+      "drainSuccessText": "It finishes the runs it holds, then claims no new ones.",
+      "undrainSuccessText": "It claims runs again.",
+      "revokeSuccessText": "Its token no longer works.",
+      "drainFailed": "Couldn't drain {name}",
+      "undrainFailed": "Couldn't resume {name}",
+      "revokeFailed": "Couldn't revoke {name}"
     },
     "dispatchFrom": {
       "label": "Only runs dispatched from the web",
       "hint": "On: this worker claims only runs you dispatch while signed in on the web. Runs dispatched with a token, from the command line or by an agent, wait for another worker, and a token cannot pin a run to it, so a token that leaked cannot hand it work.",
-      "webSuccess": "{name} now takes only runs dispatched from the web.",
-      "anySuccess": "{name} takes runs dispatched from the command line and the web again."
+      "webSuccess": "{name} takes only runs dispatched from the web",
+      "webSuccessText": "Runs dispatched with a token, from the command line or by an agent, wait for another worker.",
+      "anySuccess": "{name} takes runs from the command line again",
+      "anySuccessText": "It claims runs dispatched with any of your credentials, from the command line and the web.",
+      "failed": "Couldn't change who dispatches to {name}"
     }
   },
   "secrets": {
-    "eyebrow": "Credentials of your runs",
     "title": "Secrets",
-    "description": "Tokens the hub keeps sealed and hands to the runs of your projects on your workers. A value goes in once and is never shown again, here or anywhere else.",
     "count": "{count, plural, one {# secret} other {# secrets}}",
     "addButton": "Add secret",
     "caption": "Your secrets",
-    "listSummary": "{count, plural, one {# secret, only yours: nobody else sees it, a hub admin included.} other {# secrets, only yours: nobody else sees them, a hub admin included.}}",
+    "listSummary": "{count, plural, one {Yours alone: nobody else sees it, a hub admin included, and its value is never shown again.} other {Yours alone: nobody else sees them, a hub admin included, and no value is ever shown again.}}",
     "columns": {
       "secret": "Secret",
       "kind": "Kind",
@@ -1324,7 +1643,7 @@
     "deleteLabel": "Delete secret {name}",
     "empty": {
       "title": "No secret yet",
-      "description": "Add what a run needs, such as <code>CLAUDE_CODE_OAUTH_TOKEN</code> for Claude Code or a GitLab access token for git. From a terminal, <code>evo-agents hub secret set</code> does the same."
+      "description": "The hub keeps a token sealed and hands it to the runs of your projects on your workers; a value goes in once and is never shown again. Add what a run needs, such as <code>CLAUDE_CODE_OAUTH_TOKEN</code> for Claude Code or a GitLab access token for git, here or with <code>evo-agents hub secret set</code>."
     },
     "errors": {
       "forbidden": "The hub refused: a secret needs the writer role on each project it names, and binds only to your own workers that are not revoked.",
@@ -1375,8 +1694,10 @@
       "add": "Add secret",
       "replace": "Replace secret",
       "saving": "Saving…",
-      "added": "Secret {name} added. The hub sealed its value and will not show it again.",
-      "replaced": "Secret {name} replaced. Runs that ask for their credentials from now on get the new value.",
+      "added": "Secret {name} added",
+      "addedText": "The hub sealed its value and will not show it again.",
+      "replaced": "Secret {name} replaced",
+      "replacedText": "Runs that ask for their credentials from now on get the new value.",
       "problems": {
         "nameRequired": "Give the secret a name.",
         "nameInvalid": "Lower case letters, digits, dots, hyphens and underscores, at most 64 characters, starting with a letter or a digit.",
@@ -1406,34 +1727,18 @@
       "confirm": "Delete secret",
       "pending": "Deleting…",
       "notFound": "You have no secret of this name any more. The list was reloaded.",
-      "success": "Secret {name} deleted. Revoke the token where it was made, too."
+      "success": "Secret {name} deleted",
+      "successText": "Revoke the token where it was made, too.",
+      "failed": "Couldn't delete secret {name}"
     }
   },
   "runs": {
     "title": "Runs",
     "metaTitle": "Runs of {project}",
-    "description": "Each run is one plan step, or a whole plan (a plan run), dispatched to one of your workers. Its state, log and evidence come back to the hub while it runs.",
     "dispatchButton": "Dispatch",
-    "liveBadge": "Live",
-    "live": "Updates every 5 seconds while a run is active.",
     "count": "{count, plural, one {# run} other {# runs}}",
     "caption": "Runs of project {project}",
     "pagerLabel": "runs",
-    "dispatched": "{count, plural, one {Queued run {ids}.} other {Queued # runs: {ids}.}}",
-    "state": {
-      "queued": "Queued",
-      "leased": "Leased",
-      "running": "Running",
-      "interactive": "Interactive",
-      "verifying": "Verifying",
-      "waiting": "Waiting",
-      "review": "Review",
-      "parked": "Parked",
-      "done": "Done",
-      "failed": "Failed",
-      "lost": "Lost",
-      "cancelled": "Cancelled"
-    },
     "runtime": {
       "any": "Any",
       "claude-code": "Claude Code",
@@ -1443,7 +1748,8 @@
     "summary": {
       "label": "Summary",
       "running": "Running",
-      "runningHint": "{workers, plural, =0 {no worker holds a run} one {on # worker} other {on # workers}}",
+      "runningHint": "{workers, plural, one {on # worker} other {on # workers}}",
+      "runningIdle": "Idle",
       "queued": "Queued",
       "queuedSince": "oldest queued {time}",
       "queuedMany": "{count, plural, one {# run waits for a worker} other {# runs wait for a worker}}",
@@ -1453,7 +1759,9 @@
       "reviewMany": "waiting for approval",
       "reviewNone": "nothing to approve",
       "failed": "Failed",
-      "failedHint": "{lost, plural, =0 {no lost lease} one {plus # lost lease} other {plus # lost leases}}, {cancelled, plural, =0 {none cancelled} other {# cancelled}}"
+      "failedHint": "{lost, plural, =0 {None lost} other {and # lost}}",
+      "quietTitle": "All quiet.",
+      "quietText": "No run is in progress, queued or waiting for review."
     },
     "facets": {
       "label": "State",
@@ -1469,8 +1777,8 @@
       "clear": "Clear search"
     },
     "listSummary": {
-      "all": "{count, plural, =0 {No run.} one {# run.} other {# runs.}}",
-      "filtered": "{count, plural, =0 {No run matches.} one {# run matches.} other {# runs match.}}"
+      "all": "{count, plural, =0 {No runs} one {# run} other {# runs}}",
+      "filtered": "{count, plural, =0 {No runs match} one {# run matches} other {# runs match}}"
     },
     "columns": {
       "run": "Run",
@@ -1488,6 +1796,11 @@
     "planLine": "{plan}, every step not done, {repos, plural, one {# repo} other {# repos}}",
     "planLineProject": "{project}, {plan}, every step not done, {repos, plural, one {# repo} other {# repos}}",
     "untitled": "Untitled step",
+    "mobile": {
+      "runTitle": "Run #{id}",
+      "meta": "<ref>#{id}</ref>, {detail}",
+      "metaText": "#{id}, {detail}"
+    },
     "noWorkerYet": "none yet",
     "pinnedWaiting": "waiting for its pinned worker",
     "queuedAt": "Queued at",
@@ -1500,13 +1813,11 @@
     },
     "empty": {
       "title": "No run yet",
-      "description": "A run is one ready step of a plan, dispatched to one of your workers. Dispatch one to start.",
+      "description": "Dispatch a ready step of a plan to one of your workers. Its log and result come back here.",
       "readerDescription": "Writers of this project dispatch runs to their workers; each one shows here with its state."
     },
     "noResults": {
-      "title": "No run matches",
-      "description": "Try other words, or show runs in every state.",
-      "clear": "Show all runs"
+      "title": "No run matches"
     },
     "step": {
       "title": "Runs of this step",
@@ -1632,19 +1943,13 @@
       "timeoutHint": "Agent time the run may take. Time spent waiting for your answer, or parked, does not count.",
       "submit": "Run plan",
       "submitting": "Queuing…",
-      "dispatched": "Queued plan run #{id} of {plan}.",
       "holds": "<link>Plan run #{id}</link> ({state}, dispatched by {login}) holds every step of this plan until it ends.",
       "listLink": "Plan run #{id}: {state}",
       "phase": {
-        "queued": "Queued",
         "queuedLong": "Queued",
-        "running": "Running",
         "runningLong": "Running",
-        "waiting": "Waiting",
         "waitingLong": "Waiting for your decision",
-        "parked": "Parked",
         "parkedLong": "Parked",
-        "review": "Review",
         "reviewLong": "Review"
       },
       "lock": {
@@ -1726,20 +2031,25 @@
           "parked": "parked",
           "review": "in review"
         }
+      },
+      "toast": {
+        "dispatched": "Plan run #{id} dispatched",
+        "dispatchedText": "It does every step of {plan} not done yet, on one worker.",
+        "openRun": "Open run"
       }
     },
     "openRun": "Open run #{id}",
     "detail": {
       "metaTitle": "Run #{id} of {project}",
       "title": "Run",
-      "planTitle": "Plan run",
       "untitled": "Untitled step",
-      "description": "Plan <planLink>{plan}</planLink>, <stepLink>step {step}: {title}</stepLink>",
-      "planDescription": "Plan <planLink>{plan}</planLink>: {title}. Every step not done yet, in one session.",
+      "sub": "Plan <planLink>{plan}</planLink>, <stepLink>step {step}: {title}</stepLink>",
+      "planSub": "Plan <planLink>{plan}</planLink>: {title}. Every step not done yet, in one session.",
       "notFoundTitle": "Run #{id} not found",
       "notFoundDescription": "The run does not exist in this project, or it belongs to a plan you cannot read.",
-      "stepper": {
-        "label": "Progress of the run",
+      "timeline": {
+        "section": "Timeline of the run",
+        "label": "Phases of run #{id}",
         "phase": {
           "queued": "Queued",
           "leased": "Leased",
@@ -1754,7 +2064,98 @@
           "stopped": "ended here",
           "todo": "not reached"
         },
-        "during": "ended while {phase}"
+        "since": "since {time}",
+        "notYet": "not yet",
+        "skipped": "skipped",
+        "waitingGap": "waiting {duration}",
+        "gapLabel": "Took",
+        "gap": {
+          "seconds": "{seconds}s",
+          "minutes": "{minutes}m {seconds}s",
+          "minutesOnly": "{minutes}m",
+          "hours": "{hours}h {minutes}m"
+        }
+      },
+      "trace": {
+        "label": "Trace of run #{id}",
+        "agent": "Agent",
+        "you": "You",
+        "someone": "Someone",
+        "thought": "Thought for {duration}",
+        "thoughtBrief": "Thought briefly",
+        "plan": "Plan",
+        "planCount": "{done} of {total} done",
+        "planStatus": {
+          "pending": "To do",
+          "in_progress": "In progress",
+          "completed": "Done"
+        },
+        "youAnswered": "You answered decision #{id}",
+        "answered": "{login} answered decision #{id}",
+        "askedYou": "Asked you",
+        "asked": "Asked {login}",
+        "answer": "Answer",
+        "viewDecision": "View the decision",
+        "inInbox": "Open in the Inbox",
+        "exit": "exit {code}",
+        "noResult": "no result",
+        "status": {
+          "pending": "pending",
+          "in_progress": "running",
+          "completed": "done",
+          "failed": "failed"
+        },
+        "kind": {
+          "read": "Read",
+          "edit": "Edit",
+          "delete": "Delete",
+          "move": "Move",
+          "search": "Search",
+          "execute": "Shell",
+          "think": "Think",
+          "fetch": "Fetch",
+          "switch_mode": "Mode",
+          "other": "Tool"
+        },
+        "diff": "{added, plural, one {# line added} other {# lines added}}, {removed, plural, one {# removed} other {# removed}}",
+        "showFull": "Show the full output ({count, plural, one {# line} other {# lines}})",
+        "showLess": "Show the first {count} lines",
+        "noOutput": "No output.",
+        "noOutputYet": "No output yet.",
+        "input": "Input",
+        "systemOutput": "Output",
+        "raw": "{count, plural, one {# runtime event} other {# runtime events}}",
+        "nothing": "Nothing to show yet. The events so far are in the Raw log.",
+        "working": "The agent is working.",
+        "latest": "Jump to the latest",
+        "duration": {
+          "under": "under 0.1s",
+          "seconds": "{seconds}.{tenths}s",
+          "minutes": "{minutes}m {seconds}s",
+          "hours": "{hours}h {minutes}m"
+        }
+      },
+      "usage": {
+        "title": "Usage",
+        "soFar": "so far",
+        "token": "token",
+        "tokens": "tokens",
+        "asReported": "as reported",
+        "costNotReported": "Cost not reported",
+        "parts": {
+          "cacheRead": "Cache read",
+          "input": "Input",
+          "output": "Output",
+          "reasoning": "Reasoning"
+        },
+        "share": "{value}%",
+        "tiny": "under 0.1",
+        "bar": "Cache read {cacheRead} percent, input {input}, output {output}, reasoning {reasoning}",
+        "cacheWrite": "Cache write {count}.",
+        "costNote": "Cost as the runtime reported it.",
+        "noCostNote": "The runtime reported no cost.",
+        "none": "Shows once the agent ends its first turn and the runtime reports what it used.",
+        "noneEnded": "The runtime reported no usage for this run."
       },
       "planSteps": {
         "title": "Steps of the plan",
@@ -1786,6 +2187,7 @@
         "countFiltered": "{shown} of {total, plural, one {# line} other {# lines}}",
         "lines": "{count, plural, one {# line} other {# lines}}",
         "filter": "Show",
+        "groupMenu": "Show: {group}",
         "groups": {
           "all": "All",
           "agent": "Agent",
@@ -1843,7 +2245,8 @@
         "tabs": {
           "label": "Session view",
           "heading": "Live session of run #{id}",
-          "log": "Log",
+          "trace": "Trace",
+          "log": "Raw log",
           "terminal": "Terminal"
         },
         "where": "The agent's TUI on {worker}, relayed through the hub.",
@@ -1892,15 +2295,19 @@
       },
       "composer": {
         "label": "Message the agent",
-        "placeholder": "For example: also cover the revoked-token case",
+        "placeholder": "Message the agent. It reads this on its next turn.",
         "send": "Send",
         "sending": "Sending…",
-        "hint": "The worker hands it to the agent at its next turn; Ctrl or Cmd + Enter sends. Only you see this box: you dispatched the run.",
+        "hint": "Only you see this box: you dispatched the run.",
         "sent": "Sent. It waits in the run's inbox for the agent's next turn.",
         "blank": "Type a message first.",
         "long": "A message is at most {max} bytes of UTF-8. Shorten it.",
         "bytes": "{count} of {max} bytes",
-        "conflict": "The run no longer takes messages: it ended, or waits for review."
+        "conflict": "The run no longer takes messages: it ended, or waits for review.",
+        "headlessOn": "Headless run on {worker}.",
+        "interactiveOn": "Interactive run on {worker}.",
+        "headless": "Headless run.",
+        "interactive": "Interactive run."
       },
       "facts": {
         "title": "Details",
@@ -1945,7 +2352,8 @@
         "duration": "Duration",
         "waited": "Waiting",
         "revision": "Plan revision",
-        "revisionValue": "r{revision}"
+        "revisionValue": "r{revision}",
+        "copySession": "Copy the session id"
       },
       "result": {
         "title": "Result",
@@ -1960,8 +2368,8 @@
         "changes": "Changes",
         "diffstat": "{files, plural, one {# file} other {# files}}, +{insertions} -{deletions}",
         "viewDiff": "View the diff",
-        "usage": "Usage",
-        "evidence": "Evidence"
+        "evidence": "Evidence",
+        "copyCommit": "Copy the commit SHA"
       },
       "credentials": {
         "title": "Credentials",
@@ -1991,6 +2399,7 @@
       },
       "actions": {
         "diff": "View diff",
+        "diffstat": "{insertions, plural, one {# line added} other {# lines added}}, {deletions, plural, one {# removed} other {# removed}}",
         "rerun": "Rerun",
         "cancel": "Cancel run",
         "takeover": "Take over",
@@ -2006,12 +2415,27 @@
           "pending": "Cancelling…",
           "keep": "Keep it"
         },
-        "notice": {
-          "cancelled": "Run #{id} is cancelled.",
-          "cancelAsked": "Cancel of run #{id} asked: the worker stops the agent at its next heartbeat.",
-          "approved": "Run #{id} approved: step {step} of {plan} is done.",
-          "takeover": "Takeover of run #{id} asked: the worker stops the agent at the end of its turn and opens {name}.",
-          "handback": "Hand back of run #{id} asked: the agent goes on headless in the same session."
+        "toast": {
+          "rerun": "Run #{id} dispatched",
+          "rerunText": "A rerun of #{of}, waiting in the queue for a worker.",
+          "openRun": "Open run",
+          "cancelled": "Run #{id} cancelled",
+          "cancelAsked": "Cancel of run #{id} asked",
+          "cancelAskedText": "The worker stops the agent at its next heartbeat.",
+          "approved": "Run #{id} approved",
+          "approvedText": "Step {step} of {plan} is done.",
+          "openStep": "Open step",
+          "takeover": "Takeover of run #{id} asked",
+          "takeoverText": "The worker stops the agent at the end of its turn and opens {name}.",
+          "handback": "Hand back of run #{id} asked",
+          "handbackText": "The agent goes on headless in the same session.",
+          "failed": {
+            "cancel": "Couldn't cancel run #{id}",
+            "takeover": "Couldn't take over run #{id}",
+            "handback": "Couldn't hand back run #{id}",
+            "approve": "Couldn't approve run #{id}",
+            "rerun": "Couldn't rerun #{id}"
+          }
         }
       },
       "takeover": {
@@ -2048,7 +2472,7 @@
     "diff": {
       "metaTitle": "Diff of run #{id} of {project}",
       "title": "Diff of run",
-      "description": "{title}: {files, plural, one {# file} other {# files}}, {size} KiB.",
+      "sub": "{title}: {files, plural, one {# file} other {# files}}, {size} KiB.",
       "back": "Back to the run",
       "download": "Download .diff",
       "downloadStarted": "Downloading {file}.",
@@ -2088,17 +2512,101 @@
         "title": "The diff could not be read",
         "description": "The blob store did not answer the web's request. Download the diff instead, or reload the page later."
       }
+    },
+    "toast": {
+      "dispatched": "{count, plural, one {Run {ids} dispatched} other {# runs dispatched: {ids}}}",
+      "dispatchedText": "{count, plural, one {It waits in the queue for a worker.} other {They wait in the queue for a worker.}}",
+      "openRun": "Open run",
+      "openRuns": "Open active runs"
+    }
+  },
+  "insights": {
+    "title": "Insights",
+    "metaTitle": "Insights of {project}",
+    "range": {
+      "label": "Range",
+      "days": "{days} days",
+      "span": "{first} to {last}, UTC days"
+    },
+    "view": {
+      "label": "Show {chart} as",
+      "chart": "Chart",
+      "table": "Table"
+    },
+    "chartKeys": "{chart} per day. Use the left and right arrow keys to read each day.",
+    "legend": "Legend of {chart}",
+    "day": "Day",
+    "allDays": "All {days} days",
+    "none": "None",
+    "caption": "{chart} per UTC day, {first} to {last}",
+    "tableRegion": "{chart}, table",
+    "empty": {
+      "title": "No run ended in the last {days} days",
+      "description": "Runs count on the UTC day they ended done, failed, lost or cancelled. Dispatch a step from the runs page to see them here.",
+      "runs": "Open runs",
+      "longer": "Show 90 days"
+    },
+    "outcomes": {
+      "title": "Runs by outcome",
+      "headline": "{ended, plural, one {# run ended} other {# runs ended}}: {done} done, {failed} failed, {lost} lost, {cancelled} cancelled",
+      "series": {
+        "done": "Done",
+        "failed": "Failed",
+        "stopped": "Lost or cancelled",
+        "lost": "Lost",
+        "cancelled": "Cancelled",
+        "total": "Total"
+      }
+    },
+    "failure": {
+      "title": "Failure rate",
+      "headline": "{rate} of {counted, plural, one {# run} other {# runs}} failed or were lost; cancelled runs are left out",
+      "headlineNone": "No run ended done, failed or lost",
+      "series": {
+        "rate": "Failure rate",
+        "failing": "Failed or lost",
+        "counted": "Done, failed or lost"
+      }
+    },
+    "duration": {
+      "title": "Run duration",
+      "headline": "Median {p50}, 90th percentile {p90}, from start to end",
+      "headlineNone": "No run that started has ended",
+      "series": {
+        "p50": "Median",
+        "p90": "90th percentile"
+      }
+    },
+    "tokens": {
+      "title": "Tokens by type",
+      "headline": "{count, plural, one {# token} other {# tokens}} from {runs, plural, one {# run} other {# runs}} that reported usage",
+      "headlineNone": "No run reported its usage",
+      "series": {
+        "cacheRead": "Cache read",
+        "input": "Input",
+        "output": "Output",
+        "reasoning": "Reasoning",
+        "total": "Total"
+      }
+    },
+    "format": {
+      "under": "under 1s",
+      "seconds": "{seconds}s",
+      "minutes": "{minutes}m {seconds}s",
+      "hours": "{hours}h {minutes}m",
+      "tickSeconds": "{seconds}s",
+      "tickMinutes": "{minutes}m",
+      "tickHours": "{hours}h"
     }
   },
   "inbox": {
     "title": "Inbox",
-    "description": "Decisions the agents of your plan runs ask you, and what they tell you: pushes and merges into a default branch, plans finished, runs failed. Decisions that wait for your answer come first.",
     "listTitle": "Notifications",
     "unreadCount": "{count, plural, =0 {Nothing unread} other {# unread}}",
     "openCount": "{count, plural, one {# decision waits for you} other {# decisions wait for you}}",
     "markAll": "Mark all as read",
     "markShown": "Mark these as read",
-    "markedAll": "{count, plural, =0 {Nothing was left to mark read.} one {Marked # notification read.} other {Marked # notifications read.}}",
+    "markedAll": "{count, plural, =0 {Nothing was left to mark as read} one {# notification marked as read} other {# notifications marked as read}}",
     "count": "{count, plural, one {# notification} other {# notifications}}",
     "waitingTitle": "Waiting for your answer",
     "restTitle": "Notices and past decisions",
@@ -2138,12 +2646,6 @@
       "decision": "Decision",
       "notice": "Notice"
     },
-    "decisionState": {
-      "open": "Open",
-      "answered": "Answered",
-      "expired": "Expired",
-      "cancelled": "Cancelled"
-    },
     "category": {
       "deploy": "Deploy",
       "delete_data": "Delete data",
@@ -2177,28 +2679,29 @@
       "moreCommits": "and {count} more",
       "fewerCommits": "Show fewer"
     },
-    "panel": {
-      "back": "All notifications",
+    "sheet": {
+      "title": "Decision #{id}",
+      "titleUnknown": "Decision",
       "close": "Close",
       "notFoundTitle": "Decision #{id} was not found",
       "notFoundDescription": "It belongs to a project or plan you cannot read, or the link is wrong."
     },
+    "screen": {
+      "back": "Back to Inbox",
+      "soFar": "What the agent did so far",
+      "soFarList": "The last things the agent did, oldest first",
+      "soFarEmpty": "The agent has not reported anything yet.",
+      "soFarError": "Couldn't read what the agent did.",
+      "soFarRetry": "Try again",
+      "soFarOpen": "Open the run's trace"
+    },
     "decision": {
-      "number": "Decision #{id}",
-      "project": "Project",
-      "run": "Run",
-      "runLink": "#{id}",
-      "plan": "Plan",
-      "step": "Step",
-      "stepLink": "Step {key}",
-      "asked": "Asked",
-      "owner": "Asked of",
+      "runLink": "Run #{id}",
+      "stepLink": "step {key}",
+      "asked": "asked <time></time>",
       "context": "Context from the agent",
-      "options": "Options",
-      "chosen": "Chosen",
-      "recommended": "Recommended",
       "answerTitle": "Answer",
-      "answeredBy": "Answered by <who>{login}</who>",
+      "answeredBy": "by <who>{login}</who>",
       "answerOption": "Option:",
       "answerText": "In their words:",
       "delivered": "The agent got the answer",
@@ -2207,25 +2710,38 @@
       "onlyOwner": "Only {owner}, who dispatched run #{run}, can answer this decision.",
       "runGone": "Run #{run} is {state}: no agent can take an answer any more.",
       "expired": "Nobody answered while run #{run} was parked for 7 days, so the run was cancelled and the decision expired.",
-      "cancelled": "Run #{run} ended before anyone answered, so the decision was cancelled."
+      "cancelled": "Run #{run} ended before anyone answered, so the decision was cancelled.",
+      "waitingYou": "Waiting for you",
+      "waitingFor": "Waiting for {owner}",
+      "parksIn": "parks in {duration}",
+      "parked": "parked <time></time>",
+      "showMore": "Show more",
+      "showLess": "Show less",
+      "agentsPick": "Agent's pick"
     },
     "answer": {
       "title": "Answer decision #{id}",
-      "options": "Pick an option",
-      "optionsHint": "The agent recommends one of them; nothing is picked for you.",
       "clearOption": "Clear the choice",
       "text": "Your answer",
-      "textHint": "Optional when you pick an option: anything the agent should know with it. Without an option, your words are the answer.",
-      "placeholder": "Example: deploy after 18:00, once the backup has finished",
       "bytes": "{count} of {max} bytes",
       "empty": "Pick an option or write an answer first.",
       "long": "The words of an answer are at most {max} bytes of UTF-8. Shorten them.",
-      "hint": "The answer goes to the agent of run #{run} through its inbox. It cannot be changed once sent.",
-      "hintParked": "Run #{run} is parked: your answer resumes it as a new run on the same worker, in the same session. It cannot be changed once sent.",
       "send": "Send answer",
       "sending": "Sending…",
-      "sent": "Answer sent to run #{run}. The worker hands it to the agent at its next turn.",
-      "sentResumed": "Answer sent. Run #{run} was parked; it resumes as run #{next} on the same worker."
+      "sentResumed": "Run #{run} was parked; it resumes as run #{next} on the same worker.",
+      "sentTitle": "Answer sent to run #{run}",
+      "sentText": "The worker hands it to the agent at its next turn.",
+      "sentResumedTitle": "Answer sent",
+      "openRun": "Open run #{id}",
+      "failed": "Couldn't send the answer",
+      "legend": "Your answer",
+      "note": "Note for the agent (optional)",
+      "notePlaceholder": "Add a note for the agent",
+      "textPlaceholder": "Write your answer for the agent",
+      "foot": "The agent continues as soon as you answer.",
+      "footParked": "The run resumes on the same worker as soon as you answer.",
+      "takeOver": "Take over",
+      "takeOverLabel": "Take over run #{run} in the terminal"
     },
     "errors": {
       "forbidden": "The hub refused: only {owner}, who dispatched run #{run}, can answer, and only while they hold the writer role on {project}.",
@@ -2234,6 +2750,44 @@
       "apiMessage": "The hub says: {message}",
       "readForbidden": "The hub refused to mark these notifications read. Reload the page and try again.",
       "readGone": "These notifications changed meanwhile. The list was read again."
-    }
+    },
+    "markedOne": "Notification marked as read",
+    "markFailed": "Couldn't mark as read"
+  },
+  "toast": {
+    "region": "Notifications",
+    "dismiss": "Dismiss",
+    "requestId": "Request id: {id}"
+  },
+  "live": {
+    "label": "Updates:",
+    "state": {
+      "live": "Live",
+      "reconnecting": "Reconnecting",
+      "paused": "Paused",
+      "offline": "Offline"
+    },
+    "detail": {
+      "updated": "updated {ago}",
+      "lastUpdate": "last update {ago}",
+      "noUpdate": "no update yet",
+      "paused": "by you",
+      "retryIn": "retry in {retry}, polling every {poll}",
+      "retryingNow": "retrying now, polling every {poll}",
+      "streamRetry": "stream retry in {retry}, polling every {poll} meanwhile",
+      "streamReconnecting": "reconnecting the stream"
+    },
+    "ago": {
+      "now": "just now",
+      "seconds": "{count}s ago",
+      "minutes": "{count} min ago",
+      "hours": "{count} h ago"
+    },
+    "duration": {
+      "seconds": "{value}s",
+      "minutes": "{value} min"
+    },
+    "retry": "Retry now",
+    "resume": "Resume"
   }
 }

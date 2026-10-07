@@ -1,13 +1,14 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { CircleAlert, Flag, GitBranch, GitMerge, ListChecks, Loader2, Play, TriangleAlert, X } from "lucide-react";
+import { CircleAlert, Flag, GitBranch, GitMerge, ListChecks, Play, TriangleAlert, X } from "lucide-react";
 import Link from "next/link";
 import { useFormatter, useTranslations } from "next-intl";
 import { type FormEvent, type ReactNode, useId, useState } from "react";
 
 import { InlineError, useWriteFailure } from "@/components/admin/notice";
-import { STEP_LOOK, useStepStatusText } from "@/components/plans/status";
+import { useStepStatusText } from "@/components/plans/status";
+import { StatusBadge, useStatusText } from "@/components/status/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
@@ -18,7 +19,7 @@ import { workersQuery } from "@/components/workers/queries";
 import { browserApi } from "@/lib/api/browser";
 import { isApiError } from "@/lib/api/errors";
 import { planQuery } from "@/lib/plan-queries";
-import { parsePlan, type StepGroup } from "@/lib/plans";
+import { parsePlan } from "@/lib/plans";
 import { projectQuery, whoamiQuery } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 
@@ -46,6 +47,8 @@ type Props = {
   onOpenChange: (open: boolean) => void;
   /** Called with the plan run the hub queued, for the page to say so once the dialog closes. */
   onDispatched: (run: Run) => void;
+  /** Where focus goes once the dialog has closed, for a dialog opened without a trigger (the command palette). */
+  onCloseAutoFocus?: (event: Event) => void;
 };
 
 /**
@@ -54,7 +57,7 @@ type Props = {
  * repos, checkpoints, and where the agent may push and merge), takes the runtime, model, mode, worker and timeout, and
  * says in its footer which worker could take it now. The content mounts each time the dialog opens.
  */
-export function PlanRunDialog({ project, planId, open, onOpenChange, onDispatched }: Props) {
+export function PlanRunDialog({ project, planId, open, onOpenChange, onDispatched, onCloseAutoFocus }: Props) {
   const write = useDispatchPlanRun(project);
   const pending = write.isPending;
   const guard = (event: Event) => {
@@ -67,6 +70,7 @@ export function PlanRunDialog({ project, planId, open, onOpenChange, onDispatche
         className="flex max-h-[calc(100dvh-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl"
         onEscapeKeyDown={guard}
         onInteractOutside={guard}
+        onCloseAutoFocus={onCloseAutoFocus}
         data-testid="plan-run-dialog"
       >
         <PlanRunForm project={project} planId={planId} write={write} onClose={() => onOpenChange(false)} onDispatched={onDispatched} />
@@ -187,7 +191,7 @@ function PlanRunForm({
             <Skeleton className="h-16 w-full" />
           </div>
         ) : loadFailed ? (
-          <p className="text-sm text-destructive" role="alert" data-testid="plan-run-load-failed">
+          <p className="text-sm text-danger" role="alert" data-testid="plan-run-load-failed">
             {t("loadFailed")}
           </p>
         ) : scope ? (
@@ -252,7 +256,7 @@ function PlanRunForm({
             id={`${ids}-timeout`}
             value={String(timeout)}
             onChange={(event) => setTimeoutHours(Number(event.target.value) as PlanTimeout)}
-            className="w-full sm:w-56 [&_select]:h-9"
+            className="w-full sm:w-56 md:[&_select]:h-9"
             aria-describedby={`${ids}-timeout-hint`}
             data-testid="plan-run-timeout"
           >
@@ -285,8 +289,8 @@ function PlanRunForm({
               {tDispatch("cancel")}
             </Button>
           </DialogClose>
-          <Button type="submit" size="lg" disabled={!runnable || model.problem !== null} aria-disabled={pending || undefined} data-testid="plan-run-submit">
-            {pending ? <Loader2 className="animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <Play aria-hidden="true" />}
+          <Button type="submit" size="lg" disabled={!runnable || model.problem !== null} busy={pending} data-testid="plan-run-submit">
+            <Play aria-hidden="true" />
             {pending ? t("submitting") : t("submit")}
           </Button>
         </div>
@@ -297,7 +301,7 @@ function PlanRunForm({
 
 function Blockers({ project, blockers }: { project: string; blockers: Blocker[] }) {
   const t = useTranslations("runs.planRun.blocker");
-  const tState = useTranslations("runs.state");
+  const tState = useStatusText("run");
   const format = useFormatter();
   if (blockers.length === 0) return null;
   const runLink = (id: number) =>
@@ -323,7 +327,7 @@ function Blockers({ project, blockers }: { project: string; blockers: Blocker[] 
     }
   };
   return (
-    <div role="alert" className="flex flex-col gap-1.5 rounded-lg border border-warning-foreground/30 bg-warning px-3 py-2.5 text-sm text-warning-foreground" data-testid="plan-run-blockers">
+    <div role="alert" className="flex flex-col gap-1.5 rounded-md border border-attention/30 bg-attention-soft px-3 py-2.5 text-sm text-attention" data-testid="plan-run-blockers">
       {blockers.map((blocker) => (
         <p key={blocker.kind} className="flex items-start gap-2 text-pretty" data-testid={`plan-run-blocker-${blocker.kind}`}>
           <CircleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
@@ -339,18 +343,18 @@ function ScopeSummary({ scope }: { scope: PlanRunScope }) {
   const t = useTranslations("runs.planRun.summary");
   const format = useFormatter();
   const statusText = useStepStatusText();
-  const counts: [StepGroup, number][] = (
+  const counts = (
     [
       ["pending", scope.pending],
       ["in_progress", scope.inProgress],
       ["blocked", scope.blocked],
-    ] as [StepGroup, number][]
+    ] as const
   ).filter(([, count]) => count > 0);
   const defaults = scope.repos.filter((repo) => repo.defaultBranch);
   const titled = new Map(scope.checkpoints.map((step) => [step.key, step.title]));
 
   return (
-    <section aria-labelledby="plan-run-summary-title" className="flex flex-col gap-3 rounded-lg border bg-muted/30 p-3 sm:p-4" data-testid="plan-run-summary">
+    <section aria-labelledby="plan-run-summary-title" className="flex flex-col gap-3 rounded-md border bg-muted/30 p-3 sm:p-4" data-testid="plan-run-summary">
       <h3 id="plan-run-summary-title" className="flex items-center gap-2 text-sm font-medium">
         <ListChecks className="size-4 text-muted-foreground" aria-hidden="true" />
         {t("title")}
@@ -361,15 +365,16 @@ function ScopeSummary({ scope }: { scope: PlanRunScope }) {
           <span className="font-medium">{t("stepsCount", { count: scope.steps.length })}</span>
           {counts.length > 0 ? (
             <span className="flex flex-wrap gap-1.5">
-              {counts.map(([group, count]) => {
-                const look = STEP_LOOK[group];
-                return (
-                  <Badge key={group} variant={look.variant} className="tabular-nums" data-status={group}>
-                    <look.icon aria-hidden="true" />
-                    {t("statusCount", { count, status: statusText(group) })}
-                  </Badge>
-                );
-              })}
+              {counts.map(([group, count]) => (
+                <StatusBadge
+                  key={group}
+                  kind="step"
+                  status={group}
+                  label={t("statusCount", { count, status: statusText(group) })}
+                  className="tabular-nums"
+                  data-testid={`plan-run-count-${group}`}
+                />
+              ))}
             </span>
           ) : null}
           <span className="text-xs text-pretty text-muted-foreground">{t("order")}</span>
@@ -387,7 +392,7 @@ function ScopeSummary({ scope }: { scope: PlanRunScope }) {
                     {repo.branch}
                   </span>
                 ) : (
-                  <span className="text-xs text-destructive">{t("noBranch")}</span>
+                  <span className="text-xs text-danger">{t("noBranch")}</span>
                 )}
                 {repo.defaultBranch ? (
                   <Badge variant="warning" data-testid="plan-run-default-branch">
@@ -425,8 +430,8 @@ function ScopeSummary({ scope }: { scope: PlanRunScope }) {
       </dl>
       <p
         className={cn(
-          "flex items-start gap-2 rounded-md border px-3 py-2 text-xs text-pretty",
-          defaults.length ? "border-warning-foreground/30 bg-warning text-warning-foreground" : "bg-card text-muted-foreground",
+          "flex items-start gap-2 rounded-sm border px-3 py-2 text-xs text-pretty",
+          defaults.length ? "border-attention/30 bg-attention-soft text-attention" : "bg-card text-muted-foreground",
         )}
         data-testid="plan-run-push"
         data-default={defaults.length > 0}

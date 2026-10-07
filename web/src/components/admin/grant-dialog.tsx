@@ -1,10 +1,12 @@
 "use client";
 
 import type { UseMutationResult } from "@tanstack/react-query";
-import { ArrowLeft, Info, Loader2, ShieldPlus } from "lucide-react";
+import { ArrowLeft, Info, ShieldPlus } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { type FormEvent, useEffect, useId, useRef, useState } from "react";
 
+import { useVisibilityName, VisibilityLevel } from "@/components/data/visibility";
+import type { Notice } from "@/components/feedback/toast";
 import { RoleBadge } from "@/components/shell/role-badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -23,8 +25,8 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import type { Project } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 
-import { type AdminUser, type GrantInput, LOGIN_NAME, putGrant, type Role, ROLES } from "./data";
-import { InlineError, type Notice, useWriteFailure } from "./notice";
+import { type AdminUser, type GrantInput, LOGIN_NAME, memberHref, putGrant, type Role, ROLES } from "./data";
+import { InlineError, useWriteFailure } from "./notice";
 import { useAdminWrite } from "./use-admin-write";
 
 /** What the dialog opens with: empty, a user (from their page), or one of their grants (to change it). */
@@ -118,6 +120,7 @@ function GrantSteps({
   const unchanged = existing !== undefined && existing.role === role && existing.max_level === maxLevel;
   const pending = write.isPending;
   const roleName = (value: string) => tRoles(isRole(value) ? value : "none");
+  const levelName = useVisibilityName();
 
   const changeProject = (next: string) => {
     setProject(next);
@@ -134,7 +137,7 @@ function GrantSteps({
     if (!name) found.login = t("loginRequired");
     else if (!LOGIN_NAME.test(name)) found.login = tFilters("invalidLogin");
     if (!selected) found.project = t("projectRequired");
-    else if (!selected.levels.includes(maxLevel)) found.maxLevel = t("maxLevelRequired");
+    else if (!selected.levels.includes(maxLevel)) found.maxLevel = t("visibilityRequired");
     setErrors(found);
     const first = (["login", "project", "maxLevel"] as const).find((key) => found[key]);
     if (first) {
@@ -155,7 +158,9 @@ function GrantSteps({
     }
     onDone({
       tone: "success",
-      text: t("success", { role: roleName(grant.role), level: grant.max_level, login: grant.login, project: grant.project }),
+      text: t("successTitle", { login: grant.login }),
+      description: t("success", { role: roleName(grant.role), level: levelName(grant.max_level), login: grant.login, project: grant.project }),
+      link: { label: t("openMember"), href: memberHref(grant.login) },
     });
     onClose();
   };
@@ -176,7 +181,7 @@ function GrantSteps({
           <DialogDescription>{t("confirmDescription")}</DialogDescription>
         </DialogHeader>
         <dl
-          className="grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-2.5 rounded-lg border bg-muted/40 px-3 py-3 text-sm"
+          className="grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-2.5 rounded-md border bg-muted/40 px-3 py-3 text-sm"
           data-testid="grant-summary"
         >
           <dt className="text-muted-foreground">{t("summary.login")}</dt>
@@ -187,12 +192,14 @@ function GrantSteps({
           <dd>
             <RoleBadge role={role} />
           </dd>
-          <dt className="text-muted-foreground">{t("summary.maxLevel")}</dt>
-          <dd className="font-mono font-medium">{maxLevel}</dd>
+          <dt className="text-muted-foreground">{t("summary.visibility")}</dt>
+          <dd className="font-medium">
+            <VisibilityLevel level={maxLevel} />
+          </dd>
           {existing ? (
             <>
               <dt className="text-muted-foreground">{t("summary.previous")}</dt>
-              <dd className="text-muted-foreground">{t("previous", { role: roleName(existing.role), level: existing.max_level })}</dd>
+              <dd className="text-muted-foreground">{t("previous", { role: roleName(existing.role), level: levelName(existing.max_level) })}</dd>
             </>
           ) : null}
         </dl>
@@ -215,10 +222,9 @@ function GrantSteps({
             type="button"
             size="lg"
             onClick={() => void confirm()}
-            aria-disabled={pending || undefined}
+            busy={pending}
             data-testid="grant-confirm"
           >
-            {pending ? <Loader2 className="animate-spin motion-reduce:animate-none" aria-hidden="true" /> : null}
             {pending ? t("saving") : t("confirm")}
           </Button>
         </DialogFooter>
@@ -272,7 +278,7 @@ function GrantSteps({
             {t("loginHint")}
           </p>
           {errors.login ? (
-            <p id={`${ids}-login-error`} className="text-xs font-medium text-destructive">
+            <p id={`${ids}-login-error`} className="text-xs font-medium text-danger">
               {errors.login}
             </p>
           ) : null}
@@ -282,7 +288,7 @@ function GrantSteps({
       <div className="flex flex-col gap-1.5">
         <Label htmlFor={`${ids}-project`}>{t("project")}</Label>
         {projects.length === 0 ? (
-          <p className="rounded-lg border border-dashed px-3 py-2.5 text-sm text-muted-foreground" data-testid="grant-no-projects">
+          <p className="rounded-md border border-dashed px-3 py-2.5 text-sm text-muted-foreground" data-testid="grant-no-projects">
             {t("noProjects")}
           </p>
         ) : (
@@ -291,7 +297,7 @@ function GrantSteps({
             name="project"
             value={project}
             onChange={(event) => changeProject(event.target.value)}
-            className="w-full [&_select]:h-9"
+            className="w-full md:[&_select]:h-9"
             aria-invalid={errors.project ? true : undefined}
             aria-describedby={describedBy("project")}
             aria-required="true"
@@ -308,7 +314,7 @@ function GrantSteps({
           </NativeSelect>
         )}
         {errors.project ? (
-          <p id={`${ids}-project-error`} className="text-xs font-medium text-destructive">
+          <p id={`${ids}-project-error`} className="text-xs font-medium text-danger">
             {errors.project}
           </p>
         ) : null}
@@ -329,7 +335,7 @@ function GrantSteps({
             <Label
               key={value}
               htmlFor={`${ids}-role-${value}`}
-              className="flex cursor-pointer items-start gap-3 rounded-lg border px-3 py-2.5 font-normal transition-colors hover:bg-muted/50 has-data-checked:border-primary/40 has-data-checked:bg-accent"
+              className="flex cursor-pointer items-start gap-3 rounded-md border px-3 py-2.5 font-normal transition-colors hover:bg-muted/50 has-data-checked:border-brand/40 has-data-checked:bg-surface-selected"
             >
               <RadioGroupItem
                 id={`${ids}-role-${value}`}
@@ -352,7 +358,7 @@ function GrantSteps({
       </fieldset>
 
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor={`${ids}-maxLevel`}>{t("maxLevel")}</Label>
+        <Label htmlFor={`${ids}-maxLevel`}>{t("visibility")}</Label>
         <NativeSelect
           id={`${ids}-maxLevel`}
           name="max_level"
@@ -362,33 +368,33 @@ function GrantSteps({
             setErrors((e) => ({ ...e, maxLevel: undefined }));
           }}
           disabled={!selected}
-          className="w-full [&_select]:h-9 [&_select]:font-mono"
+          className="w-full md:[&_select]:h-9"
           aria-invalid={errors.maxLevel ? true : undefined}
           aria-describedby={describedBy("maxLevel", true)}
           data-testid="grant-max-level"
         >
           {(selected?.levels ?? []).map((level) => (
             <NativeSelectOption key={level} value={level}>
-              {level}
+              {levelName(level)}
             </NativeSelectOption>
           ))}
         </NativeSelect>
         <p id={`${ids}-maxLevel-hint`} className="text-xs text-muted-foreground">
-          {t("maxLevelHint")}
+          {t("visibilityHint")}
         </p>
         {errors.maxLevel ? (
-          <p id={`${ids}-maxLevel-error`} className="text-xs font-medium text-destructive">
+          <p id={`${ids}-maxLevel-error`} className="text-xs font-medium text-danger">
             {errors.maxLevel}
           </p>
         ) : null}
       </div>
 
       {existing ? (
-        <p className="flex items-start gap-2 rounded-lg border bg-accent px-3 py-2.5 text-sm text-accent-foreground" data-testid="grant-existing">
+        <p className="flex items-start gap-2 rounded-md border bg-accent px-3 py-2.5 text-sm text-accent-foreground" data-testid="grant-existing">
           <Info className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
           {unchanged
             ? t("unchanged", { login: grantee?.login ?? name })
-            : t("existing", { login: grantee?.login ?? name, role: roleName(existing.role), level: existing.max_level })}
+            : t("existing", { login: grantee?.login ?? name, role: roleName(existing.role), level: levelName(existing.max_level) })}
         </p>
       ) : null}
 

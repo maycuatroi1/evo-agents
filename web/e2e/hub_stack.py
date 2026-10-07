@@ -27,6 +27,13 @@ over a real PTY, whose line discipline echoes what is typed and whose program an
 and each resize with ``size: <cols>x<rows>``; GET /terminal/worker/<run_id> says how it went. POST /sessions/age
 {login, hours} makes that member's web sessions that many hours older, for the 12-hour limit of the terminal.
 
+The Insights specs need runs that ended on earlier days: POST /runs/backdate {run_id, days, seconds} moves an ended run
+``days`` whole UTC days back, every time of it alike, and with ``seconds`` makes it start that long before it ended.
+
+The admin specs need tokens nobody used lately: POST /tokens/idle {token_id, days} makes a token look last used
+``days`` days ago, its expiry TOKEN_TTL after that, as the hub would have left it; the token must not be used again,
+since a use moves both forward.
+
 The hub seals secrets with an EVO_HUB_SECRETS_KEY of its own, made for each start, and has no GitHub App: a run gets
 the owner's secrets as leases, and a repo on github.com that no git secret covers is missing with that reason.
 
@@ -195,6 +202,59 @@ def age_sessions(dsn: str, body: dict) -> dict:
     return {"sessions": len(rows)}
 
 
+BACKDATE_RUN = """
+UPDATE runs
+   SET finished_at = finished_at - make_interval(secs => %(shift)s),
+       started_at = CASE WHEN %(seconds)s::float8 IS NULL THEN started_at - make_interval(secs => %(shift)s)
+                         ELSE finished_at - make_interval(secs => %(shift)s + %(seconds)s::float8) END,
+       leased_at = CASE WHEN %(seconds)s::float8 IS NULL OR leased_at IS NULL
+                        THEN leased_at - make_interval(secs => %(shift)s)
+                        ELSE least(leased_at - make_interval(secs => %(shift)s),
+                                   finished_at - make_interval(secs => %(shift)s + %(seconds)s::float8)) END,
+       queued_at = queued_at - make_interval(secs => %(shift)s + coalesce(%(seconds)s::float8, 0))
+ WHERE id = %(run)s AND finished_at IS NOT NULL
+RETURNING id, started_at, finished_at
+"""
+
+
+def backdate_run(dsn: str, body: dict) -> dict:
+    """Move ended run ``run_id`` ``days`` whole UTC days back (its queue, lease, start and end times alike), and with
+    ``seconds`` make it start that long before it ended. LookupError for a run that has not ended."""
+    import psycopg
+
+    seconds = body.get("seconds")
+    params = {
+        "run": int(body["run_id"]),
+        "shift": float(int(body.get("days") or 0) * 86_400),
+        "seconds": None if seconds is None else float(seconds),
+    }
+    with psycopg.connect(dsn, autocommit=True) as conn:
+        row = conn.execute(BACKDATE_RUN, params).fetchone()
+    if row is None:
+        raise LookupError(f"no ended run {body['run_id']}")
+    return {"run_id": row[0], "started_at": row[1].isoformat() if row[1] else None, "finished_at": row[2].isoformat()}
+
+
+def idle_token(dsn: str, body: dict) -> dict:
+    """Make token ``token_id`` last used ``days`` days ago and expire TOKEN_TTL after that. LookupError for a token
+    the stack never issued."""
+    import psycopg
+
+    from evo_agents.hub.server.security import TOKEN_TTL
+
+    with psycopg.connect(dsn, autocommit=True) as conn:
+        row = conn.execute(
+            "UPDATE tokens SET last_used_at = now() - make_interval(days => %(days)s), "
+            "created_at = least(created_at, now() - make_interval(days => %(days)s)), "
+            "expires_at = now() - make_interval(days => %(days)s) + %(ttl)s "
+            "WHERE id = %(id)s RETURNING id, last_used_at, expires_at",
+            {"days": int(body["days"]), "ttl": TOKEN_TTL, "id": int(body["token_id"])},
+        ).fetchone()
+    if row is None:
+        raise LookupError(f"no token {body['token_id']}")
+    return {"token_id": row[0], "last_used_at": row[1].isoformat(), "expires_at": row[2].isoformat()}
+
+
 INPUT, OUTPUT, RESIZE = 0, 1, 2  # evo_agents.hub.terminal: the frame types
 CONNECT_FOR = 30.0  # seconds the fake worker keeps trying while no browser waits
 
@@ -347,6 +407,16 @@ def control_server(
                 self._reply(200, {"started": True})
             elif self.path == "/sessions/age":
                 self._reply(200, age_sessions(dsn, body))
+            elif self.path == "/runs/backdate":
+                try:
+                    self._reply(200, backdate_run(dsn, body))
+                except LookupError as exc:
+                    self._reply(404, {"error": str(exc)})
+            elif self.path == "/tokens/idle":
+                try:
+                    self._reply(200, idle_token(dsn, body))
+                except LookupError as exc:
+                    self._reply(404, {"error": str(exc)})
             elif self.path in ("/kg/seed", "/kg/build"):
                 try:
                     self._reply(200, seeder.handle(self.path, body))

@@ -26,7 +26,7 @@ export type InboxFilters = {
   project: string | null;
   unread: boolean;
   page: number;
-  /** The decision shown beside the list, as `/inbox?decision=ID` names it. */
+  /** The decision shown in the sheet over the list, as `/inbox?decision=ID` names it. */
   decision: number | null;
 };
 
@@ -165,4 +165,26 @@ export function answerAccess(decision: Pick<Decision, "state" | "owner" | "run_s
 export function chosenOption(decision: Pick<Decision, "options" | "answer_option">) {
   if (decision.answer_option === null) return null;
   return decision.options.find((option) => option.key === decision.answer_option) ?? null;
+}
+
+/**
+ * The option picked for the owner when the form opens: the one the agent recommends, as the kit's DecisionCard has it,
+ * so one click answers with the agent's pick. Null when the agent recommends none, or names a key it did not offer.
+ */
+export function initialOption(decision: Pick<Decision, "options" | "recommended">): string | null {
+  const key = decision.recommended ?? decision.options.find((option) => option.recommended)?.key ?? null;
+  return key !== null && decision.options.some((option) => option.key === key) ? key : null;
+}
+
+/**
+ * When a run waiting for this decision parks, as the decision's head says it: in so long while it waits, since when
+ * once it parked, nothing while its agent still works or before the hub has said (`parksAt` from GET /v1/me/overview).
+ */
+export type ParkTiming = { kind: "parksIn"; ms: number } | { kind: "parked"; at: string } | null;
+
+export function parkTiming(decision: Pick<Decision, "state" | "run_state">, parksAt: string | null, now: number | null): ParkTiming {
+  if (decision.state !== "open" || parksAt === null) return null;
+  if (decision.run_state === "parked") return { kind: "parked", at: parksAt };
+  if (decision.run_state !== "waiting" || now === null) return null;
+  return { kind: "parksIn", ms: Math.max(0, Date.parse(parksAt) - now) };
 }

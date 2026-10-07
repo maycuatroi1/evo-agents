@@ -1,19 +1,23 @@
 import { cn } from "@/lib/utils";
 
-/** The hub's mark: three linked nodes, the shape of a knowledge graph. Decorative; the name is text beside it. */
+/**
+ * The hub's mark: three linked nodes on a rounded tile, the shape of a knowledge graph. The tile is `brand`, two nodes
+ * and the edges `on-brand`; the third node stays amber `#fbbf24` in both themes, the person in the loop. Decorative;
+ * the name is text beside it. Do not recolour it; show it at 20 px or larger.
+ */
 export function BrandMark({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 32 32" aria-hidden="true" focusable="false" className={cn("size-8 shrink-0", className)}>
-      <rect width="32" height="32" rx="7" className="fill-primary" />
+      <rect width="32" height="32" rx="7" className="fill-brand" />
       <path
         d="M10 11h12M10 11l6 11M22 11l-6 11"
-        className="stroke-primary-foreground"
+        className="stroke-on-brand"
         strokeWidth="1.6"
         strokeLinecap="round"
         fill="none"
       />
-      <circle cx="10" cy="11" r="3.2" className="fill-primary-foreground" />
-      <circle cx="22" cy="11" r="3.2" className="fill-primary-foreground" />
+      <circle cx="10" cy="11" r="3.2" className="fill-on-brand" />
+      <circle cx="22" cy="11" r="3.2" className="fill-on-brand" />
       <circle cx="16" cy="22" r="3.2" fill="#fbbf24" />
     </svg>
   );

@@ -2,18 +2,19 @@
 
 import { useFormatter, useTranslations } from "next-intl";
 
+import { TONE_TEXT } from "@/components/status/status-badge";
 import { percent, STEP_GROUPS, type StepCounts, type StepGroup } from "@/lib/plans";
 import { cn } from "@/lib/utils";
 
-import { STEP_LOOK, useStepStatusText } from "./status";
+import { stepLook, useStepStatusText } from "./status";
 
-/** The chart colours of web/DESIGN.md: emerald done, blue in progress, amber blocked, slate the rest. */
+/** The state marks of web/DESIGN.md: green done, cobalt in progress, amber blocked, neutral the rest. */
 const SEGMENT: Record<StepGroup, string> = {
-  done: "bg-chart-3",
-  in_progress: "bg-chart-1",
-  blocked: "bg-chart-2",
+  done: "bg-success-solid",
+  in_progress: "bg-running",
+  blocked: "bg-attention-solid",
   pending: "bg-transparent",
-  other: "bg-chart-5",
+  other: "bg-neutral-solid",
 };
 
 /**
@@ -64,9 +65,9 @@ export function PlanProgress({ counts }: { counts: StepCounts }) {
   const format = useFormatter();
   const shown = STEP_GROUPS.filter((group) => group !== "other" || counts.other > 0);
   return (
-    <section aria-labelledby="plan-progress-title" className="flex flex-col gap-3 rounded-xl border bg-card p-4">
+    <section aria-labelledby="plan-progress-title" className="flex flex-col gap-3 rounded-md border bg-card shadow-raised p-4">
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-        <h2 id="plan-progress-title" className="text-base font-medium">
+        <h2 id="plan-progress-title" className="text-[15px] leading-[22px] font-semibold">
           {t("title")}
         </h2>
         <p className="text-sm tabular-nums" data-testid="plan-progress">
@@ -80,11 +81,11 @@ export function PlanProgress({ counts }: { counts: StepCounts }) {
       <StepBar counts={counts} className="h-2.5" />
       <ul className="flex flex-wrap gap-x-5 gap-y-1.5 text-sm" aria-label={t("legend")}>
         {shown.map((group) => {
-          const look = STEP_LOOK[group];
+          const look = stepLook(group);
           return (
             <li key={group} className="flex items-center gap-1.5">
               <span className={cn("size-2.5 rounded-full border border-input", SEGMENT[group])} aria-hidden="true" />
-              <look.icon className={cn("size-3.5", look.tone)} aria-hidden="true" />
+              <look.icon className={cn("size-3.5", TONE_TEXT[look.tone])} aria-hidden="true" />
               <span>{group === "other" ? t("otherStatus") : label(group)}</span>
               <span className="font-mono text-xs font-medium tabular-nums" data-testid={`count-${group}`}>
                 {counts[group]}

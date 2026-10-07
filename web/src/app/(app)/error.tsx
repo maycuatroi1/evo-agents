@@ -21,7 +21,7 @@ export default function AppError({ error, reset }: { error: Error & { digest?: s
       description={t("unexpectedDescription")}
       testId="state-unexpected"
     >
-      <Button size="lg" onClick={reset}>
+      <Button onClick={reset}>
         <RotateCcw aria-hidden="true" />
         {t("retry")}
       </Button>

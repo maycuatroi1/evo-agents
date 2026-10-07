@@ -4,12 +4,13 @@ import { Check, Info, Lock } from "lucide-react";
 import { useFormatter, useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 
+import { Identifier } from "@/components/data/identifier";
+import { VisibilityLevel, VisibilityTag } from "@/components/data/visibility";
 import { PageHeader } from "@/components/shell/page-header";
 import { RoleBadge } from "@/components/shell/role-badge";
 import { QueryView, useHubQuery } from "@/components/states/query-view";
 import { NotFoundState, PageSkeleton } from "@/components/states/states";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { browserApi } from "@/lib/api/browser";
@@ -44,13 +45,13 @@ function Ladder({ project }: { project: Project }) {
               <li
                 key={level}
                 className={cn(
-                  "flex items-center justify-between gap-3 rounded-lg border px-3 py-2",
-                  visible ? "border-primary/30 bg-accent text-accent-foreground" : "bg-muted/40 text-muted-foreground",
+                  "flex items-center justify-between gap-3 rounded-md border px-3 py-2",
+                  visible ? "border-brand/30 bg-surface-selected text-foreground" : "bg-muted/40 text-muted-foreground",
                 )}
               >
-                <span className="flex items-center gap-2 font-mono text-xs font-medium">
-                  <span className="w-4 text-right tabular-nums opacity-70">{index + 1}</span>
-                  {level}
+                <span className="flex items-center gap-2 text-sm font-medium">
+                  <span className="w-4 text-right text-xs tabular-nums opacity-70">{index + 1}</span>
+                  <VisibilityLevel level={level} />
                 </span>
                 <span className="flex items-center gap-1.5 text-xs">
                   {visible ? <Check className="size-3.5" aria-hidden="true" /> : <Lock className="size-3.5" aria-hidden="true" />}
@@ -66,9 +67,7 @@ function Ladder({ project }: { project: Project }) {
           <dt className="text-muted-foreground">{t("locations")}</dt>
           <dd className="flex flex-wrap gap-1">
             {project.locations.map((location) => (
-              <Badge key={location} variant="outline" className="font-mono">
-                {location}
-              </Badge>
+              <Identifier key={location} value={location} />
             ))}
           </dd>
         </dl>
@@ -90,7 +89,7 @@ function SimpleTable({
 }) {
   if (rows.length === 0) return <p className="text-sm text-muted-foreground">{empty}</p>;
   return (
-    <div className="overflow-hidden rounded-lg border">
+    <div className="overflow-hidden rounded-md border">
       <Table scrollLabel={caption}>
         <TableCaption className="sr-only">{caption}</TableCaption>
         <TableHeader className="bg-muted/50">
@@ -170,9 +169,7 @@ function Sinks({ project }: { project: Project }) {
             <span key="id" className="font-medium">
               {sink.id}
             </span>,
-            <Badge key="kind" variant="outline" className="font-mono">
-              {sink.kind}
-            </Badge>,
+            <Identifier key="kind" value={sink.kind} />,
             <Mono key="clearance">
               {[sink.clearance.level, sink.clearance.location].filter(Boolean).join(" / ")}
             </Mono>,
@@ -229,16 +226,11 @@ function Overview({ project }: { project: Project }) {
   return (
     <>
       <PageHeader
-        eyebrow={t("title")}
-        title={<span className="font-mono">{project.name}</span>}
-        meta={
+        title={project.name}
+        tags={
           <>
             <RoleBadge role={project.role} />
-            {project.max_level ? (
-              <Badge variant="outline" className="font-mono" aria-label={`${t("maxLevel")}: ${project.max_level}`}>
-                {project.max_level}
-              </Badge>
-            ) : null}
+            {project.max_level ? <VisibilityTag level={project.max_level} testId="project-visibility" /> : null}
           </>
         }
       />

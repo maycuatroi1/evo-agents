@@ -18,6 +18,7 @@ import { StepDetail } from "./step-detail";
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/p/demo/plans",
+  useSearchParams: () => new URLSearchParams(),
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), prefetch: vi.fn() }),
 }));
 
@@ -60,9 +61,9 @@ beforeEach(() => {
 describe("StepStatusBadge", () => {
   it("says the status in words beside its icon", () => {
     renderVi(<StepStatusBadge group="blocked" />);
-    const badge = screen.getByText("Bị chặn");
+    const badge = screen.getByText("Bị chặn").closest("[data-slot=status-badge]");
     expect(badge).toHaveAttribute("data-status", "blocked");
-    expect(badge.querySelector("svg")).toHaveAttribute("aria-hidden", "true");
+    expect(badge?.querySelector("svg")).toHaveAttribute("aria-hidden", "true");
   });
 
   it("keeps an unknown status as written", () => {
@@ -87,10 +88,14 @@ describe("PlansList", () => {
     const completed = within(screen.getByTestId("plans-completed"));
     expect(completed.getByRole("link", { name: "kg-prototype" })).toBeInTheDocument();
     expect(completed.getByText("13/13 bước xong")).toBeInTheDocument();
-    expect(screen.getByTestId("plans-read-only")).toHaveTextContent("evo harness step");
-    expect(screen.getByTestId("plans-read-only")).toHaveTextContent("evo-agents hub plan");
-    // The only buttons are the tables' sort buttons: nothing on the page changes a plan.
-    const buttons = screen.getAllByRole("button").map((button) => button.textContent ?? "");
+    const banner = screen.getByTestId("plans-read-only");
+    expect(banner).toHaveTextContent("Chỉ đọc. Plan được sửa từ CLI bằng evo harness step; mỗi lần sửa thêm một revision.");
+    expect(within(banner).getByRole("button", { name: "Sao chép lệnh evo harness step" })).toHaveTextContent("Sao chép");
+    // Besides the banner's Copy, the only buttons are the tables' sort buttons: nothing on the page changes a plan.
+    const buttons = screen
+      .getAllByRole("button")
+      .filter((button) => !banner.contains(button))
+      .map((button) => button.textContent ?? "");
     expect(buttons.length).toBeGreaterThan(0);
     for (const name of buttons) expect(name).toMatch(/^(Plan|Tiến độ|Revision|Sửa lần cuối)/);
   });
@@ -100,9 +105,11 @@ describe("PlansList", () => {
       client.setQueryData(planKeys.all("demo"), summaries),
     );
     await userEvent.type(screen.getByRole("searchbox", { name: "Tìm plan theo tên hoặc mã" }), "kg-");
+    // The query is committed after a 150 ms pause in typing.
+    expect(await screen.findByText("Hiện 1 trên 2 plan")).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Hub cho agent" })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "kg-prototype" })).toBeInTheDocument();
-    expect(screen.getByText("Hiện 1 trên 2 plan")).toBeInTheDocument();
+    expect(window.location.search).toBe("?q=kg-");
   });
 
   it("shows the no-access state on a 403", () => {

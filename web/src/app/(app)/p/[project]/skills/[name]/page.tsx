@@ -1,10 +1,11 @@
-import { dehydrate, HydrationBoundary } from "@tanstack/react-query";
+import { dehydrate } from "@tanstack/react-query";
 import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
 
 import { blobStoreQuery, SKILL_NAME, skillQuery } from "@/components/skills/queries";
 import { SkillDetail } from "@/components/skills/skill-detail";
 import { NotFoundState } from "@/components/states/states";
+import { HydrationBoundary } from "@/lib/api/hydration-boundary";
 import { getQueryClient, prefetch } from "@/lib/api/prefetch";
 import { serverApi } from "@/lib/api/server";
 import { PROJECT_NAME, projectQuery } from "@/lib/queries";

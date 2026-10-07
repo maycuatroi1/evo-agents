@@ -208,6 +208,21 @@ export function countSteps(steps: readonly Pick<PlanStep, "group">[]): StepCount
   return counts;
 }
 
+/**
+ * A plan's state for its pill (`StatusBadge` kind plan): completed by its area; active while a plan run holds it;
+ * blocked when every step not done is blocked, so nothing moves until a person unblocks one; pending otherwise.
+ */
+export function planState(
+  area: PlanArea,
+  counts: StepCounts | null,
+  planRunActive = false,
+): "pending" | "active" | "blocked" | "completed" {
+  if (area === "completed") return "completed";
+  if (planRunActive) return "active";
+  if (counts && counts.blocked > 0 && counts.blocked === counts.total - counts.done) return "blocked";
+  return "pending";
+}
+
 /** Whole percent of `done` out of `total`, rounded down so a plan shows 100 % only when every step is done. */
 export function percent(done: number, total: number): number {
   if (total <= 0) return 0;

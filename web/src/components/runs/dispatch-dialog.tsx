@@ -1,12 +1,13 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { CircleCheck, CircleDashed, Info, Loader2, Send, X } from "lucide-react";
+import { CircleCheck, CircleDashed, Info, Send, X } from "lucide-react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { type FormEvent, useId, useState } from "react";
 
 import { InlineError, useWriteFailure } from "@/components/admin/notice";
+import { type StepStatus, useStatusText } from "@/components/status/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
@@ -45,6 +46,8 @@ type Props = {
   onOpenChange: (open: boolean) => void;
   /** Called with the runs the hub queued, for the page to say so once the dialog closes. */
   onDispatched: (runs: Run[]) => void;
+  /** Where focus goes once the dialog has closed, for a dialog opened without a trigger (the command palette). */
+  onCloseAutoFocus?: (event: Event) => void;
   /** The plan, and the step of it, to start from: the step page opens the dialog on its own step. */
   plan?: string;
   step?: string;
@@ -55,7 +58,7 @@ type Props = {
  * Steps that are not ready are listed with the reason and cannot be picked. The footer says which of the visitor's
  * workers could take the runs now. The content mounts each time the dialog opens, so it starts from the defaults.
  */
-export function DispatchDialog({ project, open, onOpenChange, onDispatched, plan, step }: Props) {
+export function DispatchDialog({ project, open, onOpenChange, onDispatched, plan, step, onCloseAutoFocus }: Props) {
   const write = useDispatch(project);
   const pending = write.isPending;
   const guard = (event: Event) => {
@@ -68,6 +71,7 @@ export function DispatchDialog({ project, open, onOpenChange, onDispatched, plan
         className="flex max-h-[calc(100dvh-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl"
         onEscapeKeyDown={guard}
         onInteractOutside={guard}
+        onCloseAutoFocus={onCloseAutoFocus}
         data-testid="dispatch-dialog"
       >
         <DispatchForm
@@ -198,11 +202,11 @@ function DispatchForm({
             {plans.isPending ? (
               <Skeleton className="h-9 w-full" />
             ) : plans.isError ? (
-              <p className="text-sm text-destructive" role="alert">
+              <p className="text-sm text-danger" role="alert">
                 {t("plansFailed")}
               </p>
             ) : choices.length === 0 ? (
-              <p className="rounded-lg border border-dashed px-3 py-2 text-sm text-muted-foreground" data-testid="dispatch-no-plans">
+              <p className="rounded-md border border-dashed px-3 py-2 text-sm text-muted-foreground" data-testid="dispatch-no-plans">
                 {t("noPlans")}
               </p>
             ) : (
@@ -210,7 +214,7 @@ function DispatchForm({
                 id={`${ids}-plan`}
                 value={plan ?? ""}
                 onChange={(event) => changePlan(event.target.value)}
-                className="w-full [&_select]:h-9 [&_select]:font-mono"
+                className="w-full md:[&_select]:h-9 [&_select]:font-mono"
                 data-testid="dispatch-plan"
               >
                 {choices.map((choice) => (
@@ -229,7 +233,7 @@ function DispatchForm({
               id={`${ids}-timeout`}
               value={String(timeout)}
               onChange={(event) => setTimeoutMinutes(Number(event.target.value))}
-              className="w-full [&_select]:h-9"
+              className="w-full md:[&_select]:h-9"
               aria-describedby={`${ids}-timeout-hint`}
               data-testid="dispatch-timeout"
             >
@@ -317,7 +321,7 @@ function DispatchForm({
         </Section>
 
         {tooMany ? (
-          <p className="text-sm font-medium text-destructive" role="alert">
+          <p className="text-sm font-medium text-danger" role="alert">
             {t("tooMany", { max: MAX_DISPATCH_STEPS })}
           </p>
         ) : null}
@@ -343,10 +347,10 @@ function DispatchForm({
             type="submit"
             size="lg"
             disabled={selected.length === 0 || tooMany || plan === null}
-            aria-disabled={pending || undefined}
+            busy={pending}
             data-testid="dispatch-submit"
           >
-            {pending ? <Loader2 className="animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <Send aria-hidden="true" />}
+            <Send aria-hidden="true" />
             {pending ? t("submitting") : t("submit", { count: selected.length })}
           </Button>
         </div>
@@ -361,9 +365,9 @@ export type PlanRunHold = { planId: string; run: ActiveRun };
 /** "Plan run #12 (Waiting) holds this plan's steps until it ends.", linked to the run. */
 export function PlanRunHoldNote({ project, hold, testId }: { project: string; hold: PlanRunHold; testId?: string }) {
   const t = useTranslations("runs.planRun");
-  const tState = useTranslations("runs.state");
+  const tState = useStatusText("run");
   return (
-    <p className="flex items-start gap-2 rounded-lg border border-dashed px-3 py-2.5 text-sm text-pretty text-muted-foreground" data-testid={testId}>
+    <p className="flex items-start gap-2 rounded-md border border-dashed px-3 py-2.5 text-sm text-pretty text-muted-foreground" data-testid={testId}>
       <Info className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
       <span>
         {t.rich("holds", {
@@ -371,7 +375,7 @@ export function PlanRunHoldNote({ project, hold, testId }: { project: string; ho
           state: tState(hold.run.state),
           login: hold.run.dispatched_by,
           link: (chunks) => (
-            <Link href={runHref(project, hold.run.id)} className="font-medium text-primary underline-offset-4 hover:underline">
+            <Link href={runHref(project, hold.run.id)} className="font-medium text-brand underline-offset-4 hover:underline">
               {chunks}
             </Link>
           ),
@@ -411,7 +415,7 @@ function StepPicker({
           <Skeleton className="h-12 w-full" />
         </div>
       ) : state.isError && steps.length === 0 ? (
-        <p className="text-sm text-destructive" role="alert">
+        <p className="text-sm text-danger" role="alert">
           {t("stepsFailed")}
         </p>
       ) : (
@@ -428,7 +432,7 @@ function StepPicker({
             </div>
           ) : null}
           {open.length === 0 ? (
-            <p className="rounded-lg border border-dashed px-3 py-2.5 text-sm text-muted-foreground" data-testid="dispatch-no-open">
+            <p className="rounded-md border border-dashed px-3 py-2.5 text-sm text-muted-foreground" data-testid="dispatch-no-open">
               {t("noOpen")}
             </p>
           ) : (
@@ -447,8 +451,8 @@ function StepPicker({
             </p>
           ) : null}
           {settled.length > 0 ? (
-            <details className="group rounded-lg border" data-testid="dispatch-settled">
-              <summary className="flex min-h-10 cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm text-muted-foreground hover:bg-muted/50">
+            <details className="group rounded-md border" data-testid="dispatch-settled">
+              <summary className="flex min-h-10 cursor-pointer max-md:min-h-11 items-center gap-2 rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-muted/50">
                 {t("settled", { count: settled.length })}
               </summary>
               <ul className="flex flex-col gap-2 border-t p-2">
@@ -477,8 +481,8 @@ function planRunReason({ planId, run }: PlanRunHold): string {
  */
 export function useNotReadyReason() {
   const t = useTranslations("runs.dispatch.reason");
-  const tStatus = useTranslations("plans.status");
-  const tState = useTranslations("runs.state");
+  const tStatus = useStatusText("step");
+  const tState = useStatusText("run");
   return (step: StepReadiness, planRun: PlanRunHold | null = null): string => {
     if (step.ready) return "";
     if (step.active_run) {
@@ -486,7 +490,7 @@ export function useNotReadyReason() {
     }
     if (step.status && step.status !== "pending") {
       const known = ["in_progress", "blocked", "done"].includes(step.status);
-      return t("status", { status: known ? tStatus(step.status as "done") : step.status });
+      return t("status", { status: known ? tStatus(step.status as StepStatus) : step.status });
     }
     if (planRun && step.reason === planRunReason(planRun)) {
       return t("planRun", { id: planRun.run.id, state: tState(planRun.run.state), login: planRun.run.dispatched_by });

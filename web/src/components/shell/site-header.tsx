@@ -7,6 +7,8 @@ import { Fragment } from "react";
 
 import { adminCrumbs } from "@/components/admin/crumbs";
 import { InboxBell } from "@/components/inbox/inbox-bell";
+import { LiveIndicator } from "@/components/live/live-indicator";
+import { PaletteTrigger } from "@/components/palette/palette-trigger";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -15,11 +17,11 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
-import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { useWorkerName } from "@/components/workers/hooks";
+import { cn } from "@/lib/utils";
 
-import { HUB_NAV, type NavLabel, PROJECT_NAV, projectHref } from "./nav";
+import { HOME_NAV, HUB_NAV, type NavLabel, PROJECT_NAV, projectHref } from "./nav";
 
 type Crumb = { label: string; href?: string };
 
@@ -43,14 +45,15 @@ function useCrumbs(): Crumb[] {
   if (parts[0] === "p" && parts[1]) {
     const project = decodeURIComponent(parts[1]);
     const section = PROJECT_NAV.find((item) => item.segment !== "" && item.segment === parts[2]);
-    const crumbs: Crumb[] = [{ label: t("projects"), href: "/" }, { label: project }];
+    // The kit's trail starts at the project (Home and the other projects are in the sidebar and the switcher).
+    const crumbs: Crumb[] = [{ label: project }];
     if (section) {
-      crumbs[1].href = projectHref(project);
+      crumbs[0].href = projectHref(project);
       crumbs.push({ label: t(section.label satisfies NavLabel) });
       if (parts[3]) {
         // A page inside the section (a plan, a memory, a skill): the section links back to its list, the item is
         // named by its id (a number as #id), and links to itself when a page below it (a step) is shown.
-        crumbs[2].href = projectHref(project, section.segment);
+        crumbs[1].href = projectHref(project, section.segment);
         crumbs.push({
           label: itemLabel(parts[3]),
           href: parts[4] ? projectHref(project, `${section.segment}/${parts[3]}`) : undefined,
@@ -62,42 +65,59 @@ function useCrumbs(): Crumb[] {
     return crumbs;
   }
   if (parts[0] === "admin") return adminCrumbs(parts.slice(1), t("admin"), tAdmin);
-  const hub = HUB_NAV.find((item) => item.href !== "/" && parts[0] === item.href.slice(1));
+  const hub = [...HOME_NAV, ...HUB_NAV].find((item) => item.href !== "/" && parts[0] === item.href.slice(1));
   if (hub && parts.length > 1) {
     return [{ label: t(hub.label), href: hub.href }, { label: workerName ?? itemLabel(parts[1]) }];
   }
   if (hub) return [{ label: t(hub.label) }];
-  return [{ label: t("projects") }];
+  return [{ label: t("home") }];
 }
 
+/**
+ * The kit's top bar: 52 px on the surface, sticky, with the sidebar toggle, the breadcrumb (13 px, slashes between
+ * crumbs, the current page in the text colour), then on the right whether the page is current (LiveIndicator, from what
+ * the page registered) and the inbox bell, after the field that opens the command palette (Cmd K or Ctrl K).
+ */
 export function SiteHeader() {
   const t = useTranslations("nav");
   const crumbs = useCrumbs();
   return (
-    <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-2 border-b bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/80 md:px-6">
-      <SidebarTrigger label={t("toggleSidebar")} className="-ml-1 size-9" />
-      <Separator orientation="vertical" className="mr-1 data-vertical:h-5 data-vertical:self-center" />
+    <header
+      data-testid="top-bar"
+      className="sticky top-0 z-10 flex h-13 shrink-0 items-center gap-3 border-b bg-card px-4 md:px-6"
+    >
+      <SidebarTrigger label={t("toggleSidebar")} size="icon" className="-ml-1.5" />
       <Breadcrumb aria-label={t("breadcrumb")} className="min-w-0">
-        <BreadcrumbList className="flex-nowrap">
-          {crumbs.map((crumb, index) => (
-            <Fragment key={`${index}-${crumb.label}`}>
-              {index > 0 ? <BreadcrumbSeparator /> : null}
-              <BreadcrumbItem className="min-w-0">
-                {crumb.href ? (
-                  <BreadcrumbLink asChild>
-                    <Link href={crumb.href as "/"} className="truncate">
-                      {crumb.label}
-                    </Link>
-                  </BreadcrumbLink>
-                ) : (
-                  <BreadcrumbPage className="truncate font-medium">{crumb.label}</BreadcrumbPage>
-                )}
-              </BreadcrumbItem>
-            </Fragment>
-          ))}
+        <BreadcrumbList className="flex-nowrap gap-1.5 text-[13px] text-muted-foreground">
+          {crumbs.map((crumb, index) => {
+            // Under 768 px the trail keeps its first crumb and the page itself. The page keeps its width (up to three
+            // quarters of the trail) and the crumbs before it give way, so a run's "#12" is never cut down to "#.". A
+            // crumb alone takes the width it needs: three quarters of a trail that is only itself would cut it short.
+            const last = index === crumbs.length - 1;
+            const middle = index > 0 && !last;
+            const trailing = last && crumbs.length > 1;
+            return (
+              <Fragment key={`${index}-${crumb.label}`}>
+                {index > 0 ? <BreadcrumbSeparator className={cn("text-fg-subtle", middle && "max-md:hidden")}>/</BreadcrumbSeparator> : null}
+                <BreadcrumbItem className={cn("min-w-0", middle && "max-md:hidden", trailing && "max-w-[75%] shrink-0")}>
+                  {crumb.href ? (
+                    <BreadcrumbLink asChild>
+                      <Link href={crumb.href as "/"} className="truncate rounded-xs">
+                        {crumb.label}
+                      </Link>
+                    </BreadcrumbLink>
+                  ) : (
+                    <BreadcrumbPage className="truncate font-medium">{crumb.label}</BreadcrumbPage>
+                  )}
+                </BreadcrumbItem>
+              </Fragment>
+            );
+          })}
         </BreadcrumbList>
       </Breadcrumb>
-      <div className="ml-auto flex shrink-0 items-center gap-1 pl-2">
+      <div className="ml-auto flex min-w-0 shrink-0 items-center gap-1">
+        <PaletteTrigger />
+        <LiveIndicator />
         <InboxBell />
       </div>
     </header>

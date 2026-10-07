@@ -56,7 +56,7 @@ describe("RunTerminalPanel", () => {
   });
 });
 
-const log: RunLog = { lines: [], moves: [], status: "live" } as unknown as RunLog;
+const log: RunLog = { lines: [], events: [], moves: [], status: "live" } as unknown as RunLog;
 
 describe("RunLogCard with a terminal", () => {
   it("is the log alone without one", () => {
@@ -70,7 +70,7 @@ describe("RunLogCard with a terminal", () => {
     const panel = vi.fn((shown: boolean) => <p data-testid="panel" data-shown={shown} />);
     renderVi(<RunLogCard runId={12} log={log} active composer={null} terminal={panel} />);
     const tabs = within(screen.getByRole("tablist", { name: "Cách xem phiên" })).getAllByRole("tab");
-    expect(tabs.map((tab) => tab.textContent)).toEqual(["Log", "Terminal"]);
+    expect(tabs.map((tab) => tab.textContent)).toEqual(["Log thô", "Terminal"]);
     expect(tabs[0]).toHaveAttribute("aria-selected", "true");
     expect(screen.getByTestId("panel")).toHaveAttribute("data-shown", "false");
     expect(screen.getByTestId("log-lines")).toBeVisible();
@@ -80,5 +80,40 @@ describe("RunLogCard with a terminal", () => {
     expect(screen.getByTestId("panel")).toHaveAttribute("data-shown", "true");
     expect(screen.getByTestId("log-lines")).toBeInTheDocument(); // hidden, not unmounted
     expect(screen.queryByTestId("log-count")).toBeNull();
+  });
+
+  it("shows the Trace first, the Raw log with its count, and the composer under both but not the Terminal", async () => {
+    const user = userEvent.setup();
+    const trace = vi.fn((shown: boolean) => <p data-testid="trace-panel" data-shown={shown} />);
+    const panel = vi.fn((shown: boolean) => <p data-testid="panel" data-shown={shown} />);
+    const lines = [{ seq: 1, at: "2026-10-07T03:00:00Z", kind: "system", group: "system", text: "claimed", tone: null, truncated: false, shortened: false, haystack: "claimed" }];
+    renderVi(
+      <RunLogCard
+        runId={12}
+        log={{ ...log, lines } as unknown as RunLog}
+        active
+        composer={<form data-testid="composer" />}
+        trace={trace}
+        terminal={panel}
+      />,
+    );
+    const tabs = within(screen.getByRole("tablist", { name: "Cách xem phiên" })).getAllByRole("tab");
+    expect(tabs.map((tab) => tab.textContent)).toEqual(["Trace", "Log thô1, 1 dòng", "Terminal"]);
+    expect(tabs[1]).toHaveAccessibleName("Log thô, 1 dòng");
+    expect(tabs[0]).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByTestId("trace-panel")).toHaveAttribute("data-shown", "true");
+    expect(screen.getByTestId("log-status")).toBeInTheDocument();
+    expect(screen.queryByTestId("log-count")).toBeNull();
+    expect(screen.getByTestId("composer")).toBeInTheDocument();
+
+    await user.click(tabs[1]);
+    expect(screen.getByTestId("trace-panel")).toHaveAttribute("data-shown", "false");
+    expect(screen.getByTestId("log-count")).toHaveTextContent("1 dòng");
+    expect(screen.getByTestId("composer")).toBeInTheDocument();
+
+    await user.click(tabs[2]);
+    expect(screen.getByTestId("panel")).toHaveAttribute("data-shown", "true");
+    expect(screen.queryByTestId("composer")).toBeNull();
+    expect(screen.queryByTestId("log-status")).toBeNull();
   });
 });

@@ -13,7 +13,8 @@ export const queryKeys = {
   whoami: ["auth", "whoami"] as const,
   projects: ["projects"] as const,
   project: (name: string) => ["projects", name] as const,
-  adminStats: ["admin", "stats"] as const,
+  /** What waits for the signed-in member, what runs and what ended, over every project of their grants. */
+  overview: ["me", "overview"] as const,
 };
 
 export const whoamiQuery = (api: ApiSource) =>
@@ -34,10 +35,14 @@ export const projectQuery = (api: ApiSource, name: string) =>
     queryFn: ({ signal }) => call(api().GET("/v1/projects/{project}", { params: { path: { project: name } }, signal })),
   });
 
-export const adminStatsQuery = (api: ApiSource) =>
+/**
+ * GET /v1/me/overview: the Home's one round trip. The Inbox and a run's page read it too, for when a waiting run parks
+ * (`open_decisions[].parks_at`), which only the hub can say since the wait is its own setting.
+ */
+export const overviewQuery = (api: ApiSource) =>
   queryOptions({
-    queryKey: queryKeys.adminStats,
-    queryFn: ({ signal }) => call(api().GET("/v1/admin/stats", { signal })),
+    queryKey: queryKeys.overview,
+    queryFn: ({ signal }) => call(api().GET("/v1/me/overview", { signal })),
   });
 
 /** `admin.PROJECT_NAME`: a name the API can accept; anything else is not a project. */

@@ -8,7 +8,6 @@ import {
   CircleMinus,
   GitBranch,
   Info,
-  Loader2,
   type LucideIcon,
   Pause,
   Play,
@@ -20,11 +19,12 @@ import {
 import { useFormatter, useTranslations } from "next-intl";
 import { type ReactNode, useId, useState } from "react";
 
-import { NoticeArea, type Notice, useNotice } from "@/components/admin/notice";
+import { notify, notifyFailure } from "@/components/feedback/toast";
 import { WorkerRuns } from "@/components/runs/worker-runs";
 import { PageHeader } from "@/components/shell/page-header";
 import { QueryView, useHubQuery } from "@/components/states/query-view";
 import { NotFoundState, PageSkeleton } from "@/components/states/states";
+import { StatusBadge } from "@/components/status/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -35,7 +35,7 @@ import { whoamiQuery } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 
 import { Ago } from "./ago";
-import { ChipList, WorkerStatusBadge } from "./badges";
+import { ChipList } from "./badges";
 import { ConfirmByName } from "./confirm-by-name";
 import { HeartbeatStrip } from "./heartbeat-strip";
 import { useRecordPrefetched, useWorkerFailure, useWorkerWrite } from "./hooks";
@@ -56,30 +56,20 @@ import {
  */
 export function WorkerDetail({ id, initialError }: { id: number; initialError: ApiErrorInfo | null }) {
   const t = useTranslations("workers.detail");
-  const state = useHubQuery(workerQuery(browserApi, id), initialError);
-  const { notice, show, clear } = useNotice();
+  // The page's main query: the top bar says from it whether the page is current (every 10 seconds).
+  const state = useHubQuery(workerQuery(browserApi, id), initialError, { live: true });
   useRecordPrefetched(workerKeys.one(id), (data) => [data as Worker]);
   if (state.status === "error" && state.error.status === 404) {
     return <NotFoundState title={t("notFoundTitle")} description={t("notFoundDescription")} />;
   }
   return (
     <QueryView state={state} loading={<PageSkeleton />}>
-      {(worker) => <WorkerPage worker={worker} notice={notice} onNotice={show} onDismiss={clear} />}
+      {(worker) => <WorkerPage worker={worker} />}
     </QueryView>
   );
 }
 
-function WorkerPage({
-  worker,
-  notice,
-  onNotice,
-  onDismiss,
-}: {
-  worker: Worker;
-  notice: Notice | null;
-  onNotice: (notice: Notice) => void;
-  onDismiss: () => void;
-}) {
+function WorkerPage({ worker }: { worker: Worker }) {
   const t = useTranslations("workers.detail");
   const format = useFormatter();
   const { data: me } = useQuery(whoamiQuery(browserApi));
@@ -90,14 +80,9 @@ function WorkerPage({
   return (
     <div className="flex flex-col gap-6" data-testid="worker-detail" data-worker-id={worker.id}>
       <PageHeader
-        eyebrow={t("eyebrow")}
-        title={
-          <span className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-            <span className="font-mono [overflow-wrap:anywhere]">{worker.name}</span>
-            <WorkerStatusBadge view={view} className="h-6 text-sm" />
-          </span>
-        }
-        description={t("facts", {
+        title={worker.name}
+        status={<StatusBadge kind="worker" status={view} size="lg" />}
+        sub={t("facts", {
           os: worker.os,
           arch: worker.arch,
           hostname: worker.hostname,
@@ -105,13 +90,12 @@ function WorkerPage({
           version: worker.agent_version,
           date: registered,
         })}
-        meta={<WorkerActions worker={worker} isOwner={isOwner} onNotice={onNotice} />}
+        actions={<WorkerActions worker={worker} isOwner={isOwner} />}
       />
-      <NoticeArea notice={notice} onDismiss={onDismiss} />
       <StatusNote worker={worker} isOwner={isOwner} admin={Boolean(me?.admin)} />
       <div className="grid gap-4 lg:grid-cols-3">
         <Runtimes worker={worker} />
-        <Scope worker={worker} isOwner={isOwner} onNotice={onNotice} />
+        <Scope worker={worker} isOwner={isOwner} />
         <Checkouts worker={worker} />
       </div>
       <Card data-testid="worker-heartbeat">
@@ -154,9 +138,9 @@ function Note({ tone, icon: Icon, children, testId }: { tone: "info" | "warning"
   return (
     <p
       className={cn(
-        "flex items-start gap-2.5 rounded-lg border px-3 py-2.5 text-sm",
-        tone === "info" && "border-info-foreground/15 bg-info text-info-foreground",
-        tone === "warning" && "border-warning-foreground/20 bg-warning text-warning-foreground",
+        "flex items-start gap-2.5 rounded-md border px-3 py-2.5 text-sm",
+        tone === "info" && "bg-muted text-foreground",
+        tone === "warning" && "border-attention/20 bg-attention-soft text-attention",
         tone === "muted" && "bg-card text-muted-foreground",
       )}
       data-testid={testId}
@@ -218,7 +202,7 @@ function StatusNote({ worker, isOwner, admin }: { worker: Worker; isOwner: boole
 }
 
 function RuntimeIcon({ runtime }: { runtime: RuntimeInfo }) {
-  if (runtime.available === true) return <CircleCheck className="mt-0.5 size-4 shrink-0 text-chart-3" aria-hidden="true" />;
+  if (runtime.available === true) return <CircleCheck className="mt-0.5 size-4 shrink-0 text-success" aria-hidden="true" />;
   if (runtime.available === false) return <CircleMinus className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />;
   return <CircleHelp className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />;
 }
@@ -268,7 +252,7 @@ function Runtimes({ worker }: { worker: Worker }) {
   );
 }
 
-function Scope({ worker, isOwner, onNotice }: { worker: Worker; isOwner: boolean; onNotice: (notice: Notice) => void }) {
+function Scope({ worker, isOwner }: { worker: Worker; isOwner: boolean }) {
   const t = useTranslations("workers.detail.scope");
   const webOnly = worker.dispatch_from === "web";
   return (
@@ -285,7 +269,7 @@ function Scope({ worker, isOwner, onNotice }: { worker: Worker; isOwner: boolean
           <ChipList items={worker.labels} empty={t("noLabels")} />
         </dd>
         <dt className="text-muted-foreground">{t("permissions")}</dt>
-        <dd className="flex items-start gap-1.5 text-warning-foreground">
+        <dd className="flex items-start gap-1.5 text-attention">
           <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
           <span>{t("permissionsValue", { owner: worker.owner })}</span>
         </dd>
@@ -296,7 +280,7 @@ function Scope({ worker, isOwner, onNotice }: { worker: Worker; isOwner: boolean
         <dt className="text-muted-foreground">{t("terminal")}</dt>
         <dd>{worker.allow_web_terminal ? t("terminalOn") : t("terminalOff")}</dd>
       </dl>
-      {isOwner && workerView(worker) !== "revoked" ? <DispatchFromSwitch worker={worker} onNotice={onNotice} /> : null}
+      {isOwner && workerView(worker) !== "revoked" ? <DispatchFromSwitch worker={worker} /> : null}
     </SectionCard>
   );
 }
@@ -304,9 +288,9 @@ function Scope({ worker, isOwner, onNotice }: { worker: Worker; isOwner: boolean
 /**
  * The owner's switch between runs dispatched with any of their credentials and runs dispatched from the web only. The
  * hub takes the change from a web session alone, and the switch shows what the hub holds: it moves once the hub
- * answers and the worker is read again.
+ * answers and the worker is read again. The result is a toast; a failure stays until dismissed.
  */
-function DispatchFromSwitch({ worker, onNotice }: { worker: Worker; onNotice: (notice: Notice) => void }) {
+function DispatchFromSwitch({ worker }: { worker: Worker }) {
   const t = useTranslations("workers.dispatchFrom");
   const id = useId();
   const failure = useWorkerFailure();
@@ -317,11 +301,14 @@ function DispatchFromSwitch({ worker, onNotice }: { worker: Worker; onNotice: (n
     try {
       await write.mutateAsync(webOnly ? "web" : "any"); // resolves once the worker queries were reloaded
     } catch (error) {
-      const failed = failure(error);
-      onNotice({ tone: "error", text: failed.text, detail: failed.detail, requestId: failed.requestId });
+      notifyFailure(t("failed", { name: worker.name }), failure(error));
       return;
     }
-    onNotice({ tone: "success", text: t(webOnly ? "webSuccess" : "anySuccess", { name: worker.name }) });
+    notify(
+      webOnly
+        ? { tone: "success", text: t("webSuccess", { name: worker.name }), description: t("webSuccessText") }
+        : { tone: "success", text: t("anySuccess", { name: worker.name }), description: t("anySuccessText") },
+    );
   };
 
   return (
@@ -339,7 +326,7 @@ function DispatchFromSwitch({ worker, onNotice }: { worker: Worker; onNotice: (n
         <label htmlFor={`${id}-switch`} className="cursor-pointer text-sm font-medium">
           {t("label")}
         </label>
-        <p id={`${id}-hint`} className="text-xs leading-snug text-pretty text-muted-foreground">
+        <p id={`${id}-hint`} className="text-xs leading-4 text-pretty text-fg-subtle">
           {t("hint")}
         </p>
       </div>
@@ -377,7 +364,11 @@ function Checkouts({ worker }: { worker: Worker }) {
 
 const ACTION_ICONS = { drain: Pause, undrain: Play, revoke: Power } as const;
 
-function WorkerActions({ worker, isOwner, onNotice }: { worker: Worker; isOwner: boolean; onNotice: (notice: Notice) => void }) {
+/**
+ * Drain, Resume and Revoke. Each waits for the hub, then says what happened in a toast; a failure the confirm dialog can
+ * not help with (Resume has none, a 404 or 409 means the worker changed) closes it and stays as a toast until dismissed.
+ */
+function WorkerActions({ worker, isOwner }: { worker: Worker; isOwner: boolean }) {
   const t = useTranslations("workers.actions");
   const failure = useWorkerFailure();
   const write = useWorkerWrite((api, action: WorkerAction) => changeWorker(api, worker.id, action));
@@ -392,13 +383,13 @@ function WorkerActions({ worker, isOwner, onNotice }: { worker: Worker; isOwner:
     } catch (error) {
       const failed = failure(error);
       if (action === "undrain" || failed.status === 404 || failed.status === 409) {
-        setConfirming(null); // the page shows what the hub holds now; the reason goes above it
-        onNotice({ tone: "error", text: failed.text, detail: failed.detail, requestId: failed.requestId });
+        setConfirming(null); // the page shows what the hub holds now; the reason stays in a toast
+        notifyFailure(t(`${action}Failed`, { name: worker.name }), failed);
       }
       return; // anything else stays in the dialog
     }
     setConfirming(null);
-    onNotice({ tone: "success", text: t(`${action}Success`, { name: worker.name }) });
+    notify({ tone: "success", text: t(`${action}Success`, { name: worker.name }), description: t(`${action}SuccessText`) });
   };
 
   const open = (action: "drain" | "revoke") => {
@@ -416,17 +407,17 @@ function WorkerActions({ worker, isOwner, onNotice }: { worker: Worker; isOwner:
             <Button
               type="button"
               variant="outline"
-              size="lg"
               onClick={() => void run("undrain")}
               aria-disabled={write.isPending || undefined}
+              busy={pendingUndrain}
               data-testid="worker-undrain"
             >
-              {pendingUndrain ? <Loader2 className="animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <Play aria-hidden="true" />}
+              <Play aria-hidden="true" />
               {pendingUndrain ? t("undrainPending") : t("undrain")}
             </Button>
           ) : null
         ) : (
-          <Button type="button" variant="outline" size="lg" onClick={() => open("drain")} data-testid="worker-drain">
+          <Button type="button" variant="outline" onClick={() => open("drain")} data-testid="worker-drain">
             <Pause aria-hidden="true" />
             {t("drain")}
           </Button>
@@ -434,8 +425,7 @@ function WorkerActions({ worker, isOwner, onNotice }: { worker: Worker; isOwner:
         <Button
           type="button"
           variant="outline"
-          size="lg"
-          className="text-destructive hover:text-destructive"
+          className="text-danger hover:text-danger"
           onClick={() => open("revoke")}
           data-testid="worker-revoke"
         >

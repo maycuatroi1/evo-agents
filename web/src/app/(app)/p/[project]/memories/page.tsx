@@ -1,4 +1,4 @@
-import { dehydrate, HydrationBoundary } from "@tanstack/react-query";
+import { dehydrate } from "@tanstack/react-query";
 import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
 
@@ -6,6 +6,7 @@ import { MemoryBrowser } from "@/components/memories/memory-browser";
 import { readFilters, recordParams, type SearchRecord } from "@/components/memories/memory-filters";
 import { memoryListQuery, memorySearchQuery } from "@/components/memories/queries";
 import { NotFoundState } from "@/components/states/states";
+import { HydrationBoundary } from "@/lib/api/hydration-boundary";
 import { getQueryClient, prefetch } from "@/lib/api/prefetch";
 import { serverApi } from "@/lib/api/server";
 import { PROJECT_NAME, projectQuery } from "@/lib/queries";

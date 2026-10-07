@@ -1,6 +1,7 @@
 import type { Page } from "@playwright/test";
 
 import { expectNoSeriousViolations } from "./support/a11y";
+import { signOut } from "./support/auth";
 import { expect, isDeployed, type Member, test } from "./support/fixtures";
 import { newAccount, uniqueName } from "./support/hub";
 import { open } from "./support/plans";
@@ -80,10 +81,18 @@ test("the owner connects the terminal: keys echo through the worker's PTY, a res
   await expect(screen).toContainText("$ hello");
   await page.keyboard.press("Enter");
   await expect(screen).toContainText("echo: hello");
+  // The page's single keys are the agent's here: G then I, ?, D and / reach the PTY, and the page stays where it is.
+  const here = page.url();
+  await page.keyboard.type("gi?d/");
+  await page.keyboard.press("Enter");
+  await expect(screen).toContainText("echo: gi?d/");
+  expect(page.url()).toBe(here);
+  await expect(page.getByTestId("shortcuts-dialog")).toHaveCount(0);
+  await expect(page.getByTestId("dispatch-dialog")).toHaveCount(0);
   await page.keyboard.insertText("xin chào tiếng Việt");
   await page.keyboard.press("Enter");
   await expect(screen).toContainText("echo: xin chào tiếng Việt");
-  expect((await fakeTerminal(run.id)).lines).toEqual(["hello", "xin chào tiếng Việt"]);
+  expect((await fakeTerminal(run.id)).lines).toEqual(["hello", "gi?d/", "xin chào tiếng Việt"]);
 
   // A phone-wide window makes a narrower, taller terminal; the worker gets each new size as a resize frame, the last
   // one being the size the page shows once the layout settles.
@@ -97,8 +106,8 @@ test("the owner connects the terminal: keys echo through the worker's PTY, a res
   };
   await expect.poll(settled, { timeout: 10_000 }).toBe(true);
 
-  // The Log tab keeps the session; back on the Terminal tab it is still live.
-  await main(page).getByRole("tab", { name: "Log" }).click();
+  // The Raw log tab keeps the session; back on the Terminal tab it is still live.
+  await main(page).getByRole("tab", { name: "Raw log" }).click();
   await expect(main(page).getByTestId("log-lines")).toBeVisible();
   await main(page).getByRole("tab", { name: "Terminal" }).click();
   await expect(panel.getByTestId("terminal-status")).toHaveText("Connected");
@@ -133,14 +142,16 @@ test("someone other than the owner sees no Terminal tab, and the hub closes thei
   const { project, run } = await interactiveRun(me);
   const other = newAccount("colleague");
   await admin.grant(project, other.login, "writer", "internal");
-  await page.context().clearCookies();
+  await signOut(page);
   await signInAs(other);
   const violations = await watchCsp(page);
 
   await open(page, runPath(project, run.id));
   await expect(main(page).getByRole("heading", { level: 1 })).toContainText(`Run #${run.id}`);
-  await expect(main(page).getByTestId("log-lines")).toBeVisible();
-  await expect(main(page).getByRole("tab")).toHaveCount(0);
+  await expect(main(page).getByTestId("trace")).toBeVisible();
+  // The Trace and the Raw log, and no Terminal tab.
+  await expect(main(page).getByRole("tab")).toHaveCount(2);
+  await expect(main(page).getByRole("tab", { name: "Terminal" })).toHaveCount(0);
   await expect(main(page).getByTestId("terminal-panel")).toHaveCount(0);
 
   const refused = await terminalCloseCode(page, project, run.id);

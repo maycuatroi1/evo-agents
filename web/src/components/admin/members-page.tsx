@@ -1,30 +1,34 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { ChevronRight, SearchX, ShieldPlus, Users } from "lucide-react";
+import { ChevronRight, ShieldPlus, Users } from "lucide-react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useCallback, useId, useMemo, useState } from "react";
 
-import { DataTable, dataTableColumns } from "@/components/data/data-table";
+import { DataCard, DataToolbar } from "@/components/data/data-card";
+import { ToolbarField, ToolbarFilters } from "@/components/data/filter-sheet";
+import { CellMain, DataTable, dataTableColumns } from "@/components/data/data-table";
+import { NAME_LINK } from "@/components/data/identifier";
+import { SearchField } from "@/components/data/search-field";
+import { VisibilityLevel } from "@/components/data/visibility";
+import { notify } from "@/components/feedback/toast";
 import { PageHeader } from "@/components/shell/page-header";
-import { RoleBadge } from "@/components/shell/role-badge";
+import { RoleBadge, roleLabelKey } from "@/components/shell/role-badge";
 import { QueryView, useHubQuery } from "@/components/states/query-view";
-import { EmptyState, TableSkeleton } from "@/components/states/states";
+import { type ActiveFilter, EmptyState, NoResults, TableSkeleton } from "@/components/states/states";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { browserApi } from "@/lib/api/browser";
 import type { Project } from "@/lib/api/client";
 import type { ApiErrorInfo } from "@/lib/api/errors";
 import { projectsQuery } from "@/lib/queries";
+import { cn } from "@/lib/utils";
 
 import { HubAdminBadge, NotSignedInBadge } from "./badges";
 import { type AdminUser, adminUsersQuery, filterMembers, memberHref, parseMemberFilters, tokensHref } from "./data";
 import { GrantDialog, type GrantPreset } from "./grant-dialog";
-import { NoticeArea, useNotice } from "./notice";
 import { useUrlView } from "./url-state";
 import { When } from "./when";
 
@@ -35,48 +39,66 @@ const NARROW_HIDDEN = {
   actions: "hidden sm:table-cell",
 };
 
+/** A member's grants in two lines at most: the first one in full, then how many more and in which projects. */
 function Grants({ user }: { user: AdminUser }) {
   const t = useTranslations("admin.members");
-  if (user.grants.length === 0) return <span className="text-muted-foreground">{t("noGrants")}</span>;
+  const tRoles = useTranslations("roles");
+  if (user.grants.length === 0) return <span className="text-fg-subtle">{t("noGrants")}</span>;
+  const [first, ...rest] = user.grants;
+  const all = user.grants.map((grant) => `${grant.project} (${tRoles(roleLabelKey(grant.role))})`).join(", ");
   return (
-    <ul className="flex flex-col gap-1.5">
-      {user.grants.map((grant) => (
-        <li key={grant.project} className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          <span className="font-mono text-xs font-medium">{grant.project}</span>
-          <RoleBadge role={grant.role} />
-          <span className="font-mono text-xs text-muted-foreground">{grant.max_level}</span>
-        </li>
-      ))}
-    </ul>
+    <div className="flex min-w-0 flex-col gap-px">
+      <span className="flex items-center gap-2 whitespace-nowrap">
+        <span className="font-mono text-xs font-medium text-foreground">{first.project}</span>
+        <RoleBadge role={first.role} />
+        <VisibilityLevel level={first.max_level} className="text-xs text-muted-foreground" />
+      </span>
+      {rest.length > 0 ? (
+        <span className="max-w-64 truncate text-xs leading-4 text-fg-subtle" title={all}>
+          {t("moreGrants", { count: rest.length, projects: rest.map((grant) => grant.project).join(", ") })}
+        </span>
+      ) : null}
+    </div>
   );
+}
+
+/** A member's grants in one line, for a phone's list: the first one with its role, then how many more. */
+function useGrantLine() {
+  const t = useTranslations("admin.members");
+  const tRoles = useTranslations("roles");
+  return (user: AdminUser): string => {
+    if (user.grants.length === 0) return t("noGrants");
+    const [first, ...rest] = user.grants;
+    const grant = t("mobileGrant", { project: first.project, role: tRoles(roleLabelKey(first.role)) });
+    return rest.length > 0 ? t("mobileMore", { grant, count: rest.length }) : grant;
+  };
 }
 
 function MembersTable({ users, onGrant }: { users: AdminUser[]; onGrant: (login: string) => void }) {
   const t = useTranslations("admin.members");
+  const grantLine = useGrantLine();
   const columns = useMemo(() => {
     const helper = dataTableColumns<AdminUser>();
     return helper.columns([
       helper.accessor("login", {
         header: () => t("columns.login"),
         sortFn: "alphanumeric",
+        meta: { primary: true },
         cell: (info) => {
           const user = info.row.original;
           return (
-            <div className="flex flex-col items-start gap-1.5">
+            <CellMain>
               <Link
                 href={memberHref(user.login)}
-                className="font-medium break-all text-primary underline-offset-4 hover:underline"
+                className={cn(NAME_LINK, "truncate")}
+                title={user.login}
                 data-testid={`member-link-${user.login}`}
               >
                 {user.login}
               </Link>
-              {user.admin || !user.signed_in ? (
-                <span className="flex flex-wrap gap-1">
-                  {user.admin ? <HubAdminBadge /> : null}
-                  {!user.signed_in ? <NotSignedInBadge /> : null}
-                </span>
-              ) : null}
-            </div>
+              {user.admin ? <HubAdminBadge /> : null}
+              {!user.signed_in ? <NotSignedInBadge /> : null}
+            </CellMain>
           );
         },
       }),
@@ -89,10 +111,11 @@ function MembersTable({ users, onGrant }: { users: AdminUser[]; onGrant: (login:
       helper.accessor("active_tokens", {
         header: () => t("columns.tokens"),
         sortFn: "basic",
+        meta: { numeric: true },
         cell: (info) => (
           <Link
             href={tokensHref({ login: info.row.original.login })}
-            className="tabular-nums text-primary underline-offset-4 hover:underline"
+            className="text-brand underline-offset-4 hover:underline"
           >
             {info.getValue()}
           </Link>
@@ -102,19 +125,21 @@ function MembersTable({ users, onGrant }: { users: AdminUser[]; onGrant: (login:
         id: "last_seen",
         header: () => t("columns.lastSeen"),
         sortFn: "datetime",
+        meta: { numeric: true },
         cell: (info) => <When value={info.row.original.last_seen_at} never={t("never")} />,
       }),
       helper.display({
         id: "actions",
         header: () => <span className="sr-only">{t("columns.actions")}</span>,
+        meta: { actions: true },
         cell: (info) => {
           const login = info.row.original.login;
           return (
-            <div className="flex items-center justify-end gap-1.5">
+            <>
               <Button
                 type="button"
-                variant="outline"
-                size="icon-lg"
+                variant="ghost"
+                size="icon-sm"
                 aria-label={t("grantTo", { login })}
                 title={t("grantTo", { login })}
                 onClick={() => onGrant(login)}
@@ -122,13 +147,13 @@ function MembersTable({ users, onGrant }: { users: AdminUser[]; onGrant: (login:
               >
                 <ShieldPlus aria-hidden="true" />
               </Button>
-              <Button asChild variant="ghost" size="lg">
+              <Button asChild variant="ghost" size="sm">
                 <Link href={memberHref(login)} aria-label={t("manage", { login })}>
                   {t("manageShort")}
                   <ChevronRight aria-hidden="true" />
                 </Link>
               </Button>
-            </div>
+            </>
           );
         },
       }),
@@ -143,6 +168,21 @@ function MembersTable({ users, onGrant }: { users: AdminUser[]; onGrant: (login:
       initialSorting={[{ id: "login", desc: false }]}
       columnClassNames={NARROW_HIDDEN}
       testId="members-table"
+      // On a phone: the login opening the member's page (grants, tokens and Grant access are there), and their access.
+      mobile={(user) => ({
+        title: user.login,
+        titleText: user.login,
+        href: memberHref(user.login),
+        tags: (
+          <>
+            {user.admin ? <HubAdminBadge /> : null}
+            {!user.signed_in ? <NotSignedInBadge /> : null}
+          </>
+        ),
+        meta: grantLine(user),
+        metaText: grantLine(user),
+        data: { login: user.login },
+      })}
     />
   );
 }
@@ -150,103 +190,109 @@ function MembersTable({ users, onGrant }: { users: AdminUser[]; onGrant: (login:
 /** Everyone on the hub with their grants; search and project filter in the URL; granting through a dialog. */
 export function AdminMembers({ initialError }: { initialError: ApiErrorInfo | null }) {
   const t = useTranslations("admin.members");
+  const tStates = useTranslations("states.noResults");
   const ids = useId();
   const state = useHubQuery(adminUsersQuery(browserApi), initialError);
   const { data: projects } = useQuery(projectsQuery(browserApi));
   const { view, go } = useUrlView(parseMemberFilters);
-  const { notice, show, clear } = useNotice();
   const [grantOpen, setGrantOpen] = useState(false);
   const [preset, setPreset] = useState<GrantPreset>({});
-  const [query, setQuery] = useState(view.q);
 
   const openGrant = useCallback((login?: string) => {
     setPreset(login ? { login } : {});
     setGrantOpen(true);
   }, []);
   const users = state.status === "success" ? state.data : [];
-  const shown = filterMembers(users, { q: query, project: view.project });
+  const shown = filterMembers(users, view);
   const projectList: Project[] = projects ?? [];
+  const memberFilters: ActiveFilter[] = [
+    ...(view.q ? [{ label: tStates("search"), value: view.q }] : []),
+    ...(view.project ? [{ label: t("project"), value: view.project }] : []),
+  ];
 
   return (
     <>
       <PageHeader
         title={t("title")}
-        description={t("description")}
-        meta={
-          <>
-            {state.status === "success" ? <Badge variant="secondary">{t("count", { count: users.length })}</Badge> : null}
-            {state.status === "success" && projects ? (
-              <Button type="button" size="lg" onClick={() => openGrant()} data-testid="grant-open">
-                <ShieldPlus aria-hidden="true" />
-                {t("grant")}
-              </Button>
-            ) : null}
-          </>
+        tags={state.status === "success" ? <Badge variant="secondary">{t("count", { count: users.length })}</Badge> : null}
+        actions={
+          state.status === "success" && projects ? (
+            <Button type="button" onClick={() => openGrant()} data-testid="grant-open">
+              <ShieldPlus aria-hidden="true" />
+              {t("grant")}
+            </Button>
+          ) : null
         }
       />
-      <NoticeArea notice={notice} onDismiss={clear} />
-      <QueryView state={state} loading={<TableSkeleton rows={6} />}>
+      <QueryView state={state} loading={<TableSkeleton rows={6} toolbar />}>
         {(all) =>
           all.length === 0 ? (
             <EmptyState icon={Users} title={t("emptyTitle")} description={t("emptyDescription")} />
           ) : (
-            <section aria-labelledby={`${ids}-list`} className="flex flex-col gap-4">
+            <section aria-labelledby={`${ids}-list`}>
               <h2 id={`${ids}-list`} className="sr-only">
                 {t("title")}
               </h2>
-              <div
-                role="search"
-                aria-label={t("title")}
-                className="grid grid-cols-1 gap-4 rounded-xl border bg-card p-4 sm:grid-cols-2"
-                data-testid="member-filters"
-              >
-                <div className="flex min-w-0 flex-col gap-1.5">
-                  <Label htmlFor={`${ids}-q`}>{t("search")}</Label>
-                  <Input
-                    id={`${ids}-q`}
-                    type="search"
-                    value={query}
-                    placeholder={t("searchPlaceholder")}
-                    autoComplete="off"
-                    autoCapitalize="none"
-                    spellCheck={false}
-                    maxLength={100}
-                    className="h-9"
-                    onChange={(event) => {
-                      setQuery(event.target.value);
-                      go({ q: event.target.value.trim(), project: view.project }, "replace");
-                    }}
-                    aria-controls={`${ids}-results`}
-                  />
-                </div>
-                <div className="flex min-w-0 flex-col gap-1.5">
-                  <Label htmlFor={`${ids}-project`}>{t("project")}</Label>
-                  <NativeSelect
-                    id={`${ids}-project`}
-                    value={view.project}
-                    onChange={(event) => go({ q: query.trim(), project: event.target.value }, "replace")}
-                    className="w-full [&_select]:h-9"
-                    aria-controls={`${ids}-results`}
+              <DataCard
+                toolbar={
+                  <DataToolbar
+                    label={t("title")}
+                    count={t("shown", { shown: shown.length, total: all.length })}
+                    countTestId="members-shown"
                   >
-                    <NativeSelectOption value="">{t("allProjects")}</NativeSelectOption>
-                    {projectList.map((project) => (
-                      <NativeSelectOption key={project.name} value={project.name}>
-                        {project.name}
-                      </NativeSelectOption>
-                    ))}
-                  </NativeSelect>
+                    <SearchField
+                      value={view.q}
+                      onCommit={(q) => go({ q, project: view.project }, "replace")}
+                      label={t("search")}
+                      placeholder={t("searchPlaceholder")}
+                      clearLabel={t("clearSearch")}
+                      debounce={150}
+                      maxLength={100}
+                      controls={`${ids}-results`}
+                      className="sm:w-64 max-md:flex-1"
+                      testId="member-search"
+                    />
+                    <ToolbarFilters
+                      active={view.project ? 1 : 0}
+                      summary={t("shown", { shown: shown.length, total: all.length })}
+                      onClear={() => go({ q: view.q }, "replace")}
+                      testId="member-filters"
+                    >
+                      <ToolbarField label={t("project")}>
+                        {(id) => (
+                          <NativeSelect
+                            id={id}
+                            value={view.project}
+                            onChange={(event) => go({ q: view.q, project: event.target.value }, "replace")}
+                            className="w-full md:w-52"
+                            aria-controls={`${ids}-results`}
+                            data-testid="member-project"
+                          >
+                            <NativeSelectOption value="">{t("allProjects")}</NativeSelectOption>
+                            {projectList.map((project) => (
+                              <NativeSelectOption key={project.name} value={project.name}>
+                                {project.name}
+                              </NativeSelectOption>
+                            ))}
+                          </NativeSelect>
+                        )}
+                      </ToolbarField>
+                    </ToolbarFilters>
+                  </DataToolbar>
+                }
+              >
+                <div id={`${ids}-results`}>
+                  {shown.length === 0 ? (
+                    <NoResults
+                      title={t("noMatchTitle")}
+                      filters={memberFilters}
+                      onClear={() => go({}, "replace")}
+                    />
+                  ) : (
+                    <MembersTable users={shown} onGrant={openGrant} />
+                  )}
                 </div>
-              </div>
-              <p className="text-sm text-muted-foreground" aria-live="polite" aria-atomic="true" data-testid="members-shown">
-                {t("shown", { shown: shown.length, total: all.length })}
-              </p>
-              <div id={`${ids}-results`}>
-                {shown.length === 0 ? (
-                  <EmptyState icon={SearchX} title={t("noMatchTitle")} description={t("noMatchDescription")} />
-                ) : (
-                  <MembersTable users={shown} onGrant={openGrant} />
-                )}
-              </div>
+              </DataCard>
             </section>
           )
         }
@@ -257,7 +303,7 @@ export function AdminMembers({ initialError }: { initialError: ApiErrorInfo | nu
         users={users}
         projects={projectList}
         preset={preset}
-        onDone={show}
+        onDone={notify}
       />
     </>
   );

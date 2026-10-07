@@ -5,6 +5,7 @@ import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { Notice } from "@/components/feedback/toast";
 import { createApiClient } from "@/lib/api/client";
 import type { Project } from "@/lib/api/client";
 import { renderVi } from "@/test/render";
@@ -12,7 +13,6 @@ import { renderVi } from "@/test/render";
 import { ConfirmAction } from "./confirm-action";
 import type { AdminUser } from "./data";
 import { GrantDialog, type GrantPreset } from "./grant-dialog";
-import type { Notice } from "./notice";
 
 const api = vi.hoisted(() => ({ answer: null as null | ((request: Request) => Response | Promise<Response>), seen: [] as Request[] }));
 
@@ -98,8 +98,8 @@ describe("GrantDialog", () => {
 
     await user.type(login, "newbie");
     await user.selectOptions(screen.getByLabelText("Dự án"), "other");
-    expect((screen.getByLabelText("Mức nhãn tối đa") as HTMLSelectElement).value).toBe("open"); // the project's default label
-    await user.selectOptions(screen.getByLabelText("Mức nhãn tối đa"), "closed");
+    expect((screen.getByLabelText("Mức hiển thị") as HTMLSelectElement).value).toBe("open"); // the project's default label
+    await user.selectOptions(screen.getByLabelText("Mức hiển thị"), "closed");
     await user.click(screen.getByRole("radio", { name: "Đọc" }));
     await user.click(screen.getByRole("button", { name: "Tiếp tục" }));
 
@@ -107,12 +107,17 @@ describe("GrantDialog", () => {
     expect(screen.getByRole("heading", { name: "Xác nhận cấp quyền" })).toHaveFocus();
     expect(summary).toHaveTextContent("newbie");
     expect(summary).toHaveTextContent("other");
-    expect(summary).toHaveTextContent("closed");
+    expect(summary).toHaveTextContent("closed"); // a level of the project's own ladder shows as written
     expect(api.seen).toHaveLength(0); // nothing written before the confirmation
 
     await user.click(screen.getByRole("button", { name: "Xác nhận cấp quyền" }));
     await waitFor(() => expect(done).toHaveBeenCalledOnce());
-    expect(done.mock.calls[0][0]).toEqual({ tone: "success", text: "Đã cấp vai trò Đọc, mức closed, cho newbie trong dự án other." });
+    expect(done.mock.calls[0][0]).toEqual({
+      tone: "success",
+      text: "Đã cấp quyền cho newbie",
+      description: "Vai trò Đọc, mức hiển thị closed, cho newbie trong dự án other.",
+      link: { label: "Mở thành viên", href: "/admin/members/newbie" },
+    });
     const put = api.seen.find((request) => request.method === "PUT");
     expect(put?.url).toBe("http://hub.test/v1/admin/projects/other/grants/newbie");
     expect(put?.headers.get("X-Evo-CSRF")).toBe("csrf-1");
@@ -123,13 +128,13 @@ describe("GrantDialog", () => {
     const user = userEvent.setup();
     renderVi(<Harness onDone={vi.fn()} preset={{ login: "octo", lockLogin: true, project: "demo", role: "writer", maxLevel: "secret" }} />);
     expect(screen.queryByLabelText("Tên đăng nhập GitHub")).not.toBeInTheDocument(); // the login is fixed
-    expect(screen.getByTestId("grant-existing")).toHaveTextContent("octo đã có đúng vai trò và mức nhãn này");
+    expect(screen.getByTestId("grant-existing")).toHaveTextContent("octo đã có đúng vai trò và mức hiển thị này");
     expect(screen.getByRole("button", { name: "Tiếp tục" })).toBeDisabled();
-    await user.selectOptions(screen.getByLabelText("Mức nhãn tối đa"), "internal");
-    expect(screen.getByTestId("grant-existing")).toHaveTextContent("octo đang có vai trò Ghi, mức secret trong dự án này");
+    await user.selectOptions(screen.getByLabelText("Mức hiển thị"), "internal");
+    expect(screen.getByTestId("grant-existing")).toHaveTextContent("octo đang có vai trò Ghi, mức hiển thị Secret trong dự án này");
     await user.click(screen.getByRole("button", { name: "Tiếp tục" }));
     expect(screen.getByRole("heading", { name: "Xác nhận đổi quyền" })).toBeInTheDocument();
-    expect(screen.getByTestId("grant-summary")).toHaveTextContent("Ghi, mức secret");
+    expect(screen.getByTestId("grant-summary")).toHaveTextContent("Ghi, mức hiển thị Secret");
   });
 
   it.each([

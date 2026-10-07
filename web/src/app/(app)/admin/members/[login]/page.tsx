@@ -1,4 +1,4 @@
-import { dehydrate, HydrationBoundary } from "@tanstack/react-query";
+import { dehydrate } from "@tanstack/react-query";
 import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
 
@@ -12,6 +12,7 @@ import {
 } from "@/components/admin/data";
 import { AdminMember } from "@/components/admin/member-page";
 import { NotFoundState } from "@/components/states/states";
+import { HydrationBoundary } from "@/lib/api/hydration-boundary";
 import { getQueryClient, prefetch } from "@/lib/api/prefetch";
 import { serverApi } from "@/lib/api/server";
 import { projectsQuery } from "@/lib/queries";
@@ -20,7 +21,7 @@ type Props = { params: Promise<{ login: string }> };
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const t = await getTranslations("admin.member");
-  return { title: `${decodeURIComponent((await params).login)} | ${t("eyebrow")}` };
+  return { title: `${decodeURIComponent((await params).login)} | ${t("metaTitle")}` };
 }
 
 export default async function MemberPage({ params }: Props) {

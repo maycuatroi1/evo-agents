@@ -30,7 +30,7 @@ function Uri({ uri }: { uri: string }) {
       href={uri}
       target="_blank"
       rel="noreferrer noopener"
-      className="inline-flex items-start gap-1 font-mono text-xs break-all text-primary underline-offset-4 hover:underline"
+      className="inline-flex items-start gap-1 font-mono text-xs break-all text-brand underline-offset-4 hover:underline"
       data-testid="node-uri"
     >
       {uri}
@@ -135,13 +135,13 @@ export function NodeEvidence({ project, node, evidence }: { project: string; nod
         ) : (
           <ul className="flex flex-col gap-3">
             {evidence.map((ev, index) => (
-              <li key={`${ev.item}:${ev.anchor ?? ""}:${index}`} className="flex flex-col gap-1 rounded-lg border px-3 py-2">
+              <li key={`${ev.item}:${ev.anchor ?? ""}:${index}`} className="flex flex-col gap-1 rounded-md border px-3 py-2">
                 <span className="flex items-start gap-1.5 text-sm">
                   <FileText className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
                   {ev.item === node.id ? (
                     <Mono>{ev.anchor ? `${ev.item}#${ev.anchor}` : ev.item}</Mono>
                   ) : (
-                    <Link href={nodeHref(project, ev.item)} className="text-primary underline-offset-4 hover:underline">
+                    <Link href={nodeHref(project, ev.item)} className="text-brand underline-offset-4 hover:underline">
                       <Mono>{ev.anchor ? `${ev.item}#${ev.anchor}` : ev.item}</Mono>
                     </Link>
                   )}
@@ -204,7 +204,7 @@ export function NodeRelations({ project, detail }: { project: string; detail: No
                   </FilterChip>
                 ))}
               </div>
-              <div className="overflow-hidden rounded-lg border">
+              <div className="overflow-hidden rounded-md border">
                 <Table scrollLabel={caption}>
                   <TableCaption className="sr-only">{caption}</TableCaption>
                   <TableHeader className="bg-muted/50">
@@ -233,7 +233,7 @@ export function NodeRelations({ project, detail }: { project: string; detail: No
                           <TableCell className="px-3 py-2 whitespace-normal">
                             <Link
                               href={nodeHref(project, relation.node)}
-                              className="font-medium break-words text-primary underline-offset-4 hover:underline"
+                              className="font-medium break-words text-brand underline-offset-4 hover:underline"
                             >
                               {relation.name || relation.node}
                             </Link>
@@ -264,8 +264,8 @@ function FilterChip({ pressed, onClick, children }: { pressed: boolean; onClick:
       aria-pressed={pressed}
       onClick={onClick}
       className={cn(
-        "inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 text-xs font-medium transition-colors outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
-        pressed ? "border-primary/40 bg-accent text-accent-foreground" : "bg-card hover:bg-muted",
+        "inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border px-2.5 text-xs font-medium transition-colors outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
+        pressed ? "border-brand/40 bg-surface-selected text-foreground" : "bg-card hover:bg-muted",
       )}
     >
       {children}

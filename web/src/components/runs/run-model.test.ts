@@ -7,12 +7,12 @@ import {
   leaseState,
   leaseTargets,
   readDiffstat,
-  readUsage,
   readVerify,
   runControls,
   type RunViewer,
   shortSha,
   stepperModel,
+  timelineModel,
   utf8Bytes,
 } from "./run-model";
 
@@ -28,6 +28,8 @@ const base = {
   takeover_requested_at: null,
   handback_requested_at: null,
   lease_expires_at: "2026-10-05T07:05:09Z",
+  waiting_since: null,
+  parked_at: null,
 } satisfies Partial<Run>;
 
 const run = (extra: Partial<Run> = {}) => ({ ...base, ...extra }) as Run;
@@ -87,6 +89,64 @@ describe("stepperModel", () => {
   });
 });
 
+describe("timelineModel", () => {
+  const at = (text: string) => Date.parse(text);
+
+  it("puts the time between each phase and the next on the line between them, and counts the current one up", () => {
+    const timeline = timelineModel(run({ approval: "auto" }), [], at("2026-10-05T07:04:21Z"));
+    expect(timeline.phases.map((phase) => [phase.phase, phase.tone, phase.gapMs, phase.live])).toEqual([
+      ["queued", "done", 5_000, false],
+      ["leased", "done", 4_000, false],
+      ["running", "current", 252_000, true],
+      ["verifying", "todo", null, false],
+      ["done", "todo", null, false],
+    ]);
+    // On the server nothing ticks: the current gap waits for the browser's clock.
+    expect(timelineModel(run(), [], null).phases[2]).toMatchObject({ gapMs: null, live: false });
+  });
+
+  it("shows a waiting or parked run on its running phase in attention, since when it waits", () => {
+    const waiting = timelineModel(run({ state: "waiting", waiting_since: "2026-10-05T07:02:00Z" }), [], at("2026-10-05T07:08:00Z"));
+    expect(waiting.phases[2]).toMatchObject({ tone: "waiting", state: "waiting", since: "2026-10-05T07:02:00Z", gapMs: 360_000 });
+    const parked = timelineModel(run({ state: "parked", parked_at: "2026-10-06T07:02:00Z" }), [], at("2026-10-06T07:03:00Z"));
+    expect(parked.phases[2]).toMatchObject({ tone: "waiting", state: "parked", gapMs: 60_000 });
+    expect(timelineModel(run({ state: "interactive" }), [], null).phases[2]).toMatchObject({ tone: "current", state: "interactive" });
+  });
+
+  it("ends a done run on a success node, its phases all timed", () => {
+    const moves = [move(1, "running", "verifying", "2026-10-05T07:08:00Z"), move(2, "verifying", "done", "2026-10-05T07:08:02Z")];
+    const timeline = timelineModel(run({ state: "done", approval: "auto", finished_at: "2026-10-05T07:08:02Z" }), moves, null);
+    expect(timeline.phases.map((phase) => [phase.tone, phase.gapMs])).toEqual([
+      ["done", 5_000],
+      ["done", 4_000],
+      ["done", 471_000],
+      ["done", 2_000],
+      ["success", null],
+    ]);
+  });
+
+  it("stops a failed run on a danger node at the time it ended, the time before it on the line, the rest skipped", () => {
+    const moves = [move(1, "running", "failed", "2026-10-05T07:20:09Z")];
+    const timeline = timelineModel(run({ state: "failed", approval: "auto", finished_at: "2026-10-05T07:20:09Z" }), moves, null);
+    expect(timeline.ended).toBe("failed");
+    expect(timeline.phases.map((phase) => [phase.phase, phase.status, phase.tone, phase.at, phase.gapMs])).toEqual([
+      ["queued", "done", "done", base.queued_at, 5_000],
+      ["leased", "done", "done", base.leased_at, 1_204_000],
+      ["running", "stopped", "failed", "2026-10-05T07:20:09Z", null],
+      ["verifying", "todo", "todo", null, null],
+      ["done", "todo", "todo", null, null],
+    ]);
+    expect(timeline.phases[2].state).toBe("failed");
+    // Lost and cancelled are no failure of the agent's: a neutral node.
+    expect(timelineModel(run({ state: "cancelled", leased_at: null, started_at: null }), [], null).phases[0]).toMatchObject({ tone: "ended", state: "cancelled" });
+  });
+
+  it("keeps a queued run's node and a run held for review out of the running tone", () => {
+    expect(timelineModel(run({ state: "queued", leased_at: null, started_at: null }), [], null).phases[0].tone).toBe("queued");
+    expect(timelineModel(run({ state: "review" }), [move(1, "running", "verifying"), move(2, "verifying", "review")], null).phases[4].tone).toBe("review");
+  });
+});
+
 describe("runControls", () => {
   it("gives nothing to anyone but the owner, a hub admin included", () => {
     expect(runControls(run(), other)).toMatchObject({ owner: false, cancel: "none", takeover: "none", message: false });
@@ -142,10 +202,6 @@ describe("facts", () => {
     expect(readDiffstat(null)).toBeNull();
     expect(readVerify([{ command: "pnpm test", exit_code: 0, duration_ms: 900 }, { exit_code: 1 }, "x"])).toEqual([
       { command: "pnpm test", exitCode: 0, durationMs: 900 },
-    ]);
-    expect(readUsage({ input_tokens: 10, output: { tokens: 2 }, model: "x" })).toEqual([
-      { key: "input_tokens", value: 10 },
-      { key: "output.tokens", value: 2 },
     ]);
     expect(shortSha("7c1e9a2f00ddeeff")).toBe("7c1e9a2");
   });

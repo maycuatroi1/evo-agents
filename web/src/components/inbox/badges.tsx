@@ -1,50 +1,26 @@
 "use client";
 
 import {
-  Ban,
   Boxes,
   CircleCheck,
-  CircleDot,
   CircleX,
   DatabaseZap,
   GitMerge,
   type LucideIcon,
-  MessageCircleQuestionMark,
+  MessageSquare,
   Rocket,
   Send,
   Target,
-  ThumbsUp,
-  TimerOff,
   Trash2,
   Upload,
   Wallet,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
 
-import { Badge } from "@/components/ui/badge";
+import { Tag } from "@/components/data/identifier";
+import { cn } from "@/lib/utils";
 
-import type { DecisionCategory, DecisionState, NoticeKind } from "./queries";
-
-type Variant = "success" | "info" | "warning" | "destructive" | "secondary" | "outline";
-
-/** Each look pairs an icon with a word: colour is never the only signal. */
-export const DECISION_STATE_LOOK: Record<DecisionState, { icon: LucideIcon; variant: Variant }> = {
-  open: { icon: CircleDot, variant: "warning" },
-  answered: { icon: CircleCheck, variant: "success" },
-  expired: { icon: TimerOff, variant: "secondary" },
-  cancelled: { icon: Ban, variant: "secondary" },
-};
-
-export function DecisionStateBadge({ state, className }: { state: DecisionState; className?: string }) {
-  const t = useTranslations("inbox.decisionState");
-  const { icon: Icon, variant } = DECISION_STATE_LOOK[state];
-  return (
-    <Badge variant={variant} className={className} data-state={state} data-testid="decision-state">
-      <Icon aria-hidden="true" />
-      {t(state)}
-    </Badge>
-  );
-}
+import type { DecisionCategory, NoticeKind } from "./queries";
 
 export const CATEGORY_ICON: Record<DecisionCategory, LucideIcon> = {
   deploy: Rocket,
@@ -60,28 +36,29 @@ export function DecisionCategoryBadge({ category, className }: { category: Decis
   const t = useTranslations("inbox.category");
   const Icon = CATEGORY_ICON[category];
   return (
-    <Badge variant="outline" className={className} data-category={category} data-testid="decision-category">
+    <Tag className={className} data-category={category} data-testid="decision-category">
       <Icon aria-hidden="true" />
       {t(category)}
-    </Badge>
+    </Tag>
   );
 }
 
-export const NOTICE_LOOK: Record<NoticeKind, { icon: LucideIcon; variant: Variant }> = {
-  push_default_branch: { icon: Upload, variant: "info" },
-  merge_default_branch: { icon: GitMerge, variant: "info" },
-  plan_finished: { icon: CircleCheck, variant: "success" },
-  run_failed: { icon: CircleX, variant: "destructive" },
+export const NOTICE_LOOK: Record<NoticeKind, { icon: LucideIcon }> = {
+  push_default_branch: { icon: Upload },
+  merge_default_branch: { icon: GitMerge },
+  plan_finished: { icon: CircleCheck },
+  run_failed: { icon: CircleX },
 };
 
+/** What a notice is about, as the kit's tag: a kind is a name with square corners, never a round state pill. */
 export function NoticeKindBadge({ kind, className }: { kind: NoticeKind; className?: string }) {
   const t = useTranslations("inbox.noticeKind");
-  const { icon: Icon, variant } = NOTICE_LOOK[kind];
+  const { icon: Icon } = NOTICE_LOOK[kind];
   return (
-    <Badge variant={variant} className={className} data-kind={kind} data-testid="notice-kind">
+    <Tag className={className} data-kind={kind} data-testid="notice-kind">
       <Icon aria-hidden="true" />
       {t(kind)}
-    </Badge>
+    </Tag>
   );
 }
 
@@ -89,20 +66,19 @@ export function NoticeKindBadge({ kind, className }: { kind: NoticeKind; classNa
 export function DecisionKindBadge({ className }: { className?: string }) {
   const t = useTranslations("inbox.kind");
   return (
-    <Badge variant="outline" className={className} data-kind="decision" data-testid="notification-kind">
-      <MessageCircleQuestionMark aria-hidden="true" />
+    <Tag className={className} data-kind="decision" data-testid="notification-kind">
+      <MessageSquare aria-hidden="true" />
       {t("decision")}
-    </Badge>
+    </Tag>
   );
 }
 
-/** The option the agent recommends. */
-export function RecommendedBadge({ className }: { className?: string }) {
+/** The option the agent recommends, as the kit's brand tag "Agent's pick". */
+export function AgentPickTag({ className }: { className?: string }) {
   const t = useTranslations("inbox.decision");
   return (
-    <Badge variant="info" className={className} data-testid="decision-recommended">
-      <ThumbsUp aria-hidden="true" />
-      {t("recommended")}
-    </Badge>
+    <Tag className={cn("bg-brand-soft text-brand", className)} data-testid="decision-recommended">
+      {t("agentsPick")}
+    </Tag>
   );
 }

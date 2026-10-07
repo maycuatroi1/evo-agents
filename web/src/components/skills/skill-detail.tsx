@@ -1,18 +1,17 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, CloudOff, Package, TriangleAlert } from "lucide-react";
-import Link from "next/link";
+import { CloudOff, Package, TriangleAlert } from "lucide-react";
 import { useFormatter, useTranslations } from "next-intl";
 import { type ReactNode, useMemo } from "react";
 
 import { DataTable, dataTableColumns } from "@/components/data/data-table";
+import { Identifier } from "@/components/data/identifier";
 import { PageHeader } from "@/components/shell/page-header";
 import { QueryView, useHubQuery } from "@/components/states/query-view";
 import { NotFoundState, PageSkeleton } from "@/components/states/states";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { browserApi } from "@/lib/api/browser";
 import type { ApiErrorInfo } from "@/lib/api/errors";
@@ -26,7 +25,6 @@ import {
   type SkillHistory,
   type SkillPlace,
   skillQuery,
-  skillsHref,
   type SkillVersion,
 } from "./queries";
 import { ByteSize, HashText, ScopeBadge, SourceLink } from "./skill-bits";
@@ -72,28 +70,15 @@ function Detail({ place, skill }: { place: SkillPlace; skill: SkillHistory }) {
 
   return (
     <>
-      <div>
-        <Button asChild variant="ghost" size="sm" className="-ml-2.5">
-          <Link href={skillsHref(place)}>
-            <ArrowLeft aria-hidden="true" />
-            {place.kind === "project" ? t("detail.backProject") : t("detail.backGlobal")}
-          </Link>
-        </Button>
-      </div>
       <PageHeader
-        eyebrow={place.kind === "project" ? t("projectEyebrow", { project: place.project }) : t("globalEyebrow")}
-        title={<span className="font-mono">{skill.name}</span>}
-        description={latest?.description}
-        meta={
+        title={skill.name}
+        tags={
           <>
             <ScopeBadge project={skill.project} />
-            {latest ? (
-              <Badge variant="secondary" className="font-mono">
-                v{latest.version}
-              </Badge>
-            ) : null}
+            {latest ? <Identifier value={`v${latest.version}`} testId="skill-version" /> : null}
           </>
         }
+        sub={latest?.description}
       />
       <BlobStoreNotice state={blobStore} />
       {latest ? (

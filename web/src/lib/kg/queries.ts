@@ -16,6 +16,7 @@ export const ACTIVE_REFRESH = 5_000;
 export const kgKeys = {
   all: (project: string) => ["kg", project] as const,
   builds: (project: string) => ["kg", project, "builds"] as const,
+  failedBuilds: (project: string) => ["kg", project, "builds", "failed"] as const,
   graph: (project: string) => ["kg", project, "graph"] as const,
   search: (project: string, query: string, kind: string) => ["kg", project, "search", query, kind] as const,
   node: (project: string, id: string) => ["kg", project, "node", id] as const,
@@ -39,6 +40,30 @@ export const kgBuildsQuery = (api: ApiSource, project: string) =>
         }),
       ),
     refetchInterval: (query) => (buildsActive(query.state.data) ? ACTIVE_REFRESH : false),
+  });
+
+/** The anchor of the build history on the knowledge graph page. */
+export const BUILD_HISTORY_ID = "build-history";
+
+/** Which builds the history lists: all of the latest, or the latest failed ones (`?builds=failed`). */
+export type BuildFilter = "all" | "failed";
+
+export function parseBuildFilter(value: string | string[] | null | undefined): BuildFilter {
+  const text = Array.isArray(value) ? value[0] : value;
+  return text === "failed" ? "failed" : "all";
+}
+
+/** The project's latest failed builds, for the history's Failed view; the admin overview links there. */
+export const kgFailedBuildsQuery = (api: ApiSource, project: string) =>
+  queryOptions({
+    queryKey: kgKeys.failedBuilds(project),
+    queryFn: ({ signal }) =>
+      call(
+        api().GET("/v1/kg/{project}/builds", {
+          params: { path: { project }, query: { limit: BUILDS_SHOWN, status: "failed" } },
+          signal,
+        }),
+      ),
   });
 
 export const kgGraphQuery = (api: ApiSource, project: string) =>

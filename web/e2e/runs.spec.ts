@@ -16,6 +16,7 @@ import {
   WAITING_STEP,
   workerHeartbeat,
 } from "./support/runs";
+import { toast } from "./support/toast";
 
 /**
  * The Runs pages against the real API: the sidebar entry and the empty project; the Dispatch dialog offering only
@@ -104,12 +105,13 @@ test("dispatch queues runs of the ready steps only, and the list follows a worke
     });
   }
   const [newer, older] = runs;
-  await expect(page.getByTestId("admin-notice-status")).toContainText(`Queued 2 runs: #${older.id} and #${newer.id}.`);
+  await expect(toast(page, `2 runs dispatched: #${older.id} and #${newer.id}`)).toContainText("They wait in the queue for a worker.");
   await expect(runRow(page, older.id).getByTestId("run-state")).toHaveText("Queued");
   await expect(runRow(page, newer.id).getByTestId("run-state")).toHaveText("Queued");
   await expect(runRow(page, older.id)).toContainText(STEP_TITLES["2"]);
   await expect(main(page).getByTestId("summary-queued").locator("dd").first()).toHaveText("2");
-  await expect(main(page).getByTestId("runs-live")).toBeVisible();
+  // Active runs: the page reads every 5 seconds, and the top bar says it is live.
+  await expect(page.getByTestId("live-indicator")).toHaveAttribute("data-state", "live");
 
   // The worker claims the older run: the list shows it leased within one refresh, without a reload.
   const claimed = await claimRun(live);
@@ -161,10 +163,16 @@ test("the list filters by state and search, in the URL", async ({ page, member }
   await expect(main(page).getByTestId("runs-table").locator("tbody tr")).toHaveCount(1);
   await expect(runRow(page, waiting.id)).toBeVisible();
   await facets.getByRole("button", { name: /^Done/ }).click();
-  await expect(main(page).getByTestId("state-empty")).toContainText("No run matches");
-  await main(page).getByRole("button", { name: "Show all runs" }).click();
+  const none = main(page).getByTestId("state-empty");
+  await expect(none).toContainText("No run matches");
+  await expect(none.getByTestId("filters-in-use")).toHaveText("State:Done"); // the filter in force, named
+  await none.getByRole("button", { name: "Clear filters" }).click();
   await expect(main(page).getByTestId("runs-table").locator("tbody tr")).toHaveCount(2);
 
+  // "/" focuses the search from anywhere on the page but a text field.
+  await page.keyboard.press("/");
+  await expect(main(page).getByTestId("runs-search")).toBeFocused();
+  await expect(main(page).getByTestId("runs-search")).toHaveValue("");
   await main(page).getByTestId("runs-search").fill(STEP_TITLES["4"]);
   await expect(page).toHaveURL(new RegExp(`\\?q=${encodeURIComponent(STEP_TITLES["4"]).replace(/%20/g, "\\+")}$`));
   await expect(main(page).getByTestId("runs-table").locator("tbody tr")).toHaveCount(1);
@@ -172,7 +180,7 @@ test("the list filters by state and search, in the URL", async ({ page, member }
   await main(page).getByTestId("runs-search").fill(`#${failing.id}`);
   await expect(main(page).getByTestId("runs-table").locator("tbody tr")).toHaveCount(1);
   await expect(runRow(page, failing.id)).toBeVisible();
-  await expect(main(page).getByTestId("runs-list-summary")).toContainText("1 run matches.");
+  await expect(main(page).getByTestId("runs-list-summary")).toHaveText("1 run matches");
 
   // The filters survive a reload.
   await page.reload();
@@ -211,7 +219,7 @@ test("a plan step's page runs the step, and lists its runs", async ({ page, memb
 
   const [run] = await runsOf(me, project);
   expect(run).toMatchObject({ step_key: "4", state: "queued", pinned_worker_id: live.worker.id, approval: "auto" });
-  await expect(section.getByTestId("admin-notice-status")).toContainText(`Queued run #${run.id}.`);
+  await expect(toast(page, `Run #${run.id} dispatched`)).toBeVisible();
   await expect(runRow(page, run.id, "step-runs-table").getByTestId("run-state")).toHaveText("Queued");
   await expect(runRow(page, run.id, "step-runs-table")).toContainText(me.login);
   await expect(section.getByTestId("step-readiness")).toHaveText(`Not ready to run: Run #${run.id} is Queued, dispatched by ${me.login}.`);

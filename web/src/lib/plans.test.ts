@@ -9,6 +9,7 @@ import {
   parseStep,
   percent,
   type PlanDiffLine,
+  planState,
   previousRevision,
   revisionParam,
   splitRows,
@@ -119,6 +120,22 @@ describe("steps", () => {
     expect(filterSteps(steps, "  ", "")).toHaveLength(7);
     expect(filterSteps(steps, "trang", "evo-agents").map((step) => step.key)).toEqual(["26"]);
     expect(stepRepos(steps)).toEqual(["evo-agents", "evo-agents-harness"]);
+  });
+});
+
+describe("planState", () => {
+  const counts = (groups: ("pending" | "in_progress" | "blocked" | "done")[]) => countSteps(groups.map((group) => ({ group })));
+
+  it("is completed by its area, and active while a plan run holds it", () => {
+    expect(planState("completed", counts(["done", "pending"]), true)).toBe("completed");
+    expect(planState("active", counts(["blocked"]), true)).toBe("active");
+  });
+
+  it("is blocked only when every step not done is blocked, and pending otherwise", () => {
+    expect(planState("active", counts(["done", "blocked", "blocked"]))).toBe("blocked");
+    expect(planState("active", counts(["done", "blocked", "pending"]))).toBe("pending");
+    expect(planState("active", counts(["done", "done"]))).toBe("pending");
+    expect(planState("active", null)).toBe("pending");
   });
 });
 

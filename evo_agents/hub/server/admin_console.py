@@ -4,10 +4,11 @@ whatever the web shows.
 
 GET /v1/admin/audit filters the trail by actor (a login), action, project and a half-open time range
 [since, until), newest first. GET /v1/admin/tokens lists the tokens and web sessions of every user, live ones
-unless ``state`` says otherwise. Both pages by cursor: a page holds at most ``limit`` rows, and ``next_cursor``,
-passed back as ``cursor`` with the same filters, gives the rows right after it, so pages never overlap or skip a
-row even while new rows arrive. A cursor is the sort key of the last row shown (time and id) in base64url; it
-names no content.
+unless ``state`` says otherwise: ``expiring`` lists the live ones that expire within TOKEN_EXPIRING_DAYS and
+``unused`` those not revoked and unused for TOKEN_UNUSED_DAYS, the tokens GET /v1/admin/overview counts. Both page
+by cursor: a page holds at most ``limit`` rows, and ``next_cursor``, passed back as ``cursor`` with the same
+filters, gives the rows right after it, so pages never overlap or skip a row even while new rows arrive. A cursor is
+the sort key of the last row shown (time and id) in base64url; it names no content.
 
 DELETE /v1/admin/tokens/{id} revokes one token of anyone. The next request made with it gets 401, from any
 process. It answers 404 for an id the hub never issued and 409 for a token revoked already, and adds an audit row
@@ -28,7 +29,15 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, Res
 from pydantic import AwareDatetime, BaseModel, Field
 
 from evo_agents.hub.server import audit, workers
-from evo_agents.hub.server.admin import LOGIN_NAME, PROJECT_NAME
+from evo_agents.hub.server.admin import (
+    LOGIN_NAME,
+    PROJECT_NAME,
+    TOKEN_EXPIRING,
+    TOKEN_EXPIRING_DAYS,
+    TOKEN_LIVE,
+    TOKEN_UNUSED,
+    TOKEN_UNUSED_DAYS,
+)
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.security import WEB, AdminUser, admin, delete_session_cookie
 from evo_agents.isotime import parse_iso
@@ -155,6 +164,8 @@ async def audit_actions(request: Request) -> list[str]:
 
 
 TokenState = Literal["active", "revoked", "expired"]
+# What ``state`` of GET /v1/admin/tokens may ask for besides a token's own state, and ``any``.
+TokenFilter = Literal["active", "revoked", "expired", "expiring", "unused", "any"]
 
 
 class AdminToken(BaseModel):
@@ -188,9 +199,11 @@ SELECT t.id, u.login, t.kind, t.host, t.created_at, t.last_used_at, t.expires_at
 TOKEN_FILTERS = {
     "login": "lower(u.login) = lower(%(login)s)",
     "kind": "t.kind = %(kind)s",
-    "active": "t.revoked_at IS NULL AND t.expires_at > now()",
+    "active": TOKEN_LIVE,
     "revoked": "t.revoked_at IS NOT NULL",
     "expired": "t.revoked_at IS NULL AND t.expires_at <= now()",
+    "expiring": TOKEN_EXPIRING,
+    "unused": TOKEN_UNUSED,
     "after": "(t.created_at, t.id) < (%(after_at)s, %(after_id)s)",
 }
 REVOKE = """
@@ -206,7 +219,13 @@ async def all_tokens(
     user: AdminUser,
     login: Annotated[str | None, Query(pattern=LOGIN_NAME, description="one user's tokens, any case")] = None,
     kind: Literal["machine", "web", "worker"] | None = None,
-    state: Annotated[TokenState | Literal["any"], Query(description="live tokens unless set")] = "active",
+    state: Annotated[
+        TokenFilter,
+        Query(
+            description=f"live tokens unless set; expiring: live ones expiring within {TOKEN_EXPIRING_DAYS} days; "
+            f"unused: not revoked and unused for {TOKEN_UNUSED_DAYS} days"
+        ),
+    ] = "active",
     cursor: CursorParam = None,
     limit: Limit = DEFAULT_LIMIT,
 ) -> TokenPage:
