@@ -18,7 +18,7 @@ from __future__ import annotations
 import getpass
 import re
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from urllib.parse import quote
 
 from evo_agents.hub.cli_client import _client_command, _print_json, _signed_in, _table, _when
@@ -70,7 +70,7 @@ def expires_at(day: str) -> str:
         moment = None
     if moment is None:
         raise Refused(f"--expires takes a day as YYYY-MM-DD, such as 2027-01-31, not {day!r}")
-    return moment.replace(tzinfo=timezone.utc).isoformat()
+    return moment.replace(tzinfo=UTC).isoformat()
 
 
 def target(args) -> dict:

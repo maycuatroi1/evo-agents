@@ -554,8 +554,13 @@ def plan_url(plan_id: str | None = None, *rest: str) -> str:
 
 
 def counts(db) -> dict:
+    from sqlalchemy import func, select
+
+    from evo_agents.hub import tables
+
     return {
-        table: live.sql(db, f"SELECT count(*) FROM {table}")[0][0] for table in ("plans", "plan_revisions", "audit")
+        table.name: live.sql(db, select(func.count()).select_from(table))[0][0]
+        for table in (tables.plans, tables.plan_revisions, tables.audit)
     }
 
 
@@ -776,6 +781,22 @@ def test_reads_follow_the_label_rule_and_hide_what_they_refuse(client, github, h
 
 
 @needs_pg
+def test_the_list_orders_by_plan_id_and_narrows_to_an_area(client, github, hub_db):
+    hubs = setup_project(client, github)
+    for plan_id, area in (("zeta", "active"), ("beta", "completed"), ("alpha", "active")):
+        assert put(hubs["alice"], draft(plan_id), area=area).status_code == 200
+
+    def listed(**params) -> list[tuple]:
+        response = client.get(plan_url(), params=params, headers=hubs["reader"].headers)
+        assert response.status_code == 200, response.text
+        return [(p["plan_id"], p["area"]) for p in response.json()]
+
+    assert listed() == [("alpha", "active"), ("beta", "completed"), ("zeta", "active")]
+    assert listed(area="active") == [("alpha", "active"), ("zeta", "active")]
+    assert listed(area="completed") == [("beta", "completed")]
+
+
+@needs_pg
 def test_put_replaces_only_the_revision_it_names(client, github, hub_db):
     hubs = setup_project(client, github)
     alice = hubs["alice"]
@@ -862,7 +883,13 @@ def test_audit_rows_and_logs_name_plans_never_their_content(client, github, hub_
     assert put(alice, draft()).status_code == 200
     patch_item(alice, PROJECT, "rollout", "steps", {"status": "done", "evidence": MARKER}, step=1)
     assert put(alice, {**draft(), "goal": MARKER * 2}, if_revision=2).status_code == 200
-    rows = live.sql(hub_db, "SELECT action, target FROM audit WHERE left(action, 5) = 'plan.' ORDER BY id")
+    from sqlalchemy import func, select
+
+    from evo_agents.hub import tables
+
+    audit = tables.audit
+    trail = select(audit.c.action, audit.c.target).where(func.left(audit.c.action, 5) == "plan.").order_by(audit.c.id)
+    rows = live.sql(hub_db, trail)
     assert rows == [
         ("plan.create", f"{PROJECT}/rollout@1"),
         ("plan.patch", f"{PROJECT}/rollout@2"),
@@ -871,7 +898,7 @@ def test_audit_rows_and_logs_name_plans_never_their_content(client, github, hub_
     outcomes = [r.outcome for r in caplog.records if r.getMessage() == "plan write"]
     assert outcomes == ["created", "patched", "replaced"]
     logged = caplog.text + json.dumps([vars(r) for r in caplog.records], default=str)
-    assert MARKER not in json.dumps(live.sql(hub_db, "SELECT * FROM audit"), default=str) and MARKER not in logged
+    assert MARKER not in json.dumps(live.sql(hub_db, select(audit)), default=str) and MARKER not in logged
 
 
 @needs_pg

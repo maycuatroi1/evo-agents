@@ -9,6 +9,8 @@ import json
 import os
 import stat
 import time
+from contextlib import asynccontextmanager, contextmanager
+from datetime import timedelta
 
 import pytest
 
@@ -18,8 +20,10 @@ if not pg.DSN:
     pytest.skip(pg.SKIP_REASON, allow_module_level=True)
 
 from fastapi.testclient import TestClient
+from sqlalchemy import column, func, select, table, update
 
 from evo_agents.hub import client as hub_client
+from evo_agents.hub import tables
 from evo_agents.hub.server.app import create_app
 from evo_agents.hub.server.security import authenticate
 from tests.hub.contract_keys import assert_json_keys
@@ -62,11 +66,21 @@ def client(config):
 
 
 def audit_rows(db) -> list[tuple]:
+    audit, users = tables.audit, tables.users
     return sql(
         db,
-        "SELECT u.login, a.token_id, a.action, a.target FROM audit a LEFT JOIN users u ON u.id = a.actor_id "
-        "ORDER BY a.id",
+        select(users.c.login, audit.c.token_id, audit.c.action, audit.c.target)
+        .select_from(audit.outerjoin(users, users.c.id == audit.c.actor_id))
+        .order_by(audit.c.id),
     )
+
+
+def count(db, table) -> int:
+    return sql(db, select(func.count()).select_from(table))[0][0]
+
+
+def expires_at(db, token_id: int):
+    return sql(db, select(tables.tokens.c.expires_at).where(tables.tokens.c.id == token_id))[0][0]
 
 
 def assert_login_hint(response) -> None:
@@ -90,7 +104,8 @@ def test_signing_in_trades_the_github_token_for_a_hub_token_kept_only_as_its_has
     assert token.startswith("evh_") and len(token) == 4 + 43  # 32 random bytes in base64url
     assert (signed["login"], signed["admin"]) == ("octo", False)
 
-    (row,) = sql(hub_db, "SELECT id, kind, host, token_hash, last_used_at FROM tokens")
+    tokens = tables.tokens
+    (row,) = sql(hub_db, select(tokens.c.id, tokens.c.kind, tokens.c.host, tokens.c.token_hash, tokens.c.last_used_at))
     assert row == (signed["token_id"], "machine", "laptop", hashlib.sha256(token.encode()).hexdigest(), None)
     stored = live.table_dump(hub_db)
     assert token not in stored and token[4:] not in stored and github_token not in stored
@@ -146,7 +161,8 @@ def test_a_revoked_token_gets_401(client, github, hub_db):
     assert_login_hint(client.get("/v1/tokens", headers=bearer(first["token"])))
     assert_login_hint(client.post("/v1/auth/logout", headers=bearer(first["token"])))
 
-    states = sql(hub_db, "SELECT id, revoked_at IS NOT NULL FROM tokens ORDER BY id")
+    tokens = tables.tokens
+    states = sql(hub_db, select(tokens.c.id, tokens.c.revoked_at.is_not(None)).order_by(tokens.c.id))
     assert states == [(first["token_id"], True), (second["token_id"], True), (other["token_id"], False)]
     assert audit_rows(hub_db)[3:] == [
         ("octo", first["token_id"], "token.revoke", f"token:{second['token_id']}"),
@@ -157,82 +173,113 @@ def test_a_revoked_token_gets_401(client, github, hub_db):
 def test_a_token_unused_for_90_days_gets_401(client, github, hub_db):
     stale = sign_in(client, github, "octo", 101)
     fresh = sign_in(client, github, "octo", 101, host="desktop")
+    tokens, day = tables.tokens, timedelta(days=1)
     # 91 days without use: its expiry, pushed 90 days past its last use, has passed.
     sql(
         hub_db,
-        "UPDATE tokens SET created_at = now() - interval '100 days', last_used_at = now() - interval '91 days', "
-        "expires_at = now() - interval '1 day' WHERE id = %s",
-        (stale["token_id"],),
+        update(tokens)
+        .values(created_at=func.now() - 100 * day, last_used_at=func.now() - 91 * day, expires_at=func.now() - day)
+        .where(tokens.c.id == stale["token_id"]),
     )
     # 89 days without use: still valid, and this use gives it 90 days again.
     sql(
         hub_db,
-        "UPDATE tokens SET created_at = now() - interval '100 days', last_used_at = now() - interval '89 days', "
-        "expires_at = now() + interval '1 day' WHERE id = %s",
-        (fresh["token_id"],),
+        update(tokens)
+        .values(created_at=func.now() - 100 * day, last_used_at=func.now() - 89 * day, expires_at=func.now() + day)
+        .where(tokens.c.id == fresh["token_id"]),
     )
     assert_login_hint(client.get("/v1/auth/whoami", headers=bearer(stale["token"])))
     assert client.get("/v1/auth/whoami", headers=bearer(fresh["token"])).status_code == 200
-    (left,) = sql(hub_db, "SELECT expires_at - now() FROM tokens WHERE id = %s", (fresh["token_id"],))[0]
+    (left,) = sql(hub_db, select(tokens.c.expires_at - func.now()).where(tokens.c.id == fresh["token_id"]))[0]
     assert left.days == 89 or left.days == 90  # now() + 90 days, read a moment later
     listed = client.get("/v1/tokens?all=true", headers=bearer(fresh["token"])).json()
     assert {t["id"]: t["state"] for t in listed} == {stale["token_id"]: "expired", fresh["token_id"]: "active"}
 
 
-COUNT_EXPIRY_WRITES = """
-CREATE TABLE expiry_writes (token_id bigint, at timestamptz DEFAULT clock_timestamp());
-CREATE FUNCTION count_expiry_write() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER AS $$
-BEGIN
-    IF NEW.expires_at IS DISTINCT FROM OLD.expires_at THEN
-        INSERT INTO expiry_writes (token_id) VALUES (NEW.id);
-    END IF;
-    RETURN NEW;
-END $$;
-CREATE TRIGGER count_expiry_write AFTER UPDATE ON tokens FOR EACH ROW EXECUTE FUNCTION count_expiry_write();
-"""
+# The rows of tokens the current transaction updated so far, plus those of the backend's earlier transactions whose
+# counts it has not flushed yet (a backend flushes at most once a second, while idle): only the difference between
+# the start and the end of one transaction is that transaction's own.
+_XACT_TABLES = table("pg_stat_xact_user_tables", column("relname"), column("n_tup_upd"))
+TOKEN_UPDATES = select(_XACT_TABLES.c.n_tup_upd).where(_XACT_TABLES.c.relname == "tokens")
 
 
-def expiry_writes(db, token_id: int) -> int:
-    return sql(db, "SELECT count(*) FROM expiry_writes WHERE token_id = %s", (token_id,))[0][0]
+class TokenWrites:
+    """An engine whose ``begin()`` counts, in ``writes``, the rows of tokens each transaction updated, read on the
+    transaction's own connection when it ends cleanly; anything else goes to the engine it wraps. With one token in
+    the database, ``writes`` counts the writes of its expiry and last use."""
+
+    def __init__(self, engine):
+        self.engine = engine
+        self.writes = 0
+
+    @asynccontextmanager
+    async def begin(self):
+        async with self.engine.begin() as conn:
+            before = (await conn.execute(TOKEN_UPDATES)).scalar_one()
+            yield conn
+            self.writes += (await conn.execute(TOKEN_UPDATES)).scalar_one() - before
+
+    def __getattr__(self, name):
+        return getattr(self.engine, name)
+
+
+@contextmanager
+def counting_token_writes(app):
+    """``app``'s engine swapped for a TokenWrites until the block ends."""
+    engine = app.state.engine
+    app.state.engine = counted = TokenWrites(engine)
+    try:
+        yield counted
+    finally:
+        app.state.engine = engine
 
 
 def test_two_uses_in_one_day_write_the_expiry_once(client, github, hub_db):
-    sql(hub_db, COUNT_EXPIRY_WRITES)
-    signed = sign_in(client, github, "octo", 101)
-    token_id = signed["token_id"]
-    (issued,) = sql(hub_db, "SELECT expires_at FROM tokens WHERE id = %s", (token_id,))[0]
+    with counting_token_writes(client.app) as counted:
+        signed = sign_in(client, github, "octo", 101)
+        token_id = signed["token_id"]
+        issued = expires_at(hub_db, token_id)
 
-    assert client.get("/v1/auth/whoami", headers=bearer(signed["token"])).status_code == 200
-    (after_first,) = sql(hub_db, "SELECT expires_at FROM tokens WHERE id = %s", (token_id,))[0]
-    assert client.get("/v1/tokens", headers=bearer(signed["token"])).status_code == 200
-    (after_second,) = sql(hub_db, "SELECT expires_at FROM tokens WHERE id = %s", (token_id,))[0]
-    assert expiry_writes(hub_db, token_id) == 1
-    assert after_first > issued and after_second == after_first
-
-    # A day later the next use writes again, once.
-    sql(hub_db, "UPDATE tokens SET last_used_at = now() - interval '25 hours' WHERE id = %s", (token_id,))
-    for _ in range(3):
         assert client.get("/v1/auth/whoami", headers=bearer(signed["token"])).status_code == 200
-    assert expiry_writes(hub_db, token_id) == 2
-    (seen,) = sql(hub_db, "SELECT last_seen_at FROM users WHERE login = 'octo'")[0]
+        after_first = expires_at(hub_db, token_id)
+        assert client.get("/v1/tokens", headers=bearer(signed["token"])).status_code == 200
+        after_second = expires_at(hub_db, token_id)
+        assert counted.writes == 1
+        assert after_first > issued and after_second == after_first
+
+        # A day later the next use writes again, once. The test's own write of last_used_at is not the hub's.
+        tokens = tables.tokens
+        stale = update(tokens).values(last_used_at=func.now() - timedelta(hours=25)).where(tokens.c.id == token_id)
+        sql(hub_db, stale)
+        for _ in range(3):
+            assert client.get("/v1/auth/whoami", headers=bearer(signed["token"])).status_code == 200
+        assert counted.writes == 2
+    (seen,) = sql(hub_db, select(tables.users.c.last_seen_at).where(tables.users.c.login == "octo"))[0]
     assert seen is not None
 
 
 def test_requests_racing_over_a_stale_token_write_once(client, config, github, hub_db):
-    sql(hub_db, COUNT_EXPIRY_WRITES)
     signed = sign_in(client, github, "octo", 101)
-    sql(hub_db, "UPDATE tokens SET last_used_at = now() - interval '2 days' WHERE id = %s", (signed["token_id"],))
+    tokens = tables.tokens
+    stale = update(tokens).values(last_used_at=func.now() - timedelta(days=2)).where(tokens.c.id == signed["token_id"])
+    sql(hub_db, stale)
 
     async def race():
         from psycopg_pool import AsyncConnectionPool
 
-        async with AsyncConnectionPool(hub_db.dsn, min_size=8, max_size=8, open=False) as pool:
-            await pool.wait()
-            return await asyncio.gather(*(authenticate(pool, signed["token"], "machine", config) for _ in range(8)))
+        from evo_agents.hub.db import make_engine
 
-    principals = asyncio.run(race())
+        async with AsyncConnectionPool(hub_db.dsn, min_size=8, max_size=8, open=False, close_returns=True) as pool:
+            await pool.wait()
+            counted = TokenWrites(make_engine(pool))
+            principals = await asyncio.gather(
+                *(authenticate(counted, signed["token"], "machine", config) for _ in range(8))
+            )
+            return principals, counted.writes
+
+    principals, writes = asyncio.run(race())
     assert {p.token_id for p in principals} == {signed["token_id"]}
-    assert expiry_writes(hub_db, signed["token_id"]) == 1
+    assert writes == 1
 
 
 # Server: roles
@@ -255,7 +302,7 @@ def test_only_an_admin_can_grant(client, github, hub_db):
         refused = client.request(method, path, json=body if method == "PUT" else None, headers=bearer(member["token"]))
         assert refused.status_code == 403, refused.text
         assert refused.json()["error"] == "forbidden" and "EVO_HUB_ADMINS" in refused.json()["message"]
-    assert sql(hub_db, "SELECT count(*) FROM grants")[0][0] == 0
+    assert count(hub_db, tables.grants) == 0
     assert [row[2] for row in audit_rows(hub_db)] == ["auth.login", "auth.login"]
 
     created = client.put(grant, json=body, headers=bearer(admin["token"]))
@@ -299,7 +346,7 @@ def test_a_grant_needs_a_registered_project_and_a_level_of_its_ladder(client, gi
     assert bad_role.status_code == 422
     bad_login = client.put("/v1/admin/projects/custom/grants/-x", json=reader, headers=headers)
     assert bad_login.status_code == 422
-    assert sql(hub_db, "SELECT count(*) FROM grants")[0][0] == 0
+    assert count(hub_db, tables.grants) == 0
 
     ok = client.put(
         "/v1/admin/projects/custom/grants/newbie", json={"role": "reader", "max_level": "closed"}, headers=headers
@@ -328,7 +375,8 @@ def test_a_renamed_github_account_keeps_its_row_and_its_grants(client, github, h
     # the newcomer gets a row of their own, without alice's grants.
     newcomer = sign_in(client, github, "alice", 999)
     assert client.get("/v1/auth/whoami", headers=bearer(newcomer["token"])).json()["grants"] == []
-    assert sql(hub_db, "SELECT login FROM users WHERE github_id = 401") == [("alice_401",)]
+    users = tables.users
+    assert sql(hub_db, select(users.c.login).where(users.c.github_id == 401)) == [("alice_401",)]
 
     # An admin grants her new login before she signs in with it; signing in merges that grant into her row.
     put = {"role": "reader", "max_level": "internal"}
@@ -341,7 +389,10 @@ def test_a_renamed_github_account_keeps_its_row_and_its_grants(client, github, h
             {"project": "demo", "role": "writer", "max_level": "public"},
             {"project": "other", "role": "reader", "max_level": "internal"},
         ]
-    logins = sql(hub_db, "SELECT login, github_id FROM users WHERE login NOT LIKE '%%-owner' ORDER BY login")
+    logins = sql(
+        hub_db,
+        select(users.c.login, users.c.github_id).where(users.c.login.not_like("%-owner")).order_by(users.c.login),
+    )
     assert logins == [("alice", 999), ("alicia", 401), (ADMIN, 302)]
 
 
@@ -392,7 +443,7 @@ def test_a_token_of_another_app_cannot_sign_in_when_the_secret_is_known(hub_db, 
         assert github.calls("/user") == []  # refused before asking whose it is
         own = github.issue_token(Account("octo", 101))
         assert client.post("/v1/auth/github", json={"github_token": own, "host": "laptop"}).status_code == 201
-    assert sql(hub_db, "SELECT count(*) FROM tokens")[0][0] == 1
+    assert count(hub_db, tables.tokens) == 1
     check = github.calls(f"/applications/{github.client_id}/token")[-1]
     assert check.headers["authorization"].startswith("Basic ") and json.loads(check.body) == {"access_token": own}
 
@@ -579,7 +630,8 @@ def test_the_cli_signs_in_with_the_device_flow_and_manages_tokens_and_grants(hub
         assert json.loads((directory / "config.json").read_text()) == {"url": hub.url, "login": ADMIN}
         token = (directory / "token").read_text().strip()
         assert token.startswith("evh_") and token not in signed.stdout + signed.stderr
-        stored = sql(hub_db, "SELECT token_hash FROM tokens WHERE revoked_at IS NULL")
+        tokens = tables.tokens
+        stored = sql(hub_db, select(tokens.c.token_hash).where(tokens.c.revoked_at.is_(None)))
         assert stored == [(hashlib.sha256(token.encode()).hexdigest(),)]
 
         whoami = cli(["whoami"], admin_home, github)
@@ -609,7 +661,7 @@ def test_the_cli_signs_in_with_the_device_flow_and_manages_tokens_and_grants(hub
         assert_json_keys("hub admin stats", stats)
         assert set(stats) == HUB_TABLES and stats["grants"] == 1 and stats["projects"] == 1
         assert cli(["admin", "revoke", "member", "demo"], admin_home, github).returncode == 0
-        assert sql(hub_db, "SELECT count(*) FROM grants")[0][0] == 0
+        assert count(hub_db, tables.grants) == 0
 
         listed = cli(["token", "list"], admin_home, github)
         assert listed.returncode == 0
@@ -633,7 +685,8 @@ def test_the_cli_signs_in_with_the_device_flow_and_manages_tokens_and_grants(hub
 
         # A revoked token on disk: the hub's 401 tells the person what to run.
         member_token = (member_home / ".evo" / "hub" / "token").read_text().strip()
-        sql(hub_db, "UPDATE tokens SET revoked_at = now() WHERE token_hash = %s", (token_hash(member_token),))
+        revoked = update(tokens).values(revoked_at=func.now()).where(tokens.c.token_hash == token_hash(member_token))
+        sql(hub_db, revoked)
         stale = cli(["token", "list"], member_home, github)
         assert stale.returncode == 1 and "evo-agents hub login" in stale.stderr
     log = hub.log()
@@ -650,7 +703,9 @@ def token_hash(token: str) -> str:
 
 
 def is_revoked(db, token: str) -> bool:
-    return sql(db, "SELECT revoked_at IS NOT NULL FROM tokens WHERE token_hash = %s", (token_hash(token),)) == [(True,)]
+    tokens = tables.tokens
+    revoked = select(tokens.c.revoked_at.is_not(None)).where(tokens.c.token_hash == token_hash(token))
+    return sql(db, revoked) == [(True,)]
 
 
 def test_client_errors_are_one_line_on_stderr(tmp_path):

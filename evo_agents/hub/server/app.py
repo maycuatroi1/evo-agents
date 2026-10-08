@@ -1,17 +1,18 @@
 """The hub's FastAPI application.
 
-The lifespan migrates the database (under the advisory lock, see ``migrate``), opens the connection pool, the
-GitHub client, the blob store client and the job queue the api defers to, and closes them on shutdown; a database
-that cannot be reached or migrated stops the start instead of serving errors. An R2 outage does not: health
-reports it and the blob routes answer 503. Every request gets an id and one access log line without its query
-string, which can carry OAuth codes. Every path under /v1 needs a credential except the few
-``security.PUBLIC_PATHS`` lists. The OpenAPI document is served at /v1/openapi.json for the web client's generated
-types. /mcp is the MCP endpoint (``evo_agents.hub.server.mcp``): its SDK app is mounted, so the lifespan runs its
-session manager. The only websockets are the two ends of a run's web terminal (``evo_agents.hub.server.terminal``),
-which check their own credential. ``app.state.sealer`` seals the members' secrets (``evo_agents.hub.server.sealing``);
-it is None without EVO_HUB_SECRETS_KEY, and the routes that write secrets answer 503. ``app.state.github_app`` is the
-hub's GitHub App (``evo_agents.hub.server.github_app``), which makes and revokes the runs' GitHub tokens; the lifespan
-opens it, None without EVO_HUB_GITHUB_APP_*, and a private key that does not open stops the start.
+The lifespan migrates the database (under the advisory lock, see ``migrate``), opens the connection pool and the
+SQLAlchemy engine on it (``evo_agents.hub.db``), the GitHub client, the blob store client and the job queue the api
+defers to, and closes them on shutdown, the engine before the pool; a database that cannot be reached or migrated stops
+the start instead of serving errors. An R2 outage does not: health reports it and the blob routes answer 503. Every
+request gets an id and one access log line without its query string, which can carry OAuth codes. Every path under /v1
+needs a credential except the few ``security.PUBLIC_PATHS`` lists. The OpenAPI document is served at /v1/openapi.json
+for the web client's generated types. /mcp is the MCP endpoint (``evo_agents.hub.server.mcp``): its SDK app is mounted,
+so the lifespan runs its session manager. The only websockets are the two ends of a run's web terminal
+(``evo_agents.hub.server.terminal``), which check their own credential. ``app.state.sealer`` seals the members' secrets
+(``evo_agents.hub.server.sealing``); it is None without EVO_HUB_SECRETS_KEY, and the routes that write secrets answer
+503. ``app.state.github_app`` is the hub's GitHub App (``evo_agents.hub.server.github_app``), which makes and revokes
+the runs' GitHub tokens; the lifespan opens it, None without EVO_HUB_GITHUB_APP_*, and a private key that does not open
+stops the start.
 """
 
 from __future__ import annotations
@@ -29,7 +30,7 @@ from starlette.datastructures import MutableHeaders
 from evo_agents import __version__
 from evo_agents.hub.blobs import BlobStore
 from evo_agents.hub.config import HubConfig
-from evo_agents.hub.db import open_pool
+from evo_agents.hub.db import make_engine, open_pool
 from evo_agents.hub.jobs import JobQueue
 from evo_agents.hub.kg_graph import GraphCache, Handles
 from evo_agents.hub.log import redact_dsn, scrub_data
@@ -113,6 +114,7 @@ def create_app(config: HubConfig) -> FastAPI:
                 await github_app.aclose()
             raise
         app.state.pool = pool
+        app.state.engine = make_engine(pool)  # disposed of before the pool closes
         app.state.github = GitHub(config)
         app.state.github_app = github_app  # None without EVO_HUB_GITHUB_APP_*: no GitHub token is leased
         app.state.blobs = BlobStore.from_config(config)
@@ -148,6 +150,7 @@ def create_app(config: HubConfig) -> FastAPI:
                 await app.state.github_app.aclose()
             if app.state.blobs is not None:
                 app.state.blobs.close()
+            await app.state.engine.dispose()
             await pool.close()
             log.info("hub stopped, connection pool closed")
 

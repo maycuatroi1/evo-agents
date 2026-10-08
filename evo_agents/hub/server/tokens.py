@@ -15,7 +15,9 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, HTTPException, Path, Query, Request, Response
 from pydantic import BaseModel
+from sqlalchemy import case, func, select
 
+from evo_agents.hub import tables
 from evo_agents.hub.server import audit, workers
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.security import WEB, CurrentUser, delete_session_cookie, revoke_token
@@ -39,14 +41,27 @@ class TokenRow(BaseModel):
     current: bool  # the token this request came with
 
 
-LIST = """
-SELECT id, kind, host, created_at, last_used_at, expires_at, revoked_at,
-       CASE WHEN revoked_at IS NOT NULL THEN 'revoked' WHEN expires_at <= now() THEN 'expired' ELSE 'active' END
-  FROM tokens
- WHERE user_id = %s AND (%s OR (revoked_at IS NULL AND expires_at > now()))
- ORDER BY created_at DESC, id DESC
-"""
-FIELDS = ("id", "kind", "host", "created_at", "last_used_at", "expires_at", "revoked_at", "state")
+def _listed(user_id: int, include_inactive: bool):
+    """The tokens of ``user_id``, newest first; only the live ones unless ``include_inactive``."""
+    tokens = tables.tokens
+    state = case(
+        (tokens.c.revoked_at.is_not(None), "revoked"),
+        (tokens.c.expires_at <= func.now(), "expired"),
+        else_="active",
+    )
+    query = select(
+        tokens.c.id,
+        tokens.c.kind,
+        tokens.c.host,
+        tokens.c.created_at,
+        tokens.c.last_used_at,
+        tokens.c.expires_at,
+        tokens.c.revoked_at,
+        state.label("state"),
+    ).where(tokens.c.user_id == user_id)
+    if not include_inactive:
+        query = query.where(tokens.c.revoked_at.is_(None), tokens.c.expires_at > func.now())
+    return query.order_by(tokens.c.created_at.desc(), tokens.c.id.desc())
 
 
 @router.get("", response_model=list[TokenRow])
@@ -55,15 +70,15 @@ async def list_tokens(
     user: CurrentUser,
     include_inactive: Annotated[bool, Query(alias="all", description="also list revoked and expired tokens")] = False,
 ) -> list[TokenRow]:
-    async with request.app.state.pool.connection() as conn:
-        rows = await (await conn.execute(LIST, (user.user_id, include_inactive))).fetchall()
-    return [TokenRow(**dict(zip(FIELDS, row, strict=True)), current=row[0] == user.token_id) for row in rows]
+    async with request.app.state.engine.begin() as conn:
+        rows = (await conn.execute(_listed(user.user_id, include_inactive))).all()
+    return [TokenRow(**row._mapping, current=row.id == user.token_id) for row in rows]
 
 
 @router.delete("/{token_id}", status_code=204, response_class=Response, responses={404: {"model": ErrorBody}})
 async def revoke(request: Request, user: CurrentUser, token_id: Annotated[int, Path(ge=1, le=MAX_ID)]) -> Response:
     """Revoke one of the caller's tokens; a worker token's worker is revoked with it."""
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         worker = await workers.lock_worker_of_token(conn, token_id, user.user_id)  # before the token's row
         if not await revoke_token(conn, token_id, user.user_id):
             raise HTTPException(404, f"you have no unrevoked token {token_id}: see `evo-agents hub token list`")

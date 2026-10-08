@@ -10,6 +10,10 @@ holding it run one after the other; the queueing lock keeps at most one of them 
 one waits is a no-op. procrastinate's queueing lock alone still lets several run at once, and its lock alone lets
 any number wait. A job deferred on the caller's connection runs inside a savepoint, so a defer refused because one
 waits already leaves the caller's transaction usable.
+
+The caller's connection is an ``AsyncConnection`` of the hub's engine (``evo_agents.hub.db``): procrastinate, whose
+only async connector is psycopg's, gets the psycopg connection under it through ``driver``, and the savepoint is the
+engine's ``begin_nested()``. This is the one place the hub hands out that psycopg connection.
 """
 
 from __future__ import annotations
@@ -18,6 +22,9 @@ from procrastinate import PsycopgConnector, exceptions
 from procrastinate.manager import JobManager
 from procrastinate.tasks import configure_task
 from psycopg_pool import AsyncConnectionPool
+from sqlalchemy.ext.asyncio import AsyncConnection
+
+from evo_agents.hub.db import driver
 
 PING = "hub.ping"  # does nothing for a moment: proves a worker takes jobs
 CLEANUP_UPLOADS = "hub.cleanup_uploads"  # hourly: uploads never committed, after 24 hours
@@ -48,30 +55,41 @@ class JobQueue:
         return cls(JobManager(connector))
 
     async def defer(
-        self, task: str, *, lock: str | None = None, queueing_lock: str | None = None, connection=None, **kwargs
+        self,
+        task: str,
+        *,
+        lock: str | None = None,
+        queueing_lock: str | None = None,
+        connection: AsyncConnection | None = None,
+        **kwargs,
     ) -> int | None:
         """Queue a job of ``task`` with ``kwargs`` (JSON values); its id, or None when a job with the same
         ``queueing_lock`` waits already, which counts as queued. With ``connection``, the job is queued in that
         connection's transaction and exists only if it commits."""
-        deferrer = configure_task(
-            name=task, job_manager=self._manager, lock=lock, queueing_lock=queueing_lock, connection=connection
-        )
-        if connection is None or connection.autocommit:
+        if connection is None:
+            deferrer = configure_task(name=task, job_manager=self._manager, lock=lock, queueing_lock=queueing_lock)
             try:
                 return await deferrer.defer_async(**kwargs)
             except exceptions.AlreadyEnqueued:
                 return None
-        # The refusal is an error in Postgres, which would abort the caller's whole transaction without the savepoint.
-        await connection.execute("SAVEPOINT hub_defer")
+        deferrer = configure_task(
+            name=task,
+            job_manager=self._manager,
+            lock=lock,
+            queueing_lock=queueing_lock,
+            connection=await driver(connection),
+        )
+        # The refusal is an error in Postgres, which would abort the caller's whole transaction without the
+        # savepoint; leaving the block with it rolls back to the savepoint.
         try:
-            job_id = await deferrer.defer_async(**kwargs)
+            async with connection.begin_nested():
+                return await deferrer.defer_async(**kwargs)
         except exceptions.AlreadyEnqueued:
-            await connection.execute("ROLLBACK TO SAVEPOINT hub_defer")
             return None
-        await connection.execute("RELEASE SAVEPOINT hub_defer")
-        return job_id
 
-    async def defer_kg(self, task: str, project: str, /, *, connection=None, **kwargs) -> int | None:
+    async def defer_kg(
+        self, task: str, project: str, /, *, connection: AsyncConnection | None = None, **kwargs
+    ) -> int | None:
         """``defer`` with lock and queueing lock ``kg:<project>``: one kg job of the project runs at a time, and at
         most one waits. ``project`` is positional only, so the job's own arguments may hold a ``project`` too."""
         key = kg_lock(project)

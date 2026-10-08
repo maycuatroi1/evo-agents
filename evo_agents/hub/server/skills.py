@@ -34,12 +34,16 @@ import asyncio
 import io
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, HTTPException, Path, Query, Request
 from pydantic import BaseModel, Field, model_validator
+from sqlalchemy import Select, and_, func, insert, or_, select, true
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.ext.asyncio import AsyncConnection
 
+from evo_agents.hub import tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.blobs import BLOB_PREFIX, GET_TTL, BlobStoreUnavailable, blob_key
 from evo_agents.hub.server.admin import PROJECT_NAME, ProjectName
@@ -159,24 +163,26 @@ def _no_grant(project: str) -> HTTPException:
     )
 
 
-async def _readable(conn, user: Principal, project: str | None) -> Place:
+async def _readable(conn: AsyncConnection, user: Principal, project: str | None) -> Place:
     """The place of ``project``'s skills (global without one) when ``user`` may read them; 403 otherwise, the same
     for a project that does not exist."""
     if project is None:
         return GLOBAL_PLACE
     if not user.reaches(project):  # the agent of a run reads the skills of the run's project alone
         raise _no_grant(project)
-    cursor = await conn.execute(
-        "SELECT p.id FROM projects p JOIN grants g ON g.project_id = p.id AND g.user_id = %s WHERE p.name = %s",
-        (user.user_id, project),
+    projects, grants = tables.projects, tables.grants
+    granted = (
+        select(projects.c.id)
+        .join_from(projects, grants, and_(grants.c.project_id == projects.c.id, grants.c.user_id == user.user_id))
+        .where(projects.c.name == project)
     )
-    row = await cursor.fetchone()
+    row = (await conn.execute(granted)).first()
     if row is None:
         raise _no_grant(project)
-    return Place("project", row[0], project)
+    return Place("project", row.id, project)
 
 
-async def _writable(conn, user: Principal, project: str | None) -> Place:
+async def _writable(conn: AsyncConnection, user: Principal, project: str | None) -> Place:
     """The place ``user`` publishes into: global for a hub admin, a project under its write rule. 403 or 422
     otherwise, before anything is written."""
     if project is None:
@@ -202,22 +208,55 @@ def _checked_name(name: str) -> str:
     return name
 
 
-SKILLS = """
-SELECT s.scope, p.name, s.name, v.version, v.description, v.sha256, v.size, v.source_repo, v.source_commit, u.login,
-       v.published_at
-  FROM skills s
-  LEFT JOIN projects p ON p.id = s.project_id
-  JOIN LATERAL (SELECT * FROM skill_versions WHERE skill_id = s.id ORDER BY version DESC LIMIT 1) v ON true
-  JOIN users u ON u.id = v.published_by
- WHERE (s.scope = 'global' AND %(global)s)
-    OR (s.scope = 'project' AND s.project_id = ANY(%(projects)s))
- ORDER BY s.scope, p.name NULLS FIRST, lower(s.name)
-"""
-# The projects whose skills a caller lists: those it holds a grant on, the run's alone for the agent of a run.
-GRANTED = """
-SELECT g.project_id FROM grants g JOIN projects p ON p.id = g.project_id
- WHERE g.user_id = %(user)s AND (%(only)s::text IS NULL OR p.name = %(only)s)
-"""
+def _skills(with_global: bool, project_ids: list[int]) -> Select:
+    """The skills of Skill, column by field name, each with its latest version: the global ones with
+    ``with_global``, and those of the projects ``project_ids``."""
+    skills, projects, users, versions = tables.skills, tables.projects, tables.users, tables.skill_versions
+    latest = (
+        select(versions)
+        .where(versions.c.skill_id == skills.c.id)
+        .order_by(versions.c.version.desc())
+        .limit(1)
+        .lateral("v")
+    )
+    wanted = [and_(skills.c.scope == "project", skills.c.project_id.in_(project_ids))]
+    if with_global:
+        wanted.insert(0, skills.c.scope == "global")
+    return (
+        select(
+            skills.c.scope,
+            projects.c.name.label("project"),
+            skills.c.name,
+            latest.c.version,
+            latest.c.description,
+            latest.c.sha256,
+            latest.c.size,
+            latest.c.source_repo,
+            latest.c.source_commit,
+            users.c.login.label("published_by"),
+            latest.c.published_at,
+        )
+        .select_from(
+            skills.outerjoin(projects, projects.c.id == skills.c.project_id)
+            .join(latest, true())
+            .join(users, users.c.id == latest.c.published_by)
+        )
+        .where(or_(*wanted))
+        .order_by(skills.c.scope, projects.c.name.nulls_first(), func.lower(skills.c.name))
+    )
+
+
+def _granted(user: Principal) -> Select:
+    """The projects whose skills a caller lists: those it holds a grant on, the run's alone for the agent of a run."""
+    grants, projects = tables.grants, tables.projects
+    query = (
+        select(grants.c.project_id)
+        .join_from(grants, projects, projects.c.id == grants.c.project_id)
+        .where(grants.c.user_id == user.user_id)
+    )
+    if user.run_project is not None:
+        query = query.where(projects.c.name == user.run_project)
+    return query
 
 
 @router.get("", response_model=list[Skill], responses={403: {"model": ErrorBody}})
@@ -231,36 +270,47 @@ async def list_skills(
     caller has a grant on."""
     if project is not None and scope == "global":
         raise HTTPException(422, "a global skill belongs to no project: pass scope=project with a project, or neither")
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         if project is not None:
             projects = [(await _readable(conn, user, project)).project_id]
         else:
-            cursor = await conn.execute(GRANTED, {"user": user.user_id, "only": user.run_project})
-            projects = [row[0] for row in await cursor.fetchall()]
-        wanted = {
-            "global": scope in (None, "global") and project is None,
-            "projects": projects if scope in (None, "project") else [],
-        }
-        rows = await (await conn.execute(SKILLS, wanted)).fetchall()
-    fields = Skill.model_fields
-    return [Skill(**dict(zip(fields, row, strict=True))) for row in rows]
+            projects = list((await conn.execute(_granted(user))).scalars())
+        with_global = scope in (None, "global") and project is None
+        rows = (await conn.execute(_skills(with_global, projects if scope in (None, "project") else []))).all()
+    return [Skill(**row._mapping) for row in rows]
 
 
-VERSIONS = """
-SELECT v.version, v.description, v.sha256, v.size, v.source_repo, v.source_commit, u.login, v.published_at
-  FROM skill_versions v JOIN users u ON u.id = v.published_by
- WHERE v.skill_id = %s ORDER BY v.version DESC
-"""
-FIND = """
-SELECT id, name, created_at FROM skills
- WHERE scope = %s AND project_id IS NOT DISTINCT FROM %s AND lower(name) = lower(%s)
-"""
+def _versions(skill_id: int) -> Select:
+    """The versions of skill ``skill_id`` with what Version shows, column by field name, the latest first."""
+    versions, users = tables.skill_versions, tables.users
+    return (
+        select(
+            versions.c.version,
+            versions.c.description,
+            versions.c.sha256,
+            versions.c.size,
+            versions.c.source_repo,
+            versions.c.source_commit,
+            users.c.login.label("published_by"),
+            versions.c.published_at,
+        )
+        .join_from(versions, users, users.c.id == versions.c.published_by)
+        .where(versions.c.skill_id == skill_id)
+        .order_by(versions.c.version.desc())
+    )
 
 
-async def _find(conn, place: Place, name: str, *, lock: bool = False):
+async def _find(conn: AsyncConnection, place: Place, name: str, *, lock: bool = False):
     """(id, name, created_at) of skill ``name`` in ``place``, matched ignoring case; None when there is none."""
-    cursor = await conn.execute(FIND + (" FOR UPDATE" if lock else ""), (place.scope, place.project_id, name))
-    return await cursor.fetchone()
+    skills = tables.skills
+    query = select(skills.c.id, skills.c.name, skills.c.created_at).where(
+        skills.c.scope == place.scope,
+        skills.c.project_id.is_not_distinct_from(place.project_id),
+        func.lower(skills.c.name) == func.lower(name),
+    )
+    if lock:
+        query = query.with_for_update()
+    return (await conn.execute(query)).first()
 
 
 def _not_found(place: Place, name: str) -> HTTPException:
@@ -269,14 +319,16 @@ def _not_found(place: Place, name: str) -> HTTPException:
 
 
 async def _history(request: Request, user: Principal, project: str | None, name: str) -> SkillHistory:
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         place = await _readable(conn, user, project)
         found = await _find(conn, place, name)
         if found is None:
             raise _not_found(place, name)
-        rows = await (await conn.execute(VERSIONS, (found[0],))).fetchall()
-    versions = [Version(**dict(zip(Version.model_fields, row, strict=True))) for row in rows]
-    return SkillHistory(scope=place.scope, project=place.project, name=found[1], created_at=found[2], versions=versions)
+        rows = (await conn.execute(_versions(found.id))).all()
+    versions = [Version(**row._mapping) for row in rows]
+    return SkillHistory(
+        scope=place.scope, project=place.project, name=found.name, created_at=found.created_at, versions=versions
+    )
 
 
 @router.get("/global/{name}", response_model=SkillHistory, responses=READ_REFUSALS)
@@ -293,58 +345,57 @@ async def project_skill(request: Request, project: ProjectName, name: SkillName,
 
 # Publishing
 
-COMMITTED = "SELECT size FROM blobs WHERE project_id IS NOT DISTINCT FROM %s AND sha256 = %s"
-LATEST = "SELECT version, sha256 FROM skill_versions WHERE skill_id = %s ORDER BY version DESC LIMIT 1"
-INSERT_SKILL = """
-INSERT INTO skills (scope, project_id, name, created_by) VALUES (%s, %s, %s, %s) ON CONFLICT DO NOTHING RETURNING id
-"""
-INSERT_VERSION = """
-INSERT INTO skill_versions (skill_id, version, name, description, sha256, size, r2_key, source_repo, source_commit,
-                            published_by)
-VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-"""
+
+def _latest_bundle(skill_id: int) -> Select:
+    """The number and SHA-256 of the latest version of skill ``skill_id``."""
+    versions = tables.skill_versions
+    query = select(versions.c.version, versions.c.sha256).where(versions.c.skill_id == skill_id)
+    return query.order_by(versions.c.version.desc()).limit(1)
 
 
-async def _committed(conn, place: Place, body: PublishRequest) -> None:
+async def _committed(conn: AsyncConnection, place: Place, body: PublishRequest) -> None:
     """422 unless the place's holder has committed the bundle with the declared size."""
     holder = GLOBAL if place.project is None else f"project {place.project}"
-    row = await (await conn.execute(COMMITTED, (place.project_id, body.sha256))).fetchone()
+    blobs = tables.blobs
+    held = select(blobs.c.size).where(
+        blobs.c.project_id.is_not_distinct_from(place.project_id), blobs.c.sha256 == body.sha256
+    )
+    row = (await conn.execute(held)).first()
     if row is None:
         raise HTTPException(
             422,
             f"bundle {body.sha256} is not committed for {holder}: ask for an upload (POST /v1/blobs/uploads), PUT it "
             "and commit it (POST /v1/blobs/commit) first; no version was created",
         )
-    if row[0] != body.size:
+    if row.size != body.size:
         raise HTTPException(
-            422, f"bundle {body.sha256} has {row[0]} bytes, not the {body.size} declared; no version was created"
+            422, f"bundle {body.sha256} has {row.size} bytes, not the {body.size} declared; no version was created"
         )
 
 
-async def _latest(conn, skill_id: int) -> Version:
-    cursor = await conn.execute(VERSIONS + " LIMIT 1", (skill_id,))
-    return Version(**dict(zip(Version.model_fields, await cursor.fetchone(), strict=True)))
+async def _latest(conn: AsyncConnection, skill_id: int) -> Version:
+    return Version(**(await conn.execute(_versions(skill_id).limit(1))).one()._mapping)
 
 
 async def _publish(request: Request, user: Principal, project: str | None, name: str, body: PublishRequest):
     name = _checked_name(name)
     store = blob_store(request)
-    pool = request.app.state.pool
-    async with pool.connection() as conn:
+    engine = request.app.state.engine
+    async with engine.begin() as conn:
         place = await _writable(conn, user, project)
         await _committed(conn, place, body)
         found = await _find(conn, place, name)
         if found is not None:
-            if found[1] != name:
-                raise HTTPException(422, f"the {place.describe()} have {found[1]}, a name differing only in case")
-            latest = await (await conn.execute(LATEST, (found[0],))).fetchone()
-            if latest is not None and latest[1] == body.sha256:
+            if found.name != name:
+                raise HTTPException(422, f"the {place.describe()} have {found.name}, a name differing only in case")
+            latest = (await conn.execute(_latest_bundle(found.id))).first()
+            if latest is not None and latest.sha256 == body.sha256:
                 return Published(
                     scope=place.scope,
                     project=place.project,
                     name=name,
                     created=False,
-                    latest=await _latest(conn, found[0]),
+                    latest=await _latest(conn, found.id),
                 )
     bundle = io.BytesIO()
     try:
@@ -360,31 +411,33 @@ async def _publish(request: Request, user: Principal, project: str | None, name:
         contents = read_bundle(bundle.getvalue(), name)
     except BundleError as exc:
         raise HTTPException(422, f"bundle {body.sha256} is not a bundle of skill {name}: {exc}") from None
-    async with pool.connection() as conn:
+    async with engine.begin() as conn:
         place = await _writable(conn, user, project)  # the grant may have changed while the bundle was read
         await _committed(conn, place, body)
-        cursor = await conn.execute(INSERT_SKILL, (place.scope, place.project_id, name, user.user_id))
-        await cursor.fetchone()
+        skills = tables.skills
+        new_skill = pg_insert(skills).values(
+            scope=place.scope, project_id=place.project_id, name=name, created_by=user.user_id
+        )
+        await conn.execute(new_skill.on_conflict_do_nothing().returning(skills.c.id))
         skill_id, held, _ = await _find(conn, place, name, lock=True)  # the version numbers follow one at a time
         if held != name:
             raise HTTPException(422, f"the {place.describe()} have {held}, a name differing only in case")
-        latest = await (await conn.execute(LATEST, (skill_id,))).fetchone()
-        created = latest is None or latest[1] != body.sha256
+        latest = (await conn.execute(_latest_bundle(skill_id))).first()
+        created = latest is None or latest.sha256 != body.sha256
         if created:
             await conn.execute(
-                INSERT_VERSION,
-                (
-                    skill_id,
-                    (latest[0] if latest else 0) + 1,
-                    contents.name,
-                    contents.description[:MAX_DESCRIPTION],
-                    body.sha256,
-                    body.size,
-                    BLOB_PREFIX + body.sha256,
-                    body.source_repo,
-                    body.source_commit,
-                    user.user_id,
-                ),
+                insert(tables.skill_versions).values(
+                    skill_id=skill_id,
+                    version=(latest.version if latest else 0) + 1,
+                    name=contents.name,
+                    description=contents.description[:MAX_DESCRIPTION],
+                    sha256=body.sha256,
+                    size=body.size,
+                    r2_key=BLOB_PREFIX + body.sha256,
+                    source_repo=body.source_repo,
+                    source_commit=body.source_commit,
+                    published_by=user.user_id,
+                )
             )
             target = place.target(name)
             await record(conn, actor_id=user.user_id, token_id=user.token_id, action=PUBLISH, target=target)
@@ -412,34 +465,38 @@ async def publish_project(
 
 # Downloading
 
-BUNDLE = """
-SELECT v.version, v.sha256, v.size FROM skill_versions v
- WHERE v.skill_id = %s AND (%s::integer IS NULL OR v.version = %s) ORDER BY v.version DESC LIMIT 1
-"""
+
+def _bundle_of(skill_id: int, version: int | None) -> Select:
+    """The number, SHA-256 and size of version ``version`` of skill ``skill_id``, the latest without one."""
+    versions = tables.skill_versions
+    query = select(versions.c.version, versions.c.sha256, versions.c.size).where(versions.c.skill_id == skill_id)
+    if version is not None:
+        query = query.where(versions.c.version == version)
+    return query.order_by(versions.c.version.desc()).limit(1)
 
 
 async def _bundle(request: Request, user: Principal, project: str | None, name: str, version: int | None):
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         place = await _readable(conn, user, project)
         found = await _find(conn, place, name)
-        row = None if found is None else await (await conn.execute(BUNDLE, (found[0], version, version))).fetchone()
+        row = None if found is None else (await conn.execute(_bundle_of(found.id, version))).first()
     if row is None:
         if found is not None and version is not None:
-            raise HTTPException(404, f"{found[1]} has no version {version}")
+            raise HTTPException(404, f"{found.name} has no version {version}")
         raise _not_found(place, name)
     store = blob_store(request)  # after the read check: who may not read the skill learns nothing of the store
     number, sha256, size = row
-    expires_at = datetime.now(timezone.utc) + GET_TTL  # taken before signing, so never later than the URL
-    filename = f"{found[1]}-v{number}.tar.gz"  # a skill name is [A-Za-z0-9._-], safe in a header as it is
+    expires_at = datetime.now(UTC) + GET_TTL  # taken before signing, so never later than the URL
+    filename = f"{found.name}-v{number}.tar.gz"  # a skill name is [A-Za-z0-9._-], safe in a header as it is
     url = await asyncio.to_thread(store.presign_get, sha256, filename=filename)
     log.info(
         "skill bundle handed out",
-        extra={"scope": place.scope, "project": place.project, "skill": found[1], "version": number},
+        extra={"scope": place.scope, "project": place.project, "skill": found.name, "version": number},
     )
     return BundleTicket(
         scope=place.scope,
         project=place.project,
-        name=found[1],
+        name=found.name,
         version=number,
         sha256=sha256,
         size=size,

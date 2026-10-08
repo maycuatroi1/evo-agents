@@ -17,7 +17,7 @@ import json
 import threading
 import time
 from contextlib import ExitStack, contextmanager
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
@@ -31,8 +31,9 @@ import fastapi.routing
 import fastapi.sse
 import httpx
 import uvicorn
+from sqlalchemy import column, func, select, table, update
 
-from evo_agents.hub import runs
+from evo_agents.hub import runs, tables
 from evo_agents.hub.server import listen, run_events
 from evo_agents.hub.server import runs as run_routes
 from evo_agents.hub.server.app import create_app
@@ -143,7 +144,7 @@ def running(hub, step: int = 2, **dispatch) -> tuple[dict, int]:
 
 
 def event(seq: int, text: str = "", kind: str = "agent_message_chunk", **body) -> dict:
-    at = datetime.now(timezone.utc).isoformat()
+    at = datetime.now(UTC).isoformat()
     return {"seq": seq, "at": at, "kind": kind, "body": {"text": text or f"chunk {seq}", **body}}
 
 
@@ -323,10 +324,12 @@ def test_an_idle_stream_gets_a_ping_and_one_listen_connection_serves_claims_and_
         assert stream.next(pings=True) == {"comment": "ping"}
         claimer.start()
         time.sleep(0.5)
+        activity = table("pg_stat_activity", column("datname"), column("application_name"))
         listening = sql(
             hub.db,
-            "SELECT count(*) FROM pg_stat_activity WHERE datname = %s AND application_name = %s",
-            (hub.db.name, listen.APPLICATION_NAME),
+            select(func.count())
+            .select_from(activity)
+            .where(activity.c.datname == hub.db.name, activity.c.application_name == listen.APPLICATION_NAME),
         )
         assert listening == [(1,)]
     finally:
@@ -357,7 +360,8 @@ def test_a_claim_whose_worker_hung_up_while_it_waited_leaves_the_next_run_queued
     assert worker["id"] in claims_waiting(hub), "the hub's side of the claim waits on"
     run_id = dispatched(hub.client, hub.headers["owner"], [2])[0]["id"]
     wait_for(lambda: worker["id"] not in claims_waiting(hub), what="the abandoned claim to end")
-    assert sql(hub.db, "SELECT state, worker_id, lease_expires_at FROM runs WHERE id = %s", (run_id,)) == [
+    r = tables.runs
+    assert sql(hub.db, select(r.c.state, r.c.worker_id, r.c.lease_expires_at).where(r.c.id == run_id)) == [
         ("queued", None, None)
     ]
     assert claim(hub.client, worker)["id"] == run_id, "the next claim takes it at once"
@@ -375,10 +379,11 @@ def test_a_claim_whose_worker_hangs_up_while_it_leases_a_run_rolls_the_lease_bac
     monkeypatch.setattr(run_routes, "_run_spec", slow_spec)
     hang_up_claim(hub, worker, wait=0, after=0.5)
     wait_for(lambda: worker["id"] not in claims_waiting(hub), what="the abandoned claim to end")
-    assert sql(hub.db, "SELECT state, worker_id, event_seq FROM runs WHERE id = %s", (run_id,)) == [
+    r, e = tables.runs, tables.run_events
+    assert sql(hub.db, select(r.c.state, r.c.worker_id, r.c.event_seq).where(r.c.id == run_id)) == [
         ("queued", None, 0)
     ], "the lease, its state event and its seq were rolled back"
-    assert sql(hub.db, "SELECT count(*) FROM run_events WHERE run_id = %s", (run_id,)) == [(0,)]
+    assert sql(hub.db, select(func.count()).select_from(e).where(e.c.run_id == run_id)) == [(0,)]
 
     monkeypatch.setattr(run_routes, "_run_spec", spec_of)
     assert claim(hub.client, worker)["id"] == run_id
@@ -397,9 +402,10 @@ def test_a_batch_sent_again_is_stored_once_and_ack_seq_stops_at_a_gap(hub):
     assert sent(hub, worker, run_id, event(5), event(7), event(7), event(9)) == {"ack_seq": 7, "stored": 1}
     assert sent(hub, worker, run_id) == {"ack_seq": 7, "stored": 0}
     assert worker_texts(hub, run_id) == [f"chunk {n}" for n in range(1, 8)]
-    stored = sql(hub.db, "SELECT seq, kind FROM run_events WHERE run_id = %s ORDER BY seq", (run_id,))
+    r, e = tables.runs, tables.run_events
+    stored = sql(hub.db, select(e.c.seq, e.c.kind).where(e.c.run_id == run_id).order_by(e.c.seq))
     assert [seq for seq, _ in stored] == list(range(1, 10))  # the hub's own numbers, after its two state events
-    assert sql(hub.db, "SELECT event_seq, events_acked FROM runs WHERE id = %s", (run_id,)) == [(9, 7)]
+    assert sql(hub.db, select(r.c.event_seq, r.c.events_acked).where(r.c.id == run_id)) == [(9, 7)]
 
     # what a worker may not send: the hub's kinds, a naive time, a body that is no object, too many events
     for bad in (
@@ -414,10 +420,10 @@ def test_a_batch_sent_again_is_stored_once_and_ack_seq_stops_at_a_gap(hub):
     large = send(hub, worker, run_id, *(event(n, "x" * 300_000) for n in range(8, 12)))
     assert large.status_code == 413 and large.json()["detail"] == [{"limit": "batch_bytes"}]
     # a time ahead of the hub's clock is taken as the hub's now
-    future = {**event(8), "at": (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()}
+    future = {**event(8), "at": (datetime.now(UTC) + timedelta(days=1)).isoformat()}
     assert sent(hub, worker, run_id, future)["ack_seq"] == 8
-    ((at,),) = sql(hub.db, "SELECT at FROM run_events WHERE run_id = %s AND seq = 10", (run_id,))
-    assert at <= datetime.now(timezone.utc)
+    ((at,),) = sql(hub.db, select(e.c.at).where(e.c.run_id == run_id, e.c.seq == 10))
+    assert at <= datetime.now(UTC)
 
     # only the worker that claimed the run sends its events
     other = add_worker(hub.client, hub.headers["owner"], "linux-box")
@@ -429,14 +435,14 @@ def test_a_batch_sent_again_is_stored_once_and_ack_seq_stops_at_a_gap(hub):
     )
 
     # a run keeps at most 20,000 events: a batch beyond refuses everything and says where the ack stands
-    sql(hub.db, "UPDATE runs SET event_seq = %s WHERE id = %s", (runs.MAX_RUN_EVENTS - 1, run_id))
+    sql(hub.db, update(r).values(event_seq=runs.MAX_RUN_EVENTS - 1).where(r.c.id == run_id))
     full = send(hub, worker, run_id, event(9), event(10))
     assert full.status_code == 413
     assert full.json()["detail"] == [{"limit": "events_per_run", "max": runs.MAX_RUN_EVENTS, "ack_seq": 8}]
     assert sent(hub, worker, run_id, event(9)) == {"ack_seq": 9, "stored": 1}  # one more still fits
     # the spool may be sent once the run ended, by the worker that held it
     moved(hub.client, worker, run_id, "failed", error="the agent stopped")
-    sql(hub.db, "UPDATE runs SET event_seq = 20 WHERE id = %s", (run_id,))
+    sql(hub.db, update(r).values(event_seq=20).where(r.c.id == run_id))
     assert sent(hub, worker, run_id, event(10)) == {"ack_seq": 10, "stored": 1}
 
 
@@ -572,7 +578,8 @@ def test_a_reader_sending_a_message_gets_403_and_the_owners_reaches_the_worker(h
     assert beat(hub.client, worker, runs_held=[run_id])["runs"][0]["inbox"] == 0
     other = add_worker(hub.client, hub.headers["owner"], "linux-box")
     assert hub.client.post(inbox, headers=other["headers"]).status_code == 404
-    audited = sql(hub.db, "SELECT target FROM audit WHERE action = 'run.message' ORDER BY id")
+    a = tables.audit
+    audited = sql(hub.db, select(a.c.target).where(a.c.action == "run.message").order_by(a.c.id))
     assert audited == [
         (f"{PROJECT}/{PLAN}#2 run:{run_id} message:{first.json()['id']}",),
         (f"{PROJECT}/{PLAN}#2 run:{run_id} message:{second.json()['id']}",),
@@ -616,7 +623,8 @@ def test_a_takeover_shows_in_the_next_heartbeat_and_a_handback_after_it(hub):
     assert moved(hub.client, worker, run_id, "verifying")["takeover_requested_at"] is None
     over = control("takeover")
     assert over.status_code == 409 and "no agent of it runs now" in over.json()["message"]
-    actions = [row[0] for row in sql(hub.db, "SELECT action FROM audit WHERE action LIKE %s ORDER BY id", ("run.%",))]
+    a = tables.audit
+    actions = [row[0] for row in sql(hub.db, select(a.c.action).where(a.c.action.like("run.%")).order_by(a.c.id))]
     assert actions == ["run.dispatch", "run.takeover", "run.handback", "run.takeover"]
 
 
@@ -658,7 +666,8 @@ def test_the_worker_commits_the_run_log_and_diff_and_a_kind_it_does_not_take_is_
     committed = hub.client.post(f"/v1/worker/runs/{run_id}/blobs", json={"upload_ids": ids}, headers=worker["headers"])
     assert committed.status_code == 200, committed.text
     assert committed.json() == {"log_sha256": sha(log_bytes), "diff_sha256": sha(diff_bytes)}
-    blobs = sql(hub.db, "SELECT kind, size FROM blobs ORDER BY kind")
+    b = tables.blobs
+    blobs = sql(hub.db, select(b.c.kind, b.c.size).order_by(b.c.kind))
     assert blobs == [("run-diff", len(diff_bytes)), ("run-log", len(log_bytes))]
     shown = hub.client.get(f"/v1/projects/{PROJECT}/runs/{run_id}", headers=hub.headers["reader"]).json()
     assert (shown["log_sha256"], shown["diff_sha256"]) == (sha(log_bytes), sha(diff_bytes))

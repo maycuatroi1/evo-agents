@@ -14,7 +14,7 @@ take runs dispatched from the web only claims no other, and a token pinning a ru
 
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
@@ -25,16 +25,15 @@ if not pg.DSN:
     pytest.skip(pg.SKIP_REASON, allow_module_level=True)
 
 from fastapi.testclient import TestClient
-from psycopg.types.json import Jsonb
+from sqlalchemy import extract, func, insert, literal, select, update
 
 from evo_agents.harness import plan_digest
-from evo_agents.hub import jobs, runs
+from evo_agents.hub import jobs, runs, tables
 from evo_agents.hub.config import ConfigError, load_config
 from evo_agents.hub.server import run_state
 from evo_agents.hub.server import runs as run_routes
 from evo_agents.hub.server.app import create_app
 from evo_agents.hub.worker import queue
-from evo_agents.isotime import parse_iso
 from tests.hub.fake_github import Account
 from tests.hub.live import ADMIN, bearer, sql
 from tests.hub.test_plans import registration
@@ -198,34 +197,54 @@ def ready(client, headers) -> dict:
     return {item["key"]: item for item in response.json()["steps"]}
 
 
+def set_run(db, run_id: int, **values) -> None:
+    """Write ``values`` into the columns of run ``run_id``, straight into the database."""
+    sql(db, update(tables.runs).values(**values).where(tables.runs.c.id == run_id))
+
+
+def of_run(db, run_id: int, *names: str) -> list[tuple]:
+    """The columns ``names`` of run ``run_id``."""
+    return sql(db, select(*(tables.runs.c[name] for name in names)).where(tables.runs.c.id == run_id))
+
+
+def count_runs(db, *conditions) -> list[tuple]:
+    """[(n,)]: how many runs match every one of ``conditions``."""
+    return sql(db, select(func.count()).select_from(tables.runs).where(*conditions))
+
+
 def expire(db, run_id: int) -> None:
-    sql(db, "UPDATE runs SET lease_expires_at = now() - interval '1 second' WHERE id = %s", (run_id,))
+    set_run(db, run_id, lease_expires_at=func.now() - timedelta(seconds=1))
 
 
 def recover(client) -> dict:
-    return client.portal.call(run_state.recover_runs, client.app.state.pool)
+    return client.portal.call(run_state.recover_runs, client.app.state.engine)
 
 
 def state_of(db, run_id: int) -> str:
-    return sql(db, "SELECT state FROM runs WHERE id = %s", (run_id,))[0][0]
+    return of_run(db, run_id, "state")[0][0]
 
 
 def moves(db, run_id: int) -> list[tuple]:
-    rows = sql(db, "SELECT seq, body FROM run_events WHERE run_id = %s AND kind = 'state' ORDER BY seq", (run_id,))
+    events = tables.run_events
+    query = select(events.c.seq, events.c.body).where(events.c.run_id == run_id, events.c.kind == "state")
+    rows = sql(db, query.order_by(events.c.seq))
     return [(seq, body["from"], body["to"], body["actor"]) for seq, body in rows]
 
 
 def audit_rows(db, family: str) -> list[tuple]:
-    return sql(
-        db,
-        "SELECT a.action, a.target, u.login, p.name FROM audit a JOIN users u ON u.id = a.actor_id "
-        "LEFT JOIN projects p ON p.id = a.project_id WHERE a.action LIKE %s ORDER BY a.id",
-        (f"{family}.%",),
+    audit, users, projects = tables.audit, tables.users, tables.projects
+    query = (
+        select(audit.c.action, audit.c.target, users.c.login, projects.c.name)
+        .join_from(audit, users, users.c.id == audit.c.actor_id)
+        .outerjoin(projects, projects.c.id == audit.c.project_id)
+        .where(audit.c.action.like(f"{family}.%"))
+        .order_by(audit.c.id)
     )
+    return sql(db, query)
 
 
 def today() -> str:
-    return datetime.now(timezone.utc).date().isoformat()
+    return datetime.now(UTC).date().isoformat()
 
 
 # Ready steps
@@ -264,7 +283,7 @@ def test_dispatch_needs_the_writer_role_and_a_hub_admin_never_dispatches(client,
         response = dispatch(client, hub[who], [2])
         assert response.status_code == status, (who, response.text)
     assert "writer role" in dispatch(client, hub["reader"], [2]).json()["message"]
-    assert sql(hub_db, "SELECT count(*) FROM runs") == [(0,)]
+    assert count_runs(hub_db) == [(0,)]
 
 
 def test_a_step_that_is_not_ready_or_has_an_active_run_is_409_and_nothing_is_queued(client, hub, hub_db):
@@ -275,7 +294,7 @@ def test_a_step_that_is_not_ready_or_has_an_active_run_is_409_and_nothing_is_que
     assert done.status_code == 409 and "its status is done" in done.json()["message"]
     unknown = dispatch(client, hub["owner"], [99])
     assert unknown.status_code == 422 and "no step '99'" in unknown.json()["message"]
-    assert sql(hub_db, "SELECT count(*) FROM runs") == [(0,)]
+    assert count_runs(hub_db) == [(0,)]
 
     (run,) = dispatched(client, hub["owner"], ["2", 2])  # one run per step, however it is named
     assert {key: run[key] for key in ("step_key", "state", "requested_runtime", "runtime", "mode", "approval")} == {
@@ -307,7 +326,7 @@ def test_another_writer_cannot_dispatch_to_my_worker(client, hub, hub_db):
     nobodys = dispatch(client, hub["other"], [4], worker_id=999999)
     assert nobodys.status_code == 403
     assert nobodys.json()["message"].replace("999999", str(mine["id"])) == refused.json()["message"]
-    assert sql(hub_db, "SELECT count(*) FROM runs") == [(0,)]
+    assert count_runs(hub_db) == [(0,)]
     pinned = dispatched(client, hub["owner"], [4], worker_id=mine["id"], runtime="claude-code", timeout_min=5)[0]
     assert (pinned["pinned_worker_id"], pinned["requested_runtime"], pinned["timeout_min"]) == (
         mine["id"],
@@ -344,15 +363,15 @@ def test_two_workers_claiming_at_once_get_the_run_once(client, hub, hub_db):
     ((name, spec),) = got.items()
     assert spec["id"] == run["id"] and spec["runtime"] == "claude-code"
     winner = first if name == first["name"] else second
-    assert sql(hub_db, "SELECT worker_id, state FROM runs") == [(winner["id"], "leased")]
+    assert sql(hub_db, select(tables.runs.c.worker_id, tables.runs.c.state)) == [(winner["id"], "leased")]
     assert moves(hub_db, run["id"]) == [(1, "queued", "leased", "worker")]
 
 
 def test_a_claim_skips_a_run_another_claim_holds_locked_instead_of_waiting(client, hub, hub_db):
     worker = add_worker(client, hub["owner"], "mac-mini")
     run = dispatched(client, hub["owner"], [2])[0]
-    with pg.admin(hub_db.admin_dsn) as conn, conn.transaction():
-        conn.execute("SELECT 1 FROM runs WHERE id = %s FOR UPDATE", (run["id"],))
+    with live.engine(hub_db).begin() as conn:
+        conn.execute(select(tables.runs.c.id).where(tables.runs.c.id == run["id"]).with_for_update())
         started = time.monotonic()
         assert claim(client, worker) is None  # SKIP LOCKED: the locked run is passed over at once
         assert time.monotonic() - started < 5
@@ -379,7 +398,7 @@ def test_the_claimed_run_comes_with_its_spec_and_prompt(client, hub):
         30,
     )
     assert (spec["repo"], spec["branch"], spec["parent_run_id"]) == ("evo-agents", "feat/queue", None)
-    lease = parse_iso(spec["lease_expires_at"]) - datetime.now(timezone.utc)
+    lease = datetime.fromisoformat(spec["lease_expires_at"]) - datetime.now(UTC)
     assert 280 < lease.total_seconds() <= runs.LEASE_SECONDS
     prompt = spec["prompt"]
     assert prompt.startswith(f"You are running step 2 of the plan {PLAN} from the evo-agents hub.")
@@ -392,7 +411,7 @@ def test_a_dispatch_of_steps_takes_a_model_the_claim_carries_and_a_rerun_keeps(c
     for model in ("", "opus\nfast", "m" * (runs.MAX_MODEL_CHARS + 1), 4):
         refused = dispatch(client, hub["owner"], [2], runtime="claude-code", model=model)
         assert refused.status_code == 422, model
-    assert sql(hub_db, "SELECT count(*) FROM runs")[0][0] == 0
+    assert count_runs(hub_db)[0][0] == 0
     run = dispatched(client, hub["owner"], [2, 4], runtime="claude-code", model="claude-opus-4-1")
     assert [(item["step_key"], item["model"]) for item in run] == [("2", "claude-opus-4-1"), ("4", "claude-opus-4-1")]
     spec = claim(client, worker)
@@ -470,9 +489,7 @@ def test_a_claim_needs_the_runtime_a_checkout_a_free_slot_and_no_drain(client, h
     anything = dispatched(client, hub["owner"], [2])[0]
     spec = claim(client, codex)
     assert (spec["id"], spec["runtime"]) == (anything["id"], "codex")  # any: the runtime the worker has
-    assert sql(hub_db, "SELECT requested_runtime, runtime FROM runs WHERE id = %s", (anything["id"],)) == [
-        ("any", "codex")
-    ]
+    assert of_run(hub_db, anything["id"], "requested_runtime", "runtime") == [("any", "codex")]
     later = dispatched(client, hub["owner"], [4])[0]
     assert claim(client, codex) is None  # its one slot is taken
     two = add_worker(client, hub["owner"], "two-slots", slots=2)
@@ -531,12 +548,9 @@ def test_a_heartbeat_records_the_machine_extends_the_lease_and_carries_the_cance
     run_id = dispatched(client, hub["owner"], [2])[0]["id"]
     spec = claim(client, worker)
     moved(client, worker, run_id, "running", session_id="0199a3c1-0000-7000-8000-00000000000a")
-    sql(hub_db, "UPDATE runs SET lease_expires_at = now() + interval '10 seconds' WHERE id = %s", (run_id,))
-    sql(
-        hub_db,
-        "INSERT INTO run_inbox (run_id, sent_by, body) SELECT %s, id, 'also run ruff' FROM users WHERE login = %s",
-        (run_id, OWNER),
-    )
+    set_run(hub_db, run_id, lease_expires_at=func.now() + timedelta(seconds=10))
+    owner = select(tables.users.c.id).where(tables.users.c.login == OWNER).scalar_subquery()
+    sql(hub_db, insert(tables.run_inbox).values(run_id=run_id, sent_by=owner, body="also run ruff"))
     answer = beat(client, worker, runs_held=[run_id, 999999], free_slots=0)
     assert answer["drain"] is False
     held, unknown = answer["runs"]
@@ -549,7 +563,7 @@ def test_a_heartbeat_records_the_machine_extends_the_lease_and_carries_the_cance
         "handback": False,
         "inbox": 1,
     }
-    assert parse_iso(held["lease_expires_at"]) >= parse_iso(spec["lease_expires_at"])
+    assert datetime.fromisoformat(held["lease_expires_at"]) >= datetime.fromisoformat(spec["lease_expires_at"])
     assert unknown == {
         "id": 999999,
         "held": False,
@@ -679,7 +693,9 @@ def test_approval_auto_marks_the_step_done_in_a_revision_with_the_evidence(clien
         (before + 1, OWNER, "step 2: status pending -> in_progress; set note"),
     ]
     # the plan writes are the dispatcher's, made with the worker's token
-    assert sql(hub_db, "SELECT DISTINCT token_id FROM audit WHERE action = 'plan.patch'") == [(worker["token_id"],)]
+    assert sql(hub_db, select(tables.audit.c.token_id).distinct().where(tables.audit.c.action == "plan.patch")) == [
+        (worker["token_id"],)
+    ]
     assert ready(client, hub["reader"])["3"]["ready"] is True
 
 
@@ -713,18 +729,19 @@ def test_approval_review_waits_for_the_owners_approve(client, hub, hub_db):
 
 def bump(db, note: str) -> None:
     """Another writer sets a note on step 4, taking the plan's next revision."""
-    with pg.admin(db.admin_dsn) as conn:
-        body, revision = conn.execute("SELECT body, revision FROM plans WHERE plan_id = %s", (PLAN,)).fetchone()
+    plans, revisions = tables.plans, tables.plan_revisions
+    with live.connect(db) as conn:
+        body, revision = conn.execute(select(plans.c.body, plans.c.revision).where(plans.c.plan_id == PLAN)).one()
         body["steps"][3]["note"] = note
         conn.execute(
-            "UPDATE plans SET body = %s, revision = %s, digest = %s WHERE plan_id = %s",
-            (Jsonb(body), revision + 1, plan_digest(body), PLAN),
+            update(plans)
+            .values(body=body, revision=revision + 1, digest=plan_digest(body))
+            .where(plans.c.plan_id == PLAN)
         )
+        copied = ("project_id", "plan_id", "revision", "area", "label", "body", "digest")
+        written = select(*(plans.c[name] for name in copied), literal("step 4: set note"), plans.c.updated_by)
         conn.execute(
-            "INSERT INTO plan_revisions (project_id, plan_id, revision, area, label, body, digest, summary, actor_id) "
-            "SELECT project_id, plan_id, revision, area, label, body, digest, 'step 4: set note', updated_by "
-            "FROM plans WHERE plan_id = %s",
-            (PLAN,),
+            insert(revisions).from_select([*copied, "summary", "actor_id"], written.where(plans.c.plan_id == PLAN))
         )
 
 
@@ -783,13 +800,11 @@ def test_an_expired_lease_loses_the_run_and_the_third_attempt_fails_back_to_pend
     moved(client, worker, first, "running")
     expire(hub_db, first)
     assert recover(client) == {"lost": 1, "failed": 0, "cancelled": 0, "parked": 0}
-    assert sql(hub_db, "SELECT state, error FROM runs WHERE id = %s", (first,)) == [
-        ("lost", "its worker mac-mini stopped extending the lease")
-    ]
+    assert of_run(hub_db, first, "state", "error") == [("lost", "its worker mac-mini stopped extending the lease")]
     assert moves(hub_db, first)[-1] == (3, "running", "lost", "reaper")
-    ((second, attempt, state, requested, runtime),) = sql(
-        hub_db, "SELECT id, attempt, state, requested_runtime, runtime FROM runs WHERE parent_run_id = %s", (first,)
-    )
+    run = tables.runs
+    retries = select(run.c.id, run.c.attempt, run.c.state, run.c.requested_runtime, run.c.runtime)
+    ((second, attempt, state, requested, runtime),) = sql(hub_db, retries.where(run.c.parent_run_id == first))
     assert (attempt, state, requested, runtime) == (2, "queued", "any", "any")
     assert step(client, hub["owner"], 2)["status"] == "in_progress"  # the dispatch goes on
     assert beat(client, worker, runs_held=[first])["runs"][0] == {
@@ -812,13 +827,13 @@ def test_an_expired_lease_loses_the_run_and_the_third_attempt_fails_back_to_pend
     assert step(client, hub["owner"], 2)["note"] == f"run #{second} on worker mac-mini"
     expire(hub_db, second)
     assert recover(client)["lost"] == 1
-    ((third,),) = sql(hub_db, "SELECT id FROM runs WHERE parent_run_id = %s", (second,))
+    ((third,),) = sql(hub_db, select(run.c.id).where(run.c.parent_run_id == second))
     assert claim(client, worker)["attempt"] == 3
     expire(hub_db, third)
     assert recover(client) == {"lost": 0, "failed": 1, "cancelled": 0, "parked": 0}
-    ((state, error),) = sql(hub_db, "SELECT state, error FROM runs WHERE id = %s", (third,))
+    ((state, error),) = of_run(hub_db, third, "state", "error")
     assert state == "failed" and error == "its worker mac-mini stopped extending the lease, and it was attempt 3 of 3"
-    assert sql(hub_db, "SELECT count(*) FROM runs WHERE parent_run_id = %s", (third,)) == [(0,)]
+    assert count_runs(hub_db, run.c.parent_run_id == third) == [(0,)]
     assert moves(hub_db, third) == [(1, "queued", "leased", "worker"), (2, "leased", "failed", "reaper")]
     back = step(client, hub["owner"], 2)
     assert back["status"] == "pending" and back["note"] == f"run #{third} failed: {error}"
@@ -832,11 +847,12 @@ def test_a_claim_and_each_heartbeat_lease_the_run_for_evo_hub_run_lease_seconds(
         worker = add_worker(client, headers["owner"], "mac-mini")
         run_id = dispatched(client, headers["owner"], [2])[0]["id"]
         assert claim(client, worker)["id"] == run_id
-        leased = "SELECT extract(epoch FROM lease_expires_at - leased_at) FROM runs WHERE id = %s"
-        assert float(sql(hub_db, leased, (run_id,))[0][0]) == 30.0
-        sql(hub_db, "UPDATE runs SET lease_expires_at = now() + interval '1 second' WHERE id = %s", (run_id,))
+        run = tables.runs
+        leased = select(extract("epoch", run.c.lease_expires_at - run.c.leased_at)).where(run.c.id == run_id)
+        assert float(sql(hub_db, leased)[0][0]) == 30.0
+        set_run(hub_db, run_id, lease_expires_at=func.now() + timedelta(seconds=1))
         beat(client, worker, runs_held=[run_id])
-        left = sql(hub_db, "SELECT extract(epoch FROM lease_expires_at - now()) FROM runs WHERE id = %s", (run_id,))
+        left = sql(hub_db, select(extract("epoch", run.c.lease_expires_at - func.now())).where(run.c.id == run_id))
         assert 20 < float(left[0][0]) <= 30, "the heartbeat extends it by the same time"
 
     env = {"EVO_HUB_DSN": "postgresql://hub@db/hub"}
@@ -860,7 +876,7 @@ def test_a_heartbeat_keeps_the_reaper_away_and_an_asked_cancel_ends_cancelled(cl
     expire(hub_db, run_id)
     assert recover(client) == {"lost": 0, "failed": 0, "cancelled": 1, "parked": 0}
     assert state_of(hub_db, run_id) == "cancelled"
-    assert sql(hub_db, "SELECT count(*) FROM runs WHERE parent_run_id = %s", (run_id,)) == [(0,)]
+    assert count_runs(hub_db, tables.runs.c.parent_run_id == run_id) == [(0,)]
     assert step(client, hub["owner"], 2)["status"] == "pending"
 
 
@@ -871,13 +887,13 @@ def test_a_run_past_its_timeout_fails_and_is_not_tried_again(client, hub, hub_db
     moved(client, worker, run_id, "running")
     assert recover(client) == {"lost": 0, "failed": 0, "cancelled": 0, "parked": 0}
     # the agent has run 301 seconds since its time was last counted
-    sql(hub_db, "UPDATE runs SET counted_at = now() - interval '301 seconds' WHERE id = %s", (run_id,))
+    set_run(hub_db, run_id, counted_at=func.now() - timedelta(seconds=301))
     beat(client, worker, runs_held=[run_id])  # a lease the worker keeps extending does not keep the timeout away
     assert recover(client) == {"lost": 0, "failed": 1, "cancelled": 0, "parked": 0}
     reason = "it ran past its timeout of 5 minutes"
-    assert sql(hub_db, "SELECT state, error FROM runs WHERE id = %s", (run_id,)) == [("failed", reason)]
+    assert of_run(hub_db, run_id, "state", "error") == [("failed", reason)]
     assert moves(hub_db, run_id)[-1] == (3, "running", "failed", "reaper")
-    assert sql(hub_db, "SELECT count(*) FROM runs WHERE parent_run_id = %s", (run_id,)) == [(0,)]
+    assert count_runs(hub_db, tables.runs.c.parent_run_id == run_id) == [(0,)]
     back = step(client, hub["owner"], 2)
     assert (back["status"], back["note"]) == ("pending", f"run #{run_id} failed: {reason}")
     assert beat(client, worker, runs_held=[run_id])["runs"][0]["cancel"] is True  # the worker stops the agent
@@ -886,7 +902,7 @@ def test_a_run_past_its_timeout_fails_and_is_not_tried_again(client, hub, hub_db
     claim(client, worker)
     assert control(client, hub["owner"], second, "cancel").status_code == 200
     assert recover(client) == {"lost": 0, "failed": 0, "cancelled": 0, "parked": 0}
-    sql(hub_db, "UPDATE runs SET counted_at = now() - interval '301 seconds' WHERE id = %s", (second,))
+    set_run(hub_db, second, counted_at=func.now() - timedelta(seconds=301))
     assert recover(client) == {"lost": 0, "failed": 0, "cancelled": 1, "parked": 0}
     assert state_of(hub_db, second) == "cancelled"
     assert moves(hub_db, second)[-1] == (2, "leased", "cancelled", "reaper")
@@ -942,6 +958,50 @@ def test_rerun_queues_the_step_again_after_a_run_that_ended(client, hub, hub_db)
     assert claim(client, worker)["id"] == new["id"]
 
 
+# Listing runs
+
+
+def test_the_run_list_shows_each_member_the_runs_of_the_plans_its_label_lets_it_read(client, hub):
+    sinks = [{"id": "hub", "kind": "hub", "clearance": {"level": "customer"}}]
+    assert client.put(f"/v1/projects/{PROJECT}", json=registration(sinks), headers=hub["admin"]).status_code == 200
+    grant = {"role": "writer", "max_level": "customer"}
+    path = f"/v1/admin/projects/{PROJECT}/grants/{OWNER}"
+    assert client.put(path, json=grant, headers=hub["admin"]).status_code == 200
+    vault = {**plan_body(), "id": "vault", "repos": [{"repo": "evo-agents", "branch": "feat/vault"}]}
+    body = {"body": vault, "label": {"level": "customer"}}
+    pushed = client.put(f"/v1/projects/{PROJECT}/plans/vault", json=body, headers=hub["owner"])
+    assert pushed.status_code == 200, pushed.text
+    first = dispatched(client, hub["owner"], [2])[0]["id"]
+    hidden = client.post(
+        f"/v1/projects/{PROJECT}/runs", json={"plan_id": "vault", "steps": [4]}, headers=hub["owner"]
+    ).json()[0]["id"]
+    last = dispatched(client, hub["owner"], [4])[0]["id"]
+    assert control(client, hub["owner"], last, "cancel").status_code == 200
+
+    def listed(headers, **params) -> dict:
+        response = client.get(f"/v1/projects/{PROJECT}/runs", params=params, headers=headers)
+        assert response.status_code == 200, response.text
+        return response.json()
+
+    # the reader's grant stops at internal: the run of vault is neither listed nor counted
+    seen = listed(hub["reader"])
+    assert ([run["id"] for run in seen["runs"]], seen["total"]) == ([last, first], 2)
+    assert {state: n for state, n in seen["counts"].items() if n} == {"queued": 1, "cancelled": 1}
+    assert listed(hub["reader"], plan_id="vault")["total"] == 0 and listed(hub["reader"], q="vault")["total"] == 0
+    shown = client.get(f"/v1/projects/{PROJECT}/runs/{hidden}", headers=hub["reader"])
+    assert shown.status_code == 404
+    # the owner's reaches customer, through the hub sink that clears it: every run, newest first
+    every = listed(hub["owner"])
+    assert ([run["id"] for run in every["runs"]], every["total"]) == ([last, hidden, first], 3)
+    assert {state: n for state, n in every["counts"].items() if n} == {"queued": 2, "cancelled": 1}
+    assert [run["plan_id"] for run in every["runs"]] == [PLAN, "vault", PLAN]
+    # text: the plan, the branch and the login match too
+    assert [run["id"] for run in listed(hub["owner"], q="VAULT")["runs"]] == [hidden]
+    assert [run["id"] for run in listed(hub["owner"], q="feat/queue")["runs"]] == [last, first]
+    assert listed(hub["owner"], q=OWNER)["total"] == 3 and listed(hub["owner"], q="nobody")["total"] == 0
+    assert [run["id"] for run in listed(hub["owner"], state="queued", plan_id="vault")["runs"]] == [hidden]
+
+
 # Dispatch from the web only
 
 
@@ -992,7 +1052,8 @@ def test_dispatch_from_each_run_records_the_credential_it_was_dispatched_with(we
     plan_run = client.post(f"/v1/projects/{PROJECT}/plan-runs", json=body, headers=hub["owner_web"])
     assert plan_run.status_code == 201, plan_run.text
     assert plan_run.json()["dispatched_via"] == "web"
-    assert sql(hub_db, "SELECT dispatched_via, count(*) FROM runs GROUP BY 1 ORDER BY 1") == [
+    via = tables.runs.c.dispatched_via
+    assert sql(hub_db, select(via, func.count()).group_by(via).order_by(via)) == [
         ("machine", 2),
         ("web", 3),
     ]
@@ -1009,7 +1070,7 @@ def test_a_worker_set_to_dispatch_from_web_claims_only_runs_dispatched_from_the_
     body = {"plan_id": PLAN, "worker_id": guarded["id"]}
     plan_run = client.post(f"/v1/projects/{PROJECT}/plan-runs", json=body, headers=hub["owner"])
     assert plan_run.status_code == 403 and WEB_ONLY in plan_run.json()["message"]
-    assert sql(hub_db, "SELECT count(*) FROM runs") == [(0,)]
+    assert count_runs(hub_db) == [(0,)]
 
     # its claims pass over a run dispatched with a token, and take the next one dispatched from the web
     by_token = dispatched(client, hub["owner"], [2])[0]
@@ -1032,11 +1093,9 @@ def test_a_worker_set_to_dispatch_from_web_claims_only_runs_dispatched_from_the_
     moved(client, guarded, retry["id"], "running", "failed", error="the agent stopped")
     assert claim(client, guarded) is None
     assert claim(client, anywhere)["parent_run_id"] == by_token["id"]
-    assert sql(
-        hub_db,
-        "SELECT dispatched_via FROM runs WHERE parent_run_id = ANY(%s) ORDER BY id",
-        ([by_web["id"], by_token["id"]],),
-    ) == [("web",), ("machine",)]
+    run = tables.runs
+    retried = select(run.c.dispatched_via).where(run.c.parent_run_id.in_([by_web["id"], by_token["id"]]))
+    assert sql(hub_db, retried.order_by(run.c.id)) == [("web",), ("machine",)]
 
     # pinned from the web, it takes the run; a rerun of that run with a token is refused, one from the web is not
     pinned = dispatched(client, hub["owner_web"], [5], worker_id=guarded["id"])[0]
@@ -1049,7 +1108,7 @@ def test_a_worker_set_to_dispatch_from_web_claims_only_runs_dispatched_from_the_
 
     # a run dispatched before schema 0011 recorded no credential, and is passed over too, until the owner lets the
     # worker take runs from anywhere again
-    sql(hub_db, "UPDATE runs SET dispatched_via = NULL WHERE id = %s", (rerun.json()["id"],))
+    set_run(hub_db, rerun.json()["id"], dispatched_via=None)
     assert claim(client, guarded) is None
     dispatch_from(client, hub, guarded, "any")
     assert claim(client, guarded)["id"] == rerun.json()["id"]
@@ -1080,7 +1139,8 @@ def test_a_token_cannot_message_a_run_a_worker_set_to_web_holds_or_may_claim(web
     assert claim(client, anywhere)["id"] == by_web["id"]
     assert message(by_web["id"], hub["owner"]).status_code == 201, "held by linux-box, which takes any"
     assert claim(client, guarded) is None
-    assert sql(hub_db, "SELECT count(*) FROM run_inbox WHERE run_id = %s", (by_web["id"],)) == [(2,)]
+    inbox = tables.run_inbox
+    assert sql(hub_db, select(func.count()).select_from(inbox).where(inbox.c.run_id == by_web["id"])) == [(2,)]
 
 
 # Pruning and the periodic jobs
@@ -1091,18 +1151,19 @@ def test_events_of_runs_that_ended_long_ago_are_pruned(client, hub, hub_db):
     old, recent = (dispatched(client, hub["owner"], [key])[0]["id"] for key in (4, 5))
     for run_id in (old, recent):
         assert control(client, hub["owner"], run_id, "cancel").status_code == 200
-    sql(hub_db, "UPDATE runs SET finished_at = now() - interval '31 days' WHERE id = %s", (old,))
-    sql(hub_db, "UPDATE runs SET finished_at = now() - interval '29 days' WHERE id = %s", (recent,))
+    set_run(hub_db, old, finished_at=func.now() - timedelta(days=31))
+    set_run(hub_db, recent, finished_at=func.now() - timedelta(days=29))
     running = dispatched(client, hub["owner"], [2])[0]["id"]
     claim(client, worker)
     state = client.app.state
-    found = SimpleNamespace(pool=state.pool, config=state.config, sealer=state.sealer, github_app=state.github_app)
+    found = SimpleNamespace(engine=state.engine, config=state.config, sealer=state.sealer, github_app=state.github_app)
     context = SimpleNamespace(additional_context={"hub": found})
     report_ = client.portal.call(queue.tasks[jobs.PRUNE_RUN_EVENTS].func, context)
     assert report_ == {"deleted": 1, "days": 30, "tokens_dropped": 0}
-    left = dict(sql(hub_db, "SELECT run_id, count(*) FROM run_events GROUP BY run_id"))
+    events = tables.run_events
+    left = dict(sql(hub_db, select(events.c.run_id, func.count()).group_by(events.c.run_id)))
     assert left == {recent: 1, running: 1}
-    assert sql(hub_db, "SELECT count(*) FROM runs") == [(3,)]  # the runs stay; only their events go
+    assert count_runs(hub_db) == [(3,)]  # the runs stay; only their events go
     assert client.portal.call(queue.tasks[jobs.RECOVER_RUNS].func, context) == {
         "lost": 0,
         "failed": 0,

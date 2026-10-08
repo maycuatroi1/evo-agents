@@ -38,10 +38,13 @@ from datetime import datetime
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Header, HTTPException, Path, Query, Request
-from psycopg.types.json import Jsonb
 from pydantic import BaseModel, Field, model_validator
+from sqlalchemy import BigInteger, func, insert, literal, select, update
+from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy.ext.compiler import compiles
+from sqlalchemy.sql import Select
 
-from evo_agents.hub import runs
+from evo_agents.hub import runs, tables
 from evo_agents.hub.plans import PlanProblem, step_index, step_key
 from evo_agents.hub.server import audit
 from evo_agents.hub.server import plans as plan_routes
@@ -49,10 +52,9 @@ from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.notifications import decision_link, notify, one_line
 from evo_agents.hub.server.projects import ProjectAccess, project_access
-from evo_agents.hub.server.run_events import INSERT_USER_MESSAGE, NEXT_SEQ
-from evo_agents.hub.server.run_state import move_run, notify_events, notify_queued, write_event
+from evo_agents.hub.server.run_events import write_user_message
+from evo_agents.hub.server.run_state import move_run, notify_queued, write_event
 from evo_agents.hub.server.runs import (
-    CURRENT_PLAN,
     LINE,
     MAX_ID,
     REFUSALS,
@@ -188,47 +190,57 @@ class AnswerIn(BaseModel):
 
 # Reading decisions
 
-DECISION_COLUMNS = """
-SELECT d.id, p.name, d.run_id, r.state, d.plan_id, d.step_key, d.category, d.question, d.context, d.options, d.state,
-       o.login, d.answer_option, d.answer_text, a.login,
-       (SELECT i.run_id FROM run_inbox i WHERE i.decision_id = d.id ORDER BY i.id LIMIT 1),
-       d.asked_at, d.answered_at, d.delivered_at
-  FROM decisions d JOIN projects p ON p.id = d.project_id JOIN runs r ON r.id = d.run_id
-  JOIN users o ON o.id = r.dispatched_by LEFT JOIN users a ON a.id = d.answered_by
-"""
-LIST_FILTERS = """
- WHERE d.project_id = %(project)s AND d.plan_id = ANY(%(plans)s)
-   AND (cardinality(%(states)s::text[]) = 0 OR d.state = ANY(%(states)s))
-   AND (%(run)s::bigint IS NULL OR d.run_id = %(run)s)
-   AND (%(plan)s::text IS NULL OR d.plan_id = %(plan)s)
-"""
-LIST_PAGE = DECISION_COLUMNS + LIST_FILTERS + " ORDER BY d.id DESC LIMIT %(limit)s OFFSET %(offset)s"
-LIST_TOTAL = "SELECT count(*) FROM decisions d" + LIST_FILTERS
-ONE_DECISION = DECISION_COLUMNS + " WHERE d.id = %s"
+
+def _decisions():
+    """The columns of Decision but its options as stored, named as its fields: the decision with its project, its
+    run's state and owner, who answered, and the run whose inbox the answer went to (the first message naming it)."""
+    d, p, r, i = tables.decisions, tables.projects, tables.runs, tables.run_inbox
+    owner, answerer = tables.users.alias("o"), tables.users.alias("a")
+    answer_run = select(i.c.run_id).where(i.c.decision_id == d.c.id).order_by(i.c.id).limit(1).scalar_subquery()
+    return select(
+        d.c.id,
+        p.c.name.label("project"),
+        d.c.run_id,
+        r.c.state.label("run_state"),
+        d.c.plan_id,
+        d.c.step_key,
+        d.c.category,
+        d.c.question,
+        d.c.context,
+        d.c.options,
+        d.c.state,
+        owner.c.login.label("owner"),
+        d.c.answer_option,
+        d.c.answer_text,
+        answerer.c.login.label("answered_by"),
+        answer_run.label("answer_run_id"),
+        d.c.asked_at,
+        d.c.answered_at,
+        d.c.delivered_at,
+    ).select_from(
+        d.join(p, p.c.id == d.c.project_id)
+        .join(r, r.c.id == d.c.run_id)
+        .join(owner, owner.c.id == r.c.dispatched_by)
+        .outerjoin(answerer, answerer.c.id == d.c.answered_by)
+    )
+
+
+def _listed(project_id: int, plans: list[str], states: list[str], run_id: int | None, plan_id: str | None) -> list:
+    """The filters of the decision list: the project's decisions of ``plans``, in any of ``states`` (any state when
+    empty), of run ``run_id`` and plan ``plan_id`` when given."""
+    d = tables.decisions
+    where = [d.c.project_id == project_id, d.c.plan_id.in_(plans)]
+    if states:
+        where.append(d.c.state.in_(states))
+    if run_id is not None:
+        where.append(d.c.run_id == run_id)
+    if plan_id is not None:
+        where.append(d.c.plan_id == plan_id)
+    return where
 
 
 def _decision(row) -> Decision:
-    (
-        decision_id,
-        project,
-        run_id,
-        run_state,
-        plan_id,
-        key,
-        category,
-        question,
-        context,
-        options,
-        state,
-        owner,
-        answer_option,
-        answer_text,
-        answered_by,
-        answer_run_id,
-        asked_at,
-        answered_at,
-        delivered_at,
-    ) = row
+    fields = dict(row._mapping)
     shown = [
         DecisionOption(
             key=option["key"],
@@ -236,34 +248,14 @@ def _decision(row) -> Decision:
             description=option.get("description"),
             recommended=option.get("recommended") is True,
         )
-        for option in options
+        for option in fields.pop("options")
     ]
-    return Decision(
-        id=decision_id,
-        project=project,
-        run_id=run_id,
-        run_state=run_state,
-        plan_id=plan_id,
-        step_key=key,
-        category=category,
-        question=question,
-        context=context,
-        options=shown,
-        recommended=next((option.key for option in shown if option.recommended), None),
-        state=state,
-        owner=owner,
-        answer_option=answer_option,
-        answer_text=answer_text,
-        answered_by=answered_by,
-        answer_run_id=answer_run_id,
-        asked_at=asked_at,
-        answered_at=answered_at,
-        delivered_at=delivered_at,
-    )
+    recommended = next((option.key for option in shown if option.recommended), None)
+    return Decision(**fields, options=shown, recommended=recommended)
 
 
-async def decision_view(conn, decision_id: int) -> Decision:
-    row = await (await conn.execute(ONE_DECISION, (decision_id,))).fetchone()
+async def decision_view(conn: AsyncConnection, decision_id: int) -> Decision:
+    row = (await conn.execute(_decisions().where(tables.decisions.c.id == decision_id))).one()
     return _decision(row)
 
 
@@ -273,16 +265,17 @@ def _no_decision(project: str, decision_id: int) -> HTTPException:
     )
 
 
-DECISION_PLAN = "SELECT plan_id FROM decisions WHERE id = %s AND project_id = %s"
-
-
-async def readable_decision(conn, user: Principal, project: str, decision_id: int, sink: str | None) -> ProjectAccess:
+async def readable_decision(
+    conn: AsyncConnection, user: Principal, project: str, decision_id: int, sink: str | None
+) -> ProjectAccess:
     """The caller's access to ``project`` when it may read decision ``decision_id`` of it: a grant on the project (404
     without, 403 for a hub admin without one) and the decision's plan visible to it (404 otherwise, as for none)."""
     access = await project_access(conn, user, project)
     plan_routes._reader(access)
-    row = await (await conn.execute(DECISION_PLAN, (decision_id, access.project_id))).fetchone()
-    if row is None or row[0] not in await visible_plans(conn, access, sink):
+    d = tables.decisions
+    query = select(d.c.plan_id).where(d.c.id == decision_id, d.c.project_id == access.project_id)
+    plan_id = (await conn.execute(query)).scalar_one_or_none()
+    if plan_id is None or plan_id not in await visible_plans(conn, access, sink):
         raise _no_decision(project, decision_id)
     return access
 
@@ -304,18 +297,14 @@ async def list_decisions(
     sink: Annotated[str | None, Header(alias=plan_routes.SINK_HEADER)] = None,
 ) -> DecisionList:
     """The project's decisions, newest first, of the plans the caller may read."""
-    params = {
-        "states": list(dict.fromkeys(state)),
-        "run": run_id,
-        "plan": plan_id,
-        "limit": limit,
-        "offset": offset,
-    }
-    async with request.app.state.pool.connection() as conn:
+    d = tables.decisions
+    async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
-        params |= {"project": access.project_id, "plans": await visible_plans(conn, access, sink)}
-        page = [_decision(row) for row in await (await conn.execute(LIST_PAGE, params)).fetchall()]
-        total = (await (await conn.execute(LIST_TOTAL, params)).fetchone())[0]
+        plans = await visible_plans(conn, access, sink)
+        where = _listed(access.project_id, plans, list(dict.fromkeys(state)), run_id, plan_id)
+        query = _decisions().where(*where).order_by(d.c.id.desc()).limit(limit).offset(offset)
+        page = [_decision(row) for row in (await conn.execute(query)).all()]
+        total = (await conn.execute(select(func.count()).select_from(d).where(*where))).scalar_one()
     return DecisionList(decisions=page, total=total, limit=limit, offset=offset)
 
 
@@ -331,20 +320,12 @@ async def show_decision(
     user: CurrentUser,
     sink: Annotated[str | None, Header(alias=plan_routes.SINK_HEADER)] = None,
 ) -> Decision:
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         await readable_decision(conn, user, project, decision_id, sink)
         return await decision_view(conn, decision_id)
 
 
 # Asking
-
-
-OPEN_COUNT = "SELECT count(*) FROM decisions WHERE run_id = %s AND state = 'open'"
-INSERT_DECISION = """
-INSERT INTO decisions (run_id, project_id, plan_id, step_key, category, question, context, options)
-VALUES (%(run)s, %(project)s, %(plan)s, %(step)s, %(category)s, %(question)s, %(context)s, %(options)s)
-RETURNING id
-"""
 
 
 def _asked_step(run_id: int, plan, key: str | None) -> str | None:
@@ -366,27 +347,34 @@ def _asked_step(run_id: int, plan, key: str | None) -> str | None:
 )
 async def ask(request: Request, run_id: RunId, body: DecisionAsk, user: CurrentUser) -> Decision:
     """Ask the owner of a plan run this worker holds a decision, and notify them."""
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         _, row = await _held_plan_run(conn, user, run_id, lock=True)
         _, _, _, project_id, project, plan_id, dispatcher_id, _, _ = row
-        if (await (await conn.execute(OPEN_COUNT, (run_id,))).fetchone())[0] >= MAX_OPEN_DECISIONS:
+        d, pl = tables.decisions, tables.plans
+        opened = select(func.count()).select_from(d).where(d.c.run_id == run_id, d.c.state == "open")
+        if (await conn.execute(opened)).scalar_one() >= MAX_OPEN_DECISIONS:
             raise HTTPException(
                 409,
                 f"run {run_id} has {MAX_OPEN_DECISIONS} decisions open already: wait for an answer before asking more",
             )
-        current = await (await conn.execute(CURRENT_PLAN, (project_id, plan_id))).fetchone()
-        key = _asked_step(run_id, current[0] if current else {}, body.step_key)
-        params = {
-            "run": run_id,
-            "project": project_id,
-            "plan": plan_id,
-            "step": key,
-            "category": body.category,
-            "question": body.question,
-            "context": body.context,
-            "options": Jsonb(body.stored_options()),
-        }
-        decision_id = (await (await conn.execute(INSERT_DECISION, params)).fetchone())[0]
+        held = select(pl.c.body).where(pl.c.project_id == project_id, pl.c.plan_id == plan_id)
+        current = (await conn.execute(held)).one_or_none()
+        key = _asked_step(run_id, current.body if current else {}, body.step_key)
+        stored = (
+            insert(d)
+            .values(
+                run_id=run_id,
+                project_id=project_id,
+                plan_id=plan_id,
+                step_key=key,
+                category=body.category,
+                question=body.question,
+                context=body.context,
+                options=body.stored_options(),
+            )
+            .returning(d.c.id)
+        )
+        decision_id = (await conn.execute(stored)).scalar_one()
         about = f"plan {plan_id}" + (f", step {key}" if key else "")
         await notify(
             conn,
@@ -410,41 +398,52 @@ async def ask(request: Request, run_id: RunId, body: DecisionAsk, user: CurrentU
 
 # Answering
 
-ANSWERED_DECISION = """
-SELECT d.run_id, d.plan_id, d.step_key, r.dispatched_by, u.login
-  FROM decisions d JOIN runs r ON r.id = d.run_id JOIN users u ON u.id = r.dispatched_by
- WHERE d.id = %s AND d.project_id = %s
-"""
-DECISION_RUN = "SELECT run_id FROM decisions WHERE id = %s"
-LOCK_RUN = "SELECT state FROM runs WHERE id = %s FOR UPDATE"
-LOCK_DECISION = "SELECT run_id, state, category, question, options FROM decisions WHERE id = %s FOR UPDATE"
-ANSWER = """
-UPDATE decisions SET state = 'answered', answer_option = %(option)s, answer_text = %(text)s, answered_by = %(user)s,
-       answered_at = now()
- WHERE id = %(id)s
-"""
-READ_ITS_NOTIFICATION = """
-UPDATE notifications SET read_at = now() WHERE decision_id = %s AND user_id = %s AND read_at IS NULL
-"""
-NEXT_RUN_ID = "SELECT nextval(pg_get_serial_sequence('runs', 'id'))"
-# The run that resumes a parked plan run: pinned to its worker, in its session, with the agent time it used and the
-# credential it was dispatched with, at the plan's current revision (the one it was dispatched from when the plan is
-# gone).
-RESUME_RUN = """
-INSERT INTO runs (id, kind, project_id, plan_id, title, plan_revision, dispatched_by, dispatched_via, pinned_worker_id,
-                  requested_runtime, runtime, model, mode, approval, timeout_s, max_attempts, repos, resume_of_run_id,
-                  run_seconds, session_id)
-OVERRIDING SYSTEM VALUE
-SELECT %(new)s, 'plan', r.project_id, r.plan_id, r.title, coalesce(pl.revision, r.plan_revision), r.dispatched_by,
-       r.dispatched_via, r.worker_id, r.runtime, r.runtime, r.model, r.mode, r.approval, r.timeout_s, r.max_attempts,
-       r.repos, r.id, r.run_seconds, r.session_id
-  FROM runs r LEFT JOIN plans pl ON pl.project_id = r.project_id AND pl.plan_id = r.plan_id
- WHERE r.id = %(parked)s
-"""
-HAND_OVER_DECISIONS = "UPDATE decisions SET run_id = %s WHERE run_id = %s AND state = 'open'"
-INSERT_ANSWER = """
-INSERT INTO run_inbox (run_id, sent_by, body, decision_id) VALUES (%s, %s, %s, %s) RETURNING id
-"""
+
+class _OverridingSystemValue(Select):
+    """The SELECT of an INSERT ... SELECT that gives a value for runs.id, which is GENERATED ALWAYS AS IDENTITY:
+    Postgres takes one only after OVERRIDING SYSTEM VALUE, which SQLAlchemy has no construct for, so this select
+    renders it in front of itself. Only ``_resume`` needs it: it reserves the new run's id with nextval first, so the
+    parked run can end done "resumed as #N" before runs_active_plan_key lets the new plan run of its plan in."""
+
+    inherit_cache = True
+
+
+@compiles(_OverridingSystemValue)
+def _overriding_system_value(element, compiler, **kw):
+    return "OVERRIDING SYSTEM VALUE " + compiler.visit_select(element, **kw)
+
+
+def _resume_run(new_id: int, parked_id: int):
+    """The run that resumes parked plan run ``parked_id``, with id ``new_id``: pinned to its worker, in its session,
+    with the agent time it used and the credential it was dispatched with, at the plan's current revision (the one it
+    was dispatched from when the plan is gone)."""
+    r, pl = tables.runs, tables.plans
+    source = _OverridingSystemValue(
+        literal(new_id, BigInteger).label("id"),
+        literal("plan").label("kind"),
+        r.c.project_id,
+        r.c.plan_id,
+        r.c.title,
+        func.coalesce(pl.c.revision, r.c.plan_revision).label("plan_revision"),
+        r.c.dispatched_by,
+        r.c.dispatched_via,
+        r.c.worker_id.label("pinned_worker_id"),
+        r.c.runtime.label("requested_runtime"),
+        r.c.runtime,
+        r.c.model,
+        r.c.mode,
+        r.c.approval,
+        r.c.timeout_s,
+        r.c.max_attempts,
+        r.c.repos,
+        r.c.id.label("resume_of_run_id"),
+        r.c.run_seconds,
+        r.c.session_id,
+    )
+    source = source.select_from(
+        r.outerjoin(pl, (pl.c.project_id == r.c.project_id) & (pl.c.plan_id == r.c.plan_id))
+    ).where(r.c.id == parked_id)
+    return insert(r).from_select([column.name for column in source.selected_columns], source)
 
 
 def answer_message(decision_id: int, category: str, question: str, option: dict | None, text: str | None) -> str:
@@ -463,10 +462,11 @@ def _answer_target(project: str, plan_id: str, key: str | None, decision_id: int
     return f"{project}/{plan_id}{step} decision:{decision_id} run:{run_id} option={option or '-'}"
 
 
-async def _resume(conn, user: Principal, parked_id: int, decision_id: int) -> int:
+async def _resume(conn: AsyncConnection, user: Principal, parked_id: int, decision_id: int) -> int:
     """Queue the run that resumes parked run ``parked_id``, in the caller's transaction under the plan's lock, and end
     the parked one done; the new run's id. The parked run's decisions still open go to the new run."""
-    new_id = (await (await conn.execute(NEXT_RUN_ID)).fetchone())[0]
+    reserved = select(func.nextval(func.pg_get_serial_sequence("runs", "id")))
+    new_id = (await conn.execute(reserved)).scalar_one()
     # The parked run leaves the active states first: a plan has one active plan run at a time.
     await move_run(
         conn,
@@ -478,8 +478,9 @@ async def _resume(conn, user: Principal, parked_id: int, decision_id: int) -> in
         token_id=user.token_id,
         decisions=None,
     )
-    await conn.execute(RESUME_RUN, {"new": new_id, "parked": parked_id})
-    await conn.execute(HAND_OVER_DECISIONS, (new_id, parked_id))
+    await conn.execute(_resume_run(new_id, parked_id))
+    d = tables.decisions
+    await conn.execute(update(d).values(run_id=new_id).where(d.c.run_id == parked_id, d.c.state == "open"))
     shown = f"resumes run #{parked_id} in its session, as {user.login} answered decision #{decision_id}"
     await write_event(conn, new_id, {"text": shown, "resume_of_run_id": parked_id})
     await notify_queued(conn, new_id)
@@ -496,19 +497,26 @@ async def answer(
 ) -> Decision:
     """Answer a decision of a run one dispatched: the answer goes to the agent through the run's inbox, and a parked
     run is resumed on its worker in its session."""
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         access = await readable_decision(conn, user, project, decision_id, None)
-        found = await (await conn.execute(ANSWERED_DECISION, (decision_id, access.project_id))).fetchone()
-        _, plan_id, key, owner_id, owner = found
+        d, r, u = tables.decisions, tables.runs, tables.users
+        query = (
+            select(d.c.plan_id, d.c.step_key, r.c.dispatched_by, u.c.login)
+            .select_from(d.join(r, r.c.id == d.c.run_id).join(u, u.c.id == r.c.dispatched_by))
+            .where(d.c.id == decision_id, d.c.project_id == access.project_id)
+        )
+        found = (await conn.execute(query)).one()
+        plan_id, key, owner_id, owner = found.plan_id, found.step_key, found.dispatched_by, found.login
         if owner_id != user.user_id:
             raise HTTPException(403, f"only {owner}, who dispatched its run, may answer decision {decision_id}")
         _dispatcher(access)
         # Answers of the plan's decisions, and its dispatches, one at a time: the run a decision belongs to stays put
         # until the transaction ends. The run's row before the decision's, as every move of a run takes them.
         await _lock_plan(conn, access.project_id, plan_id)
-        run_id = (await (await conn.execute(DECISION_RUN, (decision_id,))).fetchone())[0]
-        run_state = (await (await conn.execute(LOCK_RUN, (run_id,))).fetchone())[0]
-        _, state, category, question, options = await (await conn.execute(LOCK_DECISION, (decision_id,))).fetchone()
+        run_id = (await conn.execute(select(d.c.run_id).where(d.c.id == decision_id))).scalar_one()
+        run_state = (await conn.execute(select(r.c.state).where(r.c.id == run_id).with_for_update())).scalar_one()
+        locked = select(d.c.state, d.c.category, d.c.question, d.c.options).where(d.c.id == decision_id)
+        state, category, question, options = (await conn.execute(locked.with_for_update())).one()
         if state != "open":
             raise HTTPException(409, f"decision {decision_id} is {state}, not open: it takes no answer any more")
         chosen = None
@@ -524,18 +532,34 @@ async def answer(
                 409, f"run {run_id} of decision {decision_id} is {run_state}: no agent can take an answer"
             )
         await web_only_steering(conn, user, run_id, "answer its decisions", "answer on the web", "answered")
-        params = {"id": decision_id, "option": body.option, "text": body.text, "user": user.user_id}
-        await conn.execute(ANSWER, params)
-        await conn.execute(READ_ITS_NOTIFICATION, (decision_id, user.user_id))
+        await conn.execute(
+            update(d)
+            .values(
+                state="answered",
+                answer_option=body.option,
+                answer_text=body.text,
+                answered_by=user.user_id,
+                answered_at=func.now(),
+            )
+            .where(d.c.id == decision_id)
+        )
+        n = tables.notifications
+        await conn.execute(
+            update(n)
+            .values(read_at=func.now())
+            .where(n.c.decision_id == decision_id, n.c.user_id == user.user_id, n.c.read_at.is_(None))
+        )
         inbox_run = await _resume(conn, user, run_id, decision_id) if run_state == "parked" else run_id
         text = answer_message(decision_id, category, question, chosen, body.text)
-        message_id = (
-            await (await conn.execute(INSERT_ANSWER, (inbox_run, user.user_id, text, decision_id))).fetchone()
-        )[0]
-        seq = (await (await conn.execute(NEXT_SEQ, (inbox_run,))).fetchone())[0]
+        i = tables.run_inbox
+        left = (
+            insert(i)
+            .values(run_id=inbox_run, sent_by=user.user_id, body=text, decision_id=decision_id)
+            .returning(i.c.id)
+        )
+        message_id = (await conn.execute(left)).scalar_one()
         event = {"text": text, "from": user.login, "message_id": message_id, "decision_id": decision_id}
-        await conn.execute(INSERT_USER_MESSAGE, (inbox_run, seq, Jsonb(event)))
-        await notify_events(conn, inbox_run)
+        await write_user_message(conn, inbox_run, event)
         target = _answer_target(project, plan_id, key, decision_id, run_id, body.option)
         if inbox_run != run_id:
             target += f" resumed as run:{inbox_run}"

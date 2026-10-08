@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import gzip
 import json
+from datetime import UTC
 from pathlib import Path
 
 import pytest
@@ -293,14 +294,14 @@ def test_the_graph_cache_keeps_two_checks_every_fetch_and_never_deletes_a_graph_
     import hashlib
     import os
     import time as clock
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     from evo_agents.hub.kg_graph import ArtifactMismatch, BuiltGraph, GraphCache, GraphUnavailable
 
     payloads = {n: f"graph {n}".encode() * 100 for n in range(1, 5)}
     blobs = {hashlib.sha256(data).hexdigest(): data for data in payloads.values()}
     store = FakeStore(blobs)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     graphs = {
         n: BuiltGraph(n, hashlib.sha256(data).hexdigest(), len(data), "sha256:" + "0" * 64, 1, 0, now)
         for n, data in payloads.items()

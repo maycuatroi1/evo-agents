@@ -396,6 +396,24 @@ def test_the_proxy_sends_every_message_over_one_kept_alive_connection():
         hub.stop()
 
 
+def wait_for_the_close(connections, timeout: float = 10.0) -> None:
+    """Wait until every connection idle in ``connections`` shows that the hub closed it, as ``Connections`` checks
+    before it reuses one. The close of a loopback peer reaches this side a moment after the hub's close() returned (on
+    macOS the kernel hands it over asynchronously, later still on a busy runner), and a request sent in between leaves
+    on a connection the hub already closed, which the client must fail rather than send twice."""
+    from evo_agents.hub.client import _dropped
+
+    deadline = time.monotonic() + timeout
+    while True:
+        with connections._lock:
+            idle = [conn.sock for held in connections._idle.values() for _, conn in held]
+        assert idle, "no kept-alive connection to wait on"
+        if all(_dropped(sock) for sock in idle):
+            return
+        assert time.monotonic() < deadline, f"the hub's close did not reach the client within {timeout:g}s"
+        time.sleep(0.01)
+
+
 def test_a_kept_alive_connection_the_hub_closed_is_replaced_and_no_request_goes_twice():
     from evo_agents.hub.client import Connections
 
@@ -413,13 +431,14 @@ def test_a_kept_alive_connection_the_hub_closed_is_replaced_and_no_request_goes_
         for id_ in range(1, 6):
             client.post(call(id_, "kg_status"), "2025-06-18")
             if id_ == 2:
-                time.sleep(0.2)  # the server's close reaches this side
+                wait_for_the_close(connections)  # the server's close reaches this side
         assert sent == [1, 2, 3, 4, 5]  # every call answered, none sent twice
         assert hub.connections == 2 and connections.opened == 2
     finally:
         hub.stop()
 
-    # the hub restarts on the same port: the next call reaches it on a new connection
+    # the hub restarts on the same port: once its close reaches this side, the next call reaches it on a new connection
+    wait_for_the_close(connections)
     restarted = FakeHub(mcp_reply, port=int(hub.url.rsplit(":", 1)[1]), keep_alive=True)
     try:
         assert client.call_tool("kg_status", {})["content"][0]["text"] == "called kg_status"
@@ -589,14 +608,24 @@ def install_graph(db, cache: Path, laptop) -> None:
     target = cache / "kg" / "graphs" / PROJECT / f"{laptop.sha256}.sqlite"
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_bytes(laptop.data)
-    report = laptop.report
-    live.sql(
-        db,
-        "INSERT INTO kg_builds (project_id, status, artifact_sha256, artifact_size, content_hash, nodes, edges, "
-        "started_at, finished_at) SELECT id, 'succeeded', %s, %s, %s, %s, %s, now(), now() FROM projects "
-        "WHERE name = %s",
-        (laptop.sha256, len(laptop.data), report.content_hash, report.nodes, report.edges, PROJECT),
-    )
+    from sqlalchemy import func, insert, literal, select
+
+    from evo_agents.hub import tables
+
+    report, projects = laptop.report, tables.projects
+    build = select(
+        projects.c.id,
+        literal("succeeded"),
+        literal(laptop.sha256),
+        literal(len(laptop.data)),
+        literal(report.content_hash),
+        literal(report.nodes),
+        literal(report.edges),
+        func.now(),
+        func.now(),
+    ).where(projects.c.name == PROJECT)
+    columns = ["project_id", "status", "artifact_sha256", "artifact_size", "content_hash", "nodes", "edges"]
+    live.sql(db, insert(tables.kg_builds).from_select([*columns, "started_at", "finished_at"], build))
 
 
 MCP_HEADERS = {"Accept": "application/json", "Content-Type": "application/json", "MCP-Protocol-Version": "2025-11-25"}
@@ -674,12 +703,14 @@ def test_mcp_needs_a_live_machine_token_as_bearer(hub):
     assert as_bearer.status_code == 401
     basic = hub.client.post("/mcp", content=body, headers={**MCP_HEADERS, "Authorization": "Basic YWxpY2U6eA=="})
     assert basic.status_code == 401
+    from sqlalchemy import func, update
+
+    from evo_agents.hub import tables
+
     token = hub.alice["Authorization"].removeprefix("Bearer ")
-    live.sql(
-        hub.db,
-        "UPDATE tokens SET revoked_at = now() WHERE token_hash = %s",
-        (hashlib.sha256(token.encode()).hexdigest(),),
-    )
+    tokens = tables.tokens
+    revoked = update(tokens).values(revoked_at=func.now())
+    live.sql(hub.db, revoked.where(tokens.c.token_hash == hashlib.sha256(token.encode()).hexdigest()))
     assert rpc(hub, "alice", message).status_code == 401
     assert rpc(hub, "bob", message).status_code == 200
 
@@ -882,7 +913,12 @@ def test_memory_write_from_one_token_reaches_memory_search_of_another_only_as_th
 
     got = ok(hub, "bob", "memory_get", {"id": memory["id"]})
     assert got["content"][0]["text"].endswith(f"kangaroo {SECRET}\n")
-    private_id = live.sql(hub.db, "SELECT id FROM memories WHERE name = 'private.md'")[0][0]
+    from sqlalchemy import select
+
+    from evo_agents.hub import tables
+
+    memories = tables.memories
+    private_id = live.sql(hub.db, select(memories.c.id).where(memories.c.name == "private.md"))[0][0]
     hidden = failed(hub, "bob", "memory_get", {"id": private_id})
     missing = failed(hub, "bob", "memory_get", {"id": 999999})
     assert hidden.replace(str(private_id), "N") == missing.replace("999999", "N")  # as if it did not exist
@@ -890,7 +926,12 @@ def test_memory_write_from_one_token_reaches_memory_search_of_another_only_as_th
 
 @needs_pg
 def test_memory_write_refuses_what_the_write_rule_and_revisions_refuse_and_writes_nothing(hub):
-    before = live.sql(hub.db, "SELECT count(*) FROM memory_revisions")[0][0]
+    from sqlalchemy import func, select
+
+    from evo_agents.hub import tables
+
+    revisions = select(func.count()).select_from(tables.memory_revisions)
+    before = live.sql(hub.db, revisions)[0][0]
     body = "---\nname: n\n---\nsome text\n"
     assert "writer role" in failed(hub, "bob", "memory_write", {"name": "n.md", "body": body})
     above = failed(hub, "alice", "memory_write", {"name": "n.md", "body": body, "label": {"level": "secret"}})
@@ -902,7 +943,7 @@ def test_memory_write_refuses_what_the_write_rule_and_revisions_refuse_and_write
     )
     assert "bad arguments for memory_write" in failed(hub, "alice", "memory_write", {"name": "n.md"})
     assert "unknown key" in failed(hub, "alice", "memory_write", {"name": "n.md", "body": body, "path": "/etc"})
-    assert live.sql(hub.db, "SELECT count(*) FROM memory_revisions")[0][0] == before
+    assert live.sql(hub.db, revisions)[0][0] == before
 
     first = ok(hub, "alice", "memory_write", {"name": "n.md", "body": body})["structuredContent"]["memory"]
     again = failed(hub, "alice", "memory_write", {"name": "n.md", "body": body + "more\n"})
@@ -951,10 +992,16 @@ def test_plan_tools_list_show_and_mark_steps_on_the_hub(hub, monkeypatch):
     assert marked["structuredContent"]["step"]["evidence"] == SECRET and marked["structuredContent"]["step"]["done_at"]
     again = ok(hub, "alice", "plan_step", {"plan_id": "rollout", "step": 1, "status": "done", "evidence": SECRET})
     assert "was already done" in again["content"][0]["text"] and not again["structuredContent"]["changed"]
+    from sqlalchemy import select
+
+    from evo_agents.hub import tables
+
+    trail, projects = tables.audit, tables.projects
     audit = live.sql(
         hub.db,
-        "SELECT a.action, a.target, p.name FROM audit a LEFT JOIN projects p ON p.id = a.project_id "
-        "WHERE a.action = 'plan.patch'",
+        select(trail.c.action, trail.c.target, projects.c.name)
+        .join_from(trail, projects, projects.c.id == trail.c.project_id, isouter=True)
+        .where(trail.c.action == "plan.patch"),
     )
     assert audit == [("plan.patch", f"{PROJECT}/rollout@2", PROJECT)]  # filed under the plan's project
 
@@ -1112,9 +1159,9 @@ def agent_principal(hub, worker, run_id: int):
     from evo_agents.hub.server.security import WORKER, authenticate
 
     async def find():
-        pool = hub.app.state.pool
-        user = await authenticate(pool, worker.token, WORKER, hub.app.state.config)
-        async with pool.connection() as conn:
+        engine = hub.app.state.engine
+        user = await authenticate(engine, worker.token, WORKER, hub.app.state.config)
+        async with engine.begin() as conn:
             return replace(user, scope=await run_scope(conn, user, run_id))
 
     return hub.client.portal.call(find)
@@ -1203,10 +1250,17 @@ def test_a_run_scope_binds_the_session_to_the_run_s_project_and_every_tool_to_it
     marked = agent_tool(hub, worker, run_id, "plan_step", {"plan_id": "rollout", "step": 3, "status": "in_progress"})
     assert not marked.get("isError"), marked
     assert not agent_tool(hub, worker, run_id, "kg_search", {"query": "guide"}).get("isError")
+    from sqlalchemy import select
+
+    from evo_agents.hub import tables
+
+    audit, tokens = tables.audit, tables.tokens
     kinds = live.sql(
         hub.db,
-        "SELECT a.action, t.kind FROM audit a JOIN tokens t ON t.id = a.token_id "
-        "WHERE a.action IN ('memory.put', 'plan.patch') ORDER BY a.id",
+        select(audit.c.action, tokens.c.kind)
+        .join_from(audit, tokens, tokens.c.id == audit.c.token_id)
+        .where(audit.c.action.in_(("memory.put", "plan.patch")))
+        .order_by(audit.c.id),
     )
     assert kinds[-2:] == [("memory.put", "worker"), ("plan.patch", "worker")]
     calls = [(r.tool, r.login, r.run_id) for r in caplog.records if r.getMessage() == "mcp tool"]
@@ -1251,7 +1305,7 @@ def test_a_run_scope_is_never_a_hub_admin_and_at_most_a_writer(hub):
     assert caught.value.status_code == 403 and "admin role on project alpha" in caught.value.detail
 
     async def publish_global():
-        async with hub.app.state.pool.connection() as conn:
+        async with hub.app.state.engine.begin() as conn:
             return await skills._writable(conn, principal, None)
 
     with pytest.raises(HTTPException) as caught:
@@ -1276,14 +1330,17 @@ def test_a_run_scope_holds_while_the_run_is_held_and_ends_with_it(hub):
         assert report(hub, worker, run_id, state).status_code == 200, state
         assert status() == 200, state
     # waiting is a held state; review and parked are not. A run of one step reaches neither so: set in place.
+    from sqlalchemy import func, update
+
+    from evo_agents.hub import tables
+
+    runs = tables.runs
     for state, opens in (("waiting", True), ("review", False), ("parked", False), ("verifying", True)):
-        live.sql(
-            hub.db,
-            "UPDATE runs SET state = %(state)s, "
-            "waiting_since = CASE WHEN %(state)s = 'waiting' THEN now() END, "
-            "parked_at = CASE WHEN %(state)s = 'parked' THEN now() END WHERE id = %(run)s",
-            {"state": state, "run": run_id},
-        )
+        since = {
+            "waiting_since": func.now() if state == "waiting" else None,
+            "parked_at": func.now() if state == "parked" else None,
+        }
+        live.sql(hub.db, update(runs).values(state=state, **since).where(runs.c.id == run_id))
         assert (status() == 200) is opens, state
 
     passed = [{"command": "pytest -q", "exit_code": 0}]
@@ -1411,7 +1468,11 @@ def test_printf_tools_list_into_evo_agents_hub_mcp_prints_the_fifteen_tools(hub_
         assert replies[5]["error"]["code"] == -32601
         assert not (home / ".claude").exists()  # memory_write wrote nothing here
         assert sorted(p.name for p in (home / ".evo" / "hub").iterdir()) == ["config.json", "token"]
-        assert live.sql(hub_db, "SELECT name FROM memories") == [("cli.md",)]
+        from sqlalchemy import select
+
+        from evo_agents.hub import tables
+
+        assert live.sql(hub_db, select(tables.memories.c.name)) == [("cli.md",)]
 
         served.proc.terminate()
         served.proc.wait(timeout=30)

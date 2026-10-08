@@ -20,7 +20,7 @@ import contextlib
 import os
 import signal
 import subprocess
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from evo_agents.worker.runtimes.common import descendants, kill_group
 
@@ -63,7 +63,7 @@ def describe(pid: int | None) -> dict:
         "pid": pid,
         "pgid": pgid if pgid is not None and pgid > 1 else None,
         "started": started,
-        "noted_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "noted_at": datetime.now(UTC).isoformat(timespec="seconds"),
     }
 
 

@@ -23,13 +23,30 @@ EVO_HUB_KG_KEEP_ARTIFACTS). With ``dry_run`` it answers what it would delete and
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Request, Response
-from psycopg import sql
 from pydantic import BaseModel, Field
+from sqlalchemy import (
+    BigInteger,
+    and_,
+    cast,
+    column,
+    delete,
+    func,
+    literal,
+    or_,
+    select,
+    table,
+    true,
+    union_all,
+)
+from sqlalchemy.dialects.postgresql import aggregate_order_by, array_agg
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.ext.asyncio import AsyncConnection
 
+from evo_agents.hub import tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.blobs import BlobStoreUnavailable
 from evo_agents.hub.config import MAX_KG_KEEP_ARTIFACTS, HubConfig
@@ -50,14 +67,15 @@ TOKEN_UNUSED_DAYS = 90  # a token not used (or, never used, not issued) for this
 FAILED_BUILD_DAYS = 7  # graph builds that failed within this many days
 AUDIT_HOURS = 24  # audit rows of the last this many hours
 
-# The conditions on a token row ``t`` that the overview counts and GET /v1/admin/tokens?state= lists, so a count and the
+# The conditions on a row of tokens that the overview counts and GET /v1/admin/tokens?state= lists, so a count and the
 # list it links to agree. A token expires TOKEN_TTL after its last use, so with TOKEN_TTL at 90 days an unused token is
 # also an expired one that nobody revoked.
-TOKEN_LIVE = "t.revoked_at IS NULL AND t.expires_at > now()"
-TOKEN_EXPIRING = f"{TOKEN_LIVE} AND t.expires_at <= now() + make_interval(days => {TOKEN_EXPIRING_DAYS})"
-TOKEN_UNUSED = (
-    "t.revoked_at IS NULL "
-    f"AND coalesce(t.last_used_at, t.created_at) <= now() - make_interval(days => {TOKEN_UNUSED_DAYS})"
+_tokens = tables.tokens
+TOKEN_LIVE = and_(_tokens.c.revoked_at.is_(None), _tokens.c.expires_at > func.now())
+TOKEN_EXPIRING = and_(TOKEN_LIVE, _tokens.c.expires_at <= func.now() + timedelta(days=TOKEN_EXPIRING_DAYS))
+TOKEN_UNUSED = and_(
+    _tokens.c.revoked_at.is_(None),
+    func.coalesce(_tokens.c.last_used_at, _tokens.c.created_at) <= func.now() - timedelta(days=TOKEN_UNUSED_DAYS),
 )
 ProjectName = Annotated[str, Path(pattern=PROJECT_NAME)]
 Login = Annotated[str, Path(pattern=LOGIN_NAME)]
@@ -199,55 +217,95 @@ class AdminOverview(BaseModel):
     audit: AuditCounts
 
 
-USERS = """
-SELECT u.id, u.login, u.github_id IS NOT NULL, u.created_at, u.last_seen_at,
-       (SELECT count(*) FROM tokens t WHERE t.user_id = u.id AND t.revoked_at IS NULL AND t.expires_at > now())
-  FROM users u ORDER BY lower(u.login)
-"""
-USER_GRANTS = """
-SELECT g.user_id, p.name, g.role, g.max_level, b.login, g.granted_at
-  FROM grants g JOIN projects p ON p.id = g.project_id LEFT JOIN users b ON b.id = g.granted_by
- ORDER BY p.name
-"""
-UPSERT_GRANT = """
-INSERT INTO grants (user_id, project_id, role, max_level, granted_by) VALUES (%s, %s, %s, %s, %s)
-ON CONFLICT (user_id, project_id) DO UPDATE
-   SET role = EXCLUDED.role, max_level = EXCLUDED.max_level, granted_by = EXCLUDED.granted_by, granted_at = now()
-RETURNING xmax = 0
-"""
+def _users():
+    """Every user by login whatever its case, with the number of their live tokens."""
+    users, tokens = tables.users, tables.tokens
+    live = select(func.count()).select_from(tokens).where(tokens.c.user_id == users.c.id, TOKEN_LIVE)
+    return select(
+        users.c.id,
+        users.c.login,
+        users.c.github_id.is_not(None).label("signed_in"),
+        users.c.created_at,
+        users.c.last_seen_at,
+        live.scalar_subquery().label("active_tokens"),
+    ).order_by(func.lower(users.c.login))
+
+
+def _user_grants():
+    """Every grant by project, with the login of the admin who gave it."""
+    grants, projects, users = tables.grants, tables.projects, tables.users
+    return (
+        select(
+            grants.c.user_id,
+            projects.c.name.label("project"),
+            grants.c.role,
+            grants.c.max_level,
+            users.c.login.label("granted_by"),
+            grants.c.granted_at,
+        )
+        .join_from(grants, projects, projects.c.id == grants.c.project_id)
+        .outerjoin(users, users.c.id == grants.c.granted_by)
+        .order_by(projects.c.name)
+    )
 
 
 @router.get("/users", response_model=list[UserRow], responses={403: {"model": ErrorBody}})
 async def users(request: Request) -> list[UserRow]:
     config: HubConfig = request.app.state.config
-    async with request.app.state.pool.connection() as conn:
-        rows = await (await conn.execute(USERS)).fetchall()
-        grant_rows = await (await conn.execute(USER_GRANTS)).fetchall()
+    async with request.app.state.engine.begin() as conn:
+        rows = (await conn.execute(_users())).all()
+        grant_rows = (await conn.execute(_user_grants())).all()
     grants: dict[int, list[UserGrant]] = {}
-    for user_id, project, role, max_level, granted_by, granted_at in grant_rows:
-        grant = UserGrant(project=project, role=role, max_level=max_level, granted_by=granted_by, granted_at=granted_at)
-        grants.setdefault(user_id, []).append(grant)
+    for row in grant_rows:
+        grant = UserGrant(
+            project=row.project,
+            role=row.role,
+            max_level=row.max_level,
+            granted_by=row.granted_by,
+            granted_at=row.granted_at,
+        )
+        grants.setdefault(row.user_id, []).append(grant)
     return [
         UserRow(
-            login=login,
-            admin=config.is_admin(login),
-            signed_in=signed_in,
-            created_at=created_at,
-            last_seen_at=last_seen_at,
-            active_tokens=active,
-            grants=grants.get(user_id, []),
+            login=row.login,
+            admin=config.is_admin(row.login),
+            signed_in=row.signed_in,
+            created_at=row.created_at,
+            last_seen_at=row.last_seen_at,
+            active_tokens=row.active_tokens,
+            grants=grants.get(row.id, []),
         )
-        for user_id, login, signed_in, created_at, last_seen_at, active in rows
+        for row in rows
     ]
 
 
-async def _project(conn, name: str) -> tuple[int, list[str]]:
+async def _project(conn: AsyncConnection, name: str) -> tuple[int, list[str]]:
     """The id and label ladder of a registered project; 404 naming the command that registers one."""
-    row = await (await conn.execute("SELECT id, levels, locations FROM projects WHERE name = %s", (name,))).fetchone()
+    projects = tables.projects
+    found = await conn.execute(
+        select(projects.c.id, projects.c.levels, projects.c.locations).where(projects.c.name == name)
+    )
+    row = found.first()
     if row is None:
         raise HTTPException(404, f"project {name} is not registered on this hub: run `evo-agents hub project register`")
-    project_id, levels, locations = row
-    return project_id, Policy(name, {"policy": {"levels": levels, "locations": locations}}).levels
+    return row.id, Policy(name, {"policy": {"levels": row.levels, "locations": row.locations}}).levels
+
+
+def _upsert_grant(user_id: int, project_id: int, role: str, max_level: str, granted_by: int):
+    """Give the grant, or change the one held; RETURNING whether the row is new (``xmax`` is 0 only for an insert)."""
+    grants = tables.grants
+    given = pg_insert(grants).values(
+        user_id=user_id, project_id=project_id, role=role, max_level=max_level, granted_by=granted_by
+    )
+    return given.on_conflict_do_update(
+        index_elements=[grants.c.user_id, grants.c.project_id],
+        set_={
+            "role": given.excluded.role,
+            "max_level": given.excluded.max_level,
+            "granted_by": given.excluded.granted_by,
+            "granted_at": func.now(),
+        },
+    ).returning((column("xmax") == 0).label("created"))
 
 
 @router.put(
@@ -255,16 +313,19 @@ async def _project(conn, name: str) -> tuple[int, list[str]]:
 )
 async def grant(request: Request, body: GrantRequest, project: ProjectName, login: Login, user: AdminUser) -> Grant:
     """Give ``login`` a role on ``project``, or change the one it has."""
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         project_id, ladder = await _project(conn, project)
         if body.max_level not in ladder:
             levels = ", ".join(ladder)
             raise HTTPException(422, f"max-level must be a level of project {project} ({levels}), not {body.max_level}")
-        await conn.execute("INSERT INTO users (login) VALUES (%s) ON CONFLICT DO NOTHING", (login,))
-        cursor = await conn.execute("SELECT id, login FROM users WHERE lower(login) = lower(%s)", (login,))
-        grantee_id, grantee = await cursor.fetchone()
-        cursor = await conn.execute(UPSERT_GRANT, (grantee_id, project_id, body.role, body.max_level, user.user_id))
-        (created,) = await cursor.fetchone()
+        users = tables.users
+        await conn.execute(pg_insert(users).values(login=login).on_conflict_do_nothing())
+        found = await conn.execute(
+            select(users.c.id, users.c.login).where(func.lower(users.c.login) == func.lower(login))
+        )
+        grantee_id, grantee = found.one()
+        upserted = await conn.execute(_upsert_grant(grantee_id, project_id, body.role, body.max_level, user.user_id))
+        created = upserted.scalar_one()
         target = f"{project}/{grantee} role={body.role} max_level={body.max_level}"
         await audit.record(conn, actor_id=user.user_id, token_id=user.token_id, action=audit.GRANT_PUT, target=target)
         taken = []
@@ -274,7 +335,7 @@ async def grant(request: Request, body: GrantRequest, project: ProjectName, logi
     return Grant(project=project, login=grantee, role=body.role, max_level=body.max_level, created=created)
 
 
-async def _take_back_leases(conn, user, project_id: int, member_id: int, by: str) -> list[int]:
+async def _take_back_leases(conn: AsyncConnection, user, project_id: int, member_id: int, by: str) -> list[int]:
     """The leases still out of the runs ``member_id`` dispatched in the project, given back now that the member no
     longer holds writer on it; the runs, for ``_revoke_taken`` once the transaction commits."""
     from evo_agents.hub.server import credentials  # it reads ProjectName of this module
@@ -291,142 +352,197 @@ async def _revoke_taken(request: Request, run_ids: list[int]) -> None:
 
     state = request.app.state
     for run_id in run_ids:
-        await credentials.revoke_tokens(state.pool, state.sealer, state.github_app, run_id=run_id)
+        await credentials.revoke_tokens(state.engine, state.sealer, state.github_app, run_id=run_id)
 
 
 @router.delete("/projects/{project}/grants/{login}", status_code=204, response_class=Response, responses=MISSING)
 async def revoke(request: Request, project: ProjectName, login: Login, user: AdminUser) -> Response:
     """Take away the role ``login`` has on ``project``."""
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         project_id, _ = await _project(conn, project)
-        cursor = await conn.execute(
-            "DELETE FROM grants g USING users u WHERE g.user_id = u.id AND g.project_id = %s "
-            "AND lower(u.login) = lower(%s) RETURNING u.login, u.id",
-            (project_id, login),
+        grants, users = tables.grants, tables.users
+        deleted = await conn.execute(
+            delete(grants)
+            .where(
+                grants.c.user_id == users.c.id,
+                grants.c.project_id == project_id,
+                func.lower(users.c.login) == func.lower(login),
+            )
+            .returning(users.c.login, users.c.id)
         )
-        row = await cursor.fetchone()
+        row = deleted.first()
         if row is None:
             raise HTTPException(404, f"{login} has no grant on project {project}")
-        target = f"{project}/{row[0]}"
+        target = f"{project}/{row.login}"
         await audit.record(
             conn, actor_id=user.user_id, token_id=user.token_id, action=audit.GRANT_DELETE, target=target
         )
-        taken = await _take_back_leases(conn, user, project_id, row[1], "grant-deleted")
+        taken = await _take_back_leases(conn, user, project_id, row.id, "grant-deleted")
     await _revoke_taken(request, taken)
     return Response(status_code=204)
+
+
+def _table_names():
+    """The tables of the hub's schema by name, but Alembic's record of the revision."""
+    pg_tables = table("pg_tables", column("schemaname"), column("tablename"))
+    return (
+        select(pg_tables.c.tablename)
+        .where(pg_tables.c.schemaname == func.current_schema(), pg_tables.c.tablename != "alembic_version")
+        .order_by(pg_tables.c.tablename)
+    )
+
+
+def _row_counts(names: list[str]):
+    """One row per table of ``names``: its name and its number of rows."""
+    return union_all(*(select(literal(name), func.count()).select_from(table(name)) for name in names))
 
 
 @router.get("/stats", response_model=dict[str, int], responses={403: {"model": ErrorBody}})
 async def stats(request: Request) -> dict[str, int]:
     """The number of rows of every hub table, by table name; tables added by later revisions show up by themselves."""
-    async with request.app.state.pool.connection() as conn:
-        cursor = await conn.execute(
-            "SELECT tablename FROM pg_tables WHERE schemaname = current_schema() AND tablename <> 'alembic_version' "
-            "ORDER BY tablename"
-        )
-        tables = [row[0] for row in await cursor.fetchall()]
-        query = sql.SQL(" UNION ALL ").join(
-            sql.SQL("SELECT {}, count(*) FROM {}").format(sql.Literal(table), sql.Identifier(table)) for table in tables
-        )
-        counts = await (await conn.execute(query)).fetchall() if tables else []
-    return {table: count for table, count in counts}
+    async with request.app.state.engine.begin() as conn:
+        names = (await conn.execute(_table_names())).scalars().all()
+        counts = (await conn.execute(_row_counts(names))).all() if names else []
+    return {name: rows for name, rows in counts}
 
 
-# One row of every count. Each table is read once; blobs are counted by object, as several projects may hold one.
-OVERVIEW = f"""
-WITH members AS (
-    SELECT count(*) AS total,
-           count(*) FILTER (WHERE last_seen_at > now() - make_interval(days => {ACTIVE_DAYS})) AS active,
-           count(*) FILTER (WHERE github_id IS NULL) AS not_signed_in
-      FROM users
-), tokens AS (
-    SELECT count(*) FILTER (WHERE {TOKEN_LIVE}) AS live,
-           count(*) FILTER (WHERE {TOKEN_EXPIRING}) AS expiring,
-           count(*) FILTER (WHERE {TOKEN_UNUSED}) AS unused
-      FROM tokens t
-     WHERE t.revoked_at IS NULL
-), stored AS (
-    SELECT count(*) AS objects, coalesce(sum(size), 0)::bigint AS bytes
-      FROM (SELECT max(size) AS size FROM blobs GROUP BY sha256) AS objects
-), doomed AS (
-    SELECT count(*) AS objects, coalesce(sum(size), 0)::bigint AS bytes FROM blob_deletions WHERE deleted_at IS NULL
-), fleet AS (
-    SELECT count(*) AS live,
-           count(*) FILTER (
-               WHERE last_heartbeat_at IS NULL
-                  OR last_heartbeat_at < now() - make_interval(secs => {OFFLINE_AFTER_SECONDS})
-           ) AS offline
-      FROM workers
-     WHERE revoked_at IS NULL
-), trail AS (
-    SELECT count(*) AS rows FROM audit WHERE at > now() - make_interval(hours => {AUDIT_HOURS})
-)
-SELECT members.total, members.active, members.not_signed_in, tokens.live, tokens.expiring, tokens.unused,
-       stored.objects, stored.bytes, doomed.objects, doomed.bytes, fleet.live, fleet.offline, trail.rows
-  FROM members, tokens, stored, doomed, fleet, trail
-"""
-OVERVIEW_FIELDS = (
-    "members",
-    "active_members",
-    "not_signed_in",
-    "live_tokens",
-    "expiring_tokens",
-    "unused_tokens",
-    "objects",
-    "bytes",
-    "pending_deletions",
-    "pending_bytes",
-    "live_workers",
-    "offline_workers",
-    "audit_rows",
-)
-GRANT_COUNTS = """
-SELECT p.name,
-       count(*) FILTER (WHERE g.role = 'admin'),
-       count(*) FILTER (WHERE g.role = 'writer'),
-       count(*) FILTER (WHERE g.role = 'reader')
-  FROM projects p LEFT JOIN grants g ON g.project_id = p.id
- GROUP BY p.id, p.name
- ORDER BY p.name
-"""
-# The newest build of each project comes from kg_builds_project_idx, one probe per project with a failure.
-FAILED_BUILDS = f"""
-SELECT p.name, f.failed, f.last_id, f.last_at, latest.id, latest.status
-  FROM (
-    SELECT project_id, count(*) AS failed,
-           (array_agg(id ORDER BY finished_at DESC, id DESC))[1] AS last_id, max(finished_at) AS last_at
-      FROM kg_builds
-     WHERE status = 'failed' AND finished_at > now() - make_interval(days => {FAILED_BUILD_DAYS})
-     GROUP BY project_id
-  ) AS f
-  JOIN projects p ON p.id = f.project_id
-  CROSS JOIN LATERAL (
-    SELECT b.id, b.status FROM kg_builds b WHERE b.project_id = f.project_id ORDER BY b.id DESC LIMIT 1
-  ) AS latest
- ORDER BY f.last_at DESC, p.name
-"""
+def _counts():
+    """One row of every count. Each table is read once; blobs are counted by object, as several projects may hold one.
+    Each count is a CTE of one row, and the CTEs are joined on true."""
+    users, tokens, blobs = tables.users, tables.tokens, tables.blobs
+    blob_deletions, workers, audit_trail = tables.blob_deletions, tables.workers, tables.audit
+    members = select(
+        func.count().label("total"),
+        func.count().filter(users.c.last_seen_at > func.now() - timedelta(days=ACTIVE_DAYS)).label("active"),
+        func.count().filter(users.c.github_id.is_(None)).label("not_signed_in"),
+    ).cte("members")
+    credentials = (
+        select(
+            func.count().filter(TOKEN_LIVE).label("live"),
+            func.count().filter(TOKEN_EXPIRING).label("expiring"),
+            func.count().filter(TOKEN_UNUSED).label("unused"),
+        )
+        .where(tokens.c.revoked_at.is_(None))
+        .cte("credentials")
+    )
+    objects = select(func.max(blobs.c.size).label("size")).group_by(blobs.c.sha256).subquery("objects")
+    stored = select(
+        func.count().label("objects"),
+        cast(func.coalesce(func.sum(objects.c.size), 0), BigInteger).label("bytes"),
+    ).cte("stored")
+    doomed = (
+        select(
+            func.count().label("objects"),
+            cast(func.coalesce(func.sum(blob_deletions.c.size), 0), BigInteger).label("bytes"),
+        )
+        .where(blob_deletions.c.deleted_at.is_(None))
+        .cte("doomed")
+    )
+    silent = or_(
+        workers.c.last_heartbeat_at.is_(None),
+        workers.c.last_heartbeat_at < func.now() - timedelta(seconds=OFFLINE_AFTER_SECONDS),
+    )
+    fleet = (
+        select(func.count().label("live"), func.count().filter(silent).label("offline"))
+        .where(workers.c.revoked_at.is_(None))
+        .cte("fleet")
+    )
+    trail = (
+        select(func.count().label("rows"))
+        .where(audit_trail.c.at > func.now() - timedelta(hours=AUDIT_HOURS))
+        .cte("trail")
+    )
+    return select(
+        members.c.total.label("members"),
+        members.c.active.label("active_members"),
+        members.c.not_signed_in,
+        credentials.c.live.label("live_tokens"),
+        credentials.c.expiring.label("expiring_tokens"),
+        credentials.c.unused.label("unused_tokens"),
+        stored.c.objects,
+        stored.c.bytes,
+        doomed.c.objects.label("pending_deletions"),
+        doomed.c.bytes.label("pending_bytes"),
+        fleet.c.live.label("live_workers"),
+        fleet.c.offline.label("offline_workers"),
+        trail.c.rows.label("audit_rows"),
+    ).select_from(
+        members.join(credentials, true())
+        .join(stored, true())
+        .join(doomed, true())
+        .join(fleet, true())
+        .join(trail, true())
+    )
+
+
+def _grant_counts():
+    """Every project by name, with its grants by role."""
+    projects, grants = tables.projects, tables.grants
+    return (
+        select(
+            projects.c.name.label("project"),
+            func.count().filter(grants.c.role == "admin").label("admins"),
+            func.count().filter(grants.c.role == "writer").label("writers"),
+            func.count().filter(grants.c.role == "reader").label("readers"),
+        )
+        .select_from(projects.outerjoin(grants, grants.c.project_id == projects.c.id))
+        .group_by(projects.c.id, projects.c.name)
+        .order_by(projects.c.name)
+    )
+
+
+def _failed_builds():
+    """The projects with a build that failed within FAILED_BUILD_DAYS, latest failure first, each with its newest
+    build, which comes from kg_builds_project_idx: one probe per project with a failure."""
+    projects, kg_builds = tables.projects, tables.kg_builds
+    # PostgreSQL's own aggregate_order_by: indexing Core's form renders array_agg(...)[1], which Postgres refuses
+    # without parentheses around the call.
+    last_id = array_agg(aggregate_order_by(kg_builds.c.id, kg_builds.c.finished_at.desc(), kg_builds.c.id.desc()))
+    failed = (
+        select(
+            kg_builds.c.project_id,
+            func.count().label("failed"),
+            last_id[1].label("last_id"),
+            func.max(kg_builds.c.finished_at).label("last_at"),
+        )
+        .where(
+            kg_builds.c.status == "failed",
+            kg_builds.c.finished_at > func.now() - timedelta(days=FAILED_BUILD_DAYS),
+        )
+        .group_by(kg_builds.c.project_id)
+        .subquery("f")
+    )
+    newest = kg_builds.alias("b")
+    latest = (
+        select(newest.c.id, newest.c.status)
+        .where(newest.c.project_id == failed.c.project_id)
+        .order_by(newest.c.id.desc())
+        .limit(1)
+        .lateral("latest")
+    )
+    return (
+        select(
+            projects.c.name.label("project"),
+            failed.c.failed,
+            failed.c.last_id.label("last_failed_id"),
+            failed.c.last_at.label("last_failed_at"),
+            latest.c.id.label("latest_id"),
+            latest.c.status.label("latest_status"),
+        )
+        .select_from(failed.join(projects, projects.c.id == failed.c.project_id).join(latest, true()))
+        .order_by(failed.c.last_at.desc(), projects.c.name)
+    )
 
 
 @router.get("/overview", response_model=AdminOverview, responses={403: {"model": ErrorBody}})
 async def overview(request: Request) -> AdminOverview:
     """What may need an admin: members, tokens to rotate, grants by project, storage, failed graph builds, offline
     workers and the last day of the audit trail."""
-    async with request.app.state.pool.connection() as conn:
-        counts = await (await conn.execute(OVERVIEW)).fetchone()
-        grants = await (await conn.execute(GRANT_COUNTS)).fetchall()
-        failed = await (await conn.execute(FAILED_BUILDS)).fetchall()
-    count = dict(zip(OVERVIEW_FIELDS, counts, strict=True))
-    projects = [
-        ProjectFailedBuilds(
-            project=project,
-            failed=failed_builds,
-            last_failed_id=last_id,
-            last_failed_at=last_at,
-            latest_id=latest_id,
-            latest_status=latest_status,
-        )
-        for project, failed_builds, last_id, last_at, latest_id, latest_status in failed
-    ]
+    async with request.app.state.engine.begin() as conn:
+        count = (await conn.execute(_counts())).one()._mapping
+        grants = (await conn.execute(_grant_counts())).all()
+        failed = (await conn.execute(_failed_builds())).all()
+    projects = [ProjectFailedBuilds(**row._mapping) for row in failed]
     return AdminOverview(
         members=MemberCounts(
             total=count["members"],
@@ -441,10 +557,7 @@ async def overview(request: Request) -> AdminOverview:
             expiring_days=TOKEN_EXPIRING_DAYS,
             unused_days=TOKEN_UNUSED_DAYS,
         ),
-        grants=[
-            ProjectGrantCounts(project=project, admins=admins, writers=writers, readers=readers)
-            for project, admins, writers, readers in grants
-        ],
+        grants=[ProjectGrantCounts(**row._mapping) for row in grants],
         storage=StorageCounts(
             objects=count["objects"],
             bytes=count["bytes"],
@@ -473,7 +586,7 @@ async def prune_kg(request: Request, body: PruneRequest, user: AdminUser) -> KgP
     keep = body.keep or state.config.kg_keep_artifacts
     try:
         report = await prune(
-            state.pool,
+            state.engine,
             state.blobs,
             keep,
             body.project,

@@ -1,9 +1,11 @@
 """The evo-agents hub: one server that keeps memories, plans, skills and knowledge graphs for a team.
 
 The server side needs the hub-server extra and imports it at module level: the FastAPI app in ``server``, and
-``blobs`` (the S3 blob store), ``db``, ``jobs``, ``migrate``, ``worker`` (``hub worker``), ``kg_build``,
-``kg_graph`` and ``kg_web``. These are loaded only by the commands that run the server (``hub serve``, ``hub
-worker``, ``hub migrate``, ``hub openapi``, ``hub contract print``).
+``blobs`` (the S3 blob store), ``db``, ``tables`` (the SQLAlchemy metadata), ``jobs``, ``migrate``, ``worker``
+(``hub worker``), ``kg_build``, ``kg_prune``, ``blob_gc``, ``kg_graph`` and ``kg_web``. These are loaded only by the
+commands that run the server (``hub serve``, ``hub worker``, ``hub migrate``, ``hub openapi``, ``hub contract
+print``). ``kg_graph`` and ``kg_web`` (the graph cache and the reads from it) need only ``blobs`` of that extra: the
+Postgres query that lists the built graphs is ``built_graphs`` in ``server.kg``.
 
 Every other module needs only the core package, so ``evo-agents`` and the client commands work on a core install:
 ``cli`` and ``cli_client`` (the ``hub`` commands and sign-in), ``client`` (HTTP to the hub), ``config`` and ``log``,

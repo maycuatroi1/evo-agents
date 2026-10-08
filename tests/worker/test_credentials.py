@@ -25,7 +25,7 @@ import socket
 import stat
 import subprocess
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -63,7 +63,7 @@ def env_lease(lease_id: int, env_var: str, value: str) -> dict:
 
 
 def app_lease(lease_id: int, owner: str, value: str, minutes: float) -> dict:
-    expires = datetime.now(timezone.utc) + timedelta(minutes=minutes)
+    expires = datetime.now(UTC) + timedelta(minutes=minutes)
     lease = Lease(
         lease_id,
         "git",

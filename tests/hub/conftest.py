@@ -32,8 +32,10 @@ def pg_server():
         pytest.skip(pg.SKIP_REASON)
     pg.wait_ready()
     yield pg.DSN
-    with pg.admin() as conn:
-        stray = conn.execute("SELECT to_regclass('public.alembic_version')").fetchone()[0]
+    from sqlalchemy import func, select
+
+    with pg.admin_engine().connect() as conn:
+        stray = conn.execute(select(func.to_regclass("public.alembic_version"))).scalar_one()
     assert stray is None, "a test migrated the database named by EVO_HUB_TEST_DSN instead of its own"
 
 

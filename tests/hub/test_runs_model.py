@@ -13,7 +13,7 @@ of 60 steps stays under 32 KiB; and the prompt of a run of kind step is the one 
 import itertools
 import json
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -49,7 +49,7 @@ from evo_agents.schema import errors, validate
 FIXTURE = Path(__file__).parent / "fixtures" / "runs" / "ready-steps.yaml"
 COMPLETED = sorted((Path(__file__).parent / "fixtures" / "plans" / "completed").glob("*.yaml"))
 STEP_PROMPTS_030 = Path(__file__).parent / "golden" / "step-prompts-0.3.0.json"
-NOW = datetime(2026, 10, 5, 12, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 10, 5, 12, 0, tzinfo=UTC)
 
 
 @pytest.fixture

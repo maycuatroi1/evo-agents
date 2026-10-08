@@ -147,3 +147,19 @@ def test_corpus_lives_outside_repos_with_private_mode(fake_project, kg_env):
     assert root.parent == kg_env
     assert stat.S_IMODE(root.stat().st_mode) == 0o700
     assert project.harness.root not in root.parents
+
+
+def test_record_run_writes_in_the_callers_transaction_and_run_ids_lists_it(fake_project):
+    project, fake = fake_project
+    fake.set(items=[doc("a")])
+    synced = sync_source(project, "docs")
+    corpus = project.corpus()
+    assert corpus.run_ids() == {synced.run_id}
+    corpus.record_run("run-2", source="docs", connector="fake", status="ok", detail={"hub": True})
+    corpus.db.rollback()
+    assert corpus.run_ids() == {synced.run_id}  # nothing was committed
+    with corpus.db:
+        corpus.record_run("run-2", source="docs", connector="fake", status="ok", detail={"hub": True})
+    assert corpus.run_ids() == {synced.run_id, "run-2"}
+    (row,) = corpus.runs(source="docs", status="ok", limit=1)  # newest first: run-2 sorts after the uuid
+    assert row["run_id"] == "run-2" and row["detail"] == {"hub": True} and row["version"] is None

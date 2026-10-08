@@ -205,7 +205,7 @@ async def selftest(
                 reader.cancel()
         try:
             outcome = await asyncio.wait_for(adapter.wait(), END_GRACE)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             outcome = Outcome(False, f"{runtime} did not end within {END_GRACE:g}s")
         return report(cls, runtime, adapter, outcome, counts, repo, watch)
     finally:

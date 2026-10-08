@@ -28,10 +28,14 @@ from datetime import datetime
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, HTTPException, Request
-from psycopg.types.json import Jsonb
 from pydantic import BaseModel, Field
+from sqlalchemy import ScalarSelect, and_, bindparam, delete, func, insert, literal, select, update
+from sqlalchemy.dialects.postgresql import JSONB, aggregate_order_by
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.harness import load_schema
+from evo_agents.hub import tables
 from evo_agents.hub.access import HUB_KIND, INTEGRITIES, ROLES, ProjectRules, Refused
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.admin import PROJECT_NAME, ProjectName
@@ -138,10 +142,6 @@ def not_found(name: str) -> str:
     return f"no project {name} that you can see on this hub: see `evo-agents hub project list`"
 
 
-async def _one(conn, query: str, params=()):
-    return await (await conn.execute(query, params)).fetchone()
-
-
 def _lower(ladder, held, cap):
     """The lower of ``held`` and ``cap`` on ``ladder``; None when either is not on it."""
     if held not in ladder or cap not in ladder:
@@ -157,27 +157,52 @@ def scoped_grant(user: Principal, levels, role: str | None, max_level: str | Non
     return _lower(ROLES, role, user.scope.role), _lower(levels, max_level, user.scope.max_level)
 
 
-async def project_access(conn, user: Principal, name: str) -> ProjectAccess:
+def _with_grant(user_id: int):
+    """Projects left joined to the grant ``user_id`` holds on each, if any."""
+    projects, grants = tables.projects, tables.grants
+    return projects.outerjoin(grants, and_(grants.c.project_id == projects.c.id, grants.c.user_id == user_id))
+
+
+def _sinks_of(project_id) -> ScalarSelect:
+    """The sinks of project ``project_id`` as one JSONB array of {id, kind, clearance}, by id; [] without one."""
+    ps = tables.project_sinks
+    sink = func.jsonb_build_object("id", ps.c.sink_id, "kind", ps.c.kind, "clearance", ps.c.clearance)
+    listed = func.jsonb_agg(aggregate_order_by(sink, ps.c.sink_id), type_=JSONB)
+    return (
+        select(func.coalesce(listed, literal([], JSONB), type_=JSONB)).where(ps.c.project_id == project_id)
+    ).scalar_subquery()
+
+
+# Built once, as every request that names a project runs it (docs/hub.md, Data access): project :name, the grant
+# user :user_id holds on it, and its sinks, in one round trip.
+_ACCESS = (
+    select(
+        tables.projects.c.id,
+        tables.projects.c.levels,
+        tables.projects.c.locations,
+        tables.projects.c.default_label,
+        tables.grants.c.role,
+        tables.grants.c.max_level,
+        _sinks_of(tables.projects.c.id).label("sinks"),
+    )
+    .select_from(_with_grant(bindparam("user_id")))
+    .where(tables.projects.c.name == bindparam("name"))
+)
+
+
+async def project_access(conn: AsyncConnection, user: Principal, name: str) -> ProjectAccess:
     """``user``'s access to project ``name``; 404 when it is not registered, or when ``user`` holds no grant on it
     and is no hub admin, so a name tells nothing about the projects one cannot see. The agent of a run sees the run's
     project alone, with the grant ``scoped_grant`` leaves it."""
     if not user.reaches(name):
         raise HTTPException(404, not_found(name))
-    row = await _one(
-        conn,
-        "SELECT p.id, p.levels, p.locations, p.default_label, g.role, g.max_level FROM projects p "
-        "LEFT JOIN grants g ON g.project_id = p.id AND g.user_id = %s WHERE p.name = %s",
-        (user.user_id, name),
-    )
-    if row is None or (row[4] is None and not user.admin):
+    row = (await conn.execute(_ACCESS, {"user_id": user.user_id, "name": name})).first()
+    if row is None or (row.role is None and not user.admin):
         raise HTTPException(404, not_found(name))
-    project_id, levels, locations, default_label, role, max_level = row
-    role, max_level = scoped_grant(user, levels, role, max_level)
-    cursor = await conn.execute(
-        "SELECT sink_id, kind, clearance FROM project_sinks WHERE project_id = %s ORDER BY sink_id", (project_id,)
-    )
-    sinks = [{"id": sink, "kind": kind, "clearance": clearance} for sink, kind, clearance in await cursor.fetchall()]
-    return ProjectAccess(project_id, ProjectRules(name, levels, locations, sinks, default_label), role, max_level)
+    role, max_level = scoped_grant(user, row.levels, row.role, row.max_level)
+    sinks = row.sinks
+    rules = ProjectRules(name, row.levels, row.locations, sinks, row.default_label)
+    return ProjectAccess(row.id, rules, role, max_level)
 
 
 # Registration
@@ -234,52 +259,68 @@ def _desired(body: Registration, rules: ProjectRules) -> dict:
     }
 
 
-async def _held(conn, project_id: int) -> dict:
-    levels, locations, default_label, cluster, workspace, harness_path = await _one(
-        conn,
-        "SELECT levels, locations, default_label, cluster, workspace, harness_path FROM projects WHERE id = %s",
-        (project_id,),
-    )
-    sinks = await (
-        await conn.execute("SELECT sink_id, kind, clearance FROM project_sinks WHERE project_id = %s", (project_id,))
-    ).fetchall()
-    repos = await (
+async def _held(conn: AsyncConnection, project_id: int) -> dict:
+    projects, project_sinks, project_repos = tables.projects, tables.project_sinks, tables.project_repos
+    project = (
         await conn.execute(
-            "SELECT name, origin, default_branch, path FROM project_repos WHERE project_id = %s", (project_id,)
+            select(
+                projects.c.levels,
+                projects.c.locations,
+                projects.c.default_label,
+                projects.c.cluster,
+                projects.c.workspace,
+                projects.c.harness_path,
+            ).where(projects.c.id == project_id)
         )
-    ).fetchall()
+    ).one()
+    sinks = await conn.execute(
+        select(project_sinks.c.sink_id, project_sinks.c.kind, project_sinks.c.clearance).where(
+            project_sinks.c.project_id == project_id
+        )
+    )
+    repos = await conn.execute(
+        select(
+            project_repos.c.name, project_repos.c.origin, project_repos.c.default_branch, project_repos.c.path
+        ).where(project_repos.c.project_id == project_id)
+    )
     return {
-        "levels": levels,
-        "locations": locations,
-        "default_label": default_label,
-        "harness": (cluster, workspace, harness_path),
-        "sinks": sorted((sink, kind, _clearance(clearance)) for sink, kind, clearance in sinks),
+        "levels": project.levels,
+        "locations": project.locations,
+        "default_label": project.default_label,
+        "harness": (project.cluster, project.workspace, project.harness_path),
+        "sinks": sorted((sink.sink_id, sink.kind, _clearance(sink.clearance)) for sink in sinks),
         "repos": sorted(tuple(repo) for repo in repos),
     }
 
 
-async def _write_children(conn, project_id: int, desired: dict) -> None:
-    await conn.execute("DELETE FROM project_sinks WHERE project_id = %s", (project_id,))
-    await conn.execute("DELETE FROM project_repos WHERE project_id = %s", (project_id,))
-    async with conn.cursor() as cursor:
-        await cursor.executemany(
-            "INSERT INTO project_sinks (project_id, sink_id, kind, clearance) VALUES (%s, %s, %s, %s)",
-            [(project_id, sink, kind, Jsonb(clearance)) for sink, kind, clearance in desired["sinks"]],
-        )
-        await cursor.executemany(
-            "INSERT INTO project_repos (project_id, name, origin, default_branch, path) VALUES (%s, %s, %s, %s, %s)",
-            [(project_id, *repo) for repo in desired["repos"]],
-        )
+async def _write_children(conn: AsyncConnection, project_id: int, desired: dict) -> None:
+    project_sinks, project_repos = tables.project_sinks, tables.project_repos
+    await conn.execute(delete(project_sinks).where(project_sinks.c.project_id == project_id))
+    await conn.execute(delete(project_repos).where(project_repos.c.project_id == project_id))
+    sinks = [
+        {"project_id": project_id, "sink_id": sink, "kind": kind, "clearance": clearance}
+        for sink, kind, clearance in desired["sinks"]
+    ]
+    if sinks:
+        await conn.execute(insert(project_sinks), sinks)
+    repos = [
+        {"project_id": project_id, "name": name, "origin": origin, "default_branch": branch, "path": path}
+        for name, origin, branch, path in desired["repos"]
+    ]
+    if repos:
+        await conn.execute(insert(project_repos), repos)
 
 
-async def _check_grants(conn, name: str, project_id: int, levels: list[str]) -> None:
+async def _check_grants(conn: AsyncConnection, name: str, project_id: int, levels: list[str]) -> None:
     """409 when a grant reaches a level the new ladder drops."""
-    cursor = await conn.execute(
-        "SELECT u.login, g.max_level FROM grants g JOIN users u ON u.id = g.user_id "
-        "WHERE g.project_id = %s AND NOT (g.max_level = ANY(%s)) ORDER BY lower(u.login)",
-        (project_id, levels),
+    grants, users = tables.grants, tables.users
+    found = await conn.execute(
+        select(users.c.login, grants.c.max_level)
+        .join_from(grants, users, users.c.id == grants.c.user_id)
+        .where(grants.c.project_id == project_id, grants.c.max_level.not_in(levels))
+        .order_by(func.lower(users.c.login))
     )
-    stranded = await cursor.fetchall()
+    stranded = found.all()
     if stranded:
         held = ", ".join(f"{login} ({level})" for login, level in stranded)
         raise HTTPException(
@@ -293,53 +334,79 @@ def _refusal(name: str) -> str:
     return f"registering or updating project {name} needs a hub admin, or the admin role on project {name}"
 
 
-PROJECTS = """
-SELECT p.id, p.name, p.cluster, p.workspace, p.harness_path, p.levels, p.locations, p.default_label, p.created_at,
-       p.updated_at, g.role, g.max_level
-  FROM projects p LEFT JOIN grants g ON g.project_id = p.id AND g.user_id = %(user)s
- WHERE (g.user_id IS NOT NULL OR %(admin)s) AND (%(name)s::text IS NULL OR p.name = %(name)s)
-   AND (%(only)s::text IS NULL OR p.name = %(only)s)
- ORDER BY p.name
-"""
+def _visible(user: Principal, name: str | None):
+    """The projects ``user`` holds a grant on (every one for a hub admin), only ``name`` when given, and only the
+    run's project for the agent of a run; with the user's grant, by name."""
+    projects, grants = tables.projects, tables.grants
+    query = select(
+        projects.c.id,
+        projects.c.name,
+        projects.c.cluster,
+        projects.c.workspace,
+        projects.c.harness_path,
+        projects.c.levels,
+        projects.c.locations,
+        projects.c.default_label,
+        projects.c.created_at,
+        projects.c.updated_at,
+        grants.c.role,
+        grants.c.max_level,
+    ).select_from(_with_grant(user.user_id))
+    if not user.admin:
+        query = query.where(grants.c.user_id.is_not(None))
+    if name is not None:
+        query = query.where(projects.c.name == name)
+    if user.run_project is not None:
+        query = query.where(projects.c.name == user.run_project)
+    return query.order_by(projects.c.name)
 
 
-async def _projects(conn, user: Principal, name: str | None = None) -> list[Project]:
-    params = {"user": user.user_id, "admin": user.admin, "name": name, "only": user.run_project}
-    rows = await (await conn.execute(PROJECTS, params)).fetchall()
-    ids = [row[0] for row in rows]
+async def _projects(conn: AsyncConnection, user: Principal, name: str | None = None) -> list[Project]:
+    project_sinks, project_repos = tables.project_sinks, tables.project_repos
+    rows = (await conn.execute(_visible(user, name))).all()
+    ids = [row.id for row in rows]
     sinks: dict[int, list[Sink]] = {}
     repos: dict[int, list[Repo]] = {}
-    cursor = await conn.execute(
-        "SELECT project_id, sink_id, kind, clearance FROM project_sinks WHERE project_id = ANY(%s) ORDER BY sink_id",
-        (ids,),
+    held_sinks = await conn.execute(
+        select(project_sinks.c.project_id, project_sinks.c.sink_id, project_sinks.c.kind, project_sinks.c.clearance)
+        .where(project_sinks.c.project_id.in_(ids))
+        .order_by(project_sinks.c.sink_id)
     )
-    for project_id, sink, kind, clearance in await cursor.fetchall():
-        sinks.setdefault(project_id, []).append(Sink(id=sink, kind=kind, clearance=Clearance(**clearance)))
-    cursor = await conn.execute(
-        "SELECT project_id, name, origin, default_branch, path FROM project_repos WHERE project_id = ANY(%s) "
-        "ORDER BY name",
-        (ids,),
+    for sink in held_sinks:
+        clearance = Clearance(**sink.clearance)
+        sinks.setdefault(sink.project_id, []).append(Sink(id=sink.sink_id, kind=sink.kind, clearance=clearance))
+    held_repos = await conn.execute(
+        select(
+            project_repos.c.project_id,
+            project_repos.c.name,
+            project_repos.c.origin,
+            project_repos.c.default_branch,
+            project_repos.c.path,
+        )
+        .where(project_repos.c.project_id.in_(ids))
+        .order_by(project_repos.c.name)
     )
-    for project_id, repo, origin, branch, path in await cursor.fetchall():
-        repos.setdefault(project_id, []).append(Repo(name=repo, origin=origin, default_branch=branch, path=path))
+    for repo in held_repos:
+        repos.setdefault(repo.project_id, []).append(
+            Repo(name=repo.name, origin=repo.origin, default_branch=repo.default_branch, path=repo.path)
+        )
     projects = []
     for row in rows:
-        project_id, name, cluster, workspace, harness_path, levels, locations, label, created, updated = row[:10]
-        harness = Harness(name=cluster, workspace=workspace, path=harness_path) if cluster else None
-        role, max_level = scoped_grant(user, levels, row[10], row[11])
+        harness = Harness(name=row.cluster, workspace=row.workspace, path=row.harness_path) if row.cluster else None
+        role, max_level = scoped_grant(user, row.levels, row.role, row.max_level)
         projects.append(
             Project(
-                name=name,
+                name=row.name,
                 harness=harness,
-                levels=levels,
-                locations=locations,
-                default_label=label,
-                sinks=sinks.get(project_id, []),
-                repos=repos.get(project_id, []),
+                levels=row.levels,
+                locations=row.locations,
+                default_label=row.default_label,
+                sinks=sinks.get(row.id, []),
+                repos=repos.get(row.id, []),
                 role=role,
                 max_level=max_level,
-                created_at=created,
-                updated_at=updated,
+                created_at=row.created_at,
+                updated_at=row.updated_at,
             )
         )
     return projects
@@ -347,28 +414,23 @@ async def _projects(conn, user: Principal, name: str | None = None) -> list[Proj
 
 @router.get("", response_model=list[Project])
 async def list_projects(request: Request, user: CurrentUser) -> list[Project]:
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         return await _projects(conn, user)
 
 
 @router.get("/{project}", response_model=Project, responses={404: {"model": ErrorBody}})
 async def show(request: Request, project: ProjectName, user: CurrentUser) -> Project:
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         found = await _projects(conn, user, project)
     if not found:
         raise HTTPException(404, not_found(project))
     return found[0]
 
 
-INSERT_PROJECT = """
-INSERT INTO projects (name, levels, locations, default_label, cluster, workspace, harness_path, created_by)
-VALUES (%s, %s, %s, %s, %s, %s, %s, %s) ON CONFLICT (name) DO NOTHING RETURNING id
-"""
-UPDATE_PROJECT = """
-UPDATE projects SET levels = %s, locations = %s, default_label = %s, cluster = %s, workspace = %s,
-       harness_path = %s, updated_at = now()
- WHERE id = %s
-"""
+def _locked(name: str):
+    """The id of project ``name``, its row locked until the transaction ends."""
+    projects = tables.projects
+    return select(projects.c.id).where(projects.c.name == name).with_for_update()
 
 
 @router.put("/{project}", response_model=Registered, responses=REFUSALS)
@@ -376,30 +438,48 @@ async def register(request: Request, body: Registration, project: ProjectName, u
     """Register ``project`` from its harness, or bring the hub's copy up to date with it."""
     rules = _checked(project, body)
     desired = _desired(body, rules)
-    fields = (desired["levels"], desired["locations"], Jsonb(desired["default_label"]), *desired["harness"])
-    async with request.app.state.pool.connection() as conn:
-        row = await _one(conn, "SELECT id FROM projects WHERE name = %s FOR UPDATE", (project,))
+    cluster, workspace, harness_path = desired["harness"]
+    fields = {
+        "levels": desired["levels"],
+        "locations": desired["locations"],
+        "default_label": desired["default_label"],
+        "cluster": cluster,
+        "workspace": workspace,
+        "harness_path": harness_path,
+    }
+    projects, grants = tables.projects, tables.grants
+    async with request.app.state.engine.begin() as conn:
+        project_id = (await conn.execute(_locked(project))).scalar()
         created = False
-        if row is None:
+        if project_id is None:
             if not user.admin:
                 raise HTTPException(403, _refusal(project))
-            row = await _one(conn, INSERT_PROJECT, (project, *fields, user.user_id))
-            created = row is not None
+            inserted = await conn.execute(
+                pg_insert(projects)
+                .values(name=project, created_by=user.user_id, **fields)
+                .on_conflict_do_nothing(index_elements=[projects.c.name])
+                .returning(projects.c.id)
+            )
+            project_id = inserted.scalar()
+            created = project_id is not None
             if not created:  # registered by another request a moment ago: this one updates it
-                row = await _one(conn, "SELECT id FROM projects WHERE name = %s FOR UPDATE", (project,))
-        project_id = row[0]
+                project_id = (await conn.execute(_locked(project))).scalar_one()
         changed = created
         if not created:
-            grant = await _one(
-                conn, "SELECT role FROM grants WHERE user_id = %s AND project_id = %s", (user.user_id, project_id)
-            )
-            role = scoped_grant(user, body.levels, grant[0], None)[0] if grant else None  # a run's agent: writer
+            role = (
+                await conn.execute(
+                    select(grants.c.role).where(grants.c.user_id == user.user_id, grants.c.project_id == project_id)
+                )
+            ).scalar()
+            role = scoped_grant(user, body.levels, role, None)[0] if role else None  # a run's agent: writer
             if not user.admin and role != "admin":
                 raise HTTPException(403, _refusal(project))
             changed = await _held(conn, project_id) != desired
             if changed:
                 await _check_grants(conn, project, project_id, body.levels)
-                await conn.execute(UPDATE_PROJECT, (*fields, project_id))
+                await conn.execute(
+                    update(projects).values(**fields, updated_at=func.now()).where(projects.c.id == project_id)
+                )
         if changed:
             await _write_children(conn, project_id, desired)
             action = audit.PROJECT_REGISTER if created else audit.PROJECT_UPDATE

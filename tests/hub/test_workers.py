@@ -19,7 +19,7 @@ and a machine token gets 403 there."""
 import hashlib
 import hmac
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -29,14 +29,14 @@ if not pg.DSN:
     pytest.skip(pg.SKIP_REASON, allow_module_level=True)
 
 from fastapi.testclient import TestClient
-from psycopg.types.json import Jsonb
+from sqlalchemy import func, insert, select, update
 
+from evo_agents.hub import tables
 from evo_agents.hub.log import scrub
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.app import create_app
 from evo_agents.hub.server.security import MACHINE, WORKER, authenticate, hash_token
 from evo_agents.hub.server.workers import CROCKFORD, RefusalLimit, normal_code
-from evo_agents.isotime import parse_iso
 from tests.hub.fake_github import Account
 from tests.hub.live import ADMIN, add_project, bearer, sql, table_dump
 from tests.hub.test_run_tables import PLAN, add_run
@@ -121,8 +121,27 @@ def worker_headers(token: str) -> dict:
 
 
 def audit_rows(db, action: str) -> list[tuple]:
+    audit_table, users = tables.audit, tables.users
     return sql(
-        db, "SELECT a.target, u.login FROM audit a JOIN users u ON u.id = a.actor_id WHERE action = %s", (action,)
+        db,
+        select(audit_table.c.target, users.c.login)
+        .join_from(audit_table, users, users.c.id == audit_table.c.actor_id)
+        .where(audit_table.c.action == action),
+    )
+
+
+def count(db, table, *where) -> list[tuple]:
+    return sql(db, select(func.count()).select_from(table).where(*where))
+
+
+def expire(db, pairing_id: int) -> None:
+    """Move pairing ``pairing_id`` 11 minutes back, past its expiry."""
+    pairings, back = tables.worker_pairings, timedelta(minutes=11)
+    sql(
+        db,
+        update(pairings)
+        .values(created_at=pairings.c.created_at - back, expires_at=pairings.c.expires_at - back)
+        .where(pairings.c.id == pairing_id),
     )
 
 
@@ -147,7 +166,7 @@ def test_a_pairing_code_joins_a_machine_once_and_the_hub_keeps_no_code_or_token(
         2,
         ["gpu"],
     )
-    expires = parse_iso(pairing["expires_at"]) - datetime.now(timezone.utc)
+    expires = datetime.fromisoformat(pairing["expires_at"]) - datetime.now(UTC)
     assert 9 * 60 < expires.total_seconds() <= 10 * 60
     state = client.get(f"/v1/workers/pairings/{pairing['id']}", headers=hub["owner"]).json()
     assert (state["status"], state["tries_left"], state["worker_id"]) == ("waiting", 5, None)
@@ -171,12 +190,12 @@ def test_a_pairing_code_joins_a_machine_once_and_the_hub_keeps_no_code_or_token(
     # used once: the same code is refused, and the worker stays alone
     second = join(client, code)
     assert second.status_code == 403 and second.json()["error"] == "forbidden"
-    assert sql(hub_db, "SELECT count(*) FROM workers") == [(1,)]
+    assert count(hub_db, tables.workers) == [(1,)]
 
     # the token is a worker token of the owner, with the machine's hostname, kept as its hash only
-    assert sql(hub_db, "SELECT kind, host, token_hash FROM tokens WHERE id = %s", (answer["token_id"],)) == [
-        ("worker", HOST["hostname"], hash_token(token))
-    ]
+    tokens = tables.tokens
+    stored = select(tokens.c.kind, tokens.c.host, tokens.c.token_hash).where(tokens.c.id == answer["token_id"])
+    assert sql(hub_db, stored) == [("worker", HOST["hostname"], hash_token(token))]
     dump = table_dump(hub_db)
     for secret in (token, code, code.replace("-", "")):
         assert secret not in dump
@@ -193,17 +212,12 @@ def test_a_pairing_code_joins_a_machine_once_and_the_hub_keeps_no_code_or_token(
 
 def test_an_expired_code_is_refused(client, hub, hub_db):
     pairing = paired(client, hub["owner"])
-    sql(
-        hub_db,
-        "UPDATE worker_pairings SET created_at = created_at - interval '11 minutes', "
-        "expires_at = expires_at - interval '11 minutes' WHERE id = %s",
-        (pairing["id"],),
-    )
+    expire(hub_db, pairing["id"])
     refused = join(client, pairing["code"])
     assert refused.status_code == 403 and "expired" in refused.json()["message"]
     assert client.get(f"/v1/workers/pairings/{pairing['id']}", headers=hub["owner"]).json()["status"] == "expired"
-    assert sql(hub_db, "SELECT count(*) FROM workers") == [(0,)]
-    assert sql(hub_db, "SELECT attempts FROM worker_pairings") == [(0,)]  # a dead code counts no tries
+    assert count(hub_db, tables.workers) == [(0,)]
+    assert sql(hub_db, select(tables.worker_pairings.c.attempts)) == [(0,)]  # a dead code counts no tries
 
 
 def test_five_wrong_tries_lock_the_code_and_the_right_one_is_refused_after_them(client, hub, hub_db):
@@ -217,7 +231,7 @@ def test_five_wrong_tries_lock_the_code_and_the_right_one_is_refused_after_them(
         assert state["tries_left"] == 5 - number
     assert state["status"] == "locked"
     assert join(client, pairing["code"]).status_code == 403  # the right code, too late
-    assert sql(hub_db, "SELECT count(*) FROM workers") == [(0,)]
+    assert count(hub_db, tables.workers) == [(0,)]
     # the wrong tries counted against that pairing only, and every refusal reads the same
     assert client.get(f"/v1/workers/pairings/{unrelated['id']}", headers=hub["owner"]).json()["tries_left"] == 5
     messages = {join(client, code).json()["message"] for code in (pairing["code"], "ZZZZ-ZZZZ")}
@@ -233,12 +247,7 @@ def test_a_locked_code_counts_against_the_five_until_it_expires(client, hub, hub
     # locking a code by hand frees no place, so a member cannot hold more selectors that way
     refused = pair(client, hub["owner"], name="box-5")
     assert refused.status_code == 409 and "waiting or locked" in refused.json()["message"]
-    sql(
-        hub_db,
-        "UPDATE worker_pairings SET created_at = created_at - interval '11 minutes', "
-        "expires_at = expires_at - interval '11 minutes' WHERE id = %s",
-        (pairings[0]["id"],),
-    )
+    expire(hub_db, pairings[0]["id"])
     assert pair(client, hub["owner"], name="box-5").status_code == 201
 
 
@@ -267,7 +276,7 @@ def test_refused_codes_from_one_address_are_limited(client, hub, hub_db):
     assert join(client, pairing["code"]).headers["retry-after"] == "1"
     now[0] = 1600.0
     assert joined(client, pairing["code"])["worker"]["name"] == "mac-mini"
-    assert sql(hub_db, "SELECT count(*) FROM workers") == [(1,)]
+    assert count(hub_db, tables.workers) == [(1,)]
 
 
 def test_the_refusal_limit_counts_each_address_apart_and_forgets_the_least_recent():
@@ -292,7 +301,7 @@ def test_a_malformed_code_is_422_and_counts_against_nothing(client, hub, hub_db)
     for code in ("ABCD-EFG", "ABCD-EFGU", "not a pairing code"):
         response = join(client, code)
         assert response.status_code == 422 and "Crockford" in response.json()["message"], code
-    assert sql(hub_db, "SELECT attempts FROM worker_pairings") == [(0,)]
+    assert sql(hub_db, select(tables.worker_pairings.c.attempts)) == [(0,)]
 
 
 def test_pairings_need_the_writer_role_on_every_project(client, hub, hub_db, github):
@@ -301,8 +310,8 @@ def test_pairings_need_the_writer_role_on_every_project(client, hub, hub_db, git
     assert pair(client, hub["owner"], projects=["nowhere"]).status_code == 404
     # a hub admin without a grant manages a project but runs nothing in it
     assert pair(client, hub["admin"], projects=["demo"]).status_code == 403
-    assert sql(hub_db, "SELECT count(*) FROM worker_pairings") == [(0,)]
-    assert sql(hub_db, "SELECT count(*) FROM audit WHERE action ~ '^worker[.]'") == [(0,)]
+    assert count(hub_db, tables.worker_pairings) == [(0,)]
+    assert count(hub_db, tables.audit, tables.audit.c.action.regexp_match("^worker[.]")) == [(0,)]
 
 
 def test_a_web_session_pairs_only_with_its_csrf_header(client, hub, github, hub_db):
@@ -329,7 +338,8 @@ def test_a_member_has_at_most_five_waiting_codes(client, hub, hub_db):
 
 def test_the_hub_keeps_an_hmac_of_the_code_under_the_session_secret(client, hub, hub_db, config):
     code = paired(client, hub["owner"])["code"].replace("-", "")
-    ((selector, stored),) = sql(hub_db, "SELECT code_selector, code_hash FROM worker_pairings")
+    pairings = tables.worker_pairings
+    ((selector, stored),) = sql(hub_db, select(pairings.c.code_selector, pairings.c.code_hash))
     assert selector == code[:4]
     assert stored != hashlib.sha256(code.encode()).hexdigest()  # a plain hash would let the rest be tried offline
     keyed = hmac.new(config.session_secret.encode(), b"pairing-code\0" + code.encode(), hashlib.sha256).hexdigest()
@@ -346,7 +356,7 @@ def test_without_the_session_secret_pairing_and_joining_answer_503(hub_db, tmp_p
         refused = pair(client, owner)
         assert refused.status_code == 503 and "EVO_HUB_SESSION_SECRET" in refused.json()["message"]
         assert join(client, "ABCD-EFGH").status_code == 503
-        assert sql(hub_db, "SELECT count(*) FROM worker_pairings") == [(0,)]
+        assert count(hub_db, tables.worker_pairings) == [(0,)]
         # a machine token registers its machine directly all the same
         body = {"name": "box", "projects": ["demo"], **HOST}
         assert client.post("/v1/workers", json=body, headers=owner).status_code == 201
@@ -374,7 +384,7 @@ def test_a_join_after_the_owner_lost_the_writer_role_is_refused(client, hub, hub
     refused = join(client, pairing["code"])
     assert refused.status_code == 409 and "writer role" in refused.json()["message"]
     assert "docs" not in refused.json()["message"]  # the caller holds a code, not a view of the owner's projects
-    assert sql(hub_db, "SELECT count(*) FROM workers") == [(0,)]
+    assert count(hub_db, tables.workers) == [(0,)]
     assert client.get(f"/v1/workers/pairings/{pairing['id']}", headers=hub["owner"]).json()["status"] == "waiting"
 
 
@@ -398,7 +408,7 @@ def test_a_machine_token_registers_its_machine_directly(client, hub, hub_db, git
     csrf = {"X-Evo-CSRF": csrf_for(client, session)}
     by_web = client.post("/v1/workers", json={**body, "name": "web"}, headers={**cookie(session), **csrf})
     assert by_web.status_code == 403 and "pairing code" in by_web.json()["message"]
-    assert sql(hub_db, "SELECT count(*) FROM workers") == [(1,)]
+    assert count(hub_db, tables.workers) == [(1,)]
 
 
 # Which credential works where
@@ -419,7 +429,7 @@ def test_a_worker_token_works_only_on_the_worker_routes(client, hub, hub_db):
     # a worker token is a Bearer token: as the session cookie it is no session
     assert client.get("/v1/projects", headers=cookie(token)).status_code == 401
     # the owner of a worker may be a hub admin; the worker is not
-    principal = client.portal.call(authenticate, client.app.state.pool, token, WORKER, client.app.state.config)
+    principal = client.portal.call(authenticate, client.app.state.engine, token, WORKER, client.app.state.config)
     assert principal.kind == WORKER and principal.login == OWNER and principal.admin is False
 
 
@@ -446,7 +456,7 @@ def test_the_existing_credentials_keep_their_routes(client, hub, github):
     assert client.get("/v1/projects", headers=bearer("evh_" + "A" * 43)).status_code == 401
     principal = client.portal.call(
         authenticate,
-        client.app.state.pool,
+        client.app.state.engine,
         live.sign_in(client, github, ADMIN, ADMIN_ID)["token"],
         MACHINE,
         client.app.state.config,
@@ -492,7 +502,8 @@ def test_drain_and_undrain_change_the_status_once_and_only_the_owner_undrains(cl
     worker = joined(client, paired(client, hub["owner"])["code"])
     worker_id = worker["worker"]["id"]
     target = f"worker:{worker_id} name=mac-mini owner={OWNER}"
-    sql(hub_db, "UPDATE workers SET last_heartbeat_at = now() WHERE id = %s", (worker_id,))
+    workers = tables.workers
+    sql(hub_db, update(workers).values(last_heartbeat_at=func.now()).where(workers.c.id == worker_id))
     assert client.get(f"/v1/workers/{worker_id}", headers=hub["owner"]).json()["status"] == "online"
     for _ in range(2):  # the second drain changes nothing and writes no audit row
         drained = client.post(f"/v1/workers/{worker_id}/drain", headers=hub["owner"])
@@ -533,7 +544,7 @@ def test_dispatch_from_is_set_by_the_owner_from_a_web_session_only_and_audited(c
     assert client.post(path, json={"value": "web"}, headers=worker_headers(answer["token"])).status_code == 403
     session_only = {"Cookie": owner_web["Cookie"]}  # the cookie without its CSRF header
     assert client.post(path, json={"value": "web"}, headers=session_only).status_code == 403
-    assert sql(hub_db, "SELECT dispatch_from FROM workers") == [("any",)]
+    assert sql(hub_db, select(tables.workers.c.dispatch_from)) == [("any",)]
     assert audit_rows(hub_db, "worker.dispatch_from") == []
 
     for _ in range(2):  # the second changes nothing and writes no audit row
@@ -553,7 +564,7 @@ def test_dispatch_from_is_set_by_the_owner_from_a_web_session_only_and_audited(c
     assert refused.status_code == 403 and f"only {OWNER}, who owns worker {worker_id}" in refused.json()["message"]
     other_web = web_writes(client, github, OTHER, OTHER_ID)
     assert client.post(path, json={"value": "any"}, headers=other_web).status_code == 404
-    assert sql(hub_db, "SELECT dispatch_from FROM workers") == [("web",)]
+    assert sql(hub_db, select(tables.workers.c.dispatch_from)) == [("web",)]
 
     back = client.post(path, json={"value": "any"}, headers=owner_web)
     assert back.status_code == 200 and back.json()["dispatch_from"] == "any"
@@ -570,22 +581,20 @@ def test_dispatch_from_is_set_by_the_owner_from_a_web_session_only_and_audited(c
 
 def seed_plan(db, project: str = "demo") -> dict:
     """The plan worker-fleet at revision 1 in ``project``, as ``add_run`` expects it."""
-    project_id = sql(db, "SELECT id FROM projects WHERE name = %s", (project,))[0][0]
-    user_id = sql(db, "SELECT id FROM users WHERE login = %s", (OWNER,))[0][0]
+    projects, users = tables.projects, tables.users
+    project_id = sql(db, select(projects.c.id).where(projects.c.name == project))[0][0]
+    user_id = sql(db, select(users.c.id).where(users.c.login == OWNER))[0][0]
     body = {"id": PLAN, "steps": [{"id": step, "status": "in_progress"} for step in range(7)]}
-    values = (project_id, PLAN, Jsonb(body), "sha256:" + "f" * 64, user_id)
-    sql(
-        db,
-        "INSERT INTO plans (project_id, plan_id, area, label, body, digest, updated_by) "
-        "VALUES (%s, %s, 'active', '{}', %s, %s, %s)",
-        values,
-    )
-    sql(
-        db,
-        "INSERT INTO plan_revisions (project_id, plan_id, revision, area, label, body, digest, actor_id) "
-        "VALUES (%s, %s, 1, 'active', '{}', %s, %s, %s)",
-        values,
-    )
+    values = {
+        "project_id": project_id,
+        "plan_id": PLAN,
+        "area": "active",
+        "label": {},
+        "body": body,
+        "digest": "sha256:" + "f" * 64,
+    }
+    sql(db, insert(tables.plans).values(**values, updated_by=user_id))
+    sql(db, insert(tables.plan_revisions).values(**values, revision=1, actor_id=user_id))
     return {"project": project_id, "user": user_id}
 
 
@@ -594,10 +603,10 @@ def test_a_hub_admin_revokes_a_worker_its_token_stops_and_its_runs_are_released(
     token, worker_id = answer["token"], answer["worker"]["id"]
     spare = joined(client, paired(client, hub["owner"], name="spare")["code"])["worker"]["id"]
     ids = seed_plan(hub_db) | {"worker": worker_id}
-    with pg.admin(hub_db.admin_dsn) as conn:
+    with live.connect(hub_db) as conn:
         history = add_run(conn, ids, "done", step="0")  # finished before: left alone
         retried = add_run(conn, ids, "running", step="1")
-        cancelled = add_run(conn, ids, "verifying", step="2", cancel_requested_at=datetime.now(timezone.utc))
+        cancelled = add_run(conn, ids, "verifying", step="2", cancel_requested_at=datetime.now(UTC))
         last = add_run(conn, ids, "interactive", step="3", attempt=3, parent_run_id=history)
         pinned_held = add_run(conn, ids, "leased", step="4", pinned_worker_id=worker_id)
         pinned_queued = add_run(conn, ids, "queued", step="5", pinned_worker_id=worker_id)
@@ -611,12 +620,15 @@ def test_a_hub_admin_revokes_a_worker_its_token_stops_and_its_runs_are_released(
     assert revoked.json()["held_runs"] == 0
     refused = client.post("/v1/worker/no-such-route", headers=worker_headers(token))
     assert refused.status_code == 401 and "worker token is revoked" in refused.json()["message"]
-    assert sql(hub_db, "SELECT revoked_at IS NOT NULL FROM tokens WHERE id = %s", (answer["token_id"],)) == [(True,)]
+    tokens = tables.tokens
+    revoked_token = select(tokens.c.revoked_at.is_not(None)).where(tokens.c.id == answer["token_id"])
+    assert sql(hub_db, revoked_token) == [(True,)]
     again = client.post(f"/v1/workers/{worker_id}/revoke", headers=hub["owner"])
     assert again.status_code == 409 and "revoked already" in again.json()["message"]
     assert client.post(f"/v1/workers/{worker_id}/drain", headers=hub["owner"]).status_code == 409
 
-    states = dict(sql(hub_db, "SELECT id, state FROM runs"))
+    runs, run_events = tables.runs, tables.run_events
+    states = dict(sql(hub_db, select(runs.c.id, runs.c.state)))
     assert {run: states[run] for run in (history, retried, cancelled, last, pinned_held, pinned_queued, elsewhere)} == {
         history: "done",
         retried: "lost",
@@ -628,18 +640,27 @@ def test_a_hub_admin_revokes_a_worker_its_token_stops_and_its_runs_are_released(
     }
     # the lost run's step is queued again as the next attempt, unpinned, claimed by nobody, and asking for the
     # runtime its dispatch asked for (any), not the one the lost run's worker picked
-    assert sql(
-        hub_db,
-        "SELECT step_key, attempt, state, worker_id, pinned_worker_id, requested_runtime, runtime, mode FROM runs "
-        "WHERE parent_run_id = %s",
-        (retried,),
-    ) == [("1", 2, "queued", None, None, "any", "any", "headless")]
-    errors = dict(sql(hub_db, "SELECT id, error FROM runs WHERE id = ANY(%s)", ([last, pinned_held, pinned_queued],)))
+    next_attempt = select(
+        runs.c.step_key,
+        runs.c.attempt,
+        runs.c.state,
+        runs.c.worker_id,
+        runs.c.pinned_worker_id,
+        runs.c.requested_runtime,
+        runs.c.runtime,
+        runs.c.mode,
+    ).where(runs.c.parent_run_id == retried)
+    assert sql(hub_db, next_attempt) == [("1", 2, "queued", None, None, "any", "any", "headless")]
+    ended = select(runs.c.id, runs.c.error).where(runs.c.id.in_([last, pinned_held, pinned_queued]))
+    errors = dict(sql(hub_db, ended))
     assert all(error.startswith("its worker mac-mini was revoked") for error in errors.values())
     assert "attempt 3 of 3" in errors[last] and "pinned" in errors[pinned_held]
     # each move left the state event the hub writes, numbered after the run's own events
     events = sql(
-        hub_db, "SELECT r.id, e.seq, e.body FROM run_events e JOIN runs r ON r.id = e.run_id WHERE e.kind = 'state'"
+        hub_db,
+        select(runs.c.id, run_events.c.seq, run_events.c.body)
+        .join_from(run_events, runs, runs.c.id == run_events.c.run_id)
+        .where(run_events.c.kind == "state"),
     )
     moved = {run: (seq, body["from"], body["to"], body["actor"]) for run, seq, body in events}
     assert moved == {
@@ -649,7 +670,7 @@ def test_a_hub_admin_revokes_a_worker_its_token_stops_and_its_runs_are_released(
         pinned_held: (1, "leased", "failed", "reaper"),
         pinned_queued: (1, "queued", "failed", "reaper"),
     }
-    assert sql(hub_db, "SELECT count(*) FROM runs WHERE event_seq = 1") == [(5,)]
+    assert count(hub_db, runs, runs.c.event_seq == 1) == [(5,)]
     assert audit_rows(hub_db, "worker.revoke") == [(f"worker:{worker_id} name=mac-mini owner={OWNER}", ADMIN)]
 
     # a revoked worker leaves the list unless asked for, and its name is free again
@@ -670,7 +691,7 @@ def test_revoking_a_worker_token_revokes_its_worker(client, hub, hub_db):
     answer = joined(client, paired(client, hub["owner"])["code"])
     token, token_id, worker_id = answer["token"], answer["token_id"], answer["worker"]["id"]
     ids = seed_plan(hub_db) | {"worker": worker_id}
-    with pg.admin(hub_db.admin_dsn) as conn:
+    with live.connect(hub_db) as conn:
         held = add_run(conn, ids, "running", step="1")
     # another member's token is unknown to them, and their worker stays as it was
     assert client.delete(f"/v1/tokens/{token_id}", headers=hub["other"]).status_code == 404
@@ -680,8 +701,9 @@ def test_revoking_a_worker_token_revokes_its_worker(client, hub, hub_db):
     shown = client.get(f"/v1/workers/{worker_id}", headers=hub["owner"]).json()
     assert (shown["status"], shown["held_runs"]) == ("revoked", 0)
     assert client.post("/v1/worker/no-such-route", headers=worker_headers(token)).status_code == 401
-    assert sql(hub_db, "SELECT state FROM runs WHERE id = %s", (held,)) == [("lost",)]
-    assert sql(hub_db, "SELECT state FROM runs WHERE parent_run_id = %s", (held,)) == [("queued",)]
+    runs = tables.runs
+    assert sql(hub_db, select(runs.c.state).where(runs.c.id == held)) == [("lost",)]
+    assert sql(hub_db, select(runs.c.state).where(runs.c.parent_run_id == held)) == [("queued",)]
     assert audit_rows(hub_db, "worker.revoke") == [(f"worker:{worker_id} name=mac-mini owner={OWNER}", OWNER)]
     assert audit_rows(hub_db, "token.revoke") == [(audit.token_target(token_id), OWNER)]
     again = client.post(f"/v1/workers/{worker_id}/revoke", headers=hub["owner"])
@@ -694,10 +716,12 @@ def test_revoking_a_worker_token_revokes_its_worker(client, hub, hub_db):
     assert client.get(f"/v1/workers/{desk['worker']['id']}", headers=hub["owner"]).json()["status"] == "revoked"
     assert (f"worker:{desk['worker']['id']} name=desk owner={OWNER}", ADMIN) in audit_rows(hub_db, "worker.revoke")
     # a token no worker holds revokes no worker
+    tokens, users = tables.tokens, tables.users
     ((machine_id,),) = sql(
         hub_db,
-        "SELECT t.id FROM tokens t JOIN users u ON u.id = t.user_id WHERE t.kind = 'machine' AND u.login = %s",
-        (OTHER,),
+        select(tokens.c.id)
+        .join_from(tokens, users, users.c.id == tokens.c.user_id)
+        .where(tokens.c.kind == "machine", users.c.login == OTHER),
     )
     assert client.delete(f"/v1/admin/tokens/{machine_id}", headers=hub["admin"]).status_code == 204
     assert len(audit_rows(hub_db, "worker.revoke")) == 2

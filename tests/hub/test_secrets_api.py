@@ -11,7 +11,7 @@ record and no table holds a value."""
 import json
 import logging
 import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -21,12 +21,13 @@ if not pg.DSN:
     pytest.skip(pg.SKIP_REASON, allow_module_level=True)
 
 from fastapi.testclient import TestClient
+from sqlalchemy import func, insert, select
 
+from evo_agents.hub import tables
 from evo_agents.hub.credentials import DEFAULT_GIT_USERNAME, MAX_SECRET_BYTES
 from evo_agents.hub.server import secrets as secret_routes
 from evo_agents.hub.server.app import create_app
 from evo_agents.hub.server.sealing import KEY_BYTES, Sealed, Sealer, secret_aad
-from evo_agents.isotime import parse_iso
 from tests.hub.fake_github import Account
 from tests.hub.live import ADMIN, add_project, bearer, sql, table_dump
 from tests.hub.test_run_tables import PLAN, add_plan, add_run
@@ -128,16 +129,29 @@ def register_worker(client, headers, name: str, projects=("demo",)) -> dict:
 
 
 def user_id(db, login: str) -> int:
-    return sql(db, "SELECT id FROM users WHERE login = %s", (login,))[0][0]
+    users = tables.users
+    return sql(db, select(users.c.id).where(users.c.login == login))[0][0]
 
 
 def stored(db, owner: str, name: str) -> list[tuple]:
     """(id, kind, env_var, url_prefix, username, sealed, nonce, key_id, deleted_at) of every row of the secret."""
+    rows, users = tables.secrets, tables.users
     return sql(
         db,
-        "SELECT s.id, s.kind, s.env_var, s.url_prefix, s.username, s.sealed, s.nonce, s.key_id, s.deleted_at "
-        "FROM secrets s JOIN users u ON u.id = s.owner_id WHERE u.login = %s AND s.name = %s ORDER BY s.id",
-        (owner, name),
+        select(
+            rows.c.id,
+            rows.c.kind,
+            rows.c.env_var,
+            rows.c.url_prefix,
+            rows.c.username,
+            rows.c.sealed,
+            rows.c.nonce,
+            rows.c.key_id,
+            rows.c.deleted_at,
+        )
+        .join_from(rows, users, users.c.id == rows.c.owner_id)
+        .where(users.c.login == owner, rows.c.name == name)
+        .order_by(rows.c.id),
     )
 
 
@@ -149,22 +163,31 @@ def opened(config, db, owner: str, name: str) -> str:
 
 
 def bindings(db, name: str) -> list[tuple]:
+    b, owned, projects, workers = tables.secret_bindings, tables.secrets, tables.projects, tables.workers
     return sql(
         db,
-        "SELECT p.name, w.name FROM secret_bindings b JOIN secrets s ON s.id = b.secret_id "
-        "JOIN projects p ON p.id = b.project_id LEFT JOIN workers w ON w.id = b.worker_id "
-        "WHERE s.name = %s AND s.deleted_at IS NULL ORDER BY 1, 2",
-        (name,),
+        select(projects.c.name, workers.c.name)
+        .join_from(b, owned, owned.c.id == b.c.secret_id)
+        .join(projects, projects.c.id == b.c.project_id)
+        .outerjoin(workers, workers.c.id == b.c.worker_id)
+        .where(owned.c.name == name, owned.c.deleted_at.is_(None))
+        .order_by(projects.c.name, workers.c.name),
     )
 
 
 def audit_rows(db, family: str = "secret.%") -> list[tuple]:
+    audit, users = tables.audit, tables.users
     return sql(
         db,
-        "SELECT a.action, a.target, u.login, a.project_id FROM audit a JOIN users u ON u.id = a.actor_id "
-        "WHERE a.action LIKE %s ORDER BY a.id",
-        (family,),
+        select(audit.c.action, audit.c.target, users.c.login, audit.c.project_id)
+        .join_from(audit, users, users.c.id == audit.c.actor_id)
+        .where(audit.c.action.like(family))
+        .order_by(audit.c.id),
     )
+
+
+def count(db, table, *where) -> list[tuple]:
+    return sql(db, select(func.count()).select_from(table).where(*where))
 
 
 # Writing and reading
@@ -239,7 +262,7 @@ def test_a_git_secret_keeps_its_url_prefix_normalized_and_oauth2_as_the_default_
 
 def test_a_put_replaces_the_secret_whole(client, hub, hub_db, config):
     first = written(client, hub["owner"], "token", env_secret(sample(), projects=["demo", "docs"]))
-    later = (datetime.now(timezone.utc) + timedelta(days=90)).replace(microsecond=0)
+    later = (datetime.now(UTC) + timedelta(days=90)).replace(microsecond=0)
     value = sample("glpat-")
     second = written(
         client,
@@ -254,9 +277,9 @@ def test_a_put_replaces_the_secret_whole(client, hub, hub_db, config):
         "https://gitlab.example.org/ops",
         "bot",
     )
-    assert second["projects"] == ["docs"] and parse_iso(second["expires_at"]) == later
+    assert second["projects"] == ["docs"] and datetime.fromisoformat(second["expires_at"]) == later
     assert second["created_at"] == first["created_at"]
-    assert parse_iso(second["updated_at"]) >= parse_iso(first["updated_at"])
+    assert datetime.fromisoformat(second["updated_at"]) >= datetime.fromisoformat(first["updated_at"])
     assert len(stored(hub_db, OWNER, "token")) == 1
     assert opened(config, hub_db, OWNER, "token") == value
     assert bindings(hub_db, "token") == [("docs", None)]
@@ -278,7 +301,7 @@ def test_a_secret_needs_a_value_of_1_to_max_bytes_a_future_end_and_the_fields_of
     assert put(client, hub["owner"], "empty", env_secret("")).status_code == 422
     assert written(client, hub["owner"], "exact", env_secret("x" * MAX_SECRET_BYTES))["created"] is True
 
-    past = (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat()
+    past = (datetime.now(UTC) - timedelta(minutes=1)).isoformat()
     refused = put(client, hub["owner"], "old", env_secret(sample(), expires_at=past))
     assert refused.status_code == 422 and "past" in refused.json()["message"]
     naive = (datetime.now() + timedelta(days=1)).replace(tzinfo=None).isoformat()  # no time zone: refused
@@ -296,7 +319,7 @@ def test_a_secret_needs_a_value_of_1_to_max_bytes_a_future_end_and_the_fields_of
     assert put(client, hub["owner"], "no-project", env_secret(sample(), projects=[])).status_code == 422
     assert put(client, hub["owner"], "Upper", env_secret(sample())).status_code == 422  # names are lower case
     assert put(client, hub["owner"], "kind", {**env_secret(sample()), "kind": "file"}).status_code == 422
-    assert {row[0] for row in sql(hub_db, "SELECT name FROM secrets")} == {"exact"}
+    assert {row[0] for row in sql(hub_db, select(tables.secrets.c.name))} == {"exact"}
 
 
 @pytest.mark.parametrize(
@@ -308,7 +331,7 @@ def test_an_env_var_that_steers_the_shell_git_or_the_worker_is_422(client, hub, 
     refused = put(client, hub["owner"], "steer", env_secret(sample(), env_var=env_var))
     assert refused.status_code == 422, refused.text
     assert env_var in refused.json()["message"]
-    assert sql(hub_db, "SELECT count(*) FROM secrets") == [(0,)]
+    assert count(hub_db, tables.secrets) == [(0,)]
 
 
 # Projects and workers
@@ -323,8 +346,8 @@ def test_a_project_without_the_writer_role_is_403_and_one_out_of_sight_404(clien
     # a hub admin manages every project but holds no role on docs: no secret for it
     refused = put(client, hub["admin"], "token", env_secret(sample(), projects=["docs"]))
     assert refused.status_code == 403 and "you hold no role" in refused.json()["message"]
-    assert sql(hub_db, "SELECT count(*) FROM secrets") == [(0,)]
-    assert sql(hub_db, "SELECT count(*) FROM audit WHERE action LIKE %s", ("secret.%",)) == [(0,)]
+    assert count(hub_db, tables.secrets) == [(0,)]
+    assert count(hub_db, tables.audit, tables.audit.c.action.like("secret.%")) == [(0,)]
 
 
 def test_workers_are_the_callers_own_that_are_not_revoked_and_anyone_elses_is_403(client, hub, hub_db):
@@ -396,22 +419,27 @@ def test_a_delete_drops_the_sealed_value_and_bindings_revokes_the_leases_and_fre
     written(client, hub["owner"], "claude-oauth", env_secret(value, workers=["box"]))
     (row,) = stored(hub_db, OWNER, "claude-oauth")
     secret_id, owner_id, worker_id = row[0], user_id(hub_db, OWNER), box["worker"]["id"]
-    with pg.admin(hub_db.admin_dsn) as conn:
-        ids = {"project": sql(hub_db, "SELECT id FROM projects WHERE name = 'demo'")[0][0], "user": owner_id}
+    projects, leases = tables.projects, tables.credential_leases
+    with live.connect(hub_db) as conn:
+        ids = {"project": sql(hub_db, select(projects.c.id).where(projects.c.name == "demo"))[0][0], "user": owner_id}
         ids["worker"] = worker_id
         add_plan(conn, ids, PLAN)
         run_id = add_run(conn, ids, state="running")
-        lease = (
-            "INSERT INTO credential_leases (run_id, worker_id, secret_id, provider, target, revoked_at) "
-            "VALUES (%s, %s, %s, 'secret', 'CLAUDE_CODE_OAUTH_TOKEN', %s) RETURNING id"
-        )
-        given_back = datetime.now(timezone.utc) - timedelta(minutes=5)
-        live_lease = conn.execute(lease, (run_id, worker_id, secret_id, None)).fetchone()[0]
-        ended_lease = conn.execute(
-            "INSERT INTO credential_leases (run_id, worker_id, secret_id, provider, target, issued_at, revoked_at) "
-            "VALUES (%s, %s, %s, 'secret', 'CLAUDE_CODE_OAUTH_TOKEN', %s, %s) RETURNING id",
-            (run_id, worker_id, secret_id, given_back - timedelta(minutes=5), given_back),
-        ).fetchone()[0]
+    lease = {
+        "run_id": run_id,
+        "worker_id": worker_id,
+        "secret_id": secret_id,
+        "provider": "secret",
+        "target": "CLAUDE_CODE_OAUTH_TOKEN",
+    }
+    given_back = datetime.now(UTC) - timedelta(minutes=5)
+    ((live_lease,),) = sql(hub_db, insert(leases).values(**lease, revoked_at=None).returning(leases.c.id))
+    ((ended_lease,),) = sql(
+        hub_db,
+        insert(leases)
+        .values(**lease, issued_at=given_back - timedelta(minutes=5), revoked_at=given_back)
+        .returning(leases.c.id),
+    )
 
     deleted = client.delete("/v1/secrets/claude-oauth", headers=hub["owner"])
     assert deleted.status_code == 204 and deleted.content == b""
@@ -419,8 +447,8 @@ def test_a_delete_drops_the_sealed_value_and_bindings_revokes_the_leases_and_fre
     ((_, kind, env_var, _, _, sealed, nonce, key_id, deleted_at),) = stored(hub_db, OWNER, "claude-oauth")
     assert (kind, env_var, sealed, nonce, key_id) == ("env", "CLAUDE_CODE_OAUTH_TOKEN", None, None, None)
     assert deleted_at is not None
-    assert sql(hub_db, "SELECT count(*) FROM secret_bindings") == [(0,)]
-    revoked = dict(sql(hub_db, "SELECT id, revoked_at FROM credential_leases"))
+    assert count(hub_db, tables.secret_bindings) == [(0,)]
+    revoked = dict(sql(hub_db, select(leases.c.id, leases.c.revoked_at)))
     assert revoked[live_lease] is not None and revoked[ended_lease] == given_back
     assert client.delete("/v1/secrets/claude-oauth", headers=hub["owner"]).status_code == 404
 
@@ -465,8 +493,8 @@ def test_without_the_secrets_key_a_write_is_503_and_keeps_nothing(hub_db, tmp_pa
         assert "EVO_HUB_SECRETS_KEY" in refused.json()["message"] and value not in refused.text
         assert listed(client, owner) == []  # reading needs no key
         assert client.delete("/v1/secrets/claude-oauth", headers=owner).status_code == 404
-        assert sql(hub_db, "SELECT count(*) FROM secrets") == [(0,)]
-        assert sql(hub_db, "SELECT count(*) FROM audit WHERE action LIKE %s", ("secret.%",)) == [(0,)]
+        assert count(hub_db, tables.secrets) == [(0,)]
+        assert count(hub_db, tables.audit, tables.audit.c.action.like("secret.%")) == [(0,)]
 
 
 # The web
@@ -477,7 +505,7 @@ def test_a_web_session_writes_only_with_its_csrf_header(client, hub, github, hub
     value = sample()
     refused = client.put("/v1/secrets/claude-oauth", json=env_secret(value), headers=cookie(session))
     assert refused.status_code == 403 and "X-Evo-CSRF" in refused.json()["message"]
-    assert sql(hub_db, "SELECT count(*) FROM secrets") == [(0,)]
+    assert count(hub_db, tables.secrets) == [(0,)]
     csrf = {"X-Evo-CSRF": csrf_for(client, session)}
     written(client, {**cookie(session), **csrf}, "claude-oauth", env_secret(value))
     assert [secret["name"] for secret in listed(client, cookie(session))] == ["claude-oauth"]
@@ -500,7 +528,8 @@ def test_neither_the_audit_nor_a_log_record_holds_a_value(client, hub, hub_db, c
     assert client.delete("/v1/secrets/gitlab-ops", headers=hub["owner"]).status_code == 204
 
     rows = audit_rows(hub_db)
-    (oauth,), (ops,) = (sql(hub_db, "SELECT id FROM secrets WHERE name = %s", (name,)) for name in names)
+    ids = (sql(hub_db, select(tables.secrets.c.id).where(tables.secrets.c.name == name)) for name in names)
+    (oauth,), (ops,) = ids
     assert [(action, target, login, project) for action, target, login, project in rows] == [
         ("secret.put", f"secret:{oauth[0]}", OWNER, None),
         ("secret.put", f"secret:{oauth[0]}", OWNER, None),

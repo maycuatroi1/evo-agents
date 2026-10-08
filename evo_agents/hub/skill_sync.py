@@ -54,7 +54,7 @@ import urllib.parse
 import urllib.request
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import quote, urlencode
 
@@ -459,7 +459,7 @@ def sync_lock(directory: Path, timeout: float = LOCK_TIMEOUT):
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class SkillSync:

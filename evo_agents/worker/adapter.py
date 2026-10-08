@@ -67,7 +67,7 @@ import shutil
 import subprocess
 from collections.abc import AsyncIterator, Mapping
 from dataclasses import dataclass, field, replace
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from importlib.metadata import entry_points
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar
@@ -146,7 +146,7 @@ class Detection:
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 @dataclass(frozen=True)

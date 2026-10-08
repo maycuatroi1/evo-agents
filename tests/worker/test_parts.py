@@ -8,7 +8,7 @@ import os
 import stat
 import subprocess
 from dataclasses import replace
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -19,7 +19,7 @@ from evo_agents.worker import checkouts, logs
 from evo_agents.worker.home import PidLock, WorkerConfig, WorkerHome
 from evo_agents.worker.spool import Spool, SpoolBudget, leftover_runs
 
-AT = datetime(2026, 10, 5, 9, 12, 3, tzinfo=timezone.utc)
+AT = datetime(2026, 10, 5, 9, 12, 3, tzinfo=UTC)
 
 
 # The spool
@@ -298,7 +298,7 @@ def test_worktrees_of_runs_that_ended_over_7_days_ago_are_removed(tmp_path, monk
     subprocess.run(["git", "-C", str(checkout), "commit", "--quiet", "-m", "x"], check=True, env=env)
     home = WorkerHome(tmp_path / "worker")
     home.ensure()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     for run_id, age in ((1, timedelta(days=8)), (2, timedelta(days=6))):
         path = home.worktree_path("demo", run_id)
         branch = f"evo-run/{run_id}"
@@ -344,7 +344,7 @@ def test_a_plan_runs_directory_and_worktrees_go_7_days_after_it_ended_and_a_resu
         checkouts_of[name] = checkout
     home = WorkerHome(tmp_path / "worker")
     home.ensure()
-    old = (datetime.now(timezone.utc) - timedelta(days=8)).isoformat()
+    old = (datetime.now(UTC) - timedelta(days=8)).isoformat()
     for run_id in (5, 6):  # 5 ended; 6 was parked, and a run that resumed it took its worktrees over
         directory = home.worktree_path("demo", run_id)
         directory.mkdir()

@@ -19,7 +19,7 @@ import contextlib
 import json
 import os
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from evo_agents.hub import runs
@@ -56,7 +56,7 @@ class _Entry:
 
 
 def _iso(at: datetime) -> str:
-    return at.astimezone(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+    return at.astimezone(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
 def encode_event(seq: int, kind: str, body: dict, at: datetime) -> bytes:
@@ -131,7 +131,7 @@ class Spool:
 
     def append(self, kind: str, body: dict, at: datetime | None = None) -> int | None:
         """Write the event and give it the next seq; None when the budget has no room for it."""
-        at = at or datetime.now(timezone.utc)
+        at = at or datetime.now(UTC)
         if self.dropped:  # say how many were lost as soon as there is room again
             note = {"text": f"{self.dropped} event(s) of this run were dropped: the worker's spool was full"}
             line = encode_event(self.last_seq + 1, "system", {**note, "dropped": self.dropped}, at)

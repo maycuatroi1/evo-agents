@@ -12,7 +12,7 @@ from evo_agents.kg.project import ProjectError, load_project_at, read_index, rem
 from evo_agents.kg.sync import due_sources, parse_refresh, sync_all_due, sync_due
 from tests.kg.conftest import FakeSource, doc
 
-NOW = dt.datetime(2026, 10, 3, 12, 0, tzinfo=dt.timezone.utc)
+NOW = dt.datetime(2026, 10, 3, 12, 0, tzinfo=dt.UTC)
 
 
 def stamp(ago: dt.timedelta) -> str:

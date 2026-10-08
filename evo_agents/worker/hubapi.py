@@ -14,7 +14,6 @@ loopback address (``evo_agents.hub.client.check_url``).
 
 from __future__ import annotations
 
-import asyncio
 import json
 import random
 from urllib.parse import quote
@@ -112,7 +111,7 @@ class WorkerHub:
                 raw = await response.read()
                 status = response.status
                 retry_after = _retry_after(response.headers.get("Retry-After"))
-        except asyncio.TimeoutError:
+        except TimeoutError:
             raise Unreachable(f"no answer from {self.url} within {timeout:g}s") from None
         except aiohttp.ClientError as exc:
             raise Unreachable(f"cannot reach {self.url}: {type(exc).__name__}: {exc}") from None
@@ -210,7 +209,7 @@ class WorkerHub:
             ) as response:
                 await response.read()
                 status = response.status
-        except (asyncio.TimeoutError, aiohttp.ClientError) as exc:
+        except (TimeoutError, aiohttp.ClientError) as exc:
             raise Unreachable(f"the blob store did not take an upload: {type(exc).__name__}") from None
         if not 200 <= status < 300:
             raise Refused(f"the blob store answered HTTP {status} to an upload", status)

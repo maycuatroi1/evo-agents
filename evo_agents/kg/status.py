@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import datetime as dt
 
-from evo_agents.isotime import parse_iso
 from evo_agents.kg.project import Project
 
 DERIVED_FROM_HINT = (
@@ -25,8 +24,8 @@ def code_line(code: dict) -> str:
 def _age_seconds(stamp: str | None) -> float | None:
     if not stamp:
         return None
-    then = parse_iso(stamp)
-    return (dt.datetime.now(dt.timezone.utc) - then).total_seconds()
+    then = dt.datetime.fromisoformat(stamp)
+    return (dt.datetime.now(dt.UTC) - then).total_seconds()
 
 
 def _human_age(seconds: float | None) -> str:
