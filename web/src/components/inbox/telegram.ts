@@ -41,8 +41,8 @@ export async function unlinkTelegram(api: ApiClient): Promise<TelegramStatus> {
 
 /**
  * What the dialog shows: the hub has no bot (`unconfigured`); no chat is linked (`unlinked`); a link waits to be opened
- * in Telegram (`pending`) or expired unused (`expired`); a chat is linked and gets messages (`linked`); or Telegram
- * refused it, as when the bot was blocked, and the hub turned it off (`off`).
+ * in Telegram (`pending`) or expired unused (`expired`); a chat is linked and gets messages (`linked`); or the hub
+ * turned it off (`off`): Telegram refused it, as when the bot was blocked, or the web session that linked it ended.
  */
 export type TelegramView = "unconfigured" | "unlinked" | "pending" | "expired" | "linked" | "off";
 

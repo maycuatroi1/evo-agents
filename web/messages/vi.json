@@ -2814,8 +2814,8 @@
       "waiting": "Đang chờ Telegram. Liên kết dùng được một lần, tới {time}.",
       "linkedAs": "Đã liên kết với @{username}",
       "linkedChat": "Đã liên kết một cuộc trò chuyện",
-      "linkedSince": "Từ {when}. Gửi /stop cho bot để huỷ liên kết từ Telegram.",
-      "off": "Telegram không nhận tin cho cuộc trò chuyện này nữa nên hub đã tắt nó. Tạo liên kết mới để bật lại.",
+      "linkedSince": "Từ {when}, chừng nào phiên web đã liên kết nó còn hiệu lực. Gửi /stop cho bot để huỷ liên kết từ Telegram.",
+      "off": "Hub đã ngừng gửi tới cuộc trò chuyện này, vì lý do bên dưới. Tạo liên kết mới để bật lại.",
       "unlink": "Huỷ liên kết",
       "confirm": {
         "title": "Huỷ liên kết cuộc trò chuyện này?",
