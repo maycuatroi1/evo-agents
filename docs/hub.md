@@ -84,12 +84,12 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | secrets | `GET /v1/secrets`, `PUT` and `DELETE /v1/secrets/{name}`, the caller's own only (`docs/credentials.md`) |
 | runs | `/v1/projects/{project}/plans/{plan_id}/ready-steps`, `GET` and `POST /v1/projects/{project}/runs`, `GET .../runs/stats`, `POST /v1/projects/{project}/plan-runs`, `.../runs/{id}`, `.../events`, `.../stream`, `.../diff`, `.../messages`, `.../credentials`, `.../tool-stats`, `.../{cancel,approve,rerun,takeover,handback}`, and `GET /v1/projects/{project}/tool-stats` |
 | session digests | `GET /v1/projects/{project}/digests`, `GET` and `PUT /v1/projects/{project}/digests/{session_id}` |
-| curator | `GET /v1/projects/{project}/curator`, `.../curator/charter` (`GET`, `PUT`), `.../charter/revisions`, `POST .../curator/{pause,resume}`, `GET .../curator/nights`, `.../curator/figures`, `.../curator/findings`, `.../findings/{id}`, `.../curator/proposals`, `.../proposals/{id}`, `.../proposals/{id}/ledger`, `POST .../proposals/{id}/answer` |
+| curator | `GET /v1/projects/{project}/curator`, `.../curator/charter` (`GET`, `PUT`), `.../charter/revisions`, `POST .../curator/{pause,resume}`, `GET .../curator/nights`, `.../curator/figures`, `.../curator/findings`, `.../findings/{id}`, `.../curator/proposals`, `.../proposals/{id}`, `.../proposals/{id}/ledger`, `POST .../proposals/{id}/answer`, `GET .../curator/changes`, `GET .../curator/protection`, `POST .../curator/protection/{repo}/check` (`docs/curator.md`) |
 | decisions | `GET /v1/projects/{project}/decisions`, `.../decisions/{id}`, `POST .../decisions/{id}/answer` |
 | notifications | `GET /v1/me/notifications`, `GET /v1/me/notifications/count`, `POST /v1/me/notifications/read` |
 | telegram | `GET` and `DELETE /v1/me/telegram`, `POST /v1/me/telegram/link` (a web session only), `POST /v1/telegram/webhook` (Telegram's, with its secret header), `GET /v1/admin/telegram`, `POST /v1/admin/telegram/webhook`, `DELETE /v1/admin/users/{login}/telegram` (`docs/notifications.md`) |
 | overview | `GET /v1/me/overview`: counts, active, recent runs and open decisions over the projects you hold a grant on, and where each project's Curator stands, for the web's Home |
-| worker protocol | `/v1/worker/{claim,heartbeat}`, `/v1/worker/runs/{id}/{state,events,inbox,uploads,blobs,plan,decisions,notices,credentials,findings,proposals}`, `/v1/worker/runs/{id}/steps/{key}` |
+| worker protocol | `/v1/worker/{claim,heartbeat}`, `/v1/worker/runs/{id}/{state,events,inbox,uploads,blobs,plan,decisions,notices,credentials,findings,proposals,judge,verdict}`, `/v1/worker/runs/{id}/steps/{key}` |
 
 `/mcp` speaks MCP's Streamable HTTP transport, statelessly: each POST carries one JSON-RPC message and gets one JSON
 answer. It takes a machine token, or the worker token of the agent of a run (below), never a web session, and the
@@ -288,21 +288,26 @@ protocol, the run states and who may move a run between them.
 Schema 0009 holds the workers and runs: `workers`, `worker_projects`, `worker_pairings`, `runs`, `run_events` and
 `run_inbox`. Schema 0010 adds plan runs (`runs.kind` is `step` or `plan`, a plan run has `repos` instead of a step key
 and a repo, and the states `waiting` and `parked`), the decisions their agents ask (`decisions`) and what reaches the
-members (`notifications`, `notification_channels`, `notification_deliveries`), which `docs/notifications.md`
-describes. Going back to 0009 deletes the plan runs with their decisions and notifications. Schema 0013 adds
+members (`notifications`, `notification_channels`, `notification_deliveries`), which `docs/notifications.md` describes.
+Going back to 0009 deletes the plan runs with their decisions and notifications. Schema 0012 adds the night shift of the
+Curator (`docs/curator.md`): `charters`, every revision of a project's charter, `schedules`, and on `runs` the schedule
+and night that queued a run and its caps (`schedule_id`, `schedule_night`, `budget`), with `dispatched_via` `schedule`;
+going back to 0011 drops them, and the runs a schedule queued stay, as dispatched with a machine token. Schema 0013 adds
 `run_tool_stats`, the tool figures of each run that ended (`docs/workers.md`, "Tool figures"), and `session_digests`
-(Memories, skills and knowledge graphs, below); going back to 0012 drops both. Schema 0014 adds the review run (a run
-of kind `review`, on no plan: its `plan_id` and `plan_revision` are null, and the API shows its `plan_id` empty),
-`workers.run_kinds`, `curator_figures`, `findings`, `proposals` and the notifications of kind `proposal` (The
-Curator's review, below); going back to 0013 deletes the review runs and the notifications of proposals. Schema 0017
-adds the judge run (a run of kind `judge`), `curator_changes` and `curator_repo_checks` (The Curator's changes,
-below); going back to 0016 deletes the judge runs and drops the two tables. Schema 0018 adds `curator_ledger`, the
-revert the hub proposes (`proposals.kind` `revert` with `revert_of`), the reason the circuit breaker paused a schedule
-(`schedules.pause_reason`, with `paused_by` null) and the notice `curator_paused` (The Curator's ledger, below); going
-back to 0017 drops the ledger, deletes the revert proposals and the notices `curator_paused`, and keeps a schedule the
-breaker paused paused, as its owner's pause. Schema 0019 adds `curator_changes.judge_key`, the SHA-256 of the key a
-judge run's claim hands its daemon (The Curator's changes, below); going back to 0018 drops it, and a judge run in
-flight then takes the worker token alone again.
+(Memories, skills and knowledge graphs, below); going back to 0012 drops both. Schema 0014 adds the review run (a run of
+kind `review`, on no plan: its `plan_id` and `plan_revision` are null, and the API shows its `plan_id` empty),
+`workers.run_kinds`, `curator_figures`, `findings`, `proposals` and the notifications of kind `proposal` (The Curator's
+review, below); going back to 0013 deletes the review runs and the notifications of proposals. Schema 0015 adds
+`curator_briefs`, the notice `curator_brief`, `telegram_links` and `notification_deliveries.external_id`, and schema
+0016 binds a Telegram chat and its link code to the web session that linked it (`docs/notifications.md`); going back to
+0014 drops what the two add and deletes the briefs' notifications. Schema 0017 adds the judge run (a run of kind
+`judge`), `curator_changes` and `curator_repo_checks` (The Curator's changes, below); going back to 0016 deletes the
+judge runs and drops the two tables. Schema 0018 adds `curator_ledger`, the revert the hub proposes (`proposals.kind`
+`revert` with `revert_of`), the reason the circuit breaker paused a schedule (`schedules.pause_reason`, with `paused_by`
+null) and the notice `curator_paused` (The Curator's ledger, below); going back to 0017 drops the ledger, deletes the
+revert proposals and the notices `curator_paused`, and keeps a schedule the breaker paused paused, as its owner's pause.
+Schema 0019 adds `curator_changes.judge_key`, the SHA-256 of the key a judge run's claim hands its daemon (The Curator's
+changes, below); going back to 0018 drops it, and a judge run in flight then takes the worker token alone again.
 
 The daemon on the member's machine is the `evo-agents worker` command group, which needs the `worker` extra
 (`uv tool install 'evo-ak[worker]'`). It is not `evo-agents hub worker`, the hub's own job worker (see Worker and
@@ -396,19 +401,22 @@ evo-agents hub notifications --unread                         # yours, open deci
 evo-agents hub notifications --read all                       # or --read 12,14
 ```
 
-`decision list` and `decision show` read the decisions of the plans you may read (`GET /v1/projects/{project}/decisions`,
-`.../decisions/{id}`), and find the project as `run` does. `decision answer` (`POST .../decisions/{id}/answer`)
-belongs to the member who dispatched the run: another member gets 403, and a decision that is no longer open 409. The
-answer names an option of the decision, gives words of your own (at most 4 KiB), or both. It goes to the run's inbox,
-which the worker hands to the agent; a parked run is resumed on its worker in its session, as a new run that the
-answer names. `notifications` lists your own (`GET /v1/me/notifications`), filtered by `--unread`, `--kind`
-(`decision` or `notice`) and `--project`, with `--limit` and `--offset`, and says how many are unread and how many
-decisions wait for your answer (`GET /v1/me/notifications/count`). `--read all`, or `--read` with ids, marks them
-read (`POST /v1/me/notifications/read`) and lists none, so it takes none of the filters; answering a decision reads
-its notification too. Each of these prints the hub's answer with `--json`, `notifications --read` its count of read
-and unread.
+`decision list` and `decision show` read the decisions of the plans you may read (`GET
+/v1/projects/{project}/decisions`, `.../decisions/{id}`), and find the project as `run` does. `decision answer` (`POST
+.../decisions/{id}/answer`) belongs to the member who dispatched the run: another member gets 403, and a decision that
+is no longer open 409. The answer names an option of the decision, gives words of your own (at most 4 KiB), or both. It
+goes to the run's inbox, which the worker hands to the agent; a parked run is resumed on its worker in its session, as a
+new run that the answer names. `notifications` lists your own (`GET /v1/me/notifications`), filtered by `--unread`,
+`--kind` (`decision`, `notice` or `proposal`) and `--project`, with `--limit` and `--offset`, and says how many are
+unread and how many decisions and proposals wait for an answer (`GET /v1/me/notifications/count`). `--read all`, or
+`--read` with ids, marks them read (`POST /v1/me/notifications/read`) and lists none, so it takes none of the filters;
+answering a decision reads its notification too. Each of these prints the hub's answer with `--json`, `notifications
+--read` its count of read and unread.
 
 ## The Curator's review
+
+`docs/curator.md` describes the Curator as a whole: its charter, the night shift and its caps, the tiers, the three
+roles, its GitHub App and the ruleset it needs, and Telegram. This section and the next two hold the details.
 
 Each night of a project's charter, the hub reviews the project with a run of kind `review` (schema 0014): the job
 `curator.collect` counts the night's figures, without any model, from the session digests, the runs and their tool
@@ -697,12 +705,13 @@ Postgres database; there is no separate broker. The api only defers jobs. Jobs:
   that ended before schema 0013).
 - `hub.fire_schedules`, every minute: the night shift of each project with a charter queues its next run inside
   the charter's window and within the night's budget, pinned to the charter's worker and dispatched as that worker's
-  owner: the night's review run first, then plan runs; and it cancels the runs it queued that are still queued once
-  the window ends or the project is paused (`evo-agents hub curator pause`). Its circuit breaker pauses a project's
+  owner: the night's review run first, then the judge run of a change of the Curator that waits for one, the
+  Builder of a change it planned, and plan runs of the charter's `night_plans`; and it cancels the runs it queued
+  that are still queued once the window ends or the project is paused (`evo-agents hub curator pause`). Its circuit breaker pauses a project's
   night shift once `max_failed_in_a_row` jobs of a night in a row failed or were reverted.
 - `curator.collect`, every minute: inside each charter's window, counts the night's figures of the project once,
   without any model, and queues the night's review run; and opens again the proposals deferred until a moment that
-  has passed (Curator, below).
+  has passed (The Curator's review, above).
 - `curator.brief`, every minute: at each charter's `brief_at`, in its time zone, sends the owner of the project's
   schedule the morning brief of the night (a notice `curator_brief`), once a day: the night's runs and cost, its
   review run, merges, runs waiting for approval, open decisions and proposals, and the last heartbeat of the worker on
@@ -838,6 +847,7 @@ the variables in the platform's environment, never in a committed file. `deploy/
 | `EVO_HUB_RUN_LOG_DAYS` | worker | days the events of a finished run are kept before the daily pruning deletes them; default `30`, from `1` to `3650` |
 | `EVO_HUB_SECRETS_KEY` | api, worker | 32 random bytes in base64url that seal the credentials of worker runs (`docs/credentials.md`); without it writing a secret answers 503 and runs get no lease. It is not in the database or its dumps |
 | `EVO_HUB_GITHUB_APP_ID`, `EVO_HUB_GITHUB_APP_PRIVATE_KEY` | api, worker | the GitHub App that makes each run a token for its repos only: its ID or client ID, and its private key in PEM, where `\n` may stand for each line break; both or neither |
+| `EVO_HUB_CURATOR_APP_ID`, `EVO_HUB_CURATOR_APP_PRIVATE_KEY` | api, worker | the Curator's own GitHub App, evo-agents-curator, as the two above: every run of the Curator gets its GitHub token from it alone, and the hub checks with it that each repo's ruleset keeps it off the default branch; both or neither, and without them no run of the Curator gets a GitHub token (`docs/curator.md`) |
 | `EVO_HUB_TELEGRAM_BOT_TOKEN`, `EVO_HUB_TELEGRAM_WEBHOOK_SECRET` | api, worker | the hub's Telegram bot, as @BotFather gives its token, and the secret Telegram sends back with each update (1 to 256 characters of `A-Z`, `a-z`, `0-9`, `_`, `-`); without either the Telegram channel is off and the hub runs on (`docs/notifications.md`). `evo-agents hub admin telegram --set-webhook` then points the bot at `EVO_HUB_PUBLIC_URL/v1/telegram/webhook` |
 | `EVO_HUB_FORWARDED_ALLOW_IPS` | api | the reverse proxies whose `X-Forwarded-For` the api believes: IP addresses or networks, comma-separated, or `*`; unset keeps uvicorn's default, the loopback addresses (or its own `FORWARDED_ALLOW_IPS`) |
 | `EVO_HUB_WORKER_CPUS`, `EVO_HUB_WORKER_MEMORY` | compose | worker limits, default `2` and `4g` |

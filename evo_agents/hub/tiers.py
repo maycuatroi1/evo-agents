@@ -1,7 +1,7 @@
 """The tier rules of the Curator: how far a change the Reviewer proposes may go without its owner. They are code of the
 hub, not words in a prompt, so no agent ever sets the tier of its own change. Pure functions, standard library only,
-so the api, the command line and the tests share them; ``docs/curator.md`` (from step 8 of the curator-agent plan)
-and ``evo_agents.hub.server.proposals`` are built on them.
+so the api, the command line and the tests share them; ``docs/curator.md`` and ``evo_agents.hub.server.proposals``
+are built on them.
 
 A tier is one of ``curator.TIERS``: 0, the hub may merge it once CI and the Judge pass (when the charter lets it); 1,
 the same, but it waits as an open pull request for now; 2, the owner accepts it before the night shift makes it, and
