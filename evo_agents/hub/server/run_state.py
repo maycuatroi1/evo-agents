@@ -47,6 +47,7 @@ PARKED_FOR is cancelled and its open decisions expire. A revoked worker also fai
 queued, since no other worker may claim them, and cancels the runs parked on it, since only it has their session; an
 expired lease does not, since the worker may come back. ``prune_run_events`` (hub.prune_run_events, daily)
 deletes the events of runs that ended more than EVO_HUB_RUN_LOG_DAYS ago, and the sealed GitHub tokens past their end.
+A move to an end state writes the run's tool figures (``tool_stats.record``), which stay after its events go.
 
 A run that leaves the held states (it ends, waits in review, or is parked) gives back its credentials: ``move_run``
 marks its leases revoked in the same transaction (``credentials.end_leases``), and the GitHub tokens among them are
@@ -63,7 +64,7 @@ from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 from fastapi import HTTPException
-from sqlalchemy import Integer, case, cast, delete, extract, func, insert, null, or_, select, update
+from sqlalchemy import Integer, case, cast, delete, exists, extract, func, insert, null, or_, select, update
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
@@ -224,6 +225,10 @@ async def move_run(
     if seq is None:
         raise runs.TransitionRefused(f"run {run_id} is no longer {old}: it moved meanwhile")
     await _insert_event(conn, run_id, seq, "state", {"from": old, "to": new, "actor": actor, "reason": reason})
+    if new in runs.TERMINAL_STATES:
+        from evo_agents.hub.server import tool_stats  # it reads runs through the routes that import this module
+
+        await tool_stats.record(conn, run_id)
     if new in runs.TERMINAL_STATES and decisions is not None:
         d = tables.decisions
         await conn.execute(update(d).values(state=decisions).where(d.c.run_id == run_id, d.c.state == "open"))
@@ -879,18 +884,23 @@ async def recover_runs(
 
 
 async def prune_run_events(engine: AsyncEngine, days: int) -> dict:
-    """Delete the events of runs that ended more than ``days`` days ago, and drop the sealed values of the GitHub
-    tokens leased to runs that are past their end (``credentials.drop_expired``)."""
-    from evo_agents.hub.server import credentials
+    """Delete the events of runs that ended more than ``days`` days ago, once their tool figures are written from them
+    (``tool_stats.record``, for a run that ended before the hub wrote them at the end), and drop the sealed values of
+    the GitHub tokens leased to runs that are past their end (``credentials.drop_expired``)."""
+    from evo_agents.hub.server import credentials, tool_stats
 
     r, e = tables.runs, tables.run_events
-    prune = delete(e).where(
-        e.c.run_id == r.c.id,
-        r.c.finished_at.is_not(None),
-        r.c.finished_at < func.now() - timedelta(days=days),
-    )
+    old = [r.c.finished_at.is_not(None), r.c.finished_at < func.now() - timedelta(days=days)]
+    logged = select(r.c.id).where(*old, exists().where(e.c.run_id == r.c.id)).order_by(r.c.id)
+    prune = delete(e).where(e.c.run_id == r.c.id, *old)
     async with engine.begin() as conn:
+        counted = (await conn.execute(logged)).scalars().all()
+        for run_id in counted:
+            await tool_stats.record(conn, run_id)
         deleted = (await conn.execute(prune)).rowcount
         dropped = await credentials.drop_expired(conn)
-    log.info("run events pruned", extra={"deleted": deleted, "days": days, "tokens_dropped": dropped})
+    log.info(
+        "run events pruned",
+        extra={"deleted": deleted, "runs": len(counted), "days": days, "tokens_dropped": dropped},
+    )
     return {"deleted": deleted, "days": days, "tokens_dropped": dropped}

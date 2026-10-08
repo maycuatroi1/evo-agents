@@ -681,6 +681,12 @@ class MemorySync:
                 return True
         return False
 
+    def project_of(self, target: Path | None = None) -> str | None:
+        """The hub project directory ``target`` (default: the current one) belongs to here, as push and pull decide it
+        (``Places``); None for a personal directory. Asks the hub for the projects the person sees; HubError when the
+        claims of several projects do not settle it."""
+        return self._load_places().project_of(self.target(target))
+
     def _load_places(self) -> Places:
         projects = self.hub.call("GET", "/v1/projects")
         if not isinstance(projects, list):

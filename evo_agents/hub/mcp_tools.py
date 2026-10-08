@@ -3,10 +3,10 @@ proxy ``evo-agents hub mcp`` answers with it too while the hub cannot be reached
 either way.
 
 The seven kg_* tools are ``evo_agents.kg.serve.TOOLS`` unchanged, names and schemas, so a session reads the graph of
-its project the same way whether ``kg serve`` answers on the machine or the hub does. The eight others read and write
-what the hub holds: memories, plans, skills and the caller's projects. Those about a project take an optional
-``project``; without it the session's project counts (X-Evo-Project, which the proxy sends). Their arguments are
-checked against these schemas before anything is read.
+its project the same way whether ``kg serve`` answers on the machine or the hub does. The nine others read and write
+what the hub holds: memories, plans, skills, the caller's projects and the tool figures of runs. Those about a project
+take an optional ``project``; without it the session's project counts (X-Evo-Project, which the proxy sends). Their
+arguments are checked against these schemas before anything is read.
 
 Standard library only, besides ``evo_agents.kg.serve`` and the hub's pure modules: the proxy runs on a core install.
 """
@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from evo_agents.hub.memory import TYPES
 from evo_agents.hub.plans import AREAS, STEP_STATUSES
+from evo_agents.hub.runs import RUNTIMES
 from evo_agents.kg.serve import INSTRUCTIONS as KG_INSTRUCTIONS
 from evo_agents.kg.serve import TOOLS as KG_TOOLS
 
@@ -197,6 +198,31 @@ HUB_TOOLS = [
         "name": "hub_projects",
         "description": "The projects on the hub you hold a grant on, with your role, max level, sinks and repos.",
         "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
+    {
+        "name": "run_tool_stats",
+        "description": (
+            "What the tool calls of runs on workers came to, per tool (gen_ai.tool.name): calls, failed calls and the "
+            "time they took, kept after the run logs are pruned. With run_id, that run of the project; without it, "
+            "the runs that ended in the last days, per tool and runtime."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "run_id": {"type": "integer", "minimum": 1, "maximum": MAX_ID, "description": "one run of the project"},
+                "days": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 90,
+                    "default": 7,
+                    "description": "without run_id: the last days in UTC, today included",
+                },
+                "plan_id": {"type": "string", "pattern": NAME_PATTERN, "description": "without run_id: this plan's"},
+                "runtime": {"type": "string", "enum": list(RUNTIMES), "description": "without run_id: this runtime's"},
+                "project": _PROJECT,
+            },
+            "additionalProperties": False,
+        },
     },
 ]
 

@@ -24,15 +24,15 @@ process. The lifespan of a mounted app does not run, so the hub's lifespan enter
 Every refusal is the API's JSON error with the request id. Only then does the SDK see the request, with the caller in
 ``request.state``.
 
-The 15 tools are ``evo_agents.hub.mcp_tools.TOOLS``. The kg_* tools are those of ``kg serve``, names, schemas,
+The 16 tools are ``evo_agents.hub.mcp_tools.TOOLS``. The kg_* tools are those of ``kg serve``, names, schemas,
 arguments and results, answered by ``evo_agents.hub.server.kg.tool_result`` as the REST route answers them; kg_more
 continues any cut result of the same user and session project, with or without a graph. The others call the hub's
-routes for memories, plans, skills and projects in this process, so they read and write under the same rules: the read
-rule of ``evo_agents.hub.access`` through the session's sink, the write rule, revisions, conflicts and audit rows. Their
-arguments are checked against their schema first, and their text goes through the envelope of ``kg serve``: over
-CAP_CHARS it is cut and kg_more gives the rest. A refusal of the hub becomes a tool error carrying its message, an
-unexpected failure one carrying the request id only. The log has one line per tool call with its name, project,
-outcome and duration, never its arguments or its result.
+routes for memories, plans, skills, projects and the tool figures of runs in this process, so they read and write under
+the same rules: the read rule of ``evo_agents.hub.access`` through the session's sink, the write rule, revisions,
+conflicts and audit rows. Their arguments are checked against their schema first, and their text goes through the
+envelope of ``kg serve``: over CAP_CHARS it is cut and kg_more gives the rest. A refusal of the hub becomes a tool
+error carrying its message, an unexpected failure one carrying the request id only. The log has one line per tool call
+with its name, project, outcome and duration, never its arguments or its result.
 """
 
 from __future__ import annotations
@@ -79,7 +79,7 @@ from evo_agents.hub.mirror import ordered_plan, render
 from evo_agents.hub.plan_cli import ATTEMPTS, _check_retry
 from evo_agents.hub.plans import PlanProblem, step_index
 from evo_agents.hub.runs import HELD_STATES
-from evo_agents.hub.server import kg, memories, plans, projects, skills
+from evo_agents.hub.server import kg, memories, plans, projects, skills, tool_stats
 from evo_agents.hub.server.admin import PROJECT_NAME
 from evo_agents.hub.server.errors import error_response
 from evo_agents.hub.server.projects import ProjectAccess, project_access
@@ -391,6 +391,7 @@ class HubMcp(MCPServer):
             "plan_step": self._plan_step,
             "skill_list": self._skill_list,
             "hub_projects": self._hub_projects,
+            "run_tool_stats": self._run_tool_stats,
         }
 
     async def list_tools(self) -> list[McpTool]:
@@ -669,6 +670,39 @@ class HubMcp(MCPServer):
             )
         data = {"projects": listed, "session_project": caller.project, "summary": f"{len(listed)} projects"}
         return "\n".join(lines) or "you hold no grant on a project of this hub", data
+
+    # Runs
+
+    async def _run_tool_stats(self, caller: Caller, arguments: dict) -> tuple[str, dict]:
+        project = self._project(caller, arguments)
+        await self._readable(caller, project)
+        run_id = arguments.get("run_id")
+        if run_id is not None:
+            if any(key in arguments for key in ("days", "plan_id", "runtime")):
+                raise Refusal("days, plan_id and runtime choose the runs to add up: leave them out with run_id")
+            found = await tool_stats.run_tool_stats(caller.request, project, run_id, caller.user, sink=caller.sink)
+            head = f"run #{run_id} ({found.runtime}, {found.state})"
+            lines = [_tool_line(tool) for tool in found.tools] or [f"{head}: no tool call recorded"]
+            data = {"project": project, **found.model_dump(mode="json", by_alias=True), "summary": head}
+            return "\n".join([f"{head}:", *lines] if found.tools else lines), data
+        stats = await tool_stats.project_tool_stats(
+            caller.request,
+            project,
+            caller.user,
+            days=arguments.get("days", tool_stats.STATS_DAYS),
+            plan_id=arguments.get("plan_id"),
+            runtime=arguments.get("runtime"),
+            sink=caller.sink,
+        )
+        span = f"{stats.first_day} to {stats.last_day}"
+        head = f"{stats.runs} runs of project {project} ended from {span} (UTC)"
+        lines = [f"{_tool_line(tool)}, {tool.runtime}, in {tool.runs} runs" for tool in stats.tools]
+        data = {**stats.model_dump(mode="json", by_alias=True), "summary": f"{len(stats.tools)} tools"}
+        return "\n".join([f"{head}:", *lines] if lines else [f"{head}; no tool call recorded"]), data
+
+
+def _tool_line(tool) -> str:
+    return f"{tool.name}: {tool.calls} calls, {tool.errors} failed, {tool.duration_ms / 1000:.1f} s"
 
 
 def mount(app: FastAPI, config: HubConfig) -> HubMcp:

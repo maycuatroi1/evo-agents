@@ -96,6 +96,6 @@ def test_the_wheel_ships_the_migrations_and_migrates_from_its_own_venv(hub_db, t
     assert applied == [list(REVISIONS)]
     assert live.sql(hub_db, select(ALEMBIC_VERSION.c.version_num)) == [(REVISIONS[-1],)]
     added = pg.BLOB_TABLES | pg.QUEUE_TABLES | pg.KG_TABLES | pg.RETENTION_TABLES | pg.RUN_TABLES
-    tables = 15 + len(added | pg.NOTIFICATION_TABLES | pg.CREDENTIAL_TABLES | pg.CURATOR_TABLES)
+    tables = 15 + len(added | pg.NOTIFICATION_TABLES | pg.CREDENTIAL_TABLES | pg.CURATOR_TABLES | pg.DIGEST_TABLES)
     public = select(func.count()).select_from(PG_TABLES).where(PG_TABLES.c.schemaname == "public")
     assert live.sql(hub_db, public) == [(tables,)]

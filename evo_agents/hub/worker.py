@@ -30,6 +30,8 @@ Jobs (names in ``evo_agents.hub.jobs``):
 - ``hub.fire_schedules``, every minute: each schedule of a project's charter that is not paused queues its next plan
   run inside its window and within its night's budget, and cancels its queued runs outside it
   (``evo_agents.hub.server.curator``).
+- ``hub.prune_digests``, daily: the session digests not pushed again for 90 days
+  (``evo_agents.hub.server.digests``).
 
 procrastinate allows one App per process; ``queue`` is that App here. ``run`` gives it a connector of its own for
 the time it runs, and the jobs reach the hub's tables, the blob store, the sealing key and the GitHub App through
@@ -192,6 +194,14 @@ async def prune_run_events(context: JobContext, timestamp: int | None = None) ->
 
     found = hub(context)
     return await prune(found.engine, found.config.run_log_days)
+
+
+@queue.periodic(cron="23 4 * * *")
+@queue.task(name=jobs.PRUNE_DIGESTS, pass_context=True, queueing_lock=jobs.PRUNE_DIGESTS)
+async def prune_digests(context: JobContext, timestamp: int | None = None) -> dict:
+    from evo_agents.hub.server.digests import prune_digests as prune
+
+    return await prune(hub(context).engine)
 
 
 @queue.periodic(cron="43 3 * * *")

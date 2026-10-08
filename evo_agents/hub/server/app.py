@@ -207,18 +207,19 @@ def create_app(config: HubConfig) -> FastAPI:
     app.include_router(workers.worker_router)
     app.state.join_refusals = workers.RefusalLimit()  # refused pairing codes per client address, this process only
 
-    from evo_agents.hub.server import listen, run_events, runs
+    from evo_agents.hub.server import listen, run_events, runs, tool_stats
 
     app.include_router(runs.router)
     app.include_router(runs.worker_router)
     app.include_router(run_events.router)
     app.include_router(run_events.stream_router)
     app.include_router(run_events.worker_router)
+    app.include_router(tool_stats.router)
     app.state.listener = listen.Listener(config.dsn)  # the process's one LISTEN, opened by the first claim or stream
     app.state.run_wakeups = runs.RunWakeups(app.state.listener)  # the claims waiting for a queued run
     app.state.run_streams = run_events.RunStreams(app.state.listener)  # the event streams of runs
 
-    from evo_agents.hub.server import curator, decisions, notifications, overview
+    from evo_agents.hub.server import curator, decisions, digests, notifications, overview
 
     app.include_router(decisions.router)
     app.include_router(decisions.worker_router)
@@ -226,6 +227,7 @@ def create_app(config: HubConfig) -> FastAPI:
     app.include_router(notifications.worker_router)
     app.include_router(overview.router)
     app.include_router(curator.router)
+    app.include_router(digests.router)
 
     from evo_agents.hub.server import terminal
 

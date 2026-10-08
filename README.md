@@ -134,7 +134,8 @@ claude plugin install evo-hub@evo-agents
 
 The `evo-hub` plugin registers the MCP server `evo-hub` (`evo-agents hub mcp`, which carries the session to the
 hub's `/mcp`), a `using-agent-hub` skill, and two hooks. Its tools are the seven `kg_*` tools and `memory_search`,
-`memory_get`, `memory_write`, `plan_list`, `plan_show`, `plan_step`, `skill_list` and `hub_projects`. In a harness
+`memory_get`, `memory_write`, `plan_list`, `plan_show`, `plan_step`, `skill_list`, `hub_projects` and
+`run_tool_stats`. In a harness
 whose `harness.yaml` names `hub.project`, plans live on the hub and the files under `plans/` are read-only copies:
 mark a step with `plan_step`, `evo-agents hub plan step` or `evo harness step`, never by editing the YAML.
 
@@ -146,6 +147,10 @@ Hooks (`evo-agents hub hook session-start|stop`, same pins and `|| true` as evo-
 - Stop pushes the memory files that changed since the last sync, so the next session on another machine has them.
   A turn that wrote no memory sends nothing; when the hub does not answer, the files wait and a later Stop pushes
   them (state in `~/.evo/hub/memory-state.json`).
+- Stop also pushes the digest of a session of 6 messages or more to the project of its directory: calls and errors
+  per tool and per Bash program, what the person wrote, model and tokens, with every string that looks like a secret
+  replaced on the machine first. A digest the hub did not take waits for a later Stop (`~/.evo/hub/digest-state.json`);
+  the session of a worker run pushes none.
 
 Both exit 0 whatever happens, give up after a few seconds, print at most one line without tokens or memory text, and
 send nothing when the machine is not signed in.
