@@ -103,7 +103,13 @@ class FakeHub:
         return run_id
 
     def queue_plan_run(
-        self, plan_id: str, repos: list[dict], *, resume_of: int | None = None, session_id: str | None = None
+        self,
+        plan_id: str,
+        repos: list[dict],
+        *,
+        resume_of: int | None = None,
+        session_id: str | None = None,
+        **extra,
     ) -> int:
         held = self.plans[plan_id]
         return self.queue_run(
@@ -129,6 +135,7 @@ class FakeHub:
             lease_expires_at=_now(),
             prompt=runs.build_plan_prompt(held["body"], repos),
             plan={"revision": held["revision"], "body": copy.deepcopy(held["body"])},
+            **extra,
         )
 
     def queue_step_run(self, plan_id: str, key: str, repo: str, branch: str) -> int:

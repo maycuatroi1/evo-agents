@@ -28,6 +28,11 @@
 A hub that does not answer holds nothing up: events wait in the spool and each report is sent again with the
 backoff until the hub answers, or says the run is no longer this worker's.
 
+A run the night shift queued has a budget (``spec["budget"]``, ``evo_agents.hub.curator``). Each agent the run starts
+gets what the run spent before it (``RunContext.spent_usd`` and ``spent_seconds``): the cost of its session as the
+last outcome reported it, or as the claim said for a run that resumes a parked one, and the agent time used. An agent
+the budget stopped fails the run, and the log's last note names the cap (``cap``: cost, turns or time).
+
 The leases stay in the daemon's memory (``credentials.RunCredentials``): the run's git gets them through
 ``git_env``, its agent through ``agent_env``, each event goes through ``credentials.scrub`` before the spool, and
 they are given back once the run ends here, whether it ended, was parked, or the daemon stops. A push of the daemon
@@ -80,7 +85,7 @@ from typing import TYPE_CHECKING
 
 import yaml
 
-from evo_agents.hub import runs
+from evo_agents.hub import curator, runs
 from evo_agents.worker import credentials, gitops, interactive, orphans
 from evo_agents.worker.adapter import AgentEvent, AgentFinished, Outcome, RunContext
 from evo_agents.worker.checkouts import default_branch_of
@@ -342,6 +347,9 @@ class Run:
         self.verify: list[dict] = []
         self.summary: str | None = None
         self.outcome: Outcome | None = None
+        budget = curator.budget_of(spec) or {}
+        self.spent_usd = budget.get("spent_usd") or 0.0  # the cost of the agent's session so far
+        self.spent_before = budget.get("spent_seconds") or 0.0  # agent time a parked run this one resumes used
         self._report_lock = asyncio.Lock()
         self._delivering = False
         self._unsupported_noted: set[str] = set()
@@ -684,7 +692,8 @@ class Run:
         try:
             await self._steps()
         except RunFailed as exc:
-            self.note(f"Run failed: {exc.error}")
+            cap = exc.fields.get("cap")
+            self.note(f"Run failed: {exc.error}", **({"cap": cap} if cap else {}))
             await self._end("failed", error=exc.error, verify=exc.fields.get("verify"), usage=exc.fields.get("usage"))
         except Stopped as exc:
             await self._stopped(exc.reason)
@@ -852,7 +861,9 @@ class Run:
         self.outcome, _ = await self._turns(cls, self.spec["prompt"], None, terminal_first=self.mode == "interactive")
         if not self.outcome.completed:
             raise RunFailed(
-                self.outcome.error or f"{self.runtime} ended before its turn completed", usage=self.outcome.usage
+                self.outcome.error or f"{self.runtime} ended before its turn completed",
+                usage=self.outcome.usage,
+                cap=self.outcome.cap,
             )
 
     async def _turns(
@@ -886,6 +897,12 @@ class Run:
             self.agent_started = True
             self.deadline = self.loop.time() + self.timeout_s
 
+    def agent_seconds(self) -> float:
+        """The agent time the run has used, as its timeout counts it: none before its agent first started."""
+        if not self.agent_started:
+            return 0.0
+        return max(self.timeout_s - max(self.deadline - self.loop.time(), 0.0), 0.0)
+
     def _context(self, prompt: str, session_id: str | None) -> RunContext:
         return RunContext(
             run=dict(self.spec),
@@ -894,6 +911,8 @@ class Run:
             env=self.agent_env(),
             resume_session=session_id,
             leased=self.credentials.withheld,
+            spent_usd=self.spent_usd,
+            spent_seconds=self.spent_before + self.agent_seconds(),
         )
 
     def _note_environment(self, cls, context: RunContext) -> None:
@@ -933,9 +952,12 @@ class Run:
         if self.takeover_asked or self._park_requested():  # asked while the agent was starting
             self._spawn(self._stop_at_boundary(adapter))
         try:
-            return await self._consume(adapter)
+            outcome = await self._consume(adapter)
         finally:
             self.agent_running = False
+        # Claude Code's total is the session's running total, which the next agent in the session starts from.
+        self.spent_usd = max(self.spent_usd, curator.run_cost(outcome.usage))
+        return outcome
 
     async def _in_terminal(self, cls, session_id: str | None, prompt: str) -> str | None:
         """Hand the agent's session (a new one on ``prompt`` when ``session_id`` is None) to a person: the runtime's
@@ -1625,7 +1647,9 @@ class PlanRun(Run):
                 raise Parked()
             if not self.outcome.completed:
                 raise RunFailed(
-                    self.outcome.error or f"{self.runtime} ended before its turn completed", usage=self.outcome.usage
+                    self.outcome.error or f"{self.runtime} ended before its turn completed",
+                    usage=self.outcome.usage,
+                    cap=self.outcome.cap,
                 )
             messages = await self._after_turn()
             if not messages:
