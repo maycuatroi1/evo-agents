@@ -1,4 +1,4 @@
-"""The hub's 40 tables as SQLAlchemy Core metadata: what the queries are written on, and what Alembic autogenerates
+"""The hub's 42 tables as SQLAlchemy Core metadata: what the queries are written on, and what Alembic autogenerates
 the next migration from (``evo_agents/hub/migrations/env.py``).
 
 The migrations make the schema; this module describes it, and ``tests/hub/test_schema_metadata.py`` keeps the two
@@ -819,6 +819,7 @@ notification_deliveries = Table(
     Column("last_error", Text),
     _stamp("created_at"),
     _when("delivered_at"),
+    Column("external_id", Text),
     ForeignKeyConstraint(
         ["channel_id"],
         ["notification_channels.id"],
@@ -844,6 +845,12 @@ Index(
     "notification_deliveries_due_idx",
     notification_deliveries.c.next_at,
     postgresql_where=notification_deliveries.c.state == "pending",
+)
+Index(  # a reply to a message a channel sent finds its notification (0015)
+    "notification_deliveries_external_idx",
+    notification_deliveries.c.channel_id,
+    notification_deliveries.c.external_id,
+    postgresql_where=notification_deliveries.c.external_id.is_not(None),
 )
 
 # Credentials (0011)
@@ -1105,4 +1112,39 @@ Index(
     proposals.c.project_id,
     proposals.c.inbox_at,
     postgresql_where=proposals.c.inbox_at.is_not(None),
+)
+
+# The Curator's morning briefs, and the one-time codes that link a Telegram chat (0015)
+
+curator_briefs = Table(
+    "curator_briefs",
+    metadata,
+    _id(),
+    Column("project_id", BigInteger, nullable=False),
+    Column("day", Date, nullable=False),
+    Column("night", Date, nullable=False),
+    Column("user_id", BigInteger, nullable=False),
+    Column("body", JSONB, nullable=False),
+    Column("notification_id", BigInteger),
+    _stamp("created_at"),
+    ForeignKeyConstraint(["notification_id"], ["notifications.id"], name="curator_briefs_notification_id_fkey"),
+    ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name="curator_briefs_project_id_fkey"),
+    ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE", name="curator_briefs_user_id_fkey"),
+    PrimaryKeyConstraint("id", name="curator_briefs_pkey"),
+    UniqueConstraint("project_id", "day", name="curator_briefs_project_id_day_key"),
+)
+
+telegram_links = Table(
+    "telegram_links",
+    metadata,
+    _id(),
+    Column("user_id", BigInteger, nullable=False),
+    Column("code_hash", Text, nullable=False),
+    _stamp("created_at"),
+    Column("expires_at", DateTime(timezone=True), nullable=False),
+    _when("used_at"),
+    ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE", name="telegram_links_user_id_fkey"),
+    PrimaryKeyConstraint("id", name="telegram_links_pkey"),
+    UniqueConstraint("code_hash", name="telegram_links_code_hash_key"),
+    Index("telegram_links_user_idx", "user_id"),
 )

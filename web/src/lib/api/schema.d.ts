@@ -2268,6 +2268,112 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/me/telegram": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show
+         * @description Whether the hub has a bot, and whether a chat of the caller's is linked to it.
+         */
+        get: operations["show_v1_me_telegram_get"];
+        put?: never;
+        post?: never;
+        /**
+         * Unlink
+         * @description Unlink the caller's Telegram chat: the channel and the deliveries waiting for it go.
+         */
+        delete: operations["unlink_v1_me_telegram_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/telegram/link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Make Link
+         * @description A one-time link that links the Telegram chat it is opened in to the caller, for 10 minutes. It replaces the
+         *     caller's links not used yet.
+         */
+        post: operations["make_link_v1_me_telegram_link_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/telegram/webhook": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Webhook
+         * @description Telegram's updates for the hub's bot, with the secret token setWebhook was given in the header
+         *     X-Telegram-Bot-Api-Secret-Token.
+         */
+        post: operations["webhook_v1_telegram_webhook_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/telegram": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Webhook
+         * @description The hub's bot and where Telegram sends its updates.
+         */
+        get: operations["show_webhook_v1_admin_telegram_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/telegram/webhook": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Set Webhook
+         * @description Point the bot's webhook at this hub (EVO_HUB_PUBLIC_URL + /v1/telegram/webhook) with the secret token.
+         */
+        post: operations["set_webhook_v1_admin_telegram_webhook_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/secrets": {
         parameters: {
             query?: never;
@@ -2519,6 +2625,43 @@ export interface components {
         BlobCheck: {
             /** Sha256 */
             sha256: string[];
+        };
+        /**
+         * BriefSummary
+         * @description The project's last morning brief (``evo_agents.hub.server.brief``).
+         */
+        BriefSummary: {
+            /** Id */
+            id: number;
+            /**
+             * Day
+             * Format: date
+             * @description the local day it was sent on, in the charter's time zone
+             */
+            day: string;
+            /**
+             * Night
+             * Format: date
+             * @description the night it reports on
+             */
+            night: string;
+            /**
+             * Sent At
+             * Format: date-time
+             */
+            sent_at: string;
+            /**
+             * To
+             * @description the member it went to: the owner of the night shift's schedule
+             */
+            to: string;
+            /**
+             * Notification Id
+             * @description the notification of kind notice (curator_brief) that carried it
+             */
+            notification_id: number | null;
+            /** Title */
+            title: string;
         };
         /** Build */
         Build: {
@@ -3036,6 +3179,8 @@ export interface components {
              * @default 0
              */
             open_proposals: number;
+            /** @description the project's last morning brief; null before the first */
+            last_brief?: components["schemas"]["BriefSummary"] | null;
         };
         /** DayCount */
         DayCount: {
@@ -4516,7 +4661,7 @@ export interface components {
              * Notice Kind
              * @description a notice's kind; null for a decision
              */
-            notice_kind: ("push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed") | null;
+            notice_kind: ("push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief") | null;
             /** Project */
             project: string | null;
             /** Run Id */
@@ -7289,6 +7434,86 @@ export interface components {
             /** Pending Bytes */
             pending_bytes: number;
         };
+        /** TelegramLink */
+        TelegramLink: {
+            /**
+             * Url
+             * @description https://t.me/<bot>?start=<code>: open it in Telegram and press Start
+             */
+            url: string;
+            /** Bot */
+            bot: string;
+            /**
+             * Expires At
+             * Format: date-time
+             * @description 10 minutes after it was made; it links one chat, once
+             */
+            expires_at: string;
+        };
+        /** TelegramStatus */
+        TelegramStatus: {
+            /**
+             * Configured
+             * @description the hub has a bot: its admin set the EVO_HUB_TELEGRAM_* variables
+             */
+            configured: boolean;
+            /**
+             * Linked
+             * @description a chat of the member's is linked
+             */
+            linked: boolean;
+            /**
+             * Enabled
+             * @description the hub sends to it; false once Telegram refused it, as when the bot is blocked
+             */
+            enabled: boolean;
+            /**
+             * Username
+             * @description the Telegram username of the linked account, when it has one
+             */
+            username: string | null;
+            /** Linked At */
+            linked_at: string | null;
+            /**
+             * Disabled Reason
+             * @description why the hub stopped sending to the chat
+             */
+            disabled_reason: string | null;
+            /**
+             * Bot
+             * @description the bot's username, once the hub asked Telegram for it
+             */
+            bot: string | null;
+        };
+        /** TelegramWebhook */
+        TelegramWebhook: {
+            /**
+             * Configured
+             * @description the EVO_HUB_TELEGRAM_* variables are set
+             */
+            configured: boolean;
+            /**
+             * Bot
+             * @description the bot's username
+             */
+            bot: string | null;
+            /**
+             * Expected Url
+             * @description where the webhook should point: the hub's public URL
+             */
+            expected_url: string | null;
+            /**
+             * Url
+             * @description where Telegram sends updates now; empty when no webhook is set
+             */
+            url: string | null;
+            /** Pending Update Count */
+            pending_update_count: number | null;
+            /** Last Error Date */
+            last_error_date: string | null;
+            /** Last Error Message */
+            last_error_message: string | null;
+        };
         /** TokenCounts */
         TokenCounts: {
             /**
@@ -7602,6 +7827,19 @@ export interface components {
              * Format: date-time
              */
             published_at: string;
+        };
+        /** WebhookAnswer */
+        WebhookAnswer: {
+            /**
+             * Ok
+             * @default true
+             */
+            ok: boolean;
+            /**
+             * Outcome
+             * @description what the hub did with the update
+             */
+            outcome: string;
         };
         /** WhoAmI */
         WhoAmI: {
@@ -15569,6 +15807,261 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    show_v1_me_telegram_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramStatus"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    unlink_v1_me_telegram_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramStatus"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    make_link_v1_me_telegram_link_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramLink"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    webhook_v1_telegram_webhook_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookAnswer"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    show_webhook_v1_admin_telegram_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramWebhook"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    set_webhook_v1_admin_telegram_webhook_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramWebhook"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
         };

@@ -47,6 +47,15 @@ EXIT_FAILED = 1
 WHOAMI_KEYS = ("login", "admin", "token", "grants")
 TOKEN_KEYS = ("id", "kind", "host", "created_at", "last_used_at", "expires_at", "revoked_at", "state", "current")
 USER_KEYS = ("login", "admin", "signed_in", "created_at", "last_seen_at", "active_tokens", "grants")
+TELEGRAM_KEYS = (
+    "configured",
+    "bot",
+    "expected_url",
+    "url",
+    "pending_update_count",
+    "last_error_date",
+    "last_error_message",
+)
 PROJECT_KEYS = (
     "name",
     "harness",
@@ -243,6 +252,32 @@ def cmd_admin_users(args) -> int:
 
 
 @_client_command
+def cmd_admin_telegram(args) -> int:
+    hub, _ = _signed_in()
+    if args.set_webhook:
+        found = hub.call("POST", "/v1/admin/telegram/webhook")
+    else:
+        found = hub.call("GET", "/v1/admin/telegram")
+    if args.json:
+        _print_json(found)
+        return 0
+    if not found["configured"]:
+        print(
+            "Telegram is not set up on this hub: set EVO_HUB_TELEGRAM_BOT_TOKEN and EVO_HUB_TELEGRAM_WEBHOOK_SECRET in "
+            "its environment"
+        )
+        return 0
+    print(f"Bot: @{found['bot']}")
+    print(f"Webhook: {found['url'] or 'none'} (expected {found['expected_url'] or 'unknown: no EVO_HUB_PUBLIC_URL'})")
+    print(f"Updates waiting at Telegram: {found['pending_update_count'] or 0}")
+    if found["last_error_message"]:
+        print(f"Last error: {found['last_error_message']} at {_when(found['last_error_date'])} UTC")
+    if found["url"] != found["expected_url"] and not args.set_webhook:
+        print("The webhook does not point at this hub: `evo-agents hub admin telegram --set-webhook` points it here")
+    return 0
+
+
+@_client_command
 def cmd_admin_stats(args) -> int:
     hub, _ = _signed_in()
     counts = hub.call("GET", "/v1/admin/stats")
@@ -376,6 +411,14 @@ def register_client(hsub) -> None:
     stats = asub.add_parser("stats", help="rows in every hub table")
     json_option(stats, returns_map())
     stats.set_defaults(func=cmd_admin_stats)
+    telegram = asub.add_parser("telegram", help="the hub's Telegram bot and where its webhook points")
+    telegram.add_argument(
+        "--set-webhook",
+        action="store_true",
+        help="point the webhook at this hub's public URL with the hub's secret token",
+    )
+    json_option(telegram, returns_object(*TELEGRAM_KEYS, schema="TelegramWebhook"))
+    telegram.set_defaults(func=cmd_admin_telegram)
 
     project = hsub.add_parser("project", help="projects on the hub, registered from their harness")
     psub = project.add_subparsers(dest="project_command", required=True)

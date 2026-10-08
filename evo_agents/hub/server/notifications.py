@@ -11,10 +11,14 @@ open, and a hub that stops between the commit and the send loses nothing.
 instance of the class CHANNELS names for its channel's kind (WEB for a delivery without a channel). The web's class
 sends nothing, since the web reads notifications from the table, so its deliveries are delivered at once. A class
 that raises leaves the delivery pending with ``last_error`` and a ``next_at`` BACKOFF_SECONDS later, doubling from one
-try to the next up to BACKOFF_MAX_SECONDS, and its MAX_DELIVERY_ATTEMPTS-th failure marks it failed. A kind with no
-class in CHANNELS, or a channel turned off since, fails its delivery at once with that reason, so a hub that drops a
-channel does not try it forever. Adding a channel takes a subclass of Channel and its entry in CHANNELS; the tables,
-the outbox and the job stay as they are.
+try to the next up to BACKOFF_MAX_SECONDS, and its MAX_DELIVERY_ATTEMPTS-th failure marks it failed. Three exceptions
+say more: RetryAfter (the service asked to wait, such as Telegram's 429 with retry_after) moves ``next_at`` that far
+without counting a failed try; Undeliverable fails the delivery at once; ChannelGone fails it and turns the channel off
+with its reason in the channel's config (``disabled_reason``), as when a member blocked the bot. A kind with no class
+in CHANNELS, or a channel turned off since, fails its delivery at once with that reason, so a hub that drops a channel
+does not try it forever. Adding a channel takes a subclass of Channel and its entry in CHANNELS; the tables, the outbox
+and the job stay as they are. A class may read more of a notification first (``prepare``, in the delivery's
+transaction), and ``send`` may answer the id the service gave the message, kept as the delivery's ``external_id``.
 
 POST /v1/worker/runs/{id}/notices takes a notice (``runs.NOTICE_KINDS``) from the worker holding a plan run: a title,
 a body, and the repo, branch and commits of a push or merge. It notifies the run's owner, links to the run's page and
@@ -40,7 +44,22 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field, model_validator
-from sqlalchemy import BigInteger, and_, exists, false, func, insert, literal, null, or_, select, union_all, update
+from sqlalchemy import (
+    BigInteger,
+    and_,
+    bindparam,
+    exists,
+    false,
+    func,
+    insert,
+    literal,
+    null,
+    or_,
+    select,
+    union_all,
+    update,
+)
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import review, runs, tables
@@ -56,6 +75,7 @@ log = logging.getLogger(__name__)
 WEB = "web"  # the channel every member has, without a row: a delivery whose channel_id is NULL
 TITLE_CHARS = 200  # notifications.title, as schema 0010 bounds it
 MAX_ERROR_CHARS = 2000  # notification_deliveries.last_error
+MAX_EXTERNAL_ID_CHARS = 200  # notification_deliveries.external_id, as schema 0015 bounds it
 DELIVERY_BATCH = 500  # deliveries one pass of the job takes
 SEND_TIMEOUT_SECONDS = 30.0  # a channel's send that takes longer counts as failed
 BACKOFF_SECONDS = 60  # after the first failed try; doubled after each next one
@@ -173,28 +193,58 @@ class Outgoing:
     link: str | None
     created_at: datetime
     proposal_id: int | None = None
+    extra: dict | None = None  # what a channel's ``prepare`` read besides the notification
+
+
+class RetryAfter(Exception):  # noqa: N818 (what the service asked for, not an error of the hub)
+    """The channel's service asked to wait ``seconds`` before the next try, which is not a failed try."""
+
+    def __init__(self, seconds: float, message: str):
+        super().__init__(message)
+        self.seconds = max(1.0, min(float(seconds), BACKOFF_MAX_SECONDS))
+
+
+class Undeliverable(Exception):  # noqa: N818
+    """The notification can never go out on this channel: its delivery fails at once."""
+
+
+class ChannelGone(Undeliverable):
+    """The channel no longer reaches its member, as when they blocked the bot: the delivery fails and the channel is
+    turned off, with the message as its ``disabled_reason``."""
 
 
 class Channel:
     """Sends notifications to the channels of one kind. A job's pass makes one instance of each class it needs, with
-    the hub's config (None in tests); ``send`` delivers one notification to one channel, whose ``config`` is the
-    channel's own (empty for the web), and raises when it could not, so the delivery is tried again later."""
+    the hub's config (None in tests); ``prepare`` may read more of a notification in the delivery's transaction, and
+    ``send`` delivers it to one channel, whose ``config`` is the channel's own (empty for the web), answers the id the
+    service gave the message (or None), and raises when it could not, so the delivery is tried again later."""
 
     def __init__(self, config=None):
         self.config = config
 
-    async def send(self, notification: Outgoing, config: dict) -> None:
+    async def prepare(self, conn: AsyncConnection, notification: Outgoing) -> Outgoing:
+        return notification
+
+    async def send(self, notification: Outgoing, config: dict) -> str | None:
         raise NotImplementedError
 
 
 class WebChannel(Channel):
     """The web reads notifications from the table: there is nothing to send."""
 
-    async def send(self, notification: Outgoing, config: dict) -> None:
+    async def send(self, notification: Outgoing, config: dict) -> str | None:
         return None
 
 
 CHANNELS: dict[str, type[Channel]] = {WEB: WebChannel}
+
+
+def channel_class(kind: str) -> type[Channel] | None:
+    """The class CHANNELS names for ``kind``, once every channel the hub ships has registered its class (importing a
+    channel's module adds it, as ``evo_agents.hub.server.telegram`` does for kind telegram)."""
+    from evo_agents.hub.server import telegram  # noqa: F401 (it registers TelegramChannel)
+
+    return CHANNELS.get(kind)
 
 
 def backoff(attempts: int) -> timedelta:
@@ -213,7 +263,7 @@ def _due(batch: int):
     )
 
 
-OUTGOING = tuple(field.name for field in dataclasses.fields(Outgoing))
+OUTGOING = tuple(field.name for field in dataclasses.fields(Outgoing) if field.name != "extra")
 
 
 def _lock_due(delivery_id: int):
@@ -241,6 +291,7 @@ def _lock_due(delivery_id: int):
             stored.c.link,
             stored.c.created_at,
             stored.c.proposal_id,
+            deliveries.c.channel_id,
             deliveries.c.channel_id.is_not(None).label("has_channel"),
         )
         .select_from(
@@ -254,12 +305,39 @@ def _lock_due(delivery_id: int):
     )
 
 
-def _delivered(delivery_id: int):
+def _delivered(delivery_id: int, external_id: str | None = None):
     deliveries = tables.notification_deliveries
     return (
         update(deliveries)
-        .values(state="delivered", delivered_at=func.now(), attempts=deliveries.c.attempts + 1)
+        .values(
+            state="delivered",
+            delivered_at=func.now(),
+            attempts=deliveries.c.attempts + 1,
+            external_id=external_id[:MAX_EXTERNAL_ID_CHARS] if external_id else None,
+        )
         .where(deliveries.c.id == delivery_id)
+    )
+
+
+def _later(delivery_id: int, wait: timedelta, error: str):
+    """Try delivery ``delivery_id`` again ``wait`` from now, as its service asked, without counting a failed try."""
+    deliveries = tables.notification_deliveries
+    return update(deliveries).values(next_at=func.now() + wait, last_error=error).where(deliveries.c.id == delivery_id)
+
+
+def _turn_off(channel_id: int, reason: str):
+    """Channel ``channel_id`` off, with ``reason`` and the time in its config, as the member's settings show it."""
+    channels = tables.notification_channels
+    said = {"disabled_reason": reason[:MAX_ERROR_CHARS]}
+    return (
+        update(channels)
+        .values(
+            enabled=False,
+            config=channels.c.config.op("||")(bindparam("said", said, type_=JSONB)).op("||")(
+                func.jsonb_build_object("disabled_at", func.now())
+            ),
+        )
+        .where(channels.c.id == channel_id)
     )
 
 
@@ -296,7 +374,7 @@ async def _deliver_one(conn: AsyncConnection, delivery_id: int, instances: dict,
     attempts, has_channel = row.attempts, row.has_channel
     notification = Outgoing(**{name: found[name] for name in OUTGOING})
     kind = row.channel_kind if has_channel else WEB
-    cls = CHANNELS.get(kind)
+    cls = channel_class(kind)
     if cls is None:
         await conn.execute(_failed(delivery_id, f"the hub has no class for channels of kind {kind}"))
         return "failed"
@@ -307,7 +385,21 @@ async def _deliver_one(conn: AsyncConnection, delivery_id: int, instances: dict,
     if channel is None:
         channel = instances[kind] = cls(config)
     try:
-        await asyncio.wait_for(channel.send(notification, dict(row.channel_config or {})), SEND_TIMEOUT_SECONDS)
+        notification = await channel.prepare(conn, notification)
+        sent = await asyncio.wait_for(channel.send(notification, dict(row.channel_config or {})), SEND_TIMEOUT_SECONDS)
+    except RetryAfter as exc:
+        await conn.execute(_later(delivery_id, timedelta(seconds=exc.seconds), _error_text(exc)))
+        log.info(
+            "notification delivery waits as its channel asked", extra={"delivery_id": delivery_id, "channel": kind}
+        )
+        return "retried"
+    except Undeliverable as exc:
+        error = _error_text(exc)
+        await conn.execute(_failed(delivery_id, error))
+        if isinstance(exc, ChannelGone) and row.channel_id is not None:
+            await conn.execute(_turn_off(row.channel_id, str(exc) or error))
+        log.warning("notification undeliverable", extra={"delivery_id": delivery_id, "channel": kind})
+        return "failed"
     except Exception as exc:  # any failure of a channel is the delivery's, never the job's
         error = _error_text(exc) or "the channel failed"
         if attempts + 1 >= runs.MAX_DELIVERY_ATTEMPTS:
@@ -317,7 +409,7 @@ async def _deliver_one(conn: AsyncConnection, delivery_id: int, instances: dict,
         await conn.execute(_retry(delivery_id, backoff(attempts + 1), error))
         log.info("notification delivery to try again", extra={"delivery_id": delivery_id, "channel": kind})
         return "retried"
-    await conn.execute(_delivered(delivery_id))
+    await conn.execute(_delivered(delivery_id, sent))
     return "delivered"
 
 
@@ -344,7 +436,7 @@ async def deliver_notifications(engine, *, config=None, batch: int = DELIVERY_BA
 
 
 class NoticeIn(BaseModel):
-    kind: Literal[runs.NOTICE_KINDS]
+    kind: Literal[runs.WORKER_NOTICE_KINDS]
     title: str = Field(min_length=1, max_length=TITLE_CHARS, pattern=LINE)
     body: str | None = Field(
         None, min_length=1, max_length=runs.MAX_NOTICE_BODY_BYTES, description="at most 16 KiB of UTF-8"

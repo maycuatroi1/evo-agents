@@ -61,7 +61,17 @@ CHARTER_BODY_KEYS = (
 )
 CHARTER_KEYS = CHARTER_BODY_KEYS + CHARTER_META
 REVISION_KEYS = ("revision", "updated_by", "updated_at", "worker", "worker_id")
-STATUS_KEYS = ("project", "charter", "paused", "schedules", "night", "last_review_run", "state", "open_proposals")
+STATUS_KEYS = (
+    "project",
+    "charter",
+    "paused",
+    "schedules",
+    "night",
+    "last_review_run",
+    "state",
+    "open_proposals",
+    "last_brief",
+)
 PROPOSAL_SUMMARY_KEYS = (
     "id",
     "project",
@@ -231,6 +241,14 @@ def _print_status(status: dict) -> None:
             f"  last review: run #{last['id']} of the night of {last['night']}, {last['state']}: {last['findings']} "
             f"findings, {last['proposals']} proposals (lenses {', '.join(last['lenses']) or '-'})"
         )
+    brief = status.get("last_brief")
+    if brief is not None:
+        print(
+            f"  last brief: {brief['day']} (night of {brief['night']}) to {brief['to']}, at {_when(brief['sent_at'])} "
+            f"UTC: {brief['title']}"
+        )
+    elif charter is not None:
+        print(f"  no morning brief yet: the first goes out at {charter['brief_at']} in {charter['window']['timezone']}")
 
 
 @_client_command

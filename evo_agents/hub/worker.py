@@ -35,6 +35,8 @@ Jobs (names in ``evo_agents.hub.jobs``):
   (``evo_agents.hub.server.collect``).
 - ``hub.prune_digests``, daily: the session digests not pushed again for 90 days
   (``evo_agents.hub.server.digests``).
+- ``curator.brief``, every minute: at each charter's brief_at, in its time zone, the morning brief of the night to the
+  owner of the project's schedule, once a day (``evo_agents.hub.server.brief``).
 
 procrastinate allows one App per process; ``queue`` is that App here. ``run`` gives it a connector of its own for
 the time it runs, and the jobs reach the hub's tables, the blob store, the sealing key and the GitHub App through
@@ -196,6 +198,14 @@ async def curator_collect(context: JobContext, timestamp: int | None = None) -> 
     from evo_agents.hub.server.collect import collect
 
     return await collect(hub(context).engine)
+
+
+@queue.periodic(cron="* * * * *")
+@queue.task(name=jobs.CURATOR_BRIEF, pass_context=True, queueing_lock=jobs.CURATOR_BRIEF)
+async def curator_brief(context: JobContext, timestamp: int | None = None) -> dict:
+    from evo_agents.hub.server.brief import send_briefs
+
+    return await send_briefs(hub(context).engine)
 
 
 @queue.periodic(cron="13 4 * * *")

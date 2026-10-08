@@ -32,6 +32,13 @@ secret answers 503 and a run asking for its leases gets none, with the reason. E
 or client ID) and EVO_HUB_GITHUB_APP_PRIVATE_KEY (its PEM, where ``\\n`` may stand for each line break, as one line
 of an environment file needs) go together or not at all: without them a run gets no GitHub token. The key and the
 PEM, its lines included, are registered as secrets, and no error names their value.
+
+The Telegram channel (``evo_agents.hub.server.telegram``) is optional too. EVO_HUB_TELEGRAM_BOT_TOKEN is the token of
+the hub's one bot, as BotFather gives it, and EVO_HUB_TELEGRAM_WEBHOOK_SECRET the secret_token the hub sets with
+setWebhook and checks on every update (1 to 256 characters of A-Z, a-z, 0-9, _ and -). Both are registered as secrets.
+Without either the channel is off: linking answers 503, the webhook 404, a delivery to Telegram fails at once, and the
+hub runs on. EVO_HUB_TELEGRAM_API_URL is where the Bot API is (https://api.telegram.org), so tests can point the hub
+at a fake one.
 """
 
 from __future__ import annotations
@@ -79,6 +86,10 @@ SECRETS_KEY_BYTES = 32  # the AES-256-GCM key of evo_agents.hub.server.sealing
 SECRETS_KEY = re.compile(r"[A-Za-z0-9_-]{43}=?")  # 32 bytes in base64url, padded or not
 GITHUB_APP_VARIABLES = ("EVO_HUB_GITHUB_APP_ID", "EVO_HUB_GITHUB_APP_PRIVATE_KEY")
 GITHUB_APP_ID = re.compile(r"[0-9]{1,20}|Iv[0-9A-Za-z.]{1,40}")  # the App's ID, or its client ID; JWT's iss takes both
+TELEGRAM_VARIABLES = ("EVO_HUB_TELEGRAM_BOT_TOKEN", "EVO_HUB_TELEGRAM_WEBHOOK_SECRET")
+DEFAULT_TELEGRAM_API_URL = "https://api.telegram.org"
+TELEGRAM_BOT_TOKEN = re.compile(r"[0-9]{1,20}:[A-Za-z0-9_-]{20,100}")  # <bot id>:<secret>, as BotFather gives it
+TELEGRAM_WEBHOOK_SECRET = re.compile(r"[A-Za-z0-9_-]{1,256}")  # what setWebhook takes as secret_token
 # The PEM GitHub gives an App (PKCS#1), or the same key as PKCS#8; the second group is its base64.
 PRIVATE_KEY_PEM = re.compile(
     r"-----BEGIN ((?:RSA )?)PRIVATE KEY-----\n([A-Za-z0-9+/=\n]+)\n-----END \1PRIVATE KEY-----"
@@ -122,6 +133,9 @@ class HubConfig:
     secrets_key: bytes | None = None  # seals the credentials of runs; never logged, returned or stored
     github_app_id: str | None = None  # the GitHub App that makes the runs' tokens: its ID or client ID
     github_app_private_key: str | None = None  # its PEM, with real line breaks; never logged or returned
+    telegram_bot_token: str | None = None  # the hub's bot; never logged, returned or stored
+    telegram_webhook_secret: str | None = None  # the secret_token of its webhook; never logged or returned
+    telegram_api_url: str = DEFAULT_TELEGRAM_API_URL
 
     def __repr__(self) -> str:  # the DSNs and secrets are credentials; keep them out of tracebacks and debug output
         return f"HubConfig(data_dir={str(self.data_dir)!r}, host={self.host!r}, port={self.port})"
@@ -147,6 +161,11 @@ class HubConfig:
     def credentials_missing(self) -> list[str]:
         """The variable the hub needs to keep secrets and lease credentials; empty when it can."""
         return [] if self.secrets_key else ["EVO_HUB_SECRETS_KEY"]
+
+    def telegram_missing(self) -> list[str]:
+        """The EVO_HUB_TELEGRAM_* variables the Telegram channel still needs; empty when it is on."""
+        values = (self.telegram_bot_token, self.telegram_webhook_secret)
+        return [name for name, value in zip(TELEGRAM_VARIABLES, values, strict=True) if not value]
 
     def github_app_missing(self) -> list[str]:
         """The EVO_HUB_GITHUB_APP_* variables the runs' GitHub tokens still need; empty when the App is configured."""
@@ -330,6 +349,24 @@ def _github_app(env: Mapping[str, str]) -> dict:
     return {"github_app_id": app_id, "github_app_private_key": pem}
 
 
+def _telegram(env: Mapping[str, str]) -> dict:
+    """The bot's token and the webhook's secret, each registered as a secret before anything can fail; either may be
+    missing, which turns the channel off. No error shows a value."""
+    token_name, secret_name = TELEGRAM_VARIABLES
+    token, secret = _secret(env, token_name), _secret(env, secret_name)
+    if token is not None and not TELEGRAM_BOT_TOKEN.fullmatch(token):
+        raise ConfigError(token_name, f"{token_name} must be the bot's token as BotFather gives it, <digits>:<secret>")
+    if secret is not None and not TELEGRAM_WEBHOOK_SECRET.fullmatch(secret):
+        raise ConfigError(secret_name, f"{secret_name} must be 1 to 256 characters of A-Z, a-z, 0-9, _ and -")
+    if token is not None:
+        register_secret(token.partition(":")[2])  # the part after the bot's id, as a tool may print it alone
+    return {
+        "telegram_bot_token": token,
+        "telegram_webhook_secret": secret,
+        "telegram_api_url": _url(env, "EVO_HUB_TELEGRAM_API_URL", DEFAULT_TELEGRAM_API_URL),
+    }
+
+
 def load_log_level(env: Mapping[str, str] | None = None) -> str:
     env = os.environ if env is None else env
     level = (_text(env, "EVO_HUB_LOG_LEVEL") or "INFO").upper()
@@ -405,4 +442,5 @@ def load_config(
         **_blob_store(env),
         secrets_key=_secrets_key(env),
         **_github_app(env),
+        **_telegram(env),
     )

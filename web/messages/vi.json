@@ -2683,7 +2683,8 @@
       "push_default_branch": "Đã push lên nhánh mặc định",
       "merge_default_branch": "Đã merge vào nhánh mặc định",
       "plan_finished": "Plan đã xong",
-      "run_failed": "Run thất bại"
+      "run_failed": "Run thất bại",
+      "curator_brief": "Bản tin sáng"
     },
     "item": {
       "unread": "Chưa đọc",
@@ -2789,6 +2790,44 @@
       "notFoundDescription": "Đề xuất thuộc dự án bạn không đọc được, nhãn của nó vượt quá quyền của bạn, hoặc đường dẫn sai.",
       "where": "Dự án {project}, do <runLink>review run #{run}</runLink> đề xuất",
       "openPage": "Mở trang đầy đủ"
+    },
+    "telegram": {
+      "button": "Telegram",
+      "title": "Telegram",
+      "description": "Quyết định, đề xuất và thông báo cũng tới một cuộc trò chuyện riêng với bot của hub, nơi các nút của chúng trả lời được.",
+      "loadFailed": "Không đọc được liên kết Telegram của bạn từ hub.",
+      "retry": "Thử lại",
+      "close": "Đóng",
+      "unconfigured": "Hub này chưa bật Telegram. Quản trị hub đặt token của bot và secret của webhook trong môi trường của hub.",
+      "unlinked": "Chưa liên kết cuộc trò chuyện nào. Tạo một liên kết, mở nó trong Telegram và bấm Start; cuộc trò chuyện đó sẽ được liên kết với bạn. Liên kết dùng được một lần, trong 10 phút.",
+      "expired": "Liên kết đã hết hạn trước khi Telegram dùng nó. Hãy tạo liên kết mới.",
+      "make": "Tạo liên kết",
+      "makeAgain": "Tạo liên kết mới",
+      "making": "Đang tạo liên kết",
+      "steps": {
+        "open": "Mở liên kết trong Telegram, trong cuộc trò chuyện riêng với @{bot}.",
+        "start": "Bấm Start. Hộp thoại này tự nhận ra khi liên kết xong."
+      },
+      "copy": "Sao chép liên kết",
+      "open": "Mở trong Telegram",
+      "newTab": "(mở trong thẻ mới)",
+      "waiting": "Đang chờ Telegram. Liên kết dùng được một lần, tới {time}.",
+      "linkedAs": "Đã liên kết với @{username}",
+      "linkedChat": "Đã liên kết một cuộc trò chuyện",
+      "linkedSince": "Từ {when}. Gửi /stop cho bot để huỷ liên kết từ Telegram.",
+      "off": "Telegram không nhận tin cho cuộc trò chuyện này nữa nên hub đã tắt nó. Tạo liên kết mới để bật lại.",
+      "unlink": "Huỷ liên kết",
+      "confirm": {
+        "title": "Huỷ liên kết cuộc trò chuyện này?",
+        "text": "Các tin đang chờ gửi tới nó sẽ bị bỏ. Hộp thư vẫn giữ mọi thông báo.",
+        "keep": "Giữ liên kết",
+        "unlink": "Huỷ liên kết",
+        "unlinking": "Đang huỷ liên kết"
+      },
+      "linkedToast": "Đã liên kết Telegram",
+      "linkedToastText": "Quyết định, đề xuất và thông báo giờ cũng tới cuộc trò chuyện của bạn.",
+      "unlinkedToast": "Đã huỷ liên kết Telegram",
+      "unlinkedToastText": "Không gì được gửi tới cuộc trò chuyện nữa cho tới khi bạn liên kết lại."
     }
   },
   "toast": {
@@ -2918,6 +2957,9 @@
       "capsValue": "tối đa {budget} và {runs} run",
       "brief": "Bản tin sáng",
       "briefValue": "lúc {at}",
+      "lastBrief": "Bản tin gần nhất",
+      "lastBriefValue": "đêm {night}, gửi {to}",
+      "readBrief": "Đọc trong hộp thư",
       "paused": "Tạm dừng",
       "pausedBy": "bởi {login},"
     },

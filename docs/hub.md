@@ -87,6 +87,7 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | curator | `GET /v1/projects/{project}/curator`, `.../curator/charter` (`GET`, `PUT`), `.../charter/revisions`, `POST .../curator/{pause,resume}`, `GET .../curator/nights`, `.../curator/figures`, `.../curator/findings`, `.../findings/{id}`, `.../curator/proposals`, `.../proposals/{id}`, `POST .../proposals/{id}/answer` |
 | decisions | `GET /v1/projects/{project}/decisions`, `.../decisions/{id}`, `POST .../decisions/{id}/answer` |
 | notifications | `GET /v1/me/notifications`, `GET /v1/me/notifications/count`, `POST /v1/me/notifications/read` |
+| telegram | `GET` and `DELETE /v1/me/telegram`, `POST /v1/me/telegram/link`, `POST /v1/telegram/webhook` (Telegram's, with its secret header), `GET /v1/admin/telegram`, `POST /v1/admin/telegram/webhook` (`docs/notifications.md`) |
 | overview | `GET /v1/me/overview`: counts, active, recent runs and open decisions over the projects you hold a grant on, and where each project's Curator stands, for the web's Home |
 | worker protocol | `/v1/worker/{claim,heartbeat}`, `/v1/worker/runs/{id}/{state,events,inbox,uploads,blobs,plan,decisions,notices,credentials,findings,proposals}`, `/v1/worker/runs/{id}/steps/{key}` |
 
@@ -457,6 +458,17 @@ entry, the line of code on the forge) and draft plan with Accept, Defer and Reje
 charter with its revisions and, for an admin, its form. Tier 2 proposals in the Inbox open in a sheet of their own
 (`/inbox?proposal=ID`), and Home says where each project's Curator stands.
 
+**The morning brief.** At the charter's `brief_at`, in its time zone, the job `curator.brief` sends the owner of the
+night shift's schedule a notice `curator_brief` (`evo_agents/hub/server/brief.py`), once a local day: the night it
+reports on (the one in progress when `brief_at` falls inside the window), its runs by how they ended and what they cost
+against the night's budget, its review run with what it wrote, the merges into a default branch its runs reported, the
+project's runs in review that wait for the owner's approval, the decisions that wait for the owner's answer and the
+proposals that wait for an admin's (with how many are in the owner's Inbox), and the worker on duty with its last
+heartbeat, so a machine that stopped shows up in the morning. The brief goes out like any notification, on the web and
+on every channel the owner turned on, Telegram included (`docs/notifications.md`). A brief the hub could not send
+within three hours of `brief_at` waits for the next day. `curator_briefs` keeps each brief with what it said, and `hub
+curator status` names the last one (`last_brief`).
+
 ## Memories, skills and knowledge graphs
 
 **Memories.** `evo-agents hub memory push` and `evo-agents hub memory pull` sync Claude Code's memory files for a
@@ -570,6 +582,10 @@ Postgres database; there is no separate broker. The api only defers jobs. Jobs:
 - `curator.collect`, every minute: inside each charter's window, counts the night's figures of the project once,
   without any model, and queues the night's review run; and opens again the proposals deferred until a moment that
   has passed (Curator, below).
+- `curator.brief`, every minute: at each charter's `brief_at`, in its time zone, sends the owner of the project's
+  schedule the morning brief of the night (a notice `curator_brief`), once a day: the night's runs and cost, its
+  review run, merges, runs waiting for approval, open decisions and proposals, and the last heartbeat of the worker on
+  duty (`evo_agents.hub.server.brief`).
 - `hub.prune_digests`, daily at 04:23: deletes the session digests not pushed for 90 days.
 - `hub.cleanup_uploads`, hourly: removes uploads nobody committed within 24 hours.
 - `hub.prune_jobs`, daily: removes finished jobs older than 14 days.
@@ -682,6 +698,7 @@ the variables in the platform's environment, never in a committed file. `deploy/
 | `EVO_HUB_RUN_LOG_DAYS` | worker | days the events of a finished run are kept before the daily pruning deletes them; default `30`, from `1` to `3650` |
 | `EVO_HUB_SECRETS_KEY` | api, worker | 32 random bytes in base64url that seal the credentials of worker runs (`docs/credentials.md`); without it writing a secret answers 503 and runs get no lease. It is not in the database or its dumps |
 | `EVO_HUB_GITHUB_APP_ID`, `EVO_HUB_GITHUB_APP_PRIVATE_KEY` | api, worker | the GitHub App that makes each run a token for its repos only: its ID or client ID, and its private key in PEM, where `\n` may stand for each line break; both or neither |
+| `EVO_HUB_TELEGRAM_BOT_TOKEN`, `EVO_HUB_TELEGRAM_WEBHOOK_SECRET` | api, worker | the hub's Telegram bot, as @BotFather gives its token, and the secret Telegram sends back with each update (1 to 256 characters of `A-Z`, `a-z`, `0-9`, `_`, `-`); without either the Telegram channel is off and the hub runs on (`docs/notifications.md`). `evo-agents hub admin telegram --set-webhook` then points the bot at `EVO_HUB_PUBLIC_URL/v1/telegram/webhook` |
 | `EVO_HUB_FORWARDED_ALLOW_IPS` | api | the reverse proxies whose `X-Forwarded-For` the api believes: IP addresses or networks, comma-separated, or `*`; unset keeps uvicorn's default, the loopback addresses (or its own `FORWARDED_ALLOW_IPS`) |
 | `EVO_HUB_WORKER_CPUS`, `EVO_HUB_WORKER_MEMORY` | compose | worker limits, default `2` and `4g` |
 | `EVO_HUB_API_INTERNAL_URL` | web | where the web server reaches the api, default `http://evo-agents-hub-api:8080` (the api's network alias) |

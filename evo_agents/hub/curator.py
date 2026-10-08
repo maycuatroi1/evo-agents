@@ -22,6 +22,9 @@ plus BUDGET_GRACE_SECONDS, so the cap stops the agent before the timeout does. C
 ``max_turns`` (``ClaudeAgentOptions``); Codex reports no cost, so a Codex run stops at its time cap. A claimed run's
 budget also says what the run spent already (``spent_usd``, ``spent_seconds``), when it goes on from a parked run.
 
+At the charter's ``brief_at``, in its time zone, the hub sends the schedule's owner the morning brief of the night
+(``brief_due``, ``evo_agents.hub.server.brief``).
+
 Claude Code 2.1.293 reports ``total_cost_usd`` as the running total of the session: each result carries the total so
 far, and a resumed session starts from the total its transcript saved, while ``--max-budget-usd`` counts only the
 spend of the process it is given to (the description of ``total_cost_usd`` in the CLI's own SDK schema). So a run's
@@ -63,6 +66,7 @@ MAX_DECISIONS_PER_DAY = 100
 MAX_REVIEW_DAYS = 30  # the days of sessions and runs a night's figures may count
 CIRCUIT_BREAKER = (1, 10)  # failed runs in a row that stop the night shift
 BUDGET_GRACE_SECONDS = 300  # a scheduled run's timeout is its time cap plus this
+BRIEF_GRACE = timedelta(hours=3)  # a morning brief the hub could not send this long after brief_at waits a day
 
 # What `charter show --json` prints besides the charter body; `charter set` leaves them out of what it sends, and the
 # api ignores them in a write, so what was shown can be written back.
@@ -100,6 +104,14 @@ def window_state(local_now: datetime, start: str, end: str) -> tuple[bool, date]
     both HH:MM. Outside the window the night is the last one that opened."""
     opens, closes = parse_time(start), parse_time(end)
     return in_window(local_now.time(), opens, closes), night_of(local_now, opens)
+
+
+def brief_due(local_now: datetime, brief_at: str) -> bool:
+    """Whether the morning brief of the local day of ``local_now`` (a local time without zone) is due: from
+    ``brief_at`` (HH:MM) of that day until BRIEF_GRACE later, so a hub that was down at brief_at still sends it soon
+    after, and a charter written in the afternoon waits for the next morning."""
+    opens = datetime.combine(local_now.date(), parse_time(brief_at))
+    return opens <= local_now < opens + BRIEF_GRACE
 
 
 def _number(value) -> float | None:

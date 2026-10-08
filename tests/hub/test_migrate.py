@@ -1,8 +1,8 @@
-"""Migrations: a fresh database gets the forty-four hub tables, a second run changes nothing, processes that start
+"""Migrations: a fresh database gets the forty-six hub tables, a second run changes nothing, processes that start
 together apply each revision once, a database at 0001 with rows in it moves to 0002, and a database the code
 cannot read is refused. Then the constraints schemas 0001 and 0002 promise. Schemas 0009 and 0010 have their checks in
 ``tests.hub.test_run_tables``, 0011 in ``tests.hub.test_sealing``, 0012 in ``tests.hub.test_curator``, 0013 in
-``tests.hub.test_session_digests``, 0014 in ``tests.hub.test_review_runs``."""
+``tests.hub.test_session_digests``, 0014 in ``tests.hub.test_review_runs``, 0015 in ``tests.hub.test_brief``."""
 
 import re
 import subprocess
@@ -68,6 +68,7 @@ TABLES |= pg.CREDENTIAL_TABLES  # migration 0011
 TABLES |= pg.CURATOR_TABLES  # migration 0012
 TABLES |= pg.DIGEST_TABLES  # migration 0013
 TABLES |= pg.REVIEW_TABLES  # migration 0014
+TABLES |= pg.BRIEF_TABLES  # migration 0015
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -142,8 +143,8 @@ def tables(db) -> set[str]:
     return {row[0] for row in query(db, select(INFO_TABLES.c.table_name).where(INFO_TABLES.c.table_schema == "public"))}
 
 
-def test_a_fresh_database_gets_the_forty_four_tables(hub_db):
-    assert len(TABLES) == 44  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_forty_six_tables(hub_db):
+    assert len(TABLES) == 46  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
