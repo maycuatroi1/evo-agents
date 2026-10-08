@@ -35,6 +35,7 @@ import {
 } from "./model";
 import { NotificationItem } from "./notification-item";
 import { ProposalSheet } from "./proposal-sheet";
+import { TelegramButton } from "./telegram-dialog";
 import {
   MAX_READ_IDS,
   type Notification,
@@ -171,22 +172,25 @@ export function InboxPage({ initialError }: { initialError: ApiErrorInfo | null 
           ) : null
         }
         actions={
-          <Button
-            type="button"
-            variant="outline"
-            className="aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
-            aria-disabled={nothingToRead || reading !== null || undefined}
-            busy={reading === "all"}
-            onClick={() => {
-              if (nothingToRead || reading !== null) return;
-              if (filtered) read({ ids: pageUnread }, "all");
-              else read({ all: true }, "all");
-            }}
-            data-testid="inbox-mark-all"
-          >
-            <CheckCheck aria-hidden="true" />
-            {filtered ? t("markShown") : t("markAll")}
-          </Button>
+          <>
+            <TelegramButton />
+            <Button
+              type="button"
+              variant="outline"
+              className="aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
+              aria-disabled={nothingToRead || reading !== null || undefined}
+              busy={reading === "all"}
+              onClick={() => {
+                if (nothingToRead || reading !== null) return;
+                if (filtered) read({ ids: pageUnread }, "all");
+                else read({ all: true }, "all");
+              }}
+              data-testid="inbox-mark-all"
+            >
+              <CheckCheck aria-hidden="true" />
+              {filtered ? t("markShown") : t("markAll")}
+            </Button>
+          </>
         }
       />
       <div className="flex flex-col gap-6">
