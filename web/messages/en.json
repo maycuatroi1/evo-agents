@@ -2814,8 +2814,8 @@
       "waiting": "Waiting for Telegram. The link works once, until {time}.",
       "linkedAs": "Linked to @{username}",
       "linkedChat": "A chat is linked",
-      "linkedSince": "Since {when}. Send /stop to the bot to unlink from Telegram.",
-      "off": "Telegram stopped taking messages for this chat, so the hub turned it off. Make a new link to turn it on again.",
+      "linkedSince": "Since {when}, for as long as the web session that linked it lasts. Send /stop to the bot to unlink from Telegram.",
+      "off": "The hub stopped sending to this chat, for the reason below. Make a new link to turn it on again.",
       "unlink": "Unlink",
       "confirm": {
         "title": "Unlink this chat?",

@@ -2303,8 +2303,8 @@ export interface paths {
         put?: never;
         /**
          * Make Link
-         * @description A one-time link that links the Telegram chat it is opened in to the caller, for 10 minutes. It replaces the
-         *     caller's links not used yet.
+         * @description A one-time link that links the Telegram chat it is opened in to the caller, for 10 minutes; from a web session
+         *     only, which the chat then lives no longer than. It replaces the caller's links not used yet.
          */
         post: operations["make_link_v1_me_telegram_link_post"];
         delete?: never;
@@ -2369,6 +2369,26 @@ export interface paths {
          */
         post: operations["set_webhook_v1_admin_telegram_webhook_post"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/users/{login}/telegram": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Unlink Member
+         * @description Unlink a member's Telegram chat, whatever its session: the channel and the deliveries waiting for it go.
+         */
+        delete: operations["unlink_member_v1_admin_users__login__telegram_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -7484,6 +7504,16 @@ export interface components {
              * @description the bot's username, once the hub asked Telegram for it
              */
             bot: string | null;
+        };
+        /** TelegramUnlinked */
+        TelegramUnlinked: {
+            /** Login */
+            login: string;
+            /**
+             * Unlinked
+             * @description a chat was linked to the member, and is not any more
+             */
+            unlinked: boolean;
         };
         /** TelegramWebhook */
         TelegramWebhook: {
@@ -15896,6 +15926,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorBody"];
                 };
             };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
             /** @description Bad Gateway */
             502: {
                 headers: {
@@ -16062,6 +16101,64 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    unlink_member_v1_admin_users__login__telegram_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                login: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramUnlinked"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
