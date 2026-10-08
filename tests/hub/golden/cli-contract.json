@@ -114,6 +114,35 @@
         "schema": "TelegramWebhook"
       }
     },
+    "hub admin telegram-unlink": {
+      "positionals": [
+        {
+          "name": "login",
+          "metavar": "LOGIN",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "login",
+          "unlinked"
+        ],
+        "schema": "TelegramUnlinked"
+      }
+    },
     "hub admin users": {
       "positionals": [],
       "options": [
@@ -16056,7 +16085,7 @@
             "telegram"
           ],
           "summary": "Make Link",
-          "description": "A one-time link that links the Telegram chat it is opened in to the caller, for 10 minutes. It replaces the\ncaller's links not used yet.",
+          "description": "A one-time link that links the Telegram chat it is opened in to the caller, for 10 minutes; from a web session\nonly, which the chat then lives no longer than. It replaces the caller's links not used yet.",
           "operationId": "make_link_v1_me_telegram_link_post",
           "responses": {
             "201": {
@@ -16071,6 +16100,16 @@
             },
             "401": {
               "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "403": {
+              "description": "Forbidden",
               "content": {
                 "application/json": {
                   "schema": {
@@ -16261,6 +16300,80 @@
                 "application/json": {
                   "schema": {
                     "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/admin/users/{login}/telegram": {
+        "delete": {
+          "tags": [
+            "telegram"
+          ],
+          "summary": "Unlink Member",
+          "description": "Unlink a member's Telegram chat, whatever its session: the channel and the deliveries waiting for it go.",
+          "operationId": "unlink_member_v1_admin_users__login__telegram_delete",
+          "parameters": [
+            {
+              "name": "login",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$",
+                "title": "Login"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/TelegramUnlinked"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
                   }
                 }
               }
@@ -28170,6 +28283,25 @@
             "bot"
           ],
           "title": "TelegramStatus"
+        },
+        "TelegramUnlinked": {
+          "properties": {
+            "login": {
+              "type": "string",
+              "title": "Login"
+            },
+            "unlinked": {
+              "type": "boolean",
+              "title": "Unlinked",
+              "description": "a chat was linked to the member, and is not any more"
+            }
+          },
+          "type": "object",
+          "required": [
+            "login",
+            "unlinked"
+          ],
+          "title": "TelegramUnlinked"
         },
         "TelegramWebhook": {
           "properties": {

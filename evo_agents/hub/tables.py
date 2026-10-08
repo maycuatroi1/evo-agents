@@ -802,9 +802,12 @@ notification_channels = Table(
     Column("config", JSONB, nullable=False, server_default="{}"),
     Column("enabled", Boolean, nullable=False, server_default=true()),
     _stamp("created_at"),
+    Column("token_id", BigInteger),  # the web session that linked the channel, which it lives no longer than (0016)
+    ForeignKeyConstraint(["token_id"], ["tokens.id"], ondelete="CASCADE", name="notification_channels_token_id_fkey"),
     ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE", name="notification_channels_user_id_fkey"),
     PrimaryKeyConstraint("id", name="notification_channels_pkey"),
     UniqueConstraint("user_id", "kind", name="notification_channels_user_id_kind_key"),
+    Index("notification_channels_token_idx", "token_id"),
 )
 
 notification_deliveries = Table(
@@ -1127,7 +1130,9 @@ curator_briefs = Table(
     Column("body", JSONB, nullable=False),
     Column("notification_id", BigInteger),
     _stamp("created_at"),
-    ForeignKeyConstraint(["notification_id"], ["notifications.id"], name="curator_briefs_notification_id_fkey"),
+    ForeignKeyConstraint(
+        ["notification_id"], ["notifications.id"], ondelete="SET NULL", name="curator_briefs_notification_id_fkey"
+    ),
     ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name="curator_briefs_project_id_fkey"),
     ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE", name="curator_briefs_user_id_fkey"),
     PrimaryKeyConstraint("id", name="curator_briefs_pkey"),
@@ -1143,6 +1148,8 @@ telegram_links = Table(
     _stamp("created_at"),
     Column("expires_at", DateTime(timezone=True), nullable=False),
     _when("used_at"),
+    Column("token_id", BigInteger),  # the web session that made the code (0016)
+    ForeignKeyConstraint(["token_id"], ["tokens.id"], ondelete="CASCADE", name="telegram_links_token_id_fkey"),
     ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE", name="telegram_links_user_id_fkey"),
     PrimaryKeyConstraint("id", name="telegram_links_pkey"),
     UniqueConstraint("code_hash", name="telegram_links_code_hash_key"),

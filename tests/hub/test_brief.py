@@ -1,11 +1,12 @@
-"""The Curator's morning brief (``evo_agents.hub.server.brief``) and schema 0015.
+"""The Curator's morning brief (``evo_agents.hub.server.brief``) and schemas 0015 and 0016.
 
 The checks step 5 of the curator-agent plan names for a6: at the charter's brief_at, in the charter's time zone, the
 owner of the night shift's schedule gets a notice curator_brief, once a day, on the web and on Telegram; it holds the
 night's runs, the merges into a default branch and the runs waiting for approval, the cost against the budget, the
 decisions and proposals waiting, and the last heartbeat of the worker on duty, so a worker that stopped shows; and
 `evo-agents hub curator status --json` names the last brief under ``last_brief``, which steps 13 and 15 and a16 read.
-Then the constraints of schema 0015, and its way down to 0014 and up again."""
+Then the constraints of schema 0015, and its way down to 0014 and up again; and schema 0016, by which a brief
+outlives its notification, and its way down to 0015 and up again."""
 
 from datetime import UTC, date, datetime, timedelta
 from functools import partial
@@ -44,7 +45,7 @@ from tests.hub.test_curator import (
     written,
 )
 from tests.hub.test_decisions import QUESTION, asked
-from tests.hub.test_migrate import move_to
+from tests.hub.test_migrate import columns, move_to
 from tests.hub.test_review_runs import (
     held_review,
     proposed,
@@ -104,6 +105,13 @@ def body_of(db, day: date = THE_DAY) -> dict:
 
 def user_id(db, login: str) -> int:
     return sql(db, select(tables.users.c.id).where(tables.users.c.login == login))[0][0]
+
+
+def telegram_channel(db, login: str = OWNER, chat_id: int = 7001) -> None:
+    """A Telegram chat of ``login`` linked from a live web session, written straight into the database."""
+    _, session = live.web_session(db, login)
+    channel = {"user_id": user_id(db, login), "kind": "telegram", "config": {"chat_id": chat_id}, "token_id": session}
+    sql(db, insert(tables.notification_channels).values(**channel))
 
 
 def test_brief_due_from_brief_at_for_three_hours_of_the_local_day():
@@ -226,8 +234,10 @@ def test_the_brief_names_the_review_run_and_the_proposals_waiting(review, bot): 
 def test_the_brief_goes_to_the_owners_telegram_chat_and_a_restricted_project_gets_the_link_only(night, hub_db, bot):  # noqa: F811
     client, headers = night.client, night.headers
     written(client, headers["owner"], charter_body())
-    channels = tables.notification_channels
-    sql(hub_db, insert(channels).values(user_id=user_id(hub_db, OWNER), kind="telegram", config={"chat_id": 7001}))
+    sinks = tables.project_sinks
+    internal = {"level": "internal", "location": "any"}
+    sql(hub_db, update(sinks).values(clearance=internal).where(sinks.c.kind == "hub"))
+    telegram_channel(hub_db)
     assert briefed(client, BRIEF) == {"brief": 1}
     assert deliver(client) == {"delivered": 2, "retried": 0, "failed": 0}
     (message,) = bot.sent()
@@ -239,7 +249,6 @@ def test_the_brief_goes_to_the_owners_telegram_chat_and_a_restricted_project_get
         "inline_keyboard": [[{"text": "Open on the hub", "url": f"https://hub.test/p/{PROJECT}/curator"}]]
     }
 
-    sinks = tables.project_sinks
     sql(hub_db, update(sinks).values(clearance={"level": "customer"}).where(sinks.c.kind == "hub"))
     assert briefed(client, BRIEF + timedelta(days=1)) == {"brief": 1}
     deliver(client)
@@ -322,7 +331,7 @@ def test_migration_0015_goes_down_to_0014_and_up_again(night, hub_db, bot):  # n
     written(client, headers["owner"], charter_body())
     owner = user_id(hub_db, OWNER)
     channels = tables.notification_channels
-    sql(hub_db, insert(channels).values(user_id=owner, kind="telegram", config={"chat_id": 7001}))
+    telegram_channel(hub_db)
     sql(
         hub_db,
         insert(tables.telegram_links).values(
@@ -342,3 +351,29 @@ def test_migration_0015_goes_down_to_0014_and_up_again(night, hub_db, bot):  # n
     assert sql(hub_db, select(d.c.external_id)) == []
     assert sql(hub_db, select(func.count()).select_from(channels)) == [(1,)]  # a member's link survives
     assert briefed(client, BRIEF + timedelta(days=1)) == {"brief": 1}
+
+
+# Schema 0016
+
+
+def test_a_brief_outlives_its_notification_and_0016_goes_down_to_0015_and_up_again(night, hub_db):  # noqa: F811
+    client, headers = night.client, night.headers
+    written(client, headers["owner"], charter_body())
+    assert briefed(client, BRIEF) == {"brief": 1}
+    n = tables.notifications
+    ((first,),) = sql(hub_db, select(BRIEFS.c.notification_id))
+    sql(hub_db, delete(n).where(n.c.id == first))  # ON DELETE SET NULL: the brief stays, without its notification
+    assert sql(hub_db, select(BRIEFS.c.day, BRIEFS.c.notification_id)) == [(THE_DAY, None)]
+
+    move_to(hub_db, "0015", down=True)
+    assert "token_id" not in columns(hub_db, "notification_channels") | columns(hub_db, "telegram_links")
+    assert briefed(client, BRIEF + timedelta(days=1)) == {"brief": 1}
+    second_day = BRIEFS.c.day == THE_DAY + timedelta(days=1)
+    ((second,),) = sql(hub_db, select(BRIEFS.c.notification_id).where(second_day))
+    with pytest.raises(psycopg.errors.ForeignKeyViolation):  # 0015's key refused the delete
+        sql(hub_db, delete(n).where(n.c.id == second))
+
+    move_to(hub_db, "0016")
+    assert "token_id" in columns(hub_db, "notification_channels") & columns(hub_db, "telegram_links")
+    sql(hub_db, delete(n).where(n.c.id == second))
+    assert sql(hub_db, select(func.count()).select_from(BRIEFS).where(BRIEFS.c.notification_id.is_(None))) == [(2,)]

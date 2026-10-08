@@ -20,6 +20,12 @@ does not try it forever. Adding a channel takes a subclass of Channel and its en
 and the job stay as they are. A class may read more of a notification first (``prepare``, in the delivery's
 transaction), and ``send`` may answer the id the service gave the message, kept as the delivery's ``external_id``.
 
+Before a channel of a row gets a notification, the job checks two things as they stand at the delivery, not as they
+stood when it was stored. The member must still hold a grant on the notification's project (NO_GRANT fails the
+delivery at once; the channel stays). And a channel bound to the web session that linked it (``token_id``), or of a
+class that needs one (``Channel.needs_session``, as Telegram's does), lives no longer than that session: once it is
+revoked, signed out or expired, the delivery fails and the channel is turned off with SESSION_ENDED as its reason.
+
 POST /v1/worker/runs/{id}/notices takes a notice (``runs.NOTICE_KINDS``) from the worker holding a plan run: a title,
 a body, and the repo, branch and commits of a push or merge. It notifies the run's owner, links to the run's page and
 leaves a ``system`` event in the run's log. A run of one step sends no notice (404, as any run the worker does not
@@ -68,6 +74,7 @@ from evo_agents.hub.server.admin import PROJECT_NAME
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.run_state import write_event
 from evo_agents.hub.server.runs import LINE, MAX_ID, OBJECT_NAME, REFUSALS, RunId, _held_plan_run
+from evo_agents.hub.server.security import WEB as WEB_SESSION
 from evo_agents.hub.server.security import CurrentUser
 
 log = logging.getLogger(__name__)
@@ -83,6 +90,8 @@ BACKOFF_MAX_SECONDS = 3600
 MAX_LIST = 200
 MAX_OFFSET = 100_000
 MAX_READ_IDS = 500
+NO_GRANT = "the member holds no grant on the notification's project any more"
+SESSION_ENDED = "the web session that linked this channel ended (signed out, revoked or expired): link it again"
 
 worker_router = APIRouter(prefix="/v1/worker", tags=["worker protocol"], responses={401: {"model": ErrorBody}})
 router = APIRouter(prefix="/v1/me", tags=["notifications"], responses={401: {"model": ErrorBody}})
@@ -219,6 +228,8 @@ class Channel:
     ``send`` delivers it to one channel, whose ``config`` is the channel's own (empty for the web), answers the id the
     service gave the message (or None), and raises when it could not, so the delivery is tried again later."""
 
+    needs_session = False  # a channel of this class lives no longer than the web session that linked it
+
     def __init__(self, config=None):
         self.config = config
 
@@ -268,9 +279,22 @@ OUTGOING = tuple(field.name for field in dataclasses.fields(Outgoing) if field.n
 
 def _lock_due(delivery_id: int):
     """Delivery ``delivery_id`` while it is pending and due, locked, with its channel and its notification as
-    Outgoing names the columns; no row when another pass holds it."""
+    Outgoing names the columns, whether the member holds a grant on its project now (``granted``) and whether the
+    web session its channel is bound to lives (``session_live``); no row when another pass holds it."""
     deliveries, channels = tables.notification_deliveries, tables.notification_channels
     stored, users, projects = tables.notifications, tables.users, tables.projects
+    grants, tokens = tables.grants, tables.tokens
+    granted = or_(
+        stored.c.project_id.is_(None),
+        exists().where(grants.c.user_id == stored.c.user_id, grants.c.project_id == stored.c.project_id),
+    )
+    session_live = exists().where(
+        tokens.c.id == channels.c.token_id,
+        tokens.c.user_id == stored.c.user_id,
+        tokens.c.kind == WEB_SESSION,
+        tokens.c.revoked_at.is_(None),
+        tokens.c.expires_at > func.now(),
+    )
     return (
         select(
             deliveries.c.attempts,
@@ -293,6 +317,9 @@ def _lock_due(delivery_id: int):
             stored.c.proposal_id,
             deliveries.c.channel_id,
             deliveries.c.channel_id.is_not(None).label("has_channel"),
+            channels.c.token_id,
+            granted.label("granted"),
+            session_live.label("session_live"),
         )
         .select_from(
             deliveries.join(stored, stored.c.id == deliveries.c.notification_id)
@@ -380,6 +407,15 @@ async def _deliver_one(conn: AsyncConnection, delivery_id: int, instances: dict,
         return "failed"
     if has_channel and not row.enabled:
         await conn.execute(_failed(delivery_id, "the channel was turned off before the notification went out"))
+        return "failed"
+    if has_channel and not row.granted:
+        await conn.execute(_failed(delivery_id, NO_GRANT))
+        log.info("notification not delivered: no grant", extra={"delivery_id": delivery_id, "channel": kind})
+        return "failed"
+    if has_channel and (cls.needs_session or row.token_id is not None) and not row.session_live:
+        await conn.execute(_failed(delivery_id, SESSION_ENDED))
+        await conn.execute(_turn_off(row.channel_id, SESSION_ENDED))
+        log.info("notification channel off: its session ended", extra={"delivery_id": delivery_id, "channel": kind})
         return "failed"
     channel = instances.get(kind)
     if channel is None:
