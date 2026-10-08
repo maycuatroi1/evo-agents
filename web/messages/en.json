@@ -2683,7 +2683,8 @@
       "push_default_branch": "Pushed to a default branch",
       "merge_default_branch": "Merged into a default branch",
       "plan_finished": "Plan finished",
-      "run_failed": "Run failed"
+      "run_failed": "Run failed",
+      "curator_brief": "Morning brief"
     },
     "item": {
       "unread": "Unread",
@@ -2789,6 +2790,44 @@
       "notFoundDescription": "It belongs to a project you cannot read, its label is beyond your grant, or the link is wrong.",
       "where": "Project {project}, proposed by <runLink>review run #{run}</runLink>",
       "openPage": "Open the full page"
+    },
+    "telegram": {
+      "button": "Telegram",
+      "title": "Telegram",
+      "description": "Decisions, proposals and notices also come to a private chat with the hub's bot, where their buttons answer them.",
+      "loadFailed": "Couldn't read your Telegram link from the hub.",
+      "retry": "Try again",
+      "close": "Close",
+      "unconfigured": "Telegram is not set up on this hub. A hub admin sets the bot's token and the webhook's secret in its environment.",
+      "unlinked": "No chat is linked. Make a link, open it in Telegram and press Start; it links that chat to you. It works once, for 10 minutes.",
+      "expired": "The link expired before Telegram used it. Make a new one.",
+      "make": "Make a link",
+      "makeAgain": "Make a new link",
+      "making": "Making the link",
+      "steps": {
+        "open": "Open the link in Telegram, in your private chat with @{bot}.",
+        "start": "Press Start. This dialog notices the link on its own."
+      },
+      "copy": "Copy the link",
+      "open": "Open in Telegram",
+      "newTab": "(opens in a new tab)",
+      "waiting": "Waiting for Telegram. The link works once, until {time}.",
+      "linkedAs": "Linked to @{username}",
+      "linkedChat": "A chat is linked",
+      "linkedSince": "Since {when}. Send /stop to the bot to unlink from Telegram.",
+      "off": "Telegram stopped taking messages for this chat, so the hub turned it off. Make a new link to turn it on again.",
+      "unlink": "Unlink",
+      "confirm": {
+        "title": "Unlink this chat?",
+        "text": "Messages waiting for it are dropped. The Inbox keeps every notification.",
+        "keep": "Keep it linked",
+        "unlink": "Unlink",
+        "unlinking": "Unlinking"
+      },
+      "linkedToast": "Telegram linked",
+      "linkedToastText": "Decisions, proposals and notices now reach your chat too.",
+      "unlinkedToast": "Telegram unlinked",
+      "unlinkedToastText": "Nothing more goes to the chat until you link it again."
     }
   },
   "toast": {
@@ -2918,6 +2957,9 @@
       "capsValue": "up to {budget} and {runs, plural, one {# run} other {# runs}}",
       "brief": "Morning brief",
       "briefValue": "at {at}",
+      "lastBrief": "Last brief",
+      "lastBriefValue": "night of {night}, to {to}",
+      "readBrief": "Read it in the Inbox",
       "paused": "Paused",
       "pausedBy": "by {login},"
     },

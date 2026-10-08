@@ -853,46 +853,63 @@ async def show_proposal(
     return _proposal(access.name, row)
 
 
+async def answer_proposal_as(
+    conn: AsyncConnection,
+    user: Principal,
+    project: str,
+    proposal_id: int,
+    body: ProposalAnswer,
+    *,
+    via: str | None = None,
+) -> Proposal:
+    """Accept, reject or defer proposal ``proposal_id`` of ``project`` as ``user``, an admin of it, in the caller's
+    transaction, and read its notifications. The answer route and the Telegram channel (``via="telegram"``, which the
+    audit row names) both answer through it; it raises the HTTPException the route answers with."""
+    p, n = tables.proposals, tables.notifications
+    access = await project_access(conn, user, project)
+    _reader(access)
+    if not has_role(access.role, "admin"):
+        raise HTTPException(
+            403, f"answering a proposal of project {access.name} needs the admin role on it; you hold {access.role}"
+        )
+    row = await _readable_proposal(conn, access, proposal_id, None, lock=True)
+    if row.state not in ("open", "deferred"):
+        raise HTTPException(409, f"proposal {proposal_id} is {row.state}: only an open or deferred one is answered")
+    state = review.ANSWERED[body.action]
+    days = body.defer_days or review.DEFAULT_DEFER_DAYS
+    values = {
+        "state": state,
+        "answered_by": user.user_id,
+        "answered_at": func.now(),
+        "note": body.note,
+        "deferred_until": func.now() + timedelta(days=days) if body.action == "defer" else None,
+    }
+    await conn.execute(update(p).values(**values).where(p.c.id == proposal_id))
+    await conn.execute(
+        update(n).values(read_at=func.now()).where(n.c.proposal_id == proposal_id, n.c.read_at.is_(None))
+    )
+    target = f"{access.name} proposal:{proposal_id} run:{row.run_id} answer={body.action}"
+    await audit.record(
+        conn,
+        actor_id=user.user_id,
+        token_id=user.token_id,
+        action=PROPOSAL,
+        target=target if via is None else f"{target} via={via}",
+        project_id=access.project_id,
+    )
+    row = await _readable_proposal(conn, access, proposal_id, None)
+    return _proposal(access.name, row)
+
+
 @router.post("/{project}/curator/proposals/{proposal_id}/answer", response_model=Proposal, responses=REFUSALS)
 async def answer_proposal(
     request: Request, project: ProjectName, proposal_id: ItemId, body: ProposalAnswer, user: CurrentUser
 ) -> Proposal:
     """Accept, reject or defer a proposal; the admins of the project alone may."""
-    p, n = tables.proposals, tables.notifications
     async with request.app.state.engine.begin() as conn:
-        access = await project_access(conn, user, project)
-        _reader(access)
-        if not has_role(access.role, "admin"):
-            raise HTTPException(
-                403, f"answering a proposal of project {access.name} needs the admin role on it; you hold {access.role}"
-            )
-        row = await _readable_proposal(conn, access, proposal_id, None, lock=True)
-        if row.state not in ("open", "deferred"):
-            raise HTTPException(409, f"proposal {proposal_id} is {row.state}: only an open or deferred one is answered")
-        state = review.ANSWERED[body.action]
-        days = body.defer_days or review.DEFAULT_DEFER_DAYS
-        values = {
-            "state": state,
-            "answered_by": user.user_id,
-            "answered_at": func.now(),
-            "note": body.note,
-            "deferred_until": func.now() + timedelta(days=days) if body.action == "defer" else None,
-        }
-        await conn.execute(update(p).values(**values).where(p.c.id == proposal_id))
-        await conn.execute(
-            update(n).values(read_at=func.now()).where(n.c.proposal_id == proposal_id, n.c.read_at.is_(None))
-        )
-        await audit.record(
-            conn,
-            actor_id=user.user_id,
-            token_id=user.token_id,
-            action=PROPOSAL,
-            target=f"{access.name} proposal:{proposal_id} run:{row.run_id} answer={body.action}",
-            project_id=access.project_id,
-        )
-        row = await _readable_proposal(conn, access, proposal_id, None)
+        answered = await answer_proposal_as(conn, user, project, proposal_id, body)
     log.info("proposal answered", extra={"proposal_id": proposal_id, "action": body.action, "login": user.login})
-    return _proposal(access.name, row)
+    return answered
 
 
 @router.get("/{project}/curator/figures", response_model=NightFiguresView, responses=READ_REFUSALS)

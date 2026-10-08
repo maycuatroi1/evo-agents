@@ -238,6 +238,36 @@ def test_the_github_app_needs_both_variables_and_no_error_shows_a_secret():
         assert shown not in str(caught.value)
 
 
+def test_the_telegram_variables_turn_the_channel_on_are_secrets_and_either_missing_turns_it_off():
+    from tests.hub.fake_telegram import SECRET, TOKEN
+
+    base = {"EVO_HUB_DSN": "postgresql://hub@db/hub"}
+    config = load_config({**base, "EVO_HUB_TELEGRAM_BOT_TOKEN": TOKEN, "EVO_HUB_TELEGRAM_WEBHOOK_SECRET": SECRET})
+    assert (config.telegram_bot_token, config.telegram_webhook_secret) == (TOKEN, SECRET)
+    assert config.telegram_api_url == "https://api.telegram.org" and config.telegram_missing() == []
+    for leaked in (TOKEN, TOKEN.partition(":")[2], SECRET):
+        line = scrub(f"calling https://api.telegram.org/bot{leaked}/getMe")
+        assert leaked not in line and "***" in line, line
+    assert TOKEN not in repr(config) and SECRET not in repr(config)
+
+    # Either one missing turns the channel off; the hub loads all the same.
+    only_secret = load_config({**base, "EVO_HUB_TELEGRAM_WEBHOOK_SECRET": SECRET})
+    assert only_secret.telegram_missing() == ["EVO_HUB_TELEGRAM_BOT_TOKEN"]
+    assert load_config(base).telegram_missing() == ["EVO_HUB_TELEGRAM_BOT_TOKEN", "EVO_HUB_TELEGRAM_WEBHOOK_SECRET"]
+    fake_api = load_config({**base, "EVO_HUB_TELEGRAM_API_URL": "http://127.0.0.1:9/"})
+    assert fake_api.telegram_api_url == "http://127.0.0.1:9"
+
+    # A malformed value is named, never shown.
+    for variable, value in (
+        ("EVO_HUB_TELEGRAM_BOT_TOKEN", "Tele-Gram-Token-Shape-Wrong-123456"),
+        ("EVO_HUB_TELEGRAM_WEBHOOK_SECRET", "Webhook secret with spaces"),
+        ("EVO_HUB_TELEGRAM_WEBHOOK_SECRET", "x" * 257),
+    ):
+        with pytest.raises(ConfigError) as caught:
+            load_config({**base, variable: value})
+        assert caught.value.variable == variable and value not in str(caught.value)
+
+
 def test_config_repr_keeps_the_dsns_out():
     config = HubConfig(dsn="postgresql://u:Repr-Secret-1@db/hub", data_dir=Path("/tmp/x"), sentry_dsn="https://k@s/1")
     assert "Repr-Secret-1" not in repr(config) and "https://k@s/1" not in repr(config)

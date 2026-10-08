@@ -80,6 +80,40 @@
         "keys": []
       }
     },
+    "hub admin telegram": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--set-webhook"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "configured",
+          "bot",
+          "expected_url",
+          "url",
+          "pending_update_count",
+          "last_error_date",
+          "last_error_message"
+        ],
+        "schema": "TelegramWebhook"
+      }
+    },
     "hub admin users": {
       "positionals": [],
       "options": [
@@ -435,7 +469,8 @@
           "night",
           "last_review_run",
           "state",
-          "open_proposals"
+          "open_proposals",
+          "last_brief"
         ],
         "schema": "CuratorStatus"
       }
@@ -842,7 +877,8 @@
           "night",
           "last_review_run",
           "state",
-          "open_proposals"
+          "open_proposals",
+          "last_brief"
         ],
         "schema": "CuratorStatus"
       }
@@ -877,7 +913,8 @@
           "night",
           "last_review_run",
           "state",
-          "open_proposals"
+          "open_proposals",
+          "last_brief"
         ],
         "schema": "CuratorStatus"
       }
@@ -15951,6 +15988,286 @@
           }
         }
       },
+      "/v1/me/telegram": {
+        "get": {
+          "tags": [
+            "telegram"
+          ],
+          "summary": "Show",
+          "description": "Whether the hub has a bot, and whether a chat of the caller's is linked to it.",
+          "operationId": "show_v1_me_telegram_get",
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/TelegramStatus"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "delete": {
+          "tags": [
+            "telegram"
+          ],
+          "summary": "Unlink",
+          "description": "Unlink the caller's Telegram chat: the channel and the deliveries waiting for it go.",
+          "operationId": "unlink_v1_me_telegram_delete",
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/TelegramStatus"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/me/telegram/link": {
+        "post": {
+          "tags": [
+            "telegram"
+          ],
+          "summary": "Make Link",
+          "description": "A one-time link that links the Telegram chat it is opened in to the caller, for 10 minutes. It replaces the\ncaller's links not used yet.",
+          "operationId": "make_link_v1_me_telegram_link_post",
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/TelegramLink"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "502": {
+              "description": "Bad Gateway",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "503": {
+              "description": "Service Unavailable",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/telegram/webhook": {
+        "post": {
+          "tags": [
+            "telegram"
+          ],
+          "summary": "Webhook",
+          "description": "Telegram's updates for the hub's bot, with the secret token setWebhook was given in the header\nX-Telegram-Bot-Api-Secret-Token.",
+          "operationId": "webhook_v1_telegram_webhook_post",
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/WebhookAnswer"
+                  }
+                }
+              }
+            },
+            "403": {
+              "description": "Forbidden",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "404": {
+              "description": "Not Found",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "413": {
+              "description": "Request Entity Too Large",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/admin/telegram": {
+        "get": {
+          "tags": [
+            "telegram"
+          ],
+          "summary": "Show Webhook",
+          "description": "The hub's bot and where Telegram sends its updates.",
+          "operationId": "show_webhook_v1_admin_telegram_get",
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/TelegramWebhook"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "403": {
+              "description": "Forbidden",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/admin/telegram/webhook": {
+        "post": {
+          "tags": [
+            "telegram"
+          ],
+          "summary": "Set Webhook",
+          "description": "Point the bot's webhook at this hub (EVO_HUB_PUBLIC_URL + /v1/telegram/webhook) with the secret token.",
+          "operationId": "set_webhook_v1_admin_telegram_webhook_post",
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/TelegramWebhook"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "403": {
+              "description": "Forbidden",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "409": {
+              "description": "Conflict",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "502": {
+              "description": "Bad Gateway",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "503": {
+              "description": "Service Unavailable",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "/v1/secrets": {
         "get": {
           "tags": [
@@ -16798,6 +17115,64 @@
             "sha256"
           ],
           "title": "BlobCheck"
+        },
+        "BriefSummary": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "day": {
+              "type": "string",
+              "format": "date",
+              "title": "Day",
+              "description": "the local day it was sent on, in the charter's time zone"
+            },
+            "night": {
+              "type": "string",
+              "format": "date",
+              "title": "Night",
+              "description": "the night it reports on"
+            },
+            "sent_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Sent At"
+            },
+            "to": {
+              "type": "string",
+              "title": "To",
+              "description": "the member it went to: the owner of the night shift's schedule"
+            },
+            "notification_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Notification Id",
+              "description": "the notification of kind notice (curator_brief) that carried it"
+            },
+            "title": {
+              "type": "string",
+              "title": "Title"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "day",
+            "night",
+            "sent_at",
+            "to",
+            "notification_id",
+            "title"
+          ],
+          "title": "BriefSummary",
+          "description": "The project's last morning brief (``evo_agents.hub.server.brief``)."
         },
         "Build": {
           "properties": {
@@ -17947,6 +18322,17 @@
               "title": "Open Proposals",
               "description": "the project's proposals that wait for an answer, that you may read",
               "default": 0
+            },
+            "last_brief": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/BriefSummary"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "the project's last morning brief; null before the first"
             }
           },
           "type": "object",
@@ -21328,7 +21714,8 @@
                     "push_default_branch",
                     "merge_default_branch",
                     "plan_finished",
-                    "run_failed"
+                    "run_failed",
+                    "curator_brief"
                   ]
                 },
                 {
@@ -27680,6 +28067,200 @@
           ],
           "title": "StorageCounts"
         },
+        "TelegramLink": {
+          "properties": {
+            "url": {
+              "type": "string",
+              "title": "Url",
+              "description": "https://t.me/<bot>?start=<code>: open it in Telegram and press Start"
+            },
+            "bot": {
+              "type": "string",
+              "title": "Bot"
+            },
+            "expires_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Expires At",
+              "description": "10 minutes after it was made; it links one chat, once"
+            }
+          },
+          "type": "object",
+          "required": [
+            "url",
+            "bot",
+            "expires_at"
+          ],
+          "title": "TelegramLink"
+        },
+        "TelegramStatus": {
+          "properties": {
+            "configured": {
+              "type": "boolean",
+              "title": "Configured",
+              "description": "the hub has a bot: its admin set the EVO_HUB_TELEGRAM_* variables"
+            },
+            "linked": {
+              "type": "boolean",
+              "title": "Linked",
+              "description": "a chat of the member's is linked"
+            },
+            "enabled": {
+              "type": "boolean",
+              "title": "Enabled",
+              "description": "the hub sends to it; false once Telegram refused it, as when the bot is blocked"
+            },
+            "username": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Username",
+              "description": "the Telegram username of the linked account, when it has one"
+            },
+            "linked_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Linked At"
+            },
+            "disabled_reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Disabled Reason",
+              "description": "why the hub stopped sending to the chat"
+            },
+            "bot": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bot",
+              "description": "the bot's username, once the hub asked Telegram for it"
+            }
+          },
+          "type": "object",
+          "required": [
+            "configured",
+            "linked",
+            "enabled",
+            "username",
+            "linked_at",
+            "disabled_reason",
+            "bot"
+          ],
+          "title": "TelegramStatus"
+        },
+        "TelegramWebhook": {
+          "properties": {
+            "configured": {
+              "type": "boolean",
+              "title": "Configured",
+              "description": "the EVO_HUB_TELEGRAM_* variables are set"
+            },
+            "bot": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bot",
+              "description": "the bot's username"
+            },
+            "expected_url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Expected Url",
+              "description": "where the webhook should point: the hub's public URL"
+            },
+            "url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Url",
+              "description": "where Telegram sends updates now; empty when no webhook is set"
+            },
+            "pending_update_count": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pending Update Count"
+            },
+            "last_error_date": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last Error Date"
+            },
+            "last_error_message": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last Error Message"
+            }
+          },
+          "type": "object",
+          "required": [
+            "configured",
+            "bot",
+            "expected_url",
+            "url",
+            "pending_update_count",
+            "last_error_date",
+            "last_error_message"
+          ],
+          "title": "TelegramWebhook"
+        },
         "TokenCounts": {
           "properties": {
             "live": {
@@ -28397,6 +28978,25 @@
             "published_at"
           ],
           "title": "Version"
+        },
+        "WebhookAnswer": {
+          "properties": {
+            "ok": {
+              "type": "boolean",
+              "title": "Ok",
+              "default": true
+            },
+            "outcome": {
+              "type": "string",
+              "title": "Outcome",
+              "description": "what the hub did with the update"
+            }
+          },
+          "type": "object",
+          "required": [
+            "outcome"
+          ],
+          "title": "WebhookAnswer"
         },
         "WhoAmI": {
           "properties": {

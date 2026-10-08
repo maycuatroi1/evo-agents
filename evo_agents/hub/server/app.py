@@ -137,6 +137,7 @@ def create_app(config: HubConfig) -> FastAPI:
                 "blob_bucket": config.s3_bucket,
                 "credentials_missing": config.credentials_missing(),
                 "github_app_missing": config.github_app_missing(),
+                "telegram_missing": config.telegram_missing(),
             },
         )
         try:
@@ -230,6 +231,14 @@ def create_app(config: HubConfig) -> FastAPI:
     app.include_router(proposals.router)
     app.include_router(proposals.worker_router)
     app.include_router(digests.router)
+
+    from evo_agents.hub.server import telegram
+
+    app.include_router(telegram.me_router)
+    app.include_router(telegram.webhook_router)
+    app.include_router(telegram.admin_router)
+    app.state.telegram_inbound = telegram.InboundLimit()  # updates per chat the webhook takes, in this process
+    app.state.telegram_bot = None  # the bot's username, once getMe told it
 
     from evo_agents.hub.server import terminal
 

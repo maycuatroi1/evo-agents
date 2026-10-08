@@ -10,6 +10,7 @@ import {
   MessageSquare,
   Rocket,
   Send,
+  Sunrise,
   Target,
   Trash2,
   Upload,
@@ -48,6 +49,7 @@ export const NOTICE_LOOK: Record<NoticeKind, { icon: LucideIcon }> = {
   merge_default_branch: { icon: GitMerge },
   plan_finished: { icon: CircleCheck },
   run_failed: { icon: CircleX },
+  curator_brief: { icon: Sunrise },
 };
 
 /** What a notice is about, as the kit's tag: a kind is a name with square corners, never a round state pill. */

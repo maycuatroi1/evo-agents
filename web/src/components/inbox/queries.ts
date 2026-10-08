@@ -32,6 +32,7 @@ export const NOTICE_KINDS = [
   "merge_default_branch",
   "plan_finished",
   "run_failed",
+  "curator_brief",
 ] as const satisfies readonly NoticeKind[];
 export const DECISION_STATES = ["open", "answered", "expired", "cancelled"] as const satisfies readonly DecisionState[];
 export const DECISION_CATEGORIES = [

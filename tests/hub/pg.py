@@ -60,6 +60,8 @@ CURATOR_TABLES = frozenset({"charters", "schedules"})
 DIGEST_TABLES = frozenset({"session_digests", "run_tool_stats"})
 # Tables of migration 0014: the night's figures of a project, and what its review run finds and proposes
 REVIEW_TABLES = frozenset({"curator_figures", "findings", "proposals"})
+# Tables of migration 0015: the Curator's morning briefs, and the codes that link a Telegram chat
+BRIEF_TABLES = frozenset({"curator_briefs", "telegram_links"})
 HUB_ENV = ("EVO_HUB_",)  # variables a test environment must not inherit from the shell running pytest
 AWAY = "_away"  # suffix of the copy a database waits in while set_reachable keeps it from its clients
 END_EVERY = 0.05  # seconds between two rounds of ending the connections to a database being copied

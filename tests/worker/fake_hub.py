@@ -438,7 +438,7 @@ class FakeHub:
     async def _notice(self, request: web.Request) -> web.Response:
         run_id, _ = self._held_plan_run(request)
         body = await request.json()
-        if body.get("kind") not in runs.NOTICE_KINDS:
+        if body.get("kind") not in runs.WORKER_NOTICE_KINDS:
             return _error(422, "invalid", "not a notice kind")
         self.notices.append({"run_id": run_id, **body})
         return web.json_response({"id": len(self.notices), "kind": "notice", **body}, status=201)

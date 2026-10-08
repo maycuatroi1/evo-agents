@@ -32,8 +32,9 @@ when it is paused or outside its window, and otherwise queues at most one run (`
 night's review run first, when the night has none yet and the worker runs review runs
 (``evo_agents.hub.server.collect``), else a plan run, as ``evo_agents.hub.curator`` says, audited as curator.dispatch
 with the owner as actor and no token. GET .../curator also names the last review run of the project, with how many
-findings and proposals it wrote. A night's cost is that of its runs (their
-``usage``), each agent session once at its largest total, as Claude Code reports a session's running total.
+findings and proposals it wrote, and its last morning brief (``evo_agents.hub.server.brief``). A night's cost is that of
+its runs (their ``usage``), each agent session once at its largest total, as Claude Code reports a session's running
+total.
 """
 
 from __future__ import annotations
@@ -306,6 +307,18 @@ class ReviewRunSummary(BaseModel):
     finished_at: datetime | None
 
 
+class BriefSummary(BaseModel):
+    """The project's last morning brief (``evo_agents.hub.server.brief``)."""
+
+    id: int
+    day: date = Field(description="the local day it was sent on, in the charter's time zone")
+    night: date = Field(description="the night it reports on")
+    sent_at: datetime
+    to: str = Field(description="the member it went to: the owner of the night shift's schedule")
+    notification_id: int | None = Field(description="the notification of kind notice (curator_brief) that carried it")
+    title: str
+
+
 CuratorState = Literal[CURATOR_STATES]
 
 
@@ -324,6 +337,7 @@ class CuratorStatus(BaseModel):
         "none; idle outside it; null without a charter",
     )
     open_proposals: int = Field(0, description="the project's proposals that wait for an answer, that you may read")
+    last_brief: BriefSummary | None = Field(None, description="the project's last morning brief; null before the first")
 
 
 class CuratorOverview(BaseModel):
@@ -756,6 +770,31 @@ async def _status(conn: AsyncConnection, access: ProjectAccess) -> CuratorStatus
         last_review_run=await _last_review(conn, access.project_id),
         state=None if night is None else curator_state(paused, night.active_run_id, night.in_window),
         open_proposals=(await open_proposals(conn, [access])).get(access.project_id, 0),
+        last_brief=await last_brief(conn, access.project_id),
+    )
+
+
+async def last_brief(conn: AsyncConnection, project_id: int) -> BriefSummary | None:
+    b, u = tables.curator_briefs, tables.users
+    query = (
+        select(b.c.id, b.c.day, b.c.night, b.c.created_at, u.c.login, b.c.notification_id, b.c.body["title"].astext)
+        .join_from(b, u, u.c.id == b.c.user_id)
+        .where(b.c.project_id == project_id)
+        .order_by(b.c.day.desc())
+        .limit(1)
+    )
+    row = (await conn.execute(query)).one_or_none()
+    if row is None:
+        return None
+    day, night, sent_at, login, notification_id, title = row[1:]
+    return BriefSummary(
+        id=row.id,
+        day=day,
+        night=night,
+        sent_at=sent_at,
+        to=login,
+        notification_id=notification_id,
+        title=title or f"Morning brief of {day.isoformat()}",
     )
 
 
