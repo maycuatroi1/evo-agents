@@ -145,6 +145,7 @@ class RunScope:
     project: str
     role: str  # the owner's role on the project when the request came, at most writer
     max_level: str  # the owner's grant's, when the request came
+    kind: str = "step"  # the run's kind: a judge run's agent reads the code graph alone (``mcp.JUDGE_TOOLS``)
 
 
 @dataclass(frozen=True)

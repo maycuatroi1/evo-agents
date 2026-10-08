@@ -51,6 +51,22 @@ waiting for review in them (``figures``) into ``.evo-run/worktree-figures.json``
 proposals with ``evo-agents worker finding|propose``, and the run ends done with the agent's summary: nothing is
 committed or pushed (``gitops.check_push`` refuses a review run), and the run's GitHub token reads only.
 
+A judge run (kind ``judge``, ``JudgeRun``) is the Curator's Judge of one change: its worktree is detached at the commit
+it judges (the pull request's head, else the tip of the change's branch on origin); the worker reads the diff from the
+merge base with origin's default branch, finds the signs of score hacking in it (``evo_agents.hub.judge.hack_signs``),
+reads the plan's verify commands and the project's hidden checks from the hub (GET /v1/worker/runs/{id}/judge, held in
+memory, never written to a file, an event or a log line), runs each of them in the worktree, and starts the Judge's
+agent, unless a sign already fails the change, on the hub's prompt and what it ran: exit codes alone for the hidden
+checks. The agent writes ``judge.VERDICT_FILE``; the worker posts the verdict (POST /v1/worker/runs/{id}/verdict) and
+ends the run done, committing and pushing nothing.
+
+A run of the Curator (``spec["curator"]``: a review run, a judge run, or a Builder, the plan run of a plan the Curator
+made) is watched: after each heartbeat the daemon compares each of its worktrees with the charter's protected paths, and
+its agent time and cost with its caps (``Run.watch``); a protected file changed, or a cap passed, stops the run, which
+fails naming why, and the hub tells its owner (notice run_failed). A Builder pushes its branch ``curator/...`` alone
+and never a default branch (``gitops.check_push``, kind ``curator``), only with a leased credential, and on GitLab with
+the push options that open a merge request into the default branch.
+
 A plan run (kind ``plan``, ``PlanRun``) does every step of a plan not done yet, in one session:
 
 1. ``leased``: the daemon takes the run's leases for all its repos, then makes the directory
@@ -91,7 +107,8 @@ from typing import TYPE_CHECKING
 
 import yaml
 
-from evo_agents.hub import curator, runs
+from evo_agents.hub import curator, judge, runs, tiers
+from evo_agents.hub.credentials import normalize_origin
 from evo_agents.worker import credentials, figures, gitops, interactive, orphans
 from evo_agents.worker.adapter import AgentEvent, AgentFinished, Outcome, RunContext
 from evo_agents.worker.checkouts import default_branch_of
@@ -354,6 +371,11 @@ class Run:
         self.summary: str | None = None
         self.outcome: Outcome | None = None
         budget = curator.budget_of(spec) or {}
+        self.budget = budget
+        found = spec.get("curator")
+        self.curator: dict | None = found if isinstance(found, dict) else None  # a run of the Curator: its role
+        self.watchdog_reason: str | None = None  # why the watchdog stopped the run
+        self.cost_seen = 0.0  # the session's cost so far, as the agent's usage events said it
         self.spent_usd = budget.get("spent_usd") or 0.0  # the cost of the agent's session so far
         self.spent_before = budget.get("spent_seconds") or 0.0  # agent time a parked run this one resumes used
         self._report_lock = asyncio.Lock()
@@ -381,6 +403,8 @@ class Run:
             "finished_at": None,
             "state": self.state,
         }
+        if self.curator is not None:  # what `evo-agents worker step` pushes with: a branch of the Curator alone
+            self.record["curator"] = {key: self.curator.get(key) for key in ("role", "branch", "forge", "change_id")}
         home.save_run(self.record)
 
     # Events
@@ -388,6 +412,11 @@ class Run:
     def event(self, kind: str, body: dict, at: datetime | None = None) -> None:
         """Spool an event of the run and write it to its log, every lease value masked."""
         at = at or _now()
+        if kind == "usage_update":  # the session's running cost, for the watchdog of a run of the Curator
+            cost = body.get("cost") if isinstance(body.get("cost"), dict) else {}
+            amount = cost.get("amount")
+            if isinstance(amount, (int, float)) and not isinstance(amount, bool):
+                self.cost_seen = max(self.cost_seen, float(amount))
         body = credentials.scrub(body)
         seq = self.spool.append(kind, body, at)
         if seq is not None:
@@ -715,6 +744,10 @@ class Run:
             error = f"it ran past its timeout of {self.timeout_s // 60} minutes"
             self.note(f"Run failed: {error}.")
             await self._end("failed", error=error, verify=self.verify or None)
+        elif reason == "watchdog":
+            error = f"the watchdog of the Curator's runs stopped it: {self.watchdog_reason}"
+            self.note(f"Run failed: {error}.", watchdog=self.watchdog_reason)
+            await self._end("failed", error=error)
         else:
             error = f"the worker {self.daemon.config.name} was stopped while the run was {self.state}"
             self.note(f"Run failed: {error}.")
@@ -1162,7 +1195,48 @@ class Run:
             "timeout": "the run reached its timeout",
             "gone": "the hub no longer holds the run for this worker",
             "shutdown": "the worker is stopping",
+            "watchdog": "the watchdog of the Curator's runs stopped it",
         }.get(reason, reason)
+
+    # The watchdog of a run of the Curator
+
+    def _watched(self) -> list[tuple[str, Path, str]]:
+        """(repo, worktree, the commit it started at) of each worktree of the run."""
+        if self.worktree is None or self.base is None or not self.repo:
+            return []
+        return [(self.repo, self.worktree, self.base)]
+
+    async def watch(self) -> str | None:
+        """For a run of the Curator, after a heartbeat: compare each worktree with the charter's protected paths, and
+        the agent time and cost with the run's caps; stop the run when one is passed (``watchdog_reason`` says why).
+        Why it stopped the run, or None."""
+        if self.curator is None or self.ended or self.stop_reason is not None:
+            return None
+        protected = [glob for glob in self.curator.get("protected_paths") or [] if isinstance(glob, str)]
+        why = None
+        for repo, worktree, base in self._watched():
+            if not protected or not worktree.is_dir():
+                continue
+            try:
+                paths = await gitops.changed_paths(worktree, base)
+            except gitops.GitError as exc:
+                log.warning("the watchdog could not read a worktree", extra={"run_id": self.id, "error": str(exc)})
+                continue
+            hit = next(((path, glob) for path in paths for glob in protected if tiers.matches(glob, repo, path)), None)
+            if hit is not None:
+                why = f"{repo}:{hit[0]} is protected by the charter ({hit[1]})"
+                break
+        cap_seconds, cap_usd = self.budget.get("max_seconds"), self.budget.get("max_usd")
+        if why is None and cap_seconds is not None and self.spent_before + self.agent_seconds() > cap_seconds:
+            why = f"the run used more than its time cap of {int(cap_seconds) // 60} minutes of agent time"
+        if why is None and cap_usd is not None and max(self.cost_seen, self.spent_usd) > cap_usd:
+            why = f"the run cost more than its cost cap of {curator.money(cap_usd)}"
+        if why is None or self.ended or self.stop_reason is not None:
+            return None
+        self.watchdog_reason = why
+        log.warning("the watchdog stops a run of the Curator", extra={"run_id": self.id, "why": why})
+        self.request_stop("watchdog")
+        return why
 
     async def _interrupt_agent(self) -> None:
         if self.adapter is None or not self.agent_running:
@@ -1222,12 +1296,12 @@ class Run:
             )
         return results
 
-    async def _shell(self, command: str, seconds: float) -> tuple[int, str]:
-        """(exit code, the end of its output) of ``command`` in the worktree; Stopped when the run is asked to stop
-        or runs out of time first, with the command's process group killed."""
+    async def _shell(self, command: str, seconds: float, cwd: Path | None = None) -> tuple[int, str]:
+        """(exit code, the end of its output) of ``command`` in the worktree (or ``cwd``); Stopped when the run is
+        asked to stop or runs out of time first, with the command's process group killed."""
         proc = await asyncio.create_subprocess_shell(
             command,
-            cwd=str(self.worktree),
+            cwd=str(cwd or self.worktree),
             stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
@@ -1395,6 +1469,7 @@ class PlanRun(Run):
         self.parked = False
         self.resume_of = int(spec["resume_of_run_id"]) if spec.get("resume_of_run_id") else None
         self.session_id: str | None = spec.get("session_id") or None
+        self.targets: dict[str, str] = {}  # a Builder's repo -> the default branch its merge request goes into
         self.record.update({"dir": None, "repos": [], "resume_of_run_id": self.resume_of})
         daemon.home.save_run(self.record)
 
@@ -1464,6 +1539,14 @@ class PlanRun(Run):
         body = plan.get("body") if isinstance(plan, dict) else None
         return body if isinstance(body, dict) else {}
 
+    def _watched(self) -> list[tuple[str, Path, str]]:
+        return [(name, workspace.worktree, workspace.base) for name, workspace in self.workspaces.items()]
+
+    @property
+    def builder(self) -> bool:
+        """Whether this plan run is a Builder of the Curator, which pushes its branch curator/... alone."""
+        return self.curator is not None and self.curator.get("role") == "builder"
+
     def _save_workspaces(self) -> None:
         self.record["dir"] = str(self.directory) if self.directory is not None else None
         self.record["repos"] = [workspace.to_record() for workspace in self.workspaces.values()]
@@ -1526,10 +1609,14 @@ class PlanRun(Run):
             remote_head = await gitops.remote_default_branch(checkout)
             hub_default = default_branch_of(self.daemon.config, self.project, name)
             protected = tuple(sorted({item for item in (remote_head, hub_default, *gitops.PROTECTED) if item}))
+            kind = "curator" if self.builder else "plan"
             try:
-                default = gitops.check_push(branch, protected, kind="plan", plan_branch=plan_branch)
+                default = gitops.check_push(branch, protected, kind=kind, plan_branch=plan_branch)
             except gitops.PushRefused as exc:
                 raise RunFailed(f"the run's branch for {name}: {exc}") from None
+            if self.builder:
+                self.targets[name] = remote_head or hub_default or "main"
+                self.record.setdefault("curator", {})["targets"] = dict(self.targets)
             start = base = None
             for ref in (f"refs/remotes/origin/{branch}", f"refs/heads/{branch}", "refs/remotes/origin/HEAD", "HEAD"):
                 base = await gitops.rev(checkout, ref)
@@ -1808,15 +1895,22 @@ class PlanRun(Run):
                     "branches, and the worker does not push it"
                 )
             self._check()
+            options = self._push_options(name)
+            if self.builder and self._forge_origin(name) and not self.credentials.covers(name):
+                raise RunFailed(
+                    f"{name}: a run of the Curator pushes only with the credential the hub leased it, and no lease "
+                    "covers its origin: this machine's own credentials are not used"
+                )
 
-            async def push(path=path, workspace=workspace, name=name) -> gitops.Pushed:
+            async def push(path=path, workspace=workspace, name=name, options=options) -> gitops.Pushed:
                 return await gitops.push(
                     path,
                     workspace.branch,
                     protected=workspace.protected,
-                    kind="plan",
+                    kind="curator" if self.builder else "plan",
                     plan_branch=named.get(name),
                     env=self.git_env(),
+                    options=options,
                 )
 
             try:
@@ -1840,6 +1934,18 @@ class PlanRun(Run):
             else:
                 self.note(f"{workspace.branch} of {name} on origin is at {pushed.head[:12]} already: nothing to push.")
         return total
+
+    def _forge_origin(self, name: str) -> bool:
+        """Whether the origin of ``name`` is on a forge (https or SSH), which takes a credential; a path on this
+        machine takes none."""
+        urls = self.credentials.origins.get(name) or []
+        return any(normalize_origin(url).startswith("https://") for url in urls)
+
+    def _push_options(self, name: str) -> list[str]:
+        """The push options of a Builder's push to GitLab, which open its merge request; none otherwise."""
+        if not self.builder or self.curator.get("forge") != "gitlab":
+            return []
+        return judge.gitlab_push_options(self.targets.get(name) or "main", self.title)
 
     async def _notice(self, name: str, pushed: gitops.Pushed) -> None:
         """Tell the run's owner of a push to a default branch; a notice the hub does not take is logged."""
@@ -2011,10 +2117,220 @@ class ReviewRun(PlanRun):
         return b""
 
 
+class JudgeRun(ReviewRun):
+    """A judge run (kind ``judge``, see the module's docstring): the change at the commit it judges, its diff read for
+    signs of score hacking, the plan's verify commands and the project's hidden checks run in its worktree, the Judge's
+    agent on what they found, and the verdict posted; nothing committed or pushed."""
+
+    def __init__(self, daemon: Daemon, spec: dict):
+        super().__init__(daemon, spec)
+        change = self.curator or {}
+        self.title = spec.get("title") or f"judge of change #{change.get('change_id')}"
+        self.head: str | None = None
+        self.merge_base: str | None = None
+
+    async def _steps(self) -> None:
+        spec, change = self.spec, self.curator or {}
+        repos = [entry for entry in spec.get("repos") or [] if isinstance(entry, dict)]
+        self.note(
+            f"Run #{self.id} claimed by worker {self.daemon.config.name}: the Judge of the Curator's change "
+            f"#{change.get('change_id')} of project {self.project}, {self.runtime}, timeout {self.timeout_s // 60} min "
+            "of agent time. It reads and judges: nothing is committed or pushed, and the Builder's transcript is not "
+            "read."
+        )
+        cls = self.daemon.adapters.get(self.runtime)
+        if cls is None:
+            raise RunFailed(f"this worker has no adapter for {self.runtime}")
+        if len(repos) != 1 or not repos[0].get("repo"):
+            raise RunFailed("a judge run judges a change of one repo")
+        name = repos[0]["repo"]
+        await self._take_credentials([name])
+        self._check()
+        await self._prepare_judge(name, change)
+        self._check()
+        workspace = self.workspaces[name]
+        diff = await gitops.diff_text(workspace.worktree, self.merge_base, self.head)
+        inputs = await self._inputs()
+        hidden = [item for item in inputs.get("hidden_checks") or [] if isinstance(item, str)]
+        verify_commands = [item for item in inputs.get("verify") or [] if isinstance(item, str)]
+        protected = [item for item in inputs.get("protected_paths") or [] if isinstance(item, str)]
+        signs = judge.hack_signs(
+            judge.parse_diff(diff), repo=name, protected=protected, verify_commands=verify_commands
+        )
+        if signs:
+            kinds = ", ".join(sorted({item["kind"] for item in signs}))
+            self.note(
+                f"The diff shows signs of score hacking ({kinds}): the change fails, and its Judge does not start."
+            )
+        verify = await self._run_checks(workspace.worktree, verify_commands)
+        results = await self._run_hidden(workspace.worktree, hidden)
+        hidden.clear()  # the commands go: only their exit codes stay
+        inputs.clear()
+        verdict, reasons = None, None
+        if not signs:
+            prompt = runs.clip(self._prompt() + judge.results_text(verify, results, signs), runs.MAX_PROMPT_BYTES)
+            await self._plan_turns(cls, prompt, None)
+            verdict, reasons = self._read_verdict()
+        body = {
+            "verdict": verdict,
+            "reasons": reasons,
+            "head_sha": self.head,
+            "base_sha": self.merge_base,
+            "verify": verify,
+            "hidden": results,
+            "signs": signs,
+        }
+        try:
+            answer = await self.daemon.hub.verdict(self.id, body)
+        except HubProblem as exc:
+            raise RunFailed(f"the hub did not take the Judge's verdict: {exc}") from None
+        passed = answer.get("passed") if isinstance(answer, dict) else None
+        self.summary = f"The Judge {'passed' if passed else 'failed'} the change" + (f": {reasons}" if reasons else ".")
+        self.note(self.summary, passed=passed)
+        await self._ensure_running()
+        await self._report("verifying")
+        self._check()
+        usage = self.outcome.usage if self.outcome else None
+        await self._end("done", summary=_cut(self.summary, MAX_SUMMARY_CHARS), usage=usage)
+
+    async def _inputs(self) -> dict:
+        """What the hub gives the Judge to read; held in memory alone."""
+        try:
+            found = await self.daemon.hub.judge_inputs(self.id)
+        except HubProblem as exc:
+            raise RunFailed(f"the hub did not give the Judge its inputs: {exc}") from None
+        return found if isinstance(found, dict) else {}
+
+    async def _prepare_judge(self, name: str, change: dict) -> None:
+        """The run's directory with a worktree of ``name`` detached at the commit to judge, and the merge base with
+        origin's default branch, which the diff starts at."""
+        self.directory = self.daemon.home.worktree_path(self.project, self.id)
+        if self.directory.exists():
+            raise RunFailed(f"{self.directory} exists already; remove it and queue the judge run again")
+        self.directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+        self.worktree = self.directory
+        checkout = self.daemon.checkout_for(self.project, name)
+        if checkout is None:
+            raise RunFailed(f"this worker has no checkout of {self.project}/{name}")
+        folder = gitops.folder_name(name)
+        path = self.directory / folder
+        async with self.daemon.repo_lock(checkout):
+            if not await gitops.has_remote(checkout):
+                raise RunFailed(f"the checkout at {checkout} has no remote named origin to fetch from")
+            self.note(f"Fetching origin in {checkout}.")
+            try:
+                await gitops.fetch(checkout, env=self.git_env())
+            except gitops.GitError as exc:
+                raise RunFailed(f"git fetch in {checkout} failed: {exc}") from None
+            wanted = change.get("head_sha")
+            branch = change.get("branch")
+            head = await gitops.rev(checkout, wanted) if judge.is_sha(wanted) else None
+            if head is None and wanted:
+                raise RunFailed(f"origin of {name} has no commit {wanted[:12]}: the pull request's head is not there")
+            if head is None and branch:
+                head = await gitops.rev(checkout, f"refs/remotes/origin/{branch}")
+            if head is None:
+                raise RunFailed(f"origin of {name} has no branch {branch}: there is nothing to judge")
+            remote_head = await gitops.remote_default_branch(checkout)
+            base_branch = (
+                change.get("base_branch")
+                or remote_head
+                or default_branch_of(self.daemon.config, self.project, name)
+                or "main"
+            )
+            target = await gitops.rev(checkout, f"refs/remotes/origin/{base_branch}")
+            base = await gitops.merge_base(checkout, target, head) if target else None
+            if base is None:
+                raise RunFailed(f"{name}: no merge base of {head[:12]} with origin's {base_branch}")
+            try:
+                await gitops.add_detached_worktree(checkout, path, head)
+            except gitops.GitError as exc:
+                raise RunFailed(f"cannot make the worktree {path}: {exc}") from None
+        self.head, self.merge_base = head, base
+        self.workspaces[name] = gitops.Workspace(
+            repo=name,
+            branch=branch or "HEAD",
+            plan_branch=None,
+            checkout=checkout,
+            worktree=path,
+            local_branch="HEAD",
+            base=head,
+            protected=(),
+        )
+        (self.directory / runs.RESULT_DIR).mkdir(mode=0o700, exist_ok=True)
+        self._save_workspaces()
+        self.note(
+            f"Worktree {path} of {name}, detached at {head[:12]}, the commit judged; its diff starts at {base[:12]}, "
+            f"the merge base with origin's {base_branch}.",
+            worktree=str(path),
+        )
+
+    async def _run_checks(self, cwd: Path, commands: list[str]) -> list[dict]:
+        """Run each verify command of the plan in the worktree, as the Builder's were run: each one's exit code."""
+        results = []
+        if commands:
+            self.note(f"Running the {len(commands)} verify command(s) of the plan.")
+        for command in commands:
+            self._check()
+            started = self.loop.time()
+            code, output = await self._shell(command, self.deadline - started, cwd)
+            duration_ms = int((self.loop.time() - started) * 1000)
+            results.append({"command": command, "exit_code": code, "duration_ms": duration_ms})
+            self.event(
+                "system",
+                {
+                    "text": f"verify: `{_cut(command, 200)}` exited {code} after {duration_ms} ms",
+                    "command": command,
+                    "exit_code": code,
+                    "duration_ms": duration_ms,
+                    "output": output,
+                },
+            )
+        return results
+
+    async def _run_hidden(self, cwd: Path, checks: list[str]) -> list[dict]:
+        """Run each hidden check of the project in the worktree: each one's place and exit code alone. Neither the
+        command nor its output reaches an event, a log line or a file."""
+        results = []
+        for index, command in enumerate(checks, start=1):
+            self._check()
+            started = self.loop.time()
+            code, _ = await self._shell(command, self.deadline - started, cwd)
+            duration_ms = int((self.loop.time() - started) * 1000)
+            results.append({"index": index, "exit_code": code, "duration_ms": duration_ms})
+            self.note(f"hidden check {index} of {len(checks)} exited {code} after {duration_ms} ms")
+        return results
+
+    def _read_verdict(self) -> tuple[str | None, str | None]:
+        path = self.directory / judge.VERDICT_FILE
+        if path.is_symlink() or not path.is_file():
+            self.note(f"The Judge wrote no {judge.VERDICT_FILE}: it gave no verdict, which fails the change.")
+            return None, None
+        try:
+            if path.stat().st_size > RESULT_MAX_BYTES:
+                raise ValueError(f"it is over {RESULT_MAX_BYTES} bytes")
+            verdict, reasons = judge.read_verdict(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            verdict, reasons = None, f"{judge.VERDICT_FILE} was not read ({exc})"
+        if verdict is None:
+            self.note(f"{reasons}: no verdict, which fails the change.")
+            return None, None
+        return verdict, reasons or None
+
+    def _prompt(self) -> str:
+        """The hub's prompt, with the worktree's folder when it is not named as its repo."""
+        prompt = self.spec.get("prompt") or ""
+        moved = [f"- {name}: {ws.worktree.name}/" for name, ws in self.workspaces.items() if ws.worktree.name != name]
+        if moved:
+            prompt += "\nWorktree folders that are not named as their repo:\n" + "\n".join(moved) + "\n"
+        return prompt
+
+
 WORKTREE_FIGURES = "worktree-figures.json"  # in .evo-run/ of a review run's directory
 
 
 def run_class(spec: dict) -> type[Run]:
-    """The class of the run ``spec`` claims: PlanRun for kind plan, ReviewRun for kind review, Run otherwise."""
+    """The class of the run ``spec`` claims: PlanRun for kind plan, ReviewRun for kind review, JudgeRun for kind
+    judge, Run otherwise."""
     kind = spec.get("kind")
-    return PlanRun if kind == "plan" else ReviewRun if kind == "review" else Run
+    return {"plan": PlanRun, "review": ReviewRun, "judge": JudgeRun}.get(kind, Run)

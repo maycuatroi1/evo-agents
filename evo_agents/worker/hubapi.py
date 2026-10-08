@@ -196,6 +196,15 @@ class WorkerHub:
     async def proposal(self, run_id: int, body: dict) -> dict:
         return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/proposals", body)
 
+    # A judge run: what it reads, and its verdict. The answer of judge_inputs holds the project's hidden checks, which
+    # no caller writes to a file, an event or a log line.
+
+    async def judge_inputs(self, run_id: int) -> dict:
+        return await self.call("GET", f"/v1/worker/runs/{int(run_id)}/judge")
+
+    async def verdict(self, run_id: int, body: dict) -> dict:
+        return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/verdict", body)
+
     async def uploads(self, run_id: int, items: list[dict]) -> dict:
         return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/uploads", {"items": items})
 

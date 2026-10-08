@@ -30,11 +30,13 @@ review run with what it wrote, and whether curator.collect counted its figures.
 night_shift, under its row's lock (a schedule another run of the job holds is passed over), it cancels its queued runs
 when it is paused or outside its window, and otherwise queues at most one run (``gate_of`` says when it may): the
 night's review run first, when the night has none yet and the worker runs review runs
-(``evo_agents.hub.server.collect``), else a plan run, as ``evo_agents.hub.curator`` says, audited as curator.dispatch
-with the owner as actor and no token. GET .../curator also names the last review run of the project, with how many
-findings and proposals it wrote, and its last morning brief (``evo_agents.hub.server.brief``). A night's cost is that of
-its runs (their ``usage``), each agent session once at its largest total, as Claude Code reports a session's running
-total.
+(``evo_agents.hub.server.collect``), else the judge run of a change of the Curator that waits for one, else the
+Builder of a change the Curator planned (``evo_agents.hub.server.changes``), else a plan run of the charter's
+night_plans, as ``evo_agents.hub.curator`` says, audited as curator.dispatch with the owner as actor and no token.
+GET .../curator also names the last review run of the project, with how many findings and proposals it wrote, and its
+last morning brief (``evo_agents.hub.server.brief``). A night's cost is that of its runs (their ``usage``), each agent
+session once at its largest total, as Claude Code reports a session's running total. The charter also names what the
+Curator's runs get of the owner's secrets (``git_secret``, ``env_secrets``): no other secret is leased to them.
 """
 
 from __future__ import annotations
@@ -71,6 +73,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import curator, review, runs, tables
 from evo_agents.hub.access import has_role
+from evo_agents.hub.credentials import SECRET_NAME
 from evo_agents.hub.db import one_of
 from evo_agents.hub.server import audit
 from evo_agents.hub.server import plans as plan_routes
@@ -109,6 +112,7 @@ TimeOfDay = Annotated[str, Field(pattern=curator.TIME_OF_DAY, description="HH:MM
 PathGlob = Annotated[str, Field(min_length=1, max_length=curator.MAX_PATH_CHARS, pattern=r"^[^\x00-\x1f\x7f]+$")]
 Check = Annotated[str, Field(min_length=1, max_length=curator.MAX_CHECK_CHARS, pattern=r"^[^\x00]+$")]
 PlanIdentifier = Annotated[str, Field(pattern=plan_routes.PLAN_ID)]
+SecretName = Annotated[str, Field(pattern=f"^{SECRET_NAME.pattern}$", description="a secret of the schedule's owner")]
 
 
 # Models
@@ -219,6 +223,16 @@ class CharterBody(BaseModel):
     reviewer: Role = Field(default_factory=Role)
     builder: Role = Field(default_factory=Role)
     judge: Judge = Field(default_factory=Judge)
+    git_secret: SecretName | None = Field(
+        None,
+        description="the owner's git secret the Curator's runs use for origins not on GitHub (GitLab, where it should "
+        "hold the Developer role); null: none, so no Builder runs there",
+    )
+    env_secrets: list[SecretName] = Field(
+        default_factory=list,
+        max_length=curator.MAX_ENV_SECRETS,
+        description="the owner's env secrets the Curator's runs get, by name; they get no other",
+    )
 
     @field_validator("goals")
     @classmethod
@@ -229,7 +243,7 @@ class CharterBody(BaseModel):
             raise ValueError(f"goal ids are named once each: {', '.join(repeated)}")
         return goals
 
-    @field_validator("night_plans", "protected_paths")
+    @field_validator("night_plans", "protected_paths", "env_secrets")
     @classmethod
     def _once(cls, values: list[str]) -> list[str]:
         return list(dict.fromkeys(values))
@@ -1299,6 +1313,7 @@ async def gate_of(conn: AsyncConnection, due, *, figures_first: bool = False):
 
 async def _fire(conn: AsyncConnection, due) -> str:
     """What schedule ``due`` does now, in the caller's transaction; a word for the job's summary."""
+    from evo_agents.hub.server.changes import queue_builder, queue_judge  # it queues runs through this module
     from evo_agents.hub.server.collect import queue_review  # it queues runs through this module
 
     word, gate = await gate_of(conn, due)
@@ -1306,6 +1321,10 @@ async def _fire(conn: AsyncConnection, due) -> str:
         return word
     if await queue_review(conn, due, gate) is not None:
         return "review"
+    if await queue_judge(conn, due, gate) is not None:
+        return "judge"
+    if await queue_builder(conn, due, gate) is not None:
+        return "builder"
     night, worker, budget = gate.night, gate.worker, gate.budget
     plan, why = await _next_plan(conn, gate.access, due.body, worker)
     if plan is None:

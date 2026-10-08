@@ -39,6 +39,7 @@ FIRE_SCHEDULES = "hub.fire_schedules"  # every minute: the night shift of each c
 PRUNE_DIGESTS = "hub.prune_digests"  # daily: session digests not pushed again for 90 days
 CURATOR_COLLECT = "curator.collect"  # every minute: each charter's night figures and its review run, in its window
 CURATOR_BRIEF = "curator.brief"  # every minute: the morning brief of each charter, at its brief_at
+CURATOR_CHANGES = "curator.changes"  # every minute: the Curator's pull requests opened, judged, merged or left open
 
 
 def kg_lock(project: str) -> str:

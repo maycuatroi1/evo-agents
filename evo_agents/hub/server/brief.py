@@ -10,8 +10,9 @@ included, through the outbox (``notifications.notify``). The brief holds:
 
 - the runs the night shift queued that night, by how they ended, and what they cost against the night's budget;
 - the night's review run, with the findings and proposals it wrote;
-- the merges into a default branch the night's runs reported (merge_default_branch notices), and the project's runs in
-  review, which wait for the owner to approve them;
+- the merges into a default branch the night's runs reported (merge_default_branch notices, the hub's merges of the
+  Curator's pull requests among them), and what waits for the owner to merge or approve it: the project's runs in
+  review, and the Curator's pull requests (or merge requests) still open, each named by its Builder's run and its link;
 - the decisions of the project that wait for the owner's answer, and the proposals that wait for an admin's, with how
   many of them are in the owner's Inbox;
 - the worker on duty: its last heartbeat, and whether it is online, so a machine that stopped shows up in the morning.
@@ -118,15 +119,36 @@ async def _merged(conn: AsyncConnection, run_ids: list[int]) -> list[dict]:
     return merged
 
 
+WAITING_CHANGES = ("judge_pending", "judging", "judged", "open")  # a Curator change whose pull request is still open
+
+
 async def _awaiting(conn: AsyncConnection, project_id: int) -> tuple[int, list[dict]]:
-    """The project's runs in review, which wait for their owner to approve them: how many, and the first few."""
-    r = tables.runs
+    """What waits for the owner: the project's runs in review, to approve, and the Curator's pull requests (merge
+    requests on GitLab) still open, to merge; how many, and the first few, runs first. A pull request is named by its
+    Builder's run, with ``pull_request`` its link (null for a merge request, whose link the hub does not know)."""
+    r, c = tables.runs, tables.curator_changes
     where = (r.c.project_id == project_id, r.c.state == "review")
     total = (await conn.execute(select(func.count()).select_from(r).where(*where))).scalar_one()
     query = select(r.c.id, r.c.plan_id, r.c.title).where(*where).order_by(r.c.id).limit(MAX_LISTED)
-    return total, [
+    listed = [
         {"run_id": row.id, "plan_id": row.plan_id, "title": row.title} for row in (await conn.execute(query)).all()
     ]
+    open_prs = (c.c.project_id == project_id, c.c.state.in_(WAITING_CHANGES))
+    total += (await conn.execute(select(func.count()).select_from(c).where(*open_prs))).scalar_one()
+    changes = select(
+        c.c.builder_run_id, c.c.plan_id, c.c.repo, c.c.branch, c.c.pr_number, c.c.pr_url, c.c.tier, c.c.state
+    )
+    for row in (await conn.execute(changes.where(*open_prs).order_by(c.c.id).limit(MAX_LISTED))).all():
+        what = f"pull request #{row.pr_number}" if row.pr_number else f"merge request of {row.branch}"
+        listed.append(
+            {
+                "run_id": row.builder_run_id,
+                "plan_id": row.plan_id,
+                "title": f"{what} of {row.repo} (tier {row.tier}, {row.state.replace('_', ' ')})",
+                "pull_request": row.pr_url,
+            }
+        )
+    return total, listed[:MAX_LISTED]
 
 
 async def _decisions(conn: AsyncConnection, project_id: int, owner_id: int) -> tuple[int, list[dict]]:
@@ -258,9 +280,15 @@ def compose(project: str, facts: dict, zone: str) -> tuple[str, str]:
     )
     blocks.append(f"Merged into a default branch: {merged or 'nothing'}.")
     awaiting = facts["awaiting_merge"]
-    if awaiting["total"]:
-        shown = ", ".join(f"#{item['run_id']}" for item in awaiting["listed"])
-        blocks.append(f"Waiting for your approval: {_count(awaiting['total'], 'run')} in review ({shown}).")
+    in_review = [item for item in awaiting["listed"] if "pull_request" not in item]
+    pulls = [item for item in awaiting["listed"] if "pull_request" in item]
+    if in_review:
+        shown = ", ".join(f"#{item['run_id']}" for item in in_review)
+        count = awaiting["total"] - len(pulls)
+        blocks.append(f"Waiting for your approval: {_count(count, 'run')} in review ({shown}).")
+    if pulls:
+        shown = "; ".join(f"{item['title']}: {item['pull_request'] or 'on GitLab'}" for item in pulls)
+        blocks.append(f"The Curator's changes waiting for you to merge them: {shown}.")
     blocks.append(f"Decisions waiting for your answer: {decisions['open']}.")
     if decisions["listed"]:
         blocks.append(

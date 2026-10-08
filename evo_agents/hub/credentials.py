@@ -7,7 +7,12 @@ environment as ``env_var``; kind ``git`` answers git's credential requests for o
 ``username`` and the value as password. A secret is bound to projects (and, optionally, to workers); a run of one of
 those projects, on one of those workers, gets a lease of it. The hub also leases tokens it makes itself: provider
 ``github-app`` is an installation token of the hub's GitHub App, for the run's repos on github.com only, that lives an
-hour and is revoked when the run ends; a review run's reads only (``github_permissions``).
+hour and is revoked when the run ends; a review run's and a judge run's read only (``github_permissions``). A run of
+the Curator (a review run, a judge run, or a plan run of a plan the Curator made, ``evo_agents.hub.judge``) gets its
+token from a second App, the Curator's own (EVO_HUB_CURATOR_APP_ID and EVO_HUB_CURATOR_APP_PRIVATE_KEY), which the
+rulesets of the repos keep off their default branches, and never from the first: without the Curator's App it gets
+none. On other forges it gets the one git secret the charter names (``git_secret``) and the env secrets the charter
+lists (``env_secrets``), none of the owner's others.
 
 Origins are compared in one form: ``normalize_origin`` turns ``git@host:path``, ``ssh://git@host/path`` and
 ``https://host/path.git`` into ``https://host/path``, so a secret whose url_prefix is https also covers a repo whose
@@ -37,11 +42,12 @@ DENIED_ENV_PREFIXES = ("EVO_", "GIT_", "LD_", "DYLD_", "PYTHON")
 GITHUB_HOST = "github.com"
 GITHUB_PERMISSIONS = {"contents": "write", "metadata": "read"}  # all an installation token of a run may do
 GITHUB_READ_PERMISSIONS = {"contents": "read", "metadata": "read"}  # all the token of a review run may do: read
-READ_ONLY_KINDS = ("review",)  # the kinds of run whose GitHub token reads only (runs.RUN_KINDS)
+READ_ONLY_KINDS = ("review", "judge")  # the kinds of run whose GitHub token reads only (runs.RUN_KINDS)
 
 
 def github_permissions(run_kind: str) -> dict[str, str]:
-    """What the GitHub token of a run of ``run_kind`` may do: read only for a review run, which pushes nothing."""
+    """What the GitHub token of a run of ``run_kind`` may do: read only for a review run and a judge run, which push
+    nothing."""
     return dict(GITHUB_READ_PERMISSIONS if run_kind in READ_ONLY_KINDS else GITHUB_PERMISSIONS)
 
 

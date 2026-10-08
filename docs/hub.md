@@ -294,7 +294,9 @@ describes. Going back to 0009 deletes the plan runs with their decisions and not
 (Memories, skills and knowledge graphs, below); going back to 0012 drops both. Schema 0014 adds the review run (a run
 of kind `review`, on no plan: its `plan_id` and `plan_revision` are null, and the API shows its `plan_id` empty),
 `workers.run_kinds`, `curator_figures`, `findings`, `proposals` and the notifications of kind `proposal` (The
-Curator's review, below); going back to 0013 deletes the review runs and the notifications of proposals.
+Curator's review, below); going back to 0013 deletes the review runs and the notifications of proposals. Schema 0017
+adds the judge run (a run of kind `judge`), `curator_changes` and `curator_repo_checks` (The Curator's changes,
+below); going back to 0016 deletes the judge runs and drops the two tables.
 
 The daemon on the member's machine is the `evo-agents worker` command group, which needs the `worker` extra
 (`uv tool install 'evo-ak[worker]'`). It is not `evo-agents hub worker`, the hub's own job worker (see Worker and
@@ -450,8 +452,8 @@ how many of the project's proposals wait for an answer; `GET /v1/me/overview` sa
 charter (`projects[].curator`). `GET .../curator/nights` lists the latest nights (14 by default, up to 90): the runs
 the night shift queued for each by how they stand, their cost, the night's review run with what it wrote, and whether
 the night's figures were counted. `proposal list` (`GET .../curator/proposals`) answers `counts` with its proposals:
-what each state, tier and lens would list with the other filters applied. Accepting a proposal records the answer;
-turning it into a plan of the night shift comes later in the curator-agent plan.
+what each state, tier and lens would list with the other filters applied. Accepting a proposal of tier 0 or 1 also
+makes it a plan of the night shift (The Curator's changes, below).
 
 The web shows the same under each project's Curator (`/p/{project}/curator`): the night now and the nights before,
 the schedule and Pause or Resume, the proposals with their filters, a proposal's evidence (the run's log, the digest's
@@ -469,6 +471,52 @@ heartbeat, so a machine that stopped shows up in the morning. The brief goes out
 on every channel the owner turned on, Telegram included (`docs/notifications.md`). A brief the hub could not send
 within three hours of `brief_at` waits for the next day. `curator_briefs` keeps each brief with what it said, and `hub
 curator status` names the last one (`last_brief`).
+
+## The Curator's changes
+
+Accepting a proposal of tier 0 or 1 makes its draft plan the Curator's plan on the hub, in the same transaction, as
+the admin who accepted it (schema 0017, `evo_agents/hub/server/changes.py`, `evo_agents/hub/judge.py`): the plan
+`curator-<proposal>-<slug>`, in the one repo the proposal names, every step pending, on the branch
+`curator/<proposal>-<slug>`, and a change of the Curator that says where it stands. A draft that names several repos,
+or a repo without an origin, becomes no plan: its change stays `open` with the reason. A write of a Curator's plan that
+names another repo or branch, or changes a step's verify or acceptance, is 409, and no member dispatches its steps or a
+plan run of it (409): the night shift alone runs it.
+
+Each night, after its review run, the night shift queues the judge run of a change waiting for one, else the Builder
+of a planned change: a plan run of its plan, pinned to the worker on duty, with the night's caps. A change on GitHub
+gets a Builder only once the hub checked, within 2 days, that a ruleset keeps the Curator's App off the repo's default
+branch; one on GitLab only once the charter names the owner's git secret for it (`git_secret`). The Builder's GitHub
+token is the Curator's App's (`docs/credentials.md`); the Builder and the Judge of a change never run at once.
+
+When the Builder ends done with every step of its plan done, the job `curator.changes` opens its pull request on
+GitHub with the workers' App (on GitLab the push opened the merge request) and reads its files for the signs of score
+hacking (`judge.hack_signs`): an assertion removed, a skip or xfail added, a threshold of a test changed, a plan's
+verify or a file it runs changed, CI or the configuration of lint and tests changed, a lint warning silenced, `__eq__`
+overloaded, an exit in a test, a protected path of the charter touched. A sign fails the change and puts its proposal
+at tier 3. Otherwise the night shift queues its judge run, which reads the proposal, the diff, the plan's verify and the
+project's hidden checks (`docs/workers.md`, A judge run on the machine), never the Builder's transcript, on Codex when
+the project's policy declares a sink for Codex (an id `codex@...`) that clears the change's label and the worker has
+it, else on Claude Code with a model other than the Builder's. The change passes only when the Judge's agent passed it,
+every verify command and hidden check ran and exited 0, the worker found no sign either, and the commit judged is the
+pull request's head. The hub writes the verdict on the pull request as a check run of the workers' App,
+`evo-agents Judge`, and merges the pull request with the workers' App, at the head the Judge passed, only when the
+change is tier 0, tier 0 is in the charter's `auto_merge`, the repo's ruleset still keeps the Curator off (checked
+again then), the pull request is open into the default branch, its files show no sign and no protected path, and CI is
+green (every check run but the Judge's ended success, neutral or skipped, the commit statuses success, and at least
+one of them). It waits while CI runs, up to 6 hours. Any other change, tier 1, a GitLab merge request, or a refusal,
+stays open for its owner with the reason; the morning brief lists it with the runs that wait in review.
+
+```sh
+evo-agents hub curator changes                        # what each accepted proposal became: plan, branch, PR, verdict
+evo-agents hub curator protection                     # the project's repos and the last check of their ruleset
+evo-agents hub curator protection --check evo-agents  # check one now, with the Curator's App; an admin of the project
+```
+
+`GET /v1/projects/{p}/curator/changes` and `GET .../curator/protection` are for readers of the project, `POST
+.../curator/protection/{repo}/check` for its admins (audited as curator.protection). The hub checks again, once a day,
+every ruleset it checked before. A judge run reads its inputs with `GET /v1/worker/runs/{id}/judge`, which no other
+run and no other token reads, and posts its verdict with `POST /v1/worker/runs/{id}/verdict`; a worker token gets 403
+on the charter's routes, as on every route of a project.
 
 ## Memories, skills and knowledge graphs
 
@@ -587,6 +635,9 @@ Postgres database; there is no separate broker. The api only defers jobs. Jobs:
   schedule the morning brief of the night (a notice `curator_brief`), once a day: the night's runs and cost, its
   review run, merges, runs waiting for approval, open decisions and proposals, and the last heartbeat of the worker on
   duty (`evo_agents.hub.server.brief`).
+- `curator.changes`, every minute: the Curator's changes move on: their pull requests opened and read for signs of
+  score hacking, the Judge's check runs written, the tier 0 ones merged when everything allows it and the others left
+  open for their owner; and the rulesets checked again once a day (The Curator's changes, above).
 - `hub.prune_digests`, daily at 04:23: deletes the session digests not pushed for 90 days.
 - `hub.cleanup_uploads`, hourly: removes uploads nobody committed within 24 hours.
 - `hub.prune_jobs`, daily: removes finished jobs older than 14 days.

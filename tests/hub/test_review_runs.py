@@ -817,9 +817,9 @@ def test_the_figures_route_reads_the_latest_night_or_the_one_asked(review):
 
 @pytest.fixture
 def app_review(hub_db, tmp_path, github, app_key):  # noqa: F811
-    """test_credentials_api's project, with repos on GitHub and GitLab, its hub holding the secrets key and the GitHub
-    App; owner an admin with a charter whose worker on duty, mac-mini, takes review runs."""
-    config = credentials_config(hub_db, tmp_path, github, app_key)
+    """test_credentials_api's project, with repos on GitHub and GitLab, its hub holding the secrets key, the GitHub
+    App and the Curator's App; owner an admin with a charter whose worker on duty, mac-mini, takes review runs."""
+    config = credentials_config(hub_db, tmp_path, github, app_key, curator=True)
     with TestClient(create_app(config), base_url="https://hub.test") as client:
         headers = credential_members(client, github)
         grant(client, headers, "owner", "admin")
@@ -831,7 +831,7 @@ def app_review(hub_db, tmp_path, github, app_key):  # noqa: F811
 
 def test_the_github_token_of_a_review_run_reads_only(app_review):
     client, github, worker = app_review.client, app_review.github, app_review.worker
-    install(github, "evo-agents")
+    install(github, "evo-agents", app="curator")  # a run of the Curator gets its token from the Curator's App
     assert collected(client, NIGHT)["review"] == 1
     spec = claim(client, worker)
     assert spec["kind"] == "review" and len(spec["repos"]) == 4  # every repo of the project the worker has

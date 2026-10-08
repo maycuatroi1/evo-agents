@@ -71,13 +71,18 @@ def app_key():
     return private, public.decode()
 
 
-def hub_config(hub_db, tmp_path, github, app_key, *, key: bool = True, app: bool = True):
+def hub_config(hub_db, tmp_path, github, app_key, *, key: bool = True, app: bool = True, curator: bool = False):
+    """The hub's configuration with the secrets key and the workers' App; with ``curator``, the Curator's App too,
+    signing with the same key under its own ID."""
     github.app_public_key = app_key[1]
     changes = live.web_changes(github)
     if key:
         changes["secrets_key"] = secrets.token_bytes(KEY_BYTES)
     if app:
         changes |= {"github_app_id": github.app_id, "github_app_private_key": app_key[0]}
+    if curator:
+        github.curator_app_public_key = app_key[1]
+        changes |= {"curator_app_id": github.curator_app_id, "curator_app_private_key": app_key[0]}
     return live.hub_config(hub_db, tmp_path, github, **changes)
 
 
@@ -135,9 +140,10 @@ def hub(client, github) -> dict:
     return members(client, github)
 
 
-def install(github, *repos: str) -> int:
-    """The App installed on MINE for ``repos``, each of which owner may push to on GitHub."""
-    installation = github.install(MINE, *repos)
+def install(github, *repos: str, app: str = "workers", permissions: dict | None = None) -> int:
+    """The App (``app``: workers or curator) installed on MINE for ``repos``, each of which owner may push to on
+    GitHub."""
+    installation = github.install(MINE, *repos, app=app, permissions=permissions)
     for repo in repos:
         github.collaborate(MINE, repo, Account(OWNER, OWNER_ID), "write")
     return installation

@@ -13,7 +13,9 @@ the hub numbers in the run's log, and then records in the plan what the move mea
 A plan run has no step of its own: its worker reports each step (POST /v1/worker/runs/{id}/steps/{key}, which writes
 it through ``write_step``), and the hub keeps each report as a ``system`` event of the run with a ``step_report`` key.
 A review run has no plan: its moves write none, and its end hands the owner the tier 2 proposals the day's Inbox has
-room for, and the notice ``run_failed`` when it failed (``proposals.review_ended``).
+room for, and the notice ``run_failed`` when it failed (``proposals.review_ended``). A judge run writes no step either:
+its end moves its change of the Curator on, and a failure sends the notice ``run_failed`` (``changes.judge_ended``);
+and a plan run of a plan the Curator made moves its change on as it ends (``changes.builder_ended``).
 Its moves write no step, except that a plan run that ends ``failed`` or ``cancelled`` sets back to ``pending``, with
 the same notes, the steps that it, or an earlier attempt or run it went on from, reported and that are still
 ``in_progress``. A plan run that ends ``done`` writes nothing.
@@ -490,9 +492,17 @@ async def record_move(
 
         await proposals.review_ended(conn, found, old, new, reason=reason)
         return None
+    if found.kind == "judge":
+        from evo_agents.hub.server import changes  # it reads runs through the routes that import this module
+
+        await changes.judge_ended(conn, found, old, new, reason=reason)
+        return None
     if found.kind == "plan":
         revision = await release_plan_steps(conn, found, new, reason=reason, token_id=token_id)
         await notify_plan_run_end(conn, found, old, new, reason=reason)
+        from evo_agents.hub.server import changes  # it reads runs through the routes that import this module
+
+        await changes.builder_ended(conn, found, old, new, reason=reason)
         return revision
     updates_for = step_updates(found, old, new, reason)
     if updates_for is None:

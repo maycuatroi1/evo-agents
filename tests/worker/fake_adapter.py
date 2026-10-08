@@ -24,8 +24,9 @@ EVO_FAKE_SCENARIOS names a JSON file ``{"<step key>": [action, ...]}``; a run fo
   of the agent's process group (``group_pid``); the adapter kills its group once the turn is over, so only a daemon
   that dies first leaves it running.
 
-A plan run (no step key) follows ``"plan:<plan id>"``, and a review run ``"review"``. The n-th start of the same run
-in this process follows ``"<key>/<n>"`` when the scenarios have it (a plan run's turn after its owner answered);
+A plan run (no step key) follows ``"plan:<plan id>"``, a review run ``"review"`` and a judge run ``"judge"``. The
+n-th start of the same run in this process follows ``"<key>/<n>"`` when the scenarios have it (a plan run's turn after
+its owner answered);
 otherwise a run that goes on with a session (after a handback, or a plan run resumed after it was parked) follows
 ``"<key>/resume"`` when the scenarios have it. Each ``cli`` and ``sh`` action is written as a JSON line ``{"run",
 "turn", "cmd", "exit", "stdout", "stderr"}`` to the file EVO_FAKE_CLI names.
@@ -260,8 +261,8 @@ class FakeAdapter(Adapter):
         path = context.env.get("EVO_FAKE_SCENARIOS")
         scenarios = json.loads(Path(path).read_text(encoding="utf-8")) if path else {}
         run = context.run
-        if run.get("kind") == "review":
-            key = "review"
+        if run.get("kind") in ("review", "judge"):
+            key = run["kind"]
         else:
             key = str(run.get("step_key")) if run.get("step_key") is not None else f"plan:{run.get('plan_id')}"
         self.turn = FakeAdapter.starts[context.run_id] = FakeAdapter.starts.get(context.run_id, 0) + 1
