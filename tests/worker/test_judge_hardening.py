@@ -12,11 +12,13 @@ of ``tests.worker.test_curator_runs``.
 - L1: a diff longer than the worker reads fails the change. H1: the verdict names the paths the diff touches.
 - Plan decision 14: a run of the Curator on Claude Code gets no ANTHROPIC_API_KEY and needs the subscription login.
 
-The re-review of those fixes added one, failing on what the worker did before it (evo-agents 7a32dd8):
+The re-review of those fixes added two, each failing on what the worker did before it (evo-agents 7a32dd8):
 
 - R1: the socket of a run of the Curator answers ``op env`` (the env leases, a subscription token among them) only for
   the ticket of a pane the daemon opened, once; code the run does not trust, a verify command or a hidden check, gets
   nothing from it.
+- R2: putting a judge run's worktree back also removes what ``.gitignore`` hides, so a file a verify command left there
+  never reaches the next command or the Judge's agent.
 """
 
 from __future__ import annotations
@@ -166,6 +168,27 @@ def test_judge_run_fails_when_a_command_unlinks_its_worktree_from_git(machine): 
     error = found["hub"].runs[found["run"]]["error"]
     assert "is no longer the worktree it was made as" in error, error
     assert found["hub"].verdicts == []
+
+
+def test_judge_run_puts_its_worktree_back_without_what_gitignore_hides(machine):  # noqa: F811
+    """R2: a file a command of the change leaves where its .gitignore hides it is gone before the next command, and
+    before the Judge's agent reads the worktree."""
+    head = change_branch(machine, {"tests/test_wait.py": TEST_FILE, ".gitignore": "planted.txt\nbuild/\n"})
+    saw = machine.tmp / "agent-saw-planted"
+    plant = "echo planted > planted.txt && mkdir -p build && echo planted > build/out"
+    found = judged(
+        machine,
+        head,
+        judge_inputs(head, [plant], [plant, "test ! -e planted.txt && test ! -e build", VERIFY]),
+        [
+            {"sh": f"if test -e alpha/planted.txt || test -e alpha/build; then touch {saw}; fi"},
+            {"say": '{"verdict": "pass"}'},
+        ],
+    )
+    (sent,) = found["hub"].verdicts
+    assert [item["exit_code"] for item in sent["verify"]] == [0, 0, 0], sent["verify"]
+    assert not saw.exists(), "the Judge's agent found what a command of the change left behind"
+    assert sent["signs"] == [] and sent["verdict"] == "pass"
 
 
 # M1: a hidden check never in an argument

@@ -280,15 +280,17 @@ async def git_dir(cwd: Path, *, env: Mapping[str, str] | None = None) -> str | N
 
 async def restore(cwd: Path, head: str, *, expected_git_dir: str, env: Mapping[str, str] | None = None) -> None:
     """Put the work tree at ``cwd`` back at commit ``head``, detached: every tracked file as ``head`` has it, every
-    untracked one that git does not ignore removed. Between two commands of the code a judge run judges, which may have
-    removed the work tree's link to its repository or pointed it elsewhere: GitError then, before git touches
-    anything, since its git directory is no longer ``expected_git_dir``."""
+    untracked one removed, those a .gitignore or info/exclude hides included (``clean -x``), so nothing a command
+    left reaches the next one or the Judge's agent; what a command installs in the work tree (a virtualenv,
+    node_modules) goes too, and each command that needs it installs it again. Between two commands of the code a judge
+    run judges, which may have removed the work tree's link to its repository or pointed it elsewhere: GitError then,
+    before git touches anything, since its git directory is no longer ``expected_git_dir``."""
     local = {**(env if env is not None else os.environ), "GIT_CEILING_DIRECTORIES": str(Path(cwd).parent)}
     found = await git_dir(cwd, env=local)
     if found is None or Path(found).resolve() != Path(expected_git_dir).resolve():
         raise GitError(f"{cwd} is no longer the worktree it was made as: its git directory is {found or 'gone'}")
     await git(cwd, "checkout", "--quiet", "--force", "--detach", head, env=local)
-    await git(cwd, "clean", "-ffdq", env=local)
+    await git(cwd, "clean", "-ffdxq", env=local)
 
 
 async def current_branch(cwd: Path) -> str | None:
