@@ -27,11 +27,26 @@ from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
-from sqlalchemy import BigInteger, Date, Text, and_, case, cast, column, func, literal, or_, select
+from sqlalchemy import (
+    BigInteger,
+    ColumnElement,
+    Date,
+    Text,
+    and_,
+    bindparam,
+    case,
+    cast,
+    column,
+    func,
+    literal,
+    or_,
+    select,
+)
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import runs, tables
+from evo_agents.hub.db import one_of
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.plans import step_counts
 from evo_agents.hub.server.projects import ProjectAccess, project_access
@@ -146,11 +161,12 @@ def _utc_day(moment):
     return cast(func.timezone("UTC", moment), Date)
 
 
-def _visible(pairs: list[tuple[int, str]]):
-    """The CTE visible: the (project_id, plan_id) pairs the caller sees."""
+def _visible():
+    """The CTE visible: the (project_id, plan_id) pairs the caller sees, bound as two arrays of one length,
+    :visible_projects and :visible_plans."""
     pair = func.unnest(
-        literal([project_id for project_id, _ in pairs], ARRAY(BigInteger)),
-        literal([plan_id for _, plan_id in pairs], ARRAY(Text)),
+        bindparam("visible_projects", type_=ARRAY(BigInteger)),
+        bindparam("visible_plans", type_=ARRAY(Text)),
     ).table_valued(column("project_id", BigInteger), column("plan_id", Text))
     found = pair.render_derived()
     return select(found.c.project_id, found.c.plan_id).cte("visible")
@@ -181,8 +197,8 @@ def _run_counts(visible, since: datetime):
         .join_from(runs_, visible, _of_visible(visible, runs_))
         .where(
             or_(
-                runs_.c.state.in_(IN_FLIGHT),
-                and_(runs_.c.state.in_(ENDED_COUNTED), runs_.c.finished_at >= since),
+                one_of(runs_.c.state, IN_FLIGHT),
+                and_(one_of(runs_.c.state, ENDED_COUNTED), runs_.c.finished_at >= since),
             )
         )
         .group_by(runs_.c.state, day)
@@ -193,7 +209,7 @@ def _active_order() -> tuple:
     """The agents at work first, then IN_FLIGHT's order; the newest first within each."""
     runs_ = tables.runs
     rank = case(
-        (runs_.c.state.in_(RUNNING_STATES), 0),
+        (one_of(runs_.c.state, RUNNING_STATES), 0),
         else_=func.array_position(literal(list(IN_FLIGHT), ARRAY(Text)), runs_.c.state),
     )
     return rank, runs_.c.id.desc()
@@ -211,7 +227,7 @@ def _run_rows(visible, states: tuple[str, ...], order: tuple, limit: int):
     picked = (
         select(runs_.c.id)
         .join_from(runs_, visible, _of_visible(visible, runs_))
-        .where(runs_.c.state.in_(states))
+        .where(one_of(runs_.c.state, states))
         .order_by(*order)
         .limit(limit)
         .cte("picked")
@@ -311,8 +327,8 @@ def _decision_counts(visible, user_id: int):
     )
 
 
-def _project_counts(visible, granted: list[int]):
-    """For each project of ``granted``, its repos and its active plans that are visible."""
+def _project_counts(visible, granted: ColumnElement[bool]):
+    """For each project ``granted`` selects, its repos and its active plans that are visible."""
     projects, repos, plans = tables.projects, tables.project_repos, tables.plans
     repo_count = select(func.count()).where(repos.c.project_id == projects.c.id).scalar_subquery()
     plan_count = (
@@ -321,13 +337,38 @@ def _project_counts(visible, granted: list[int]):
         .where(plans.c.project_id == projects.c.id, plans.c.area == "active")
         .scalar_subquery()
     )
-    return select(projects.c.id, repo_count.label("repos"), plan_count.label("plans")).where(projects.c.id.in_(granted))
+    return select(projects.c.id, repo_count.label("repos"), plan_count.label("plans")).where(granted)
+
+
+# Built once with bind parameters: an overview runs them all, and building them on each request cost more than
+# their round trips (docs/hub.md, Data access). Each takes the parameters of ``_bound``.
+_VISIBLE = _visible()
+_TODAY = select(_utc_day(func.now()))
+_GRANTED = _granted(bindparam("user_id"))
+_RUN_COUNTS = _run_counts(_VISIBLE, bindparam("since"))
+_ACTIVE_RUNS = _run_rows(_VISIBLE, IN_FLIGHT, _active_order(), MAX_ACTIVE)
+_RECENT_RUNS = _run_rows(_VISIBLE, runs.TERMINAL_STATES, _recent_order(), MAX_RECENT)
+_OPEN_DECISIONS = _open_decisions(_VISIBLE, bindparam("user_id"))
+_DECISION_COUNTS = _decision_counts(_VISIBLE, bindparam("user_id"))
+_PROJECT_COUNTS = _project_counts(_VISIBLE, one_of(tables.projects.c.id, name="granted"))
+
+
+def _bound(user_id: int, pairs: list[tuple[int, str]], granted: list[int], since: datetime) -> dict:
+    """The parameters of the statements above: the visible (project_id, plan_id) ``pairs``, the projects
+    ``granted``, the caller and the start of the counted days."""
+    return {
+        "visible_projects": [project_id for project_id, _ in pairs],
+        "visible_plans": [plan_id for _, plan_id in pairs],
+        "granted": granted,
+        "user_id": user_id,
+        "since": since,
+    }
 
 
 async def _granted_access(conn: AsyncConnection, user) -> list[ProjectAccess]:
     """The caller's access to each project it holds a grant on, by the check of the project's runs and decisions; a
     grant revoked since the list was read leaves its project out."""
-    names = (await conn.execute(_granted(user.user_id))).scalars().all()
+    names = (await conn.execute(_GRANTED, {"user_id": user.user_id})).scalars().all()
     accesses = []
     for name in names:
         try:
@@ -361,22 +402,19 @@ async def overview(request: Request, user: CurrentUser) -> Overview:
     """What waits for you, what runs and what ended lately, over the projects you hold a grant on."""
     wait = timedelta(seconds=request.app.state.config.decision_wait_seconds)
     async with request.app.state.engine.begin() as conn:
-        today: date = (await conn.execute(select(_utc_day(func.now())))).scalar_one()
+        today: date = (await conn.execute(_TODAY)).scalar_one()
         accesses = await _granted_access(conn, user)
         pairs = []
         for access in accesses:
             pairs += [(access.project_id, plan_id) for plan_id in await visible_plans(conn, access, None)]
         since = datetime.combine(today - timedelta(days=DAYS - 1), time.min, tzinfo=UTC)
-        visible = _visible(pairs)
-        counted = (await conn.execute(_run_counts(visible, since))).all()
-        active_rows = _run_rows(visible, IN_FLIGHT, _active_order(), MAX_ACTIVE)
-        active = (await conn.execute(active_rows)).all()
-        recent_rows = _run_rows(visible, runs.TERMINAL_STATES, _recent_order(), MAX_RECENT)
-        recent = (await conn.execute(recent_rows)).all()
-        decisions = (await conn.execute(_open_decisions(visible, user.user_id))).all()
-        decision_counts = (await conn.execute(_decision_counts(visible, user.user_id))).all()
-        granted = [access.project_id for access in accesses]
-        project_counts = (await conn.execute(_project_counts(visible, granted))).all()
+        bound = _bound(user.user_id, pairs, [access.project_id for access in accesses], since)
+        counted = (await conn.execute(_RUN_COUNTS, bound)).all()
+        active = (await conn.execute(_ACTIVE_RUNS, bound)).all()
+        recent = (await conn.execute(_RECENT_RUNS, bound)).all()
+        decisions = (await conn.execute(_OPEN_DECISIONS, bound)).all()
+        decision_counts = (await conn.execute(_DECISION_COUNTS, bound)).all()
+        project_counts = (await conn.execute(_PROJECT_COUNTS, bound)).all()
 
     by_state: dict[str, int] = {}
     done_on: dict[date, int] = {}

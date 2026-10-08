@@ -510,6 +510,15 @@ error of the database arrives as SQLAlchemy's wrapper (`sqlalchemy.exc.Integrity
 error, which names the SQLSTATE, in `.orig`. `print(statement.compile(dialect=postgresql.psycopg.dialect()))` shows
 the SQL a statement sends.
 
+A statement every request of a busy route runs (the token check, a project's access, the reads of GET
+/v1/me/overview, of a project's runs and plans, and of memories) is built once, at import or with `functools.cache`
+once per shape of its filters, and runs with bind parameters: `await conn.execute(STATEMENT, {"name": value})`.
+Building a statement and its cache key on each call costs more than its round trip to Postgres. A bind parameter of
+an INSERT or UPDATE, or of one inside a CTE, never has the name of a column of its table: the execution would set
+that column too (`tests/hub/test_prebuilt.py`). `db.one_of(column, values)`, or `one_of(column, name=...)` for a list
+bound at execution, is `column = ANY(array)`: an `in_()` list is expanded into one parameter per value at each
+execution.
+
 `driver(conn)` returns the psycopg connection under an engine connection, in the same transaction. Only `jobs.py`
 takes it, to hand it to procrastinate, so a job deferred with `connection=conn` exists only if the caller's
 transaction commits; a defer refused because one job waits already rolls back to a savepoint and the transaction
