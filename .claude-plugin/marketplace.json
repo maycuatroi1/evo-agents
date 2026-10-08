@@ -7,7 +7,7 @@
       "name": "evo-kg",
       "source": "./plugins/evo-kg",
       "description": "Project knowledge graph over MCP: repos, files, symbols, documents, plans and seams, with evidence and labels.",
-      "version": "0.6.0",
+      "version": "0.7.0",
       "category": "development",
       "tags": ["knowledge-graph", "harness", "mcp"]
     },
@@ -15,7 +15,7 @@
       "name": "evo-hub",
       "source": "./plugins/evo-hub",
       "description": "Team hub over MCP: project memories, plans, skills and knowledge graphs, with Claude Code's memory files and plan copies kept in step by hooks.",
-      "version": "0.6.0",
+      "version": "0.7.0",
       "category": "development",
       "tags": ["hub", "memory", "plans", "harness", "mcp"]
     }
