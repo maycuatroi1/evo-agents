@@ -30,25 +30,29 @@ and notices reach a member.
 | worker | a machine its owner registered: a name unique per owner, host facts (hostname, OS, arch, daemon version), 1 to 8 slots, labels, the runtimes and checkouts it reports, whether it allows the web terminal, who may dispatch to it (`dispatch_from`) | `workers` |
 | worker project | a project the worker may take runs of, chosen at registration | `worker_projects` |
 | pairing | a one-time code the web creates so a machine can join without a machine token | `worker_pairings` |
-| run | one attempt at one plan step on one worker (kind `step`), or one session on one worker that does every step of a plan not done yet (kind `plan`) | `runs` |
+| run | one attempt at one plan step on one worker (kind `step`), or one session on one worker that does every step of a plan not done yet (kind `plan`); the night shift of a project's charter also queues the Curator's review runs (kind `review`) and judge runs (kind `judge`), `docs/curator.md` | `runs` |
 | run event | one entry of a run's log, numbered within the run | `run_events` |
 | inbox message | a message from the owner to the run's agent, waiting for the worker | `run_inbox` |
 | decision | a question a plan run's agent asks its owner, with 2 to 6 options | `decisions` |
 | notification | a decision or a notice (a push to a default branch, say) for the run's owner, and its deliveries to the owner's channels | `notifications`, `notification_channels`, `notification_deliveries` |
 
 A run records the project, plan and step key, the step's title at dispatch, the plan revision it was dispatched from,
-who dispatched it and with which credential (`dispatched_via`: `web` or `machine`), the worker (or the worker it is
+who dispatched it and with which credential (`dispatched_via`: `web`, `machine`, or `schedule` for a run the night
+shift queued), the worker (or the worker it is
 pinned to), the runtime the dispatch asked for (`requested_runtime`: `claude-code`, `opencode`, `codex` or `any`,
 which the next attempt asks for again) and the one the run has (`runtime`: the same, except that `any` becomes the
 runtime the claiming worker picked), the mode (`headless` or `interactive`), the approval (`auto` or `review`), a timeout of 5 to 240 minutes, its attempt out
 of at most 3, the run it retries (`parent_run_id`), its state and lease, the agent's session id, the repo and branch,
-and at the end the commit, diffstat, verify results, evidence, usage and error.
+and at the end the commit, diffstat, verify results, evidence, usage and error. A run the night shift queued also
+names its schedule and night and carries its caps (`budget`, see [Runs of the night shift](#runs-of-the-night-shift)).
 
 ## Who may do what
 
 - **A worker belongs to the member who registered it, and only that member dispatches to it.** A claim takes only
   runs whose dispatcher owns the worker, and a dispatch that names a worker must name one of the caller's own (403
-  otherwise). Another writer of the same project never gets a run onto your worker. A hub admin sees every worker
+  otherwise). Another writer of the same project never gets a run onto your worker. The night shift of a project's
+  charter dispatches as the owner of the charter's worker on duty (`docs/curator.md`), so its runs keep this rule
+  too. A hub admin sees every worker
   and may drain or revoke one, but cannot dispatch to it or undrain it: only the owner sets a drained worker going
   again (403 for anyone else).
 - **The owner may keep a worker to runs dispatched from the web.** With `dispatch_from` set to `web`, the worker
@@ -386,14 +390,20 @@ worker's `dispatch_from` is `web`, the worker holds fewer runs than its slots, a
 A plan run also needs a daemon of 0.4.0 or later, as the worker's `agent_version` says:
 an older daemon would read it as a run of one step without a repo and fail it. A review run (kind `review`, the
 Curator's, see [A review run on the machine](#a-review-run-on-the-machine)) needs a checkout of every repo in its
-`repos` and a daemon whose last heartbeat listed `review` in `run_kinds`. The oldest such run is leased for 300 seconds (`EVO_HUB_RUN_LEASE_SECONDS`, which
-tests shorten). The answer is `{"run": {...}}` with the
+`repos` and a daemon whose last heartbeat listed `review` in `run_kinds`, and a judge run (kind `judge`, see
+[A judge run on the machine](#a-judge-run-on-the-machine)) a checkout of its repo and `judge` in `run_kinds`. The
+oldest such run is leased for 300 seconds (`EVO_HUB_RUN_LEASE_SECONDS`, which tests shorten). The answer is `{"run": {...}}` with the
 id, project, plan, step key and title, plan revision, attempt, max attempts, parent run, runtime, mode, approval,
 timeout in minutes, repo, branch, lease expiry and the prompt (built from the plan revision the run was dispatched
 from), with the run's `kind` and `model`, or `{"run": null}` when the wait ends empty, and the daemon claims again at
 once. A plan run is claimed only by a worker with a checkout of every repo in its `repos`; its answer has no step key
 and no repo, but `repos`, the prompt of `build_plan_prompt`, and `plan`, `{revision, body}` at the hub's current
-revision, which the daemon writes to `.evo-run/plan.yaml`. A worker has at most one
+revision, which the daemon writes to `.evo-run/plan.yaml`. A run the night shift queued has `budget`, its caps
+(`max_usd`, `max_turns`, `max_seconds`) with what it spent already (`spent_usd`, `spent_seconds`, for a run that goes
+on from a parked one), and null otherwise. A run of the Curator (a review run, a judge run, or a plan run of a plan the
+Curator made) has `curator`: its `role` (`reviewer`, `builder` or `judge`), the charter's `protected_paths`, and for a
+Builder or a Judge the change, its branch, its forge (`github` or `gitlab`), the default branch, the pull request, and
+for a Judge the commit to judge and the run's own key (`judge_key`); null for any other run. A worker has at most one
 claim waiting: a newer claim ends the older one, which answers no run. A claim whose worker hung up, as a daemon that
 stops drops the claim it waits on, takes no run: it ends before it looks at the queue again, and when the worker hangs
 up while the claim leases a run, the lease is rolled back before it commits, so the run stays queued for the next
@@ -414,7 +424,7 @@ it holds:
   "free_slots": 1,
   "runs": [12],
   "agent_version": "0.3.0",
-  "run_kinds": ["step", "plan", "review"]
+  "run_kinds": ["step", "plan", "review", "judge"]
 }
 ```
 
@@ -1004,6 +1014,34 @@ hands it no run.
    run ends `done` with the summary and the diffstat of every repo; the log and the diffs of every repo (each under
    `a/<repo>/`) are uploaded as one `run-log` and one `run-diff`, and each worktree on the plan's branch leaves it. A
    failed run pushes nothing at its end; what the steps pushed stays.
+
+### Runs of the night shift
+
+The night shift of a project's charter (`docs/curator.md`) queues its runs on the charter's worker on duty, as that
+worker's owner, headless and with approval `auto`: the night's review run, judge runs and Builders of the Curator, and
+plan runs of the plans the charter's `night_plans` lists. Each carries caps the daemon enforces (`budget` in the claim,
+`evo_agents.hub.curator`):
+
+- `max_usd`, the most the run may cost. Claude Code gets what is left of it once the session the run goes on in has
+  cost what the claim's `spent_usd` says, as `max_budget_usd`, so the CLI stops the session there. opencode and Codex
+  get no cost cap of their own; in a run of the Curator the watchdog also stops the run once the cost its usage events
+  report passes `max_usd` ([The Curator's runs on the machine](#the-curators-runs-on-the-machine)).
+- `max_turns`, given to Claude Code as `max_turns`.
+- `max_seconds`, the agent time the run may use, less what a parked run it resumes used (`spent_seconds`). Every
+  runtime's adapter interrupts the agent once it is used; Codex reports no cost, so this is the cap that stops a Codex
+  run.
+
+The run's timeout is `max_seconds` plus 5 minutes, so a cap stops the agent before the hub's timeout does. A run a cap
+stopped fails, and its error and the last note of its log name the cap: "claude-code stopped at the run's cost cap of
+$0.05: the session cost ...", "claude-code stopped at the run's cap of 300 turns", or "codex stopped at the run's time
+cap of 120 minutes of agent time". The hub counts the night's cost from the runs' `usage`, each agent session once at
+its largest `total_cost_usd`, and queues no run once the night's budget is spent. A worker set to take runs dispatched
+from the web only passes over every run of the night shift (`dispatched_via` `schedule`), so a charter cannot name one.
+
+A plan run of `night_plans` is a plan run of its owner's own plan: it gets the leases any plan run of its owner gets
+and pushes as its plan says (see [A plan run on the machine](#a-plan-run-on-the-machine)). Only a review run, a judge
+run and a plan run of a plan the Curator made are runs of the Curator, which the sections below and
+[The Curator's runs on the machine](#the-curators-runs-on-the-machine) describe.
 
 ### A review run on the machine
 

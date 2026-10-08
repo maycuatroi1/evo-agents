@@ -282,9 +282,11 @@ Only the worker's owner, signed in on the web, flips it.
   record in `runs.dispatched_via` the credential of the caller: `web` for a web session, `machine` for any token, the
   machine token of `evo-agents hub run dispatch` and the worker token an agent reaches `/mcp` with alike
   (`credentials.dispatch_credential`). The next attempt of a lost run and the run that resumes a parked plan run keep
-  the value of the run they follow. A run shows it as `dispatched_via`; runs dispatched before 0.5.0 have none.
+  the value of the run they follow. A run the night shift of a project's charter queued records `schedule`
+  (`docs/curator.md`). A run shows it as `dispatched_via`; runs dispatched before 0.5.0 have none.
 - **What a worker set to `web` takes.** Its claims pass over every queued run whose `dispatched_via` is not `web`,
-  those without one included, and leave them for the owner's other workers. A dispatch, plan run or rerun pinned to it
+  those without one included, and leave them for the owner's other workers; so a charter cannot name such a worker as
+  its worker on duty. A dispatch, plan run or rerun pinned to it
   with a token gets 403, "worker NAME takes only runs dispatched from a web session, as its owner set it, ...", and
   nothing is queued. Runs that were queued for it with a token before the switch was turned on stay queued until the
   owner cancels them or turns the switch off again.

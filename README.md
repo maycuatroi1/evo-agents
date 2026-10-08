@@ -231,6 +231,26 @@ follows the evo-agents hub UI kit, in light and dark ([web/DESIGN.md](web/DESIGN
 - Cmd K or Ctrl K opens a command palette that jumps to runs, plans and workers and offers the actions your grants
   allow. `?` lists the keyboard shortcuts: G then H, I, P, R or W to move, D to dispatch, / to search.
 - Under 768 px tables become lists, filters move into a sheet, and a decision is a screen of its own.
+- Each project's Curator page shows the night shift, its proposals with their evidence, and the charter.
+
+### The Curator
+
+The Curator is a project's night shift on the hub. Inside the hours its charter sets, the hub queues runs on one
+member's worker without anybody pressing Run: a review run that reads the project's sessions, runs and code and
+proposes changes with evidence, a Builder that makes an accepted change on a branch `curator/...`, and a Judge that
+checks the pull request without reading the Builder's transcript. The hub computes each change's tier, merges only
+tier 0 and only when the charter, CI, the Judge and the repo's ruleset all allow it, and sends the owner a morning
+brief on the web and Telegram:
+
+```sh
+evo-agents hub curator charter set charter.yaml --project demo   # an admin of the project
+evo-agents hub curator status --project demo
+evo-agents hub curator proposal list --state open --project demo
+evo-agents hub curator pause --project demo
+```
+
+[docs/curator.md](docs/curator.md) describes the charter, the night shift and its caps, the tiers, the three roles,
+the Curator's own GitHub App and the ruleset it needs, and Telegram.
 
 ### Running steps on your machine
 
@@ -273,7 +293,7 @@ web/          the hub's web interface (Next.js, its own image)
 deploy/hub/   the hub's Dockerfile and compose files
 docs/         hub.md: running and using the hub; workers.md: workers, runs, plan runs and the daemon;
               notifications.md: decisions, notices and notifications; credentials.md: secrets and the leases of
-              worker runs
+              worker runs; curator.md: the Curator, a project's night shift
 ```
 
 ## License

@@ -161,7 +161,7 @@ For members, with a web session or a machine token:
 | `GET /v1/projects/{p}/decisions/{id}` | readers of the run's plan | one decision: its options, the recommended one, its state, the answer, `answer_run_id` (the run whose inbox took the answer) and when the agent got it (`delivered_at`) |
 | `POST /v1/projects/{p}/decisions/{id}/answer` | the run's owner, who still holds writer | `{"option": KEY, "text": "..."}`, one or both; answers the decision |
 | `GET /v1/me/notifications` | the member | their notifications, open decisions and proposals first, then newest first, filtered by `unread`, `kind` and `project`, with `limit` and `offset` |
-| `GET /v1/me/notifications/count` | the member | `{"unread": N, "open_decisions": M}`, for the bell |
+| `GET /v1/me/notifications/count` | the member | `{"unread": N, "open_decisions": M, "open_proposals": P}`, for the bell |
 | `POST /v1/me/notifications/read` | the member | `{"ids": [...]}` or `{"all": true}`; answers how many it marked read and how many are left unread |
 
 The answer takes the plan's dispatch lock and the run's row, then: the decision is `answered`, its notification read,
@@ -172,8 +172,10 @@ worker, at the plan's current revision, with its session, repos, model, timeout 
 to the new run, and the answer goes to the new run's inbox. The inbox message reads `Answer to decision #N (category):
 question`, then `Chosen option: KEY, LABEL.` and the owner's text.
 
-A notification links to a page of the hub's web: a decision to `/inbox?decision=ID`, a notice to the run's page
-(`/p/{p}/runs/{id}`). A member sees only the notifications of projects they hold a grant on.
+A notification links to a page of the hub's web: a decision to `/inbox?decision=ID`, a proposal to
+`/inbox?proposal=ID`, a notice of a run to the run's page (`/p/{p}/runs/{id}`), and `curator_brief` and
+`curator_paused` to the project's Curator page (`/p/{p}/curator`). A member sees only the notifications of projects
+they hold a grant on.
 
 ## Telegram
 

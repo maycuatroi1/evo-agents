@@ -2,7 +2,7 @@
 deterministic detector of score hacking that reads a diff before the Judge does, which runtime judges, the verdict, CI
 on a pull request, and when the hub may merge one. Pure functions over JSON values, standard library only, so the api,
 the hub's worker, the worker daemon and the tests share them. ``evo_agents.hub.server.changes`` holds the routes and
-the job built on them; ``docs/curator.md`` (from step 8 of the curator-agent plan) the design.
+the job built on them; ``docs/curator.md`` the design.
 
 A proposal of tier 0 or 1 that an admin accepts becomes a plan on the hub (``curator_plan_id``), the Curator's, which
 works in one repo on the branch ``curator/<proposal>-<slug>`` (``curator_branch``) and never on a default branch. The
