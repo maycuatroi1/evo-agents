@@ -4,7 +4,9 @@ SQLAlchemy and the psycopg connection under it (``driver``) work in one transact
 report the same transaction id, and both commit or roll back together. A connection the engine used goes back to the
 pool idle. jsonb, timestamptz, bytea, bigint[] and text[] read through SQLAlchemy as they read through psycopg, which
 the code not yet on the engine relies on. A job deferred on an engine connection exists only once its transaction
-commits, and a defer refused because one waits already leaves the transaction usable.
+commits, and a defer refused because one waits already leaves the transaction usable. A pooled connection holds the
+dialect's notice handler only while the engine has it, however many checkouts it serves, so a server notice is
+logged once.
 
 The statements psycopg runs here are SQLAlchemy statements compiled by the engine's dialect: no SQL is written out.
 """
@@ -27,6 +29,7 @@ from psycopg.types.json import Jsonb
 from sqlalchemy import BigInteger, Column, DateTime, Integer, LargeBinary, MetaData, Table, Text, func, insert, select
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
+from sqlalchemy.schema import DropTable
 
 from evo_agents.hub import jobs, tables
 from evo_agents.hub.config import HubConfig
@@ -68,6 +71,10 @@ VALUES = [
         "names": ["日本語"],
     },
 ]
+# Never created: dropping it only if it exists makes the server send a notice that it does not.
+ABSENT = Table("bridge_absent", MetaData(), Column("id", Integer))
+NOTICES = "sqlalchemy.dialects.postgresql"  # the logger of the notice handler the psycopg dialect adds on connect
+CHECKOUTS = 100
 # The part of procrastinate's job table this test reads.
 QUEUE = Table(
     "procrastinate_jobs",
@@ -106,6 +113,12 @@ async def on_driver(conn: AsyncConnection, engine: AsyncEngine, statement) -> li
     }
     cursor = await (await driver(conn)).execute(compiled.string, params)
     return await cursor.fetchall() if cursor.description else []
+
+
+def notice_handlers(conn) -> int:
+    """How many notice handlers the psycopg connection ``conn`` has: psycopg keeps them in a list it does not
+    expose."""
+    return len(conn._notice_handlers)
 
 
 def logins():
@@ -231,3 +244,30 @@ def test_a_job_deferred_on_an_engine_connection_exists_only_once_it_commits(hub_
         (other, jobs.PING, "kg:gamma", "kg:gamma", {}, "todo"),
     ]
     assert users == [("after-the-refusal",)]
+
+
+def test_a_pooled_connection_holds_one_notice_handler_however_many_checkouts_it_serves(hub_db, caplog):
+    async def check():
+        async with hub(hub_db, max_size=1) as (pool, engine):  # one connection: every checkout gets the same one
+            async with pool.connection() as conn:
+                pooled, before = conn, notice_handlers(conn)
+            held = []
+            for _ in range(CHECKOUTS):
+                async with engine.begin() as conn:
+                    raw = await driver(conn)
+                    assert raw is pooled
+                    held.append(notice_handlers(raw))
+            with caplog.at_level(logging.INFO, logger=NOTICES):
+                async with engine.begin() as conn:
+                    await conn.execute(DropTable(ABSENT, if_exists=True))
+            async with pool.connection() as conn:  # what procrastinate and the code on the pool get
+                assert conn is pooled
+                after = notice_handlers(conn)
+            return before, held, after
+
+    before, held, after = asyncio.run(check())
+    assert before == 0
+    assert held == [1] * CHECKOUTS  # the dialect's handler, once, on each checkout
+    assert after == before  # the pool gets the connection back as it gave it
+    notices = [r.getMessage() for r in caplog.records if r.name == NOTICES]
+    assert len(notices) == 1 and "bridge_absent" in notices[0], notices

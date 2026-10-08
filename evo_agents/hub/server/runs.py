@@ -91,6 +91,7 @@ a grant on the project 404.
 from __future__ import annotations
 
 import asyncio
+import functools
 import json
 import logging
 import re
@@ -105,9 +106,12 @@ from pydantic import BaseModel, ConfigDict, Field, create_model, model_validator
 from sqlalchemy import (
     BigInteger,
     Date,
+    Integer,
     Numeric,
+    String,
     Text,
     and_,
+    bindparam,
     case,
     cast,
     column,
@@ -128,6 +132,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import curator, runs, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.credentials import DISPATCHED_VIA, dispatch_credential
+from evo_agents.hub.db import one_of
 from evo_agents.hub.plans import PlanProblem, step_index, step_key
 from evo_agents.hub.server import audit
 from evo_agents.hub.server import plans as plan_routes
@@ -726,13 +731,17 @@ class RunList(BaseModel):
     offset: int
 
 
+_PLANS_OF = select(tables.plans.c.plan_id, tables.plans.c.label).where(
+    tables.plans.c.project_id == bindparam("project_id")
+)  # built once: every read of runs or decisions runs it
+
+
 async def visible_plans(conn: AsyncConnection, access: ProjectAccess, sink: str | None) -> list[str]:
     """The plans of the project whose runs the caller may read: those it may read through ``sink`` (the project's
     hub sink when None), by the plan's label. A run of a plan no longer on the hub is shown to nobody."""
     plan_routes._reader(access)
     through = plan_routes._sink(access, sink)
-    plans = tables.plans
-    rows = await conn.execute(select(plans.c.plan_id, plans.c.label).where(plans.c.project_id == access.project_id))
+    rows = await conn.execute(_PLANS_OF, {"project_id": access.project_id})
     return [row.plan_id for row in rows if access.visible(row.label, through)]
 
 
@@ -764,57 +773,49 @@ def _like(text: str) -> str:
     return "%" + text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
 
 
-def _list_conditions(
-    project_id: int,
-    plans: list[str],
-    *,
-    plan_id: str | None,
-    step: str | None,
-    worker_id: int | None,
-    login: str | None,
-    text: str | None,
-) -> list:
-    """The filters of GET .../runs but the state's, which the counts by state leave out: the runs of the project and
-    of ``plans``, then each filter given (one not given leaves every run). ``text`` is stripped already."""
+def _list_conditions(*, plan_id: bool, step: bool, worker_id: bool, login: bool, text: bool, number: bool) -> list:
+    """The filters of GET .../runs but the state's, which the counts by state leave out: the runs of project
+    :project_id and of the plans in :plans, then each filter given, by its bind parameter (one not given leaves
+    every run): :plan_id, :step, :worker_id, :login, and the text as the ILIKE :pattern, or as the run :number."""
     r, u, w = tables.runs, tables.users, tables.workers
-    found = [r.c.project_id == project_id, r.c.plan_id.in_(plans)]
-    if plan_id is not None:
-        found.append(r.c.plan_id == plan_id)
-    if step is not None:
-        found.append(r.c.step_key == step)
-    if worker_id is not None:
-        found.append(r.c.worker_id == worker_id)
-    if login is not None:
-        found.append(func.lower(u.c.login) == func.lower(login))
+    found = [r.c.project_id == bindparam("project_id"), one_of(r.c.plan_id, name="plans")]
+    if plan_id:
+        found.append(r.c.plan_id == bindparam("plan_id"))
+    if step:
+        found.append(r.c.step_key == bindparam("step"))
+    if worker_id:
+        found.append(r.c.worker_id == bindparam("worker_id"))
+    if login:
+        found.append(func.lower(u.c.login) == func.lower(bindparam("login", type_=String)))
     if text:
-        pattern = _like(text)
+        pattern = bindparam("pattern")
         searched = (r.c.title, r.c.step_key, r.c.plan_id, r.c.repo, r.c.branch, w.c.name, u.c.login, r.c.error)
         matches = [searched_column.ilike(pattern) for searched_column in searched]
-        number = RUN_NUMBER.fullmatch(text)
         if number:
-            matches.append(r.c.id == int(number[1]))
+            matches.append(r.c.id == bindparam("number"))
         found.append(or_(*matches))
     return found
 
 
-def _list_page(conditions: list, states: list[str], limit: int, offset: int):
-    r = tables.runs
-    query = _run_select().where(*conditions)
-    if states:
-        query = query.where(r.c.state.in_(states))
-    return query.order_by(r.c.id.desc()).limit(limit).offset(offset)
-
-
-def _list_counts(conditions: list):
-    """How many runs in each state match ``conditions``, over the joins they read."""
+@functools.cache
+def _list_statements(states: bool, **shape: bool):
+    """The page and the counts by state of GET .../runs for the filters ``shape`` names, built once per shape: a
+    page takes :limit and :offset, and :states when ``states``."""
     r, u, w = tables.runs, tables.users, tables.workers
-    return (
+    conditions = _list_conditions(**shape)
+    page = _run_select().where(*conditions)
+    if states:
+        page = page.where(one_of(r.c.state, name="states"))
+    limit, offset = bindparam("limit", type_=Integer), bindparam("offset", type_=Integer)
+    page = page.order_by(r.c.id.desc()).limit(limit).offset(offset)
+    counts = (
         select(r.c.state, func.count().label("runs"))
         .join_from(r, u, u.c.id == r.c.dispatched_by)
         .outerjoin(w, w.c.id == r.c.worker_id)
         .where(*conditions)
         .group_by(r.c.state)
     )
+    return page, counts
 
 
 @router.get("/{project}/runs", response_model=RunList, responses={403: {"model": ErrorBody}, 404: {"model": ErrorBody}})
@@ -845,9 +846,22 @@ async def list_runs(
     async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
         plans = await visible_plans(conn, access, sink)
-        conditions = _list_conditions(access.project_id, plans, **filters, text=q.strip() if q else None)
-        page = _runs_of(await conn.execute(_list_page(conditions, states, limit, offset)))
-        counts = {row.state: row.runs for row in await conn.execute(_list_counts(conditions))}
+        text = q.strip() if q else None
+        number = RUN_NUMBER.fullmatch(text) if text else None
+        shape = {name: value is not None for name, value in filters.items()}
+        page_query, counts_query = _list_statements(bool(states), **shape, text=bool(text), number=bool(number))
+        bound = {
+            **filters,
+            "project_id": access.project_id,
+            "plans": plans,
+            "pattern": _like(text) if text else None,
+            "number": int(number[1]) if number else None,
+            "states": states,
+            "limit": limit,
+            "offset": offset,
+        }
+        page = _runs_of(await conn.execute(page_query, bound))
+        counts = {row.state: row.runs for row in await conn.execute(counts_query, bound)}
     wanted = states or runs.RUN_STATES
     return RunList(
         runs=page,

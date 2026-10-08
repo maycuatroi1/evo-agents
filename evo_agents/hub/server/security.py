@@ -46,8 +46,8 @@ from typing import Annotated
 
 import psycopg
 from fastapi import Depends, HTTPException, Request
+from sqlalchemy import bindparam, exists, func, insert, or_, select, update
 from sqlalchemy import exc as sa_exc
-from sqlalchemy import exists, func, insert, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 from starlette.responses import Response
 from starlette.websockets import WebSocketClose
@@ -96,17 +96,18 @@ WWW_AUTHENTICATE = {"WWW-Authenticate": 'Bearer realm="evo-agents hub"'}
 _TOKEN = re.compile(r"ev[hsw]_[A-Za-z0-9_-]{43}")  # a prefix and 32 bytes of base64url without padding
 
 
-def _authenticate(digest: str, kind: str):
-    """One statement: find a live token of ``kind`` with hash ``digest``, and when it was last written more than
-    TOUCH_EVERY ago, push its expiry and mark the user seen. Two requests racing over a stale token write once: the
-    second UPDATE waits for the first, then finds last_used_at fresh and changes nothing."""
+def _authenticate():
+    """One statement: find a live token of kind ``:token_kind`` with hash ``:digest``, and when it was last written more
+    than TOUCH_EVERY ago, push its expiry and mark the user seen. Two requests racing over a stale token write once:
+    the second UPDATE waits for the first, then finds last_used_at fresh and changes nothing. Built once
+    (AUTHENTICATE): every request runs it, and a statement built per call costs more than its round trip."""
     tokens, users = tables.tokens, tables.users
     found = (
         select(tokens.c.id, tokens.c.user_id, users.c.login)
         .join_from(tokens, users, users.c.id == tokens.c.user_id)
         .where(
-            tokens.c.token_hash == digest,
-            tokens.c.kind == kind,
+            tokens.c.token_hash == bindparam("digest"),
+            tokens.c.kind == bindparam("token_kind"),
             tokens.c.revoked_at.is_(None),
             tokens.c.expires_at > func.now(),
         )
@@ -130,6 +131,9 @@ def _authenticate(digest: str, kind: str):
         .cte("seen")
     )
     return select(found.c.id, found.c.user_id, found.c.login).add_cte(touched, seen)
+
+
+AUTHENTICATE = _authenticate()
 
 
 @dataclass(frozen=True)
@@ -282,7 +286,7 @@ async def authenticate(engine, token: str, kind: str, config) -> Principal | Non
         return None
     digest = hash_token(token)
     async with engine.begin() as conn:
-        row = (await conn.execute(_authenticate(digest, kind))).one_or_none()
+        row = (await conn.execute(AUTHENTICATE, {"digest": digest, "token_kind": kind})).one_or_none()
     if row is None:
         return None
     token_id, user_id, login = row

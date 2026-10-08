@@ -4,7 +4,9 @@ The lifespan of the api and of the worker opens the pool after migrating, then t
 (``make_engine``); on shutdown it disposes of the engine, then closes the pool. The engine keeps no connection of its
 own (``NullPool``): each one it hands out is taken from the pool (``async_creator=pool.getconn``), and closing it
 gives it back, because the pool is made with ``close_returns=True``. The pool's size, timeout and check govern both,
-and a connection is checked before it is handed out, so the pool recovers by itself after Postgres restarts.
+and a connection is checked before it is handed out, so the pool recovers by itself after Postgres restarts. To
+``NullPool`` each checkout is a new connection, so the dialect's connect hook runs on every one; what it changes on
+the psycopg connection, the engine undoes as it gives the connection back (``make_engine``).
 
 ``engine.begin()`` gives an ``AsyncConnection`` whose transaction commits when the block ends cleanly and rolls
 back otherwise; queries on it are SQLAlchemy Core on ``evo_agents.hub.tables``. ``driver(conn)`` is the psycopg
@@ -15,10 +17,13 @@ nothing else; ``docs/hub.md`` (Data access) says how queries are written.
 from __future__ import annotations
 
 import asyncio
+from contextlib import suppress
 
 import psycopg
 from psycopg_pool import AsyncConnectionPool
-from sqlalchemy import column, func, select, table
+from sqlalchemy import ColumnElement, any_, bindparam, column, event, func, literal, select, table
+from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy.dialects.postgresql.psycopg import _log_notices
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 from sqlalchemy.pool import NullPool
 
@@ -55,8 +60,33 @@ async def open_pool(config: HubConfig) -> AsyncConnectionPool:
 
 def make_engine(pool: AsyncConnectionPool) -> AsyncEngine:
     """A SQLAlchemy engine whose connections are ``pool``'s, made with ``close_returns=True`` (``create_pool``).
-    Nothing connects until the first ``begin()``; dispose of it before closing the pool."""
-    return create_async_engine("postgresql+psycopg://", poolclass=NullPool, async_creator=pool.getconn)
+    Nothing connects until the first ``begin()``; dispose of it before closing the pool.
+
+    The psycopg dialect's connect hook adds a notice handler, which logs what the server sends as NOTICE, to the
+    connection it is given. To ``NullPool`` each checkout is a new connection, so the hook runs on every checkout of
+    the same pooled connection, and its handlers would pile up: unbounded memory, and each notice logged once per
+    handler. The engine takes the handler off as it closes the connection, which gives it back to the pool, so a
+    pooled connection holds it only while the engine does."""
+    engine = create_async_engine("postgresql+psycopg://", poolclass=NullPool, async_creator=pool.getconn)
+    event.listen(engine.sync_engine.pool, "close", _undo_connect_hook)  # kept by dispose(), which recreates the pool
+    return engine
+
+
+def _undo_connect_hook(dbapi_connection, connection_record) -> None:
+    """Undo, on a connection the engine is about to close, what the dialect's connect hook did to it. Runs on every
+    close, an invalidated connection's included. An error here would keep the connection from going back to the
+    pool, so a handler already gone is no error."""
+    with suppress(ValueError):
+        dbapi_connection.driver_connection.remove_notice_handler(_log_notices)
+
+
+def one_of(target: ColumnElement, values=None, *, name: str | None = None) -> ColumnElement[bool]:
+    """``target = ANY(array)``: true when ``target`` is one of ``values``, or of the list bound as ``name`` when
+    the statement is built once and run with that list. An IN list is expanded into one parameter per value at
+    each execution, which costs more than the query's round trip on the hot paths; an array is one parameter."""
+    array = ARRAY(target.type)
+    bound = bindparam(name, type_=array) if name is not None else literal(list(values), array)
+    return target == any_(bound)
 
 
 async def driver(conn: AsyncConnection) -> psycopg.AsyncConnection:
