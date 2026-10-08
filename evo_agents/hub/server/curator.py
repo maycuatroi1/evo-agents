@@ -71,6 +71,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import curator, review, runs, tables
 from evo_agents.hub.access import has_role
+from evo_agents.hub.db import one_of
 from evo_agents.hub.server import audit
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.admin import ProjectName
@@ -677,16 +678,50 @@ def curator_state(paused: bool, active_run_id: int | None, in_window: bool) -> s
     return "on_duty" if in_window else "idle"
 
 
+def _newest_charters():
+    """The newest charter of each project of the list bound as ``projects``, with the time now in its time zone."""
+    c = tables.charters
+    local_now = func.timezone(c.c.body["window"]["timezone"].astext, func.now())
+    return (
+        select(c.c.project_id, c.c.body, local_now.label("local_now"))
+        .where(one_of(c.c.project_id, name="projects"))
+        .ext(distinct_on(c.c.project_id))
+        .order_by(c.c.project_id, c.c.revision.desc())
+    )
+
+
+def _schedules_held():
+    """Each schedule of the projects bound as ``projects``: its project, when it was paused, and its first run queued
+    or held now (``run_id``, NULL without one)."""
+    s, r = tables.schedules, tables.runs
+    held = (
+        select(func.min(r.c.id)).where(r.c.schedule_id == s.c.id, one_of(r.c.state, QUEUED_OR_HELD)).scalar_subquery()
+    )
+    return select(s.c.id, s.c.project_id, s.c.paused_at, held.label("run_id")).where(
+        one_of(s.c.project_id, name="projects")
+    )
+
+
+def _open_proposal_labels():
+    """The label of each open proposal of the projects bound as ``projects``."""
+    p = tables.proposals
+    return select(p.c.project_id, p.c.label).where(one_of(p.c.project_id, name="projects"), p.c.state == "open")
+
+
+# Built once with bind parameters: GET /v1/me/overview runs them on every request (docs/hub.md, Data access).
+_NEWEST_CHARTERS = _newest_charters()
+_SCHEDULES_HELD = _schedules_held()
+_OPEN_PROPOSAL_LABELS = _open_proposal_labels()
+
+
 async def open_proposals(conn: AsyncConnection, accesses: list[ProjectAccess]) -> dict[int, int]:
     """Per project of ``accesses``, its open proposals whose label the access reaches through the project's hub
     sink, as GET .../curator/proposals reads them."""
-    p = tables.proposals
     by_id = {access.project_id: access for access in accesses}
     if not by_id:
         return {}
-    query = select(p.c.project_id, p.c.label).where(p.c.project_id.in_(list(by_id)), p.c.state == "open")
     counted: Counter[int] = Counter()
-    for project_id, label in (await conn.execute(query)).all():
+    for project_id, label in (await conn.execute(_OPEN_PROPOSAL_LABELS, {"projects": list(by_id)})).all():
         access = by_id[project_id]
         if access.visible(label, plan_routes._sink(access, None)):
             counted[project_id] += 1
@@ -694,42 +729,23 @@ async def open_proposals(conn: AsyncConnection, accesses: list[ProjectAccess]) -
 
 
 async def curator_overview(conn: AsyncConnection, accesses: list[ProjectAccess]) -> dict[int, CuratorOverview]:
-    """Where the Curator of each project of ``accesses`` that has a charter stands, in a few queries for all."""
-    c, s, r = tables.charters, tables.schedules, tables.runs
+    """Where the Curator of each project of ``accesses`` that has a charter stands, in three statements built once
+    for all of them."""
     ids = [access.project_id for access in accesses]
     if not ids:
         return {}
-    newest = (
-        select(c.c.project_id, c.c.body)
-        .where(c.c.project_id.in_(ids))
-        .ext(distinct_on(c.c.project_id))
-        .order_by(c.c.project_id, c.c.revision.desc())
-    )
-    charters = {row.project_id: row.body for row in (await conn.execute(newest)).all()}
+    charters = {row.project_id: row for row in (await conn.execute(_NEWEST_CHARTERS, {"projects": ids})).all()}
     if not charters:
         return {}
-    zones = sorted({body["window"]["timezone"] for body in charters.values()})
-    clocks = select(*(func.timezone(zone, func.now()).label(f"z{index}") for index, zone in enumerate(zones)))
-    local = dict(zip(zones, (await conn.execute(clocks)).one(), strict=True))
-    found = (
-        await conn.execute(select(s.c.id, s.c.project_id, s.c.paused_at).where(s.c.project_id.in_(list(charters))))
-    ).all()
-    active = {}
-    if found:
-        held = (
-            select(r.c.schedule_id, func.min(r.c.id).label("run_id"))
-            .where(r.c.schedule_id.in_([row.id for row in found]), r.c.state.in_(QUEUED_OR_HELD))
-            .group_by(r.c.schedule_id)
-        )
-        active = {row.schedule_id: row.run_id for row in (await conn.execute(held)).all()}
+    found = (await conn.execute(_SCHEDULES_HELD, {"projects": list(charters)})).all()
     waiting = await open_proposals(conn, [access for access in accesses if access.project_id in charters])
     states = {}
-    for project_id, body in charters.items():
-        window = body["window"]
-        inside, _ = curator.window_state(local[window["timezone"]], window["start"], window["end"])
+    for project_id, charter in charters.items():
+        window = charter.body["window"]
+        inside, _ = curator.window_state(charter.local_now, window["start"], window["end"])
         mine = [row for row in found if row.project_id == project_id]
         paused = bool(mine) and all(row.paused_at is not None for row in mine)
-        run_id = min((active[row.id] for row in mine if row.id in active), default=None)
+        run_id = min((row.run_id for row in mine if row.run_id is not None), default=None)
         states[project_id] = CuratorOverview(
             state=curator_state(paused, run_id, inside),
             in_window=inside,
