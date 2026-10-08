@@ -2224,6 +2224,109 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project}/curator/changes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Changes
+         * @description The project's Curator changes, newest first, with the plans the caller may read.
+         */
+        get: operations["list_changes_v1_projects__project__curator_changes_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/curator/protection": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Protection
+         * @description The project's repos, and whether the hub checked that a ruleset keeps the Curator off each default branch.
+         */
+        get: operations["protection_v1_projects__project__curator_protection_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/curator/protection/{repo}/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check Protection
+         * @description Check now, with the Curator's App, whether a ruleset keeps the Curator off the repo's default branch; the
+         *     project's admins alone may.
+         */
+        post: operations["check_protection_v1_projects__project__curator_protection__repo__check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/judge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Judge Inputs
+         * @description What the judge run this worker holds reads: its change, its proposal, the plan's verify commands, the
+         *     charter's protected paths and the project's hidden checks.
+         */
+        get: operations["judge_inputs_v1_worker_runs__run_id__judge_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/verdict": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record Verdict
+         * @description The verdict of the judge run this worker holds: the hub passes the change only as ``judge.final_verdict``
+         *     says.
+         */
+        post: operations["record_verdict_v1_worker_runs__run_id__verdict_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{project}/digests/{session_id}": {
         parameters: {
             query?: never;
@@ -2779,6 +2882,98 @@ export interface components {
              */
             expires_at: string;
         };
+        /**
+         * Change
+         * @description What an accepted proposal of tier 0 or 1 became, and where it stands.
+         */
+        Change: {
+            /** Id */
+            id: number;
+            /** Project */
+            project: string;
+            /** Proposal Id */
+            proposal_id: number;
+            /**
+             * Plan Id
+             * @description the Curator's plan on the hub; null when the draft could not become one
+             */
+            plan_id: string | null;
+            /** Repo */
+            repo: string | null;
+            /**
+             * Branch
+             * @description curator/..., the one branch its runs push
+             */
+            branch: string | null;
+            /** Forge */
+            forge: ("github" | "gitlab") | null;
+            /**
+             * Tier
+             * @description its proposal's tier; 3 once a sign of score hacking showed
+             */
+            tier: number;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "planned" | "pr_pending" | "judge_pending" | "judging" | "judged" | "merged" | "open" | "closed";
+            /**
+             * Reason
+             * @description why it stays as it is, such as why its pull request stays open
+             */
+            reason: string | null;
+            /** Builder Run Id */
+            builder_run_id: number | null;
+            /** Judge Run Id */
+            judge_run_id: number | null;
+            /** Pr Number */
+            pr_number: number | null;
+            /** Pr Url */
+            pr_url: string | null;
+            /** Base Branch */
+            base_branch: string | null;
+            /**
+             * Head Sha
+             * @description the commit the Judge judges, and the hub merges
+             */
+            head_sha: string | null;
+            /**
+             * Passed
+             * @description the Judge's verdict; null before it
+             */
+            passed: boolean | null;
+            /**
+             * Verdict
+             * @description the verdict: the Judge's reasons, the checks run, the signs found
+             */
+            verdict: {
+                [key: string]: unknown;
+            } | null;
+            /** Merged At */
+            merged_at: string | null;
+            /** Merge Sha */
+            merge_sha: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** ChangeList */
+        ChangeList: {
+            /** Project */
+            project: string;
+            /**
+             * Changes
+             * @description newest first
+             */
+            changes: components["schemas"]["Change"][];
+        };
         /** Charter */
         Charter: {
             /**
@@ -2850,6 +3045,16 @@ export interface components {
             reviewer?: components["schemas"]["Role"];
             builder?: components["schemas"]["Role"];
             judge?: components["schemas"]["Judge"];
+            /**
+             * Git Secret
+             * @description the owner's git secret the Curator's runs use for origins not on GitHub (GitLab, where it should hold the Developer role); null: none, so no Builder runs there
+             */
+            git_secret?: string | null;
+            /**
+             * Env Secrets
+             * @description the owner's env secrets the Curator's runs get, by name; they get no other
+             */
+            env_secrets?: string[];
             /** Project */
             project: string;
             /** Revision */
@@ -2962,6 +3167,16 @@ export interface components {
             reviewer?: components["schemas"]["Role"];
             builder?: components["schemas"]["Role"];
             judge?: components["schemas"]["Judge"];
+            /**
+             * Git Secret
+             * @description the owner's git secret the Curator's runs use for origins not on GitHub (GitLab, where it should hold the Developer role); null: none, so no Builder runs there
+             */
+            git_secret?: string | null;
+            /**
+             * Env Secrets
+             * @description the owner's env secrets the Curator's runs get, by name; they get no other
+             */
+            env_secrets?: string[];
         };
         /**
          * CheckoutReport
@@ -3171,6 +3386,48 @@ export interface components {
              * @description the project's proposals that wait for an answer, that you may read
              */
             open_proposals: number;
+        };
+        /**
+         * CuratorSpec
+         * @description What the worker of a run of the Curator (``evo_agents.hub.server.changes``) is told: the run's role, the
+         *     charter's protected paths its watchdog compares the worktrees with, and for a Builder or a Judge the change, its
+         *     branch, its forge and its pull request; for a Judge the commit to judge.
+         */
+        CuratorSpec: {
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "reviewer" | "builder" | "judge";
+            /**
+             * Protected Paths
+             * @description globs of the charter, repo:glob for one repo
+             */
+            protected_paths?: string[];
+            /** Change Id */
+            change_id?: number | null;
+            /**
+             * Branch
+             * @description curator/..., the one branch a Builder pushes
+             */
+            branch?: string | null;
+            /**
+             * Forge
+             * @description gitlab: the push opens the merge request
+             */
+            forge?: ("github" | "gitlab") | null;
+            /**
+             * Base Branch
+             * @description the default branch the pull request goes into, when known
+             */
+            base_branch?: string | null;
+            /**
+             * Head Sha
+             * @description a Judge's commit to judge; null: the branch's tip
+             */
+            head_sha?: string | null;
+            /** Pr Url */
+            pr_url?: string | null;
         };
         /** CuratorStatus */
         CuratorStatus: {
@@ -4037,6 +4294,18 @@ export interface components {
              */
             run_kinds?: string[] | null;
         };
+        /** HiddenResult */
+        HiddenResult: {
+            /**
+             * Index
+             * @description the check's place in the charter, from 1
+             */
+            index: number;
+            /** Exit Code */
+            exit_code: number;
+            /** Duration Ms */
+            duration_ms?: number | null;
+        };
         /** Inbox */
         Inbox: {
             /**
@@ -4121,6 +4390,45 @@ export interface components {
              * @description commands the Judge runs that no Builder sees; shown to the project's admins alone, null to anyone else, and null in a write keeps those of the newest revision
              */
             hidden_checks?: string[] | null;
+        };
+        /**
+         * JudgeInputs
+         * @description What a judge run reads: the change, the proposal, the plan's verify commands, the charter's protected paths,
+         *     and the project's hidden checks, which no other run reads.
+         */
+        JudgeInputs: {
+            /** Change Id */
+            change_id: number;
+            /** Repo */
+            repo: string;
+            /** Branch */
+            branch: string;
+            /** Base Branch */
+            base_branch: string | null;
+            /**
+             * Head Sha
+             * @description the commit to judge; null on GitLab: the branch's tip
+             */
+            head_sha: string | null;
+            /**
+             * Proposal
+             * @description id, title, kind, tier, summary, paths
+             */
+            proposal: {
+                [key: string]: unknown;
+            };
+            /**
+             * Verify
+             * @description the verify of each step of the plan, as the Builder had them
+             */
+            verify: string[];
+            /** Protected Paths */
+            protected_paths: string[];
+            /**
+             * Hidden Checks
+             * @description commands run in the worktree; never logged, never shown
+             */
+            hidden_checks: string[];
         };
         /** KgConfig */
         KgConfig: {
@@ -4933,7 +5241,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "step" | "plan" | "review";
+            kind: "step" | "plan" | "review" | "judge";
             /** Project */
             project: string;
             /** Plan Id */
@@ -5734,6 +6042,13 @@ export interface components {
              */
             created_at: string;
         };
+        /** Protection */
+        Protection: {
+            /** Project */
+            project: string;
+            /** Repos */
+            repos: components["schemas"]["RepoCheck"][];
+        };
         /** PruneRequest */
         PruneRequest: {
             /**
@@ -5935,6 +6250,49 @@ export interface components {
              */
             path?: string | null;
         };
+        /**
+         * RepoCheck
+         * @description A repo of the project and the last check of its ruleset.
+         */
+        RepoCheck: {
+            /** Repo */
+            repo: string;
+            /** Origin */
+            origin: string | null;
+            /**
+             * Forge
+             * @description null without an origin the Curator could push to
+             */
+            forge: ("github" | "gitlab") | null;
+            /**
+             * Github Repo
+             * @description owner/name on GitHub; null elsewhere
+             */
+            github_repo: string | null;
+            /**
+             * Protected
+             * @description a ruleset keeps the Curator's App off its default branch; null: never checked
+             */
+            protected: boolean | null;
+            /** Default Branch */
+            default_branch: string | null;
+            /** Reason */
+            reason: string | null;
+            /**
+             * Rulesets
+             * @description each {id, enforcement, can_bypass}
+             */
+            rulesets?: {
+                [key: string]: unknown;
+            }[];
+            /** Checked At */
+            checked_at: string | null;
+            /**
+             * Checked By
+             * @description who asked; null for the hub's own check again
+             */
+            checked_by: string | null;
+        };
         /** RepoPath */
         RepoPath: {
             /** Repo */
@@ -6123,10 +6481,10 @@ export interface components {
             id: number;
             /**
              * Kind
-             * @description step: one step of the plan; plan: every step not done yet; review: the night's review of the project by the Curator, on no plan
+             * @description step: one step of the plan; plan: every step not done yet; review: the night's review of the project by the Curator, on no plan; judge: the Curator's Judge of a change of its plan
              * @enum {string}
              */
-            kind: "step" | "plan" | "review";
+            kind: "step" | "plan" | "review" | "judge";
             /** Project */
             project: string;
             /**
@@ -6718,7 +7076,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "step" | "plan" | "review";
+            kind: "step" | "plan" | "review" | "judge";
             /** Project */
             project: string;
             /**
@@ -6799,6 +7157,8 @@ export interface components {
             plan: components["schemas"]["PlanCopy"] | null;
             /** @description the caps of a run the night shift queued; null otherwise */
             budget?: components["schemas"]["ClaimedBudget"] | null;
+            /** @description a run of the Curator: its role and what its worker checks; null for any other run */
+            curator?: components["schemas"]["CuratorSpec"] | null;
         };
         /** RunState */
         RunState: {
@@ -7159,6 +7519,23 @@ export interface components {
             files_read: number;
             /** Files Edited */
             files_edited?: string[];
+        };
+        /** Sign */
+        Sign: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "assert_removed" | "test_removed" | "skip_added" | "threshold_changed" | "verify_changed" | "ci_changed" | "lint_config_changed" | "lint_suppressed" | "eq_overridden" | "exit_in_test" | "protected_path" | "diff_unreadable";
+            /** Path */
+            path: string;
+            /** Line */
+            line?: number | null;
+            /**
+             * Text
+             * @default
+             */
+            text: string;
         };
         /** SignedIn */
         SignedIn: {
@@ -7823,6 +8200,29 @@ export interface components {
             input?: unknown;
             /** Context */
             ctx?: Record<string, never>;
+        };
+        /** VerdictIn */
+        VerdictIn: {
+            /**
+             * Verdict
+             * @description the Judge agent's; null when it gave none
+             */
+            verdict: ("pass" | "fail") | null;
+            /** Reasons */
+            reasons?: string | null;
+            /**
+             * Head Sha
+             * @description the commit the worktree was at
+             */
+            head_sha: string;
+            /** Base Sha */
+            base_sha?: string | null;
+            /** Verify */
+            verify?: components["schemas"]["VerifyResult"][];
+            /** Hidden */
+            hidden?: components["schemas"]["HiddenResult"][];
+            /** Signs */
+            signs?: components["schemas"]["Sign"][];
         };
         /** VerifyResult */
         VerifyResult: {
@@ -15635,6 +16035,364 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_changes_v1_projects__project__curator_changes_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChangeList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    protection_v1_projects__project__curator_protection_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Protection"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    check_protection_v1_projects__project__curator_protection__repo__check_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                repo: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RepoCheck"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    judge_inputs_v1_worker_runs__run_id__judge_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JudgeInputs"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    record_verdict_v1_worker_runs__run_id__verdict_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VerdictIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Change"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
