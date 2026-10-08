@@ -40,6 +40,7 @@ PRUNE_DIGESTS = "hub.prune_digests"  # daily: session digests not pushed again f
 CURATOR_COLLECT = "curator.collect"  # every minute: each charter's night figures and its review run, in its window
 CURATOR_BRIEF = "curator.brief"  # every minute: the morning brief of each charter, at its brief_at
 CURATOR_CHANGES = "curator.changes"  # every minute: the Curator's pull requests opened, judged, merged or left open
+CURATOR_OUTCOMES = "curator.outcomes"  # every 10 minutes: the figures of merged changes counted again, outcome_days on
 
 
 def kg_lock(project: str) -> str:

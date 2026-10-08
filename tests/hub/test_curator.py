@@ -348,7 +348,8 @@ def test_the_schedule_queues_a_plan_run_inside_its_window_as_its_owner_on_its_wo
 
 def test_the_schedule_queues_one_run_at_a_time_and_at_most_max_runs_a_night(night, hub_db):
     client, headers = night.client, night.headers
-    written(client, headers["owner"], charter_body(max_runs_per_night=2))
+    # its runs fail, and two failures in a row would trip the circuit breaker (tests/hub/test_curator_ledger.py)
+    written(client, headers["owner"], charter_body(max_runs_per_night=2, circuit_breaker={"max_failed_in_a_row": 10}))
     assert fire(client, NIGHT) == {"queued": 1}
     assert fire(client, NIGHT) == {"busy": 1}  # its run is queued
     first = scheduled(hub_db)[0]["id"]
@@ -452,7 +453,13 @@ def test_curator_pause_stops_every_schedule_and_resume_lets_them_run_again(night
 
 def test_night_cost_counts_each_session_once_and_the_schedule_stops_at_the_nights_budget(night, hub_db):
     client, headers = night.client, night.headers
-    written(client, headers["owner"], charter_body(night_budget_usd=1.0, run_budget_usd=None, max_runs_per_night=10))
+    # its runs fail, and two failures in a row would trip the circuit breaker (tests/hub/test_curator_ledger.py)
+    breaker = {"max_failed_in_a_row": 10}
+    written(
+        client,
+        headers["owner"],
+        charter_body(night_budget_usd=1.0, run_budget_usd=None, max_runs_per_night=10, circuit_breaker=breaker),
+    )
     usages = [
         ({"total_cost_usd": 0.4, "input_tokens": 10}, "s-1"),
         ({"total_cost_usd": 0.35}, "s-2"),

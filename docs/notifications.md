@@ -76,8 +76,10 @@ A notice needs no answer (`NOTICE_KINDS`):
 | `plan_finished` | a plan run ended with every step of its plan done | the plan, the steps the run did |
 | `run_failed` | a plan run failed, or its last attempt was lost | the run, the error |
 | `curator_brief` | the charter's `brief_at` came, in its time zone: the Curator's morning brief to the owner of the night shift's schedule (`docs/hub.md`, "The Curator's review") | the night's runs and cost, its review run, merges, runs waiting for approval, open decisions and proposals, the worker on duty's last heartbeat |
+| `curator_paused` | the circuit breaker paused a project's night shift: the charter's `max_failed_in_a_row` jobs of a night in a row failed or were reverted (`docs/hub.md`, "The Curator's ledger, outcomes and circuit breaker") | the night, the jobs in a row, the runs and the reverted proposals among them, the runs it cancelled |
 
-A worker sends only the first four (`runs.WORKER_NOTICE_KINDS`); the hub alone sends `curator_brief`. The daemon
+A worker sends only the first four (`runs.WORKER_NOTICE_KINDS`); the hub alone sends `curator_brief` and
+`curator_paused`. The daemon
 sends `push_default_branch` itself for the pushes of `evo-agents worker step`; for a push or merge the
 agent makes itself, the prompt tells it to run `evo-agents worker notify`. A run of one step never pushes a default
 branch and sends no notice.
@@ -97,7 +99,9 @@ transaction is open, and a hub that stops between the two loses nothing.
 
 A notification of kind `proposal` (schema 0014) is a tier 2 proposal of the Curator's review run in its owner's Inbox:
 when a review run ends, its open tier 2 proposals with the most evidence become such notifications, as many as the
-charter's `max_decisions_per_day` leaves room for that day in the charter's time zone; answering the proposal
+charter's `max_decisions_per_day` leaves room for that day in the charter's time zone. A revert the hub proposes once
+the figures of a merged change got worse (tier 1, `docs/hub.md`, "The Curator's ledger, outcomes and circuit breaker")
+becomes one too, whatever room the day has left. Answering the proposal
 (`evo-agents hub curator proposal accept|reject|defer`) reads it, and `GET /v1/me/notifications/count` counts the
 ones still open as `open_proposals` (`docs/hub.md`, "The Curator's review").
 

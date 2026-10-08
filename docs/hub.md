@@ -84,7 +84,7 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | secrets | `GET /v1/secrets`, `PUT` and `DELETE /v1/secrets/{name}`, the caller's own only (`docs/credentials.md`) |
 | runs | `/v1/projects/{project}/plans/{plan_id}/ready-steps`, `GET` and `POST /v1/projects/{project}/runs`, `GET .../runs/stats`, `POST /v1/projects/{project}/plan-runs`, `.../runs/{id}`, `.../events`, `.../stream`, `.../diff`, `.../messages`, `.../credentials`, `.../tool-stats`, `.../{cancel,approve,rerun,takeover,handback}`, and `GET /v1/projects/{project}/tool-stats` |
 | session digests | `GET /v1/projects/{project}/digests`, `GET` and `PUT /v1/projects/{project}/digests/{session_id}` |
-| curator | `GET /v1/projects/{project}/curator`, `.../curator/charter` (`GET`, `PUT`), `.../charter/revisions`, `POST .../curator/{pause,resume}`, `GET .../curator/nights`, `.../curator/figures`, `.../curator/findings`, `.../findings/{id}`, `.../curator/proposals`, `.../proposals/{id}`, `POST .../proposals/{id}/answer` |
+| curator | `GET /v1/projects/{project}/curator`, `.../curator/charter` (`GET`, `PUT`), `.../charter/revisions`, `POST .../curator/{pause,resume}`, `GET .../curator/nights`, `.../curator/figures`, `.../curator/findings`, `.../findings/{id}`, `.../curator/proposals`, `.../proposals/{id}`, `.../proposals/{id}/ledger`, `POST .../proposals/{id}/answer` |
 | decisions | `GET /v1/projects/{project}/decisions`, `.../decisions/{id}`, `POST .../decisions/{id}/answer` |
 | notifications | `GET /v1/me/notifications`, `GET /v1/me/notifications/count`, `POST /v1/me/notifications/read` |
 | telegram | `GET` and `DELETE /v1/me/telegram`, `POST /v1/me/telegram/link` (a web session only), `POST /v1/telegram/webhook` (Telegram's, with its secret header), `GET /v1/admin/telegram`, `POST /v1/admin/telegram/webhook`, `DELETE /v1/admin/users/{login}/telegram` (`docs/notifications.md`) |
@@ -296,7 +296,11 @@ of kind `review`, on no plan: its `plan_id` and `plan_revision` are null, and th
 `workers.run_kinds`, `curator_figures`, `findings`, `proposals` and the notifications of kind `proposal` (The
 Curator's review, below); going back to 0013 deletes the review runs and the notifications of proposals. Schema 0017
 adds the judge run (a run of kind `judge`), `curator_changes` and `curator_repo_checks` (The Curator's changes,
-below); going back to 0016 deletes the judge runs and drops the two tables.
+below); going back to 0016 deletes the judge runs and drops the two tables. Schema 0018 adds `curator_ledger`, the
+revert the hub proposes (`proposals.kind` `revert` with `revert_of`), the reason the circuit breaker paused a schedule
+(`schedules.pause_reason`, with `paused_by` null) and the notice `curator_paused` (The Curator's ledger, below); going
+back to 0017 drops the ledger, deletes the revert proposals and the notices `curator_paused`, and keeps a schedule the
+breaker paused paused, as its owner's pause.
 
 The daemon on the member's machine is the `evo-agents worker` command group, which needs the `worker` extra
 (`uv tool install 'evo-ak[worker]'`). It is not `evo-agents hub worker`, the hub's own job worker (see Worker and
@@ -518,6 +522,51 @@ every ruleset it checked before. A judge run reads its inputs with `GET /v1/work
 run and no other token reads, and posts its verdict with `POST /v1/worker/runs/{id}/verdict`; a worker token gets 403
 on the charter's routes, as on every route of a project.
 
+## The Curator's ledger, outcomes and circuit breaker
+
+Each proposal has a ledger the hub only adds to (schema 0018, `evo_agents/hub/ledger.py`,
+`evo_agents/hub/server/ledger.py`): one line for each thing that happened to it, never changed or deleted, each naming
+who acted (`curator`, the hub's own code; `agent`, an agent of a run of the Curator, with its run; `user`, a member),
+what happened, and when it applies the commit, the default branch before and after (`before_sha`, `after_sha`), the
+figures, the Judge's verdict, the pull request and when it merged. Its first line (`proposed`, or `dropped` as a
+repeat) holds the figures that set the proposal off: the figure of its lens in the night's figures of the review run
+that wrote it (environment failures, tool failures, failed runs, corrections, open items and stuck steps, the cost) and
+the entries its evidence and its findings' evidence point at (an environment cause, a cause of failed runs, a command
+run again and again), with the sessions and runs the night counted. Then come the owner's answer, the plan it became,
+its Builder (`built`, or `build_failed`), the pull request the hub opened, the Judge's verdict (or the hub's own when
+the diff showed signs of score hacking), the merge by the hub or by hand, a change left open with why, and its outcome.
+The job `curator.changes` reads a pull request left open for its owner again every hour, so a merge or a close by
+hand reaches the ledger too.
+
+`outcome_days` after the merge (the charter's, 7 by default, 1 to 90), the job `curator.outcomes` counts the same
+figures again, with `curator.collect`'s own count, over the `outcome_days` after the merge, and compares them per
+session or run counted: a figure is worse when its share rose by more than a quarter and it counts at least 2 (half a
+dollar for the cost), better when it fell by as much. The outcome is `revert` when a figure got worse and none better,
+`keep` when none got worse, and `unclear` when they are mixed, when the proposal names no figure the hub counts, or
+when either span counted fewer than 3 sessions and runs. A `revert` makes the hub propose the revert itself: a
+proposal of kind `revert`, tier 1 at least, whose draft plan reverts the merge commit alone (`git revert -m 1`, and a
+verify that every file the merge changed is as it was before), whose evidence is what the figures after the merge hold
+for the worse figures, and which names the proposal it undoes (`revert_of`). It reaches the owner's Inbox and Telegram
+whatever room `max_decisions_per_day` leaves, and an accepted revert goes the way of any tier 1 change.
+
+The circuit breaker stops a night shift that keeps going wrong: once the charter's
+`circuit_breaker.max_failed_in_a_row` (2 by default) jobs of one night went wrong in a row, a run of the night shift
+that ended failed or a merged change whose outcome is `revert` recorded in the night's span, the hub pauses every
+schedule of the project with the reason (`paused_by` empty, `pause_reason` set), cancels what they queued, and sends
+their owner the notice `curator_paused`, audited as curator.circuit. A run that ended done breaks the row; a cancelled
+run, or a lost one the hub tries again, counts neither way. The night shift's job looks every minute, in the window or
+not, so a night that ends on two failures still pauses. `evo-agents hub curator resume` lets it run again and starts
+the count again.
+
+```sh
+evo-agents hub curator status            # a schedule the breaker paused says so, and why
+evo-agents hub curator resume
+```
+
+`GET /v1/projects/{p}/curator/proposals/{id}/ledger` lists a proposal's lines, oldest first, for anyone who reads the
+proposal, with when the hub counts its figures again (`outcome_due_at`). The web shows the ledger on the proposal's
+page (`/p/{project}/curator/proposals/{id}`), and a revert proposal names the proposal it undoes.
+
 ## Memories, skills and knowledge graphs
 
 **Memories.** `evo-agents hub memory push` and `evo-agents hub memory pull` sync Claude Code's memory files for a
@@ -627,7 +676,8 @@ Postgres database; there is no separate broker. The api only defers jobs. Jobs:
 - `hub.fire_schedules`, every minute: the night shift of each project with a charter queues its next run inside
   the charter's window and within the night's budget, pinned to the charter's worker and dispatched as that worker's
   owner: the night's review run first, then plan runs; and it cancels the runs it queued that are still queued once
-  the window ends or the project is paused (`evo-agents hub curator pause`).
+  the window ends or the project is paused (`evo-agents hub curator pause`). Its circuit breaker pauses a project's
+  night shift once `max_failed_in_a_row` jobs of a night in a row failed or were reverted.
 - `curator.collect`, every minute: inside each charter's window, counts the night's figures of the project once,
   without any model, and queues the night's review run; and opens again the proposals deferred until a moment that
   has passed (Curator, below).
@@ -637,7 +687,11 @@ Postgres database; there is no separate broker. The api only defers jobs. Jobs:
   duty (`evo_agents.hub.server.brief`).
 - `curator.changes`, every minute: the Curator's changes move on: their pull requests opened and read for signs of
   score hacking, the Judge's check runs written, the tier 0 ones merged when everything allows it and the others left
-  open for their owner; and the rulesets checked again once a day (The Curator's changes, above).
+  open for their owner, read again hourly for a merge or a close by hand; and the rulesets checked again once a day
+  (The Curator's changes, above).
+- `curator.outcomes`, every 10 minutes: the figures of each change of the Curator merged the charter's `outcome_days`
+  ago counted again, its outcome (keep, revert or unclear) added to its proposal's ledger, and a revert proposed when
+  they got worse (The Curator's ledger, outcomes and circuit breaker, above).
 - `hub.prune_digests`, daily at 04:23: deletes the session digests not pushed for 90 days.
 - `hub.cleanup_uploads`, hourly: removes uploads nobody committed within 24 hours.
 - `hub.prune_jobs`, daily: removes finished jobs older than 14 days.

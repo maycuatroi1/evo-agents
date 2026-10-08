@@ -142,8 +142,9 @@ MAX_NOTICE_BODY_BYTES = 16 * 1024  # the body of a notice, and of any notificati
 MAX_NOTICE_COMMITS = 100  # the commits a notice of a push or merge names
 # The notices a plan run's worker may send (POST /v1/worker/runs/{id}/notices); the hub sends the last two itself too.
 WORKER_NOTICE_KINDS = ("push_default_branch", "merge_default_branch", "plan_finished", "run_failed")
-# curator_brief: the morning brief of a project's Curator, which the hub alone sends at the charter's brief_at
-NOTICE_KINDS = (*WORKER_NOTICE_KINDS, "curator_brief")
+# curator_brief: the morning brief of a project's Curator, which the hub alone sends at the charter's brief_at;
+# curator_paused: the circuit breaker of a project's night shift paused it, which the hub alone sends too
+NOTICE_KINDS = (*WORKER_NOTICE_KINDS, "curator_brief", "curator_paused")
 NOTIFICATION_KINDS = ("decision", "notice", "proposal")  # proposal: a tier 2 proposal of the Curator, in the Inbox
 DELIVERY_STATES = ("pending", "delivered", "failed")  # of one notification on one channel
 MAX_DELIVERY_ATTEMPTS = 5

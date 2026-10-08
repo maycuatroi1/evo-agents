@@ -30,8 +30,11 @@ no other token reads, and posts its verdict with POST /v1/worker/runs/{id}/verdi
 ends without a verdict queues another, JUDGE_ATTEMPTS in all, then leaves the change open. The job then writes the
 Judge's check run on the pull request with the workers' App, and merges it when ``judge.merge_decision`` says so,
 reading everything again from GitHub first, the ruleset with the Curator's App, and merging at the head the Judge
-passed; anything else leaves the pull request open for its owner, with the reason (state ``open``). It also checks
-again, every RECHECK_HOURS, each ruleset it checked before.
+passed; anything else leaves the pull request open for its owner, with the reason (state ``open``). Every WATCH_EVERY
+it reads such a pull request again: merged by hand, its change is ``merged`` (when, by whom, at which commit), closed
+without a merge, ``closed``. It also checks again, every RECHECK_HOURS, each ruleset it checked before. Each move of a
+change adds its lines to its proposal's ledger (``evo_agents.hub.server.ledger``), and the job curator.outcomes counts
+the figures of a merged change again after the charter's outcome_days (``evo_agents.hub.server.outcomes``).
 
 GET /v1/projects/{p}/curator/changes (reader) lists the project's changes the caller may read (its proposal, and its
 plan when it has one, through the project's hub sink), newest first. GET .../curator/protection
@@ -58,6 +61,7 @@ from evo_agents.hub import curator, judge, runs, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.credentials import github_repo
 from evo_agents.hub.server import audit
+from evo_agents.hub.server import ledger as ledger_lines
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.auth import NO_STORE
@@ -92,6 +96,8 @@ PROTECTION = "curator.protection"  # a repo's ruleset was checked: "<project> re
 PROTECTION_DAYS = 2  # a ruleset check older than this no longer lets a Builder run
 RECHECK_HOURS = 24  # the job checks a ruleset again once its last check is this old
 CI_WAIT = timedelta(hours=6)  # CI still running this long after the verdict leaves the pull request open
+WATCH_EVERY = timedelta(hours=1)  # how often the job reads a pull request left open for its owner
+MAX_WATCH = 20  # pull requests left open one pass of the job reads
 MAX_LIST = 200
 NIGHT_SHIFT = "night_shift"
 
@@ -244,9 +250,16 @@ async def _view(conn: AsyncConnection, change_id: int) -> Change:
     return Change(**row._mapping)
 
 
-async def _set(conn: AsyncConnection, change_id: int, **values) -> None:
+async def _set(conn: AsyncConnection, change_id: int, *, ledger_extra: dict | None = None, **values) -> None:
+    """Set ``values`` on change ``change_id``; a move to another state adds its lines to the proposal's ledger
+    (``ledger.change_moved``, with ``ledger_extra``)."""
     c = tables.curator_changes
+    old = None
+    if "state" in values:
+        old = (await conn.execute(select(c.c.state).where(c.c.id == change_id).with_for_update())).scalar_one()
     await conn.execute(update(c).values(**values, updated_at=func.now()).where(c.c.id == change_id))
+    if old is not None and old != values["state"]:
+        await ledger_lines.change_moved(conn, change_id, old, values["state"], ledger_extra)
 
 
 def _reason(text: str | None) -> str | None:
@@ -347,9 +360,11 @@ async def plan_from_proposal(conn: AsyncConnection, access: ProjectAccess, user:
     if isinstance(made, str):
         why = _reason(f"it cannot become the Curator's plan: {made}")
         change_id = await _record(conn, access, user, proposal, {"state": "open", "reason": why})
+        await ledger_lines.change_recorded(conn, change_id)
         log.info("curator plan not made", extra={"project": access.name, "proposal_id": proposal.id, "why": made})
         return change_id
     change_id = await _record(conn, access, user, proposal, made)
+    await ledger_lines.change_recorded(conn, change_id)
     log.info("curator plan made", extra={"project": access.name, "plan_id": made["plan_id"], "change_id": change_id})
     return change_id
 
@@ -767,6 +782,8 @@ async def builder_ended(conn: AsyncConnection, found: RunStep, old: str, new: st
     await _set(
         conn, change.id, builder_run_id=found.run_id, reason=_reason(f"Builder run #{found.run_id} ended {new}: {why}")
     )
+    if new == "failed":
+        await ledger_lines.build_failed(conn, change, found.run_id, new, why)
 
 
 async def judge_ended(conn: AsyncConnection, found: RunStep, old: str, new: str, *, reason: str) -> None:
@@ -1383,7 +1400,16 @@ async def _merge(engine: AsyncEngine, app: GitHubApp, curator_app: GitHubApp | N
             await _set(conn, change.id, state="open", reason=_reason(f"GitHub refused the merge: {exc}"))
         return "open"
     async with engine.begin() as conn:
-        await _set(conn, change.id, state="merged", merged_at=func.now(), merge_sha=merged, reason=None)
+        before = (found.get("base") or {}).get("sha")  # the default branch the pull request merged into
+        await _set(
+            conn,
+            change.id,
+            state="merged",
+            merged_at=func.now(),
+            merge_sha=merged,
+            reason=None,
+            ledger_extra={"before_sha": before},
+        )
         project = (
             await conn.execute(select(tables.projects.c.name).where(tables.projects.c.id == change.project_id))
         ).scalar_one()
@@ -1455,6 +1481,88 @@ async def _recheck(engine: AsyncEngine, curator_app: GitHubApp | None, outcomes:
         outcomes["rechecked"] += 1
 
 
+async def _left_open(engine: AsyncEngine) -> list:
+    """The changes left open for their owner with a pull request on GitHub, not read for WATCH_EVERY."""
+    c, pr = tables.curator_changes, tables.project_repos
+    async with engine.begin() as conn:
+        query = (
+            select(c, pr.c.origin)
+            .join_from(c, pr, (pr.c.project_id == c.c.project_id) & (pr.c.name == c.c.repo), isouter=True)
+            .where(
+                c.c.state == "open",
+                c.c.forge == "github",
+                c.c.pr_number.is_not(None),
+                c.c.updated_at < func.now() - WATCH_EVERY,
+            )
+            .order_by(c.c.updated_at)
+            .limit(MAX_WATCH)
+        )
+        return (await conn.execute(query)).all()
+
+
+def _github_time(text) -> datetime | None:
+    try:
+        return datetime.fromisoformat(str(text).replace("Z", "+00:00")) if text else None
+    except ValueError:
+        return None
+
+
+async def _member_of(conn: AsyncConnection, login: str | None) -> int | None:
+    if not login:
+        return None
+    u = tables.users
+    return (await conn.execute(select(u.c.id).where(func.lower(u.c.login) == login.lower()))).scalar_one_or_none()
+
+
+async def _watch(engine: AsyncEngine, app: GitHubApp, change) -> str:
+    """Read a pull request left open for its owner: merged by hand, the change is merged (and its figures will be
+    counted again); closed, it is closed; else it is read again after WATCH_EVERY."""
+    from evo_agents.hub.server import pulls
+
+    target = _target(change.origin)
+
+    async def read(token: str) -> dict:
+        return await pulls.pull(app, token, target.owner, target.name, change.pr_number)
+
+    try:
+        if target is None:
+            raise GitHubRefused(f"repo {change.repo} has no origin on GitHub")
+        found = await pulls.with_token(app, target.owner, target.name, "read", read)
+    except GitHubRefused as exc:  # read again after WATCH_EVERY, not at every pass
+        async with engine.begin() as conn:
+            await _set(conn, change.id)
+        log.warning("a pull request left open could not be read", extra={"change_id": change.id, "why": str(exc)})
+        return "refused"
+    async with engine.begin() as conn:
+        locked = await change_of_plan(conn, change.project_id, change.plan_id, lock=True)
+        if locked is None or locked.state != "open":
+            return "moved"
+        if found.get("merged") is True:
+            login = (found.get("merged_by") or {}).get("login")
+            sha = found.get("merge_commit_sha")
+            extra = {
+                "actor": "user",
+                "actor_id": await _member_of(conn, login),
+                "login": login,
+                "before_sha": (found.get("base") or {}).get("sha"),
+            }
+            await _set(
+                conn,
+                change.id,
+                state="merged",
+                merged_at=_github_time(found.get("merged_at")) or func.now(),
+                merge_sha=sha if judge.is_sha(sha) else None,
+                reason=None,
+                ledger_extra=extra,
+            )
+            return "merged_by_hand"
+        if found.get("state") == "closed":
+            await _set(conn, change.id, state="closed", reason="its pull request was closed without a merge")
+            return "closed"
+        await _set(conn, change.id)  # read again after WATCH_EVERY
+    return "still_open"
+
+
 async def advance(engine: AsyncEngine, github_app: GitHubApp | None, curator_app: GitHubApp | None) -> dict:
     """One pass of the job ``curator.changes`` (see the module's docstring); how many changes ended in each outcome.
     GitHub failing leaves a change as it is for the next pass."""
@@ -1487,6 +1595,17 @@ async def advance(engine: AsyncEngine, github_app: GitHubApp | None, curator_app
         except Exception:  # one change failing leaves the others their turn
             log.exception("a curator change failed", extra={"change_id": change.id})
             outcomes["failed"] += 1
+    if github_app is not None:
+        for change in await _left_open(engine):
+            try:
+                found = await _watch(engine, github_app, change)
+                if found in ("merged_by_hand", "closed"):
+                    outcomes[found] += 1
+            except GitHubUnavailable as exc:
+                why = {"change_id": change.id, "why": str(exc)}
+                log.warning("a pull request left open waits for GitHub", extra=why)
+            except Exception:  # one change failing leaves the others their turn
+                log.exception("reading a pull request left open failed", extra={"change_id": change.id})
     try:
         await _recheck(engine, curator_app, outcomes)
     except GitHubUnavailable as exc:
