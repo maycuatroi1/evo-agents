@@ -2374,7 +2374,8 @@
         "revision": "Revision của plan",
         "revisionValue": "r{revision}",
         "copySession": "Sao chép mã phiên",
-        "approvalReview": "Không cần duyệt: review run không đổi gì"
+        "approvalReview": "Không cần duyệt: review run không đổi gì",
+        "approvalJudge": "Không cần duyệt: judge run không đổi gì, kết luận ghi lên thay đổi"
       },
       "result": {
         "title": "Kết quả",

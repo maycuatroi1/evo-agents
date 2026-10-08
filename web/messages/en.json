@@ -2374,7 +2374,8 @@
         "revision": "Plan revision",
         "revisionValue": "r{revision}",
         "copySession": "Copy the session id",
-        "approvalReview": "No approval: a review run changes nothing"
+        "approvalReview": "No approval: a review run changes nothing",
+        "approvalJudge": "No approval: a judge run changes nothing, and its verdict goes on the change"
       },
       "result": {
         "title": "Result",
