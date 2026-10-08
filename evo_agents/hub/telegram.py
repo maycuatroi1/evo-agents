@@ -1,5 +1,6 @@
 """The Telegram channel as the hub models it: link codes, the data of inline buttons, what may reach a chat, and the
-messages the hub sends. Pure functions, standard library only; ``evo_agents.hub.server.telegram`` holds the Bot API
+messages the hub sends. Pure functions on the standard library and ``evo_agents.hub.runs``;
+``evo_agents.hub.server.telegram`` holds the Bot API
 client, the channel's class, the webhook and the routes built on them, and ``docs/notifications.md`` the design.
 
 The hub has one bot. A member links their private chat with a one-time code of LINK_CODE_CHARS characters of
@@ -13,9 +14,17 @@ never any text: ``d:<id>:<key>`` or ``p:<id>:<action>``, at most MAX_CALLBACK_BY
 of a decision goes out, its context never: the web's button leads to it, and so for a proposal's summary, its paths and
 its evidence.
 
-A project whose hub sink is cleared for the level ``customer`` or the location ``domestic-only`` (``restricted``) gets
-messages with its name, the kind of thing that waits and the link, nothing else: no question, title, option, context,
-diff or file name, and no answer button (``minimal_message``).
+A project is restricted when its hub sink is cleared at or above the level ``customer`` or the location
+``domestic-only`` on the project's own ladder, as ``evo_agents.kg.policy`` reads a clearance (``restricted``), and it
+fails closed: a level or location the ladder lacks, a clearance without a level, a ladder without the rung, or no hub
+sink at all is restricted too. A restricted project gets messages with its name, the kind of thing that waits and the
+link, nothing else: no question, title, option, context, diff or file name, and no answer button
+(``minimal_message``). A decision or proposal that no longer waits by the time its message goes out says so and
+nothing more (``closed_message``).
+
+Every message is HTML, and its text stays within MAX_TEXT_CHARS: a part that may run long is cut before it is
+escaped, or cut between the tags and entities of its HTML (``clip_html``), never inside one, and the parts a message
+needs (its link, the outcome of an answer) are kept whole.
 
 The Bot FAQ asks a bot to stay near one message a second in one chat and about 30 a second overall
 (CHAT_INTERVAL_SECONDS, MESSAGES_PER_SECOND); the webhook takes at most INBOUND_UPDATES updates from one chat in
@@ -31,6 +40,8 @@ import secrets
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 
+from evo_agents.hub import runs
+
 LINK_SECONDS = 600  # a link code lives 10 minutes
 LINK_CODE_CHARS = 32
 LINK_CODE = re.compile(r"[A-Za-z0-9_-]{32}")
@@ -40,11 +51,13 @@ QUESTION_CHARS = 1200  # of a decision's question in its message
 BODY_CHARS = 3000  # of a notice's body in its message
 BUTTON_CHARS = 60  # of an option's label on its button
 TOAST_CHARS = 200  # Telegram's bound on the text answerCallbackQuery shows
+OUTCOME_CHARS = 300  # of the outcome an answered message ends with
+ELLIPSIS = "..."
 CHAT_INTERVAL_SECONDS = 1.0  # Bot FAQ: about one message a second in one chat
 MESSAGES_PER_SECOND = 30  # and about 30 a second overall
 INBOUND_UPDATES, INBOUND_SECONDS = 5, 10.0  # updates one chat may send the webhook in that time
-RESTRICTED_LEVEL = "customer"  # a hub sink cleared this high, or for this location, gets minimal messages
-RESTRICTED_LOCATION = "domestic-only"
+RESTRICTED_LEVEL = "customer"  # a hub sink cleared this high or higher, or for this location or a stricter one,
+RESTRICTED_LOCATION = "domestic-only"  # gets minimal messages
 PROPOSAL_ANSWERS = ("accept", "reject", "defer")
 PARSE_MODE = "HTML"
 
@@ -58,7 +71,8 @@ NOTICE_WORDS = {  # as the web's Inbox names them
 ANSWER_WORDS = {"accept": "Accept", "reject": "Reject", "defer": "Defer 7 days"}
 
 _COMMAND = re.compile(r"^/([a-z]+)(?:@[A-Za-z0-9_]{1,64})?(?:\s+(\S+))?\s*$")
-_CALLBACK = re.compile(r"^([dp]):([1-9][0-9]{0,17}):([A-Za-z0-9_-]{1,32})$")
+_OPTION_KEY = runs.OPTION_KEY.removeprefix("^").removesuffix("$")  # what a decision's option key may be
+_CALLBACK = re.compile(rf"^([dp]):([1-9][0-9]{{0,17}}):({_OPTION_KEY})$")
 _BOLD = re.compile(r"\*\*([^*\n]{1,200})\*\*")  # markdown's bold in a notice's body, as Telegram's HTML has it
 
 
@@ -98,6 +112,12 @@ def proposal_callback(proposal_id: int, answer: str) -> str:
     return f"p:{proposal_id}:{answer}"
 
 
+def message_ref(chat_id: int, message_id: int) -> str:
+    """How the hub keeps a message it sent (a delivery's external_id): its chat and its id, which Telegram numbers per
+    chat, so a reply finds the message of the chat it was sent in and of no other."""
+    return f"{chat_id}:{message_id}"
+
+
 @dataclass(frozen=True)
 class Callback:
     kind: str  # "decision" or "proposal"
@@ -118,12 +138,31 @@ def parse_callback(data) -> Callback | None:
     return Callback(kind, int(found[2]), found[3])
 
 
-def restricted(clearance) -> bool:
-    """Whether a project whose hub sink has ``clearance`` gets minimal messages: cleared for the level customer or the
-    location domestic-only, or with no hub sink at all (fail closed)."""
+def _rank(ladder: Sequence[str], name) -> int | None:
+    return ladder.index(name) if isinstance(name, str) and name in ladder else None
+
+
+def _mark(ladder: Sequence[str], name: str) -> int:
+    """Where ``name`` sits on ``ladder``; on a ladder without it, the rung above the lowest (fail closed)."""
+    found = _rank(ladder, name)
+    return 1 if found is None else found
+
+
+def restricted(clearance, levels: Sequence[str] | None, locations: Sequence[str] | None) -> bool:
+    """Whether a project whose hub sink has ``clearance``, on the project's ladder of ``levels`` and ``locations``,
+    gets minimal messages: cleared at or above the level customer or the location domestic-only, read as
+    ``evo_agents.kg.policy`` reads a clearance (one without a location may receive any, so it sits at the top of the
+    locations). It fails closed: no hub sink, no level, a level or location the ladder lacks, or a ladder without
+    customer (or domestic-only) and a clearance above its lowest rung is restricted."""
     if not isinstance(clearance, Mapping):
         return True
-    return clearance.get("level") == RESTRICTED_LEVEL or clearance.get("location") == RESTRICTED_LOCATION
+    levels, locations = list(levels or []), list(locations or [])
+    level = _rank(levels, clearance.get("level"))
+    if level is None or level >= _mark(levels, RESTRICTED_LEVEL):
+        return True
+    named = clearance.get("location")
+    location = len(locations) - 1 if named is None else _rank(locations, named)
+    return location is None or location >= _mark(locations, RESTRICTED_LOCATION)
 
 
 def escape(text: str) -> str:
@@ -131,9 +170,44 @@ def escape(text: str) -> str:
 
 
 def clip(text: str, limit: int) -> str:
-    """``text`` cut to ``limit`` characters, ending with "..." when cut."""
+    """Plain ``text`` cut to ``limit`` characters, ending with "..." when cut; escape it after."""
     text = text.strip()
-    return text if len(text) <= limit else text[: limit - 3].rstrip() + "..."
+    return text if len(text) <= limit else text[: limit - len(ELLIPSIS)].rstrip() + ELLIPSIS
+
+
+_PIECE = re.compile(r"<[^<>]*>|&(?:[A-Za-z]+|#[0-9]+|#x[0-9A-Fa-f]+);|.", re.DOTALL)
+_TAG = re.compile(r"<(/?)([A-Za-z]+)\b[^<>]*>")
+
+
+def clip_html(text: str, limit: int) -> str:
+    """HTML ``text`` as this module builds it cut to at most ``limit`` characters between its tags and entities,
+    never inside one: ending with "..." and closing the tags the cut left open."""
+    if len(text) <= limit:
+        return text
+    kept: list[str] = []
+    size, opened = 0, []
+    for piece in _PIECE.findall(text):
+        tag = _TAG.fullmatch(piece)
+        after = list(opened)
+        if tag and tag[1]:
+            if after and after[-1] == tag[2]:
+                after.pop()
+        elif tag:
+            after.append(tag[2])
+        closing = sum(len(name) + 3 for name in after)
+        if size + len(piece) + len(ELLIPSIS) + closing > limit:
+            break
+        kept.append(piece)
+        size += len(piece)
+        opened = after
+    return "".join(kept).rstrip() + ELLIPSIS + "".join(f"</{name}>" for name in reversed(opened))
+
+
+def fit(body: str, tail: str = "", limit: int = MAX_TEXT_CHARS) -> str:
+    """HTML ``body`` cut so that it and ``tail``, kept whole, fit in ``limit`` characters."""
+    if len(tail) > limit // 2:  # never the case for what this module builds; the whole is cut then
+        return clip_html(body + tail, limit)
+    return clip_html(body, limit - len(tail)) + tail
 
 
 def web_url(public_url: str | None, link: str | None) -> str | None:
@@ -177,7 +251,20 @@ def minimal_message(
 ) -> Message:
     """The project, the kind of thing and the link: all a restricted project's message holds."""
     head = f"<b>{escape(project)}</b>: " if project else ""
-    return Message(f"{head}{escape(what_waits(kind, notice_kind))}.{_link_line(url, link)}", web_button(url))
+    return Message(fit(f"{head}{escape(what_waits(kind, notice_kind))}.", _link_line(url, link)), web_button(url))
+
+
+def closed_message(project: str | None, kind: str, item_id: int | None, url: str | None, link: str | None) -> Message:
+    """A decision or a proposal that no longer waits for an answer by the time its message goes out: that it does
+    not, and the link; nothing of what it asked or proposed."""
+    what = "Decision" if kind == "decision" else "Proposal"
+    named = f"{what} #{item_id}" if item_id is not None else f"A {what.lower()}"
+    head = f"<b>{escape(project)}</b>: " if project else ""
+    text = f"{head}{escape(named)} no longer waits for your answer."
+    return Message(fit(text, _link_line(url, link)), web_button(url))
+
+
+MIN_QUESTION_CHARS = 200  # what a question keeps of the text, however long its options
 
 
 def decision_message(
@@ -194,26 +281,21 @@ def decision_message(
     link: str | None,
 ) -> Message:
     """A decision: what it is about, its question, its options with the recommended one marked, a button per option
-    and the web's button. Its context stays on the hub."""
+    and the web's button. Its context stays on the hub. The question gives way first when the text runs long."""
     where = f"plan {plan_id}" + (f", step {step_key}" if step_key else "") if plan_id else "its plan"
     run = f"Run #{run_id}" if run_id else "A run"
-    lines = [
-        f"<b>{escape(run)} of {escape(project)} asks a decision</b> ({escape(category)}, {escape(where)})",
-        "",
-        escape(clip(question, QUESTION_CHARS)),
-        "",
-    ]
-    buttons = []
+    head = f"<b>{escape(run)} of {escape(project)} asks a decision</b> ({escape(category)}, {escape(where)})"
+    listed, buttons = [], []
     for option in options:
         label = str(option.get("label") or option.get("key"))
         recommended = option.get("recommended") is True
-        lines.append(f"{escape(str(option['key']))}: {escape(label)}" + (" (recommended)" if recommended else ""))
+        listed.append(f"{escape(str(option['key']))}: {escape(label)}" + (" (recommended)" if recommended else ""))
         shown = clip(label, BUTTON_CHARS) + (" (recommended)" if recommended else "")
         buttons.append([{"text": shown, "callback_data": decision_callback(decision_id, str(option["key"]))}])
-    lines.append("")
-    lines.append("Tap an option, or reply to this message with your answer in words.")
-    text = "\n".join(lines) + _link_line(url, link)
-    return Message(clip(text, MAX_TEXT_CHARS), buttons + web_button(url))
+    tail = "\n\nTap an option, or reply to this message with your answer in words." + _link_line(url, link)
+    rest = len(head) + len("\n".join(listed)) + len(tail) + 4  # and the blank lines between the parts
+    asked = clip_html(escape(clip(question, QUESTION_CHARS)), max(MIN_QUESTION_CHARS, MAX_TEXT_CHARS - rest))
+    return Message(fit("\n".join([head, "", asked, "", *listed]), tail), buttons + web_button(url))
 
 
 def proposal_message(
@@ -231,18 +313,19 @@ def proposal_message(
     """A tier 2 proposal of the Curator: its title and what kind of change it is, Accept, Reject and Defer, and the
     web's button. Its summary, paths, evidence and draft plan stay on the hub."""
     facts = [f"tier {tier}" if tier is not None else None, f"kind {kind}" if kind else None]
-    facts += [f"lens {lens}" if lens else None, f"{evidence} pieces of evidence" if evidence else None]
+    pieces = f"{evidence} piece{'' if evidence == 1 else 's'} of evidence" if evidence else None
+    facts += [f"lens {lens}" if lens else None, pieces]
     lines = [
         f"<b>Proposal #{proposal_id} of {escape(project)}</b>",
-        escape(clip(title, QUESTION_CHARS)),
         escape(", ".join(fact for fact in facts if fact)),
+        escape(clip(title, QUESTION_CHARS)),
     ]
     answers = [
         {"text": ANSWER_WORDS[answer], "callback_data": proposal_callback(proposal_id, answer)}
         for answer in PROPOSAL_ANSWERS
     ]
-    text = "\n".join(line for line in lines if line) + _link_line(url, link)
-    return Message(clip(text, MAX_TEXT_CHARS), [answers, *web_button(url)])
+    text = fit("\n".join(line for line in lines if line), _link_line(url, link))
+    return Message(text, [answers, *web_button(url)])
 
 
 def notice_message(
@@ -253,14 +336,13 @@ def notice_message(
     lines = [f"<b>{escape(head)}</b>" + (f" in {escape(project)}" if project else ""), escape(title)]
     if body:
         lines += ["", _BOLD.sub(r"<b>\1</b>", escape(clip(body, BODY_CHARS)))]
-    text = "\n".join(lines) + _link_line(url, link)
-    return Message(clip(text, MAX_TEXT_CHARS), web_button(url))
+    return Message(fit("\n".join(lines), _link_line(url, link)), web_button(url))
 
 
 def answered_text(original: str, outcome: str) -> str:
     """The text a message is edited to once its buttons took an answer, or could not: the original, as Telegram sends
-    it back without markup, then the outcome."""
-    return clip(f"{escape(original)}\n\n<b>{escape(outcome)}</b>", MAX_TEXT_CHARS)
+    it back without markup and cut as it must be, then the outcome, whole."""
+    return fit(escape(original), f"\n\n<b>{escape(clip(outcome, OUTCOME_CHARS))}</b>")
 
 
 def url_buttons(markup) -> list[list[dict]]:

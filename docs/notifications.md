@@ -117,6 +117,12 @@ can never go out there (`Undeliverable`), which fails the delivery at once; or t
 drops a channel does not retry forever. A class that answers the id its service gave the message has it kept as the
 delivery's `external_id` (schema 0015), so a reply to that message finds its notification.
 
+Before a channel of a row gets a notification, the job checks what stands at that moment, not when the notification
+was stored. A member who no longer holds a grant on the notification's project gets nothing of it there: the delivery
+fails with that reason and the channel stays. A channel bound to the web session that linked it (`token_id`, schema
+0016), as every Telegram chat is, lives no longer than that session: once the session is signed out, revoked or
+expired, the delivery fails and the channel is turned off with that reason, until the member links it again.
+
 Adding a channel takes a class with one method, which sends one notification to one channel's `config` or raises,
 and its entry in `CHANNELS`; the tables, the outbox and the job stay as they are. The routes that link a channel to
 a member belong to that channel, like the Telegram ones below.
@@ -184,17 +190,24 @@ telegram` shows where it points, with Telegram's last error.
 ### Linking a chat
 
 1. On the web, the member opens the Inbox and its Telegram dialog and asks for a link (`POST /v1/me/telegram/link`).
-   The hub makes a one-time code of 32 characters of `A-Z`, `a-z`, `0-9`, `_` and `-`, keeps its SHA-256 and the
-   member (`telegram_links`, schema 0015), lets it live 10 minutes, drops the member's codes not used yet, and answers
-   the link `https://t.me/<bot>?start=<code>`.
+   Only a web session may: a machine token gets 403, so a token that leaked cannot link a chat of its own. The hub
+   makes a one-time code of 32 characters of `A-Z`, `a-z`, `0-9`, `_` and `-`, keeps its SHA-256, the member and the
+   session (`telegram_links`, schemas 0015 and 0016), lets it live 10 minutes, drops the member's codes not used yet,
+   and answers the link `https://t.me/<bot>?start=<code>`.
 2. The member opens the link, and Telegram sends the bot `/start <code>` from that member's private chat.
-3. The webhook finds the code by its hash. A used, expired or unknown code, or a chat that is not private, gets one
-   reply that says only that the link did not work, whichever it was. A right code is used up, and the hub stores a
-   channel of kind `telegram` whose `config` holds the chat id, the Telegram user id and username, and replies with
-   the hub and the member it linked. The audit row `telegram.link` names the member.
+3. The webhook finds the code by its hash. A used, expired or unknown code, a code whose session has ended, or a chat
+   that is not private, gets one reply that says only that the link did not work, whichever it was. A right code is
+   used up, and the hub stores a channel of kind `telegram` whose `config` holds the chat id, the Telegram user id and
+   username, bound to the session that made the code, and replies with the hub and the member it linked. The audit
+   row `telegram.link` names the member.
 
 A member has one Telegram channel and a chat speaks for one member: linking again replaces both. `GET /v1/me/telegram`
 says whether the hub has a bot and where the member's link stands, turned off with its reason included.
+
+The chat lives as long as the web session that linked it. Signing out of that session, revoking it (its member on the
+tokens page, or a hub admin), or its expiry after 90 days without use ends the chat: the hub sends it nothing more,
+takes no answer from it, and says on the web that the session ended; the member links it again from a live session.
+A chat speaks for its member with no token and never as a hub admin.
 
 ### What a decision looks like there
 
@@ -204,20 +217,32 @@ opens the decision on the web. A button's `callback_data` carries the decision's
 never any text. The context is not sent: the web button leads to it. A tier 2 proposal of the Curator goes out with its
 title, tier, kind and lens, the buttons Accept, Reject and Defer 7 days (`p:<id>:<answer>`) and the web's button; its
 summary, paths, evidence and draft plan stay on the hub. A notice, the morning brief included, goes out with its kind,
-title and body as plain text and the web's button.
+title and body as plain text and the web's button. A decision or proposal that no longer waits for an answer by the
+time its message goes out (answered on the web meanwhile, say) goes out as the project, its number, that it no longer
+waits and the link, never with its question or summary.
+
+A message is HTML within Telegram's 4,096 characters. A part that may run long is cut before it is escaped, or between
+the tags and entities of its HTML, never inside one; the question of a decision gives way first, and the link, and the
+outcome of an answered message, stay whole.
 
 ### Answers
 
 Telegram calls the webhook with the header `X-Telegram-Bot-Api-Secret-Token`. The hub compares it with the secret in
 constant time and refuses anything else (403) before it reads the body; an update it does not act on gets 200, so
-Telegram does not send it again. For a button, it finds the channel by the chat and the Telegram user, and answers as
-that channel's member through the same code as the web (`decisions.answer_decision`, `proposals.answer_proposal_as`):
+Telegram does not send it again. For a button, it finds the channel by the chat and the Telegram user, while the session
+that linked it lives. Before it reads anything of the decision or proposal the button names, it checks that the member
+holds a grant on its project: one of another project gets the same answer as one that does not exist, naming neither,
+and a project whose messages are restricted (below) takes no answer from Telegram, as its messages have no buttons.
+Button data that is not the hub's (an option key a decision cannot have, say) gets a refusal, never an error. Then it
+answers as that channel's member through the same code as the web (`decisions.answer_decision`,
+`proposals.answer_proposal_as`):
 the same checks (only the run's owner answers a decision, an admin of the project a proposal; a run on a worker that
 takes runs from the web only is answered on the web), the inbox message, the audit row, which ends `via=telegram` and
 names no token, and the run going on. It then calls `answerCallbackQuery`, so the button stops spinning and shows the
 outcome or the refusal, and edits the message to show the answer, or that it was answered first, keeping only the web
-button. A reply to the decision's message is its answer in text: the hub finds the decision by the message id it kept
-(`external_id`). A member who wants an option and text together answers on the web.
+button. A reply to the decision's message is its answer in text: the hub finds the decision by the chat and the message
+id it kept (`external_id`, `<chat>:<message>`), since Telegram numbers messages per chat, with the same checks as a
+button. A member who wants an option and text together answers on the web.
 
 ### Limits
 
@@ -230,10 +255,12 @@ of them. The summary of a burst of notices (more than 20 in 10 minutes as one me
 ### Unlinking
 
 A member unlinks on the web (`DELETE /v1/me/telegram`), which deletes the channel and the deliveries waiting for it.
-Sending `/stop` to the bot does the same. Each is audited as `telegram.unlink`, with `by=web` or `by=bot`. When
-Telegram answers 403 because the member blocked the bot, or 400 for a chat it no longer knows, the hub turns the
-channel off and says so on the web; linking again turns it on. Losing the grant on a project stops that project's
-notifications, not the channel; deleting the member deletes their channels.
+Sending `/stop` to the bot does the same, whatever became of the session that linked the chat. A hub admin unlinks any
+member's chat (`DELETE /v1/admin/users/{login}/telegram`, `evo-agents hub admin telegram-unlink LOGIN`). Each is
+audited as `telegram.unlink`, with `by=web`, `by=bot` or `by=admin`. When Telegram answers 403 because the member
+blocked the bot, or 400 for a chat it no longer knows, the hub turns the channel off and says so on the web, as it does
+when the session that linked the chat ends; linking again turns it on. Losing the grant on a project stops that
+project's notifications at their delivery, not the channel; deleting the member deletes their channels.
 
 ### What never goes to Telegram
 
@@ -241,9 +268,12 @@ Telegram is a sink outside the hub, so the message holds as little as the owner 
 
 - not a decision's context, a proposal's summary, paths or evidence, a run's log or diff, a step's evidence, the plan's
   text or the terminal: the web button leads to them;
-- for a project whose hub sink is cleared for the level `customer` or the location `domestic-only` (or that has no hub
-  sink), the project's name, the kind of thing that waits and the link, nothing else: no question, title, option,
-  context, diff or file name, and no answer button;
+- for a project whose hub sink is cleared at or above the level `customer` or the location `domestic-only` on the
+  project's own ladder, read as `evo_agents.kg.policy` reads a clearance (a sink that names no location may receive
+  any, so it sits at the top of the locations), the project's name, the kind of thing that waits and the link, nothing
+  else: no question, title, option, context, diff or file name, and no answer button. It fails closed: a project with no
+  hub sink, a clearance without a level, a level or location the ladder lacks, or a ladder without `customer` (or
+  `domestic-only`) and a clearance above its lowest rung, is restricted too;
 - no token, pairing code or link code, ever;
 - no command beyond answering a decision or a proposal: cancelling, approving, dispatching and messages to the agent stay
   on the web and the command line.

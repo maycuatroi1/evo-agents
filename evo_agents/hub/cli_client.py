@@ -56,6 +56,7 @@ TELEGRAM_KEYS = (
     "last_error_date",
     "last_error_message",
 )
+TELEGRAM_UNLINK_KEYS = ("login", "unlinked")
 PROJECT_KEYS = (
     "name",
     "harness",
@@ -278,6 +279,23 @@ def cmd_admin_telegram(args) -> int:
 
 
 @_client_command
+def cmd_admin_telegram_unlink(args) -> int:
+    hub, _ = _signed_in()
+    found = hub.call("DELETE", f"/v1/admin/users/{quote(args.login, safe='')}/telegram")
+    if args.json:
+        _print_json(found)
+        return 0
+    if found["unlinked"]:
+        print(
+            f"Unlinked the Telegram chat of {found['login']}: the hub sends it nothing more and takes no answer "
+            "from it."
+        )
+    else:
+        print(f"{found['login']} has no Telegram chat linked.")
+    return 0
+
+
+@_client_command
 def cmd_admin_stats(args) -> int:
     hub, _ = _signed_in()
     counts = hub.call("GET", "/v1/admin/stats")
@@ -419,6 +437,12 @@ def register_client(hsub) -> None:
     )
     json_option(telegram, returns_object(*TELEGRAM_KEYS, schema="TelegramWebhook"))
     telegram.set_defaults(func=cmd_admin_telegram)
+    telegram_unlink = asub.add_parser(
+        "telegram-unlink", help="unlink a member's Telegram chat, whatever the web session that linked it"
+    )
+    telegram_unlink.add_argument("login", metavar="LOGIN", help="the member's GitHub login")
+    json_option(telegram_unlink, returns_object(*TELEGRAM_UNLINK_KEYS, schema="TelegramUnlinked"))
+    telegram_unlink.set_defaults(func=cmd_admin_telegram_unlink)
 
     project = hsub.add_parser("project", help="projects on the hub, registered from their harness")
     psub = project.add_subparsers(dest="project_command", required=True)

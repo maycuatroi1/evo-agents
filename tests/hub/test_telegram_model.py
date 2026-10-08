@@ -57,19 +57,75 @@ def test_button_data_names_the_item_and_the_choice_within_64_bytes_and_nothing_e
         assert telegram.parse_callback(data) is None
 
 
+def test_button_data_takes_only_what_an_option_key_may_be():
+    # A key starts with a letter or digit, as runs.OPTION_KEY has it: the hub's buttons never carry another.
+    for data in ("d:1:-x", "d:1:_x", "d:1:-", "d:1:__", "p:1:-accept"):
+        assert telegram.parse_callback(data) is None
+    assert telegram.parse_callback("d:1:x-_y") == telegram.Callback("decision", 1, "x-_y")
+    assert telegram.parse_callback("d:1:" + "a" * 32) == telegram.Callback("decision", 1, "a" * 32)
+
+
+def test_a_sent_message_is_kept_by_its_chat_and_its_id():
+    assert telegram.message_ref(7001, 1005) == "7001:1005"
+    assert telegram.message_ref(-5001, 1005) != telegram.message_ref(7001, 1005)
+
+
+LEVELS = ["public", "internal", "customer", "secret"]  # evo_agents.kg.policy.DEFAULT_LEVELS
+ANY = ["any"]
+DOMESTIC = ["any", "domestic-only"]
+
+
 @pytest.mark.parametrize(
-    ("clearance", "restricted"),
+    ("clearance", "locations", "restricted"),
     [
-        ({"level": "internal"}, False),
-        ({"level": "internal", "location": "any"}, False),
-        ({"level": "customer", "location": "any"}, True),
-        ({"level": "internal", "location": "domestic-only"}, True),
-        ({"level": "customer", "location": "domestic-only"}, True),
-        (None, True),  # no hub sink: fail closed
+        ({"level": "internal"}, ANY, False),
+        ({"level": "internal", "location": "any"}, DOMESTIC, False),
+        ({"level": "customer", "location": "any"}, DOMESTIC, True),
+        ({"level": "internal", "location": "domestic-only"}, DOMESTIC, True),
+        ({"level": "customer", "location": "domestic-only"}, DOMESTIC, True),
+        (None, ANY, True),  # no hub sink: fail closed
     ],
 )
-def test_a_project_cleared_for_customer_or_domestic_only_is_restricted(clearance, restricted):
-    assert telegram.restricted(clearance) is restricted
+def test_a_project_cleared_for_customer_or_domestic_only_is_restricted(clearance, locations, restricted):
+    assert telegram.restricted(clearance, LEVELS, locations) is restricted
+
+
+@pytest.mark.parametrize(
+    ("clearance", "levels", "locations"),
+    [
+        ({"level": "secret", "location": "any"}, LEVELS, DOMESTIC),  # above customer
+        ({"level": "secret"}, LEVELS, ANY),
+        ({"level": "top-secret"}, [*LEVELS, "top-secret"], ANY),  # a custom level above customer
+        ({"location": "any"}, LEVELS, DOMESTIC),  # no level
+        ({"level": None}, LEVELS, ANY),
+        ({"level": "galaxy"}, LEVELS, ANY),  # a level the ladder lacks
+        ({"level": "Internal"}, LEVELS, ANY),
+        ({"level": "internal", "location": "moon"}, LEVELS, DOMESTIC),  # a location the ladder lacks
+        ({"level": "internal"}, LEVELS, DOMESTIC),  # no location: it may receive any, domestic-only included
+        ({"level": "internal", "location": "on-premises"}, LEVELS, [*DOMESTIC, "on-premises"]),  # stricter still
+        ({"level": "confidential"}, ["public", "confidential"], ANY),  # no customer: above the lowest is restricted
+        ({"level": "internal", "location": "eu-only"}, LEVELS, ["any", "eu-only"]),  # no domestic-only: the same
+        ({"level": "internal"}, None, ANY),  # no ladder at all
+        ({"level": "internal"}, [], ANY),
+        ("customer", LEVELS, ANY),  # not a clearance
+        ([], LEVELS, ANY),
+    ],
+)
+def test_restricted_compares_ranks_on_the_projects_ladder_and_fails_closed(clearance, levels, locations):
+    assert telegram.restricted(clearance, levels, locations) is True
+
+
+@pytest.mark.parametrize(
+    ("clearance", "levels", "locations"),
+    [
+        ({"level": "public"}, LEVELS, ANY),
+        ({"level": "internal", "location": "any"}, LEVELS, DOMESTIC),
+        ({"level": "public"}, ["public", "confidential"], ANY),  # the lowest rung of a ladder without customer
+        ({"level": "internal"}, ["public", "internal", "restricted", "customer"], ANY),
+    ],
+)
+def test_below_customer_and_domestic_only_on_the_ladder_is_not_restricted(clearance, levels, locations):
+    assert telegram.restricted(clearance, levels, locations) is False
 
 
 def test_a_restricted_message_holds_the_project_the_kind_and_the_link_only():
@@ -175,3 +231,86 @@ def test_web_url_needs_the_public_url_and_a_path_of_the_hub():
     assert telegram.web_url(None, "/inbox") is None
     assert telegram.web_url("https://hub.test", "//evil.example") is None
     assert telegram.web_url("https://hub.test", "https://evil.example") is None
+
+
+# What a message holds when its text runs long, and when what it was about closed
+
+ENTITY_OR_TAG = re.compile(r"&[A-Za-z#0-9]*;|</?b>")
+
+
+def well_formed(text: str) -> bool:
+    """No entity or tag cut in two: every & starts a whole entity, every < a whole <b> or </b>, and they pair up."""
+    rest = ENTITY_OR_TAG.sub("", text)
+    opened = 0
+    for tag in re.findall(r"</?b>", text):
+        opened += -1 if tag.startswith("</") else 1
+        if opened not in (0, 1):
+            return False
+    return "&" not in rest and "<" not in rest and ">" not in rest and opened == 0
+
+
+def test_clip_html_cuts_between_entities_and_tags_and_closes_what_it_left_open():
+    text = "<b>" + "a&amp;" * 50 + "</b> tail"
+    for limit in range(5, len(text)):
+        cut = telegram.clip_html(text, limit)
+        assert len(cut) <= limit and well_formed(cut), (limit, cut)
+        assert cut.endswith("...</b>") or cut.endswith("...")
+    assert telegram.clip_html(text, len(text)) == text
+    assert telegram.clip_html("&lt;" * 10, 9) == "&lt;..."  # not "&lt;&l..."
+
+
+def test_an_answered_message_keeps_its_outcome_whole_however_long_the_original():
+    outcome = "Answered by owner: Move to Postgres"
+    for original in ("<&>" * 2000, "x" * 5000, "a&b " * 1500):
+        edited = telegram.answered_text(original, outcome)
+        assert len(edited) <= telegram.MAX_TEXT_CHARS and well_formed(edited)
+        assert edited.endswith(f"\n\n<b>{outcome}</b>")
+    long_outcome = telegram.answered_text("short", "o" * 1000)
+    assert long_outcome.endswith("...</b>") and len(long_outcome) < 400
+
+
+def test_a_long_message_of_escaped_text_stays_whole_html_and_keeps_its_link():
+    heavy = "<&>" * 2000
+    options = [{"key": f"k{index}", "label": "&" * 200} for index in range(6)]
+    url = "https://hub.test/inbox?decision=9"
+    decision = telegram.decision_message(
+        decision_id=9,
+        project="p",
+        run_id=1,
+        plan_id="fleet",
+        step_key="2",
+        category="scope",
+        question=heavy,
+        options=options,
+        url=url,
+        link="/inbox?decision=9",
+    )
+    proposal = telegram.proposal_message(
+        proposal_id=3,
+        project="p",
+        title=heavy,
+        tier=2,
+        kind="feature",
+        lens=None,
+        evidence=1,
+        url=url,
+        link="/inbox?proposal=3",
+    )
+    notice = telegram.notice_message(
+        project="p", notice_kind="curator_brief", title="t", body="**a & b** " * 900, url=url, link="/p"
+    )
+    for message in (decision, proposal, notice):
+        assert len(message.text) <= telegram.MAX_TEXT_CHARS and well_formed(message.text)
+        assert message.text.endswith(f"\n\n{url}")
+    assert "Tap an option, or reply to this message with your answer in words." in decision.text
+    assert "tier 2, kind feature, 1 piece of evidence" in proposal.text
+
+
+def test_a_decision_or_proposal_closed_before_its_message_says_so_and_nothing_else():
+    url = "https://hub.test/inbox?proposal=3"
+    closed = telegram.closed_message("evo-agents", "proposal", 3, url, "/inbox?proposal=3")
+    assert closed.text == f"<b>evo-agents</b>: Proposal #3 no longer waits for your answer.\n\n{url}"
+    assert closed.buttons == [[{"text": "Open on the hub", "url": url}]]
+    decision = telegram.closed_message("p&q", "decision", 9, None, "/inbox?decision=9")
+    assert decision.text == "<b>p&amp;q</b>: Decision #9 no longer waits for your answer.\n\n/inbox?decision=9"
+    assert decision.buttons == []

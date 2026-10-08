@@ -22,13 +22,15 @@ if not pg.DSN:
 
 import httpx
 from fastapi.testclient import TestClient
-from sqlalchemy import extract, func, insert, select, update
+from sqlalchemy import delete, extract, func, insert, select, update
 
 from evo_agents.hub import tables
 from evo_agents.hub import telegram as model
 from evo_agents.hub.server import notifications
 from evo_agents.hub.server import telegram as server_telegram
 from evo_agents.hub.server.app import create_app
+from evo_agents.hub.server.security import CSRF_HEADER, SESSION_COOKIE, csrf_token, hash_token
+from tests.hub.contract_keys import assert_json_keys
 from tests.hub.fake_telegram import (
     BOT,
     SECRET,
@@ -41,14 +43,18 @@ from tests.hub.fake_telegram import (
 )
 from tests.hub.live import sql
 from tests.hub.test_curator import night  # noqa: F401 (a fixture, on this module's web_client)
-from tests.hub.test_decisions import ANSWER_TEXT, OPTIONS, QUESTION, asked
+from tests.hub.test_decisions import ANSWER_TEXT, OPTIONS, QUESTION, asked, decision
+from tests.hub.test_decisions import answered as answered_decision
 from tests.hub.test_plan_runs import plan_body, push, started
+from tests.hub.test_review_runs import answered as answered_proposal
 from tests.hub.test_review_runs import (
     held_review,
     proposed,
     review,  # noqa: F401 (a fixture)
 )
-from tests.hub.test_runs import OTHER, OWNER, PROJECT, audit_rows, members, report
+from tests.hub.test_run_cli import as_json, cli, ok, write_credentials
+from tests.hub.test_run_stream import serving
+from tests.hub.test_runs import OTHER, OWNER, PROJECT, STRANGER, audit_rows, members, report
 
 OWNER_CHAT, OTHER_CHAT = 7001, 7002
 CHANNELS = tables.notification_channels
@@ -91,10 +97,33 @@ def web_client(hub_db, tmp_path, github, bot):
 
 
 @pytest.fixture
-def hub(client, github) -> dict:
+def hub(client, github, hub_db) -> dict:
+    """test_runs' members with machine tokens, and owner_web and other_web: web sessions of owner and other, which a
+    chat is linked from. The project's hub sink clears internal for any location: its messages are not restricted."""
     headers = members(client, github)
     push(client, headers["owner"], plan_body())
+    unrestricted(hub_db)
+    headers["owner_web"] = web(client, hub_db, OWNER)
+    headers["other_web"] = web(client, hub_db, OTHER)
     return headers
+
+
+def unrestricted(db, clearance: dict | None = None) -> None:
+    """The project's hub sink cleared for ``clearance``, internal for any location unless it says otherwise."""
+    sinks = tables.project_sinks
+    cleared = clearance or {"level": "internal", "location": "any"}
+    sql(db, update(sinks).values(clearance=cleared).where(sinks.c.kind == "hub"))
+
+
+def web(client, db, login: str) -> dict:
+    """The headers of a new web session of ``login``, as the web sends a write: its cookie and its CSRF header."""
+    token, _ = live.web_session(db, login)
+    return session_headers(client, token)
+
+
+def session_headers(client, token: str) -> dict:
+    secret = client.app.state.config.session_secret
+    return {"Cookie": f"{SESSION_COOKIE}={token}", CSRF_HEADER: csrf_token(secret, hash_token(token))}
 
 
 def webhook(client, update: dict, secret: str | None = SECRET):
@@ -161,7 +190,7 @@ def telegram_deliveries(db) -> list[tuple]:
 
 
 def test_a_member_links_a_private_chat_with_a_one_time_code_that_lives_ten_minutes(client, hub, hub_db, bot):
-    owner = hub["owner"]
+    owner = hub["owner_web"]
     shown = status(client, owner)
     assert (shown["configured"], shown["linked"], shown["enabled"]) == (True, False, False)
 
@@ -188,14 +217,14 @@ def test_a_member_links_a_private_chat_with_a_one_time_code_that_lives_ten_minut
     # Used, unknown, expired, or from a group: the same one reply, whichever it was.
     assert say(client, OTHER_CHAT, f"/start {code}") == "link_failed"
     assert say(client, OTHER_CHAT, "/start " + "x" * 32) == "link_failed"
-    expired = new_link(client, hub["other"])
+    expired = new_link(client, hub["other_web"])
     eleven_minutes_ago = {
         "created_at": func.now() - timedelta(minutes=11),
         "expires_at": func.now() - timedelta(minutes=1),
     }
     sql(hub_db, update(links).values(**eleven_minutes_ago).where(links.c.used_at.is_(None)))
     assert say(client, OTHER_CHAT, f"/start {expired}") == "link_failed"
-    group_code = new_link(client, hub["other"])
+    group_code = new_link(client, hub["other_web"])
     group = {"id": -5001, "type": "group"}
     sender = {"id": OTHER_CHAT, "is_bot": False, "first_name": "Other"}
     assert handled(client, text_update(next(updates), group, sender, f"/start {group_code}")) == "link_failed"
@@ -205,17 +234,17 @@ def test_a_member_links_a_private_chat_with_a_one_time_code_that_lives_ten_minut
 
 
 def test_linking_again_replaces_the_link_and_a_chat_speaks_for_one_member(client, hub, hub_db, bot):
-    linked(client, hub["owner"])
-    linked(client, hub["owner"], OTHER_CHAT)  # the owner's other account: the first link goes
+    linked(client, hub["owner_web"])
+    linked(client, hub["owner_web"], OTHER_CHAT)  # the owner's other account: the first link goes
     assert sql(hub_db, select(CHANNELS.c.config["chat_id"].as_integer())) == [(OTHER_CHAT,)]
-    linked(client, hub["other"], OTHER_CHAT)  # someone else links that chat: the owner's link to it goes
+    linked(client, hub["other_web"], OTHER_CHAT)  # someone else links that chat: the owner's link to it goes
     found = sql(hub_db, select(tables.users.c.login).join_from(CHANNELS, tables.users))
     assert found == [(OTHER,)]
 
 
 def test_a_member_unlinks_on_the_web_or_with_stop(client, hub, hub_db, bot):
     owner = hub["owner"]
-    linked(client, owner)
+    linked(client, hub["owner_web"])
     worker, run = started(client, hub)
     asked(client, worker, run["id"])  # a delivery waits for the chat
     assert telegram_deliveries(hub_db) == [("pending", 0, None, None)]
@@ -224,7 +253,7 @@ def test_a_member_unlinks_on_the_web_or_with_stop(client, hub, hub_db, bot):
     assert response.json()["linked"] is False
     assert telegram_deliveries(hub_db) == [] and sql(hub_db, select(func.count()).select_from(CHANNELS)) == [(0,)]
 
-    linked(client, owner)
+    linked(client, hub["owner_web"])
     assert say(client, OWNER_CHAT, "/stop") == "unlinked"
     assert status(client, owner)["linked"] is False
     assert replies(bot.fake, OWNER_CHAT)[-1].startswith("This chat is unlinked from the hub")
@@ -241,7 +270,7 @@ def test_a_member_unlinks_on_the_web_or_with_stop(client, hub, hub_db, bot):
 
 
 def test_the_webhook_checks_the_secret_token_before_it_reads_anything(client, hub, hub_db, bot):
-    code = new_link(client, hub["owner"])
+    code = new_link(client, hub["owner_web"])
     chat, sender = private_chat(OWNER_CHAT)
     update = text_update(next(updates), chat, sender, f"/start {code}")
     for secret in (None, "", "wrong-secret", SECRET + "x"):
@@ -279,7 +308,9 @@ def test_without_its_variables_the_channel_is_off_and_the_hub_runs(hub_db, tmp_p
         assert refused.status_code == 503 and "not set up" in refused.text
         assert webhook(client, {"update_id": 1}).status_code == 404
         # A channel linked while the bot was set up fails at once, and the web still gets the notification.
-        sql(hub_db, insert(CHANNELS).values(user_id=user_id(hub_db, OWNER), kind="telegram", config={"chat_id": 1}))
+        _, session = live.web_session(hub_db, OWNER)
+        channel = {"user_id": user_id(hub_db, OWNER), "kind": "telegram", "config": {"chat_id": 1}, "token_id": session}
+        sql(hub_db, insert(CHANNELS).values(**channel))
         worker, run = started(client, headers)
         asked(client, worker, run["id"])
         assert deliver(client) == {"delivered": 1, "retried": 0, "failed": 1}
@@ -297,7 +328,7 @@ def user_id(db, login: str) -> int:
 
 def sent_decision(client, hub, bot) -> SimpleNamespace:
     """The owner's chat linked, a plan run of theirs that asked a decision, and the message it went out as."""
-    linked(client, hub["owner"])
+    linked(client, hub["owner_web"])
     worker, run = started(client, hub)
     decision = asked(client, worker, run["id"])
     assert deliver(client) == {"delivered": 2, "retried": 0, "failed": 0}
@@ -316,7 +347,7 @@ def test_a_decision_goes_out_with_a_button_per_option_and_one_for_the_web(client
         [{"text": "Move to Postgres (recommended)", "callback_data": f"d:{decision_id}:postgres"}],
         [{"text": "Open on the hub", "url": f"https://hub.test/inbox?decision={decision_id}"}],
     ]
-    assert telegram_deliveries(hub_db) == [("delivered", 1, str(message["message_id"]), None)]
+    assert telegram_deliveries(hub_db) == [("delivered", 1, f"{OWNER_CHAT}:{message['message_id']}", None)]
     assert TOKEN not in str(sql(hub_db, select(DELIVERIES.c.last_error, DELIVERIES.c.external_id)))
 
 
@@ -368,7 +399,7 @@ def test_a_reply_to_the_decisions_message_answers_it_in_words(client, hub, hub_d
 def test_only_the_runs_owner_answers_and_an_unlinked_chat_answers_nothing(client, hub, hub_db, bot):
     sent = sent_decision(client, hub, bot)
     decision_id = sent.decision["id"]
-    linked(client, hub["other"], OTHER_CHAT)
+    linked(client, hub["other_web"], OTHER_CHAT)
     assert press(client, OTHER_CHAT, f"d:{decision_id}:sqlite", sent.message) == "refused"
     assert (
         bot.fake.sent("answerCallbackQuery")[-1]["text"]
@@ -403,8 +434,9 @@ def test_a_restricted_project_gets_its_name_the_kind_and_the_link_only(client, h
 
 
 def test_a_tier_2_proposal_takes_accept_reject_and_defer_from_telegram(review, bot):  # noqa: F811
-    client, worker, db, headers = review.client, review.worker, review.db, review.headers
-    linked(client, headers["owner"])
+    client, worker, db = review.client, review.worker, review.db
+    unrestricted(db)
+    linked(client, web(client, db, OWNER))
     run_id = held_review(review)
     made = proposed(client, worker, run_id, kind="feature", title="A wait helper instead of sleep and tail")
     assert made["tier"] == 2
@@ -443,7 +475,7 @@ def test_a_tier_2_proposal_takes_accept_reject_and_defer_from_telegram(review, b
 
 
 def test_the_channel_keeps_to_the_bot_faqs_pace_and_waits_out_a_429(client, hub, hub_db, bot):
-    linked(client, hub["owner"])
+    linked(client, hub["owner_web"])
     worker, run = started(client, hub)
     asked(client, worker, run["id"])
     asked(client, worker, run["id"], question="And the cache?")
@@ -470,7 +502,7 @@ def test_the_channel_keeps_to_the_bot_faqs_pace_and_waits_out_a_429(client, hub,
 
 
 def test_a_blocked_bot_turns_the_channel_off_with_its_reason(client, hub, hub_db, bot):
-    linked(client, hub["owner"])
+    linked(client, hub["owner_web"])
     worker, run = started(client, hub)
     asked(client, worker, run["id"])
     bot.fake.fail_next(403, "Forbidden: bot was blocked by the user")
@@ -482,7 +514,7 @@ def test_a_blocked_bot_turns_the_channel_off_with_its_reason(client, hub, hub_db
     assert "blocked by the user" in shown["disabled_reason"]
     asked(client, worker, run["id"], question="Still there?")
     assert telegram_deliveries(hub_db)[1:] == []  # a channel turned off gets no new delivery
-    linked(client, hub["owner"])
+    linked(client, hub["owner_web"])
     assert status(client, hub["owner"])["enabled"] is True
 
 
@@ -490,7 +522,7 @@ def test_telegram_that_cannot_be_reached_leaves_no_token_in_the_database(client,
     def unreachable(request: httpx.Request) -> httpx.Response:
         raise httpx.ConnectError(f"cannot connect to {request.url}")
 
-    linked(client, hub["owner"])
+    linked(client, hub["owner_web"])
     monkeypatch.setattr(server_telegram, "TRANSPORT", httpx.MockTransport(unreachable))
     worker, run = started(client, hub)
     asked(client, worker, run["id"])
@@ -529,3 +561,214 @@ def test_a_hub_admin_points_the_webhook_at_the_hub_with_the_secret(client, hub, 
         ("telegram.webhook", "https://hub.test/v1/telegram/webhook")
     ]
     assert SECRET not in str(audit_rows(hub_db, "telegram"))
+
+
+# Failing closed: what the hub's review of this channel found, each with the check that keeps it fixed
+
+
+def minimal(decision_id: int) -> str:
+    return f"<b>{PROJECT}</b>: A decision waits for your answer.\n\nhttps://hub.test/inbox?decision={decision_id}"
+
+
+def test_a_hub_sink_above_customer_without_a_level_or_missing_gets_the_project_and_the_link_only(
+    client, hub, hub_db, bot
+):
+    linked(client, hub["owner_web"])
+    worker, run = started(client, hub)
+    sinks = tables.project_sinks
+    cleared = (
+        {"level": "secret", "location": "any"},  # above customer on the ladder
+        {"location": "any"},  # no level
+        {"level": "top-secret", "location": "any"},  # a level the ladder lacks
+        {"level": "internal"},  # no location: it may receive any, domestic-only included
+        None,  # no hub sink at all
+    )
+    for index, clearance in enumerate(cleared):
+        if clearance is None:
+            sql(hub_db, delete(sinks).where(sinks.c.kind == "hub"))
+        else:
+            unrestricted(hub_db, clearance)
+        made = asked(client, worker, run["id"], question=f"{QUESTION} ({index})")
+        assert deliver(client)["failed"] == 0
+        message = bot.fake.sent()[-1]
+        url = f"https://hub.test/inbox?decision={made['id']}"
+        assert message["text"] == minimal(made["id"]), clearance
+        assert message["reply_markup"] == {"inline_keyboard": [[{"text": "Open on the hub", "url": url}]]}
+
+
+def test_a_decision_answered_before_its_message_goes_out_sends_nothing_it_asked(client, hub, hub_db, bot):
+    linked(client, hub["owner_web"])
+    worker, run = started(client, hub)
+    made = asked(client, worker, run["id"])
+    answered_decision(client, hub["owner"], made["id"], option="postgres")
+    assert deliver(client)["failed"] == 0
+    message = bot.fake.sent()[-1]
+    url = f"https://hub.test/inbox?decision={made['id']}"
+    assert message["text"] == f"<b>{PROJECT}</b>: Decision #{made['id']} no longer waits for your answer.\n\n{url}"
+    assert message["reply_markup"] == {"inline_keyboard": [[{"text": "Open on the hub", "url": url}]]}
+
+
+def test_a_proposal_answered_before_its_message_goes_out_never_sends_its_summary(review, bot):  # noqa: F811
+    client, worker, db, headers = review.client, review.worker, review.db, review.headers
+    unrestricted(db)
+    linked(client, web(client, db, OWNER))
+    run_id = held_review(review)
+    summary = "The **sessions** of the night waited on `sleep 30 && tail` in evo_agents/worker/wait.py, nine times."
+    made = proposed(client, worker, run_id, kind="feature", title="A wait helper instead of sleep", summary=summary)
+    for state in ("verifying", "done"):
+        assert report(client, worker, run_id, state).status_code == 200
+    answered_proposal(client, headers["owner"], made["id"], "reject")
+    assert deliver(client)["failed"] == 0
+    (message,) = [payload for payload in bot.fake.sent() if f"Proposal #{made['id']}" in payload["text"]]
+    url = f"https://hub.test/inbox?proposal={made['id']}"
+    assert message["text"] == f"<b>{PROJECT}</b>: Proposal #{made['id']} no longer waits for your answer.\n\n{url}"
+    for word in ("sessions", "sleep", "wait.py", "nine times", "A wait helper"):
+        assert word not in message["text"]
+
+
+def test_a_member_whose_grant_went_gets_nothing_of_that_project_on_telegram(client, hub, hub_db, bot):
+    linked(client, hub["owner_web"])
+    worker, run = started(client, hub)
+    asked(client, worker, run["id"])
+    sent_before = len(bot.fake.sent())
+    taken = client.delete(f"/v1/admin/projects/{PROJECT}/grants/{OWNER}", headers=hub["admin"])
+    assert taken.status_code == 204, taken.text
+    assert deliver(client) == {"delivered": 1, "retried": 0, "failed": 1}  # the web's, which the grant hides
+    assert len(bot.fake.sent()) == sent_before
+    ((state, attempts, external_id, error),) = telegram_deliveries(hub_db)
+    assert (state, attempts, external_id, error) == ("failed", 1, None, notifications.NO_GRANT)
+    assert status(client, hub["owner"])["enabled"] is True  # the chat stays linked for the projects left
+
+
+def test_a_chat_is_linked_from_a_web_session_only(client, hub, hub_db, bot):
+    refused = client.post("/v1/me/telegram/link", headers=hub["owner"])  # a machine token
+    assert refused.status_code == 403 and "linked from a web session only" in refused.text
+    assert sql(hub_db, select(func.count()).select_from(tables.telegram_links)) == [(0,)]
+    # A code whose session signed out before Start links nothing.
+    session = web(client, hub_db, OWNER)
+    code = new_link(client, session)
+    assert client.post("/v1/auth/logout", headers=session).status_code == 204
+    assert say(client, OWNER_CHAT, f"/start {code}") == "link_failed"
+    assert status(client, hub["owner"])["linked"] is False
+    # From a live session it links, bound to that session.
+    token, session_id = live.web_session(hub_db, OWNER)
+    linked(client, session_headers(client, token))
+    assert sql(hub_db, select(CHANNELS.c.token_id)) == [(session_id,)]
+    links = tables.telegram_links
+    assert sql(hub_db, select(links.c.token_id).where(links.c.used_at.is_not(None))) == [(session_id,)]
+
+
+def test_a_chat_lives_no_longer_than_the_web_session_that_linked_it(client, hub, hub_db, bot):
+    sent = sent_decision(client, hub, bot)
+    decision_id = sent.decision["id"]
+    assert client.post("/v1/auth/logout", headers=hub["owner_web"]).status_code == 204
+    shown = status(client, hub["owner"])
+    assert (shown["linked"], shown["enabled"], shown["disabled_reason"]) == (True, False, notifications.SESSION_ENDED)
+    # Its buttons and replies answer nothing more.
+    assert press(client, OWNER_CHAT, f"d:{decision_id}:postgres", sent.message) == "refused"
+    assert bot.fake.sent("answerCallbackQuery")[-1]["text"].startswith("This chat is not linked to the hub")
+    assert say(client, OWNER_CHAT, ANSWER_TEXT, reply_to=sent.message["message_id"]) == "replied"
+    assert replies(bot.fake, OWNER_CHAT)[-1].startswith("This chat is not linked to the hub")
+    assert decision(client, hub["owner"], decision_id)["state"] == "open"
+    # It gets nothing more, and the channel turns off with the reason.
+    sent_before = len(bot.fake.sent())
+    asked(client, sent.worker, sent.run["id"], question="After the sign-out?")
+    assert deliver(client) == {"delivered": 1, "retried": 0, "failed": 1}
+    assert len(bot.fake.sent()) == sent_before
+    assert telegram_deliveries(hub_db)[-1][::3] == ("failed", notifications.SESSION_ENDED)
+    ((enabled, config),) = sql(hub_db, select(CHANNELS.c.enabled, CHANNELS.c.config))
+    assert enabled is False and config["disabled_reason"] == notifications.SESSION_ENDED
+    # /stop still unlinks it, whatever became of the session.
+    assert say(client, OWNER_CHAT, "/stop") == "unlinked"
+    assert status(client, hub["owner"])["linked"] is False
+    # A session that expires, or that a hub admin revokes, ends the chat as a sign-out does.
+    tokens = tables.tokens
+    for end in ("expired", "revoked"):
+        token, session_id = live.web_session(hub_db, OWNER)
+        linked(client, session_headers(client, token))
+        assert status(client, hub["owner"])["enabled"] is True
+        if end == "expired":
+            day = timedelta(days=1)
+            ended = {"created_at": func.now() - 100 * day, "last_used_at": None, "expires_at": func.now() - day}
+            sql(hub_db, update(tokens).values(**ended).where(tokens.c.id == session_id))
+        else:
+            assert client.delete(f"/v1/admin/tokens/{session_id}", headers=hub["admin"]).status_code == 204
+        assert status(client, hub["owner"])["disabled_reason"] == notifications.SESSION_ENDED, end
+
+
+def test_a_hub_admin_unlinks_any_members_chat(client, hub, hub_db, bot):
+    linked(client, hub["owner_web"])
+    path = f"/v1/admin/users/{OWNER}/telegram"
+    for member in (hub["owner"], hub["owner_web"], hub["other"]):
+        assert client.delete(path, headers=member).status_code == 403
+    assert client.delete("/v1/admin/users/nobody-here/telegram", headers=hub["admin"]).status_code == 404
+    response = client.delete(path, headers=hub["admin"])
+    assert response.status_code == 200, response.text
+    assert response.json() == {"login": OWNER, "unlinked": True}
+    assert status(client, hub["owner"])["linked"] is False
+    again = client.delete(f"/v1/admin/users/{OWNER.upper()}/telegram", headers=hub["admin"])  # a login in any case
+    assert again.json() == {"login": OWNER, "unlinked": False}
+    assert audit_rows(hub_db, "telegram")[-1][:3] == ("telegram.unlink", f"telegram user:{OWNER} by=admin", live.ADMIN)
+
+
+def test_a_hub_admin_unlinks_a_members_chat_from_the_command_line(hub_db, tmp_path, github, monkeypatch, capsys):
+    app = create_app(live.hub_config(hub_db, tmp_path, github))
+    with serving(app) as url, httpx.Client(base_url=url, timeout=10) as http:
+        headers = members(http, github)
+        _, session = live.web_session(hub_db, OWNER)
+        channel = {"user_id": user_id(hub_db, OWNER), "kind": "telegram", "config": {"chat_id": 1}, "token_id": session}
+        sql(hub_db, insert(CHANNELS).values(**channel))
+        token = headers["admin"]["Authorization"].removeprefix("Bearer ")
+        home = write_credentials(tmp_path / "admin", url, live.ADMIN, token)
+        shown = as_json(cli(monkeypatch, capsys, home, "hub", "admin", "telegram-unlink", OWNER, "--json"))
+        assert_json_keys("hub admin telegram-unlink", shown)
+        assert shown == {"login": OWNER, "unlinked": True}
+        printed = ok(cli(monkeypatch, capsys, home, "hub", "admin", "telegram-unlink", OWNER)).out
+        assert printed.strip() == f"{OWNER} has no Telegram chat linked."
+        member = write_credentials(tmp_path / "owner", url, OWNER, headers["owner"]["Authorization"].split()[1])
+        refused = cli(monkeypatch, capsys, member, "hub", "admin", "telegram-unlink", OWNER)
+        assert refused.code != 0 and "hub admin" in refused.err
+
+
+def test_a_button_of_a_project_the_member_holds_no_grant_on_says_nothing_of_it(client, hub, hub_db, bot):
+    sent = sent_decision(client, hub, bot)
+    decision_id = sent.decision["id"]
+    for login, chat in ((STRANGER, 7003), (live.ADMIN, 7004)):  # no grant at all; a hub admin without one
+        linked(client, web(client, hub_db, login), chat)
+        for data in (
+            f"d:{decision_id}:postgres",
+            f"d:{decision_id}:nope",
+            f"d:{10**12}:postgres",
+            f"p:{decision_id}:accept",
+        ):
+            assert press(client, chat, data, sent.message) == "refused"
+            toast = bot.fake.sent("answerCallbackQuery")[-1]["text"]
+            assert toast == server_telegram.NOT_YOURS, (login, data)
+            assert PROJECT not in toast and "postgres" not in toast and "sqlite" not in toast
+    for data in (f"d:{decision_id}:-postgres", f"d:{decision_id}:_x"):  # not an option key: refused, not a 500
+        assert press(client, OWNER_CHAT, data, sent.message) == "refused"
+        assert bot.fake.sent("answerCallbackQuery")[-1]["text"] == server_telegram.NOT_THE_HUBS
+    assert decision(client, hub["owner"], decision_id)["state"] == "open"
+    assert bot.fake.sent("editMessageText") == [] and audit_rows(hub_db, "decision") == []
+
+
+def test_a_restricted_project_takes_no_answer_from_telegram(client, hub, hub_db, bot):
+    sent = sent_decision(client, hub, bot)  # sent while the project was not restricted
+    decision_id = sent.decision["id"]
+    unrestricted(hub_db, {"level": "customer", "location": "any"})  # it is now
+    assert say(client, OWNER_CHAT, ANSWER_TEXT, reply_to=sent.message["message_id"]) == "replied"
+    expected = f"The hub did not take that answer: {server_telegram.RESTRICTED_ANSWER}"
+    assert replies(bot.fake, OWNER_CHAT)[-1] == expected
+    assert press(client, OWNER_CHAT, f"d:{decision_id}:postgres", sent.message) == "refused"
+    assert bot.fake.sent("answerCallbackQuery")[-1]["text"] == server_telegram.RESTRICTED_ANSWER
+    assert decision(client, hub["owner"], decision_id)["state"] == "open"
+    assert bot.fake.sent("editMessageText") == [] and audit_rows(hub_db, "decision") == []
+
+
+def test_a_reply_finds_the_decision_of_its_own_chat_only(client, hub, hub_db, bot):
+    sent = sent_decision(client, hub, bot)
+    decision_id = sent.decision["id"]
+    linked(client, hub["owner_web"], OTHER_CHAT)  # the owner's other chat, whose message ids are its own
+    assert say(client, OTHER_CHAT, ANSWER_TEXT, reply_to=sent.message["message_id"]) == "replied"
+    assert replies(bot.fake, OTHER_CHAT)[-1].startswith("Only a decision takes an answer in words")
+    assert decision(client, hub["owner"], decision_id)["state"] == "open"
