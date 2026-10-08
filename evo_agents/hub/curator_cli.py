@@ -61,7 +61,7 @@ CHARTER_BODY_KEYS = (
 )
 CHARTER_KEYS = CHARTER_BODY_KEYS + CHARTER_META
 REVISION_KEYS = ("revision", "updated_by", "updated_at", "worker", "worker_id")
-STATUS_KEYS = ("project", "charter", "paused", "schedules", "night", "last_review_run")
+STATUS_KEYS = ("project", "charter", "paused", "schedules", "night", "last_review_run", "state", "open_proposals")
 PROPOSAL_SUMMARY_KEYS = (
     "id",
     "project",
@@ -468,7 +468,7 @@ def register_curator(hsub) -> None:
     listed.add_argument("--run", type=int, metavar="ID", help="of this review run")
     listed.add_argument("--limit", type=int, default=50, choices=range(1, 201), metavar="N", help="1 to 200")
     listed.add_argument("--offset", type=int, default=0, metavar="N", help="the proposals to pass over")
-    json_option(listed, returns_object("proposals", "total", "limit", "offset", schema="ProposalList"))
+    json_option(listed, returns_object("proposals", "total", "limit", "offset", "counts", schema="ProposalList"))
     listed.set_defaults(func=cmd_proposal_list)
     shown = psub.add_parser("show", help="one proposal: its tier and why, its evidence, its draft plan")
     shown.add_argument("id", type=int, help="the proposal's id")

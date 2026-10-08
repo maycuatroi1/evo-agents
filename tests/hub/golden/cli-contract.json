@@ -433,7 +433,9 @@
           "paused",
           "schedules",
           "night",
-          "last_review_run"
+          "last_review_run",
+          "state",
+          "open_proposals"
         ],
         "schema": "CuratorStatus"
       }
@@ -680,7 +682,8 @@
           "proposals",
           "total",
           "limit",
-          "offset"
+          "offset",
+          "counts"
         ],
         "schema": "ProposalList"
       }
@@ -837,7 +840,9 @@
           "paused",
           "schedules",
           "night",
-          "last_review_run"
+          "last_review_run",
+          "state",
+          "open_proposals"
         ],
         "schema": "CuratorStatus"
       }
@@ -870,7 +875,9 @@
           "paused",
           "schedules",
           "night",
-          "last_review_run"
+          "last_review_run",
+          "state",
+          "open_proposals"
         ],
         "schema": "CuratorStatus"
       }
@@ -13698,7 +13705,7 @@
             "notifications"
           ],
           "summary": "List Notifications",
-          "description": "The caller's notifications, open decisions first, then newest first.",
+          "description": "The caller's notifications, open decisions and proposals first, then newest first.",
           "operationId": "list_notifications_v1_me_notifications_get",
           "parameters": [
             {
@@ -14314,6 +14321,94 @@
                 "application/json": {
                   "schema": {
                     "$ref": "#/components/schemas/CuratorStatus"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/curator/nights": {
+        "get": {
+          "tags": [
+            "curator"
+          ],
+          "summary": "Nights",
+          "description": "The latest nights of the project's night shift, each with its runs, their cost and its review run.",
+          "operationId": "nights_v1_projects__project__curator_nights_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "limit",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 90,
+                "minimum": 1,
+                "description": "the latest nights",
+                "default": 14,
+                "title": "Limit"
+              },
+              "description": "the latest nights"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/NightList"
                   }
                 }
               }
@@ -17733,6 +17828,52 @@
           ],
           "title": "Csrf"
         },
+        "CuratorOverview": {
+          "properties": {
+            "state": {
+              "type": "string",
+              "enum": [
+                "running",
+                "on_duty",
+                "idle",
+                "paused"
+              ],
+              "title": "State",
+              "description": "as GET /v1/projects/{p}/curator says it"
+            },
+            "in_window": {
+              "type": "boolean",
+              "title": "In Window",
+              "description": "the charter's window is open now"
+            },
+            "active_run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Active Run Id",
+              "description": "the run of the night shift queued or held now, if any"
+            },
+            "open_proposals": {
+              "type": "integer",
+              "title": "Open Proposals",
+              "description": "the project's proposals that wait for an answer, that you may read"
+            }
+          },
+          "type": "object",
+          "required": [
+            "state",
+            "in_window",
+            "active_run_id",
+            "open_proposals"
+          ],
+          "title": "CuratorOverview",
+          "description": "Where a project's Curator stands, for Home: GET /v1/me/overview names it for each project with a charter."
+        },
         "CuratorStatus": {
           "properties": {
             "project": {
@@ -17782,6 +17923,30 @@
                 }
               ],
               "description": "the project's latest review run, of any night; null before the first"
+            },
+            "state": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "running",
+                    "on_duty",
+                    "idle",
+                    "paused"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "State",
+              "description": "paused; running while a run of the night shift is queued or held; on_duty in the window with none; idle outside it; null without a charter"
+            },
+            "open_proposals": {
+              "type": "integer",
+              "title": "Open Proposals",
+              "description": "the project's proposals that wait for an answer, that you may read",
+              "default": 0
             }
           },
           "type": "object",
@@ -20796,6 +20961,164 @@
           ],
           "title": "NightFiguresView"
         },
+        "NightList": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "nights": {
+              "items": {
+                "$ref": "#/components/schemas/NightSummary"
+              },
+              "type": "array",
+              "title": "Nights",
+              "description": "the latest night first"
+            },
+            "budget_usd": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Budget Usd",
+              "description": "the night's budget of the newest charter; null without one"
+            },
+            "max_runs": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Max Runs",
+              "description": "the night's runs of the newest charter; null without one"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "nights",
+            "budget_usd",
+            "max_runs"
+          ],
+          "title": "NightList"
+        },
+        "NightReview": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "queued",
+                "leased",
+                "running",
+                "interactive",
+                "verifying",
+                "waiting",
+                "review",
+                "parked",
+                "done",
+                "failed",
+                "lost",
+                "cancelled"
+              ],
+              "title": "State"
+            },
+            "findings": {
+              "type": "integer",
+              "title": "Findings"
+            },
+            "proposals": {
+              "type": "integer",
+              "title": "Proposals"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "state",
+            "findings",
+            "proposals"
+          ],
+          "title": "NightReview"
+        },
+        "NightSummary": {
+          "properties": {
+            "night": {
+              "type": "string",
+              "format": "date",
+              "title": "Night",
+              "description": "the local date its window opened on"
+            },
+            "runs": {
+              "type": "integer",
+              "title": "Runs",
+              "description": "the runs the night shift queued that night, its review run included"
+            },
+            "done": {
+              "type": "integer",
+              "title": "Done"
+            },
+            "failed": {
+              "type": "integer",
+              "title": "Failed",
+              "description": "failed or lost"
+            },
+            "cancelled": {
+              "type": "integer",
+              "title": "Cancelled"
+            },
+            "active": {
+              "type": "integer",
+              "title": "Active",
+              "description": "not ended yet"
+            },
+            "cost_usd": {
+              "type": "number",
+              "title": "Cost Usd",
+              "description": "what they cost, from their usage, each agent session once"
+            },
+            "review_run": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/NightReview"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "the night's review run, if one was queued"
+            },
+            "figures": {
+              "type": "boolean",
+              "title": "Figures",
+              "description": "curator.collect counted the night's figures"
+            }
+          },
+          "type": "object",
+          "required": [
+            "night",
+            "runs",
+            "done",
+            "failed",
+            "cancelled",
+            "active",
+            "cost_usd",
+            "review_run",
+            "figures"
+          ],
+          "title": "NightSummary",
+          "description": "One night of a project's night shift: what it queued, how those runs ended, what they cost, and its review."
+        },
         "NodeDetail": {
           "properties": {
             "graph": {
@@ -21207,7 +21530,7 @@
               },
               "type": "array",
               "title": "Notifications",
-              "description": "open decisions first, then newest first"
+              "description": "open decisions and proposals first, then newest first"
             },
             "total": {
               "type": "integer",
@@ -21529,6 +21852,17 @@
               "type": "integer",
               "title": "Open Decisions",
               "description": "open decisions of the plans you can see, yours or not"
+            },
+            "curator": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/CuratorOverview"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "where the project's Curator stands; null while the project has no charter"
             }
           },
           "type": "object",
@@ -23095,6 +23429,40 @@
           ],
           "title": "ProposalAnswer"
         },
+        "ProposalCounts": {
+          "properties": {
+            "state": {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "type": "object",
+              "title": "State"
+            },
+            "tier": {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "type": "object",
+              "title": "Tier",
+              "description": "by tier, \"0\" to \"3\""
+            },
+            "lens": {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "type": "object",
+              "title": "Lens"
+            }
+          },
+          "type": "object",
+          "required": [
+            "state",
+            "tier",
+            "lens"
+          ],
+          "title": "ProposalCounts",
+          "description": "How many proposals each value of a filter would list, the other filters applied: every state, tier and lens\nnamed, with 0 where none is."
+        },
         "ProposalIn": {
           "properties": {
             "lens": {
@@ -23227,6 +23595,17 @@
             "offset": {
               "type": "integer",
               "title": "Offset"
+            },
+            "counts": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ProposalCounts"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "for the list's filters: what each of their values holds"
             }
           },
           "type": "object",

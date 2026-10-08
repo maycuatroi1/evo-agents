@@ -28,6 +28,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import func, insert, select, update
 
 from evo_agents.hub import jobs, tables
+from evo_agents.hub import review as review_model
 from evo_agents.hub.server.app import create_app
 from evo_agents.hub.server.collect import collect
 from evo_agents.hub.worker import queue
@@ -44,6 +45,7 @@ from tests.hub.test_curator import (
     THE_NIGHT,
     WORKER,
     charter_body,
+    charter_path,
     count,
     fire,
     grant,
@@ -51,6 +53,7 @@ from tests.hub.test_curator import (
     put_charter,
     scheduled,
     set_run,
+    status_of,
     written,
 )
 from tests.hub.test_migrate import move_to
@@ -527,6 +530,70 @@ def test_tier_2_proposals_reach_the_inbox_within_max_decisions_per_day(review):
     n = tables.notifications
     assert sql(db, select(n.c.read_at.is_not(None)).where(n.c.proposal_id == strong["id"])) == [(True,)]
     assert client.get("/v1/me/notifications/count", headers=headers["owner"]).json()["open_proposals"] == 0
+
+
+def test_the_curator_says_its_state_its_nights_and_the_proposals_waiting(review):
+    """What the web's Curator pages and Home read: the state in a word and the open proposals in GET .../curator and
+    GET /v1/me/overview, the nights with their runs, cost and review run, and the counts of the proposals' filters."""
+    client, worker, headers = review.client, review.worker, review.headers
+    run_id = held_review(review)
+    wide = proposed(client, worker, run_id, kind="feature", title="a feature")
+    small = proposed(client, worker, run_id, kind="docs", paths=[], title="a doc fix")
+    assert (wide["tier"], small["tier"]) == (2, 0)
+
+    status = status_of(client, headers["reader"])
+    assert (status["state"], status["open_proposals"]) == ("running", 2)
+    projects = {
+        item["name"]: item for item in client.get("/v1/me/overview", headers=headers["owner"]).json()["projects"]
+    }
+    assert projects[PROJECT]["curator"] == {
+        "state": "running",
+        "in_window": status["night"]["in_window"],
+        "active_run_id": run_id,
+        "open_proposals": 2,
+    }
+    assert all(item["curator"] is None for name, item in projects.items() if name != PROJECT)
+
+    listed = client.get(
+        f"/v1/projects/{PROJECT}/curator/proposals", params={"tier": [2]}, headers=headers["reader"]
+    ).json()
+    assert [item["id"] for item in listed["proposals"]] == [wide["id"]] and listed["total"] == 1
+    assert listed["counts"]["tier"] == {"0": 1, "1": 0, "2": 1, "3": 0}  # a facet counts without its own filter
+    assert listed["counts"]["state"] == {"open": 1, "accepted": 0, "rejected": 0, "deferred": 0, "dropped": 0}
+    assert listed["counts"]["lens"]["environment"] == 1 and set(listed["counts"]["lens"]) == set(review_model.LENSES)
+
+    for state in ("verifying", "done"):
+        assert report(client, worker, run_id, state).status_code == 200
+    answered(client, headers["owner"], small["id"], "accept")
+    nights = client.get(f"/v1/projects/{PROJECT}/curator/nights", headers=headers["reader"]).json()
+    (night,) = nights["nights"]
+    assert night == {
+        "night": THE_NIGHT.isoformat(),
+        "runs": 1,
+        "done": 1,
+        "failed": 0,
+        "cancelled": 0,
+        "active": 0,
+        "cost_usd": 0.0,
+        "review_run": {"id": run_id, "state": "done", "findings": 0, "proposals": 2},
+        "figures": True,
+    }
+    assert (nights["budget_usd"], nights["max_runs"]) == (2.0, 3)
+    status = status_of(client, headers["owner"])
+    assert status["state"] in ("on_duty", "idle") and status["open_proposals"] == 1
+    assert client.post(charter_path("pause"), headers=headers["owner"]).json()["state"] == "paused"
+    assert client.get(f"/v1/projects/{PROJECT}/curator/nights", headers=headers["stranger"]).status_code == 404
+
+    second = second_review(review, run_id, THE_NIGHT + timedelta(days=1))
+    assert report(client, worker, second, "failed", error="stopped").status_code == 200
+    notes = client.get("/v1/me/notifications", headers=headers["owner"]).json()["notifications"]
+    assert [note["kind"] for note in notes[:2]] == ["proposal", "notice"]  # the open proposal first, then newest
+    assert notes[0]["proposal_id"] == wide["id"] and notes[0]["id"] < notes[1]["id"]
+    shown_nights = client.get(
+        f"/v1/projects/{PROJECT}/curator/nights", params={"limit": 1}, headers=headers["reader"]
+    ).json()["nights"]
+    assert [item["night"] for item in shown_nights] == [(THE_NIGHT + timedelta(days=1)).isoformat()]
+    assert shown_nights[0]["failed"] == 1 and shown_nights[0]["figures"] is False
 
 
 def test_a_review_run_that_fails_tells_its_owner(review):

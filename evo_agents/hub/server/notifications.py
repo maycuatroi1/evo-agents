@@ -21,12 +21,12 @@ a body, and the repo, branch and commits of a push or merge. It notifies the run
 leaves a ``system`` event in the run's log. A run of one step sends no notice (404, as any run the worker does not
 hold). The hub sends ``plan_finished`` and ``run_failed`` itself when a plan run ends (``run_state``).
 
-A member reads their own notifications: GET /v1/me/notifications (open decisions first, then newest first; filtered
-by unread, kind and project, a page at a time), GET /v1/me/notifications/count (the unread ones, and the decisions and
-the proposals still waiting for an answer, for the bell), and POST /v1/me/notifications/read (by ids, or all), audited
-as notification.read with the ids, never the text. A notification of a project the member no longer holds a grant on is
-not shown. Answering a decision reads its notification too (``decisions``). A notification of kind proposal is a tier 2
-proposal of the Curator in the member's Inbox (``proposals``), and answering it reads it too.
+A member reads their own notifications: GET /v1/me/notifications (open decisions and proposals first, then newest
+first; filtered by unread, kind and project, a page at a time), GET /v1/me/notifications/count (the unread ones, and
+the decisions and the proposals still waiting for an answer, for the bell), and POST /v1/me/notifications/read (by ids,
+or all), audited as notification.read with the ids, never the text. A notification of a project the member no longer
+holds a grant on is not shown. Answering a decision reads its notification too (``decisions``). A notification of kind
+proposal is a tier 2 proposal of the Curator in the member's Inbox (``proposals``), and answering it reads it too.
 """
 
 from __future__ import annotations
@@ -476,6 +476,11 @@ def _open_decision():
     return and_(tables.notifications.c.kind == "decision", tables.decisions.c.state == "open")
 
 
+def _open_proposal():
+    """A notification of a proposal that still waits for its answer."""
+    return and_(tables.notifications.c.kind == "proposal", tables.proposals.c.state == "open")
+
+
 def _listed(user_id: int, unread: bool, kind: str | None, project: str | None) -> list:
     """The conditions of the list's filters, over ``_shown``."""
     stored = tables.notifications
@@ -492,12 +497,11 @@ def _listed(user_id: int, unread: bool, kind: str | None, project: str | None) -
 def _counts(user_id: int):
     """How many of the member's notifications are unread, and how many are of a decision or a proposal still open."""
     stored = tables.notifications
-    open_proposal = and_(stored.c.kind == "proposal", tables.proposals.c.state == "open")
     return (
         select(
             func.count().filter(stored.c.read_at.is_(None)).label("unread"),
             func.count().filter(_open_decision()).label("open_decisions"),
-            func.count().filter(open_proposal).label("open_proposals"),
+            func.count().filter(_open_proposal()).label("open_proposals"),
         )
         .select_from(_shown())
         .where(_visible(user_id))
@@ -514,7 +518,7 @@ def _mark_read(user_id: int, ids: list[int] | None):
 
 
 class NotificationList(BaseModel):
-    notifications: list[Notification] = Field(description="open decisions first, then newest first")
+    notifications: list[Notification] = Field(description="open decisions and proposals first, then newest first")
     total: int = Field(description="notifications that match the filters")
     limit: int
     offset: int
@@ -554,9 +558,10 @@ async def list_notifications(
     limit: Annotated[int, Query(ge=1, le=MAX_LIST)] = 50,
     offset: Annotated[int, Query(ge=0, le=MAX_OFFSET)] = 0,
 ) -> NotificationList:
-    """The caller's notifications, open decisions first, then newest first."""
+    """The caller's notifications, open decisions and proposals first, then newest first."""
     found = _listed(user.user_id, unread, kind, project)
-    order = (func.coalesce(_open_decision(), false()).desc(), tables.notifications.c.id.desc())
+    waiting = or_(_open_decision(), _open_proposal())
+    order = (func.coalesce(waiting, false()).desc(), tables.notifications.c.id.desc())
     listed = _notification_rows().where(*found).order_by(*order).limit(limit).offset(offset)
     total = select(func.count()).select_from(_shown()).where(*found)
     async with request.app.state.engine.begin() as conn:

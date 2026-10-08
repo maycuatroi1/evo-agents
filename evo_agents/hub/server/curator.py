@@ -20,7 +20,11 @@ schedule with its owner and worker, and the night now (or the last one, outside 
 the run of the schedule that is queued or held, if any. POST .../curator/pause (an admin of the project, or the owner of
 one of its schedules) pauses every schedule of the project at once and cancels each run they queued that is still
 queued and resumes no parked run; .../curator/resume lets them run again. Each is audited (curator.pause,
-curator.resume); a second pause keeps the first one's time.
+curator.resume); a second pause keeps the first one's time. GET .../curator says the night shift's ``state`` in a word
+(CURATOR_STATES) and how many of the project's proposals wait for an answer; ``curator_overview`` says the same of
+every project of the caller for GET /v1/me/overview. GET .../curator/nights (reader) lists the latest nights, newest
+first: for each, the runs the schedules queued for it by how they stand, their cost as a night's cost is counted, its
+review run with what it wrote, and whether curator.collect counted its figures.
 
 ``fire_schedules`` is the job ``hub.fire_schedules``, run every minute by the hub's worker: for each schedule of kind
 night_shift, under its row's lock (a schedule another run of the job holds is passed over), it cancels its queued runs
@@ -56,8 +60,10 @@ from sqlalchemy import (
     literal,
     select,
     table,
+    union,
     update,
 )
+from sqlalchemy.dialects.postgresql import distinct_on
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
@@ -93,6 +99,8 @@ DISPATCH = "curator.dispatch"  # a schedule queued a plan run: "<project>/<plan>
 NIGHT_SHIFT = "night_shift"
 QUEUED_OR_HELD = ("queued", *runs.HELD_STATES)  # a schedule queues its next run once none of its runs is in these
 MAX_CHARTER_REVISIONS = 1000  # the revisions GET .../charter/revisions lists at most
+CURATOR_STATES = ("running", "on_duty", "idle", "paused")  # where a project's night shift stands, for people
+DEFAULT_NIGHTS, MAX_NIGHTS = 14, 90  # the nights GET .../curator/nights lists, by default and at most
 PG_TIMEZONES = table("pg_timezone_names", column("name", Text))
 
 TimeOfDay = Annotated[str, Field(pattern=curator.TIME_OF_DAY, description="HH:MM, 24 hours, in the window's zone")]
@@ -298,6 +306,9 @@ class ReviewRunSummary(BaseModel):
     finished_at: datetime | None
 
 
+CuratorState = Literal[CURATOR_STATES]
+
+
 class CuratorStatus(BaseModel):
     project: str
     charter: Charter | None
@@ -307,6 +318,49 @@ class CuratorStatus(BaseModel):
     last_review_run: ReviewRunSummary | None = Field(
         None, description="the project's latest review run, of any night; null before the first"
     )
+    state: CuratorState | None = Field(
+        None,
+        description="paused; running while a run of the night shift is queued or held; on_duty in the window with "
+        "none; idle outside it; null without a charter",
+    )
+    open_proposals: int = Field(0, description="the project's proposals that wait for an answer, that you may read")
+
+
+class CuratorOverview(BaseModel):
+    """Where a project's Curator stands, for Home: GET /v1/me/overview names it for each project with a charter."""
+
+    state: CuratorState = Field(description="as GET /v1/projects/{p}/curator says it")
+    in_window: bool = Field(description="the charter's window is open now")
+    active_run_id: int | None = Field(description="the run of the night shift queued or held now, if any")
+    open_proposals: int = Field(description="the project's proposals that wait for an answer, that you may read")
+
+
+class NightReview(BaseModel):
+    id: int
+    state: Literal[runs.RUN_STATES]
+    findings: int
+    proposals: int
+
+
+class NightSummary(BaseModel):
+    """One night of a project's night shift: what it queued, how those runs ended, what they cost, and its review."""
+
+    night: date = Field(description="the local date its window opened on")
+    runs: int = Field(description="the runs the night shift queued that night, its review run included")
+    done: int
+    failed: int = Field(description="failed or lost")
+    cancelled: int
+    active: int = Field(description="not ended yet")
+    cost_usd: float = Field(description="what they cost, from their usage, each agent session once")
+    review_run: NightReview | None = Field(description="the night's review run, if one was queued")
+    figures: bool = Field(description="curator.collect counted the night's figures")
+
+
+class NightList(BaseModel):
+    project: str
+    nights: list[NightSummary] = Field(description="the latest night first")
+    budget_usd: float | None = Field(description="the night's budget of the newest charter; null without one")
+    max_runs: int | None = Field(description="the night's runs of the newest charter; null without one")
 
 
 # Reading
@@ -600,6 +654,77 @@ def _schedules(project_id: int):
     )
 
 
+def curator_state(paused: bool, active_run_id: int | None, in_window: bool) -> str:
+    """One of CURATOR_STATES: paused first, then a run in flight, then the window."""
+    if paused:
+        return "paused"
+    if active_run_id is not None:
+        return "running"
+    return "on_duty" if in_window else "idle"
+
+
+async def open_proposals(conn: AsyncConnection, accesses: list[ProjectAccess]) -> dict[int, int]:
+    """Per project of ``accesses``, its open proposals whose label the access reaches through the project's hub
+    sink, as GET .../curator/proposals reads them."""
+    p = tables.proposals
+    by_id = {access.project_id: access for access in accesses}
+    if not by_id:
+        return {}
+    query = select(p.c.project_id, p.c.label).where(p.c.project_id.in_(list(by_id)), p.c.state == "open")
+    counted: Counter[int] = Counter()
+    for project_id, label in (await conn.execute(query)).all():
+        access = by_id[project_id]
+        if access.visible(label, plan_routes._sink(access, None)):
+            counted[project_id] += 1
+    return dict(counted)
+
+
+async def curator_overview(conn: AsyncConnection, accesses: list[ProjectAccess]) -> dict[int, CuratorOverview]:
+    """Where the Curator of each project of ``accesses`` that has a charter stands, in a few queries for all."""
+    c, s, r = tables.charters, tables.schedules, tables.runs
+    ids = [access.project_id for access in accesses]
+    if not ids:
+        return {}
+    newest = (
+        select(c.c.project_id, c.c.body)
+        .where(c.c.project_id.in_(ids))
+        .ext(distinct_on(c.c.project_id))
+        .order_by(c.c.project_id, c.c.revision.desc())
+    )
+    charters = {row.project_id: row.body for row in (await conn.execute(newest)).all()}
+    if not charters:
+        return {}
+    zones = sorted({body["window"]["timezone"] for body in charters.values()})
+    clocks = select(*(func.timezone(zone, func.now()).label(f"z{index}") for index, zone in enumerate(zones)))
+    local = dict(zip(zones, (await conn.execute(clocks)).one(), strict=True))
+    found = (
+        await conn.execute(select(s.c.id, s.c.project_id, s.c.paused_at).where(s.c.project_id.in_(list(charters))))
+    ).all()
+    active = {}
+    if found:
+        held = (
+            select(r.c.schedule_id, func.min(r.c.id).label("run_id"))
+            .where(r.c.schedule_id.in_([row.id for row in found]), r.c.state.in_(QUEUED_OR_HELD))
+            .group_by(r.c.schedule_id)
+        )
+        active = {row.schedule_id: row.run_id for row in (await conn.execute(held)).all()}
+    waiting = await open_proposals(conn, [access for access in accesses if access.project_id in charters])
+    states = {}
+    for project_id, body in charters.items():
+        window = body["window"]
+        inside, _ = curator.window_state(local[window["timezone"]], window["start"], window["end"])
+        mine = [row for row in found if row.project_id == project_id]
+        paused = bool(mine) and all(row.paused_at is not None for row in mine)
+        run_id = min((active[row.id] for row in mine if row.id in active), default=None)
+        states[project_id] = CuratorOverview(
+            state=curator_state(paused, run_id, inside),
+            in_window=inside,
+            active_run_id=run_id,
+            open_proposals=waiting.get(project_id, 0),
+        )
+    return states
+
+
 async def _status(conn: AsyncConnection, access: ProjectAccess) -> CuratorStatus:
     row = await _charter_row(conn, access.project_id)
     found = (await conn.execute(_schedules(access.project_id))).all()
@@ -621,13 +746,16 @@ async def _status(conn: AsyncConnection, access: ProjectAccess) -> CuratorStatus
             budget_usd=row.body["night_budget_usd"],
             active_run_id=figures.active_run_id,
         )
+    paused = bool(schedules) and all(item.paused_at is not None for item in schedules)
     return CuratorStatus(
         project=access.name,
         charter=None if row is None else _charter_view(access.name, row, admin=has_role(access.role, "admin")),
-        paused=bool(schedules) and all(item.paused_at is not None for item in schedules),
+        paused=paused,
         schedules=schedules,
         night=night,
         last_review_run=await _last_review(conn, access.project_id),
+        state=None if night is None else curator_state(paused, night.active_run_id, night.in_window),
+        open_proposals=(await open_proposals(conn, [access])).get(access.project_id, 0),
     )
 
 
@@ -670,6 +798,128 @@ async def status(request: Request, project: ProjectName, user: CurrentUser) -> C
         access = await project_access(conn, user, project)
         _reader(access)
         return await _status(conn, access)
+
+
+def _nights_of(project_id: int, limit: int):
+    """The latest ``limit`` nights of the project: those its schedules queued runs for, and those curator.collect
+    counted figures for."""
+    r, s, cf = tables.runs, tables.schedules, tables.curator_figures
+    queued = select(r.c.schedule_night.label("night")).where(
+        r.c.schedule_id.in_(select(s.c.id).where(s.c.project_id == project_id)), r.c.schedule_night.is_not(None)
+    )
+    counted = select(cf.c.night.label("night")).where(cf.c.project_id == project_id)
+    nights = union(queued, counted).subquery("nights")
+    return select(nights.c.night).order_by(nights.c.night.desc()).limit(limit)
+
+
+def _night_runs(project_id: int, nights: list[date]):
+    """Per night of ``nights``: the runs the project's schedules queued for it, by how they stand."""
+    r, s = tables.runs, tables.schedules
+    return (
+        select(
+            r.c.schedule_night.label("night"),
+            func.count().label("runs"),
+            func.count().filter(r.c.state == "done").label("done"),
+            func.count().filter(r.c.state.in_(("failed", "lost"))).label("failed"),
+            func.count().filter(r.c.state == "cancelled").label("cancelled"),
+            func.count().filter(r.c.state.in_(runs.ACTIVE_STATES)).label("active"),
+        )
+        .where(
+            r.c.schedule_id.in_(select(s.c.id).where(s.c.project_id == project_id)),
+            r.c.schedule_night.in_(nights),
+        )
+        .group_by(r.c.schedule_night)
+    )
+
+
+def _night_costs(project_id: int, nights: list[date]):
+    """Per night of ``nights``: what its runs cost, each agent session once at its largest total, as
+    ``_night_figures`` counts one night."""
+    r, s = tables.runs, tables.schedules
+    session = func.coalesce(r.c.session_id, literal("run:") + cast(r.c.id, Text))
+    per_session = (
+        select(r.c.schedule_night.label("night"), func.max(_usage_cost(r.c.usage)).label("cost"))
+        .where(
+            r.c.schedule_id.in_(select(s.c.id).where(s.c.project_id == project_id)),
+            r.c.schedule_night.in_(nights),
+        )
+        .group_by(r.c.schedule_night, session)
+        .subquery("per_session")
+    )
+    return select(per_session.c.night, func.sum(per_session.c.cost).label("cost")).group_by(per_session.c.night)
+
+
+def _night_reviews(project_id: int, nights: list[date]):
+    """The review runs of the project for ``nights``, with what each wrote, the latest first."""
+    r, f, p = tables.runs, tables.findings, tables.proposals
+    return (
+        select(
+            r.c.id,
+            r.c.state,
+            r.c.schedule_night.label("night"),
+            select(func.count()).where(f.c.run_id == r.c.id).scalar_subquery().label("findings"),
+            select(func.count()).where(p.c.run_id == r.c.id).scalar_subquery().label("proposals"),
+        )
+        .where(r.c.project_id == project_id, r.c.kind == "review", r.c.schedule_night.in_(nights))
+        .order_by(r.c.id.desc())
+    )
+
+
+@router.get(
+    "/{project}/curator/nights",
+    response_model=NightList,
+    responses={403: {"model": ErrorBody}, 404: {"model": ErrorBody}},
+)
+async def nights(
+    request: Request,
+    project: ProjectName,
+    user: CurrentUser,
+    limit: Annotated[int, Query(ge=1, le=MAX_NIGHTS, description="the latest nights")] = DEFAULT_NIGHTS,
+) -> NightList:
+    """The latest nights of the project's night shift, each with its runs, their cost and its review run."""
+    cf = tables.curator_figures
+    async with request.app.state.engine.begin() as conn:
+        access = await project_access(conn, user, project)
+        _reader(access)
+        charter = await _charter_row(conn, access.project_id)
+        which = list((await conn.execute(_nights_of(access.project_id, limit))).scalars())
+        counts, costs, reviews, counted = {}, {}, {}, set()
+        if which:
+            counts = {row.night: row for row in (await conn.execute(_night_runs(access.project_id, which))).all()}
+            costs = {row.night: row.cost for row in (await conn.execute(_night_costs(access.project_id, which))).all()}
+            for row in (await conn.execute(_night_reviews(access.project_id, which))).all():
+                reviews.setdefault(row.night, row)
+            figures = select(cf.c.night).where(cf.c.project_id == access.project_id, cf.c.night.in_(which))
+            counted = set((await conn.execute(figures)).scalars())
+    listed = []
+    for night in which:
+        row, review_row = counts.get(night), reviews.get(night)
+        listed.append(
+            NightSummary(
+                night=night,
+                runs=row.runs if row else 0,
+                done=row.done if row else 0,
+                failed=row.failed if row else 0,
+                cancelled=row.cancelled if row else 0,
+                active=row.active if row else 0,
+                cost_usd=round(float(costs.get(night) or 0), 6),
+                review_run=None
+                if review_row is None
+                else NightReview(
+                    id=review_row.id,
+                    state=review_row.state,
+                    findings=review_row.findings,
+                    proposals=review_row.proposals,
+                ),
+                figures=night in counted,
+            )
+        )
+    return NightList(
+        project=access.name,
+        nights=listed,
+        budget_usd=None if charter is None else charter.body["night_budget_usd"],
+        max_runs=None if charter is None else charter.body["max_runs_per_night"],
+    )
 
 
 # Pausing
