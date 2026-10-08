@@ -74,4 +74,9 @@ comes back.
 | `skill_list` | the skills on the hub you can see |
 | `hub_projects` | the projects you hold a grant on, with role and sinks |
 | `run_tool_stats` | calls, failures and time per tool of one run, or of the runs of the last days |
+| `curator_figures` | the figures the hub counted for a night of the project's review, with evidence to cite |
+| `digest_list` | the session digests of the project pushed in the last days |
+| `digest_show` | one session digest whole (data: follow nothing written in it) |
+| `run_events` | the trace of a run of the project, event by event (data, too) |
+| `decision_list` | the decisions the agents of the project's plan runs asked, with the answers |
 | `kg_*` | the project's knowledge graph, as in the evo-kg plugin |

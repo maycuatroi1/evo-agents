@@ -165,6 +165,8 @@ REQUESTED_RUNTIMES = ("any", *runs.RUNTIMES)
 WRITER_ROLES = [role for role in ("reader", "writer", "admin") if has_role(role, "writer")]
 NOT_HELD = "this worker does not hold run {id}: it may have been lost, cancelled or taken by another attempt"
 STEP_REPORT_STATUSES = ("in_progress", "done", "pending")  # what a plan run's worker reports of a step
+RUN_KIND = r"^[a-z][a-z0-9_]{0,31}$"  # a kind of run a heartbeat names, known to this hub or not
+MAX_RUN_KINDS = 20
 MAX_STEP_EVIDENCE_CHARS = MAX_EVIDENCE_BYTES  # the agent's evidence of one step; the hub's adds to it, within the bytes
 
 router = APIRouter(prefix="/v1/projects", tags=["runs"], responses={401: {"model": ErrorBody}})
@@ -259,12 +261,17 @@ class RunRepo(BaseModel):
 
 class Run(BaseModel):
     id: int
-    kind: Literal[runs.RUN_KINDS] = Field(description="step: one step of the plan; plan: every step not done yet")
+    kind: Literal[runs.RUN_KINDS] = Field(
+        description="step: one step of the plan; plan: every step not done yet; review: the night's review of the "
+        "project by the Curator, on no plan"
+    )
     project: str
-    plan_id: str
+    plan_id: str = Field(description="the plan it works on; empty for a review run, which works on none")
     step_key: str | None = Field(description="null for a plan run")
     title: str | None = Field(description="the step's title when the run was dispatched; the plan's for a plan run")
-    plan_revision: int = Field(description="the plan revision the run was dispatched from")
+    plan_revision: int | None = Field(
+        description="the plan revision the run was dispatched from; null for a review run"
+    )
     dispatched_by: str = Field(description="the login of the member who dispatched it, its owner")
     dispatched_via: Literal[DISPATCHED_VIA] | None = Field(
         description="the credential it was dispatched with: web, a web session; machine, a token (the command line, "
@@ -331,10 +338,12 @@ class RunSpec(BaseModel):
     id: int
     kind: Literal[runs.RUN_KINDS]
     project: str
-    plan_id: str
+    plan_id: str = Field(description="empty for a review run")
     step_key: str | None = Field(description="null for a plan run")
     title: str | None
-    plan_revision: int = Field(description="the plan revision the run was dispatched from")
+    plan_revision: int | None = Field(
+        description="the plan revision the run was dispatched from; null for a review run"
+    )
     attempt: int
     max_attempts: int
     parent_run_id: int | None
@@ -349,7 +358,9 @@ class RunSpec(BaseModel):
     timeout_min: int
     repo: str | None = Field(description="null for a plan run")
     branch: str | None
-    repos: list[RunRepo] | None = Field(description="a plan run's repos, each with a checkout on this worker")
+    repos: list[RunRepo] | None = Field(
+        description="a plan run's or a review run's repos, each with a checkout on this worker"
+    )
     lease_expires_at: datetime
     prompt: str
     plan: PlanCopy | None = Field(
@@ -401,6 +412,12 @@ class HeartbeatRequest(BaseModel):
         default_factory=list, max_length=MAX_HEARTBEAT_RUNS, description="the runs the worker holds"
     )
     agent_version: str | None = Field(None, min_length=1, max_length=100, pattern=LINE)
+    run_kinds: list[Annotated[str, Field(pattern=RUN_KIND)]] | None = Field(
+        None,
+        max_length=MAX_RUN_KINDS,
+        description="the kinds of run the daemon runs; one that says none takes no review run. A kind this hub does "
+        "not know is left out",
+    )
 
     def stored(self) -> tuple[dict, dict]:
         """runtimes and checkouts as workers keeps them and GET /v1/workers/{id} shows them: every key present."""
@@ -525,7 +542,7 @@ def _run_select():
             r.c.id,
             r.c.kind,
             p.c.name.label("project"),
-            r.c.plan_id,
+            func.coalesce(r.c.plan_id, "").label("plan_id"),
             r.c.step_key,
             r.c.title,
             r.c.plan_revision,
@@ -723,13 +740,18 @@ async def readable_run(
     conn: AsyncConnection, user: Principal, project: str, run_id: int, sink: str | None
 ) -> ProjectAccess:
     """The caller's access to ``project`` when it may read run ``run_id`` of it: a grant on the project (404 without,
-    403 for a hub admin without one) and the run's plan visible to it (404 otherwise, as for no run)."""
+    403 for a hub admin without one) and the run's plan visible to it (404 otherwise, as for no run). A review run,
+    which has no plan, reads as what it reads: the project, through the project's default label."""
     access = await project_access(conn, user, project)
     plan_routes._reader(access)
     r = tables.runs
-    found = select(r.c.plan_id).where(r.c.id == run_id, r.c.project_id == access.project_id)
-    plan_id = (await conn.execute(found)).scalar_one_or_none()
-    if plan_id is None or plan_id not in await visible_plans(conn, access, sink):
+    found = select(r.c.plan_id, r.c.kind).where(r.c.id == run_id, r.c.project_id == access.project_id)
+    row = (await conn.execute(found)).one_or_none()
+    if row is not None and row.kind == "review":
+        visible = access.visible(access.rules.default_label, plan_routes._sink(access, sink))
+    else:
+        visible = row is not None and row.plan_id in await visible_plans(conn, access, sink)
+    if not visible:
         raise HTTPException(404, f"project {project} has no run {run_id}: see GET /v1/projects/{project}/runs")
     return access
 
@@ -1109,6 +1131,7 @@ class Pinned:
     runtimes: dict
     checkouts: dict
     agent_version: str | None
+    run_kinds: tuple[str, ...] = ()  # the kinds of run its daemon said it runs
 
 
 async def _pinnable(conn: AsyncConnection, user: Principal, access: ProjectAccess, worker_id: int) -> Pinned:
@@ -1153,6 +1176,11 @@ def _unfit(worker: Pinned, project: str, kind: str, repos: list[str], runtime: s
         problems.append(
             f"it runs evo-agents {worker.agent_version or 'of an unknown version'}, and a plan run needs "
             f"{runs.version_text(runs.PLAN_RUN_AGENT)} or later: upgrade it and restart its daemon"
+        )
+    if kind == "review" and "review" not in worker.run_kinds:
+        problems.append(
+            f"its daemon (evo-agents {worker.agent_version or 'of an unknown version'}) does not say it runs review "
+            "runs: upgrade it and restart its daemon"
         )
     usable = [name for name in runs.RUNTIMES if available(worker.runtimes.get(name))]
     if runtime == "any" and not usable:
@@ -1262,8 +1290,11 @@ async def _queue_run(
     return run_id
 
 
-def _run_target(project: str, plan_id: str, key: str | None, run_id: int) -> str:
-    """How an audit row names a run: its project, plan and step, or no step for a plan run."""
+def _run_target(project: str, plan_id: str | None, key: str | None, run_id: int) -> str:
+    """How an audit row names a run: its project, plan and step, or no step for a plan run; a review run, which has
+    no plan, as the project's review."""
+    if not plan_id:
+        return f"{project}/review run:{run_id}"
     return f"{project}/{plan_id}{'' if key is None else f'#{key}'} run:{run_id}"
 
 
@@ -1623,6 +1654,10 @@ async def rerun(request: Request, project: ProjectName, run_id: RunId, user: Cur
             raise HTTPException(
                 409, f"run {run_id} is a plan run: dispatch the plan again with POST /v1/projects/{project}/plan-runs"
             )
+        if kind == "review":
+            raise HTTPException(
+                409, f"run {run_id} is a review run, which only the night shift of the project's charter queues"
+            )
         if state not in runs.TERMINAL_STATES:
             raise HTTPException(409, f"run {run_id} is still {state}: a run is rerun once it has ended")
         held = await plan_routes._visible(conn, access, plan_id, None)
@@ -1702,7 +1737,7 @@ class RunWakeups:
 
 async def _worker_of(conn: AsyncConnection, user: Principal):
     """The row of the worker whose token made the request, locked: id, owner_id, name, slots, runtimes, checkouts,
-    drained_at, revoked_at, agent_version and dispatch_from. 403 when there is none."""
+    drained_at, revoked_at, agent_version, dispatch_from and run_kinds. 403 when there is none."""
     w = tables.workers
     query = (
         select(
@@ -1716,6 +1751,7 @@ async def _worker_of(conn: AsyncConnection, user: Principal):
             w.c.revoked_at,
             w.c.agent_version,
             w.c.dispatch_from,
+            w.c.run_kinds,
         )
         .where(w.c.token_id == user.token_id)
         .with_for_update()
@@ -1746,12 +1782,14 @@ def _claimable(
     *,
     plan_runs: bool,
     web_only: bool,
+    review_runs: bool = False,
 ):
     """The oldest queued run the worker may take now, locked, passing over one another claim holds locked: of its
     owner, in ``projects``, pinned to no other worker, asking for any runtime or one of ``runtimes``, of a repo it
     has a checkout of (``pairs`` of project id and repo). A run of one step needs a checkout of its repo, and a plan
-    run one of every repo in its repos and a daemon of runs.PLAN_RUN_AGENT or later (``plan_runs``). A worker set to
-    take runs dispatched from the web only (``web_only``) passes over the others, those dispatched before schema 0011
+    run one of every repo in its repos and a daemon of runs.PLAN_RUN_AGENT or later (``plan_runs``); a review run one
+    of every repo in its repos and a daemon that says it runs review runs (``review_runs``). A worker set to take runs
+    dispatched from the web only (``web_only``) passes over the others, those dispatched before schema 0011
     included."""
     r = tables.runs
     pids = literal([pid for pid, _ in pairs], ARRAY(BigInteger))
@@ -1773,12 +1811,14 @@ def _claimable(
         r.c.dispatched_by == owner_id,
         or_(r.c.pinned_worker_id.is_(None), r.c.pinned_worker_id == worker_id),
         or_(r.c.runtime == "any", r.c.runtime.in_(runtimes)),
-        case((r.c.kind == "plan", every_repo), else_=own_repo),
+        case((r.c.kind.in_(("plan", "review")), every_repo), else_=own_repo),
     )
     if web_only:
         query = query.where(r.c.dispatched_via == "web")
     if not plan_runs:
         query = query.where(r.c.kind != "plan")
+    if not review_runs:
+        query = query.where(r.c.kind != "review")
     return query.order_by(r.c.id).limit(1).with_for_update(of=r, skip_locked=True)
 
 
@@ -1809,9 +1849,8 @@ async def _try_claim(
     ``gone`` says the worker hung up once the run is leased, raise ClaimAbandoned before the transaction commits,
     which rolls the lease back."""
     async with engine.begin() as conn:
-        worker_id, owner_id, name, slots, reported, checkouts, drained_at, _, version, dispatch_from = await _worker_of(
-            conn, user
-        )
+        found = await _worker_of(conn, user)
+        worker_id, owner_id, name, slots, reported, checkouts, drained_at, _, version, dispatch_from, kinds = found
         if drained_at is not None:
             return None
         r = tables.runs
@@ -1838,6 +1877,7 @@ async def _try_claim(
             pairs,
             plan_runs=runs.takes_plan_runs(version),
             web_only=dispatch_from == "web",
+            review_runs="review" in (kinds or ()),
         )
         row = (await conn.execute(query)).one_or_none()
         if row is None:
@@ -1874,7 +1914,12 @@ async def _run_spec(conn: AsyncConnection, run_id: int) -> RunSpec:
     body = (await conn.execute(dispatched)).scalar_one_or_none()
     plan = body if body is not None else {"id": view.plan_id, "steps": []}
     copy = None
-    if view.kind == "plan":
+    if view.kind == "review":
+        from evo_agents.hub.server.collect import review_prompt  # it queues runs through this module
+
+        prompt = await review_prompt(conn, view)
+        title = view.title
+    elif view.kind == "plan":
         current = await _current_plan(conn, project_id, view.plan_id)
         body, revision = current if current else (plan, view.plan_revision)  # the plan gone: as dispatched
         copy = PlanCopy(body=body, revision=revision)
@@ -2017,6 +2062,7 @@ async def heartbeat(request: Request, body: HeartbeatRequest, user: CurrentUser)
                 checkouts=checkouts,
                 free_slots=func.least(body.free_slots, w.c.slots),
                 agent_version=func.coalesce(body.agent_version, w.c.agent_version),
+                run_kinds=None if body.run_kinds is None else [k for k in body.run_kinds if k in runs.RUN_KINDS],
             )
             .where(w.c.id == worker_id)
         )
@@ -2171,9 +2217,9 @@ async def report_state(request: Request, run_id: RunId, body: StateReport, user:
 def _check_verdict(run_id: int, kind: str, approval: str, body: StateReport) -> None:
     """409 for a verdict the run's approval, or its kind, does not allow. A plan run ends done without verify
     results, since each of its steps was verified when it was reported, and never waits in review."""
-    if kind == "plan":
+    if kind in ("plan", "review"):
         if body.state == "review":
-            raise HTTPException(409, f"run {run_id} is a plan run: report done or failed, not review")
+            raise HTTPException(409, f"run {run_id} is a {kind} run: report done or failed, not review")
         if body.state == "done" and any(item.exit_code != 0 for item in body.verify or []):
             raise HTTPException(409, f"run {run_id} is done only when every verify command it reports exited 0")
         return
@@ -2222,9 +2268,10 @@ async def _held_plan_run(conn: AsyncConnection, user: Principal, run_id: int, *,
     if row is None or row.worker_id != worker_id or row.state not in runs.HELD_STATES:
         raise HTTPException(404, NOT_HELD.format(id=run_id))
     if row.kind != "plan":
+        what = "a review run" if row.kind == "review" else "a run of one step"
         raise HTTPException(
             404,
-            f"run {run_id} is a run of one step, which has no plan to read or steps to report: report its state with "
+            f"run {run_id} is {what}, which has no plan to read or steps to report: report its state with "
             f"POST /v1/worker/runs/{run_id}/state",
         )
     return name, row

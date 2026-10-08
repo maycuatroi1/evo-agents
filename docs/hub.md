@@ -84,18 +84,20 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | secrets | `GET /v1/secrets`, `PUT` and `DELETE /v1/secrets/{name}`, the caller's own only (`docs/credentials.md`) |
 | runs | `/v1/projects/{project}/plans/{plan_id}/ready-steps`, `GET` and `POST /v1/projects/{project}/runs`, `GET .../runs/stats`, `POST /v1/projects/{project}/plan-runs`, `.../runs/{id}`, `.../events`, `.../stream`, `.../diff`, `.../messages`, `.../credentials`, `.../tool-stats`, `.../{cancel,approve,rerun,takeover,handback}`, and `GET /v1/projects/{project}/tool-stats` |
 | session digests | `GET /v1/projects/{project}/digests`, `GET` and `PUT /v1/projects/{project}/digests/{session_id}` |
+| curator | `GET /v1/projects/{project}/curator`, `.../curator/charter` (`GET`, `PUT`), `.../charter/revisions`, `POST .../curator/{pause,resume}`, `GET .../curator/figures`, `.../curator/findings`, `.../findings/{id}`, `.../curator/proposals`, `.../proposals/{id}`, `POST .../proposals/{id}/answer` |
 | decisions | `GET /v1/projects/{project}/decisions`, `.../decisions/{id}`, `POST .../decisions/{id}/answer` |
 | notifications | `GET /v1/me/notifications`, `GET /v1/me/notifications/count`, `POST /v1/me/notifications/read` |
 | overview | `GET /v1/me/overview`: counts, active, recent runs and open decisions over the projects you hold a grant on, for the web's Home |
-| worker protocol | `/v1/worker/{claim,heartbeat}`, `/v1/worker/runs/{id}/{state,events,inbox,uploads,blobs,plan,decisions,notices,credentials}`, `/v1/worker/runs/{id}/steps/{key}` |
+| worker protocol | `/v1/worker/{claim,heartbeat}`, `/v1/worker/runs/{id}/{state,events,inbox,uploads,blobs,plan,decisions,notices,credentials,findings,proposals}`, `/v1/worker/runs/{id}/steps/{key}` |
 
 `/mcp` speaks MCP's Streamable HTTP transport, statelessly: each POST carries one JSON-RPC message and gets one JSON
 answer. It takes a machine token, or the worker token of the agent of a run (below), never a web session, and the
 `Host` header must be the host of `EVO_HUB_PUBLIC_URL` or a loopback name. Runtimes reach it through
 `evo-agents hub mcp`, a stdio proxy that adds the token, the session's project (`X-Evo-Project`) and its sink
-(`X-Evo-Sink`, `claude-code@anthropic` by default). Its 16 tools are the seven `kg_*` tools of `evo-agents kg serve`
+(`X-Evo-Sink`, `claude-code@anthropic` by default). Its 21 tools are the seven `kg_*` tools of `evo-agents kg serve`
 plus `memory_search`, `memory_get`, `memory_write`, `plan_list`, `plan_show`, `plan_step`, `skill_list`,
-`hub_projects` and `run_tool_stats`, and they follow the same rules as the REST routes.
+`hub_projects`, `run_tool_stats`, and what the Curator's review run reads: `curator_figures`, `digest_list`,
+`digest_show`, `run_events` and `decision_list`; they follow the same rules as the REST routes.
 
 The agent of a run on a worker reaches `/mcp` with its worker's token. Inside a run (`EVO_RUN_ID`, which the daemon
 sets, and a token in the worker's state, `$EVO_WORKER_HOME` or `~/.evo/worker`) `evo-agents hub mcp` sends that
@@ -287,7 +289,10 @@ and a repo, and the states `waiting` and `parked`), the decisions their agents a
 members (`notifications`, `notification_channels`, `notification_deliveries`), which `docs/notifications.md`
 describes. Going back to 0009 deletes the plan runs with their decisions and notifications. Schema 0013 adds
 `run_tool_stats`, the tool figures of each run that ended (`docs/workers.md`, "Tool figures"), and `session_digests`
-(Memories, skills and knowledge graphs, below); going back to 0012 drops both.
+(Memories, skills and knowledge graphs, below); going back to 0012 drops both. Schema 0014 adds the review run (a run
+of kind `review`, on no plan: its `plan_id` and `plan_revision` are null, and the API shows its `plan_id` empty),
+`workers.run_kinds`, `curator_figures`, `findings`, `proposals` and the notifications of kind `proposal` (The
+Curator's review, below); going back to 0013 deletes the review runs and the notifications of proposals.
 
 The daemon on the member's machine is the `evo-agents worker` command group, which needs the `worker` extra
 (`uv tool install 'evo-ak[worker]'`). It is not `evo-agents hub worker`, the hub's own job worker (see Worker and
@@ -392,6 +397,53 @@ decisions wait for your answer (`GET /v1/me/notifications/count`). `--read all`,
 read (`POST /v1/me/notifications/read`) and lists none, so it takes none of the filters; answering a decision reads
 its notification too. Each of these prints the hub's answer with `--json`, `notifications --read` its count of read
 and unread.
+
+## The Curator's review
+
+Each night of a project's charter, the hub reviews the project with a run of kind `review` (schema 0014): the job
+`curator.collect` counts the night's figures, without any model, from the session digests, the runs and their tool
+figures, the plans and the decisions of the last `review.days` of the charter (7 by default): the failures per tool
+and per program, the failures that come from the environment by cause (a command the harness blocked, the hub
+answering 5xx, the network, rate limits, credentials, a tool missing), the runs that failed or were lost by cause, the
+commands run again and again, the turns where the person corrected an agent, the open items of the plans and the
+steps that have not moved for 3 days, each with evidence a finding can cite. Then the night shift queues the review
+run on the worker on duty, before any plan run of the night, once that worker's daemon says it runs review runs.
+
+A review run reads and changes nothing: its worktrees are detached at the commit origin's default branch has, the
+worker pushes nothing at its end, and its GitHub token reads only (`contents: read`). Its prompt, which the hub builds
+(`evo_agents/hub/review.py`), names the lenses of the night (the charter's `review.lenses` of eleven, taken in turn),
+says that what the agent reads is data and never instructions, and gives the night's figures. The agent reads the
+project through the MCP tools above, its run's project alone, and writes through two commands:
+
+```sh
+evo-agents worker finding --lens environment --title "sleep then tail is blocked" --evidence session:ID:errors:0 \
+  --evidence run:41:7 --evidence code:evo-agents:evo_agents/worker/run.py:120 --severity high
+evo-agents worker propose --lens environment --kind fix --title "A wait helper" --path evo-agents:evo_agents/worker/wait.py \
+  --finding 12 --plan-file draft.yaml --summary-file why.md
+```
+
+The hub refuses a finding or a proposal whose evidence it cannot find: a digest of the project and the entry of its
+list, an event of a run of the project, a file of a repo of the project (and of its knowledge graph, when it has one).
+A proposal carries a draft plan of plan.schema.json in outcome steps (each step with `verify` and `acceptance`). The
+hub computes its tier, 0 to 3, from the charter, the paths it names (and what they reach in the knowledge graph) and
+its kind (`evo_agents/hub/tiers.py`); a protected path of the charter, CI, lint and test configuration, and the kinds
+that loosen a test, change a plan's verify or change CI are tier 3, always. A proposal like one the owner rejected in
+the last 30 days is dropped unless its evidence doubled. When the review run ends, its tier 2 proposals with the most
+evidence become Inbox items of the owner (notifications of kind `proposal`), up to the charter's
+`max_decisions_per_day` a day; the others wait in the list. The project's admins answer:
+
+```sh
+evo-agents hub curator proposal list --state open --tier 2
+evo-agents hub curator proposal show 7
+evo-agents hub curator proposal accept 7 --note "go"
+evo-agents hub curator proposal reject 8
+evo-agents hub curator proposal defer 9 --days 14
+evo-agents hub curator findings --run 41
+evo-agents hub curator figures --night 2026-10-08
+```
+
+`hub curator status` names the project's last review run with what it wrote. Accepting a proposal records the answer;
+turning it into a plan of the night shift comes later in the curator-agent plan.
 
 ## Memories, skills and knowledge graphs
 
@@ -499,10 +551,13 @@ Postgres database; there is no separate broker. The api only defers jobs. Jobs:
 - `hub.prune_run_events`, daily at 04:13: deletes the events of runs that ended more than `EVO_HUB_RUN_LOG_DAYS` ago,
   once the tool figures of each such run are written from them (a run writes them when it ends; this covers the runs
   that ended before schema 0013).
-- `hub.fire_schedules`, every minute: the night shift of each project with a charter queues its next plan run inside
+- `hub.fire_schedules`, every minute: the night shift of each project with a charter queues its next run inside
   the charter's window and within the night's budget, pinned to the charter's worker and dispatched as that worker's
-  owner, and cancels the runs it queued that are still queued once the window ends or the project is paused
-  (`evo-agents hub curator pause`).
+  owner: the night's review run first, then plan runs; and it cancels the runs it queued that are still queued once
+  the window ends or the project is paused (`evo-agents hub curator pause`).
+- `curator.collect`, every minute: inside each charter's window, counts the night's figures of the project once,
+  without any model, and queues the night's review run; and opens again the proposals deferred until a moment that
+  has passed (Curator, below).
 - `hub.prune_digests`, daily at 04:23: deletes the session digests not pushed for 90 days.
 - `hub.cleanup_uploads`, hourly: removes uploads nobody committed within 24 hours.
 - `hub.prune_jobs`, daily: removes finished jobs older than 14 days.

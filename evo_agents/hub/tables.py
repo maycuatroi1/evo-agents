@@ -1,4 +1,4 @@
-"""The hub's 37 tables as SQLAlchemy Core metadata: what the queries are written on, and what Alembic autogenerates
+"""The hub's 40 tables as SQLAlchemy Core metadata: what the queries are written on, and what Alembic autogenerates
 the next migration from (``evo_agents/hub/migrations/env.py``).
 
 The migrations make the schema; this module describes it, and ``tests/hub/test_schema_metadata.py`` keeps the two
@@ -42,7 +42,7 @@ from sqlalchemy.dialects.postgresql import ARRAY, JSONB, TSVECTOR
 
 metadata = MetaData()
 
-# Run states the partial indexes of runs name (evo_agents/hub/migrations/versions/0010_plan_runs.py).
+# Run states the partial indexes of runs name (evo_agents/hub/migrations/versions/0010_plan_runs.py and 0014).
 RUN_ACTIVE = ("queued", "leased", "running", "interactive", "verifying", "waiting", "review", "parked")
 RUN_HELD = ("leased", "running", "interactive", "verifying", "waiting")
 
@@ -495,7 +495,7 @@ Index(
     postgresql_where=kg_builds.c.artifact_sha256.is_not(None),
 )
 
-# Workers and runs (0009, 0010, 0011, 0012)
+# Workers and runs (0009, 0010, 0011, 0012, 0014)
 
 workers = Table(
     "workers",
@@ -519,6 +519,7 @@ workers = Table(
     _when("drained_at"),
     _when("revoked_at"),
     Column("dispatch_from", Text, nullable=False, server_default="any"),
+    Column("run_kinds", ARRAY(Text)),
     ForeignKeyConstraint(["owner_id"], ["users.id"], ondelete="RESTRICT", name="workers_owner_id_fkey"),
     ForeignKeyConstraint(["token_id"], ["tokens.id"], ondelete="RESTRICT", name="workers_token_id_fkey"),
     PrimaryKeyConstraint("id", name="workers_pkey"),
@@ -581,10 +582,10 @@ runs = Table(
     metadata,
     _id(),
     Column("project_id", BigInteger, nullable=False),
-    Column("plan_id", Text, nullable=False),
+    Column("plan_id", Text),  # NULL for a review run, which works on no plan (0014)
     Column("step_key", Text),
     Column("title", Text),
-    Column("plan_revision", Integer, nullable=False),
+    Column("plan_revision", Integer),
     Column("dispatched_by", BigInteger, nullable=False),
     Column("pinned_worker_id", BigInteger),
     Column("worker_id", BigInteger),
@@ -661,6 +662,12 @@ Index(
     postgresql_where=(runs.c.kind == "plan") & runs.c.state.in_(RUN_ACTIVE),
 )
 Index(
+    "runs_active_review_key",
+    runs.c.project_id,
+    unique=True,
+    postgresql_where=(runs.c.kind == "review") & runs.c.state.in_(RUN_ACTIVE),
+)
+Index(
     "runs_claim_idx",
     runs.c.project_id,
     runs.c.dispatched_by,
@@ -693,7 +700,7 @@ run_events = Table(
     PrimaryKeyConstraint("run_id", "seq", name="run_events_pkey"),
 )
 
-# Decisions and notifications (0010)
+# Decisions and notifications (0010, 0014)
 
 decisions = Table(
     "decisions",
@@ -761,8 +768,10 @@ notifications = Table(
     Column("link", Text),
     _stamp("created_at"),
     _when("read_at"),
+    Column("proposal_id", BigInteger),
     ForeignKeyConstraint(["decision_id"], ["decisions.id"], ondelete="CASCADE", name="notifications_decision_id_fkey"),
     ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name="notifications_project_id_fkey"),
+    ForeignKeyConstraint(["proposal_id"], ["proposals.id"], ondelete="CASCADE", name="notifications_proposal_id_fkey"),
     ForeignKeyConstraint(["run_id"], ["runs.id"], ondelete="CASCADE", name="notifications_run_id_fkey"),
     ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE", name="notifications_user_id_fkey"),
     PrimaryKeyConstraint("id", name="notifications_pkey"),
@@ -775,6 +784,13 @@ Index(
     notifications.c.user_id,
     unique=True,
     postgresql_where=notifications.c.decision_id.is_not(None),
+)
+Index(
+    "notifications_proposal_key",
+    notifications.c.proposal_id,
+    notifications.c.user_id,
+    unique=True,
+    postgresql_where=notifications.c.proposal_id.is_not(None),
 )
 
 notification_channels = Table(
@@ -995,4 +1011,98 @@ run_tool_stats = Table(
     Column("duration_ms", BigInteger, nullable=False),
     ForeignKeyConstraint(["run_id"], ["runs.id"], ondelete="CASCADE", name="run_tool_stats_run_id_fkey"),
     PrimaryKeyConstraint("run_id", "tool_name", name="run_tool_stats_pkey"),
+)
+
+# The review runs of the night shift: the night's figures, and what the Reviewer finds and proposes (0014)
+
+curator_figures = Table(
+    "curator_figures",
+    metadata,
+    _id(),
+    Column("project_id", BigInteger, nullable=False),
+    Column("schedule_id", BigInteger, nullable=False),
+    Column("night", Date, nullable=False),
+    Column("since", DateTime(timezone=True), nullable=False),
+    Column("until", DateTime(timezone=True), nullable=False),
+    Column("figures", JSONB, nullable=False),
+    Column("run_id", BigInteger),
+    _stamp("created_at"),
+    ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name="curator_figures_project_id_fkey"),
+    ForeignKeyConstraint(["run_id"], ["runs.id"], ondelete="RESTRICT", name="curator_figures_run_id_fkey"),
+    ForeignKeyConstraint(
+        ["schedule_id"], ["schedules.id"], ondelete="CASCADE", name="curator_figures_schedule_id_fkey"
+    ),
+    PrimaryKeyConstraint("id", name="curator_figures_pkey"),
+    UniqueConstraint("project_id", "night", name="curator_figures_project_id_night_key"),
+)
+
+findings = Table(
+    "findings",
+    metadata,
+    _id(),
+    Column("project_id", BigInteger, nullable=False),
+    Column("run_id", BigInteger, nullable=False),
+    Column("lens", Text, nullable=False),
+    Column("severity", Text, nullable=False),
+    Column("title", Text, nullable=False),
+    Column("body", Text),
+    Column("evidence", JSONB, nullable=False),
+    Column("label", JSONB, nullable=False),
+    _stamp("created_at"),
+    ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name="findings_project_id_fkey"),
+    ForeignKeyConstraint(["run_id"], ["runs.id"], ondelete="CASCADE", name="findings_run_id_fkey"),
+    PrimaryKeyConstraint("id", name="findings_pkey"),
+    Index("findings_run_idx", "run_id", "id"),
+)
+Index("findings_project_idx", findings.c.project_id, findings.c.id.desc())
+
+proposals = Table(
+    "proposals",
+    metadata,
+    _id(),
+    Column("project_id", BigInteger, nullable=False),
+    Column("run_id", BigInteger, nullable=False),
+    Column("lens", Text, nullable=False),
+    Column("kind", Text, nullable=False),
+    Column("title", Text, nullable=False),
+    Column("summary", Text),
+    Column("paths", JSONB, nullable=False),
+    Column("impacted", JSONB),
+    Column("tier", SmallInteger, nullable=False),
+    Column("tier_reasons", JSONB, nullable=False),
+    Column("finding_ids", ARRAY(BigInteger), nullable=False, server_default="{}"),
+    Column("evidence", JSONB, nullable=False),
+    Column("evidence_count", Integer, nullable=False),
+    Column("draft", JSONB, nullable=False),
+    Column("fingerprint", Text, nullable=False),
+    Column("state", Text, nullable=False, server_default="open"),
+    Column("duplicate_of", BigInteger),
+    Column("answered_by", BigInteger),
+    _when("answered_at"),
+    Column("note", Text),
+    _when("deferred_until"),
+    _when("inbox_at"),
+    Column("label", JSONB, nullable=False),
+    _stamp("created_at"),
+    ForeignKeyConstraint(["answered_by"], ["users.id"], ondelete="RESTRICT", name="proposals_answered_by_fkey"),
+    ForeignKeyConstraint(["duplicate_of"], ["proposals.id"], ondelete="RESTRICT", name="proposals_duplicate_of_fkey"),
+    ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name="proposals_project_id_fkey"),
+    ForeignKeyConstraint(["run_id"], ["runs.id"], ondelete="CASCADE", name="proposals_run_id_fkey"),
+    PrimaryKeyConstraint("id", name="proposals_pkey"),
+    Index("proposals_run_idx", "run_id", "id"),
+)
+Index("proposals_project_idx", proposals.c.project_id, proposals.c.id.desc())
+Index(
+    "proposals_rejected_idx",
+    proposals.c.project_id,
+    proposals.c.fingerprint,
+    proposals.c.answered_at.desc(),
+    postgresql_where=proposals.c.state == "rejected",
+)
+Index("proposals_deferred_idx", proposals.c.deferred_until, postgresql_where=proposals.c.state == "deferred")
+Index(
+    "proposals_inbox_idx",
+    proposals.c.project_id,
+    proposals.c.inbox_at,
+    postgresql_where=proposals.c.inbox_at.is_not(None),
 )

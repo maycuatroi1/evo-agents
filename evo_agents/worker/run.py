@@ -45,6 +45,12 @@ Each time an agent starts, headless or in its terminal UI, the daemon notes its 
 ``runs/<run>/agent.json`` (``orphans``), and removes the file just before the run counts as ended here, so a daemon
 that starts after this one died finds the agents it left.
 
+A review run (kind ``review``, ``ReviewRun``) is the Curator's Reviewer of one night of a project: its worktrees are
+detached at the commit origin's default branch has, the worker counts the open items of reports and the learned skills
+waiting for review in them (``figures``) into ``.evo-run/worktree-figures.json``, the agent records findings and
+proposals with ``evo-agents worker finding|propose``, and the run ends done with the agent's summary: nothing is
+committed or pushed (``gitops.check_push`` refuses a review run), and the run's GitHub token reads only.
+
 A plan run (kind ``plan``, ``PlanRun``) does every step of a plan not done yet, in one session:
 
 1. ``leased``: the daemon takes the run's leases for all its repos, then makes the directory
@@ -86,7 +92,7 @@ from typing import TYPE_CHECKING
 import yaml
 
 from evo_agents.hub import curator, runs
-from evo_agents.worker import credentials, gitops, interactive, orphans
+from evo_agents.worker import credentials, figures, gitops, interactive, orphans
 from evo_agents.worker.adapter import AgentEvent, AgentFinished, Outcome, RunContext
 from evo_agents.worker.checkouts import default_branch_of
 from evo_agents.worker.credentials import RunCredentials
@@ -1861,6 +1867,154 @@ class PlanRun(Run):
         return b"".join(parts)
 
 
+class ReviewRun(PlanRun):
+    """A review run (kind ``review``, see the module's docstring): a worktree of each of its repos, detached at the
+    commit origin's default branch has, the agent reading in their directory and writing findings and proposals
+    through ``evo-agents worker finding|propose``, and nothing committed or pushed at its end."""
+
+    def __init__(self, daemon: Daemon, spec: dict):
+        super().__init__(daemon, spec)
+        self.title = spec.get("title") or f"review of {spec.get('project')}"
+
+    def request_park(self) -> None:
+        """A review run asks no decision and never parks: a park means the hub no longer holds it for this worker."""
+        self.request_stop("gone")
+
+    def _park_requested(self) -> bool:
+        return False
+
+    async def _steps(self) -> None:
+        spec = self.spec
+        repos = [entry for entry in spec.get("repos") or [] if isinstance(entry, dict)]
+        names = ", ".join(str(entry.get("repo")) for entry in repos) or "no repo"
+        self.note(
+            f"Run #{self.id} claimed by worker {self.daemon.config.name}: the review of project {self.project} over "
+            f"{names}, {self.runtime}, {self.mode}, timeout {self.timeout_s // 60} min of agent time. It reads only: "
+            "nothing is committed or pushed."
+        )
+        cls = self.daemon.adapters.get(self.runtime)
+        if cls is None:
+            raise RunFailed(f"this worker has no adapter for {self.runtime}")
+        if self.mode == "interactive":
+            why = self.interactive_unsupported(cls)
+            if why is not None:
+                raise RunFailed(f"this worker cannot run {self.runtime} interactive ({why}): run it headless")
+        if not repos:
+            raise RunFailed("the review run names no repo to read")
+        await self._take_credentials(entry.get("repo") for entry in repos)
+        self._check()
+        await self._prepare_review(repos)
+        self._check()
+        await self._count_figures()
+        await self._plan_turns(cls, self._prompt(), None)
+        self.summary = self._read_summary()
+        await self._ensure_running()
+        await self._report("verifying")
+        self._check()
+        await self._end("done", summary=self.summary, usage=self.outcome.usage if self.outcome else None)
+
+    async def _prepare_review(self, repos: list[dict]) -> None:
+        """The run's directory, with a worktree of each repo detached at origin's default branch (else the default
+        branch the hub names, else the checkout's HEAD), and .evo-run/ for the agent's result."""
+        self.directory = self.daemon.home.worktree_path(self.project, self.id)
+        if self.directory.exists():
+            raise RunFailed(f"{self.directory} exists already; remove it and queue the review again")
+        self.directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+        self.worktree = self.directory
+        taken: set[str] = set()
+        for entry in repos:
+            name = entry.get("repo")
+            if not isinstance(name, str) or not name:
+                raise RunFailed("the review run names a repo without a name")
+            checkout = self.daemon.checkout_for(self.project, name)
+            if checkout is None:
+                raise RunFailed(f"this worker has no checkout of {self.project}/{name}")
+            folder = gitops.folder_name(name, taken)
+            taken.add(folder)
+            self.workspaces[name] = await self._detached_worktree(name, checkout, folder)
+            self._save_workspaces()
+        (self.directory / runs.RESULT_DIR).mkdir(mode=0o700, exist_ok=True)
+        self._save_workspaces()
+
+    async def _detached_worktree(self, name: str, checkout: Path, folder: str) -> gitops.Workspace:
+        path = self.directory / folder
+        async with self.daemon.repo_lock(checkout):
+            if not await gitops.has_remote(checkout):
+                raise RunFailed(f"the checkout at {checkout} has no remote named origin to fetch from")
+            self.note(f"Fetching origin in {checkout}.")
+            try:
+                await gitops.fetch(checkout, env=self.git_env())
+            except gitops.GitError as exc:
+                raise RunFailed(f"git fetch in {checkout} failed: {exc}") from None
+            remote_head = await gitops.remote_default_branch(checkout)
+            hub_default = default_branch_of(self.daemon.config, self.project, name)
+            refs = [f"refs/remotes/origin/{branch}" for branch in (remote_head, hub_default) if branch]
+            start = base = None
+            for ref in (*refs, "refs/remotes/origin/HEAD", "HEAD"):
+                base = await gitops.rev(checkout, ref)
+                if base is not None:
+                    start = ref
+                    break
+            if base is None:
+                raise RunFailed(f"the checkout at {checkout} has no commit to read")
+            try:
+                await gitops.add_detached_worktree(checkout, path, base)
+            except gitops.GitError as exc:
+                raise RunFailed(f"cannot make the worktree {path}: {exc}") from None
+        self.note(f"Worktree {path} of {name}, detached at {base[:12]} ({start}), read-only.", worktree=str(path))
+        return gitops.Workspace(
+            repo=name,
+            branch=remote_head or hub_default or "HEAD",
+            plan_branch=None,
+            checkout=checkout,
+            worktree=path,
+            local_branch="HEAD",
+            base=base,
+            protected=(),
+        )
+
+    async def _count_figures(self) -> None:
+        """Count what lives in the worktrees' files (``figures.scan``) into .evo-run/worktree-figures.json, and say
+        how much in the run's log."""
+        worktrees = {name: workspace.worktree for name, workspace in self.workspaces.items()}
+        try:
+            found = await asyncio.to_thread(figures.scan, worktrees)
+        except Exception:
+            log.exception("the worktrees' figures were not counted", extra={"run_id": self.id})
+            return
+        path = self.directory / runs.RESULT_DIR / WORKTREE_FIGURES
+        with contextlib.suppress(OSError):
+            path.write_text(json.dumps(found, ensure_ascii=False, indent=1), encoding="utf-8")
+        counts = {key: len(value) for key, value in found.items()}
+        self.note(
+            f"Counted in the worktrees: {counts['reports']} open items of reports, {counts['learned_skills']} learned "
+            f"skills waiting for review ({runs.RESULT_DIR}/{WORKTREE_FIGURES}).",
+            worktree_figures=counts,
+        )
+
+    def _prompt(self) -> str:
+        """The run's prompt, with where each repo's worktree is when a folder is not named as its repo, and the file
+        of the worktrees' figures."""
+        prompt = self.spec.get("prompt") or ""
+        moved = [f"- {name}: {ws.worktree.name}/" for name, ws in self.workspaces.items() if ws.worktree.name != name]
+        extra = [
+            "",
+            f"The worker counted the open items of reports and the learned skills waiting for review in the worktrees: "
+            f"{runs.RESULT_DIR}/{WORKTREE_FIGURES}.",
+        ]
+        if moved:
+            extra += ["Worktree folders that are not named as their repo:", *moved]
+        return runs.clip(prompt + "\n".join(extra) + "\n", runs.MAX_PROMPT_BYTES)
+
+    async def _diff(self) -> bytes:
+        """A review run changes nothing: no diff is uploaded."""
+        return b""
+
+
+WORKTREE_FIGURES = "worktree-figures.json"  # in .evo-run/ of a review run's directory
+
+
 def run_class(spec: dict) -> type[Run]:
-    """The class of the run ``spec`` claims: PlanRun for kind plan, Run otherwise."""
-    return PlanRun if spec.get("kind") == "plan" else Run
+    """The class of the run ``spec`` claims: PlanRun for kind plan, ReviewRun for kind review, Run otherwise."""
+    kind = spec.get("kind")
+    return PlanRun if kind == "plan" else ReviewRun if kind == "review" else Run

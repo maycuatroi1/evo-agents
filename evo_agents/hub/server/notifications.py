@@ -22,10 +22,11 @@ leaves a ``system`` event in the run's log. A run of one step sends no notice (4
 hold). The hub sends ``plan_finished`` and ``run_failed`` itself when a plan run ends (``run_state``).
 
 A member reads their own notifications: GET /v1/me/notifications (open decisions first, then newest first; filtered
-by unread, kind and project, a page at a time), GET /v1/me/notifications/count (the unread ones and the decisions
-still waiting for an answer, for the bell), and POST /v1/me/notifications/read (by ids, or all), audited as
-notification.read with the ids, never the text. A notification of a project the member no longer holds a grant on is
-not shown. Answering a decision reads its notification too (``decisions``).
+by unread, kind and project, a page at a time), GET /v1/me/notifications/count (the unread ones, and the decisions and
+the proposals still waiting for an answer, for the bell), and POST /v1/me/notifications/read (by ids, or all), audited
+as notification.read with the ids, never the text. A notification of a project the member no longer holds a grant on is
+not shown. Answering a decision reads its notification too (``decisions``). A notification of kind proposal is a tier 2
+proposal of the Curator in the member's Inbox (``proposals``), and answering it reads it too.
 """
 
 from __future__ import annotations
@@ -42,7 +43,7 @@ from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import BigInteger, and_, exists, false, func, insert, literal, null, or_, select, union_all, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import runs, tables
+from evo_agents.hub import review, runs, tables
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.admin import PROJECT_NAME
 from evo_agents.hub.server.errors import ErrorBody
@@ -121,6 +122,7 @@ async def notify(
     decision_id: int | None = None,
     details: dict | None = None,
     link: str | None = None,
+    proposal_id: int | None = None,
 ) -> int:
     """Store a notification for member ``user_id`` and a delivery of it for each of their channels that is on, the
     web included, in the caller's transaction; its id. ``title`` is made one line of at most TITLE_CHARS, ``body``
@@ -137,6 +139,7 @@ async def notify(
             project_id=project_id,
             run_id=run_id,
             decision_id=decision_id,
+            proposal_id=proposal_id,
             title=one_line(title) or kind,
             body=_body(body),
             details=details if details is not None else null(),  # SQL NULL: None alone would store JSON null
@@ -169,6 +172,7 @@ class Outgoing:
     details: dict | None
     link: str | None
     created_at: datetime
+    proposal_id: int | None = None
 
 
 class Channel:
@@ -236,6 +240,7 @@ def _lock_due(delivery_id: int):
             stored.c.details,
             stored.c.link,
             stored.c.created_at,
+            stored.c.proposal_id,
             deliveries.c.channel_id.is_not(None).label("has_channel"),
         )
         .select_from(
@@ -372,6 +377,10 @@ class Notification(BaseModel):
     decision_state: Literal[runs.DECISION_STATES] | None = Field(
         description="the state of the decision now, for a notification of kind decision"
     )
+    proposal_id: int | None = Field(None, description="the proposal, for a notification of kind proposal")
+    proposal_state: Literal[review.PROPOSAL_STATES] | None = Field(
+        None, description="the state of the proposal now, for a notification of kind proposal"
+    )
     title: str
     body: str | None
     details: dict | None = Field(description="a notice's facts, such as the repo, branch and commits of a push")
@@ -381,10 +390,13 @@ class Notification(BaseModel):
 
 
 def _shown():
-    """Notifications with their project's name and their decision's state: the FROM of the member's routes."""
-    stored, projects, decisions = tables.notifications, tables.projects, tables.decisions
-    return stored.outerjoin(projects, projects.c.id == stored.c.project_id).outerjoin(
-        decisions, decisions.c.id == stored.c.decision_id
+    """Notifications with their project's name, their decision's state and their proposal's: the FROM of the member's
+    routes."""
+    stored, projects, decisions, proposals = tables.notifications, tables.projects, tables.decisions, tables.proposals
+    return (
+        stored.outerjoin(projects, projects.c.id == stored.c.project_id)
+        .outerjoin(decisions, decisions.c.id == stored.c.decision_id)
+        .outerjoin(proposals, proposals.c.id == stored.c.proposal_id)
     )
 
 
@@ -399,6 +411,8 @@ def _notification_rows():
         stored.c.run_id,
         stored.c.decision_id,
         tables.decisions.c.state.label("decision_state"),
+        stored.c.proposal_id,
+        tables.proposals.c.state.label("proposal_state"),
         stored.c.title,
         stored.c.body,
         stored.c.details,
@@ -476,14 +490,16 @@ def _listed(user_id: int, unread: bool, kind: str | None, project: str | None) -
 
 
 def _counts(user_id: int):
-    """How many of the member's notifications are unread, and how many are of a decision still open."""
-    stored, decisions = tables.notifications, tables.decisions
+    """How many of the member's notifications are unread, and how many are of a decision or a proposal still open."""
+    stored = tables.notifications
+    open_proposal = and_(stored.c.kind == "proposal", tables.proposals.c.state == "open")
     return (
         select(
             func.count().filter(stored.c.read_at.is_(None)).label("unread"),
             func.count().filter(_open_decision()).label("open_decisions"),
+            func.count().filter(open_proposal).label("open_proposals"),
         )
-        .select_from(stored.outerjoin(decisions, decisions.c.id == stored.c.decision_id))
+        .select_from(_shown())
         .where(_visible(user_id))
     )
 
@@ -507,6 +523,7 @@ class NotificationList(BaseModel):
 class NotificationCount(BaseModel):
     unread: int = Field(description="notifications not read yet: the bell's number")
     open_decisions: int = Field(description="decisions that still wait for the member's answer, read or not")
+    open_proposals: int = Field(0, description="proposals in the member's Inbox that wait for an answer, read or not")
 
 
 class ReadRequest(BaseModel):

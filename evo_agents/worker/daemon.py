@@ -261,6 +261,7 @@ class Daemon:
             "free_slots": min(self.free_slots, 8),
             "runs": held + asked,
             "agent_version": __version__,
+            "run_kinds": list(runs.RUN_KINDS),  # every kind run_class has a class for
         }
         try:
             answer = await self.hub.heartbeat(body)
@@ -505,7 +506,7 @@ class Daemon:
     async def _remove_worktree(self, record: dict) -> None:
         """Remove a run's worktree and its evo-run branch; for a plan run, each repo's, then the run's directory. A
         plan run whose worktrees a resumed run took over names none of them any more."""
-        if record.get("kind") == "plan":
+        if record.get("kind") in ("plan", "review"):
             for item in record.get("repos") or []:
                 if isinstance(item, dict):
                     await self._remove_one(item)

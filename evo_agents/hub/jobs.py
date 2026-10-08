@@ -37,6 +37,7 @@ PRUNE_RUN_EVENTS = "hub.prune_run_events"  # daily: events of runs that ended mo
 DELIVER_NOTIFICATIONS = "hub.deliver_notifications"  # every minute: notifications due on their channels, retried
 FIRE_SCHEDULES = "hub.fire_schedules"  # every minute: the night shift of each charter queues its next run
 PRUNE_DIGESTS = "hub.prune_digests"  # daily: session digests not pushed again for 90 days
+CURATOR_COLLECT = "curator.collect"  # every minute: each charter's night figures and its review run, in its window
 
 
 def kg_lock(project: str) -> str:

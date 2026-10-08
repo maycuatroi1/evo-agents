@@ -188,6 +188,14 @@ class WorkerHub:
     async def notice(self, run_id: int, body: dict) -> dict:
         return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/notices", body)
 
+    # A review run: its findings and proposals
+
+    async def finding(self, run_id: int, body: dict) -> dict:
+        return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/findings", body)
+
+    async def proposal(self, run_id: int, body: dict) -> dict:
+        return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/proposals", body)
+
     async def uploads(self, run_id: int, items: list[dict]) -> dict:
         return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/uploads", {"items": items})
 

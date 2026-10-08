@@ -89,9 +89,15 @@ transaction is open, and a hub that stops between the two loses nothing.
 
 | Table | Columns |
 | --- | --- |
-| `notifications` | user, kind (`decision` or `notice`), the decision, or the notice's kind and details (repo, branch, commits), project, run, title, body, link (a path of the hub's site), `created_at`, `read_at` |
+| `notifications` | user, kind (`decision`, `notice` or `proposal`), the decision, the notice's kind and details (repo, branch, commits), or the proposal, project, run, title, body, link (a path of the hub's site), `created_at`, `read_at` |
 | `notification_channels` | user, kind (not `web`, at most one of a kind per member), `config` (JSON the channel's class reads), `enabled`, `created_at` |
 | `notification_deliveries` | notification, channel (none for the web), state (`pending`, `delivered`, `failed`), attempts, `next_at`, `last_error`, `delivered_at` |
+
+A notification of kind `proposal` (schema 0014) is a tier 2 proposal of the Curator's review run in its owner's Inbox:
+when a review run ends, its open tier 2 proposals with the most evidence become such notifications, as many as the
+charter's `max_decisions_per_day` leaves room for that day in the charter's time zone; answering the proposal
+(`evo-agents hub curator proposal accept|reject|defer`) reads it, and `GET /v1/me/notifications/count` counts the
+ones still open as `open_proposals` (`docs/hub.md`, "The Curator's review").
 
 Every member has the web channel without a row of `notification_channels`: a delivery without a channel is the
 web's. A channel of another kind is a row, with what it needs in `config` (for Telegram, the chat it sends to).
