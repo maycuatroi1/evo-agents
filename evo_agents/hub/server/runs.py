@@ -10,7 +10,9 @@ must be one of the caller's own (403 for any other id, a hub admin's included), 
 Each run is notified on RUNS_CHANNEL and audited (run.dispatch), and keeps the step's title. ``model`` is optional,
 one line of at most ``runs.MAX_MODEL_CHARS``, as the runtime names it; without one the runtime chooses as it would.
 Each run keeps the credential it was dispatched with in dispatched_via (``credentials.dispatch_credential``): web for a
-web session, machine for a token. A worker whose owner set its dispatch_from to web takes runs dispatched from a web
+web session, machine for a token, schedule for a run the night shift of the project's charter queued
+(``evo_agents.hub.server.curator``), which also has a budget: its caps, which its claim hands the worker with what it
+spent already (``ClaimedBudget``). A worker whose owner set its dispatch_from to web takes runs dispatched from a web
 session only: a dispatch, plan run or rerun pinned to it with a token gets 403 saying so, and its claims pass over
 the runs dispatched with a token.
 
@@ -123,7 +125,7 @@ from sqlalchemy.dialects.postgresql import ARRAY, DOUBLE_PRECISION, JSONB
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import runs, tables
+from evo_agents.hub import curator, runs, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.credentials import DISPATCHED_VIA, dispatch_credential
 from evo_agents.hub.plans import PlanProblem, step_index, step_key
@@ -233,6 +235,21 @@ class PlanRunDispatch(BaseModel):
     )
 
 
+class RunBudget(BaseModel):
+    """The caps of a run the night shift queued (``evo_agents.hub.curator``)."""
+
+    max_usd: float | None = Field(None, description="the most it may cost; Claude Code stops there")
+    max_turns: int | None = Field(None, description="the most turns its agent may take")
+    max_seconds: int | None = Field(None, description="the agent time it may use; a Codex run stops there")
+
+
+class ClaimedBudget(RunBudget):
+    """A run's caps as its worker gets them, with what it spent already when it goes on from a parked run."""
+
+    spent_usd: float = Field(0.0, description="what the agent session it goes on in cost so far")
+    spent_seconds: int = Field(0, description="the agent time it used so far")
+
+
 class RunRepo(BaseModel):
     """A repo of a plan run, with the branch the plan names for it."""
 
@@ -251,7 +268,8 @@ class Run(BaseModel):
     dispatched_by: str = Field(description="the login of the member who dispatched it, its owner")
     dispatched_via: Literal[DISPATCHED_VIA] | None = Field(
         description="the credential it was dispatched with: web, a web session; machine, a token (the command line, "
-        "an agent); null for a run dispatched before 0.5.0"
+        "an agent); schedule, the night shift of the project's charter, for its owner; null for a run dispatched "
+        "before 0.5.0"
     )
     worker_id: int | None = Field(description="the worker that claimed it")
     worker: str | None = Field(description="that worker's name")
@@ -278,6 +296,7 @@ class Run(BaseModel):
     verify: list | None
     evidence: str | None
     usage: dict | None
+    budget: RunBudget | None = Field(None, description="the caps of a run the night shift queued; null for any other")
     error: str | None
     log_sha256: str | None = Field(description="the blob of kind run-log its worker uploaded")
     diff_sha256: str | None = Field(description="the blob of kind run-diff: GET .../runs/{id}/diff")
@@ -336,6 +355,7 @@ class RunSpec(BaseModel):
     plan: PlanCopy | None = Field(
         description=f"a plan run's plan at the hub's current revision, for {runs.PLAN_FILE}; null for a run of one step"
     )
+    budget: ClaimedBudget | None = Field(None, description="the caps of a run the night shift queued; null otherwise")
 
 
 class Claim(BaseModel):
@@ -536,6 +556,7 @@ def _run_select():
             r.c.verify,
             r.c.evidence,
             r.c.usage,
+            r.c.budget,
             r.c.error,
             r.c.log_sha256,
             r.c.diff_sha256,
@@ -1892,7 +1913,21 @@ async def _run_spec(conn: AsyncConnection, run_id: int) -> RunSpec:
         lease_expires_at=view.lease_expires_at,
         prompt=prompt,
         plan=copy,
+        budget=await _claimed_budget(conn, view),
     )
+
+
+async def _claimed_budget(conn: AsyncConnection, view: Run) -> ClaimedBudget | None:
+    """The budget of run ``view`` with what it spent already: the agent time it counted (a run that resumes a parked
+    one starts with that run's), and the cost of the run it resumes, whose session it goes on in."""
+    if view.budget is None:
+        return None
+    spent_usd = 0.0
+    if view.resume_of_run_id is not None:
+        r = tables.runs
+        usage = (await conn.execute(select(r.c.usage).where(r.c.id == view.resume_of_run_id))).scalar_one_or_none()
+        spent_usd = curator.run_cost(usage)
+    return ClaimedBudget(**view.budget.model_dump(), spent_usd=spent_usd, spent_seconds=view.run_seconds)
 
 
 @worker_router.post("/claim", response_model=Claim, responses={403: {"model": ErrorBody}})

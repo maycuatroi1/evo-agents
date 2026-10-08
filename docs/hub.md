@@ -478,6 +478,10 @@ Postgres database; there is no separate broker. The api only defers jobs. Jobs:
 - `hub.deliver_notifications`, every minute: hands each notification delivery that is due to its channel's class, and
   tries a failing one again with a backoff, failing it after 5 tries (`docs/notifications.md`).
 - `hub.prune_run_events`, daily at 04:13: deletes the events of runs that ended more than `EVO_HUB_RUN_LOG_DAYS` ago.
+- `hub.fire_schedules`, every minute: the night shift of each project with a charter queues its next plan run inside
+  the charter's window and within the night's budget, pinned to the charter's worker and dispatched as that worker's
+  owner, and cancels the runs it queued that are still queued once the window ends or the project is paused
+  (`evo-agents hub curator pause`).
 - `hub.cleanup_uploads`, hourly: removes uploads nobody committed within 24 hours.
 - `hub.prune_jobs`, daily: removes finished jobs older than 14 days.
 

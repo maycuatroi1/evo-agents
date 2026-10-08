@@ -35,6 +35,7 @@ PRUNE_KG_ARTIFACTS = "hub.prune_kg_artifacts"  # hourly: artifacts of graphs old
 RECOVER_RUNS = "hub.recover_runs"  # every minute: runs whose lease ran out become lost and are queued again
 PRUNE_RUN_EVENTS = "hub.prune_run_events"  # daily: events of runs that ended more than EVO_HUB_RUN_LOG_DAYS ago
 DELIVER_NOTIFICATIONS = "hub.deliver_notifications"  # every minute: notifications due on their channels, retried
+FIRE_SCHEDULES = "hub.fire_schedules"  # every minute: the night shift of each charter queues its next run
 
 
 def kg_lock(project: str) -> str:

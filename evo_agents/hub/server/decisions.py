@@ -416,7 +416,7 @@ def _overriding_system_value(element, compiler, **kw):
 def _resume_run(new_id: int, parked_id: int):
     """The run that resumes parked plan run ``parked_id``, with id ``new_id``: pinned to its worker, in its session,
     with the agent time it used and the credential it was dispatched with, at the plan's current revision (the one it
-    was dispatched from when the plan is gone)."""
+    was dispatched from when the plan is gone); a run the night shift queued keeps its schedule, night and caps."""
     r, pl = tables.runs, tables.plans
     source = _OverridingSystemValue(
         literal(new_id, BigInteger).label("id"),
@@ -439,6 +439,9 @@ def _resume_run(new_id: int, parked_id: int):
         r.c.id.label("resume_of_run_id"),
         r.c.run_seconds,
         r.c.session_id,
+        r.c.schedule_id,
+        r.c.schedule_night,
+        r.c.budget,
     )
     source = source.select_from(
         r.outerjoin(pl, (pl.c.project_id == r.c.project_id) & (pl.c.plan_id == r.c.plan_id))

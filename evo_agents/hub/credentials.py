@@ -15,7 +15,8 @@ origin is SSH, which the daemon rewrites to https for the run's git only.
 
 A worker's ``dispatch_from`` says who may hand it runs: ``any`` credential of its owner, or a ``web`` session only, so
 a machine token that leaked cannot put work onto it. A run's ``dispatched_via`` is the credential it was dispatched
-with (``dispatch_credential``); a worker set to ``web`` claims only runs whose dispatched_via is ``web``.
+with (``dispatch_credential``), or ``schedule`` for a run the night shift queued; a worker set to ``web`` claims only
+runs whose dispatched_via is ``web``.
 """
 
 from __future__ import annotations
@@ -47,9 +48,10 @@ _SCP_ORIGIN = re.compile(r"^(?:[^@/\s]+@)?([^:/\s]+):(?!//)(.+)$")
 
 # Who may hand a worker its runs (workers.dispatch_from): runs dispatched with any credential of its owner, or only
 # those dispatched from a web session. And the credential a run was dispatched with (runs.dispatched_via): a web
-# session, or a token (a machine token, or the worker token of a run's agent on /mcp).
+# session, a token (a machine token, or the worker token of a run's agent on /mcp), or none, the night shift of a
+# project's charter acting for its owner (schema 0012, evo_agents.hub.curator).
 DISPATCH_FROM = ("any", "web")
-DISPATCHED_VIA = ("machine", "web")
+DISPATCHED_VIA = ("machine", "web", "schedule")
 
 
 def dispatch_credential(credential_kind: str) -> str:
