@@ -18,6 +18,16 @@ wider than the installation's, and ``covers`` says what it opens. GET
 role ``collaborate`` gave the login there, admin for the account the repo belongs to, and none for any other account
 the fake knows (one it issued a token to, or one ``collaborate`` named); a login it does not know is 404, as GitHub
 answers for a login with no account.
+
+It plays a second App too, the Curator's (``curator_app_id``, ``curator_app_public_key``): a JWT is the App its ``iss``
+names, and each App sees only its own installations (``install(..., app="curator")``). For the Curator's changes it
+keeps repos (``add_repo``: default branch, branch heads, rulesets) and answers, for an installation token that opens the
+repo and holds the permission each needs, as GitHub does: GET /repos/{o}/{r}; GET .../rules/branches/{branch} and
+GET .../rulesets/{id}, whose ``current_user_can_bypass`` says whether the token's App is among the ruleset's bypass
+Apps; POST and GET .../pulls (a pull request of a branch whose head ``push`` set, its files ``files`` set) and GET
+.../pulls/{n} and .../pulls/{n}/files; GET .../commits/{sha}/check-runs and .../status (``ci`` sets them); POST
+.../check-runs; and PUT .../pulls/{n}/merge, which refuses a head that moved (409) and a base branch whose ruleset
+the token's App may not bypass (405), and otherwise merges.
 """
 
 from __future__ import annotations
@@ -54,6 +64,34 @@ class AppInstallation:
     repos: set[str]
     permissions: dict
     suspended: bool = False
+    app: str = "workers"  # the App installed: the workers' (app_id) or the Curator's (curator_app_id)
+
+
+@dataclass
+class FakeRepo:
+    """A repo of the fake: its default branch, the commit each branch points at, and its rulesets, each {id,
+    enforcement, rules: [type], bypass: {app}} applying to the default branch."""
+
+    owner: str
+    name: str
+    default_branch: str = "main"
+    heads: dict = field(default_factory=dict)
+    rulesets: list = field(default_factory=list)
+    files: dict = field(default_factory=dict)  # branch -> the files of its pull request, as GitHub lists them
+
+
+@dataclass
+class FakePull:
+    number: int
+    owner: str
+    name: str
+    head: str
+    head_sha: str
+    base: str
+    state: str = "open"
+    merged: bool = False
+    mergeable: bool | None = True
+    merge_sha: str | None = None
 
 
 @dataclass
@@ -106,6 +144,13 @@ class FakeGitHub:
     issued_codes: list[str] = field(default_factory=list)
     app_id: str = "424242"  # the GitHub App's ID, which a JWT's iss must name
     app_public_key: str | None = None  # PEM the App's JWTs are checked with; None turns every JWT down
+    curator_app_id: str = "434343"  # the Curator's App
+    curator_app_public_key: str | None = None
+    repos: dict = field(default_factory=dict)  # (owner, name), lower case -> FakeRepo
+    pulls: dict = field(default_factory=dict)  # (owner, name, number), lower case names -> FakePull
+    check_runs: dict = field(default_factory=dict)  # sha -> [check run]
+    statuses: dict = field(default_factory=dict)  # sha -> combined status
+    merges: list = field(default_factory=list)  # (owner, name, number, sha, app) of each merge
     installations: dict = field(default_factory=dict)  # installation id -> AppInstallation
     app_tokens: dict = field(default_factory=dict)  # installation token -> AppToken
     app_jwts: list[str] = field(default_factory=list)  # every App JWT a request carried, taken or not
@@ -148,13 +193,49 @@ class FakeGitHub:
             self.accounts[account.login.lower()] = account.id
             self.collaborators[(owner.lower(), repo.lower(), account.login.lower())] = role
 
-    def install(self, account: str, *repos: str, permissions: dict | None = None) -> int:
-        """Install the fake's GitHub App on ``account`` for ``repos``; the installation's id."""
+    def install(self, account: str, *repos: str, permissions: dict | None = None, app: str = "workers") -> int:
+        """Install the fake's GitHub App (``app``: workers or curator) on ``account`` for ``repos``; its id."""
         with self._lock:
             installation_id = 1001 + len(self.installations)
             granted = dict(APP_PERMISSIONS if permissions is None else permissions)
-            self.installations[installation_id] = AppInstallation(installation_id, account, set(repos), granted)
+            self.installations[installation_id] = AppInstallation(
+                installation_id, account, set(repos), granted, app=app
+            )
         return installation_id
+
+    # The Curator's repos
+
+    def add_repo(
+        self, owner: str, name: str, *, default_branch: str = "main", rulesets: list | None = None
+    ) -> FakeRepo:
+        repo = FakeRepo(owner, name, default_branch, {default_branch: "0" * 40}, list(rulesets or []))
+        with self._lock:
+            self.repos[(owner.lower(), name.lower())] = repo
+        return repo
+
+    def push(self, owner: str, name: str, branch: str, sha: str, files: list | None = None) -> None:
+        """``branch`` of owner/name now points at ``sha``, and a pull request of it lists ``files``."""
+        with self._lock:
+            repo = self.repos[(owner.lower(), name.lower())]
+            repo.heads[branch] = sha
+            if files is not None:
+                repo.files[branch] = files
+            for found in self.pulls.values():
+                if (found.owner, found.name, found.head) == (repo.owner, repo.name, branch) and found.state == "open":
+                    found.head_sha = sha
+
+    def ci(self, sha: str, runs: list | None = None, statuses: dict | None = None) -> None:
+        """What CI says of ``sha``: its check runs (name, status, conclusion) and its combined status."""
+        with self._lock:
+            self.check_runs[sha] = [dict(item) for item in runs or []]
+            if statuses is not None:
+                self.statuses[sha] = statuses
+
+    def pull_of(self, owner: str, name: str, branch: str) -> FakePull | None:
+        return next(
+            (item for item in self.pulls.values() if (item.owner, item.name, item.head) == (owner, name, branch)),
+            None,
+        )
 
     def covers(self, token: str, owner: str, repo: str) -> bool:
         """Whether installation ``token`` opens owner/repo now: not revoked, not expired, and made for it."""
@@ -260,46 +341,60 @@ class FakeGitHub:
 
     def _jwt_refusal(self, headers: dict) -> str | None:
         """Why GitHub would turn down the App JWT of a request, or None when it takes it: RS256 signed by the key
-        of ``app_public_key``, iss the App's ID, iat not ahead, exp in the future and at most 10 minutes away."""
+        of ``app_public_key`` (``curator_app_public_key`` for the Curator's App), iss the App's ID, iat not ahead, exp
+        in the future and at most 10 minutes away."""
+        refusal, _ = self._jwt_app(headers)
+        return refusal
+
+    def _jwt_app(self, headers: dict) -> tuple[str | None, str | None]:
+        """(refusal, None), or (None, the App the JWT is of: workers or curator)."""
         from cryptography.exceptions import InvalidSignature
         from cryptography.hazmat.primitives import hashes, serialization
         from cryptography.hazmat.primitives.asymmetric import padding
 
         scheme, _, jwt = headers.get("authorization", "").partition(" ")
         if scheme.lower() != "bearer" or jwt.count(".") != 2:
-            return "A JSON web token could not be decoded"
+            return "A JSON web token could not be decoded", None
         with self._lock:
             self.app_jwts.append(jwt)
-        if self.app_public_key is None:
-            return "Integration not found"
         head, body, signature = jwt.split(".")
         try:
+            claims = json.loads(_unb64(body))
+        except ValueError:
+            return "A JSON web token could not be decoded", None
+        issuer = str(claims.get("iss")) if isinstance(claims, dict) else None
+        curator = issuer == self.curator_app_id
+        app, public = ("curator", self.curator_app_public_key) if curator else ("workers", self.app_public_key)
+        if public is None:
+            return "Integration not found", None
+        try:
             header, claims = json.loads(_unb64(head)), json.loads(_unb64(body))
-            key = serialization.load_pem_public_key(self.app_public_key.encode())
+            key = serialization.load_pem_public_key(public.encode())
             key.verify(_unb64(signature), f"{head}.{body}".encode(), padding.PKCS1v15(), hashes.SHA256())
         except (ValueError, InvalidSignature):
-            return "A JSON web token could not be decoded"
+            return "A JSON web token could not be decoded", None
         if not isinstance(header, dict) or header.get("alg") != "RS256" or not isinstance(claims, dict):
-            return "A JSON web token could not be decoded"
-        if str(claims.get("iss")) != self.app_id:
-            return "Integration not found"
+            return "A JSON web token could not be decoded", None
+        if str(claims.get("iss")) not in (self.app_id, self.curator_app_id):
+            return "Integration not found", None
         now, issued, expires = time.time(), claims.get("iat"), claims.get("exp")
         if type(issued) is not int or issued > now + JWT_LEEWAY_SECONDS:
-            return "'Issued at' claim ('iat') must be an Integer representing the time that the assertion was issued"
+            refusal = "'Issued at' claim ('iat') must be an Integer representing the time that the assertion was issued"
+            return refusal, None
         if type(expires) is not int or expires <= now:
-            return "'Expiration time' claim ('exp') must be a numeric value representing the future time"
+            return "'Expiration time' claim ('exp') must be a numeric value representing the future time", None
         if expires > now + JWT_MAX_SECONDS:
-            return "'Expiration time' claim ('exp') is too far in the future"
-        return None
+            return "'Expiration time' claim ('exp') is too far in the future", None
+        return None, app
 
     def _installation(self, owner: str, repo: str, headers: dict):
-        refusal = self._jwt_refusal(headers)
+        refusal, app = self._jwt_app(headers)
         if refusal:
             return 401, {"message": refusal}
         with self._lock:
             for found in self.installations.values():
                 names = {name.lower() for name in found.repos}
-                if found.account.lower() == owner.lower() and repo.lower() in names:
+                if found.app == app and found.account.lower() == owner.lower() and repo.lower() in names:
                     return 200, {
                         "id": found.id,
                         "account": {"login": found.account, "type": "User"},
@@ -310,11 +405,11 @@ class FakeGitHub:
         return 404, {"message": "Not Found"}
 
     def _access_tokens(self, installation_id: str, headers: dict, body: str):
-        refusal = self._jwt_refusal(headers)
+        refusal, app = self._jwt_app(headers)
         if refusal:
             return 401, {"message": refusal}
         found = self.installations.get(int(installation_id)) if installation_id.isdigit() else None
-        if found is None:
+        if found is None or found.app != app:
             return 404, {"message": "Not Found"}
         if found.suspended:
             return 403, {"message": "This installation has been suspended"}
@@ -379,6 +474,171 @@ class FakeGitHub:
             found.revoked = True
         return 204, None
 
+    # The Curator's repos, pull requests, CI and merges
+
+    def _api_token(self, headers: dict, owner: str, name: str, permission: str, level: str):
+        """(AppToken, app, None) for an installation token that opens owner/name and holds ``permission`` at
+        ``level`` or more; else (None, None, (status, body))."""
+        scheme, _, token = headers.get("authorization", "").partition(" ")
+        with self._lock:
+            found = self.app_tokens.get(token) if scheme.lower() in ("bearer", "token") else None
+            if found is None or found.revoked or found.expires_at <= time.time():
+                return None, None, (401, {"message": "Bad credentials"})
+            installation = self.installations[found.installation]
+        opens = owner.lower() == installation.account.lower() and name.lower() in {
+            item.lower() for item in found.repositories
+        }
+        if not opens or (owner.lower(), name.lower()) not in self.repos:
+            return None, None, (404, {"message": "Not Found"})
+        if _LEVELS.get(found.permissions.get(permission), 0) < _LEVELS[level]:
+            return None, None, (403, {"message": "Resource not accessible by integration"})
+        return found, installation.app, None
+
+    def _repo_answer(self, repo: FakeRepo) -> dict:
+        return {"full_name": f"{repo.owner}/{repo.name}", "default_branch": repo.default_branch}
+
+    def _pull_answer(self, pull: FakePull) -> dict:
+        return {
+            "number": pull.number,
+            "state": pull.state,
+            "merged": pull.merged,
+            "mergeable": pull.mergeable,
+            "html_url": f"https://github.com/{pull.owner}/{pull.name}/pull/{pull.number}",
+            "head": {"ref": pull.head, "sha": pull.head_sha},
+            "base": {"ref": pull.base},
+        }
+
+    def _blocks(self, repo: FakeRepo, branch: str, app: str | None) -> list[dict]:
+        """The active rulesets with an update rule on ``branch`` (the default branch) that ``app`` may not bypass."""
+        if branch != repo.default_branch:
+            return []
+        return [
+            item
+            for item in repo.rulesets
+            if item.get("enforcement") == "active"
+            and "update" in item.get("rules", ())
+            and app not in item.get("bypass", ())
+        ]
+
+    def _curator_api(self, method: str, parts: list[str], query: dict, headers: dict, body: str):
+        owner, name, rest = parts[1], parts[2], parts[3:]
+        repo = self.repos.get((owner.lower(), name.lower()))
+
+        def need(permission: str, level: str):
+            return self._api_token(headers, owner, name, permission, level)
+
+        if method == "GET" and not rest:
+            _, _, refused = need("metadata", "read")
+            return refused or (200, self._repo_answer(repo))
+        if method == "GET" and rest[:2] == ["rules", "branches"]:
+            _, _, refused = need("metadata", "read")
+            if refused:
+                return refused
+            branch = "/".join(rest[2:])
+            rules = []
+            for item in repo.rulesets if branch == repo.default_branch else []:
+                if item.get("enforcement") in ("active", "evaluate"):
+                    rules += [
+                        {"type": rule, "ruleset_id": item["id"], "ruleset_source_type": "Repository"}
+                        for rule in item.get("rules", ())
+                    ]
+            return 200, rules
+        if method == "GET" and rest[:1] == ["rulesets"] and len(rest) == 2:
+            _, app, refused = need("metadata", "read")
+            if refused:
+                return refused
+            found = next((item for item in repo.rulesets if str(item["id"]) == rest[1]), None)
+            if found is None:
+                return 404, {"message": "Not Found"}
+            answer = {
+                "id": found["id"],
+                "name": found.get("name", "default branch"),
+                "enforcement": found.get("enforcement", "active"),
+                "rules": [{"type": rule} for rule in found.get("rules", ())],
+            }
+            if not found.get("hide_bypass"):
+                answer["current_user_can_bypass"] = "always" if app in found.get("bypass", ()) else "never"
+            return 200, answer
+        if rest == ["pulls"] and method == "POST":
+            _, _, refused = need("pull_requests", "write")
+            if refused:
+                return refused
+            asked = json.loads(body or "{}")
+            branch, base = asked.get("head"), asked.get("base")
+            if branch not in repo.heads:
+                return 422, {"message": "Validation Failed", "errors": [{"field": "head", "code": "invalid"}]}
+            if any(item.head == branch and item.state == "open" for item in self.pulls.values()):
+                return 422, {"message": "A pull request already exists"}
+            number = 1 + sum(1 for key in self.pulls if key[:2] == (owner.lower(), name.lower()))
+            pull = FakePull(number, repo.owner, repo.name, branch, repo.heads[branch], base)
+            with self._lock:
+                self.pulls[(owner.lower(), name.lower(), number)] = pull
+            return 201, self._pull_answer(pull)
+        if rest == ["pulls"] and method == "GET":
+            _, _, refused = need("pull_requests", "read")
+            if refused:
+                return refused
+            branch = (query.get("head") or "").partition(":")[2]
+            found = [
+                self._pull_answer(item)
+                for item in self.pulls.values()
+                if item.head == branch and item.state == query.get("state", "open")
+            ]
+            return 200, found
+        if rest[:1] == ["pulls"] and len(rest) >= 2 and rest[1].isdigit():
+            pull = self.pulls.get((owner.lower(), name.lower(), int(rest[1])))
+            if pull is None:
+                return 404, {"message": "Not Found"}
+            if method == "GET" and len(rest) == 2:
+                _, _, refused = need("pull_requests", "read")
+                return refused or (200, self._pull_answer(pull))
+            if method == "GET" and rest[2:] == ["files"]:
+                _, _, refused = need("pull_requests", "read")
+                if refused:
+                    return refused
+                page = int(query.get("page", "1"))
+                files = repo.files.get(pull.head, [])
+                return 200, files[(page - 1) * 100 : page * 100]
+            if method == "PUT" and rest[2:] == ["merge"]:
+                _, app, refused = need("contents", "write")
+                if refused:
+                    return refused
+                asked = json.loads(body or "{}")
+                if pull.state != "open":
+                    return 405, {"message": "Pull Request is not mergeable"}
+                if asked.get("sha") != pull.head_sha:
+                    return 409, {"message": "Head branch was modified. Review and try the merge again."}
+                if self._blocks(repo, pull.base, app):
+                    return 405, {"message": "Repository rule violations found"}
+                merged = secrets.token_hex(20)
+                with self._lock:
+                    pull.state, pull.merged, pull.merge_sha = "closed", True, merged
+                    repo.heads[pull.base] = merged
+                    self.merges.append((repo.owner, repo.name, pull.number, asked.get("sha"), app))
+                return 200, {"sha": merged, "merged": True, "message": "Pull Request successfully merged"}
+        if method == "GET" and rest[:1] == ["commits"] and len(rest) == 3 and rest[2] == "check-runs":
+            _, _, refused = need("checks", "read")
+            if refused:
+                return refused
+            found = self.check_runs.get(rest[1], [])
+            return 200, {"total_count": len(found), "check_runs": found}
+        if method == "GET" and rest[:1] == ["commits"] and len(rest) == 3 and rest[2] == "status":
+            _, _, refused = need("statuses", "read")
+            if refused:
+                return refused
+            return 200, self.statuses.get(rest[1], {"state": "pending", "total_count": 0, "statuses": []})
+        if method == "POST" and rest == ["check-runs"]:
+            _, app, refused = need("checks", "write")
+            if refused:
+                return refused
+            asked = json.loads(body or "{}")
+            check_id = 9000 + sum(len(items) for items in self.check_runs.values())
+            made = {**asked, "id": check_id, "app": {"slug": f"evo-agents-{app}"}}
+            with self._lock:
+                self.check_runs.setdefault(asked["head_sha"], []).append(made)
+            return 201, made
+        return 404, {"message": "Not Found"}
+
     def answer(self, method: str, path: str, query: dict, headers: dict, body: str):
         self.requests.append(Recorded(method, path, query, headers, body))
         if self.delay:
@@ -406,6 +666,8 @@ class FakeGitHub:
             return self._access_tokens(parts[2], headers, body)
         if method == "DELETE" and path == "/installation/token":
             return self._revoke_token(headers)
+        if parts[0] == "repos" and len(parts) >= 3 and (parts[1].lower(), parts[2].lower()) in self.repos:
+            return self._curator_api(method, parts, query, headers, body)
         if path == "/moved":
             return 302, None, {"Location": f"{self.url}/user"}
         return 404, {"message": "Not Found"}
@@ -449,6 +711,9 @@ def _handler(fake: FakeGitHub):
 
         def do_DELETE(self):
             self._serve("DELETE")
+
+        def do_PUT(self):
+            self._serve("PUT")
 
         def log_message(self, format, *args):  # keep the test output quiet
             pass

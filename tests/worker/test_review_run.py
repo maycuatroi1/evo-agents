@@ -145,7 +145,7 @@ def test_a_review_run_records_a_finding_and_a_proposal_and_pushes_nothing(machin
         assert await hub.wait_state(run_id, "done", "failed", timeout=WAIT) == "done", hub.texts(run_id)
         assert hub.moves(run_id) == ["leased", "running", "verifying", "done"]
         assert hub.runs[run_id]["summary"] == "Looked at the environment: one finding, one proposal."
-        assert hub.last_heartbeat["run_kinds"] == ["step", "plan", "review"]
+        assert hub.last_heartbeat["run_kinds"] == ["step", "plan", "review", "judge"]
 
         commands = [entry for entry in machine.commands() if entry["run"] == run_id]
         kind, branch, at = commands[0]["stdout"].split()

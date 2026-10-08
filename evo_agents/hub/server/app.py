@@ -12,7 +12,8 @@ so the lifespan runs its session manager. The only websockets are the two ends o
 (``evo_agents.hub.server.sealing``); it is None without EVO_HUB_SECRETS_KEY, and the routes that write secrets answer
 503. ``app.state.github_app`` is the hub's GitHub App (``evo_agents.hub.server.github_app``), which makes and revokes
 the runs' GitHub tokens; the lifespan opens it, None without EVO_HUB_GITHUB_APP_*, and a private key that does not open
-stops the start.
+stops the start. ``app.state.curator_app`` is the Curator's own App, evo-agents-curator, the same way with
+EVO_HUB_CURATOR_APP_*: the runs of the Curator get their tokens from it alone, and the hub checks rulesets with it.
 """
 
 from __future__ import annotations
@@ -102,21 +103,24 @@ def create_app(config: HubConfig) -> FastAPI:
                 "pool": {"min": config.pool_min_size, "max": config.pool_max_size, "timeout_s": config.pool_timeout},
             },
         )
-        github_app = None
+        github_app = curator_app = None
         try:
             github_app = GitHubApp.from_config(config)  # a private key that does not open stops the start
+            curator_app = GitHubApp.from_config(config, curator=True)
             config.data_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
             result = await asyncio.to_thread(migrate, config.dsn)
             pool = await open_pool(config)
         except Exception as exc:
             log.error("hub cannot start", extra={"db": target, "error": f"{type(exc).__name__}: {exc}"})
-            if github_app is not None:
-                await github_app.aclose()
+            for opened in (github_app, curator_app):
+                if opened is not None:
+                    await opened.aclose()
             raise
         app.state.pool = pool
         app.state.engine = make_engine(pool)  # disposed of before the pool closes
         app.state.github = GitHub(config)
         app.state.github_app = github_app  # None without EVO_HUB_GITHUB_APP_*: no GitHub token is leased
+        app.state.curator_app = curator_app  # None without EVO_HUB_CURATOR_APP_*: no token for a run of the Curator
         app.state.blobs = BlobStore.from_config(config)
         app.state.jobs = await JobQueue.open(pool)
         app.state.kg_graphs = GraphCache(config.data_dir / "kg" / "graphs")  # built graphs, fetched by sha256
@@ -137,6 +141,7 @@ def create_app(config: HubConfig) -> FastAPI:
                 "blob_bucket": config.s3_bucket,
                 "credentials_missing": config.credentials_missing(),
                 "github_app_missing": config.github_app_missing(),
+                "curator_app_missing": config.curator_app_missing(),
                 "telegram_missing": config.telegram_missing(),
             },
         )
@@ -147,8 +152,9 @@ def create_app(config: HubConfig) -> FastAPI:
             await app.state.terminals.close_all()
             await app.state.listener.close()
             await app.state.github.aclose()
-            if app.state.github_app is not None:
-                await app.state.github_app.aclose()
+            for opened in (app.state.github_app, app.state.curator_app):
+                if opened is not None:
+                    await opened.aclose()
             if app.state.blobs is not None:
                 app.state.blobs.close()
             await app.state.engine.dispose()
@@ -230,6 +236,11 @@ def create_app(config: HubConfig) -> FastAPI:
     app.include_router(curator.router)
     app.include_router(proposals.router)
     app.include_router(proposals.worker_router)
+
+    from evo_agents.hub.server import changes
+
+    app.include_router(changes.router)
+    app.include_router(changes.worker_router)
     app.include_router(digests.router)
 
     from evo_agents.hub.server import telegram

@@ -31,7 +31,10 @@ key that seals them (``evo_agents.hub.server.sealing``), 32 bytes in base64url: 
 secret answers 503 and a run asking for its leases gets none, with the reason. EVO_HUB_GITHUB_APP_ID (the App's ID
 or client ID) and EVO_HUB_GITHUB_APP_PRIVATE_KEY (its PEM, where ``\\n`` may stand for each line break, as one line
 of an environment file needs) go together or not at all: without them a run gets no GitHub token. The key and the
-PEM, its lines included, are registered as secrets, and no error names their value.
+PEM, its lines included, are registered as secrets, and no error names their value. EVO_HUB_CURATOR_APP_ID and
+EVO_HUB_CURATOR_APP_PRIVATE_KEY are the second App, evo-agents-curator, read the same way: the runs of the Curator get
+their tokens from it alone (``evo_agents.hub.judge``), and without it they get none, while every other run keeps the
+first App's.
 
 The Telegram channel (``evo_agents.hub.server.telegram``) is optional too. EVO_HUB_TELEGRAM_BOT_TOKEN is the token of
 the hub's one bot, as BotFather gives it, and EVO_HUB_TELEGRAM_WEBHOOK_SECRET the secret_token the hub sets with
@@ -86,6 +89,7 @@ SECRETS_KEY_BYTES = 32  # the AES-256-GCM key of evo_agents.hub.server.sealing
 SECRETS_KEY = re.compile(r"[A-Za-z0-9_-]{43}=?")  # 32 bytes in base64url, padded or not
 GITHUB_APP_VARIABLES = ("EVO_HUB_GITHUB_APP_ID", "EVO_HUB_GITHUB_APP_PRIVATE_KEY")
 GITHUB_APP_ID = re.compile(r"[0-9]{1,20}|Iv[0-9A-Za-z.]{1,40}")  # the App's ID, or its client ID; JWT's iss takes both
+CURATOR_APP_VARIABLES = ("EVO_HUB_CURATOR_APP_ID", "EVO_HUB_CURATOR_APP_PRIVATE_KEY")  # the Curator's own App
 TELEGRAM_VARIABLES = ("EVO_HUB_TELEGRAM_BOT_TOKEN", "EVO_HUB_TELEGRAM_WEBHOOK_SECRET")
 DEFAULT_TELEGRAM_API_URL = "https://api.telegram.org"
 TELEGRAM_BOT_TOKEN = re.compile(r"[0-9]{1,20}:[A-Za-z0-9_-]{20,100}")  # <bot id>:<secret>, as BotFather gives it
@@ -133,6 +137,8 @@ class HubConfig:
     secrets_key: bytes | None = None  # seals the credentials of runs; never logged, returned or stored
     github_app_id: str | None = None  # the GitHub App that makes the runs' tokens: its ID or client ID
     github_app_private_key: str | None = None  # its PEM, with real line breaks; never logged or returned
+    curator_app_id: str | None = None  # the Curator's App, evo-agents-curator: its runs' tokens come from it alone
+    curator_app_private_key: str | None = None  # its PEM, with real line breaks; never logged or returned
     telegram_bot_token: str | None = None  # the hub's bot; never logged, returned or stored
     telegram_webhook_secret: str | None = None  # the secret_token of its webhook; never logged or returned
     telegram_api_url: str = DEFAULT_TELEGRAM_API_URL
@@ -171,6 +177,11 @@ class HubConfig:
         """The EVO_HUB_GITHUB_APP_* variables the runs' GitHub tokens still need; empty when the App is configured."""
         values = (self.github_app_id, self.github_app_private_key)
         return [name for name, value in zip(GITHUB_APP_VARIABLES, values, strict=True) if not value]
+
+    def curator_app_missing(self) -> list[str]:
+        """The EVO_HUB_CURATOR_APP_* variables the Curator's runs still need; empty when its App is configured."""
+        values = (self.curator_app_id, self.curator_app_private_key)
+        return [name for name, value in zip(CURATOR_APP_VARIABLES, values, strict=True) if not value]
 
 
 def _text(env: Mapping[str, str], name: str) -> str | None:
@@ -319,9 +330,10 @@ def _secrets_key(env: Mapping[str, str]) -> bytes | None:
     return key
 
 
-def _github_app(env: Mapping[str, str]) -> dict:
-    """The GitHub App's ID and private key, both or neither; the PEM and each of its lines are registered as secrets."""
-    id_name, key_name = GITHUB_APP_VARIABLES
+def _github_app(env: Mapping[str, str], variables: tuple[str, str] = GITHUB_APP_VARIABLES) -> tuple:
+    """A GitHub App's ID and private key, both or neither, from ``variables``; the PEM and each of its lines are
+    registered as secrets."""
+    id_name, key_name = variables
     app_id = _text(env, id_name)
     raw = _secret(env, key_name)
     pem = None
@@ -346,7 +358,19 @@ def _github_app(env: Mapping[str, str]) -> dict:
         raise ConfigError(
             missing[0], f"{missing[0]} is not set: the GitHub App needs {id_name} and {key_name} together, or neither"
         )
-    return {"github_app_id": app_id, "github_app_private_key": pem}
+    return app_id, pem
+
+
+def _apps(env: Mapping[str, str]) -> dict:
+    """The two GitHub Apps: the workers' (EVO_HUB_GITHUB_APP_*) and the Curator's (EVO_HUB_CURATOR_APP_*)."""
+    app_id, pem = _github_app(env)
+    curator_id, curator_pem = _github_app(env, CURATOR_APP_VARIABLES)
+    return {
+        "github_app_id": app_id,
+        "github_app_private_key": pem,
+        "curator_app_id": curator_id,
+        "curator_app_private_key": curator_pem,
+    }
 
 
 def _telegram(env: Mapping[str, str]) -> dict:
@@ -441,6 +465,6 @@ def load_config(
         forwarded_allow_ips=_forwarded_allow_ips(env),
         **_blob_store(env),
         secrets_key=_secrets_key(env),
-        **_github_app(env),
+        **_apps(env),
         **_telegram(env),
     )

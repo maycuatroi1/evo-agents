@@ -13,7 +13,9 @@ credential it does not take, fails with ``GitAuthError``, so the run can take it
 ``push`` refuses a repo's default branch (``PushRefused``), except in a plan run whose plan names that very branch for
 the repo: there the push goes ahead, never forced, and the answer says it was a default branch with the commits it
 added, for the notice ``push_default_branch`` the caller sends the run's owner (``push_notice``). A run of one step
-never pushes a default branch.
+never pushes a default branch. A Builder of the Curator (kind ``curator``) pushes a branch ``curator/...`` alone, and a
+default branch never, whatever its plan names; a review run and a judge run push nothing. ``push`` sends the push
+options it is given (``--push-option``), with which a push to GitLab opens a merge request.
 
 A commit of a run (``commit_run``) holds only the run's own work. It leaves out, at any depth, the paths under
 RUN_COMMIT_EXCLUDES (what hooks of the owner's runtime write in a session's directory, such as the learned skills of
@@ -341,9 +343,18 @@ def check_push(branch: str, protected: Collection[str], *, kind: str, plan_branc
     """Whether a push to ``branch`` goes to a default branch of the repo (one of ``protected``): False when it does
     not; True when it does and the run may push it, a plan run (``kind`` plan) whose plan names exactly that branch for
     the repo (``plan_branch``); PushRefused otherwise, so a run of one step never pushes a default branch. A review run
-    pushes nothing at all."""
-    if kind == "review":
-        raise PushRefused("a review run reads and pushes nothing")
+    and a judge run push nothing at all, and a Builder of the Curator (``kind`` curator) only a branch ``curator/...``
+    that is no default branch."""
+    if kind in ("review", "judge"):
+        raise PushRefused(f"a {kind} run reads and pushes nothing")
+    if kind == "curator":
+        from evo_agents.hub.judge import is_curator_branch
+
+        if branch in protected or branch in PROTECTED:
+            raise PushRefused(f"{branch} is a default branch: a run of the Curator never pushes it")
+        if not is_curator_branch(branch):
+            raise PushRefused(f"{branch} is not a branch of the Curator: a run of the Curator pushes curator/... alone")
+        return False
     if branch not in protected:
         return False
     if kind == "plan" and plan_branch is not None and branch == plan_branch:
@@ -385,6 +396,7 @@ async def push(
     kind: str = "step",
     plan_branch: str | None = None,
     env: Mapping[str, str] | None = None,
+    options: Collection[str] = (),
 ) -> Pushed:
     """Push HEAD to ``branch`` of the remote, with git in ``env``: a fast-forward or nothing, never forced. A default
     branch of the repo (one of ``protected``) only as ``check_push`` allows, PushRefused before anything is sent
@@ -397,8 +409,17 @@ async def push(
     if before == head:
         return Pushed(branch, head, default, False)
     commits = tuple(await new_commits(cwd, before, remote))
+    sent = [f"--push-option={option}" for option in options]
     await git(
-        cwd, "push", "--quiet", "--porcelain", remote, f"HEAD:refs/heads/{branch}", timeout=NETWORK_TIMEOUT, env=env
+        cwd,
+        "push",
+        "--quiet",
+        "--porcelain",
+        *sent,
+        remote,
+        f"HEAD:refs/heads/{branch}",
+        timeout=NETWORK_TIMEOUT,
+        env=env,
     )
     return Pushed(branch, head, default, True, commits)
 
@@ -423,6 +444,30 @@ def push_notice(run_id: int, repo: str, pushed: Pushed) -> dict:
         "branch": pushed.branch,
         "commits": list(pushed.commits),
     }
+
+
+async def changed_paths(cwd: Path, base: str) -> list[str]:
+    """Every path the work tree at ``cwd`` changed since ``base``: committed, staged, changed and untracked, both
+    sides of a rename, the result directory left out; sorted."""
+    _, committed, _ = await git(cwd, "diff", "--name-only", "--no-renames", "-z", base, "HEAD", check=False)
+    _, status, _ = await git(cwd, "status", "--porcelain=v1", "-z", "--untracked-files=all", "--no-renames")
+    found = {path for path in committed.split("\0") if path}
+    for entry in status.split("\0"):
+        if len(entry) > 3:
+            found.add(entry[3:])
+    return sorted(path for path in found if not path.startswith(f"{RESULT_DIR}/"))
+
+
+async def merge_base(cwd: Path, first: str, second: str) -> str | None:
+    code, out, _ = await git(cwd, "merge-base", first, second, check=False)
+    return out.strip() if code == 0 and out.strip() else None
+
+
+async def diff_text(cwd: Path, base: str, head: str, limit: int = 8 * 1024 * 1024) -> str:
+    """The text diff from ``base`` to ``head`` as ``git diff`` writes it, binary files named; at most ``limit``
+    bytes, its end cut."""
+    _, out, _ = await git(cwd, "diff", "--no-color", "--no-ext-diff", "--find-renames", base, head, timeout=TIMEOUT)
+    return out[:limit]
 
 
 async def detach(cwd: Path) -> None:

@@ -14,7 +14,14 @@ project, on any of their workers or on this one, and that has not expired:
 - a token of the hub's GitHub App for the origins on github.com that no git secret covers, one per installation
   (``GitHubApp.tokens``), for the repos the run's owner may push to on GitHub alone (``GitHubApp.push_refusal``): a
   lease named ``github-app:<account>`` of kind git for ``https://github.com/<owner>``, with GITHUB_GIT_USERNAME. The
-  token of a review run reads only (``credentials.github_permissions``): contents and metadata, read.
+  token of a review run or a judge run reads only (``credentials.github_permissions``): contents and metadata, read.
+
+A run of the Curator (a review run, a judge run, or a run of a plan the Curator made: ``changes.curator_policy``) gets
+less, and from elsewhere: its GitHub token comes from the Curator's App (EVO_HUB_CURATOR_APP_*), whose installation
+tokens the rulesets of the repos keep off their default branches, never from the workers' App, and without the
+Curator's App it gets none, every repo on GitHub missing with that reason; no git secret answers for an origin on
+GitHub; for other origins only the git secret the charter names (``git_secret``) is leased, and of the env secrets only
+those the charter lists (``env_secrets``).
 
 The answer is {leases, missing}: each lease as ``evo_agents.hub.credentials.Lease.to_json`` writes it, value included,
 and for each of the run's repos whose origin nothing covers, the repo, its origin and why: no origin registered, no
@@ -59,7 +66,7 @@ import logging
 from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Annotated, Literal
+from typing import TYPE_CHECKING, Annotated, Literal
 
 from fastapi import APIRouter, Header, HTTPException, Request, Response
 from pydantic import BaseModel, Field
@@ -91,6 +98,9 @@ from evo_agents.hub.server.runs import NOT_HELD, RunId, _run_target, _worker_of,
 from evo_agents.hub.server.sealing import Sealed, Sealer, Unsealable, lease_aad, secret_aad
 from evo_agents.hub.server.security import CurrentUser, Principal
 
+if TYPE_CHECKING:
+    from evo_agents.hub.server.changes import CuratorPolicy
+
 log = logging.getLogger(__name__)
 
 GITHUB_GIT_USERNAME = "x-access-token"  # the user git sends with an installation token, as GitHub documents it
@@ -99,6 +109,9 @@ REVOKE_BATCH = 500  # GitHub tokens one pass of revoke_tokens takes
 REFRESH = timedelta(seconds=GITHUB_TOKEN_REFRESH_SECONDS)
 NO_KEY = "this hub keeps no secrets and leases nothing: it needs {missing} (docs/credentials.md)"
 NO_APP = "no git secret covers it, and this hub has no GitHub App: {missing} not set (docs/credentials.md)"
+NO_CURATOR_APP = (
+    "a run of the Curator gets its GitHub token from the Curator's App alone, and this hub has none: {missing} not set"
+)
 
 worker_router = APIRouter(prefix="/v1/worker", tags=["worker protocol"], responses={401: {"model": ErrorBody}})
 router = APIRouter(prefix="/v1/projects", tags=["runs"], responses={401: {"model": ErrorBody}})
@@ -173,6 +186,7 @@ class _Run:
     owner: str
     repos: tuple[str, ...]
     owner_github_id: int | None
+    curator: CuratorPolicy | None = None  # a run of the Curator: what its charter lets it have
 
     @property
     def target(self) -> str:
@@ -330,7 +344,10 @@ async def _held_run(conn: AsyncConnection, worker_id: int, run_id: int, *, lock:
             f"{row.owner}, who dispatched run {run_id}, no longer holds the writer role on project {row.project}: "
             "the run gets no credentials",
         )
+    from evo_agents.hub.server.changes import curator_policy  # it reads runs through the routes that import this one
+
     return _Run(
+        curator=await curator_policy(conn, row.project_id, row.kind, row.plan_id),
         id=run_id,
         state=row.state,
         worker_id=row.worker_id,
@@ -368,6 +385,7 @@ async def _survey(conn: AsyncConnection, user: Principal, run_id: int, *, lock: 
     )
     registered = {row.name: row.origin for row in await conn.execute(origins)}
     rows = await conn.execute(_bound_secrets(run.owner_id, run.project_id, worker_id, lock=lock))
+    allowed = _allowed(run.curator)
     secrets = [
         _Secret(
             id=row.id,
@@ -381,6 +399,7 @@ async def _survey(conn: AsyncConnection, user: Principal, run_id: int, *, lock: 
             on_worker=row.on_worker,
         )
         for row in rows
+        if allowed is None or (row.kind, row.name) in allowed
     ]
     tokens = [
         _HeldToken(
@@ -394,6 +413,17 @@ async def _survey(conn: AsyncConnection, user: Principal, run_id: int, *, lock: 
     survey = _Survey(run, {repo: registered.get(repo) for repo in run.repos}, secrets, tokens)
     _choose(survey)
     return worker_id, survey
+
+
+def _allowed(policy: CuratorPolicy | None) -> set[tuple[str, str]] | None:
+    """(kind, name) of the secrets a run of the Curator may be leased: the charter's git secret and env secrets; None
+    for any other run, which may be leased all its owner bound."""
+    if policy is None:
+        return None
+    allowed = {("env", name) for name in policy.env_secrets}
+    if policy.git_secret:
+        allowed.add(("git", policy.git_secret))
+    return allowed
 
 
 def _choose(survey: _Survey) -> None:
@@ -410,8 +440,11 @@ def _choose(survey: _Survey) -> None:
         if not origin:
             survey.missing[repo] = f"project {survey.run.project} lists no origin for {repo}"
             continue
-        covering = [secret for secret in git if matches(secret.url_prefix, origin)]
         on_github = github_repo(origin)
+        if survey.run.curator is not None and on_github is not None:  # the Curator's App, never a member's secret
+            survey.github[repo] = on_github
+            continue
+        covering = [secret for secret in git if matches(secret.url_prefix, origin)]
         if covering:
             # the longest prefix first; a stable sort keeps this worker's before any worker's, then the name
             survey.git[repo] = sorted(covering, key=lambda secret: -len(normalize_origin(secret.url_prefix)))[0]
@@ -567,16 +600,18 @@ async def lease_credentials(request: Request, run_id: RunId, user: CurrentUser, 
     github.com, with the reason of each repo nothing covers."""
     state = request.app.state
     sealer: Sealer | None = state.sealer
-    app: GitHubApp | None = state.github_app
     engine = state.engine
     async with engine.begin() as conn:
         _, survey = await _survey(conn, user, run_id, lock=False)
+    curator = survey.run.curator is not None
+    app: GitHubApp | None = getattr(state, "curator_app", None) if curator else state.github_app
     made: list[InstallationToken] | None = None
     reasons: dict[str, str] = {}
     if sealer is not None and survey.github and not survey.reusable():
         if app is None:
-            unset = ", ".join(state.config.github_app_missing())
-            reasons = {repo: NO_APP.format(missing=unset) for repo in survey.github}
+            unset = ", ".join(state.config.curator_app_missing() if curator else state.config.github_app_missing())
+            refusal = NO_CURATOR_APP if curator else NO_APP
+            reasons = {repo: refusal.format(missing=unset) for repo in survey.github}
         else:
             pusher = Pusher(survey.run.owner, survey.run.owner_github_id)
             found = await app.tokens(survey.github.values(), pusher, github_permissions(survey.run.kind))
@@ -661,7 +696,7 @@ async def give_back_credentials(request: Request, run_id: RunId, user: CurrentUs
         revoked = await end_leases(
             conn, run_id=run_id, worker_id=worker_id, actor_id=user.user_id, token_id=user.token_id, by="worker"
         )
-    await revoke_tokens(state.engine, state.sealer, state.github_app, run_id=run_id)
+    await revoke_tokens(state.engine, state.sealer, revoker(state), run_id=run_id)
     log.info("credentials given back", extra={"run_id": run_id, "worker_id": worker_id, "revoked": revoked})
     return GivenBack(revoked=revoked)
 
@@ -848,6 +883,11 @@ def _take_token(lease_id: int):
 def _drop_sealed(*where):
     cl = tables.credential_leases
     return update(cl).values(sealed_value=None, nonce=None, key_id=None).where(*where)
+
+
+def revoker(state) -> GitHubApp | None:
+    """The client that revokes the leased GitHub tokens: either App's, since a token is revoked with itself."""
+    return state.github_app or getattr(state, "curator_app", None)
 
 
 async def revoke_tokens(

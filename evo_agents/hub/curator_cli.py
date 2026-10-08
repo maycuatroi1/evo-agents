@@ -18,6 +18,12 @@ only an admin of the project may (POST .../curator/proposals/{id}/answer), with 
 ``curator findings`` lists what the review runs found (GET .../curator/findings), and ``curator figures`` prints the
 figures of the latest night, or of ``--night`` (GET .../curator/figures).
 
+``curator changes`` lists what the accepted proposals of tier 0 and 1 became: the Curator's plan, its branch, its pull
+request, the Judge's verdict and the merge, newest first (GET .../curator/changes). ``curator protection`` lists the
+project's repos with the last check of their ruleset (GET .../curator/protection), and ``--check REPO`` checks one now
+with the Curator's App, which only an admin of the project may (POST .../curator/protection/{repo}/check): a Builder
+runs on a repo of GitHub only once its default branch keeps the Curator's App off.
+
 The project is ``--project``, or ``hub.project`` in the harness.yaml around the current directory. ``--json`` prints
 what the hub answered, with the keys declared next to the flag. Standard library and PyYAML only, like the client.
 """
@@ -27,7 +33,7 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 
 import yaml
 
@@ -58,6 +64,8 @@ CHARTER_BODY_KEYS = (
     "reviewer",
     "builder",
     "judge",
+    "git_secret",
+    "env_secrets",
 )
 CHARTER_KEYS = CHARTER_BODY_KEYS + CHARTER_META
 REVISION_KEYS = ("revision", "updated_by", "updated_at", "worker", "worker_id")
@@ -100,6 +108,42 @@ PROPOSAL_KEYS = PROPOSAL_SUMMARY_KEYS + (
     "note",
 )
 FINDING_KEYS = ("id", "project", "run_id", "lens", "severity", "title", "body", "evidence", "created_at")
+CHANGE_KEYS = (
+    "id",
+    "project",
+    "proposal_id",
+    "plan_id",
+    "repo",
+    "branch",
+    "forge",
+    "tier",
+    "state",
+    "reason",
+    "builder_run_id",
+    "judge_run_id",
+    "pr_number",
+    "pr_url",
+    "base_branch",
+    "head_sha",
+    "passed",
+    "verdict",
+    "merged_at",
+    "merge_sha",
+    "created_at",
+    "updated_at",
+)
+REPO_CHECK_KEYS = (
+    "repo",
+    "origin",
+    "forge",
+    "github_repo",
+    "protected",
+    "default_branch",
+    "reason",
+    "rulesets",
+    "checked_at",
+    "checked_by",
+)
 PROPOSAL = returns_object(*PROPOSAL_KEYS, schema="Proposal")
 STATUS = returns_object(*STATUS_KEYS, schema="CuratorStatus")
 CHARTER = returns_object(*CHARTER_KEYS, schema="Charter")
@@ -158,6 +202,8 @@ def _print_charter(charter: dict) -> None:
     ]
     checks = charter["judge"].get("hidden_checks")
     lines.append(("hidden checks", "shown to admins only" if checks is None else str(len(checks))))
+    lines.append(("git secret", charter.get("git_secret") or "none: no Builder on GitLab"))
+    lines.append(("env secrets", ", ".join(charter.get("env_secrets") or []) or "none"))
     width = max(len(label) for label, _ in lines)
     for label, text in lines:
         print(f"  {label:<{width}}  {text}")
@@ -432,6 +478,72 @@ def cmd_figures(args) -> int:
     return 0
 
 
+@_client_command
+def cmd_changes(args) -> int:
+    hub, _ = _signed_in()
+    project = _project(args)
+    found = hub.call("GET", _curator_path(project, "changes"))
+    if args.json:
+        _print_json(found)
+        return 0
+    rows = []
+    for change in found["changes"]:
+        verdict = "-" if change["passed"] is None else ("pass" if change["passed"] else "fail")
+        pull = change["pr_url"] or ("merge request" if change["forge"] == "gitlab" else "-")
+        rows.append(
+            (
+                f"#{change['id']}",
+                f"#{change['proposal_id']}",
+                change["tier"],
+                change["state"],
+                verdict,
+                change["repo"],
+                pull,
+            )
+        )
+    if rows:
+        _table(("ID", "PROPOSAL", "TIER", "STATE", "JUDGE", "REPO", "PULL REQUEST"), rows)
+    print(f"{len(rows)} change(s) of the Curator in {project}")
+    for change in found["changes"]:
+        if change["reason"]:
+            print(f"#{change['id']}: {change['reason']}")
+    return 0
+
+
+@_client_command
+def cmd_protection(args) -> int:
+    hub, _ = _signed_in()
+    project = _project(args)
+    if args.check:
+        found = hub.call("POST", _curator_path(project, "protection", quote(args.check, safe=""), "check"))
+        if args.json:
+            _print_json(found)
+            return 0
+        word = "keeps the Curator's App off" if found["protected"] else "does not keep the Curator's App off"
+        branch = found["default_branch"] or "its default branch"
+        print(f"{found['repo']} ({found['github_repo']}): its ruleset {word} {branch}")
+        print(found["reason"])
+        return 0
+    found = hub.call("GET", _curator_path(project, "protection"))
+    if args.json:
+        _print_json(found)
+        return 0
+    rows = []
+    for repo in found["repos"]:
+        protected = "-" if repo["protected"] is None else ("yes" if repo["protected"] else "no")
+        rows.append(
+            (
+                repo["repo"],
+                repo["forge"] or "-",
+                protected,
+                _when(repo["checked_at"]) if repo["checked_at"] else "never",
+            )
+        )
+    if rows:
+        _table(("REPO", "FORGE", "PROTECTED", "CHECKED"), rows)
+    return 0
+
+
 def register_curator(hsub) -> None:
     curator = hsub.add_parser(
         "curator", help="the night shift of a project: its charter, status, pause, resume, and its review's proposals"
@@ -529,3 +641,26 @@ def register_curator(hsub) -> None:
         ),
     )
     figures.set_defaults(func=cmd_figures)
+
+    changes = csub.add_parser(
+        "changes", help="what the accepted proposals became: plan, branch, pull request, the Judge's verdict, merge"
+    )
+    with_project(changes)
+    json_option(changes, returns_object("project", "changes", schema="ChangeList"))
+    changes.set_defaults(func=cmd_changes)
+
+    protection = csub.add_parser(
+        "protection", help="whether a ruleset keeps the Curator off each repo's default branch; --check REPO checks one"
+    )
+    with_project(protection)
+    protection.add_argument("--check", metavar="REPO", help="check this repo now; an admin of the project only")
+    json_option(
+        protection,
+        returns_object(
+            "project",
+            "repos",
+            schema="Protection",
+            variants=[("--check", returns_object(*REPO_CHECK_KEYS, schema="RepoCheck"))],
+        ),
+    )
+    protection.set_defaults(func=cmd_protection)

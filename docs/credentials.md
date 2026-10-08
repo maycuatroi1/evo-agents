@@ -160,6 +160,21 @@ it, "the GitHub App is not installed on owner/repo", "LOGIN cannot push to owner
 App configured, GitHub failing. Without
 `EVO_HUB_SECRETS_KEY` nothing is leased and every repo is missing with that reason.
 
+A **run of the Curator** gets less, and from elsewhere (`changes.curator_policy`): a review run, a judge run, and any
+run of a plan the Curator made (its Builder). Its GitHub token comes from the Curator's own App, evo-agents-curator
+(`EVO_HUB_CURATOR_APP_ID`, `EVO_HUB_CURATOR_APP_PRIVATE_KEY`), never from the workers' App: the ruleset of each repo's
+default branch blocks updates and lists the workers' App and the repo's admins as bypass actors, not the Curator's
+App, so a token of the Curator's App cannot push to, or merge into, a default branch, while the member's own plan runs
+keep the workers' App and their default branch. Without the Curator's App configured a run of the Curator gets no
+GitHub token at all ("a run of the Curator gets its GitHub token from the Curator's App alone, and this hub has none:
+... not set"). A review run's and a judge run's token reads only. No `git` secret answers for an origin on github.com
+in a run of the Curator; for other origins (GitLab) it gets only the `git` secret the charter names (`git_secret`, the
+owner's, which should hold the Developer role and so cannot push to a protected default branch either), and of the
+`env` secrets only those the charter lists (`env_secrets`). The hub's own calls for the Curator's pull requests (open
+one, read its files and CI, write the Judge's check run, merge) use tokens of the workers' App made for that one call,
+with the permissions it needs (pull requests, checks, commit statuses), and revoked after it: the tokens a worker's run
+gets keep `GITHUB_PERMISSIONS`.
+
 Each call records its leases in `credential_leases` and adds one audit row `credential.lease` naming the run, the
 secrets by id (`secrets=12,15`), the App's accounts and the repos, never a value; `credential.revoke` names the
 secrets by id too. A secret is leased once per run and worker: asked again,
@@ -333,6 +348,11 @@ medium findings as `warning:` lines; they never stop the install.
 - `EVO_HUB_SECRETS_KEY` and a dump of the hub's database together open every secret. Keep the key only in the hub's
   environment and the operator's secret store; rotate it by `key_id` (see the harness's `docs/hub-deployment.md`).
 - The GitHub App's private key lets whoever holds it ask a token for every repo the App is installed on.
+- The Curator's runs share the worker's user with every other run, so its agent reads what the worker holds; the
+  Curator's worker on duty therefore holds no credential of its owner but its leases, takes one run at a time
+  (`--slots 1`), and the night shift never runs a Builder and the Judge of the same change at once. A git push the
+  agent makes on its own with the owner's own credentials would get past the ruleset, since the owner bypasses it: keep
+  none on that machine. The daemon pushes a Builder's branch only with a lease that covers its origin.
 - A worker set to `web` takes no run, message or decision answer from a token, but a plan run reads its plan as the
   hub holds it now (`GET /v1/worker/runs/{id}/plan`), and a machine token of a writer of the project may still edit
   that plan (`PUT` or `PATCH .../plans/{plan}`, `evo-agents hub plan put` or `plan patch`, a step's status through

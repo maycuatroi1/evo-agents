@@ -33,7 +33,10 @@ would list) and .../proposals/{id}, and the night's
 figures with GET .../curator/figures (the latest night, or ``?night``). POST .../curator/proposals/{id}/answer is for
 the project's admins: accept, reject, or defer (for ``defer_days``, DEFAULT_DEFER_DAYS by default), with a note, while
 the proposal is open or deferred (409 otherwise); it reads the proposal's notifications and is audited as
-curator.proposal. A deferred proposal opens again once its time has passed (the job curator.collect).
+curator.proposal. Accepting a proposal of tier 0 or 1 also makes its draft the Curator's plan, which the night shift
+builds on a branch of its own (``evo_agents.hub.server.changes``); a draft that cannot become one leaves a change open
+with the reason, and nothing of it runs. A deferred proposal opens again once its time has passed (the job
+curator.collect).
 """
 
 from __future__ import annotations
@@ -52,7 +55,7 @@ from sqlalchemy import Date, cast, func, insert, null, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.harness import load_schema
-from evo_agents.hub import review, runs, tables, tiers
+from evo_agents.hub import judge, review, runs, tables, tiers
 from evo_agents.hub.access import has_role
 from evo_agents.hub.plans import PlanProblem, check_body, check_json
 from evo_agents.hub.server import audit
@@ -885,6 +888,10 @@ async def answer_proposal_as(
         "deferred_until": func.now() + timedelta(days=days) if body.action == "defer" else None,
     }
     await conn.execute(update(p).values(**values).where(p.c.id == proposal_id))
+    if body.action == "accept" and row.tier in judge.PLANNED_TIERS:
+        from evo_agents.hub.server.changes import plan_from_proposal  # it reads proposals through this module
+
+        await plan_from_proposal(conn, access, user, row)
     await conn.execute(
         update(n).values(read_at=func.now()).where(n.c.proposal_id == proposal_id, n.c.read_at.is_(None))
     )

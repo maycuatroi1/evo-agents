@@ -509,13 +509,19 @@ def cmd_list(args) -> int:
 
 def _describe(run: dict) -> list[tuple[str, str]]:
     """The fields of a run that say something, as (label, text) pairs."""
-    plan_run = run["kind"] in ("plan", "review")  # a review run has repos too, and no step
+    plan_run = run["kind"] in ("plan", "review", "judge")  # a review run and a judge run have repos too, and no step
     lines = [("state", f"{run['state']}, attempt {run['attempt']} of {run['max_attempts']}")]
     if run["kind"] == "review":
         lines.append(("kind", "review run: the Curator reads the project and proposes changes; it pushes nothing"))
         if run["title"]:
             lines.append(("title", run["title"]))
         lines.append(("project", run["project"]))
+    elif run["kind"] == "judge":
+        lines.append(
+            ("kind", "judge run: the Curator's Judge reads a change and says whether it passes; it pushes nothing")
+        )
+        if run["title"]:
+            lines.append(("title", run["title"]))
     elif plan_run:
         lines.append(("kind", "plan run: every step of the plan not done yet, in one session"))
         if run["title"]:

@@ -55,6 +55,7 @@ MAX_PROTECTED_PATHS = 200
 MAX_PATH_CHARS = 500
 MAX_HIDDEN_CHECKS = 50
 MAX_CHECK_CHARS = 2000
+MAX_ENV_SECRETS = 20  # env secrets of the owner a charter lets the Curator's runs have
 MAX_CHARTER_BYTES = 64 * 1024  # the charter as JSON
 
 MAX_NIGHT_BUDGET_USD = 1000.0

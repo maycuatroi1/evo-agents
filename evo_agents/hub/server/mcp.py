@@ -17,7 +17,9 @@ process. The lifespan of a mounted app does not run, so the hub's lifespan enter
   among them) and whose owner still holds a grant on its project; else 403, as for a worker token without the header.
   The caller is then the agent of that run: its owner with a ``RunScope`` (``security``), the run's project alone,
   the owner's grant there capped at writer, and never a hub admin, so ``projects.project_access`` holds every tool to
-  it. Once the run leaves the held states, its id opens nothing. X-Evo-Run with a machine token is 400;
+  it. Once the run leaves the held states, its id opens nothing. The agent of a judge run gets the code graph's tools
+  and hub_projects alone (JUDGE_TOOLS): never a run's events, a plan, a memory or a digest, which the Builder it judges
+  wrote or could have written for it. X-Evo-Run with a machine token is 400;
 - X-Evo-Project names the session's project and X-Evo-Sink its sink (default claude-code@anthropic); a malformed one is
   400. The session of a run's agent is the run's project: X-Evo-Project naming another is 403.
 
@@ -142,7 +144,7 @@ def _held_run(token_id: int, run_id: int):
     the owner's grant there (role and max_level None without one)."""
     workers, runs, projects, grants = tables.workers, tables.runs, tables.projects, tables.grants
     return (
-        select(runs.c.state, projects.c.name, grants.c.role, grants.c.max_level)
+        select(runs.c.state, projects.c.name, grants.c.role, grants.c.max_level, runs.c.kind)
         .select_from(
             workers.join(runs, and_(runs.c.worker_id == workers.c.id, runs.c.dispatched_by == workers.c.owner_id))
             .join(projects, projects.c.id == runs.c.project_id)
@@ -150,6 +152,15 @@ def _held_run(token_id: int, run_id: int):
         )
         .where(workers.c.token_id == token_id, workers.c.revoked_at.is_(None), runs.c.id == run_id)
     )
+
+
+# What the agent of a judge run may call: the code graph, never what the Builder wrote (its run's events, the plan's
+# evidence, memories, digests) nor what a Builder could have written for it to read.
+JUDGE_TOOLS = frozenset({*KG_TOOL_NAMES, "hub_projects"})
+JUDGE_ONLY = (
+    "the Judge reads the proposal, the diff and the checks its run was given, and the code graph; {tool} is not for "
+    "a judge run"
+)
 
 
 class Refusal(Exception):
@@ -317,10 +328,10 @@ async def run_scope(conn: AsyncConnection, user: Principal, run_id: int) -> RunS
     row = (await conn.execute(_held_run(user.token_id, run_id))).first()
     if row is None or row.state not in HELD_STATES:
         raise HTTPException(403, NOT_HELD.format(run=run_id))
-    _, project, role, max_level = row
+    _, project, role, max_level, kind = row
     if role is None:
         raise HTTPException(403, f"the owner of run {run_id} holds no grant on project {project} any more")
-    return RunScope(run_id, project, "writer" if has_role(role, "writer") else role, max_level)
+    return RunScope(run_id, project, "writer" if has_role(role, "writer") else role, max_level, kind)
 
 
 def _unauthorized(request: Request, message: str):
@@ -439,6 +450,9 @@ class HubMcp(MCPServer):
         return CallToolResult.model_validate(result)
 
     async def _answer(self, caller: Caller, name: str, arguments: dict, request_id) -> dict:
+        scope = caller.user.scope
+        if scope is not None and scope.kind == "judge" and name not in JUDGE_TOOLS:
+            return _error(JUDGE_ONLY.format(tool=name))
         try:
             if name in KG_TOOL_NAMES:
                 return await self._kg(caller, name, arguments)

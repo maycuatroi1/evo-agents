@@ -39,6 +39,9 @@ class FakeHub:
         self.step_reports: list[dict] = []
         self.findings: list[dict] = []  # what the agent of a review run recorded, with the run's id
         self.proposals: list[dict] = []
+        self.verdicts: list[dict] = []  # what the judge runs posted, with the run's id
+        self.judge_inputs: dict[int, dict] = {}  # run id -> what GET .../judge answers it
+        self.judge_reads: list[int] = []  # the judge runs that read their inputs, in order
         self.last_heartbeat: dict | None = None
         self.leases: dict[int, dict] = {}  # run id -> the {leases, missing} its ask for credentials gets
         self.credential_calls: list[tuple[str, int]] = []  # ("ask" or "give back", run id), in order
@@ -69,6 +72,8 @@ class FakeHub:
                 post("/v1/worker/runs/{id}/notices", self._notice),
                 post("/v1/worker/runs/{id}/findings", self._finding),
                 post("/v1/worker/runs/{id}/proposals", self._proposal),
+                get("/v1/worker/runs/{id}/judge", self._judge),
+                post("/v1/worker/runs/{id}/verdict", self._verdict),
                 post("/v1/worker/runs/{id}/credentials", self._credentials),
                 web.delete("/v1/worker/runs/{id}/credentials", self._give_back),
             ]
@@ -198,6 +203,37 @@ class FakeHub:
             plan=None,
             **extra,
         )
+
+    def queue_judge_run(self, repo: str, curator: dict, inputs: dict, prompt: str = "Judge the change.") -> int:
+        """A judge run of the change ``curator`` names, in ``repo``, as the night shift queues it; ``inputs`` is what
+        its GET .../judge answers."""
+        run_id = self.queue_run(
+            kind="judge",
+            project=self.project,
+            plan_id="curator-1-change",
+            step_key=None,
+            title="Judge of the Curator's change #1",
+            plan_revision=1,
+            attempt=1,
+            max_attempts=1,
+            parent_run_id=None,
+            resume_of_run_id=None,
+            session_id=None,
+            runtime="claude-code",
+            model="sonnet",
+            mode="headless",
+            approval="auto",
+            timeout_min=60,
+            repo=None,
+            branch=None,
+            repos=[{"repo": repo, "branch": curator.get("branch")}],
+            lease_expires_at=_now(),
+            prompt=prompt,
+            plan=None,
+            curator={"role": "judge", **curator},
+        )
+        self.judge_inputs[run_id] = inputs
+        return run_id
 
     def answer(self, decision_id: int, option: str) -> int:
         """Answer a decision as its run's owner; the run whose inbox took the answer."""
@@ -465,6 +501,22 @@ class FakeHub:
         return web.json_response(
             {**answer, "tier_reasons": ["kind fix (a bug fix that comes with its test) is tier 1"]}, status=201
         )
+
+    async def _judge(self, request: web.Request) -> web.Response:
+        run_id, run = self._run(request)
+        if run["state"] not in runs.HELD_STATES or run["spec"]["kind"] != "judge":
+            raise _refusal(404, f"run {run_id} is not held by this worker, or not a judge run")
+        self.judge_reads.append(run_id)
+        return web.json_response(self.judge_inputs.get(run_id) or {})
+
+    async def _verdict(self, request: web.Request) -> web.Response:
+        run_id, run = self._run(request)
+        if run["state"] not in runs.HELD_STATES or run["spec"]["kind"] != "judge":
+            raise _refusal(404, f"run {run_id} is not held by this worker, or not a judge run")
+        body = await request.json()
+        self.verdicts.append({"run_id": run_id, **body})
+        passed = body.get("verdict") == "pass" and not body.get("signs")
+        return web.json_response({"id": 1, "state": "judged", "passed": passed})
 
     async def _credentials(self, request: web.Request) -> web.Response:
         run_id, run = self._run(request)

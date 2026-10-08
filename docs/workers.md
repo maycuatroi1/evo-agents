@@ -1028,6 +1028,38 @@ daemon reports `verifying` and `done` with the agent's summary from `.evo-run/re
 nothing, whatever the agent did in a worktree (`gitops.check_push` refuses every push of a review run), and uploads
 the log but no diff.
 
+### A judge run on the machine
+
+A judge run (kind `judge`) is the Curator's Judge of one change its Builder made (`docs/hub.md`, "The Curator's
+changes"). Its claim names the change (`curator`: its role, the charter's protected paths, the branch, the forge, the
+default branch, and on GitHub the pull request's head, the commit to judge). The daemon takes its leases (a token of
+the Curator's App that reads only), fetches origin, and makes a worktree of the change's repo detached at that commit
+(on GitLab, at the tip of the change's branch), and reads the diff from the merge base with origin's default branch.
+It runs `evo_agents.hub.judge.hack_signs` on that diff, reads from the hub what the Judge reads (`GET
+/v1/worker/runs/{id}/judge`: the proposal, the verify of each step of the plan, the protected paths and the project's
+hidden checks, which stay in the daemon's memory alone), and runs each verify command and each hidden check in the
+worktree, as the Builder's were run: the log has each verify command with its exit code and the end of its output, and
+each hidden check by its number and its exit code alone, never its command or output. Unless the diff showed a sign,
+the agent starts in the run's directory on the hub's prompt (`judge.build_judge_prompt`: the proposal and each step's
+what, verify and acceptance, never what the Builder wrote) and what the daemon ran, and writes its verdict to
+`.evo-run/verdict.json` (`{"verdict": "pass" | "fail", "reasons": "..."}`). The daemon posts the verdict with the
+commit it judged, the merge base, the results and the signs (`POST /v1/worker/runs/{id}/verdict`); the hub decides
+whether the change passed. The run then ends `done`, pushing nothing (`gitops.check_push` refuses every push of a
+judge run). `evo-agents worker step`, `ask`, `notify`, `finding` and `propose` refuse inside a judge run.
+
+### The Curator's runs on the machine
+
+A run whose claim names `curator` (a review run, a judge run, or a Builder: a plan run of a plan the Curator made) is
+watched. After each heartbeat the daemon lists what changed in each of its worktrees since it started (committed,
+staged, changed and untracked files, `.evo-run/` left out) and compares it with the charter's protected paths, and the
+run's agent time and cost (the session's running cost as the agent's usage events say it) with its caps: a protected
+file changed, or a cap passed, stops the run, which fails with "the watchdog of the Curator's runs stopped it: ...",
+and the hub sends its owner the notice `run_failed`. A Builder pushes the branch `curator/...` its plan names alone,
+never a default branch whatever its plan says (`gitops.check_push`, kind `curator`), in `evo-agents worker step` and at
+its end; it pushes to a forge only with a lease that covers the origin, never with the machine's own credentials; and
+to GitLab with the push options that open a merge request into the default branch (`merge_request.create`,
+`merge_request.target`, `merge_request.remove_source_branch`, `merge_request.title`).
+
 ### Interactive runs
 
 A person can drive a run's agent in its runtime's own terminal UI, in tmux on the worker. Interactive mode needs

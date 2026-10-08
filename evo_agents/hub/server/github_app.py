@@ -45,7 +45,7 @@ from cryptography.exceptions import UnsupportedAlgorithm
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
 
-from evo_agents.hub.config import GITHUB_APP_VARIABLES, LOGIN, ConfigError, HubConfig
+from evo_agents.hub.config import CURATOR_APP_VARIABLES, GITHUB_APP_VARIABLES, LOGIN, ConfigError, HubConfig
 from evo_agents.hub.credentials import GITHUB_PERMISSIONS
 from evo_agents.hub.server.github import API_HEADERS, GitHubClient, GitHubRefused, GitHubUnavailable
 
@@ -127,9 +127,9 @@ def _timestamp(value) -> datetime | None:
     return moment if moment.tzinfo else None
 
 
-def _private_key(pem: str) -> rsa.RSAPrivateKey:
-    """The App's RSA key from its PEM; ``ConfigError`` naming the variable, never the key, when it does not open."""
-    name = GITHUB_APP_VARIABLES[1]
+def _private_key(pem: str, name: str = GITHUB_APP_VARIABLES[1]) -> rsa.RSAPrivateKey:
+    """The App's RSA key from its PEM; ``ConfigError`` naming the variable ``name``, never the key, when it does not
+    open."""
     try:
         key = serialization.load_pem_private_key(pem.encode(), password=None)
     except (ValueError, TypeError, UnsupportedAlgorithm):  # TypeError: a key that wants a password
@@ -140,7 +140,8 @@ def _private_key(pem: str) -> rsa.RSAPrivateKey:
 
 
 class GitHubApp(GitHubClient):
-    """The hub's GitHub App, signing as EVO_HUB_GITHUB_APP_ID with EVO_HUB_GITHUB_APP_PRIVATE_KEY.
+    """The hub's GitHub App, signing as EVO_HUB_GITHUB_APP_ID with EVO_HUB_GITHUB_APP_PRIVATE_KEY; with ``curator``,
+    the Curator's own App, evo-agents-curator, as EVO_HUB_CURATOR_APP_ID with EVO_HUB_CURATOR_APP_PRIVATE_KEY.
 
     ``clock`` (monotonic seconds) times the installation cache and ``now`` (epoch seconds) dates the JWT; tests move
     them."""
@@ -152,25 +153,38 @@ class GitHubApp(GitHubClient):
         *,
         clock: Callable[[], float] = time.monotonic,
         now: Callable[[], float] = time.time,
+        curator: bool = False,
     ):
-        missing = config.github_app_missing()
+        self.curator = curator
+        self.variables = CURATOR_APP_VARIABLES if curator else GITHUB_APP_VARIABLES
+        missing = config.curator_app_missing() if curator else config.github_app_missing()
         if missing:
-            raise ValueError(f"the GitHub App is not configured: {', '.join(missing)} not set")
-        self._key = _private_key(config.github_app_private_key)  # before the HTTP client, which would need closing
-        app_id = config.github_app_id
+            which = "the Curator's GitHub App" if curator else "the GitHub App"
+            raise ValueError(f"{which} is not configured: {', '.join(missing)} not set")
+        pem = config.curator_app_private_key if curator else config.github_app_private_key
+        self._key = _private_key(pem, self.variables[1])  # before the HTTP client, which would need closing
+        app_id = config.curator_app_id if curator else config.github_app_id
         self._issuer: int | str = int(app_id) if app_id.isdigit() else app_id  # an App ID as a number, a client ID
         self._clock, self._now = clock, now
         self._installations: dict[tuple[str, str], tuple[float, Installation]] = {}
         self._pushers: dict[tuple[str, int | None, str, str], float] = {}  # (login, id, owner, repo) -> kept until
         super().__init__(config, transport)
 
+    @property
+    def app_id(self) -> int | None:
+        """The App's numeric ID, None when it was configured by its client ID."""
+        return self._issuer if isinstance(self._issuer, int) else None
+
     @classmethod
-    def from_config(cls, config: HubConfig, transport: httpx.AsyncBaseTransport | None = None) -> GitHubApp | None:
-        """The hub's App, or None when EVO_HUB_GITHUB_APP_ID and EVO_HUB_GITHUB_APP_PRIVATE_KEY are not set."""
-        return None if config.github_app_missing() else cls(config, transport)
+    def from_config(
+        cls, config: HubConfig, transport: httpx.AsyncBaseTransport | None = None, *, curator: bool = False
+    ) -> GitHubApp | None:
+        """The hub's App (the Curator's with ``curator``), or None when its two variables are not set."""
+        missing = config.curator_app_missing() if curator else config.github_app_missing()
+        return None if missing else cls(config, transport, curator=curator)
 
     def __repr__(self) -> str:
-        return f"GitHubApp(issuer={self._issuer!r})"
+        return f"GitHubApp(issuer={self._issuer!r}{', curator' if self.curator else ''})"
 
     def app_jwt(self) -> str:
         """A JWT of the App for GitHub's /app routes: RS256, from 60 seconds ago to 9 minutes from now."""
@@ -183,10 +197,9 @@ class GitHubApp(GitHubClient):
     def _app_headers(self) -> dict:
         return {**API_HEADERS, "Authorization": f"Bearer {self.app_jwt()}"}
 
-    @staticmethod
-    def _refused_app(response: httpx.Response, doing: str) -> None:
+    def _refused_app(self, response: httpx.Response, doing: str) -> None:
         if response.status_code == 401:
-            id_name, key_name = GITHUB_APP_VARIABLES
+            id_name, key_name = self.variables
             raise GitHubUnavailable(
                 f"GitHub refused the hub's GitHub App while {doing}: {id_name} and {key_name} must be the App's ID "
                 "and one of its private keys; an admin must fix the hub's configuration"
@@ -256,7 +269,7 @@ class GitHubApp(GitHubClient):
         if status == 422:
             raise GitHubRefused(
                 f"GitHub refused a token for {full}: the App's installation on {account} does not cover each of them "
-                f"with {PERMISSIONS_TEXT}"
+                f"with {', '.join(f'{name}: {level}' for name, level in permissions.items())}"
             )
         if status != 201:
             raise GitHubUnavailable(f"GitHub answered {status} while {doing}")

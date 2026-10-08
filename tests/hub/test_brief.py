@@ -45,7 +45,7 @@ from tests.hub.test_curator import (
     written,
 )
 from tests.hub.test_decisions import QUESTION, asked
-from tests.hub.test_migrate import columns, move_to
+from tests.hub.test_migrate import HEAD, columns, move_to
 from tests.hub.test_review_runs import (
     held_review,
     proposed,
@@ -343,7 +343,7 @@ def test_migration_0015_goes_down_to_0014_and_up_again(night, hub_db, bot):  # n
     d = tables.notification_deliveries
     assert sql(hub_db, select(func.count()).select_from(d).where(d.c.external_id.is_not(None))) == [(1,)]
     move_to(hub_db, "0014", down=True)
-    move_to(hub_db, "0015")
+    move_to(hub_db, HEAD)  # up again to the head the code runs on (0017 added what the brief reads of the Curator)
     n = tables.notifications
     assert sql(hub_db, select(func.count()).select_from(n).where(n.c.kind == "notice")) == [(0,)]
     assert sql(hub_db, select(func.count()).select_from(BRIEFS)) == [(0,)]
@@ -365,11 +365,13 @@ def test_a_brief_outlives_its_notification_and_0016_goes_down_to_0015_and_up_aga
     sql(hub_db, delete(n).where(n.c.id == first))  # ON DELETE SET NULL: the brief stays, without its notification
     assert sql(hub_db, select(BRIEFS.c.day, BRIEFS.c.notification_id)) == [(THE_DAY, None)]
 
-    move_to(hub_db, "0015", down=True)
-    assert "token_id" not in columns(hub_db, "notification_channels") | columns(hub_db, "telegram_links")
+    # the second brief is sent at the head the code runs on (0017 added what the brief reads of the Curator); 0015's
+    # key is the constraint's, whatever revision wrote the row
     assert briefed(client, BRIEF + timedelta(days=1)) == {"brief": 1}
     second_day = BRIEFS.c.day == THE_DAY + timedelta(days=1)
     ((second,),) = sql(hub_db, select(BRIEFS.c.notification_id).where(second_day))
+    move_to(hub_db, "0015", down=True)
+    assert "token_id" not in columns(hub_db, "notification_channels") | columns(hub_db, "telegram_links")
     with pytest.raises(psycopg.errors.ForeignKeyViolation):  # 0015's key refused the delete
         sql(hub_db, delete(n).where(n.c.id == second))
 

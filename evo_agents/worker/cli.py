@@ -513,6 +513,11 @@ def _agent_run(command: str, kinds: tuple[str, ...] = ("plan",)) -> _AgentRun:
                 f"run {run_id} is a review run, which reads only: it records what it finds with `evo-agents worker "
                 f"finding` and `evo-agents worker propose`, not `evo-agents worker {command}`"
             )
+        if kind == "judge":
+            raise WorkerStateError(
+                f"run {run_id} is a judge run, which reads and judges only: it writes its verdict to "
+                f"{runs.RESULT_DIR}/verdict.json, not with `evo-agents worker {command}`"
+            )
         raise WorkerStateError(
             f"run {run_id} is a run of one step: only the agent of a plan run uses `evo-agents worker {command}`; a "
             f"run of one step writes {runs.RESULT_FILE} instead"
@@ -655,9 +660,22 @@ def cmd_step(args) -> int:
                     "run's branch"
                 )
             plan_branch = gitops.plan_branches(body).get(name) if "repos" in body else workspace.plan_branch
+            curator = agent.record.get("curator") if isinstance(agent.record.get("curator"), dict) else None
+            builder = curator is not None and curator.get("role") == "builder"
+            options = []
+            if builder and curator.get("forge") == "gitlab":
+                from evo_agents.hub.judge import gitlab_push_options
+
+                target = (curator.get("targets") or {}).get(name) or "main"
+                options = gitlab_push_options(target, step.get("title") if isinstance(step, dict) else None)
             try:
                 pushed = await gitops.push(
-                    path, workspace.branch, protected=workspace.protected, kind="plan", plan_branch=plan_branch
+                    path,
+                    workspace.branch,
+                    protected=workspace.protected,
+                    kind="curator" if builder else "plan",
+                    plan_branch=plan_branch,
+                    options=options,
                 )
             except gitops.PushRefused as exc:
                 raise WorkerStateError(f"{name}: {exc}; step {args.key} is not reported done") from None

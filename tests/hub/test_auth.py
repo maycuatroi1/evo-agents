@@ -56,6 +56,7 @@ HUB_TABLES |= pg.CURATOR_TABLES  # migration 0012
 HUB_TABLES |= pg.DIGEST_TABLES  # migration 0013
 HUB_TABLES |= pg.REVIEW_TABLES  # migration 0014
 HUB_TABLES |= pg.BRIEF_TABLES  # migration 0015
+HUB_TABLES |= pg.CHANGE_TABLES  # migration 0017
 
 
 @pytest.fixture

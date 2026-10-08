@@ -1,4 +1,4 @@
-"""The hub's 42 tables as SQLAlchemy Core metadata: what the queries are written on, and what Alembic autogenerates
+"""The hub's 44 tables as SQLAlchemy Core metadata: what the queries are written on, and what Alembic autogenerates
 the next migration from (``evo_agents/hub/migrations/env.py``).
 
 The migrations make the schema; this module describes it, and ``tests/hub/test_schema_metadata.py`` keeps the two
@@ -495,7 +495,7 @@ Index(
     postgresql_where=kg_builds.c.artifact_sha256.is_not(None),
 )
 
-# Workers and runs (0009, 0010, 0011, 0012, 0014)
+# Workers and runs (0009, 0010, 0011, 0012, 0014, 0017)
 
 workers = Table(
     "workers",
@@ -666,6 +666,12 @@ Index(
     runs.c.project_id,
     unique=True,
     postgresql_where=(runs.c.kind == "review") & runs.c.state.in_(RUN_ACTIVE),
+)
+Index(  # a project has one judge run active at a time (0017)
+    "runs_active_judge_key",
+    runs.c.project_id,
+    unique=True,
+    postgresql_where=(runs.c.kind == "judge") & runs.c.state.in_(RUN_ACTIVE),
 )
 Index(
     "runs_claim_idx",
@@ -1154,4 +1160,68 @@ telegram_links = Table(
     PrimaryKeyConstraint("id", name="telegram_links_pkey"),
     UniqueConstraint("code_hash", name="telegram_links_code_hash_key"),
     Index("telegram_links_user_idx", "user_id"),
+)
+
+# The Curator's changes: the plan an accepted proposal became, its pull request, its Judge and its merge; and the repos
+# whose ruleset the hub checked (0017)
+
+curator_changes = Table(
+    "curator_changes",
+    metadata,
+    _id(),
+    Column("project_id", BigInteger, nullable=False),
+    Column("proposal_id", BigInteger, nullable=False),
+    Column("plan_id", Text),
+    Column("repo", Text),
+    Column("branch", Text),
+    Column("forge", Text),
+    Column("tier", SmallInteger, nullable=False),
+    Column("state", Text, nullable=False, server_default="planned"),
+    Column("reason", Text),
+    Column("builder_run_id", BigInteger),
+    Column("judge_run_id", BigInteger),
+    Column("judge_attempts", SmallInteger, nullable=False, server_default="0"),
+    Column("pr_number", Integer),
+    Column("pr_url", Text),
+    Column("base_branch", Text),
+    Column("head_sha", Text),
+    Column("hidden_count", SmallInteger),
+    Column("verdict", JSONB),
+    Column("passed", Boolean),
+    Column("check_run_id", BigInteger),
+    _when("merged_at"),
+    Column("merge_sha", Text),
+    _stamp("created_at"),
+    _stamp("updated_at"),
+    ForeignKeyConstraint(
+        ["builder_run_id"], ["runs.id"], ondelete="RESTRICT", name="curator_changes_builder_run_id_fkey"
+    ),
+    ForeignKeyConstraint(["judge_run_id"], ["runs.id"], ondelete="RESTRICT", name="curator_changes_judge_run_id_fkey"),
+    ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name="curator_changes_project_id_fkey"),
+    ForeignKeyConstraint(
+        ["proposal_id"], ["proposals.id"], ondelete="CASCADE", name="curator_changes_proposal_id_fkey"
+    ),
+    PrimaryKeyConstraint("id", name="curator_changes_pkey"),
+    UniqueConstraint("proposal_id", name="curator_changes_proposal_id_key"),
+    UniqueConstraint("project_id", "plan_id", name="curator_changes_project_id_plan_id_key"),
+    Index("curator_changes_state_idx", "state", "id"),
+)
+
+curator_repo_checks = Table(
+    "curator_repo_checks",
+    metadata,
+    Column("project_id", BigInteger, nullable=False),
+    Column("repo", Text, nullable=False),
+    Column("github_repo", Text, nullable=False),
+    Column("default_branch", Text),
+    Column("protected", Boolean, nullable=False),
+    Column("reason", Text, nullable=False),
+    Column("rulesets", JSONB, nullable=False),
+    Column("checked_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("checked_by", BigInteger),
+    ForeignKeyConstraint(["checked_by"], ["users.id"], ondelete="RESTRICT", name="curator_repo_checks_checked_by_fkey"),
+    ForeignKeyConstraint(
+        ["project_id"], ["projects.id"], ondelete="CASCADE", name="curator_repo_checks_project_id_fkey"
+    ),
+    PrimaryKeyConstraint("project_id", "repo", name="curator_repo_checks_pkey"),
 )

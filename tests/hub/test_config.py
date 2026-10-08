@@ -475,3 +475,31 @@ def test_load_dsn_prefers_the_flag():
     assert (
         load_dsn({"EVO_HUB_DSN": "postgresql://env@db/hub"}, "postgresql://flag@db/hub") == "postgresql://flag@db/hub"
     )
+
+
+def test_protection_the_curators_app_needs_both_its_variables_apart_from_the_workers_app():
+    from evo_agents.hub.log import scrub as scrubbed
+    from evo_agents.hub.server.github_app import GitHubApp
+
+    pem = rsa_pem()
+    base = {"EVO_HUB_DSN": "postgresql://hub@db/hub"}
+    config = load_config({**base, "EVO_HUB_CURATOR_APP_ID": "434343", "EVO_HUB_CURATOR_APP_PRIVATE_KEY": pem})
+    assert (config.curator_app_id, config.curator_app_private_key) == ("434343", pem.strip() + "\n")
+    assert config.curator_app_missing() == [] and config.github_app_missing() == [
+        "EVO_HUB_GITHUB_APP_ID",
+        "EVO_HUB_GITHUB_APP_PRIVATE_KEY",
+    ]
+    line = scrubbed(f"loaded {pem.splitlines()[1]} at start")
+    assert pem.splitlines()[1] not in line and "***" in line
+    assert GitHubApp.from_config(config) is None  # the workers' App is not the Curator's
+    app = GitHubApp(config, curator=True)
+    assert repr(app) == "GitHubApp(issuer=434343, curator)" and app.app_id == 434343
+    for present, missing in (
+        ({"EVO_HUB_CURATOR_APP_ID": "434343"}, "EVO_HUB_CURATOR_APP_PRIVATE_KEY"),
+        ({"EVO_HUB_CURATOR_APP_PRIVATE_KEY": pem}, "EVO_HUB_CURATOR_APP_ID"),
+    ):
+        with pytest.raises(ConfigError) as caught:
+            load_config({**base, **present})
+        assert caught.value.variable == missing and "together, or neither" in str(caught.value)
+        assert pem.splitlines()[1] not in str(caught.value)
+    assert load_config(base).curator_app_missing() == ["EVO_HUB_CURATOR_APP_ID", "EVO_HUB_CURATOR_APP_PRIVATE_KEY"]
