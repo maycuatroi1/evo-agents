@@ -6,6 +6,7 @@ Source config (knowledge.yaml)::
       connector: git
       repo: billing-service               # a repo name from harness.yaml, or `path:`
       ref: HEAD                           # default HEAD of the checkout
+      fetch: true                         # optional: with ref origin/<branch>, fetch that branch first
       include: ["docs/*", "*.py"]         # optional globs; default: markdown, yaml, text, code
       exclude: ["tests/fixtures/*"]
       allow: [".claude/CLAUDE.md"]        # optional globs exempt from DEFAULT_EXCLUDE
@@ -16,6 +17,11 @@ Paths matching ``DEFAULT_EXCLUDE`` (build output, lock files, virtualenvs, ``.cl
 ``allow``, and an allowed path still goes through ``include`` or the default suffixes; one that is not
 selected becomes a path-only asset like any other file. Globs use fnmatch, where ``*`` also matches
 ``/``.
+
+``fetch: true`` makes the run fetch the ref's branch from ``origin`` (with a timeout, never prompting)
+before reading it, so the source follows the remote without anyone fetching the clone by hand. It only
+applies to a ref of the form ``origin/<branch>``. A failed fetch (offline, no access) does not fail the
+run: it logs a warning and reads the ref as the clone has it. Without the key nothing is fetched.
 
 Item IDs are ``<source>:file:<path>``; the revision is the blob SHA, so it changes exactly when the
 content does. A git ref can be force-pushed; then the order of revisions is the order syncs observed.
@@ -49,6 +55,18 @@ def repo_dir(ctx) -> Path:
     return path
 
 
+def _fetch(repo: Path, ref: str):
+    """Fetch the branch of an ``origin/<branch>`` ref; a failure is a warning, not a failed run."""
+    remote, _, branch = ref.partition("/")
+    if remote != "origin" or not branch:
+        yield {"type": "log", "level": "warning", "message": f"fetch: true ignored: ref {ref!r} is not origin/<branch>"}
+        return
+    try:
+        _git.fetch(repo, remote, branch)
+    except (_git.GitError, OSError) as exc:
+        yield {"type": "log", "level": "warning", "message": f"fetch failed, reading {ref} as the clone has it: {exc}"}
+
+
 def run(ctx):
     sid = ctx.source_id
     yield hello("git", __version__, list_complete=True, rev_exact=True, history=True)
@@ -56,8 +74,16 @@ def run(ctx):
         repo = repo_dir(ctx)
         if not _git.is_repo(repo):
             raise ValueError(f"{repo} is not a git checkout")
-        commit = _git.resolve(repo, ctx.source.get("ref") or "HEAD")
-    except (ValueError, _git.GitError) as exc:
+    except ValueError as exc:
+        yield {"type": "error", "failure": "config", "message": str(exc)}
+        yield {"type": "closed", "status": "error", "exception": str(exc)}
+        return
+    ref = ctx.source.get("ref") or "HEAD"
+    if ctx.source.get("fetch"):
+        yield from _fetch(repo, ref)
+    try:
+        commit = _git.resolve(repo, ref)
+    except _git.GitError as exc:
         yield {"type": "error", "failure": "config", "message": str(exc)}
         yield {"type": "closed", "status": "error", "exception": str(exc)}
         return
