@@ -653,7 +653,7 @@ def test_the_commands_of_git_and_of_the_pane_ask_the_runs_socket(machine):
             agent,
             worktree,
             withheld=leases.withheld,
-            env_command=leases.pane_command,
+            env_command=leases.pane_command(),
         )
         text = script.read_text(encoding="utf-8")
         pane = await run(["/bin/sh", str(script)], {"PATH": os.environ["PATH"], "HOME": str(machine.home)})
@@ -708,7 +708,7 @@ def test_origins_without_a_lease_are_noted_and_keep_the_machines_credentials(mac
         MISSING_NOTE.format(origin="/srv/app.git", reason=credentials.NOT_COVERED),
     ]
     assert texts[0].endswith("; git uses this machine's own")
-    assert not exists and leases.withheld == frozenset() and leases.pane_command is None
+    assert not exists and leases.withheld == frozenset() and leases.pane_command() is None
     assert hub.given_back == [RUN], "asked, so given back: the hub ends what it may have leased"
 
 
