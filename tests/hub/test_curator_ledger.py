@@ -232,6 +232,10 @@ def test_outcome_revert_draft_is_an_outcome_plan_the_hub_takes():
     assert f"git revert --no-edit -m 1 {sha}" in step["what"]
     found = {"metrics": [{"key": "environment", "change": "worse"}]}
     assert ledger.worse_evidence(_after(4, 4), found) == ["session:s-9:errors:0"]
+    outcome = {"reason": "x", "metrics": [{"what": "times `a | b` ran", "before": 1, "after": 4, "change": "worse"}]}
+    summary = ledger.revert_summary(proposal_id=7, change_id=3, merge_sha=sha, pr_url=None, outcome=outcome)
+    assert summary.startswith(f"The Curator's change #3 of proposal #7 merged as {sha}. Counted again")
+    assert "| times `a \\| b` ran | 1 | 4 |" in summary  # a pipe in a figure's words stays in its cell
 
 
 def test_circuit_counts_the_jobs_that_went_wrong_at_the_end_of_the_night():
