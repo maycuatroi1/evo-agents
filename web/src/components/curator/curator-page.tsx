@@ -114,11 +114,20 @@ function NightStrip({ project, status }: { project: string; status: CuratorStatu
   );
 }
 
-/** The schedule as the hub keeps it: the window, the worker on duty and the member it runs as, and a pause. */
+/** The notices of the project in the Inbox, where the member the briefs go to reads them. */
+function briefsHref(project: string): Route {
+  return `/inbox?kind=notice&project=${encodeURIComponent(project)}` as Route;
+}
+
+/**
+ * The schedule as the hub keeps it: the window, the worker on duty and the member it runs as, a pause, and the last
+ * morning brief, with a link to the Inbox for the member it went to.
+ */
 function ScheduleCard({ project, status }: { project: string; status: CuratorStatus }) {
   const t = useTranslations("curator.schedule");
   const viewer = useCuratorViewer(project);
   const money = useMoney();
+  const day = useDay();
   const charter = status.charter;
   if (!charter) return null;
   const schedule = status.schedules[0] ?? null;
@@ -153,6 +162,20 @@ function ScheduleCard({ project, status }: { project: string; status: CuratorSta
           {t("capsValue", { budget: money(charter.night_budget_usd), runs: charter.max_runs_per_night ?? 0 })}
         </Fact>
         <Fact label={t("brief")}>{t("briefValue", { at: charter.brief_at ?? "07:00" })}</Fact>
+        {status.last_brief ? (
+          <Fact label={t("lastBrief")} testId="curator-last-brief">
+            <span className="inline-flex flex-wrap items-center gap-x-2">
+              <span>
+                {t("lastBriefValue", { night: day(status.last_brief.night), to: status.last_brief.to })}, <Ago value={status.last_brief.sent_at} never="" />
+              </span>
+              {viewer !== null && viewer.login === status.last_brief.to ? (
+                <Link href={briefsHref(project)} className={CARD_LINK} data-testid="curator-last-brief-link">
+                  {t("readBrief")}
+                </Link>
+              ) : null}
+            </span>
+          </Fact>
+        ) : null}
         {schedule?.paused_at ? (
           <Fact label={t("paused")} testId="curator-paused-fact">
             {t("pausedBy", { login: schedule.paused_by ?? "?" })} <Ago value={schedule.paused_at} never="" />

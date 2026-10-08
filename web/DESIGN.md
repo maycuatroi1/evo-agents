@@ -208,6 +208,8 @@ states and the phone top bar. Icons sit before their label and inherit its colou
 | Insights | `ChartColumn` |
 | Curator, its night shift | `MoonStar` |
 | Proposal of the Curator | `Lightbulb` |
+| Morning brief of the Curator | `Sunrise` |
+| Telegram, the member's chat | `Smartphone` |
 | Plans | `ListChecks` |
 | Workers | `Server` |
 | Secrets | `LockKeyhole` |
@@ -625,6 +627,16 @@ Shared pieces built on them:
   heavier title. A notice of a push or merge into a default branch names its repo, branch and commits (seven digits,
   the full name for screen readers, five shown and the rest a click away); its body folds to three lines; its kind is
   a tag (an icon and a word, square corners), not a pill.
+- `components/inbox/telegram-dialog.tsx`: Telegram in the Inbox's header, a `secondary` button that opens a dialog
+  (docs/notifications.md, Telegram). It says where the member's link stands and offers what fits: on a hub without a
+  bot an info box and nothing else; with no chat linked, Make a link; then the one-time link in `code-small` with Copy,
+  Open in Telegram (a new tab) and a polite status that waits for Start until the link's time, while the dialog asks the
+  hub every 3 seconds; once linked, the Telegram username and since when, with Unlink (`quiet-danger`), confirmed in
+  place with Keep it linked and a `destructive` Unlink; and, once Telegram refused the chat, an `attention` box with the
+  hub's reason and Make a new link. A refusal stays in the dialog (`InlineError`); a chat linked and an unlink are
+  toasts. Focus goes back to the button when the dialog closes. A morning brief of the Curator is a notice of kind
+  `curator_brief` (`Sunrise`), and the Curator's schedule names the last brief, with a link to the Inbox for the member
+  it went to.
 - `components/inbox/decision-sheet.tsx`: a decision is answered in a sheet, without leaving the page: from the Inbox's
   list at `/inbox?decision=ID`, the link every decision notification carries (the History API pushes it, so Back closes
   it), and from Home's Needs you, which passes the decision's project and when its run parks. It slides in from the
