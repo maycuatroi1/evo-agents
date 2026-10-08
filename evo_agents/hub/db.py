@@ -18,7 +18,8 @@ import asyncio
 
 import psycopg
 from psycopg_pool import AsyncConnectionPool
-from sqlalchemy import column, func, select, table
+from sqlalchemy import ColumnElement, any_, bindparam, column, func, literal, select, table
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 from sqlalchemy.pool import NullPool
 
@@ -57,6 +58,15 @@ def make_engine(pool: AsyncConnectionPool) -> AsyncEngine:
     """A SQLAlchemy engine whose connections are ``pool``'s, made with ``close_returns=True`` (``create_pool``).
     Nothing connects until the first ``begin()``; dispose of it before closing the pool."""
     return create_async_engine("postgresql+psycopg://", poolclass=NullPool, async_creator=pool.getconn)
+
+
+def one_of(target: ColumnElement, values=None, *, name: str | None = None) -> ColumnElement[bool]:
+    """``target = ANY(array)``: true when ``target`` is one of ``values``, or of the list bound as ``name`` when
+    the statement is built once and run with that list. An IN list is expanded into one parameter per value at
+    each execution, which costs more than the query's round trip on the hot paths; an array is one parameter."""
+    array = ARRAY(target.type)
+    bound = bindparam(name, type_=array) if name is not None else literal(list(values), array)
+    return target == any_(bound)
 
 
 async def driver(conn: AsyncConnection) -> psycopg.AsyncConnection:

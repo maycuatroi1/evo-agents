@@ -29,7 +29,8 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
-from sqlalchemy import and_, delete, func, insert, select, update
+from sqlalchemy import ScalarSelect, and_, bindparam, delete, func, insert, literal, select, update
+from sqlalchemy.dialects.postgresql import JSONB, aggregate_order_by
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
@@ -162,35 +163,44 @@ def _with_grant(user_id: int):
     return projects.outerjoin(grants, and_(grants.c.project_id == projects.c.id, grants.c.user_id == user_id))
 
 
+def _sinks_of(project_id) -> ScalarSelect:
+    """The sinks of project ``project_id`` as one JSONB array of {id, kind, clearance}, by id; [] without one."""
+    ps = tables.project_sinks
+    sink = func.jsonb_build_object("id", ps.c.sink_id, "kind", ps.c.kind, "clearance", ps.c.clearance)
+    listed = func.jsonb_agg(aggregate_order_by(sink, ps.c.sink_id), type_=JSONB)
+    return (
+        select(func.coalesce(listed, literal([], JSONB), type_=JSONB)).where(ps.c.project_id == project_id)
+    ).scalar_subquery()
+
+
+# Built once, as every request that names a project runs it (docs/hub.md, Data access): project :name, the grant
+# user :user_id holds on it, and its sinks, in one round trip.
+_ACCESS = (
+    select(
+        tables.projects.c.id,
+        tables.projects.c.levels,
+        tables.projects.c.locations,
+        tables.projects.c.default_label,
+        tables.grants.c.role,
+        tables.grants.c.max_level,
+        _sinks_of(tables.projects.c.id).label("sinks"),
+    )
+    .select_from(_with_grant(bindparam("user_id")))
+    .where(tables.projects.c.name == bindparam("name"))
+)
+
+
 async def project_access(conn: AsyncConnection, user: Principal, name: str) -> ProjectAccess:
     """``user``'s access to project ``name``; 404 when it is not registered, or when ``user`` holds no grant on it
     and is no hub admin, so a name tells nothing about the projects one cannot see. The agent of a run sees the run's
     project alone, with the grant ``scoped_grant`` leaves it."""
     if not user.reaches(name):
         raise HTTPException(404, not_found(name))
-    projects, grants, project_sinks = tables.projects, tables.grants, tables.project_sinks
-    found = await conn.execute(
-        select(
-            projects.c.id,
-            projects.c.levels,
-            projects.c.locations,
-            projects.c.default_label,
-            grants.c.role,
-            grants.c.max_level,
-        )
-        .select_from(_with_grant(user.user_id))
-        .where(projects.c.name == name)
-    )
-    row = found.first()
+    row = (await conn.execute(_ACCESS, {"user_id": user.user_id, "name": name})).first()
     if row is None or (row.role is None and not user.admin):
         raise HTTPException(404, not_found(name))
     role, max_level = scoped_grant(user, row.levels, row.role, row.max_level)
-    held = await conn.execute(
-        select(project_sinks.c.sink_id.label("id"), project_sinks.c.kind, project_sinks.c.clearance)
-        .where(project_sinks.c.project_id == row.id)
-        .order_by(project_sinks.c.sink_id)
-    )
-    sinks = [dict(sink) for sink in held.mappings()]
+    sinks = row.sinks
     rules = ProjectRules(name, row.levels, row.locations, sinks, row.default_label)
     return ProjectAccess(row.id, rules, role, max_level)
 

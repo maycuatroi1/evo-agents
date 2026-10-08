@@ -40,6 +40,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import functools
 import hashlib
 import json
 import logging
@@ -53,12 +54,29 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
 from pydantic import BaseModel, Field, model_validator
-from sqlalchemy import BigInteger, DateTime, Select, and_, func, insert, literal, or_, select, tuple_, update
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    DateTime,
+    Integer,
+    Select,
+    String,
+    and_,
+    bindparam,
+    func,
+    insert,
+    or_,
+    select,
+    tuple_,
+    update,
+)
 from sqlalchemy import exc as sa_exc
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import tables
 from evo_agents.hub.access import has_role
+from evo_agents.hub.db import one_of
 from evo_agents.hub.memory import (
     AGENT_SINK,
     HARNESS,
@@ -263,66 +281,97 @@ def _memories(*extra) -> Select:
     )
 
 
-def _listed(reach: list, deleted: bool, after_at: datetime | str, after_id: int) -> Select:
-    """A batch of the memories ``reach`` selects after (``after_at``, ``after_id``), in (updated_at, id) order."""
+# The statements below are built once, or once per shape, with bind parameters: the reads and writes of memories
+# run on every pull and push of every session, and building a statement on each call cost more than its round trip
+# (docs/hub.md, Data access). A shape is the set of filters a request gives; ``_reached`` returns it with the values.
+
+
+@functools.cache
+def _listed(deleted: bool, **reach: bool) -> Select:
+    """A batch of the memories ``_reach(**reach)`` selects after (:after_at, :after_id), in (updated_at, id)
+    order; tombstones too when ``deleted``."""
     m = tables.memories
-    query = _memories().where(*reach)
+    query = _memories().where(*_reach(**reach))
     if not deleted:
         query = query.where(~m.c.deleted)
-    after = tuple_(literal(after_at, DateTime(timezone=True)), literal(after_id, BigInteger))
+    after = tuple_(bindparam("after_at", type_=DateTime(timezone=True)), bindparam("after_id", type_=BigInteger))
     return query.where(tuple_(m.c.updated_at, m.c.id) > after).order_by(m.c.updated_at, m.c.id).limit(BATCH)
 
 
-def _searched(reach: list, q: str, offset: int) -> Select:
-    """A batch of the live memories ``reach`` selects whose name or body matches ``q``, best first."""
+@functools.cache
+def _searched(**reach: bool) -> Select:
+    """A batch of the live memories ``_reach(**reach)`` selects whose name or body matches :q, best first, from
+    row :offset."""
     m = tables.memories
-    query = func.websearch_to_tsquery("simple", q).column_valued("q")
+    query = func.websearch_to_tsquery("simple", bindparam("q", type_=String)).column_valued("q")
     rank = func.ts_rank(m.c.search, query).label("rank")
     return (
         _memories(rank)
-        .where(m.c.search.bool_op("@@")(query), ~m.c.deleted, *reach)
+        .where(m.c.search.bool_op("@@")(query), ~m.c.deleted, *_reach(**reach))
         .order_by(rank.desc(), m.c.updated_at.desc(), m.c.id.desc())
         .limit(BATCH)
-        .offset(offset)
+        .offset(bindparam("offset", type_=Integer))
     )
 
 
-def _at_key(body: MemoryIn, user: Principal, project_id: int | None) -> Select:
-    """The memory at the key ``body`` names, locked: the shared one of the project, else the caller's own."""
+@functools.cache
+def _at_key(shared: bool) -> Select:
+    """The memory at the key :scope, :project_id, :location and :name, locked: the shared one of the project when
+    ``shared``, else the caller's (:user_id) own."""
     m = tables.memories
-    if body.scope == "project" and body.type in SHARED_TYPES:
-        kind = m.c.type.in_(SHARED)
-    else:
-        kind = and_(m.c.type.in_(OWNED), m.c.owner_id == user.user_id)
+    user_id = bindparam("user_id", type_=BigInteger)
+    kind = one_of(m.c.type, SHARED) if shared else and_(one_of(m.c.type, OWNED), m.c.owner_id == user_id)
     return (
         _memories()
         .where(
-            m.c.scope == body.scope,
-            m.c.project_id.is_not_distinct_from(project_id),
-            m.c.location == body.location,
-            m.c.name == body.name,
-            or_(kind, and_(m.c.scope == "personal", m.c.owner_id == user.user_id)),
+            m.c.scope == bindparam("scope", type_=String),
+            m.c.project_id.is_not_distinct_from(bindparam("project_id", type_=BigInteger)),
+            m.c.location == bindparam("location", type_=String),
+            m.c.name == bindparam("name", type_=String),
+            or_(kind, and_(m.c.scope == "personal", m.c.owner_id == user_id)),
         )
         .with_for_update(of=m)
     )
 
 
-def _changed(memory_id: int, kind: str, label: dict, body: str, deleted: bool, user_id: int):
-    """The next revision of memory ``memory_id``, written by ``user_id``."""
-    m = tables.memories
-    return (
-        update(m)
-        .values(
-            type=kind,
-            label=label,
-            body=body,
-            deleted=deleted,
-            revision=m.c.revision + 1,
-            updated_at=func.now(),
-            updated_by=user_id,
-        )
-        .where(m.c.id == memory_id)
+def _key(body: MemoryIn, user: Principal, project_id: int | None) -> dict:
+    """The parameters of ``_at_key`` for the key ``body`` names."""
+    return {
+        "scope": body.scope,
+        "project_id": project_id,
+        "location": body.location,
+        "name": body.name,
+        "user_id": user.user_id,
+    }
+
+
+# The next revision of memory :memory_id, written by :writer_id. The parameters name no column of memories: an
+# UPDATE would take a parameter named after a column as a value to set.
+_CHANGED = (
+    update(tables.memories)
+    .values(
+        type=bindparam("new_type", type_=String),
+        label=bindparam("new_label", type_=JSONB),
+        body=bindparam("new_body", type_=String),
+        deleted=bindparam("new_deleted", type_=Boolean),
+        revision=tables.memories.c.revision + 1,
+        updated_at=func.now(),
+        updated_by=bindparam("writer_id", type_=BigInteger),
     )
+    .where(tables.memories.c.id == bindparam("memory_id", type_=BigInteger))
+)
+
+
+def _changed(memory_id: int, kind: str, label: dict, body: str, deleted: bool, user_id: int) -> dict:
+    """The parameters of _CHANGED."""
+    return {
+        "memory_id": memory_id,
+        "new_type": kind,
+        "new_label": label,
+        "new_body": body,
+        "new_deleted": deleted,
+        "writer_id": user_id,
+    }
 
 
 def _row(found) -> Row:
@@ -365,6 +414,14 @@ async def _access(conn, user: Principal, project: str) -> ProjectAccess | None:
         raise
 
 
+_GRANTED = (
+    select(tables.projects.c.name)
+    .join_from(tables.grants, tables.projects, tables.projects.c.id == tables.grants.c.project_id)
+    .where(tables.grants.c.user_id == bindparam("user_id", type_=BigInteger))
+    .order_by(tables.projects.c.name)
+)  # the names of the projects :user_id holds a grant on
+
+
 async def _accesses(conn, user: Principal, project: str | None) -> dict[str, ProjectAccess]:
     """The projects whose memories ``user`` may read, by name: ``project`` alone when given (404 when the caller
     cannot see it), else every project the caller holds a grant on, the run's alone for the agent of a run. A hub
@@ -372,40 +429,51 @@ async def _accesses(conn, user: Principal, project: str | None) -> dict[str, Pro
     if project is not None:
         access = await project_access(conn, user, project)
         return {project: access} if access.role else {}
-    grants, projects = tables.grants, tables.projects
-    granted = (
-        select(projects.c.name)
-        .join_from(grants, projects, projects.c.id == grants.c.project_id)
-        .where(grants.c.user_id == user.user_id)
-        .order_by(projects.c.name)
-    )
-    names = (await conn.execute(granted)).scalars().all()
+    names = (await conn.execute(_GRANTED, {"user_id": user.user_id})).scalars().all()
     found = {name: await _access(conn, user, name) for name in names if user.reaches(name)}
     return {name: access for name, access in found.items() if access is not None and access.role}
 
 
-def _reach(user: Principal, accesses: dict[str, ProjectAccess], scope, project, location) -> list:
-    """The conditions on the memories that may be visible before labels count: one's personal memories (not for the
-    agent of a run) and, in the projects one holds a grant on, the shared memories and one's own; then the scope,
-    project and location the caller narrowed to."""
+def _reach(*, personal: bool, scope: bool, project: bool, location: bool) -> list:
+    """The conditions on the memories that may be visible before labels count: one's (:user_id) personal memories
+    when ``personal`` (never for the agent of a run) and, in the projects :reach_projects one holds a grant on, the
+    shared memories and one's own; then the :scope, :project_id and :location the caller narrowed to, those the
+    other flags name."""
     m = tables.memories
+    user_id = bindparam("user_id", type_=BigInteger)
     in_projects = and_(
         m.c.scope == "project",
-        m.c.project_id.in_([access.project_id for access in accesses.values()]),
-        or_(m.c.type.in_(SHARED), m.c.owner_id == user.user_id),
+        one_of(m.c.project_id, name="reach_projects"),
+        or_(one_of(m.c.type, SHARED), m.c.owner_id == user_id),
     )
-    if user.scope is None:
-        candidate = or_(and_(m.c.scope == "personal", m.c.owner_id == user.user_id), in_projects)
-    else:
-        candidate = in_projects  # the agent of a run reads no personal memory
+    candidate = or_(and_(m.c.scope == "personal", m.c.owner_id == user_id), in_projects) if personal else in_projects
     reach = [candidate]
-    if scope is not None:
-        reach.append(m.c.scope == scope)
-    if project is not None and project in accesses:
-        reach.append(m.c.project_id == accesses[project].project_id)
-    if location is not None:
-        reach.append(m.c.location == location)
+    if scope:
+        reach.append(m.c.scope == bindparam("scope", type_=String))
+    if project:
+        reach.append(m.c.project_id == bindparam("project_id", type_=BigInteger))
+    if location:
+        reach.append(m.c.location == bindparam("location", type_=String))
     return reach
+
+
+def _reached(user: Principal, accesses: dict[str, ProjectAccess], scope, project, location) -> tuple[dict, dict]:
+    """The shape of ``_reach`` for the caller and the filters given, and its parameters."""
+    narrowed = accesses[project].project_id if project is not None and project in accesses else None
+    shape = {
+        "personal": user.scope is None,  # the agent of a run reads no personal memory
+        "scope": scope is not None,
+        "project": narrowed is not None,
+        "location": location is not None,
+    }
+    bound = {
+        "user_id": user.user_id,
+        "reach_projects": [access.project_id for access in accesses.values()],
+        "scope": scope,
+        "project_id": narrowed,
+        "location": location,
+    }
+    return shape, bound
 
 
 # Cursors: the (updated_at, id) of the last row a page examined, base64url JSON. They only position a listing in
@@ -454,11 +522,12 @@ async def list_memories(
         accesses = await _accesses(conn, user, project)
         if project is not None and not accesses:
             return Page(items=[], next_cursor=None)  # a hub admin without a grant
-        reach = _reach(user, accesses, scope, project, location)
+        shape, bound = _reached(user, accesses, scope, project, location)
+        listed = _listed(deleted, **shape)
         items: list[Memory] = []
         budget, scanned, following = PAGE_BYTES, 0, None
         while True:
-            rows = (await conn.execute(_listed(reach, deleted, after_at, after_id))).all()
+            rows = (await conn.execute(listed, {**bound, "after_at": after_at, "after_id": after_id})).all()
             for values in rows:
                 row = _row(values)
                 scanned += 1
@@ -494,11 +563,12 @@ async def search_memories(
         accesses = await _accesses(conn, user, project)
         if project is not None and not accesses:
             return Results(items=[])  # a hub admin without a grant
-        reach = _reach(user, accesses, scope, project, location)
+        shape, bound = _reached(user, accesses, scope, project, location)
+        searched = _searched(**shape)
         found: list[Found] = []
         budget = PAGE_BYTES
         for offset in range(0, SCAN_ROWS, BATCH):
-            rows = (await conn.execute(_searched(reach, q, offset))).all()
+            rows = (await conn.execute(searched, {**bound, "q": q, "offset": offset})).all()
             for values in rows:
                 row = _row(values)
                 if _visible(row, user, accesses, sink):
@@ -515,12 +585,12 @@ def _not_found(memory_id: int) -> str:
     return f"no memory {memory_id} that you can see on this hub"
 
 
+_LOADED = _memories().where(tables.memories.c.id == bindparam("memory_id", type_=BigInteger))
+_LOCKED = _LOADED.with_for_update(of=tables.memories)
+
+
 async def _load(conn: AsyncConnection, memory_id: int, *, lock: bool = False) -> Row | None:
-    m = tables.memories
-    query = _memories().where(m.c.id == memory_id)
-    if lock:
-        query = query.with_for_update(of=m)
-    found = (await conn.execute(query)).one_or_none()
+    found = (await conn.execute(_LOCKED if lock else _LOADED, {"memory_id": memory_id})).one_or_none()
     return _row(found) if found else None
 
 
@@ -553,20 +623,33 @@ def _conflict(request: Request, message: str, current: Memory | None) -> JSONRes
     return JSONResponse(jsonable_encoder(body.model_dump(exclude={"detail"})), status_code=409)
 
 
+_LOCK = select(func.pg_advisory_xact_lock(LOCK_CLASS, bindparam("lock_key", type_=Integer)))
+
+
 def _lock_key(body: MemoryIn, user: Principal, project_id: int | None) -> int:
     owner = user.user_id if body.scope == "personal" or body.type not in SHARED_TYPES else 0
     key = json.dumps([body.scope, project_id, owner, body.location, body.name]).encode()
     return int.from_bytes(hashlib.sha256(key).digest()[:4], "big", signed=True)
 
 
+# The revision row of memory :written_id as it now is, by :actor; the parameters name no column of memory_revisions.
+_REVISION = insert(tables.memory_revisions).from_select(
+    ["memory_id", "revision", "type", "label", "body", "deleted", "actor_id"],
+    select(
+        tables.memories.c.id,
+        tables.memories.c.revision,
+        tables.memories.c.type,
+        tables.memories.c.label,
+        tables.memories.c.body,
+        tables.memories.c.deleted,
+        bindparam("actor", type_=BigInteger),
+    ).where(tables.memories.c.id == bindparam("written_id", type_=BigInteger)),
+)
+
+
 async def _written(conn: AsyncConnection, user: Principal, memory_id: int, action: str) -> Memory:
     """After a change: its revision row, its audit row, and the memory as it now is."""
-    m, r = tables.memories, tables.memory_revisions
-    revision = select(
-        m.c.id, m.c.revision, m.c.type, m.c.label, m.c.body, m.c.deleted, literal(user.user_id, BigInteger)
-    )
-    columns = ["memory_id", "revision", "type", "label", "body", "deleted", "actor_id"]
-    await conn.execute(insert(r).from_select(columns, revision.where(m.c.id == memory_id)))
+    await conn.execute(_REVISION, {"written_id": memory_id, "actor": user.user_id})
     await record(conn, actor_id=user.user_id, token_id=user.token_id, action=action, target=f"memory:{memory_id}")
     return (await _load(conn, memory_id)).memory
 
@@ -604,8 +687,9 @@ async def put(request: Request, body: MemoryIn, user: CurrentUser, sink: Sink = 
                     "list --json`",
                 )
         project_id = access.project_id if access else None
-        await conn.execute(select(func.pg_advisory_xact_lock(LOCK_CLASS, _lock_key(body, user, project_id))))
-        found = (await conn.execute(_at_key(body, user, project_id))).one_or_none()
+        await conn.execute(_LOCK, {"lock_key": _lock_key(body, user, project_id)})
+        at_key = _at_key(body.scope == "project" and body.type in SHARED_TYPES)
+        found = (await conn.execute(at_key, _key(body, user, project_id))).one_or_none()
         current = _row(found) if found else None
         accesses = {body.project: access} if access else {}
         if current is not None and not _visible(current, user, accesses, sink):
@@ -658,7 +742,7 @@ async def put(request: Request, body: MemoryIn, user: CurrentUser, sink: Sink = 
                 memory_id = (await conn.execute(inserted.returning(m.c.id))).scalar_one()
             else:
                 memory_id = held.id
-                await conn.execute(_changed(memory_id, body.type, label, body.body, False, user.user_id))
+                await conn.execute(_CHANGED, _changed(memory_id, body.type, label, body.body, False, user.user_id))
             memory = await _written(conn, user, memory_id, PUT)
         except sa_exc.IntegrityError as exc:  # the checks above match the schema's; this is a backstop
             if not isinstance(exc.orig, psycopg.errors.IntegrityError):
@@ -691,7 +775,7 @@ async def delete(
             return _conflict(
                 request, f"{held.name} changed on the hub: it is at revision {held.revision}, not {if_revision}", held
             )
-        await conn.execute(_changed(memory_id, held.type, held.label, "", True, user.user_id))
+        await conn.execute(_CHANGED, _changed(memory_id, held.type, held.label, "", True, user.user_id))
         memory = await _written(conn, user, memory_id, DELETE)
     _logged(memory, user, "deleted")
     return Written(**memory.model_dump(), created=False, changed=True)
