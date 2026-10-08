@@ -1854,7 +1854,7 @@ export interface paths {
         };
         /**
          * List Notifications
-         * @description The caller's notifications, open decisions first, then newest first.
+         * @description The caller's notifications, open decisions and proposals first, then newest first.
          */
         get: operations["list_notifications_v1_me_notifications_get"];
         put?: never;
@@ -2001,6 +2001,26 @@ export interface paths {
          * @description The charter, the schedules and the night of the project's night shift.
          */
         get: operations["status_v1_projects__project__curator_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/curator/nights": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Nights
+         * @description The latest nights of the project's night shift, each with its runs, their cost and its review run.
+         */
+        get: operations["nights_v1_projects__project__curator_nights_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2962,6 +2982,33 @@ export interface components {
              */
             header: string;
         };
+        /**
+         * CuratorOverview
+         * @description Where a project's Curator stands, for Home: GET /v1/me/overview names it for each project with a charter.
+         */
+        CuratorOverview: {
+            /**
+             * State
+             * @description as GET /v1/projects/{p}/curator says it
+             * @enum {string}
+             */
+            state: "running" | "on_duty" | "idle" | "paused";
+            /**
+             * In Window
+             * @description the charter's window is open now
+             */
+            in_window: boolean;
+            /**
+             * Active Run Id
+             * @description the run of the night shift queued or held now, if any
+             */
+            active_run_id: number | null;
+            /**
+             * Open Proposals
+             * @description the project's proposals that wait for an answer, that you may read
+             */
+            open_proposals: number;
+        };
         /** CuratorStatus */
         CuratorStatus: {
             /** Project */
@@ -2978,6 +3025,17 @@ export interface components {
             night: components["schemas"]["Night"] | null;
             /** @description the project's latest review run, of any night; null before the first */
             last_review_run?: components["schemas"]["ReviewRunSummary"] | null;
+            /**
+             * State
+             * @description paused; running while a run of the night shift is queued or held; on_duty in the window with none; idle outside it; null without a charter
+             */
+            state?: ("running" | "on_duty" | "idle" | "paused") | null;
+            /**
+             * Open Proposals
+             * @description the project's proposals that wait for an answer, that you may read
+             * @default 0
+             */
+            open_proposals: number;
         };
         /** DayCount */
         DayCount: {
@@ -4302,6 +4360,83 @@ export interface components {
              */
             created_at: string;
         };
+        /** NightList */
+        NightList: {
+            /** Project */
+            project: string;
+            /**
+             * Nights
+             * @description the latest night first
+             */
+            nights: components["schemas"]["NightSummary"][];
+            /**
+             * Budget Usd
+             * @description the night's budget of the newest charter; null without one
+             */
+            budget_usd: number | null;
+            /**
+             * Max Runs
+             * @description the night's runs of the newest charter; null without one
+             */
+            max_runs: number | null;
+        };
+        /** NightReview */
+        NightReview: {
+            /** Id */
+            id: number;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "queued" | "leased" | "running" | "interactive" | "verifying" | "waiting" | "review" | "parked" | "done" | "failed" | "lost" | "cancelled";
+            /** Findings */
+            findings: number;
+            /** Proposals */
+            proposals: number;
+        };
+        /**
+         * NightSummary
+         * @description One night of a project's night shift: what it queued, how those runs ended, what they cost, and its review.
+         */
+        NightSummary: {
+            /**
+             * Night
+             * Format: date
+             * @description the local date its window opened on
+             */
+            night: string;
+            /**
+             * Runs
+             * @description the runs the night shift queued that night, its review run included
+             */
+            runs: number;
+            /** Done */
+            done: number;
+            /**
+             * Failed
+             * @description failed or lost
+             */
+            failed: number;
+            /** Cancelled */
+            cancelled: number;
+            /**
+             * Active
+             * @description not ended yet
+             */
+            active: number;
+            /**
+             * Cost Usd
+             * @description what they cost, from their usage, each agent session once
+             */
+            cost_usd: number;
+            /** @description the night's review run, if one was queued */
+            review_run: components["schemas"]["NightReview"] | null;
+            /**
+             * Figures
+             * @description curator.collect counted the night's figures
+             */
+            figures: boolean;
+        };
         /** NodeDetail */
         NodeDetail: {
             graph: components["schemas"]["GraphRef"];
@@ -4450,7 +4585,7 @@ export interface components {
         NotificationList: {
             /**
              * Notifications
-             * @description open decisions first, then newest first
+             * @description open decisions and proposals first, then newest first
              */
             notifications: components["schemas"]["Notification"][];
             /**
@@ -4622,6 +4757,8 @@ export interface components {
              * @description open decisions of the plans you can see, yours or not
              */
             open_decisions: number;
+            /** @description where the project's Curator stands; null while the project has no charter */
+            curator?: components["schemas"]["CuratorOverview"] | null;
         };
         /** OverviewRun */
         OverviewRun: {
@@ -5300,6 +5437,28 @@ export interface components {
              */
             defer_days?: number | null;
         };
+        /**
+         * ProposalCounts
+         * @description How many proposals each value of a filter would list, the other filters applied: every state, tier and lens
+         *     named, with 0 where none is.
+         */
+        ProposalCounts: {
+            /** State */
+            state: {
+                [key: string]: number;
+            };
+            /**
+             * Tier
+             * @description by tier, "0" to "3"
+             */
+            tier: {
+                [key: string]: number;
+            };
+            /** Lens */
+            lens: {
+                [key: string]: number;
+            };
+        };
         /** ProposalIn */
         ProposalIn: {
             /**
@@ -5353,6 +5512,8 @@ export interface components {
             limit: number;
             /** Offset */
             offset: number;
+            /** @description for the list's filters: what each of their values holds */
+            counts?: components["schemas"]["ProposalCounts"] | null;
         };
         /** ProposalSummary */
         ProposalSummary: {
@@ -14440,6 +14601,67 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CuratorStatus"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    nights_v1_projects__project__curator_nights_get: {
+        parameters: {
+            query?: {
+                /** @description the latest nights */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NightList"];
                 };
             };
             /** @description Unauthorized */

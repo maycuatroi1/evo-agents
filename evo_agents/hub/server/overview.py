@@ -15,8 +15,8 @@ use the indexes the runs, decisions and plans already have.
 - recent_runs: the MAX_RECENT runs that ended last, in any end state;
 - open_decisions: at most MAX_DECISIONS open decisions, the caller's own first, the oldest first, each with when its
   run parks for want of an answer (EVO_HUB_DECISION_WAIT_SECONDS after it started waiting);
-- projects: each with the caller's role and max level, its repos, its active plans the caller sees and the open
-  decisions of those plans.
+- projects: each with the caller's role and max level, its repos, its active plans the caller sees, the open
+  decisions of those plans, and where its Curator stands when it has a charter (``curator.curator_overview``).
 """
 
 from __future__ import annotations
@@ -32,6 +32,7 @@ from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import runs, tables
+from evo_agents.hub.server.curator import CuratorOverview, curator_overview
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.plans import step_counts
 from evo_agents.hub.server.projects import ProjectAccess, project_access
@@ -117,6 +118,9 @@ class OverviewProject(BaseModel):
     repos: int = Field(description="the repos registered for the project")
     active_plans: int = Field(description="its plans in the active area that you can see")
     open_decisions: int = Field(description="open decisions of the plans you can see, yours or not")
+    curator: CuratorOverview | None = Field(
+        None, description="where the project's Curator stands; null while the project has no charter"
+    )
 
 
 class Overview(BaseModel):
@@ -377,6 +381,7 @@ async def overview(request: Request, user: CurrentUser) -> Overview:
         decision_counts = (await conn.execute(_decision_counts(visible, user.user_id))).all()
         granted = [access.project_id for access in accesses]
         project_counts = (await conn.execute(_project_counts(visible, granted))).all()
+        curators = await curator_overview(conn, accesses)
 
     by_state: dict[str, int] = {}
     done_on: dict[date, int] = {}
@@ -403,6 +408,7 @@ async def overview(request: Request, user: CurrentUser) -> Overview:
             repos=repos_and_plans.get(access.project_id, (0, 0))[0],
             active_plans=repos_and_plans.get(access.project_id, (0, 0))[1],
             open_decisions=open_by_project.get(access.project_id, 0),
+            curator=curators.get(access.project_id),
         )
         for access in accesses
     ]

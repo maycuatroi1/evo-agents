@@ -28,7 +28,8 @@ alone. A review run that fails sends its owner the notice run_failed (``review_e
 
 Readers of the project read the findings and proposals whose label their grant reaches through the sink X-Evo-Sink
 names (else the project's hub sink): GET /v1/projects/{p}/curator/findings and .../findings/{id},
-.../curator/proposals (filtered by state, tier, lens and run, newest first) and .../proposals/{id}, and the night's
+.../curator/proposals (filtered by state, tier, lens and run, newest first, with what each value of those filters
+would list) and .../proposals/{id}, and the night's
 figures with GET .../curator/figures (the latest night, or ``?night``). POST .../curator/proposals/{id}/answer is for
 the project's admins: accept, reject, or defer (for ``defer_days``, DEFAULT_DEFER_DAYS by default), with a note, while
 the proposal is open or deferred (409 otherwise); it reads the proposal's notifications and is audited as
@@ -40,6 +41,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+from collections import Counter
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from typing import Annotated, Literal
@@ -220,11 +222,21 @@ class Proposal(ProposalSummary):
     note: str | None = Field(description="the owner's note with the answer")
 
 
+class ProposalCounts(BaseModel):
+    """How many proposals each value of a filter would list, the other filters applied: every state, tier and lens
+    named, with 0 where none is."""
+
+    state: dict[str, int]
+    tier: dict[str, int] = Field(description='by tier, "0" to "3"')
+    lens: dict[str, int]
+
+
 class ProposalList(BaseModel):
     proposals: list[ProposalSummary] = Field(description="newest first")
     total: int
     limit: int
     offset: int
+    counts: ProposalCounts | None = Field(None, description="for the list's filters: what each of their values holds")
 
 
 class ProposalAnswer(BaseModel):
@@ -786,18 +798,33 @@ async def list_proposals(
         access = await project_access(conn, user, project)
         _reader(access)
         query = _proposals().where(p.c.project_id == access.project_id)
-        if state:
-            query = query.where(p.c.state.in_(list(dict.fromkeys(state))))
-        if tier:
-            query = query.where(p.c.tier.in_(list(dict.fromkeys(tier))))
-        if lens is not None:
-            query = query.where(p.c.lens == lens)
         if run_id is not None:
             query = query.where(p.c.run_id == run_id)
         rows = (await conn.execute(query.order_by(p.c.id.desc()).limit(MAX_OFFSET))).all()
     through = plan_routes._sink(access, sink)
-    visible = [_summary(access.name, row) for row in rows if access.visible(row.label, through)]
-    return ProposalList(proposals=visible[offset : offset + limit], total=len(visible), limit=limit, offset=offset)
+    readable = [row for row in rows if access.visible(row.label, through)]
+    states, tiers_asked = set(state), set(tier)
+
+    def kept(row, but: str | None = None) -> bool:
+        return (
+            (but == "state" or not states or row.state in states)
+            and (but == "tier" or not tiers_asked or row.tier in tiers_asked)
+            and (but == "lens" or lens is None or row.lens == lens)
+        )
+
+    def counted(facet: str, values) -> dict[str, int]:
+        found = Counter(str(getattr(row, facet)) for row in readable if kept(row, facet))
+        return {str(value): found.get(str(value), 0) for value in values}
+
+    counts = ProposalCounts(
+        state=counted("state", review.PROPOSAL_STATES),
+        tier=counted("tier", range(4)),
+        lens=counted("lens", review.LENSES),
+    )
+    visible = [_summary(access.name, row) for row in readable if kept(row)]
+    return ProposalList(
+        proposals=visible[offset : offset + limit], total=len(visible), limit=limit, offset=offset, counts=counts
+    )
 
 
 async def _readable_proposal(conn, access: ProjectAccess, proposal_id: int, sink: str | None, *, lock: bool = False):
