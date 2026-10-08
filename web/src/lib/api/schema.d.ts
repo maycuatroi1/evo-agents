@@ -2295,7 +2295,7 @@ export interface paths {
         /**
          * Judge Inputs
          * @description What the judge run this worker holds reads: its change, its proposal, the plan's verify commands, the
-         *     charter's protected paths and the project's hidden checks.
+         *     charter's protected paths and the project's hidden checks; with the run's own key.
          */
         get: operations["judge_inputs_v1_worker_runs__run_id__judge_get"];
         put?: never;
@@ -2317,8 +2317,8 @@ export interface paths {
         put?: never;
         /**
          * Record Verdict
-         * @description The verdict of the judge run this worker holds: the hub passes the change only as ``judge.final_verdict``
-         *     says.
+         * @description The verdict of the judge run this worker holds, with the run's own key: the hub passes the change only as
+         *     ``judge.final_verdict`` says, and the paths the diff touches give its proposal its tier again.
          */
         post: operations["record_verdict_v1_worker_runs__run_id__verdict_post"];
         delete?: never;
@@ -3461,6 +3461,11 @@ export interface components {
             head_sha?: string | null;
             /** Pr Url */
             pr_url?: string | null;
+            /**
+             * Judge Key
+             * @description a judge run's own key, for GET .../judge and POST .../verdict (X-Evo-Judge-Key); the daemon keeps it in memory alone, never in a file, an environment or a log line
+             */
+            judge_key?: string | null;
         };
         /** CuratorStatus */
         CuratorStatus: {
@@ -7684,7 +7689,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "assert_removed" | "test_removed" | "skip_added" | "threshold_changed" | "verify_changed" | "ci_changed" | "lint_config_changed" | "lint_suppressed" | "eq_overridden" | "exit_in_test" | "protected_path" | "diff_unreadable";
+            kind: "assert_removed" | "test_removed" | "skip_added" | "threshold_changed" | "verify_changed" | "ci_changed" | "lint_config_changed" | "lint_suppressed" | "eq_overridden" | "exit_in_test" | "protected_path" | "diff_unreadable" | "expected_changed" | "golden_changed" | "assert_caught";
             /** Path */
             path: string;
             /** Line */
@@ -8381,6 +8386,11 @@ export interface components {
             hidden?: components["schemas"]["HiddenResult"][];
             /** Signs */
             signs?: components["schemas"]["Sign"][];
+            /**
+             * Paths
+             * @description every path the diff judged touches; they give the proposal its tier again, which only raises it
+             */
+            paths?: string[];
         };
         /** VerifyResult */
         VerifyResult: {
@@ -16420,7 +16430,10 @@ export interface operations {
     judge_inputs_v1_worker_runs__run_id__judge_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description the judge run's own key, which its claim handed the daemon; the worker token alone is refused */
+                "X-Evo-Judge-Key"?: string | null;
+            };
             path: {
                 run_id: number;
             };
@@ -16487,7 +16500,10 @@ export interface operations {
     record_verdict_v1_worker_runs__run_id__verdict_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description the judge run's own key, which its claim handed the daemon; the worker token alone is refused */
+                "X-Evo-Judge-Key"?: string | null;
+            };
             path: {
                 run_id: number;
             };
