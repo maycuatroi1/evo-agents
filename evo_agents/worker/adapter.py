@@ -19,7 +19,11 @@ adapter in this order:
    when the turn ends); ``await adapter.stop_at_turn_boundary()``, which lets the turn finish and then ends the
    agent; ``await adapter.interrupt()``, which stops the agent now, its tools included.
 5. ``outcome = await adapter.wait()`` once the events have ended: whether the last turn completed, the error when it
-   did not, usage, and the agent's last message.
+   did not, usage, the agent's last message, and the cap of the run's budget that stopped it, if one did.
+
+A run the night shift queued has a budget (``context.run["budget"]``, ``evo_agents.hub.curator``): Claude Code stops at
+its cost cap and its turns, and every adapter stops its agent at the time cap (``QueueAdapter``), counting what the run
+spent before this agent started (``context.spent_usd``, ``context.spent_seconds``); the outcome then names the cap.
 
 ``session_id`` is the runtime's id of the agent's session once it is known (from the start for a runtime that takes
 an id, from its first event otherwise); the daemon reports it, and a later takeover resumes that session.
@@ -97,6 +101,7 @@ MODELS_TIMEOUT = 30.0  # seconds for a runtime's command that lists its models
 # The models of one runtime as JSON: the three stay well within the hub's bound on a heartbeat's runtimes and
 # checkouts (64 KiB), which refuses the whole heartbeat when it is over.
 MAX_MODELS_BYTES = 8 * 1024
+CAPS = ("cost", "turns", "time")  # the caps of a run's budget that stop an agent (Outcome.cap)
 
 
 def _line(text: str, limit: int) -> str:
@@ -176,6 +181,10 @@ class RunContext:
     env: Mapping[str, str]  # the agent's environment
     resume_session: str | None = None  # a session of this runtime to go on with, instead of a new one
     leased: frozenset[str] = frozenset()  # the variables of ``env`` the run's leases set (``credentials``)
+    # What the run spent of its budget (``run["budget"]``, a run the night shift queued) before this agent starts: the
+    # cost of the session it goes on in, and the agent time it used.
+    spent_usd: float = 0.0
+    spent_seconds: float = 0.0
 
     @property
     def run_id(self) -> int:
@@ -194,6 +203,7 @@ class Outcome:
     error: str | None = None  # why not, in a sentence
     usage: dict | None = None  # tokens and cost as the runtime counts them, for the run's record
     summary: str | None = None  # the agent's last message
+    cap: str | None = None  # the cap of the run's budget that stopped it: cost, turns or time (CAPS)
 
 
 class Adapter(abc.ABC):

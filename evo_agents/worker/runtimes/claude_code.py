@@ -49,6 +49,11 @@ here.
   ``options.env``), and the daemon notes it in the run's log (``environment_notes``). Such a token only calls the
   model and cannot open a Remote Control session, so the terminal UI then starts without ``--remote-control``
   (``evo_agents.worker.interactive``).
+- A run the night shift queued has a budget (``evo_agents.hub.curator``): ``max_budget_usd`` is what is left of its
+  ``max_usd`` once the session it goes on in has cost ``context.spent_usd`` (the CLI counts only the spend of its own
+  process against it, while its ``total_cost_usd`` goes on from the total the session's transcript saved), and
+  ``max_turns`` its ``max_turns``. A ``result`` of ``error_max_budget_usd`` or ``error_max_turns`` ends the run with
+  an outcome that names the cap, ``cost`` or ``turns``.
 - The model is the run's ``model`` (``options.model``, the CLI's ``--model``), else ``EVO_WORKER_CLAUDE_CODE_MODEL``,
   else Claude Code's own choice. Claude Code has no command that lists its models; for the heartbeat, ``models``
   gives the aliases its ``--model`` help names (``'opus'``, ``'sonnet'`` and the like), and a run may name any model
@@ -72,7 +77,7 @@ import tempfile
 import uuid
 from pathlib import Path
 
-from evo_agents.hub import runs
+from evo_agents.hub import curator, runs
 from evo_agents.worker.adapter import AgentEvent, Detection, Outcome, RunContext, command_output
 from evo_agents.worker.runtimes.common import (
     HEADLESS_NOTE,
@@ -128,6 +133,8 @@ FOLLOW_UP_AFTER = 15.0
 # Seconds the CLI has to open a turn after one in which a background command ended: its notification may have reached
 # the agent in that turn, or wait for the next.
 TURN_GRACE = 5.0
+# The results of a session the run's budget stopped, and the cap each one names (Outcome.cap).
+CAP_RESULTS = {"error_max_budget_usd": "cost", "error_max_turns": "turns"}
 # The statuses of a task that has ended: task_notification says stopped, task_updated killed, for the same end.
 TERMINAL_TASK = frozenset({"completed", "failed", "stopped", "killed"})
 # The id of a background command in the text of its Bash result.
@@ -468,6 +475,12 @@ class ClaudeCodeAdapter(QueueAdapter):
             value = run_setting(self.context, self.runtime, key)
             if value:
                 settings[key] = value
+        if self.budget is not None:
+            usd = curator.usd_left(self.budget, self.context.spent_usd)
+            if usd is not None:
+                settings["max_budget_usd"] = usd
+            if self.budget.get("max_turns"):
+                settings["max_turns"] = int(self.budget["max_turns"])
         return ClaudeAgentOptions(**settings)
 
     async def _input(self):
@@ -529,10 +542,24 @@ class ClaudeCodeAdapter(QueueAdapter):
         summary = last.result.strip() if isinstance(last.result, str) and last.result.strip() else None
         if self.interrupted:
             return Outcome(False, "interrupted", usage, summary)
+        cap = CAP_RESULTS.get(last.subtype)
+        if cap is not None:
+            return Outcome(False, cut(self._cap_error(cap, last)), usage, summary, cap=cap)
         if last.is_error or last.subtype != "success":
             detail = last.result or ", ".join(str(error) for error in last.errors or []) or last.stop_reason
             return Outcome(False, cut(f"claude-code ended its turn with {last.subtype}: {detail}"), usage, summary)
         return Outcome(True, None, usage, summary)
+
+    def _cap_error(self, cap: str, last) -> str:
+        """Why the run stopped, as its log and its error say it, for a result of CAP_RESULTS."""
+        detail = "; ".join(str(error) for error in last.errors or []) or last.subtype
+        budget = self.budget or {}
+        if cap == "cost":
+            limit = curator.money(budget["max_usd"]) if budget.get("max_usd") is not None else "its limit"
+            spent = curator.money(last.total_cost_usd) if last.total_cost_usd is not None else "an unknown amount"
+            return f"claude-code stopped at the run's cost cap of {limit}: the session cost {spent} ({detail})"
+        turns = int(budget["max_turns"]) if budget.get("max_turns") else "its"
+        return f"claude-code stopped at the run's cap of {turns} turns ({detail})"
 
     # The end of a turn, and what the session waits for after it
 

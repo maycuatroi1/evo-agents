@@ -16,7 +16,8 @@ EVO_FAKE_SCENARIOS names a JSON file ``{"<step key>": [action, ...]}``; a run fo
 - ``{"wait_for": "/abs/path"}``: wait until that file exists (an interrupt ends the wait).
 - ``{"sleep": seconds}``.
 - ``{"result": {...}}``: write .evo-run/result.json.
-- ``{"fail": "why"}``: end the turn as failed.
+- ``{"fail": "why"}``: end the turn as failed; with ``"cap": "cost"`` (or turns, time), as the run's budget stopped it.
+- ``{"usage": {...}}``: the usage the turn ends with, such as Claude Code's ``total_cost_usd``.
 - ``{"cli": [args]}``: run ``evo-agents worker ARGS`` as the agent would, in its directory and environment.
 - ``{"sh": "command"}``: run a shell command there.
 - ``{"spawn": [argv]}``: start a process in a session of its own, as a runtime is started, and name it as the leader
@@ -29,7 +30,8 @@ with a session (after a handback, or a plan run resumed after it was parked) fol
 scenarios have it. Each ``cli`` and ``sh`` action is written as a JSON line ``{"run", "turn", "cmd", "exit",
 "stdout", "stderr"}`` to the file EVO_FAKE_CLI names.
 ``stop_at_turn_boundary`` ends a ``wait_for`` or ``sleep`` as a completed turn, as a takeover would. Each start is
-written as a JSON line ``{"run", "session", "resume", "prompt", "cwd", "leased"}`` to the file EVO_FAKE_STARTS names.
+written as a JSON line ``{"run", "session", "resume", "prompt", "cwd", "leased", "budget", "spent_usd",
+"spent_seconds"}`` to the file EVO_FAKE_STARTS names.
 
 The messages ``send`` hands the agent are written, one per line, to the file EVO_FAKE_MESSAGES names.
 ``environment_notes`` names the variables the run's leases set, but for git's configuration, so the daemon's tests see
@@ -277,6 +279,9 @@ class FakeAdapter(Adapter):
                     "prompt": context.prompt,
                     "cwd": str(context.worktree),
                     "leased": sorted(context.leased),
+                    "budget": context.run.get("budget"),
+                    "spent_usd": context.spent_usd,
+                    "spent_seconds": context.spent_seconds,
                 }
                 handle.write(json.dumps(start) + "\n")
 
@@ -408,8 +413,10 @@ class FakeAdapter(Adapter):
                     path.parent.mkdir(exist_ok=True)
                     path.write_text(json.dumps(action["result"]), encoding="utf-8")
                 elif "fail" in action:
-                    self._outcome = Outcome(False, action["fail"])
+                    self._outcome = Outcome(False, action["fail"], usage, cap=action.get("cap"))
                     return
+                elif "usage" in action:
+                    usage = action["usage"]
                 elif "cli" in action:
                     await self._command([sys.executable, "-m", "evo_agents", "worker", *action["cli"]], action["cli"])
                 elif "sh" in action:
