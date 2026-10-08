@@ -242,6 +242,10 @@ Credentials card.
   fails to authenticate.
 - **Environment.** `env` leases go into the agent's environment. An interactive pane does not write them into its
   script; it runs `eval "$(evo-agents worker env --run N)"`, which asks the socket and prints them as `export` lines.
+  The socket of a run of the Curator answers that ask only with the ticket of a pane the daemon opened for a takeover
+  (`EVO_ENV_TICKET`, set on that one command of the pane's script, good for one answer within 2 minutes), so code the
+  run does not trust, such as a verify command or a hidden check of a judge run, gets none of its `env` leases, a
+  subscription token among them, from the socket.
 - **Umask.** The service starts the daemon, and so its agents, with umask 077.
 - **No lease, machine's own.** An origin in `missing` gets a system event "no leased credential for {origin}:
   {reason}; git uses this machine's own", and git falls back to the machine's credentials, as before 0.5.0. A
@@ -328,8 +332,8 @@ medium findings as `warning:` lines; they never stop the install.
   `~/.evo/worker/token`, and the socket of every run (`runs/<id>/cred.sock`) answers any process of that user. With
   them an agent, or an instruction injected into it, can:
   - get the leases of every other run the worker holds at the time, of any of its projects: `evo-agents worker env
-    --run N` and `worker git-credential --run N` ask that run's socket, and `POST /v1/worker/runs/{N}/credentials`
-    asks the hub;
+    --run N` and `worker git-credential --run N` ask that run's socket (the socket of a run of the Curator answers
+    neither without a ticket of the daemon's), and `POST /v1/worker/runs/{N}/credentials` asks the hub;
   - reach the hub's MCP as another run the worker holds (`EVO_RUN_ID=N evo-agents hub mcp`), in that run's project;
   - report, end or give back the runs of the worker, and claim a queued run of any project the worker serves (`POST
     /v1/worker/claim`) while a slot is free, then lease that run's credentials and read its prompt and plan.
@@ -354,8 +358,17 @@ medium findings as `warning:` lines; they never stop the install.
   agent makes on its own with the owner's own credentials would get past the ruleset, since the owner bypasses it: keep
   none on that machine. The daemon pushes a Builder's branch only with a lease that covers its origin, and the agent of
   a run of the Curator never gets the lease: the run's socket answers only a git command of the daemon's own, with the
-  ticket of that command. [Inference] A process of the same user that reads the environment of such a git command
-  while it runs could take its ticket; a separate user, or a VM per worker, closes that too.
+  ticket of that command, and gives the `env` leases only to a pane the daemon opened, with that pane's ticket, once.
+  What a process of the same user can still reach, which a separate user, or a VM per worker, closes:
+  - the ticket of a git command of the daemon, from that command's environment while it runs [Inference];
+  - the ticket of a pane, from the pane's script (mode 0700, in the run's directory, which its first line deletes)
+    between the takeover that writes it and the pane's start, or from the environment of the pane's one
+    `evo-agents worker env`; a ticket taken first leaves the pane without the `env` leases;
+  - the `env` leases in the agent's own environment while the agent runs, as the operating system shows a process's
+    environment to its user (`/proc/<pid>/environ` on Linux). A judge run runs the code it judges before its agent
+    starts and kills what each command left once it ends, so that code reads the agent's environment only if one of
+    its processes outlives that kill;
+  - the leases in the daemon's memory, for root, as above.
 - A worker set to `web` takes no run, message or decision answer from a token, but a plan run reads its plan as the
   hub holds it now (`GET /v1/worker/runs/{id}/plan`), and a machine token of a writer of the project may still edit
   that plan (`PUT` or `PATCH .../plans/{plan}`, `evo-agents hub plan put` or `plan patch`, a step's status through

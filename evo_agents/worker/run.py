@@ -1061,7 +1061,7 @@ class Run:
                 scratch=self.daemon.home.run_dir(self.id),
                 drop=tui.drop_env,
                 withheld=self.credentials.withheld,
-                env_command=self.credentials.pane_command,
+                env_command=self.credentials.pane_command(),
             )
         except Exception as exc:
             with contextlib.suppress(Exception):

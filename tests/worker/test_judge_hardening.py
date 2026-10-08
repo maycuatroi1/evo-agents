@@ -11,6 +11,12 @@ of ``tests.worker.test_curator_runs``.
   daemon's own, with its ticket, does.
 - L1: a diff longer than the worker reads fails the change. H1: the verdict names the paths the diff touches.
 - Plan decision 14: a run of the Curator on Claude Code gets no ANTHROPIC_API_KEY and needs the subscription login.
+
+The re-review of those fixes added one, failing on what the worker did before it (evo-agents 7a32dd8):
+
+- R1: the socket of a run of the Curator answers ``op env`` (the env leases, a subscription token among them) only for
+  the ticket of a pane the daemon opened, once; code the run does not trust, a verify command or a hidden check, gets
+  nothing from it.
 """
 
 from __future__ import annotations
@@ -24,7 +30,7 @@ import pytest
 
 pytest.importorskip("aiohttp", reason="the daemon needs the worker extra, evo-ak[worker]")
 
-from evo_agents.worker import credentials, gitops
+from evo_agents.worker import credentials, gitops, interactive
 from evo_agents.worker.adapter import RunContext
 from evo_agents.worker.runtimes import claude_code
 from tests.worker import test_credentials as leases_module
@@ -258,6 +264,64 @@ def test_curator_agent_gets_no_push_credential_and_the_daemons_git_gets_it_with_
     )
     assert [leases_module.answered(done.stdout).get("password") for done in as_daemon] == [gitlab, app]
     assert late == {}, "a ticket counts while its command runs, never after"
+
+
+@pytest.mark.skipif(not leases_module.WORKER_EXTRA, reason="the daemon needs the worker extra, evo-ak[worker]")
+def test_curator_socket_answers_op_env_only_for_its_panes_ticket_once(leases_machine, monkeypatch):
+    machine = leases_machine  # noqa: F811 (test_credentials's machine, not the daemon's)
+    oauth = leases_module.sample("sk-ant-oat01-")
+    hub = leases_module.StubHub(
+        {"leases": [leases_module.env_lease(1, "CLAUDE_CODE_OAUTH_TOKEN", oauth)], "missing": []}
+    )
+    command = [sys.executable, "-m", "evo_agents", "worker"]
+    out = machine.tmp / "pane-saw"
+    worktree = machine.home / "ws" / "repo"
+    worktree.mkdir(parents=True)
+
+    async def go():
+        leases = machine.leases()
+        leases.guarded = True  # a run of the Curator
+        await leases.take(hub, {"alpha": ["https://github.com/maycuatroi1/evo-agents.git"]})
+        try:
+            direct = await asyncio.to_thread(credentials.ask, machine.worker, leases_module.RUN, {"op": "env"})
+            printed = await leases_module.run([*command, "env", "--run", str(leases_module.RUN)], machine.env)
+            pane_command = leases.pane_command()
+            script = interactive.write_script(
+                machine.state / "runs" / str(leases_module.RUN) / "evo-run-7.sh",
+                ["/bin/sh", "-c", f'printf %s "$CLAUDE_CODE_OAUTH_TOKEN" > {out}'],
+                {**machine.env, "EVO_RUN_ID": str(leases_module.RUN)},
+                worktree,
+                withheld=leases.withheld,
+                env_command=pane_command,
+            )
+            text = script.read_text(encoding="utf-8")
+            pane = await leases_module.run(
+                ["/bin/sh", str(script)], {"PATH": machine.env["PATH"], "HOME": str(machine.home)}
+            )
+            ticket = pane_command.split()[0].partition("=")[2]
+            replayed = await asyncio.to_thread(
+                credentials.ask, machine.worker, leases_module.RUN, {"op": "env", "ticket": ticket}
+            )
+            monkeypatch.setattr(credentials, "PANE_TICKET_SECONDS", 0.0)
+            stale = leases.pane_command().split()[0].partition("=")[2]
+            expired = await asyncio.to_thread(
+                credentials.ask, machine.worker, leases_module.RUN, {"op": "env", "ticket": stale}
+            )
+        finally:
+            await leases.release()
+        return direct, printed, pane_command, text, pane, replayed, expired
+
+    direct, printed, pane_command, text, pane, replayed, expired = asyncio.run(go())
+    assert direct == {}, "the socket of a run of the Curator answers no op env without a ticket of its pane"
+    assert printed.returncode == 1 and oauth not in printed.stdout, "nor does `evo-agents worker env` without one"
+    assert pane_command.startswith(f"{credentials.ENV_TICKET_VARIABLE}="), pane_command
+    assert oauth not in text, "the pane's script holds the ticket, never the value"
+    assert pane.returncode == 0, pane.stderr
+    assert out.read_text(encoding="utf-8") == oauth, "the pane the daemon opened got the value with its ticket"
+    out.unlink()
+    assert replayed == {}, "a pane's ticket answers once"
+    assert expired == {}, "and only within PANE_TICKET_SECONDS"
+    assert machine.files_holding(oauth) == []
 
 
 # Plan decision 14: the Claude subscription login alone

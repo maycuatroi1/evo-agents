@@ -1068,7 +1068,8 @@ and the hub sends its owner the notice `run_failed`. The agent of a run of the C
 on GitHub or GitLab: its environment gets the run's env leases and git configuration that empties the list of
 credential helpers, never the run's helper, and the run's socket answers a git credential only to a git command of the
 daemon's own, which carries a ticket valid while it runs (with git's hooks and fsmonitor off and https the one
-protocol). The daemon alone pushes a Builder's branch `curator/...`, never a default branch whatever its plan says
+protocol), and the run's `env` leases (`evo-agents worker env`) only to the pane the daemon opens for a takeover, with
+that pane's ticket, once (`docs/credentials.md`). The daemon alone pushes a Builder's branch `curator/...`, never a default branch whatever its plan says
 (`gitops.check_push`, kind `curator`): when its agent reports a step done, `evo-agents worker step` commits and asks
 the daemon, through the run's socket, to push; the rest is pushed at the run's end. It pushes to a forge only with a
 lease that covers the origin, never with the machine's own credentials, and to GitLab with the push options that open a
