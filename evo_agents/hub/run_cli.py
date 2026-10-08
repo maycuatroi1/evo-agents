@@ -158,8 +158,11 @@ def _worker_id(hub, login: str, worker: str) -> int:
 
 
 def _step(run: dict) -> str:
-    """What a run works on: ``step 2 (Title) of plan P``, or ``plan P (Title)`` for a plan run."""
+    """What a run works on: ``step 2 (Title) of plan P``, ``plan P (Title)`` for a plan run, or ``review (Title)`` for
+    a review run, which works on no plan."""
     title = f" ({run['title']})" if run.get("title") else ""
+    if run.get("kind") == "review":
+        return f"review{title}"
     if run.get("kind") == "plan":
         return f"plan {run['plan_id']}{title}"
     return f"step {run['step_key']}{title} of plan {run['plan_id']}"
@@ -506,15 +509,21 @@ def cmd_list(args) -> int:
 
 def _describe(run: dict) -> list[tuple[str, str]]:
     """The fields of a run that say something, as (label, text) pairs."""
-    plan_run = run["kind"] == "plan"
+    plan_run = run["kind"] in ("plan", "review")  # a review run has repos too, and no step
     lines = [("state", f"{run['state']}, attempt {run['attempt']} of {run['max_attempts']}")]
-    if plan_run:
+    if run["kind"] == "review":
+        lines.append(("kind", "review run: the Curator reads the project and proposes changes; it pushes nothing"))
+        if run["title"]:
+            lines.append(("title", run["title"]))
+        lines.append(("project", run["project"]))
+    elif plan_run:
         lines.append(("kind", "plan run: every step of the plan not done yet, in one session"))
         if run["title"]:
             lines.append(("title", run["title"]))
     else:
         lines.append(("step", f"{run['step_key']}" + (f": {run['title']}" if run["title"] else "")))
-    lines.append(("plan", f"{run['plan_id']} of project {run['project']}, revision {run['plan_revision']}"))
+    if run["kind"] != "review":
+        lines.append(("plan", f"{run['plan_id']} of project {run['project']}, revision {run['plan_revision']}"))
     commit = f", commit {run['commit_sha'][:12]}" if run["commit_sha"] else ""
     if plan_run:
         lines.append(("repos", (_repos(run) or "none") + commit))

@@ -182,9 +182,11 @@ export function RunDetails({ run, viewer }: { run: Run; viewer: RunViewer | null
             <span className="tabular-nums">{duration(timing.durationMs)}</span>
           </Fact>
         ) : null}
-        <Fact label={t("revision")}>
-          <Identifier value={t("revisionValue", { revision: run.plan_revision })} />
-        </Fact>
+        {run.plan_revision !== null ? (
+          <Fact label={t("revision")}>
+            <Identifier value={t("revisionValue", { revision: run.plan_revision })} />
+          </Fact>
+        ) : null}
       </dl>
     </Card>
   );

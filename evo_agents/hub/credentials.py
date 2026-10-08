@@ -7,7 +7,7 @@ environment as ``env_var``; kind ``git`` answers git's credential requests for o
 ``username`` and the value as password. A secret is bound to projects (and, optionally, to workers); a run of one of
 those projects, on one of those workers, gets a lease of it. The hub also leases tokens it makes itself: provider
 ``github-app`` is an installation token of the hub's GitHub App, for the run's repos on github.com only, that lives an
-hour and is revoked when the run ends.
+hour and is revoked when the run ends; a review run's reads only (``github_permissions``).
 
 Origins are compared in one form: ``normalize_origin`` turns ``git@host:path``, ``ssh://git@host/path`` and
 ``https://host/path.git`` into ``https://host/path``, so a secret whose url_prefix is https also covers a repo whose
@@ -36,6 +36,15 @@ DENIED_ENV_PREFIXES = ("EVO_", "GIT_", "LD_", "DYLD_", "PYTHON")
 
 GITHUB_HOST = "github.com"
 GITHUB_PERMISSIONS = {"contents": "write", "metadata": "read"}  # all an installation token of a run may do
+GITHUB_READ_PERMISSIONS = {"contents": "read", "metadata": "read"}  # all the token of a review run may do: read
+READ_ONLY_KINDS = ("review",)  # the kinds of run whose GitHub token reads only (runs.RUN_KINDS)
+
+
+def github_permissions(run_kind: str) -> dict[str, str]:
+    """What the GitHub token of a run of ``run_kind`` may do: read only for a review run, which pushes nothing."""
+    return dict(GITHUB_READ_PERMISSIONS if run_kind in READ_ONLY_KINDS else GITHUB_PERMISSIONS)
+
+
 GITHUB_TOKEN_REFRESH_SECONDS = 600  # the daemon asks again for a GitHub token with less than this left
 
 MAX_SECRET_BYTES = 16384  # one secret's value, as UTF-8

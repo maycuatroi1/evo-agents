@@ -384,7 +384,9 @@ runtime as available (a run asking for `any` takes the first of `claude-code`, `
 checkout of the repo, the run is pinned to no other worker, the run was dispatched from a web session when the
 worker's `dispatch_from` is `web`, the worker holds fewer runs than its slots, and it is neither draining nor revoked.
 A plan run also needs a daemon of 0.4.0 or later, as the worker's `agent_version` says:
-an older daemon would read it as a run of one step without a repo and fail it. The oldest such run is leased for 300 seconds (`EVO_HUB_RUN_LEASE_SECONDS`, which
+an older daemon would read it as a run of one step without a repo and fail it. A review run (kind `review`, the
+Curator's, see [A review run on the machine](#a-review-run-on-the-machine)) needs a checkout of every repo in its
+`repos` and a daemon whose last heartbeat listed `review` in `run_kinds`. The oldest such run is leased for 300 seconds (`EVO_HUB_RUN_LEASE_SECONDS`, which
 tests shorten). The answer is `{"run": {...}}` with the
 id, project, plan, step key and title, plan revision, attempt, max attempts, parent run, runtime, mode, approval,
 timeout in minutes, repo, branch, lease expiry and the prompt (built from the plan revision the run was dispatched
@@ -411,7 +413,8 @@ it holds:
   "checkouts": {"evo-agents/evo-agents": {"path": "/Users/me/github/evo-agents", "branch": "main"}},
   "free_slots": 1,
   "runs": [12],
-  "agent_version": "0.3.0"
+  "agent_version": "0.3.0",
+  "run_kinds": ["step", "plan", "review"]
 }
 ```
 
@@ -424,7 +427,8 @@ them for a dispatch; it is left out (null) otherwise, and a run's `model` is nev
 the path required. The hub keeps both as sent, every key present (a missing one is null), and `GET /v1/workers/{id}`
 shows them in that shape. `free_slots` is what the daemon counts free, at most the worker's slots; the hub shows it,
 and counts the runs a worker holds against its slots itself. `agent_version` is optional and replaces the version
-the worker registered with.
+the worker registered with. `run_kinds`, optional, lists the kinds of run the daemon runs; the hub keeps those it
+knows, and a heartbeat without it says the daemon runs none of the kinds that need it (a review run).
 
 The hub records the heartbeat, extends the lease of each run named that the worker still holds by 300 seconds (the
 same `EVO_HUB_RUN_LEASE_SECONDS`), and answers with control:
@@ -1000,6 +1004,29 @@ hands it no run.
    run ends `done` with the summary and the diffstat of every repo; the log and the diffs of every repo (each under
    `a/<repo>/`) are uploaded as one `run-log` and one `run-diff`, and each worktree on the plan's branch leaves it. A
    failed run pushes nothing at its end; what the steps pushed stays.
+
+### A review run on the machine
+
+A review run (kind `review`) is the Curator's Reviewer of one night of a project (`docs/hub.md`, "The Curator's
+review"). The daemon takes its leases for all its repos (its GitHub token reads only), and in the directory
+`~/.evo/worker/worktrees/<project>-<run>` makes a worktree of each repo detached at the commit origin's default branch
+has (the remote's HEAD, else the default branch the hub names, else the checkout's HEAD), on no branch. It counts what
+lives in files rather than on the hub, without any model, into `.evo-run/worktree-figures.json`: the open items of the
+reports under a `reports` directory (unchecked boxes, and the items under a heading of open work such as "Việc còn
+mở"), and the learned skills waiting for review under `skills/_pending`, each with its repo, path and line; the run's
+log says how many. The agent starts in the directory with `EVO_RUN_KIND=review` and records what it finds with two
+commands, which refuse to run outside a review run of the worker:
+
+- `evo-agents worker finding --lens LENS --title TEXT --evidence SPEC [--severity S] [--body-file FILE]`;
+- `evo-agents worker propose --lens LENS --kind KIND --title TEXT --plan-file FILE [--path REPO:PATH]
+  [--finding ID] [--evidence SPEC] [--summary-file FILE]`, which prints the tier the hub computed and why.
+
+Evidence is `session:ID[:FIELD:INDEX]`, `run:ID:SEQ` or `code:REPO:PATH[:LINE]`; the command checks code evidence
+against the run's worktree of REPO (the file, and the line) and sends the commit the worktree is at; the hub checks the
+rest. `evo-agents worker step`, `ask` and `notify` refuse inside a review run. When the agent's turns are over, the
+daemon reports `verifying` and `done` with the agent's summary from `.evo-run/result.json`: it commits and pushes
+nothing, whatever the agent did in a worktree (`gitops.check_push` refuses every push of a review run), and uploads
+the log but no diff.
 
 ### Interactive runs
 

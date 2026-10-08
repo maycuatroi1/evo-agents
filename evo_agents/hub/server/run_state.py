@@ -12,6 +12,8 @@ the hub numbers in the run's log, and then records in the plan what the move mea
 
 A plan run has no step of its own: its worker reports each step (POST /v1/worker/runs/{id}/steps/{key}, which writes
 it through ``write_step``), and the hub keeps each report as a ``system`` event of the run with a ``step_report`` key.
+A review run has no plan: its moves write none, and its end hands the owner the tier 2 proposals the day's Inbox has
+room for, and the notice ``run_failed`` when it failed (``proposals.review_ended``).
 Its moves write no step, except that a plan run that ends ``failed`` or ``cancelled`` sets back to ``pending``, with
 the same notes, the steps that it, or an earlier attempt or run it went on from, reported and that are still
 ``in_progress``. A plan run that ends ``done`` writes nothing.
@@ -249,7 +251,7 @@ class RunStep:
 
     run_id: int
     project: str
-    plan_id: str
+    plan_id: str | None  # None for a review run, which works on no plan
     step_key: str | None  # None for a plan run, whose writes name the step they are for
     dispatcher_id: int
     dispatcher: str
@@ -483,6 +485,11 @@ async def record_move(
     """Record in the plan what moving run ``run_id`` from ``old`` to ``new`` means for its step, or for the steps a
     plan run left in progress."""
     found = await run_step(conn, run_id)
+    if found.kind == "review":
+        from evo_agents.hub.server import proposals  # it reads runs through the routes that import this module
+
+        await proposals.review_ended(conn, found, old, new, reason=reason)
+        return None
     if found.kind == "plan":
         revision = await release_plan_steps(conn, found, new, reason=reason, token_id=token_id)
         await notify_plan_run_end(conn, found, old, new, reason=reason)

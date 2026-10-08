@@ -27,9 +27,12 @@ Jobs (names in ``evo_agents.hub.jobs``):
   channel's class, tried again with a backoff and failed after 5 tries (``evo_agents.hub.server.notifications``).
 - ``hub.prune_run_events``, daily: the events of runs that ended more than EVO_HUB_RUN_LOG_DAYS ago, and the sealed
   values of the GitHub tokens leased to runs that are past their end.
-- ``hub.fire_schedules``, every minute: each schedule of a project's charter that is not paused queues its next plan
-  run inside its window and within its night's budget, and cancels its queued runs outside it
-  (``evo_agents.hub.server.curator``).
+- ``hub.fire_schedules``, every minute: each schedule of a project's charter that is not paused queues its next run
+  inside its window and within its night's budget, the night's review run first, and cancels its queued runs outside
+  it (``evo_agents.hub.server.curator``).
+- ``curator.collect``, every minute: in each charter's window, the night's figures of the project, counted once
+  without any model, and its review run; and the deferred proposals whose time has passed open again
+  (``evo_agents.hub.server.collect``).
 - ``hub.prune_digests``, daily: the session digests not pushed again for 90 days
   (``evo_agents.hub.server.digests``).
 
@@ -185,6 +188,14 @@ async def fire_schedules(context: JobContext, timestamp: int | None = None) -> d
     from evo_agents.hub.server.curator import fire_schedules as fire
 
     return await fire(hub(context).engine)
+
+
+@queue.periodic(cron="* * * * *")
+@queue.task(name=jobs.CURATOR_COLLECT, pass_context=True, queueing_lock=jobs.CURATOR_COLLECT)
+async def curator_collect(context: JobContext, timestamp: int | None = None) -> dict:
+    from evo_agents.hub.server.collect import collect
+
+    return await collect(hub(context).engine)
 
 
 @queue.periodic(cron="13 4 * * *")

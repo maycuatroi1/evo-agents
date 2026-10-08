@@ -60,6 +60,7 @@ RUN_MINUTES = (10, 720)  # the agent time one run of the schedule may take
 MAX_TURNS = 10_000
 MAX_RUNS_PER_NIGHT = 100
 MAX_DECISIONS_PER_DAY = 100
+MAX_REVIEW_DAYS = 30  # the days of sessions and runs a night's figures may count
 CIRCUIT_BREAKER = (1, 10)  # failed runs in a row that stop the night shift
 BUDGET_GRACE_SECONDS = 300  # a scheduled run's timeout is its time cap plus this
 

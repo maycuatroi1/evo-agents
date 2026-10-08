@@ -13,7 +13,8 @@ project, on any of their workers or on this one, and that has not expired:
   secret for ``https://gitlab.example.org/group`` answers for ``git@gitlab.example.org:group/repo.git`` too;
 - a token of the hub's GitHub App for the origins on github.com that no git secret covers, one per installation
   (``GitHubApp.tokens``), for the repos the run's owner may push to on GitHub alone (``GitHubApp.push_refusal``): a
-  lease named ``github-app:<account>`` of kind git for ``https://github.com/<owner>``, with GITHUB_GIT_USERNAME.
+  lease named ``github-app:<account>`` of kind git for ``https://github.com/<owner>``, with GITHUB_GIT_USERNAME. The
+  token of a review run reads only (``credentials.github_permissions``): contents and metadata, read.
 
 The answer is {leases, missing}: each lease as ``evo_agents.hub.credentials.Lease.to_json`` writes it, value included,
 and for each of the run's repos whose origin nothing covers, the repo, its origin and why: no origin registered, no
@@ -74,6 +75,7 @@ from evo_agents.hub.credentials import (
     PROVIDERS,
     SECRET_KINDS,
     Lease,
+    github_permissions,
     github_repo,
     matches,
     normalize_origin,
@@ -165,7 +167,7 @@ class _Run:
     kind: str
     project_id: int
     project: str
-    plan_id: str
+    plan_id: str | None  # None for a review run
     step_key: str | None
     owner_id: int
     owner: str
@@ -307,7 +309,7 @@ async def _insert_lease(conn: AsyncConnection, **values) -> int:
 
 
 def _run_repos(kind: str, repo: str | None, repos) -> tuple[str, ...]:
-    if kind == "plan":
+    if kind != "step":  # a plan run's repos, or a review run's
         names = [entry.get("repo") for entry in repos or [] if isinstance(entry, dict)]
     else:
         names = [repo]
@@ -577,7 +579,7 @@ async def lease_credentials(request: Request, run_id: RunId, user: CurrentUser, 
             reasons = {repo: NO_APP.format(missing=unset) for repo in survey.github}
         else:
             pusher = Pusher(survey.run.owner, survey.run.owner_github_id)
-            found = await app.tokens(survey.github.values(), pusher)
+            found = await app.tokens(survey.github.values(), pusher, github_permissions(survey.run.kind))
             made = found.tokens
             for repo, (owner, name) in survey.github.items():
                 if f"{owner}/{name}" in found.missing:

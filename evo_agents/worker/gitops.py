@@ -247,6 +247,11 @@ async def add_worktree(cwd: Path, path: Path, branch: str, start: str, *, reset:
     await git(cwd, "worktree", "add", "--no-track", "-B" if reset else "-b", branch, str(path), start)
 
 
+async def add_detached_worktree(cwd: Path, path: Path, start: str) -> None:
+    """A worktree at ``path`` with HEAD detached at ``start``, on no branch: a review run's, which commits nothing."""
+    await git(cwd, "worktree", "add", "--detach", str(path), start)
+
+
 async def current_branch(cwd: Path) -> str | None:
     """The branch checked out at ``cwd``; None when HEAD is detached."""
     code, out, _ = await git(cwd, "symbolic-ref", "--quiet", "--short", "HEAD", check=False)
@@ -335,7 +340,10 @@ async def diff(cwd: Path, base: str, head: str = "HEAD", prefix: str | None = No
 def check_push(branch: str, protected: Collection[str], *, kind: str, plan_branch: str | None) -> bool:
     """Whether a push to ``branch`` goes to a default branch of the repo (one of ``protected``): False when it does
     not; True when it does and the run may push it, a plan run (``kind`` plan) whose plan names exactly that branch for
-    the repo (``plan_branch``); PushRefused otherwise, so a run of one step never pushes a default branch."""
+    the repo (``plan_branch``); PushRefused otherwise, so a run of one step never pushes a default branch. A review run
+    pushes nothing at all."""
+    if kind == "review":
+        raise PushRefused("a review run reads and pushes nothing")
     if branch not in protected:
         return False
     if kind == "plan" and plan_branch is not None and branch == plan_branch:

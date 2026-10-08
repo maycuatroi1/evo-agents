@@ -37,6 +37,9 @@ class FakeHub:
         self.inbox: dict[int, list[dict]] = {}
         self.notices: list[dict] = []
         self.step_reports: list[dict] = []
+        self.findings: list[dict] = []  # what the agent of a review run recorded, with the run's id
+        self.proposals: list[dict] = []
+        self.last_heartbeat: dict | None = None
         self.leases: dict[int, dict] = {}  # run id -> the {leases, missing} its ask for credentials gets
         self.credential_calls: list[tuple[str, int]] = []  # ("ask" or "give back", run id), in order
         self.heartbeats = 0
@@ -64,6 +67,8 @@ class FakeHub:
                 post("/v1/worker/runs/{id}/steps/{key}", self._step),
                 post("/v1/worker/runs/{id}/decisions", self._decision),
                 post("/v1/worker/runs/{id}/notices", self._notice),
+                post("/v1/worker/runs/{id}/findings", self._finding),
+                post("/v1/worker/runs/{id}/proposals", self._proposal),
                 post("/v1/worker/runs/{id}/credentials", self._credentials),
                 web.delete("/v1/worker/runs/{id}/credentials", self._give_back),
             ]
@@ -166,6 +171,34 @@ class FakeHub:
             plan=None,
         )
 
+    def queue_review_run(self, repos: list[str], prompt: str = "Review the project.", **extra) -> int:
+        """A review run over ``repos``, as the night shift queues it."""
+        return self.queue_run(
+            kind="review",
+            project=self.project,
+            plan_id="",
+            step_key=None,
+            title="Review of the night of 2026-10-08",
+            plan_revision=None,
+            attempt=1,
+            max_attempts=3,
+            parent_run_id=None,
+            resume_of_run_id=None,
+            session_id=None,
+            runtime="claude-code",
+            model=None,
+            mode="headless",
+            approval="auto",
+            timeout_min=60,
+            repo=None,
+            branch=None,
+            repos=[{"repo": name, "branch": None} for name in repos],
+            lease_expires_at=_now(),
+            prompt=prompt,
+            plan=None,
+            **extra,
+        )
+
     def answer(self, decision_id: int, option: str) -> int:
         """Answer a decision as its run's owner; the run whose inbox took the answer."""
         decision = self.decisions[decision_id]
@@ -251,6 +284,7 @@ class FakeHub:
     async def _heartbeat(self, request: web.Request) -> web.Response:
         body = await request.json()
         self.heartbeats += 1
+        self.last_heartbeat = body
         controls = []
         for run_id in body.get("runs") or []:
             run = self.runs.get(run_id)
@@ -408,6 +442,29 @@ class FakeHub:
             return _error(422, "invalid", "not a notice kind")
         self.notices.append({"run_id": run_id, **body})
         return web.json_response({"id": len(self.notices), "kind": "notice", **body}, status=201)
+
+    def _held_review_run(self, request: web.Request) -> tuple[int, dict]:
+        run_id, run = self._run(request)
+        if run["state"] not in runs.HELD_STATES or run["spec"]["kind"] != "review":
+            raise _refusal(404, f"run {run_id} is not held by this worker, or not a review run")
+        return run_id, run
+
+    async def _finding(self, request: web.Request) -> web.Response:
+        run_id, _ = self._held_review_run(request)
+        body = await request.json()
+        if not body.get("evidence"):
+            return _error(422, "invalid", "a finding needs evidence")
+        self.findings.append({"run_id": run_id, **body})
+        return web.json_response({"id": len(self.findings), "run_id": run_id, **body}, status=201)
+
+    async def _proposal(self, request: web.Request) -> web.Response:
+        run_id, _ = self._held_review_run(request)
+        body = await request.json()
+        self.proposals.append({"run_id": run_id, **body})
+        answer = {"id": len(self.proposals), "run_id": run_id, "tier": 1, "state": "open", "duplicate_of": None}
+        return web.json_response(
+            {**answer, "tier_reasons": ["kind fix (a bug fix that comes with its test) is tier 1"]}, status=201
+        )
 
     async def _credentials(self, request: web.Request) -> web.Response:
         run_id, run = self._run(request)

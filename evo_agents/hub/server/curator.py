@@ -24,8 +24,11 @@ curator.resume); a second pause keeps the first one's time.
 
 ``fire_schedules`` is the job ``hub.fire_schedules``, run every minute by the hub's worker: for each schedule of kind
 night_shift, under its row's lock (a schedule another run of the job holds is passed over), it cancels its queued runs
-when it is paused or outside its window, and otherwise queues at most one plan run, as ``evo_agents.hub.curator``
-says, audited as curator.dispatch with the owner as actor and no token. A night's cost is that of its runs (their
+when it is paused or outside its window, and otherwise queues at most one run (``gate_of`` says when it may): the
+night's review run first, when the night has none yet and the worker runs review runs
+(``evo_agents.hub.server.collect``), else a plan run, as ``evo_agents.hub.curator`` says, audited as curator.dispatch
+with the owner as actor and no token. GET .../curator also names the last review run of the project, with how many
+findings and proposals it wrote. A night's cost is that of its runs (their
 ``usage``), each agent session once at its largest total, as Claude Code reports a session's running total.
 """
 
@@ -59,7 +62,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from evo_agents.hub import curator, runs, tables
+from evo_agents.hub import curator, review, runs, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.server import audit
 from evo_agents.hub.server import plans as plan_routes
@@ -151,6 +154,22 @@ class CircuitBreaker(BaseModel):
     max_failed_in_a_row: int = Field(2, ge=curator.CIRCUIT_BREAKER[0], le=curator.CIRCUIT_BREAKER[1])
 
 
+class ReviewSettings(BaseModel):
+    """How the night's review run of the Curator looks (``evo_agents.hub.review``)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    lenses: int = Field(
+        review.LENSES_PER_NIGHT, ge=1, le=len(review.LENSES), description="lenses a night looks through, in turn"
+    )
+    days: int = Field(
+        review.REVIEW_DAYS, ge=1, le=curator.MAX_REVIEW_DAYS, description="the days of sessions and runs it counts"
+    )
+    budget_usd: float | None = Field(
+        None, gt=0, le=curator.MAX_NIGHT_BUDGET_USD, description="the most the review run may cost; null: as any run"
+    )
+
+
 class CharterBody(BaseModel):
     """What an admin writes."""
 
@@ -186,6 +205,7 @@ class CharterBody(BaseModel):
         description="globs no change of the Curator may touch below tier 3",
     )
     circuit_breaker: CircuitBreaker = Field(default_factory=CircuitBreaker)
+    review: ReviewSettings = Field(default_factory=ReviewSettings)
     reviewer: Role = Field(default_factory=Role)
     builder: Role = Field(default_factory=Role)
     judge: Judge = Field(default_factory=Judge)
@@ -213,6 +233,8 @@ class CharterBody(BaseModel):
     def _run_within_night(self):
         if self.run_budget_usd is not None and self.run_budget_usd > self.night_budget_usd:
             raise ValueError("run_budget_usd is over night_budget_usd: a run never gets more than the night has")
+        if self.review.budget_usd is not None and self.review.budget_usd > self.night_budget_usd:
+            raise ValueError("review.budget_usd is over night_budget_usd: a run never gets more than the night has")
         return self
 
 
@@ -263,12 +285,28 @@ class Night(BaseModel):
     active_run_id: int | None = Field(description="the run of the schedule queued or held now, if any")
 
 
+class ReviewRunSummary(BaseModel):
+    """The last review run of a project: the run, the night it reviewed, and what it wrote."""
+
+    id: int
+    state: Literal[runs.RUN_STATES]
+    night: date
+    lenses: list[str] = Field(description="the lenses of its night")
+    findings: int
+    proposals: int
+    queued_at: datetime
+    finished_at: datetime | None
+
+
 class CuratorStatus(BaseModel):
     project: str
     charter: Charter | None
     paused: bool = Field(description="every schedule of the project is paused")
     schedules: list[Schedule]
     night: Night | None = Field(description="null without a charter")
+    last_review_run: ReviewRunSummary | None = Field(
+        None, description="the project's latest review run, of any night; null before the first"
+    )
 
 
 # Reading
@@ -589,7 +627,36 @@ async def _status(conn: AsyncConnection, access: ProjectAccess) -> CuratorStatus
         paused=bool(schedules) and all(item.paused_at is not None for item in schedules),
         schedules=schedules,
         night=night,
+        last_review_run=await _last_review(conn, access.project_id),
     )
+
+
+async def _last_review(conn: AsyncConnection, project_id: int) -> ReviewRunSummary | None:
+    r, f, p, cf = tables.runs, tables.findings, tables.proposals, tables.curator_figures
+    findings = select(func.count()).where(f.c.run_id == r.c.id).scalar_subquery()
+    proposals = select(func.count()).where(p.c.run_id == r.c.id).scalar_subquery()
+    lenses = select(cf.c.figures["lenses"]).where(cf.c.run_id == r.c.id).limit(1).scalar_subquery()
+    query = (
+        select(
+            r.c.id,
+            r.c.state,
+            r.c.schedule_night.label("night"),
+            lenses.label("lenses"),
+            findings.label("findings"),
+            proposals.label("proposals"),
+            r.c.queued_at,
+            r.c.finished_at,
+        )
+        .where(r.c.project_id == project_id, r.c.kind == "review")
+        .order_by(r.c.id.desc())
+        .limit(1)
+    )
+    row = (await conn.execute(query)).one_or_none()
+    if row is None:
+        return None
+    found = dict(row._mapping)
+    found["lenses"] = [name for name in found["lenses"] or [] if isinstance(name, str)]
+    return ReviewRunSummary(**found)
 
 
 @router.get(
@@ -755,6 +822,7 @@ async def _on_duty(conn: AsyncConnection, worker_id: int, project_id: int) -> tu
         w.c.dispatch_from,
         w.c.revoked_at,
         w.c.drained_at,
+        w.c.run_kinds,
         func.coalesce(fresh, False).label("fresh"),
         serves.label("serves"),
     ).where(w.c.id == worker_id)
@@ -770,7 +838,9 @@ async def _on_duty(conn: AsyncConnection, worker_id: int, project_id: int) -> tu
         why = "draining"
     elif not row.fresh:
         why = "offline"
-    pinned = Pinned(worker_id, row.name, row.runtimes or {}, row.checkouts or {}, row.agent_version)
+    pinned = Pinned(
+        worker_id, row.name, row.runtimes or {}, row.checkouts or {}, row.agent_version, tuple(row.run_kinds or ())
+    )
     return (None, f"worker {row.name} is {why}") if why else (pinned, None)
 
 
@@ -871,36 +941,68 @@ async def _queue(conn: AsyncConnection, due, night: date, worker: Pinned, plan, 
     return run_id
 
 
-async def _fire(conn: AsyncConnection, due) -> str:
-    """What schedule ``due`` does now, in the caller's transaction; a word for the job's summary."""
+async def _writer_access(conn: AsyncConnection, due) -> ProjectAccess | None:
+    access = await _owner_access(conn, due.owner_id, due.owner, due.project)
+    if access is None or not has_role(access.role, "writer"):
+        log.warning("night shift skipped: its owner holds no writer grant", extra={"project": due.project})
+        return None
+    return access
+
+
+async def gate_of(conn: AsyncConnection, due, *, figures_first: bool = False):
+    """(word, gate) for schedule ``due`` now, in the caller's transaction, under the schedule's row lock it takes: a
+    ``collect.Gate`` when the night shift may queue a run now, else None and the word for the job's summary. Paused or
+    outside its window, the schedule's queued runs are cancelled. With ``figures_first`` (the job curator.collect),
+    the night's figures are counted as soon as the window is open, before a run of the schedule held now ends."""
+    from evo_agents.hub.server.collect import Gate, ensure_figures  # it queues runs through this module
+
     s = tables.schedules
     locked = select(s.c.paused_at).where(s.c.id == due.id).with_for_update(skip_locked=True)
     found = (await conn.execute(locked)).one_or_none()
     if found is None:
-        return "locked"
+        return "locked", None
     window = due.body["window"]
     inside, night = curator.window_state(due.local_now, window["start"], window["end"])
     if found.paused_at is not None or not inside:
         why = "paused" if found.paused_at is not None else "outside its window"
         cancelled = await _cancel_queued(conn, [due.id], f"the night shift of {due.project} is {why}")
-        return "cancelled" if cancelled else ("paused" if found.paused_at is not None else "outside")
+        return ("cancelled" if cancelled else ("paused" if found.paused_at is not None else "outside")), None
+    access = None
+    if figures_first:
+        access = await _writer_access(conn, due)
+        if access is None:
+            return "owner", None
+        async with conn.begin_nested():
+            await ensure_figures(conn, due, night, access)
     figures = await night_figures(conn, due.id, night)
     if figures.active_run_id is not None:
-        return "busy"
+        return "busy", None
     if figures.runs >= due.body["max_runs_per_night"]:
-        return "max_runs"
+        return "max_runs", None
     budget = _budget(due.body, figures)
     if budget is None:
-        return "spent"
-    access = await _owner_access(conn, due.owner_id, due.owner, due.project)
-    if access is None or not has_role(access.role, "writer"):
-        log.warning("night shift skipped: its owner holds no writer grant", extra={"project": due.project})
-        return "owner"
+        return "spent", None
+    access = access or await _writer_access(conn, due)
+    if access is None:
+        return "owner", None
     worker, why = await _on_duty(conn, due.worker_id, due.project_id)
     if worker is None:
         log.info("night shift waits for its worker", extra={"project": due.project, "why": why})
-        return "worker"
-    plan, why = await _next_plan(conn, access, due.body, worker)
+        return "worker", None
+    return "", Gate(night=night, figures=figures, budget=budget, access=access, worker=worker)
+
+
+async def _fire(conn: AsyncConnection, due) -> str:
+    """What schedule ``due`` does now, in the caller's transaction; a word for the job's summary."""
+    from evo_agents.hub.server.collect import queue_review  # it queues runs through this module
+
+    word, gate = await gate_of(conn, due)
+    if gate is None:
+        return word
+    if await queue_review(conn, due, gate) is not None:
+        return "review"
+    night, worker, budget = gate.night, gate.worker, gate.budget
+    plan, why = await _next_plan(conn, gate.access, due.body, worker)
     if plan is None:
         log.info("night shift has no plan to run", extra={"project": due.project, "why": why})
         return "no_plan"

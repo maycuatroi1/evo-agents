@@ -2,9 +2,10 @@
 
 ``contract print`` prints ``{"version": 1, "commands": {...}, "openapi": {...}}``, the owner's side of the seam
 hub-cli-v1. ``commands`` is generated from the argparse definitions: for every ``evo-agents hub`` command (keyed
-``"hub plan step"``) and every command the agent of a plan run uses (``evo-agents worker step|ask|notify|plan``,
-keyed ``"worker step"``, AGENT_COMMANDS), its positional arguments and options, and for a command with ``--json`` the
-keys of what it prints, declared next to the flag with ``json_option``. ``openapi`` is the API's OpenAPI document,
+``"hub plan step"``) and every command the agent of a run uses (``evo-agents worker step|ask|notify|plan`` of a plan
+run, ``evo-agents worker finding|propose`` of a review run, keyed ``"worker step"``, AGENT_COMMANDS), its positional
+arguments and options, and for a command with ``--json`` the keys of what it prints, declared next to the flag with
+``json_option``. ``openapi`` is the API's OpenAPI document,
 the one ``evo-agents hub openapi`` prints, so ``print`` needs the hub-server extra. evo-cli checks the argv it builds
 and the keys it reads against this document, and agent-skills the agent's commands its skills name;
 tests/hub/golden/cli-contract.json is the copy the tests compare with, so a change to either part shows up as a diff
@@ -36,7 +37,8 @@ CONTRACT_VERSION = 1
 EXIT_PROBLEMS = 1
 EXIT_USAGE = 2
 
-AGENT_COMMANDS = ("step", "ask", "notify", "plan")  # `evo-agents worker ...` that a plan run's agent runs
+# `evo-agents worker ...` that the agent of a run runs: a plan run's, then a review run's
+AGENT_COMMANDS = ("step", "ask", "notify", "plan", "finding", "propose")
 HUB_COMMAND = re.compile(rf"(?<![\w./-])evo-agents\s+(hub|worker\s+({'|'.join(AGENT_COMMANDS)}))\b")
 FENCE = re.compile(r"^\s*(`{3,}|~{3,})")
 PLACEHOLDER = re.compile(r"<[A-Za-z][^<>\n]*>")

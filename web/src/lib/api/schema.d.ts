@@ -2049,6 +2049,161 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project}/curator/findings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Findings
+         * @description The findings of the project's review runs the caller may read, newest first.
+         */
+        get: operations["list_findings_v1_projects__project__curator_findings_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/curator/findings/{finding_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Show Finding */
+        get: operations["show_finding_v1_projects__project__curator_findings__finding_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/curator/proposals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Proposals
+         * @description The proposals of the project's review runs the caller may read, newest first.
+         */
+        get: operations["list_proposals_v1_projects__project__curator_proposals_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/curator/proposals/{proposal_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Show Proposal */
+        get: operations["show_proposal_v1_projects__project__curator_proposals__proposal_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/curator/proposals/{proposal_id}/answer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Answer Proposal
+         * @description Accept, reject or defer a proposal; the admins of the project alone may.
+         */
+        post: operations["answer_proposal_v1_projects__project__curator_proposals__proposal_id__answer_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/curator/figures": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Figures
+         * @description The figures curator.collect counted for a night of the project: the latest, or ``night``'s.
+         */
+        get: operations["show_figures_v1_projects__project__curator_figures_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/findings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record Finding
+         * @description Record a finding of the review run this worker holds, with evidence the hub finds.
+         */
+        post: operations["record_finding_v1_worker_runs__run_id__findings_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/proposals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record Proposal
+         * @description Record a proposal of the review run this worker holds: the hub resolves its evidence, checks its draft plan,
+         *     computes its tier and drops it when it repeats a proposal rejected lately.
+         */
+        post: operations["record_proposal_v1_worker_runs__run_id__proposals_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{project}/digests/{session_id}": {
         parameters: {
             query?: never;
@@ -2508,6 +2663,7 @@ export interface components {
              */
             protected_paths?: string[];
             circuit_breaker?: components["schemas"]["CircuitBreaker"];
+            review?: components["schemas"]["ReviewSettings"];
             reviewer?: components["schemas"]["Role"];
             builder?: components["schemas"]["Role"];
             judge?: components["schemas"]["Judge"];
@@ -2619,6 +2775,7 @@ export interface components {
              */
             protected_paths?: string[];
             circuit_breaker?: components["schemas"]["CircuitBreaker"];
+            review?: components["schemas"]["ReviewSettings"];
             reviewer?: components["schemas"]["Role"];
             builder?: components["schemas"]["Role"];
             judge?: components["schemas"]["Judge"];
@@ -2819,6 +2976,8 @@ export interface components {
             schedules: components["schemas"]["Schedule"][];
             /** @description null without a charter */
             night: components["schemas"]["Night"] | null;
+            /** @description the project's latest review run, of any night; null before the first */
+            last_review_run?: components["schemas"]["ReviewRunSummary"] | null;
         };
         /** DayCount */
         DayCount: {
@@ -3224,6 +3383,62 @@ export interface components {
             /** Source */
             source: string | null;
         };
+        /**
+         * EvidenceIn
+         * @description One piece of evidence, as ``review.parse_evidence`` reads it from the command line.
+         */
+        EvidenceIn: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "session" | "run" | "code";
+            /**
+             * Session Id
+             * @description session: the digest's session
+             */
+            session_id?: string | null;
+            /**
+             * Field
+             * @description session: the list of the digest
+             */
+            field?: ("user_turns" | "commands" | "repeated_commands" | "errors" | "files_edited" | "tools" | "bash") | null;
+            /**
+             * Index
+             * @description session: the entry of that list, from 0
+             */
+            index?: number | null;
+            /**
+             * Run Id
+             * @description run: the run
+             */
+            run_id?: number | null;
+            /**
+             * Seq
+             * @description run: the seq of its event
+             */
+            seq?: number | null;
+            /**
+             * Repo
+             * @description code: a repo of the project
+             */
+            repo?: string | null;
+            /**
+             * Path
+             * @description code: within the repo
+             */
+            path?: string | null;
+            /**
+             * Line
+             * @description code: the line
+             */
+            line?: number | null;
+            /**
+             * Commit
+             * @description code: the commit the worktree was at
+             */
+            commit?: string | null;
+        };
         /** FailedBuildCounts */
         FailedBuildCounts: {
             /**
@@ -3238,6 +3453,78 @@ export interface components {
              * @description the projects with such a build, latest failure first
              */
             projects: components["schemas"]["ProjectFailedBuilds"][];
+        };
+        /** Finding */
+        Finding: {
+            /** Id */
+            id: number;
+            /** Project */
+            project: string;
+            /**
+             * Run Id
+             * @description the review run that recorded it
+             */
+            run_id: number;
+            /** Lens */
+            lens: string;
+            /**
+             * Severity
+             * @enum {string}
+             */
+            severity: "low" | "medium" | "high";
+            /** Title */
+            title: string;
+            /** Body */
+            body: string | null;
+            /**
+             * Evidence
+             * @description each piece as the hub resolved it, with how (resolved)
+             */
+            evidence: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** FindingIn */
+        FindingIn: {
+            /**
+             * Lens
+             * @enum {string}
+             */
+            lens: "tool_errors" | "environment" | "corrections" | "failed_runs" | "tech_debt" | "code_health" | "docs_drift" | "skills_memory" | "cost" | "security" | "product_goals";
+            /**
+             * Severity
+             * @default medium
+             * @enum {string}
+             */
+            severity: "low" | "medium" | "high";
+            /** Title */
+            title: string;
+            /**
+             * Body
+             * @description markdown, 16 KiB
+             */
+            body?: string | null;
+            /** Evidence */
+            evidence: components["schemas"]["EvidenceIn"][];
+        };
+        /** FindingList */
+        FindingList: {
+            /**
+             * Findings
+             * @description newest first
+             */
+            findings: components["schemas"]["Finding"][];
+            /** Total */
+            total: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
         };
         /** Found */
         Found: {
@@ -3521,6 +3808,11 @@ export interface components {
             runs?: number[];
             /** Agent Version */
             agent_version?: string | null;
+            /**
+             * Run Kinds
+             * @description the kinds of run the daemon runs; one that says none takes no review run. A kind this hub does not know is left out
+             */
+            run_kinds?: string[] | null;
         };
         /** Inbox */
         Inbox: {
@@ -3973,6 +4265,43 @@ export interface components {
              */
             active_run_id: number | null;
         };
+        /** NightFiguresView */
+        NightFiguresView: {
+            /** Project */
+            project: string;
+            /**
+             * Night
+             * Format: date
+             */
+            night: string;
+            /**
+             * Since
+             * Format: date-time
+             */
+            since: string;
+            /**
+             * Until
+             * Format: date-time
+             */
+            until: string;
+            /**
+             * Run Id
+             * @description the review run queued on them, if any
+             */
+            run_id: number | null;
+            /**
+             * Figures
+             * @description the figures, as curator.collect counted them
+             */
+            figures: {
+                [key: string]: unknown;
+            };
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
         /** NodeDetail */
         NodeDetail: {
             graph: components["schemas"]["GraphRef"];
@@ -4047,7 +4376,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "decision" | "notice";
+            kind: "decision" | "notice" | "proposal";
             /**
              * Notice Kind
              * @description a notice's kind; null for a decision
@@ -4064,6 +4393,16 @@ export interface components {
              * @description the state of the decision now, for a notification of kind decision
              */
             decision_state: ("open" | "answered" | "expired" | "cancelled") | null;
+            /**
+             * Proposal Id
+             * @description the proposal, for a notification of kind proposal
+             */
+            proposal_id?: number | null;
+            /**
+             * Proposal State
+             * @description the state of the proposal now, for a notification of kind proposal
+             */
+            proposal_state?: ("open" | "accepted" | "rejected" | "deferred" | "dropped") | null;
             /** Title */
             title: string;
             /** Body */
@@ -4100,6 +4439,12 @@ export interface components {
              * @description decisions that still wait for the member's answer, read or not
              */
             open_decisions: number;
+            /**
+             * Open Proposals
+             * @description proposals in the member's Inbox that wait for an answer, read or not
+             * @default 0
+             */
+            open_proposals: number;
         };
         /** NotificationList */
         NotificationList: {
@@ -4286,7 +4631,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "step" | "plan";
+            kind: "step" | "plan" | "review";
             /** Project */
             project: string;
             /** Plan Id */
@@ -4467,6 +4812,13 @@ export interface components {
              * @description the worker the pairing made, once a machine joined with it
              */
             worker_id: number | null;
+        };
+        /** PathIn */
+        PathIn: {
+            /** Repo */
+            repo: string;
+            /** Path */
+            path: string;
         };
         /** Plan */
         Plan: {
@@ -4844,6 +5196,218 @@ export interface components {
              */
             tools: components["schemas"]["RuntimeToolStat"][];
         };
+        /** Proposal */
+        Proposal: {
+            /** Id */
+            id: number;
+            /** Project */
+            project: string;
+            /**
+             * Run Id
+             * @description the review run that proposed it
+             */
+            run_id: number;
+            /** Lens */
+            lens: string;
+            /** Kind */
+            kind: string;
+            /** Title */
+            title: string;
+            /**
+             * Tier
+             * @description as the hub's tier rules computed it
+             */
+            tier: number;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "open" | "accepted" | "rejected" | "deferred" | "dropped";
+            /**
+             * Evidence Count
+             * @description the pieces of evidence it rests on, its findings' included
+             */
+            evidence_count: number;
+            /**
+             * Duplicate Of
+             * @description the rejected proposal a dropped one repeats
+             */
+            duplicate_of: number | null;
+            /** Answered By */
+            answered_by: string | null;
+            /** Answered At */
+            answered_at: string | null;
+            /** Deferred Until */
+            deferred_until: string | null;
+            /**
+             * Inbox At
+             * @description when it became an Inbox item of the owner; tier 2 only
+             */
+            inbox_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Summary */
+            summary: string | null;
+            /** Paths */
+            paths: components["schemas"]["RepoPath"][];
+            /**
+             * Impacted
+             * @description what the paths reach in the knowledge graph; null without one
+             */
+            impacted: components["schemas"]["RepoPath"][] | null;
+            /**
+             * Tier Reasons
+             * @description why it has its tier, rule by rule
+             */
+            tier_reasons: string[];
+            /** Finding Ids */
+            finding_ids: number[];
+            /**
+             * Evidence
+             * @description its own evidence, as the hub resolved it
+             */
+            evidence: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Plan
+             * @description the draft plan
+             */
+            plan: {
+                [key: string]: unknown;
+            };
+            /**
+             * Note
+             * @description the owner's note with the answer
+             */
+            note: string | null;
+        };
+        /** ProposalAnswer */
+        ProposalAnswer: {
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "accept" | "reject" | "defer";
+            /** Note */
+            note?: string | null;
+            /**
+             * Defer Days
+             * @description with defer; 7 by default
+             */
+            defer_days?: number | null;
+        };
+        /** ProposalIn */
+        ProposalIn: {
+            /**
+             * Lens
+             * @enum {string}
+             */
+            lens: "tool_errors" | "environment" | "corrections" | "failed_runs" | "tech_debt" | "code_health" | "docs_drift" | "skills_memory" | "cost" | "security" | "product_goals";
+            /**
+             * Kind
+             * @description the kind of change, which gives its first tier
+             * @enum {string}
+             */
+            kind: "docs" | "memory" | "test_add" | "fix" | "refactor" | "lint" | "skill" | "cli" | "release_prep" | "feature" | "api_change" | "schema_change" | "global_config" | "dependency_major" | "operation" | "test_loosen" | "verify_change" | "ci_change" | "credentials" | "curator_rules";
+            /** Title */
+            title: string;
+            /**
+             * Summary
+             * @description markdown, 16 KiB
+             */
+            summary?: string | null;
+            /**
+             * Paths
+             * @description what it would edit
+             */
+            paths?: components["schemas"]["PathIn"][];
+            /**
+             * Finding Ids
+             * @description findings of the project it rests on
+             */
+            finding_ids?: number[];
+            /** Evidence */
+            evidence?: components["schemas"]["EvidenceIn"][];
+            /**
+             * Plan
+             * @description the draft plan: plan.schema.json, in outcome steps
+             */
+            plan: {
+                [key: string]: unknown;
+            };
+        };
+        /** ProposalList */
+        ProposalList: {
+            /**
+             * Proposals
+             * @description newest first
+             */
+            proposals: components["schemas"]["ProposalSummary"][];
+            /** Total */
+            total: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+        };
+        /** ProposalSummary */
+        ProposalSummary: {
+            /** Id */
+            id: number;
+            /** Project */
+            project: string;
+            /**
+             * Run Id
+             * @description the review run that proposed it
+             */
+            run_id: number;
+            /** Lens */
+            lens: string;
+            /** Kind */
+            kind: string;
+            /** Title */
+            title: string;
+            /**
+             * Tier
+             * @description as the hub's tier rules computed it
+             */
+            tier: number;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "open" | "accepted" | "rejected" | "deferred" | "dropped";
+            /**
+             * Evidence Count
+             * @description the pieces of evidence it rests on, its findings' included
+             */
+            evidence_count: number;
+            /**
+             * Duplicate Of
+             * @description the rejected proposal a dropped one repeats
+             */
+            duplicate_of: number | null;
+            /** Answered By */
+            answered_by: string | null;
+            /** Answered At */
+            answered_at: string | null;
+            /** Deferred Until */
+            deferred_until: string | null;
+            /**
+             * Inbox At
+             * @description when it became an Inbox item of the owner; tier 2 only
+             */
+            inbox_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
         /** PruneRequest */
         PruneRequest: {
             /**
@@ -5045,10 +5609,74 @@ export interface components {
              */
             path?: string | null;
         };
+        /** RepoPath */
+        RepoPath: {
+            /** Repo */
+            repo: string;
+            /** Path */
+            path: string;
+        };
         /** Results */
         Results: {
             /** Items */
             items: components["schemas"]["Found"][];
+        };
+        /**
+         * ReviewRunSummary
+         * @description The last review run of a project: the run, the night it reviewed, and what it wrote.
+         */
+        ReviewRunSummary: {
+            /** Id */
+            id: number;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "queued" | "leased" | "running" | "interactive" | "verifying" | "waiting" | "review" | "parked" | "done" | "failed" | "lost" | "cancelled";
+            /**
+             * Night
+             * Format: date
+             */
+            night: string;
+            /**
+             * Lenses
+             * @description the lenses of its night
+             */
+            lenses: string[];
+            /** Findings */
+            findings: number;
+            /** Proposals */
+            proposals: number;
+            /**
+             * Queued At
+             * Format: date-time
+             */
+            queued_at: string;
+            /** Finished At */
+            finished_at: string | null;
+        };
+        /**
+         * ReviewSettings
+         * @description How the night's review run of the Curator looks (``evo_agents.hub.review``).
+         */
+        ReviewSettings: {
+            /**
+             * Lenses
+             * @description lenses a night looks through, in turn
+             * @default 3
+             */
+            lenses: number;
+            /**
+             * Days
+             * @description the days of sessions and runs it counts
+             * @default 7
+             */
+            days: number;
+            /**
+             * Budget Usd
+             * @description the most the review run may cost; null: as any run
+             */
+            budget_usd?: number | null;
         };
         /** Revision */
         Revision: {
@@ -5169,13 +5797,16 @@ export interface components {
             id: number;
             /**
              * Kind
-             * @description step: one step of the plan; plan: every step not done yet
+             * @description step: one step of the plan; plan: every step not done yet; review: the night's review of the project by the Curator, on no plan
              * @enum {string}
              */
-            kind: "step" | "plan";
+            kind: "step" | "plan" | "review";
             /** Project */
             project: string;
-            /** Plan Id */
+            /**
+             * Plan Id
+             * @description the plan it works on; empty for a review run, which works on none
+             */
             plan_id: string;
             /**
              * Step Key
@@ -5189,9 +5820,9 @@ export interface components {
             title: string | null;
             /**
              * Plan Revision
-             * @description the plan revision the run was dispatched from
+             * @description the plan revision the run was dispatched from; null for a review run
              */
-            plan_revision: number;
+            plan_revision: number | null;
             /**
              * Dispatched By
              * @description the login of the member who dispatched it, its owner
@@ -5761,10 +6392,13 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "step" | "plan";
+            kind: "step" | "plan" | "review";
             /** Project */
             project: string;
-            /** Plan Id */
+            /**
+             * Plan Id
+             * @description empty for a review run
+             */
             plan_id: string;
             /**
              * Step Key
@@ -5775,9 +6409,9 @@ export interface components {
             title: string | null;
             /**
              * Plan Revision
-             * @description the plan revision the run was dispatched from
+             * @description the plan revision the run was dispatched from; null for a review run
              */
-            plan_revision: number;
+            plan_revision: number | null;
             /** Attempt */
             attempt: number;
             /** Max Attempts */
@@ -5825,7 +6459,7 @@ export interface components {
             branch: string | null;
             /**
              * Repos
-             * @description a plan run's repos, each with a checkout on this worker
+             * @description a plan run's or a review run's repos, each with a checkout on this worker
              */
             repos: components["schemas"]["RunRepo"][] | null;
             /**
@@ -13386,7 +14020,7 @@ export interface operations {
             query?: {
                 /** @description only the notifications not read yet */
                 unread?: boolean;
-                kind?: ("decision" | "notice") | null;
+                kind?: ("decision" | "notice" | "proposal") | null;
                 /** @description only this project's */
                 project?: string | null;
                 limit?: number;
@@ -13976,6 +14610,541 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_findings_v1_projects__project__curator_findings_get: {
+        parameters: {
+            query?: {
+                /** @description of this review run */
+                run_id?: number | null;
+                lens?: ("tool_errors" | "environment" | "corrections" | "failed_runs" | "tech_debt" | "code_health" | "docs_drift" | "skills_memory" | "cost" | "security" | "product_goals") | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FindingList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    show_finding_v1_projects__project__curator_findings__finding_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                finding_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Finding"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_proposals_v1_projects__project__curator_proposals_get: {
+        parameters: {
+            query?: {
+                /** @description any of these; repeat it */
+                state?: ("open" | "accepted" | "rejected" | "deferred" | "dropped")[];
+                /** @description any of these tiers; repeat it */
+                tier?: number[];
+                lens?: ("tool_errors" | "environment" | "corrections" | "failed_runs" | "tech_debt" | "code_health" | "docs_drift" | "skills_memory" | "cost" | "security" | "product_goals") | null;
+                /** @description of this review run */
+                run_id?: number | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProposalList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    show_proposal_v1_projects__project__curator_proposals__proposal_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                proposal_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Proposal"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    answer_proposal_v1_projects__project__curator_proposals__proposal_id__answer_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                proposal_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProposalAnswer"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Proposal"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    show_figures_v1_projects__project__curator_figures_get: {
+        parameters: {
+            query?: {
+                /** @description the night, the local date its window opened; the latest */
+                night?: string | null;
+            };
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NightFiguresView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    record_finding_v1_worker_runs__run_id__findings_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FindingIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Finding"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    record_proposal_v1_worker_runs__run_id__proposals_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProposalIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Proposal"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
         };

@@ -210,6 +210,7 @@
           "auto_merge",
           "protected_paths",
           "circuit_breaker",
+          "review",
           "reviewer",
           "builder",
           "judge",
@@ -268,6 +269,7 @@
           "auto_merge",
           "protected_paths",
           "circuit_breaker",
+          "review",
           "reviewer",
           "builder",
           "judge",
@@ -279,6 +281,128 @@
           "schedule_owner"
         ],
         "schema": "Charter"
+      }
+    },
+    "hub curator figures": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--night"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "night",
+          "since",
+          "until",
+          "run_id",
+          "figures",
+          "created_at"
+        ],
+        "schema": "NightFiguresView"
+      }
+    },
+    "hub curator findings": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--run"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--lens"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "tool_errors",
+            "environment",
+            "corrections",
+            "failed_runs",
+            "tech_debt",
+            "code_health",
+            "docs_drift",
+            "skills_memory",
+            "cost",
+            "security",
+            "product_goals"
+          ]
+        },
+        {
+          "flags": [
+            "--limit"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false,
+          "minimum": 1,
+          "maximum": 200,
+          "default": 50
+        },
+        {
+          "flags": [
+            "--offset"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false,
+          "default": 0
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "findings",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "schema": "FindingList"
       }
     },
     "hub curator pause": {
@@ -308,9 +432,381 @@
           "charter",
           "paused",
           "schedules",
-          "night"
+          "night",
+          "last_review_run"
         ],
         "schema": "CuratorStatus"
+      }
+    },
+    "hub curator proposal accept": {
+      "positionals": [
+        {
+          "name": "id",
+          "metavar": "ID",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--note"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "project",
+          "run_id",
+          "lens",
+          "kind",
+          "title",
+          "tier",
+          "state",
+          "evidence_count",
+          "duplicate_of",
+          "answered_by",
+          "answered_at",
+          "deferred_until",
+          "inbox_at",
+          "created_at",
+          "summary",
+          "paths",
+          "impacted",
+          "tier_reasons",
+          "finding_ids",
+          "evidence",
+          "plan",
+          "note"
+        ],
+        "schema": "Proposal"
+      }
+    },
+    "hub curator proposal defer": {
+      "positionals": [
+        {
+          "name": "id",
+          "metavar": "ID",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--note"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--days"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false,
+          "minimum": 1,
+          "maximum": 90
+        },
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "project",
+          "run_id",
+          "lens",
+          "kind",
+          "title",
+          "tier",
+          "state",
+          "evidence_count",
+          "duplicate_of",
+          "answered_by",
+          "answered_at",
+          "deferred_until",
+          "inbox_at",
+          "created_at",
+          "summary",
+          "paths",
+          "impacted",
+          "tier_reasons",
+          "finding_ids",
+          "evidence",
+          "plan",
+          "note"
+        ],
+        "schema": "Proposal"
+      }
+    },
+    "hub curator proposal list": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--state"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true,
+          "choices": [
+            "open",
+            "accepted",
+            "rejected",
+            "deferred",
+            "dropped"
+          ]
+        },
+        {
+          "flags": [
+            "--tier"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": true,
+          "minimum": 0,
+          "maximum": 3
+        },
+        {
+          "flags": [
+            "--lens"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "tool_errors",
+            "environment",
+            "corrections",
+            "failed_runs",
+            "tech_debt",
+            "code_health",
+            "docs_drift",
+            "skills_memory",
+            "cost",
+            "security",
+            "product_goals"
+          ]
+        },
+        {
+          "flags": [
+            "--run"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--limit"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false,
+          "minimum": 1,
+          "maximum": 200,
+          "default": 50
+        },
+        {
+          "flags": [
+            "--offset"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false,
+          "default": 0
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "proposals",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "schema": "ProposalList"
+      }
+    },
+    "hub curator proposal reject": {
+      "positionals": [
+        {
+          "name": "id",
+          "metavar": "ID",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--note"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "project",
+          "run_id",
+          "lens",
+          "kind",
+          "title",
+          "tier",
+          "state",
+          "evidence_count",
+          "duplicate_of",
+          "answered_by",
+          "answered_at",
+          "deferred_until",
+          "inbox_at",
+          "created_at",
+          "summary",
+          "paths",
+          "impacted",
+          "tier_reasons",
+          "finding_ids",
+          "evidence",
+          "plan",
+          "note"
+        ],
+        "schema": "Proposal"
+      }
+    },
+    "hub curator proposal show": {
+      "positionals": [
+        {
+          "name": "id",
+          "metavar": "ID",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "project",
+          "run_id",
+          "lens",
+          "kind",
+          "title",
+          "tier",
+          "state",
+          "evidence_count",
+          "duplicate_of",
+          "answered_by",
+          "answered_at",
+          "deferred_until",
+          "inbox_at",
+          "created_at",
+          "summary",
+          "paths",
+          "impacted",
+          "tier_reasons",
+          "finding_ids",
+          "evidence",
+          "plan",
+          "note"
+        ],
+        "schema": "Proposal"
       }
     },
     "hub curator resume": {
@@ -340,7 +836,8 @@
           "charter",
           "paused",
           "schedules",
-          "night"
+          "night",
+          "last_review_run"
         ],
         "schema": "CuratorStatus"
       }
@@ -372,7 +869,8 @@
           "charter",
           "paused",
           "schedules",
-          "night"
+          "night",
+          "last_review_run"
         ],
         "schema": "CuratorStatus"
       }
@@ -1065,7 +1563,8 @@
           "repeatable": false,
           "choices": [
             "decision",
-            "notice"
+            "notice",
+            "proposal"
           ]
         },
         {
@@ -3352,6 +3851,71 @@
       ],
       "json": null
     },
+    "worker finding": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--lens"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false,
+          "choices": [
+            "tool_errors",
+            "environment",
+            "corrections",
+            "failed_runs",
+            "tech_debt",
+            "code_health",
+            "docs_drift",
+            "skills_memory",
+            "cost",
+            "security",
+            "product_goals"
+          ]
+        },
+        {
+          "flags": [
+            "--title"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--evidence"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--severity"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "default": "medium"
+        },
+        {
+          "flags": [
+            "--body-file"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": null
+    },
     "worker notify": {
       "positionals": [],
       "options": [
@@ -3438,6 +4002,111 @@
         ],
         "schema": "Plan"
       }
+    },
+    "worker propose": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--lens"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false,
+          "choices": [
+            "tool_errors",
+            "environment",
+            "corrections",
+            "failed_runs",
+            "tech_debt",
+            "code_health",
+            "docs_drift",
+            "skills_memory",
+            "cost",
+            "security",
+            "product_goals"
+          ]
+        },
+        {
+          "flags": [
+            "--kind"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false,
+          "choices": [
+            "docs",
+            "memory",
+            "test_add",
+            "fix",
+            "refactor",
+            "lint",
+            "skill",
+            "cli",
+            "release_prep",
+            "feature",
+            "api_change",
+            "schema_change",
+            "global_config",
+            "dependency_major",
+            "operation",
+            "test_loosen",
+            "verify_change",
+            "ci_change",
+            "credentials",
+            "curator_rules"
+          ]
+        },
+        {
+          "flags": [
+            "--title"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--plan-file"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--path"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--finding"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--evidence"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--summary-file"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": null
     },
     "worker step": {
       "positionals": [
@@ -13053,7 +13722,8 @@
                   {
                     "enum": [
                       "decision",
-                      "notice"
+                      "notice",
+                      "proposal"
                     ],
                     "type": "string"
                   },
@@ -13855,6 +14525,975 @@
                   }
                 }
               }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/curator/findings": {
+        "get": {
+          "tags": [
+            "curator"
+          ],
+          "summary": "List Findings",
+          "description": "The findings of the project's review runs the caller may read, newest first.",
+          "operationId": "list_findings_v1_projects__project__curator_findings_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "run_id",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "maximum": 9223372036854775807,
+                    "minimum": 1
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "of this review run",
+                "title": "Run Id"
+              },
+              "description": "of this review run"
+            },
+            {
+              "name": "lens",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "tool_errors",
+                      "environment",
+                      "corrections",
+                      "failed_runs",
+                      "tech_debt",
+                      "code_health",
+                      "docs_drift",
+                      "skills_memory",
+                      "cost",
+                      "security",
+                      "product_goals"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Lens"
+              }
+            },
+            {
+              "name": "limit",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 200,
+                "minimum": 1,
+                "default": 50,
+                "title": "Limit"
+              }
+            },
+            {
+              "name": "offset",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 100000,
+                "minimum": 0,
+                "default": 0,
+                "title": "Offset"
+              }
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/FindingList"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/curator/findings/{finding_id}": {
+        "get": {
+          "tags": [
+            "curator"
+          ],
+          "summary": "Show Finding",
+          "operationId": "show_finding_v1_projects__project__curator_findings__finding_id__get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "finding_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Finding Id"
+              }
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Finding"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/curator/proposals": {
+        "get": {
+          "tags": [
+            "curator"
+          ],
+          "summary": "List Proposals",
+          "description": "The proposals of the project's review runs the caller may read, newest first.",
+          "operationId": "list_proposals_v1_projects__project__curator_proposals_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "state",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "array",
+                "items": {
+                  "enum": [
+                    "open",
+                    "accepted",
+                    "rejected",
+                    "deferred",
+                    "dropped"
+                  ],
+                  "type": "string"
+                },
+                "description": "any of these; repeat it",
+                "default": [],
+                "title": "State"
+              },
+              "description": "any of these; repeat it"
+            },
+            {
+              "name": "tier",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "maximum": 3,
+                  "minimum": 0
+                },
+                "description": "any of these tiers; repeat it",
+                "default": [],
+                "title": "Tier"
+              },
+              "description": "any of these tiers; repeat it"
+            },
+            {
+              "name": "lens",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "tool_errors",
+                      "environment",
+                      "corrections",
+                      "failed_runs",
+                      "tech_debt",
+                      "code_health",
+                      "docs_drift",
+                      "skills_memory",
+                      "cost",
+                      "security",
+                      "product_goals"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Lens"
+              }
+            },
+            {
+              "name": "run_id",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "maximum": 9223372036854775807,
+                    "minimum": 1
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "of this review run",
+                "title": "Run Id"
+              },
+              "description": "of this review run"
+            },
+            {
+              "name": "limit",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 200,
+                "minimum": 1,
+                "default": 50,
+                "title": "Limit"
+              }
+            },
+            {
+              "name": "offset",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 100000,
+                "minimum": 0,
+                "default": 0,
+                "title": "Offset"
+              }
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ProposalList"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/curator/proposals/{proposal_id}": {
+        "get": {
+          "tags": [
+            "curator"
+          ],
+          "summary": "Show Proposal",
+          "operationId": "show_proposal_v1_projects__project__curator_proposals__proposal_id__get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "proposal_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Proposal Id"
+              }
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Proposal"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/curator/proposals/{proposal_id}/answer": {
+        "post": {
+          "tags": [
+            "curator"
+          ],
+          "summary": "Answer Proposal",
+          "description": "Accept, reject or defer a proposal; the admins of the project alone may.",
+          "operationId": "answer_proposal_v1_projects__project__curator_proposals__proposal_id__answer_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "proposal_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Proposal Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProposalAnswer"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Proposal"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/curator/figures": {
+        "get": {
+          "tags": [
+            "curator"
+          ],
+          "summary": "Show Figures",
+          "description": "The figures curator.collect counted for a night of the project: the latest, or ``night``'s.",
+          "operationId": "show_figures_v1_projects__project__curator_figures_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "night",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "date"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "the night, the local date its window opened; the latest",
+                "title": "Night"
+              },
+              "description": "the night, the local date its window opened; the latest"
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/NightFiguresView"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/worker/runs/{run_id}/findings": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Record Finding",
+          "description": "Record a finding of the review run this worker holds, with evidence the hub finds.",
+          "operationId": "record_finding_v1_worker_runs__run_id__findings_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FindingIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Finding"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/worker/runs/{run_id}/proposals": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Record Proposal",
+          "description": "Record a proposal of the review run this worker holds: the hub resolves its evidence, checks its draft plan,\ncomputes its tier and drops it when it repeats a proposal rejected lately.",
+          "operationId": "record_proposal_v1_worker_runs__run_id__proposals_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProposalIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Proposal"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
             }
           }
         }
@@ -15469,6 +17108,9 @@
             "circuit_breaker": {
               "$ref": "#/components/schemas/CircuitBreaker"
             },
+            "review": {
+              "$ref": "#/components/schemas/ReviewSettings"
+            },
             "reviewer": {
               "$ref": "#/components/schemas/Role"
             },
@@ -15667,6 +17309,9 @@
             },
             "circuit_breaker": {
               "$ref": "#/components/schemas/CircuitBreaker"
+            },
+            "review": {
+              "$ref": "#/components/schemas/ReviewSettings"
             },
             "reviewer": {
               "$ref": "#/components/schemas/Role"
@@ -16126,6 +17771,17 @@
                 }
               ],
               "description": "null without a charter"
+            },
+            "last_review_run": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ReviewRunSummary"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "the project's latest review run, of any night; null before the first"
             }
           },
           "type": "object",
@@ -17146,6 +18802,155 @@
           ],
           "title": "Evidence"
         },
+        "EvidenceIn": {
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "session",
+                "run",
+                "code"
+              ],
+              "title": "Kind"
+            },
+            "session_id": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Session Id",
+              "description": "session: the digest's session"
+            },
+            "field": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "user_turns",
+                    "commands",
+                    "repeated_commands",
+                    "errors",
+                    "files_edited",
+                    "tools",
+                    "bash"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Field",
+              "description": "session: the list of the digest"
+            },
+            "index": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 10000.0,
+                  "minimum": 0.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Index",
+              "description": "session: the entry of that list, from 0"
+            },
+            "run_id": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 9.223372036854776e+18,
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id",
+              "description": "run: the run"
+            },
+            "seq": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 2147483647.0,
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Seq",
+              "description": "run: the seq of its event"
+            },
+            "repo": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[^\\x00-\\x1f\\x7f/:][^\\x00-\\x1f\\x7f:]{0,199}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Repo",
+              "description": "code: a repo of the project"
+            },
+            "path": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 500,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Path",
+              "description": "code: within the repo"
+            },
+            "line": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 10000000.0,
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Line",
+              "description": "code: the line"
+            },
+            "commit": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Commit",
+              "description": "code: the commit the worktree was at"
+            }
+          },
+          "type": "object",
+          "required": [
+            "kind"
+          ],
+          "title": "EvidenceIn",
+          "description": "One piece of evidence, as ``review.parse_evidence`` reads it from the command line."
+        },
         "FailedBuildCounts": {
           "properties": {
             "failed": {
@@ -17173,6 +18978,178 @@
             "projects"
           ],
           "title": "FailedBuildCounts"
+        },
+        "Finding": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "run_id": {
+              "type": "integer",
+              "title": "Run Id",
+              "description": "the review run that recorded it"
+            },
+            "lens": {
+              "type": "string",
+              "title": "Lens"
+            },
+            "severity": {
+              "type": "string",
+              "enum": [
+                "low",
+                "medium",
+                "high"
+              ],
+              "title": "Severity"
+            },
+            "title": {
+              "type": "string",
+              "title": "Title"
+            },
+            "body": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Body"
+            },
+            "evidence": {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array",
+              "title": "Evidence",
+              "description": "each piece as the hub resolved it, with how (resolved)"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "project",
+            "run_id",
+            "lens",
+            "severity",
+            "title",
+            "body",
+            "evidence",
+            "created_at"
+          ],
+          "title": "Finding"
+        },
+        "FindingIn": {
+          "properties": {
+            "lens": {
+              "type": "string",
+              "enum": [
+                "tool_errors",
+                "environment",
+                "corrections",
+                "failed_runs",
+                "tech_debt",
+                "code_health",
+                "docs_drift",
+                "skills_memory",
+                "cost",
+                "security",
+                "product_goals"
+              ],
+              "title": "Lens"
+            },
+            "severity": {
+              "type": "string",
+              "enum": [
+                "low",
+                "medium",
+                "high"
+              ],
+              "title": "Severity",
+              "default": "medium"
+            },
+            "title": {
+              "type": "string",
+              "maxLength": 200,
+              "minLength": 1,
+              "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+              "title": "Title"
+            },
+            "body": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 16384,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Body",
+              "description": "markdown, 16 KiB"
+            },
+            "evidence": {
+              "items": {
+                "$ref": "#/components/schemas/EvidenceIn"
+              },
+              "type": "array",
+              "maxItems": 50,
+              "minItems": 1,
+              "title": "Evidence"
+            }
+          },
+          "type": "object",
+          "required": [
+            "lens",
+            "title",
+            "evidence"
+          ],
+          "title": "FindingIn"
+        },
+        "FindingList": {
+          "properties": {
+            "findings": {
+              "items": {
+                "$ref": "#/components/schemas/Finding"
+              },
+              "type": "array",
+              "title": "Findings",
+              "description": "newest first"
+            },
+            "total": {
+              "type": "integer",
+              "title": "Total"
+            },
+            "limit": {
+              "type": "integer",
+              "title": "Limit"
+            },
+            "offset": {
+              "type": "integer",
+              "title": "Offset"
+            }
+          },
+          "type": "object",
+          "required": [
+            "findings",
+            "total",
+            "limit",
+            "offset"
+          ],
+          "title": "FindingList"
         },
         "Found": {
           "properties": {
@@ -17783,6 +19760,23 @@
                 }
               ],
               "title": "Agent Version"
+            },
+            "run_kinds": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_]{0,31}$"
+                  },
+                  "type": "array",
+                  "maxItems": 20
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Kinds",
+              "description": "the kinds of run the daemon runs; one that says none takes no review run. A kind this hub does not know is left out"
             }
           },
           "type": "object",
@@ -18745,6 +20739,63 @@
           ],
           "title": "Night"
         },
+        "NightFiguresView": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "night": {
+              "type": "string",
+              "format": "date",
+              "title": "Night"
+            },
+            "since": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Since"
+            },
+            "until": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Until"
+            },
+            "run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id",
+              "description": "the review run queued on them, if any"
+            },
+            "figures": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Figures",
+              "description": "the figures, as curator.collect counted them"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "night",
+            "since",
+            "until",
+            "run_id",
+            "figures",
+            "created_at"
+          ],
+          "title": "NightFiguresView"
+        },
         "NodeDetail": {
           "properties": {
             "graph": {
@@ -18941,7 +20992,8 @@
               "type": "string",
               "enum": [
                 "decision",
-                "notice"
+                "notice",
+                "proposal"
               ],
               "title": "Kind"
             },
@@ -19013,6 +21065,37 @@
               ],
               "title": "Decision State",
               "description": "the state of the decision now, for a notification of kind decision"
+            },
+            "proposal_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Proposal Id",
+              "description": "the proposal, for a notification of kind proposal"
+            },
+            "proposal_state": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "open",
+                    "accepted",
+                    "rejected",
+                    "deferred",
+                    "dropped"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Proposal State",
+              "description": "the state of the proposal now, for a notification of kind proposal"
             },
             "title": {
               "type": "string",
@@ -19101,6 +21184,12 @@
               "type": "integer",
               "title": "Open Decisions",
               "description": "decisions that still wait for the member's answer, read or not"
+            },
+            "open_proposals": {
+              "type": "integer",
+              "title": "Open Proposals",
+              "description": "proposals in the member's Inbox that wait for an answer, read or not",
+              "default": 0
             }
           },
           "type": "object",
@@ -19463,7 +21552,8 @@
               "type": "string",
               "enum": [
                 "step",
-                "plan"
+                "plan",
+                "review"
               ],
               "title": "Kind"
             },
@@ -19909,6 +21999,27 @@
             "worker_id"
           ],
           "title": "PairingState"
+        },
+        "PathIn": {
+          "properties": {
+            "repo": {
+              "type": "string",
+              "pattern": "^[^\\x00-\\x1f\\x7f/:][^\\x00-\\x1f\\x7f:]{0,199}$",
+              "title": "Repo"
+            },
+            "path": {
+              "type": "string",
+              "maxLength": 500,
+              "minLength": 1,
+              "title": "Path"
+            }
+          },
+          "type": "object",
+          "required": [
+            "repo",
+            "path"
+          ],
+          "title": "PathIn"
         },
         "Plan": {
           "properties": {
@@ -20719,6 +22830,550 @@
           ],
           "title": "ProjectToolStats"
         },
+        "Proposal": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "run_id": {
+              "type": "integer",
+              "title": "Run Id",
+              "description": "the review run that proposed it"
+            },
+            "lens": {
+              "type": "string",
+              "title": "Lens"
+            },
+            "kind": {
+              "type": "string",
+              "title": "Kind"
+            },
+            "title": {
+              "type": "string",
+              "title": "Title"
+            },
+            "tier": {
+              "type": "integer",
+              "maximum": 3.0,
+              "minimum": 0.0,
+              "title": "Tier",
+              "description": "as the hub's tier rules computed it"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "open",
+                "accepted",
+                "rejected",
+                "deferred",
+                "dropped"
+              ],
+              "title": "State"
+            },
+            "evidence_count": {
+              "type": "integer",
+              "title": "Evidence Count",
+              "description": "the pieces of evidence it rests on, its findings' included"
+            },
+            "duplicate_of": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Duplicate Of",
+              "description": "the rejected proposal a dropped one repeats"
+            },
+            "answered_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Answered By"
+            },
+            "answered_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Answered At"
+            },
+            "deferred_until": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Deferred Until"
+            },
+            "inbox_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Inbox At",
+              "description": "when it became an Inbox item of the owner; tier 2 only"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "summary": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Summary"
+            },
+            "paths": {
+              "items": {
+                "$ref": "#/components/schemas/RepoPath"
+              },
+              "type": "array",
+              "title": "Paths"
+            },
+            "impacted": {
+              "anyOf": [
+                {
+                  "items": {
+                    "$ref": "#/components/schemas/RepoPath"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Impacted",
+              "description": "what the paths reach in the knowledge graph; null without one"
+            },
+            "tier_reasons": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Tier Reasons",
+              "description": "why it has its tier, rule by rule"
+            },
+            "finding_ids": {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array",
+              "title": "Finding Ids"
+            },
+            "evidence": {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array",
+              "title": "Evidence",
+              "description": "its own evidence, as the hub resolved it"
+            },
+            "plan": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Plan",
+              "description": "the draft plan"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note",
+              "description": "the owner's note with the answer"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "project",
+            "run_id",
+            "lens",
+            "kind",
+            "title",
+            "tier",
+            "state",
+            "evidence_count",
+            "duplicate_of",
+            "answered_by",
+            "answered_at",
+            "deferred_until",
+            "inbox_at",
+            "created_at",
+            "summary",
+            "paths",
+            "impacted",
+            "tier_reasons",
+            "finding_ids",
+            "evidence",
+            "plan",
+            "note"
+          ],
+          "title": "Proposal"
+        },
+        "ProposalAnswer": {
+          "properties": {
+            "action": {
+              "type": "string",
+              "enum": [
+                "accept",
+                "reject",
+                "defer"
+              ],
+              "title": "Action"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 2000,
+                  "minLength": 1,
+                  "pattern": "^[^\\x00-\\x1f\\x7f]+$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note"
+            },
+            "defer_days": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 90.0,
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Defer Days",
+              "description": "with defer; 7 by default"
+            }
+          },
+          "type": "object",
+          "required": [
+            "action"
+          ],
+          "title": "ProposalAnswer"
+        },
+        "ProposalIn": {
+          "properties": {
+            "lens": {
+              "type": "string",
+              "enum": [
+                "tool_errors",
+                "environment",
+                "corrections",
+                "failed_runs",
+                "tech_debt",
+                "code_health",
+                "docs_drift",
+                "skills_memory",
+                "cost",
+                "security",
+                "product_goals"
+              ],
+              "title": "Lens"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "docs",
+                "memory",
+                "test_add",
+                "fix",
+                "refactor",
+                "lint",
+                "skill",
+                "cli",
+                "release_prep",
+                "feature",
+                "api_change",
+                "schema_change",
+                "global_config",
+                "dependency_major",
+                "operation",
+                "test_loosen",
+                "verify_change",
+                "ci_change",
+                "credentials",
+                "curator_rules"
+              ],
+              "title": "Kind",
+              "description": "the kind of change, which gives its first tier"
+            },
+            "title": {
+              "type": "string",
+              "maxLength": 200,
+              "minLength": 1,
+              "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+              "title": "Title"
+            },
+            "summary": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 16384,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Summary",
+              "description": "markdown, 16 KiB"
+            },
+            "paths": {
+              "items": {
+                "$ref": "#/components/schemas/PathIn"
+              },
+              "type": "array",
+              "maxItems": 100,
+              "title": "Paths",
+              "description": "what it would edit"
+            },
+            "finding_ids": {
+              "items": {
+                "type": "integer",
+                "maximum": 9.223372036854776e+18,
+                "minimum": 1.0
+              },
+              "type": "array",
+              "maxItems": 50,
+              "title": "Finding Ids",
+              "description": "findings of the project it rests on"
+            },
+            "evidence": {
+              "items": {
+                "$ref": "#/components/schemas/EvidenceIn"
+              },
+              "type": "array",
+              "maxItems": 50,
+              "title": "Evidence"
+            },
+            "plan": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Plan",
+              "description": "the draft plan: plan.schema.json, in outcome steps"
+            }
+          },
+          "type": "object",
+          "required": [
+            "lens",
+            "kind",
+            "title",
+            "plan"
+          ],
+          "title": "ProposalIn"
+        },
+        "ProposalList": {
+          "properties": {
+            "proposals": {
+              "items": {
+                "$ref": "#/components/schemas/ProposalSummary"
+              },
+              "type": "array",
+              "title": "Proposals",
+              "description": "newest first"
+            },
+            "total": {
+              "type": "integer",
+              "title": "Total"
+            },
+            "limit": {
+              "type": "integer",
+              "title": "Limit"
+            },
+            "offset": {
+              "type": "integer",
+              "title": "Offset"
+            }
+          },
+          "type": "object",
+          "required": [
+            "proposals",
+            "total",
+            "limit",
+            "offset"
+          ],
+          "title": "ProposalList"
+        },
+        "ProposalSummary": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "run_id": {
+              "type": "integer",
+              "title": "Run Id",
+              "description": "the review run that proposed it"
+            },
+            "lens": {
+              "type": "string",
+              "title": "Lens"
+            },
+            "kind": {
+              "type": "string",
+              "title": "Kind"
+            },
+            "title": {
+              "type": "string",
+              "title": "Title"
+            },
+            "tier": {
+              "type": "integer",
+              "maximum": 3.0,
+              "minimum": 0.0,
+              "title": "Tier",
+              "description": "as the hub's tier rules computed it"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "open",
+                "accepted",
+                "rejected",
+                "deferred",
+                "dropped"
+              ],
+              "title": "State"
+            },
+            "evidence_count": {
+              "type": "integer",
+              "title": "Evidence Count",
+              "description": "the pieces of evidence it rests on, its findings' included"
+            },
+            "duplicate_of": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Duplicate Of",
+              "description": "the rejected proposal a dropped one repeats"
+            },
+            "answered_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Answered By"
+            },
+            "answered_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Answered At"
+            },
+            "deferred_until": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Deferred Until"
+            },
+            "inbox_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Inbox At",
+              "description": "when it became an Inbox item of the owner; tier 2 only"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "project",
+            "run_id",
+            "lens",
+            "kind",
+            "title",
+            "tier",
+            "state",
+            "evidence_count",
+            "duplicate_of",
+            "answered_by",
+            "answered_at",
+            "deferred_until",
+            "inbox_at",
+            "created_at"
+          ],
+          "title": "ProposalSummary"
+        },
         "PruneRequest": {
           "properties": {
             "project": {
@@ -21252,6 +23907,24 @@
           ],
           "title": "Repo"
         },
+        "RepoPath": {
+          "properties": {
+            "repo": {
+              "type": "string",
+              "title": "Repo"
+            },
+            "path": {
+              "type": "string",
+              "title": "Path"
+            }
+          },
+          "type": "object",
+          "required": [
+            "repo",
+            "path"
+          ],
+          "title": "RepoPath"
+        },
         "Results": {
           "properties": {
             "items": {
@@ -21267,6 +23940,121 @@
             "items"
           ],
           "title": "Results"
+        },
+        "ReviewRunSummary": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "queued",
+                "leased",
+                "running",
+                "interactive",
+                "verifying",
+                "waiting",
+                "review",
+                "parked",
+                "done",
+                "failed",
+                "lost",
+                "cancelled"
+              ],
+              "title": "State"
+            },
+            "night": {
+              "type": "string",
+              "format": "date",
+              "title": "Night"
+            },
+            "lenses": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Lenses",
+              "description": "the lenses of its night"
+            },
+            "findings": {
+              "type": "integer",
+              "title": "Findings"
+            },
+            "proposals": {
+              "type": "integer",
+              "title": "Proposals"
+            },
+            "queued_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Queued At"
+            },
+            "finished_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Finished At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "state",
+            "night",
+            "lenses",
+            "findings",
+            "proposals",
+            "queued_at",
+            "finished_at"
+          ],
+          "title": "ReviewRunSummary",
+          "description": "The last review run of a project: the run, the night it reviewed, and what it wrote."
+        },
+        "ReviewSettings": {
+          "properties": {
+            "lenses": {
+              "type": "integer",
+              "maximum": 11.0,
+              "minimum": 1.0,
+              "title": "Lenses",
+              "description": "lenses a night looks through, in turn",
+              "default": 3
+            },
+            "days": {
+              "type": "integer",
+              "maximum": 30.0,
+              "minimum": 1.0,
+              "title": "Days",
+              "description": "the days of sessions and runs it counts",
+              "default": 7
+            },
+            "budget_usd": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "maximum": 1000.0,
+                  "exclusiveMinimum": 0.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Budget Usd",
+              "description": "the most the review run may cost; null: as any run"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "title": "ReviewSettings",
+          "description": "How the night's review run of the Curator looks (``evo_agents.hub.review``)."
         },
         "Revision": {
           "properties": {
@@ -21492,10 +24280,11 @@
               "type": "string",
               "enum": [
                 "step",
-                "plan"
+                "plan",
+                "review"
               ],
               "title": "Kind",
-              "description": "step: one step of the plan; plan: every step not done yet"
+              "description": "step: one step of the plan; plan: every step not done yet; review: the night's review of the project by the Curator, on no plan"
             },
             "project": {
               "type": "string",
@@ -21503,7 +24292,8 @@
             },
             "plan_id": {
               "type": "string",
-              "title": "Plan Id"
+              "title": "Plan Id",
+              "description": "the plan it works on; empty for a review run, which works on none"
             },
             "step_key": {
               "anyOf": [
@@ -21530,9 +24320,16 @@
               "description": "the step's title when the run was dispatched; the plan's for a plan run"
             },
             "plan_revision": {
-              "type": "integer",
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
               "title": "Plan Revision",
-              "description": "the plan revision the run was dispatched from"
+              "description": "the plan revision the run was dispatched from; null for a review run"
             },
             "dispatched_by": {
               "type": "string",
@@ -22781,7 +25578,8 @@
               "type": "string",
               "enum": [
                 "step",
-                "plan"
+                "plan",
+                "review"
               ],
               "title": "Kind"
             },
@@ -22791,7 +25589,8 @@
             },
             "plan_id": {
               "type": "string",
-              "title": "Plan Id"
+              "title": "Plan Id",
+              "description": "empty for a review run"
             },
             "step_key": {
               "anyOf": [
@@ -22817,9 +25616,16 @@
               "title": "Title"
             },
             "plan_revision": {
-              "type": "integer",
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
               "title": "Plan Revision",
-              "description": "the plan revision the run was dispatched from"
+              "description": "the plan revision the run was dispatched from; null for a review run"
             },
             "attempt": {
               "type": "integer",
@@ -22941,7 +25747,7 @@
                 }
               ],
               "title": "Repos",
-              "description": "a plan run's repos, each with a checkout on this worker"
+              "description": "a plan run's or a review run's repos, each with a checkout on this worker"
             },
             "lease_expires_at": {
               "type": "string",

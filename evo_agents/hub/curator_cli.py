@@ -11,12 +11,20 @@ and the night now with its runs and cost (GET .../curator). ``curator pause`` pa
 cancels the runs they queued that are still queued; within a minute nothing of the project's night shift moves.
 ``curator resume`` lets them run again. Either takes an admin of the project, or the member a schedule dispatches as.
 
+``curator proposal list`` lists the proposals of the project's review runs, newest first, filtered by ``--state``,
+``--tier`` (each repeats), ``--lens`` and ``--run`` (GET .../curator/proposals); ``curator proposal show ID`` shows one
+with its tier's reasons, its evidence and its draft plan; ``curator proposal accept|reject|defer ID`` answers it, which
+only an admin of the project may (POST .../curator/proposals/{id}/answer), with ``--note`` and, for defer, ``--days``.
+``curator findings`` lists what the review runs found (GET .../curator/findings), and ``curator figures`` prints the
+figures of the latest night, or of ``--night`` (GET .../curator/figures).
+
 The project is ``--project``, or ``hub.project`` in the harness.yaml around the current directory. ``--json`` prints
 what the hub answered, with the keys declared next to the flag. Standard library and PyYAML only, like the client.
 """
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 from urllib.parse import urlencode
@@ -28,6 +36,7 @@ from evo_agents.hub.client import HubError
 from evo_agents.hub.contract import json_option, returns_array, returns_object
 from evo_agents.hub.curator import CHARTER_META, money
 from evo_agents.hub.plan_cli import _project
+from evo_agents.hub.review import ANSWERS, DEFER_DAYS, LENSES, PROPOSAL_STATES, evidence_text
 
 # The keys of the hub's answers these commands print with --json (the contract, `evo-agents hub contract print`).
 CHARTER_BODY_KEYS = (
@@ -45,13 +54,43 @@ CHARTER_BODY_KEYS = (
     "auto_merge",
     "protected_paths",
     "circuit_breaker",
+    "review",
     "reviewer",
     "builder",
     "judge",
 )
 CHARTER_KEYS = CHARTER_BODY_KEYS + CHARTER_META
 REVISION_KEYS = ("revision", "updated_by", "updated_at", "worker", "worker_id")
-STATUS_KEYS = ("project", "charter", "paused", "schedules", "night")
+STATUS_KEYS = ("project", "charter", "paused", "schedules", "night", "last_review_run")
+PROPOSAL_SUMMARY_KEYS = (
+    "id",
+    "project",
+    "run_id",
+    "lens",
+    "kind",
+    "title",
+    "tier",
+    "state",
+    "evidence_count",
+    "duplicate_of",
+    "answered_by",
+    "answered_at",
+    "deferred_until",
+    "inbox_at",
+    "created_at",
+)
+PROPOSAL_KEYS = PROPOSAL_SUMMARY_KEYS + (
+    "summary",
+    "paths",
+    "impacted",
+    "tier_reasons",
+    "finding_ids",
+    "evidence",
+    "plan",
+    "note",
+)
+FINDING_KEYS = ("id", "project", "run_id", "lens", "severity", "title", "body", "evidence", "created_at")
+PROPOSAL = returns_object(*PROPOSAL_KEYS, schema="Proposal")
 STATUS = returns_object(*STATUS_KEYS, schema="CuratorStatus")
 CHARTER = returns_object(*CHARTER_KEYS, schema="Charter")
 
@@ -79,6 +118,12 @@ def _role(role: dict) -> str:
     return role["runtime"] + (f" ({role['model']})" if role.get("model") else "")
 
 
+def _review(settings: dict) -> str:
+    cap = settings.get("budget_usd")
+    spend = f"at most {money(cap)}" if cap is not None else "the night's caps"
+    return f"{settings.get('lenses', 3)} lenses a night, {settings.get('days', 7)} days of figures, {spend}"
+
+
 def _print_charter(charter: dict) -> None:
     window = charter["window"]
     print(
@@ -96,6 +141,7 @@ def _print_charter(charter: dict) -> None:
         ("auto merge", ", ".join(f"tier {tier}" for tier in charter["auto_merge"]) or "none"),
         ("protected", ", ".join(charter["protected_paths"]) or "none"),
         ("breaker", f"{charter['circuit_breaker']['max_failed_in_a_row']} failed in a row"),
+        ("review", _review(charter.get("review") or {})),
         ("reviewer", _role(charter["reviewer"])),
         ("builder", _role(charter["builder"])),
         ("judge", _role(charter["judge"])),
@@ -179,6 +225,12 @@ def _print_status(status: dict) -> None:
             f"  night of {night['night']} ({night['local_time']} local, {where} the window): {night['runs']} of "
             f"{night['max_runs']} runs, {money(night['cost_usd'])} of {money(night['budget_usd'])}{active}"
         )
+    last = status.get("last_review_run")
+    if last is not None:
+        print(
+            f"  last review: run #{last['id']} of the night of {last['night']}, {last['state']}: {last['findings']} "
+            f"findings, {last['proposals']} proposals (lenses {', '.join(last['lenses']) or '-'})"
+        )
 
 
 @_client_command
@@ -216,8 +268,156 @@ cmd_pause = _switch("pause")
 cmd_resume = _switch("resume")
 
 
+# Proposals and findings
+
+
+def _query(**values) -> str:
+    pairs = []
+    for key, value in values.items():
+        for item in value if isinstance(value, list) else [value]:
+            if item is not None:
+                pairs.append((key, item))
+    return f"?{urlencode(pairs)}" if pairs else ""
+
+
+@_client_command
+def cmd_proposal_list(args) -> int:
+    hub, _ = _signed_in()
+    project = _project(args)
+    query = _query(
+        state=args.state or [],
+        tier=args.tier or [],
+        lens=args.lens,
+        run_id=args.run,
+        limit=args.limit,
+        offset=args.offset or None,
+    )
+    found = hub.call("GET", _curator_path(project, "proposals") + query)
+    if args.json:
+        _print_json(found)
+        return 0
+    rows = [
+        (f"#{p['id']}", p["tier"], p["state"], p["kind"], p["lens"], f"#{p['run_id']}", p["evidence_count"], p["title"])
+        for p in found["proposals"]
+    ]
+    if rows:
+        _table(("ID", "TIER", "STATE", "KIND", "LENS", "RUN", "EVIDENCE", "TITLE"), rows)
+    print(f"{len(rows)} of {found['total']} proposal(s) of {project}")
+    return 0
+
+
+def _print_proposal(proposal: dict) -> None:
+    print(f"Proposal #{proposal['id']} of {proposal['project']}: {proposal['title']}")
+    lines = [
+        ("tier", str(proposal["tier"])),
+        ("state", proposal["state"] + (f" (repeats #{proposal['duplicate_of']})" if proposal["duplicate_of"] else "")),
+        ("kind", proposal["kind"]),
+        ("lens", proposal["lens"]),
+        ("run", f"#{proposal['run_id']}, {_when(proposal['created_at'])} UTC"),
+        ("paths", ", ".join(f"{p['repo']}:{p['path']}" for p in proposal["paths"]) or "none"),
+        ("findings", ", ".join(f"#{item}" for item in proposal["finding_ids"]) or "none"),
+        ("evidence", f"{proposal['evidence_count']} pieces"),
+    ]
+    if proposal.get("answered_by"):
+        lines.append(("answered", f"by {proposal['answered_by']} at {_when(proposal['answered_at'])} UTC"))
+    if proposal.get("deferred_until"):
+        lines.append(("deferred", f"until {_when(proposal['deferred_until'])} UTC"))
+    if proposal.get("note"):
+        lines.append(("note", proposal["note"]))
+    width = max(len(label) for label, _ in lines)
+    for label, text in lines:
+        print(f"  {label:<{width}}  {text}")
+    print("  why this tier:")
+    for reason in proposal["tier_reasons"]:
+        print(f"    {reason}")
+    if proposal["evidence"]:
+        print("  its own evidence:")
+        for item in proposal["evidence"]:
+            print(f"    {evidence_text(item)} ({item.get('resolved')})")
+    if proposal.get("summary"):
+        print("\n" + proposal["summary"].rstrip())
+    print("\nDraft plan:")
+    print(json.dumps(proposal["plan"], ensure_ascii=False, indent=2))
+
+
+@_client_command
+def cmd_proposal_show(args) -> int:
+    hub, _ = _signed_in()
+    project = _project(args)
+    proposal = hub.call("GET", _curator_path(project, "proposals", str(args.id)))
+    if args.json:
+        _print_json(proposal)
+        return 0
+    _print_proposal(proposal)
+    return 0
+
+
+def _answer(action: str):
+    @_client_command
+    def run(args) -> int:
+        hub, _ = _signed_in()
+        project = _project(args)
+        body: dict = {"action": action}
+        if args.note:
+            body["note"] = args.note
+        if action == "defer" and args.days is not None:
+            body["defer_days"] = args.days
+        proposal = hub.call("POST", _curator_path(project, "proposals", str(args.id), "answer"), body)
+        if args.json:
+            _print_json(proposal)
+            return 0
+        until = f" until {_when(proposal['deferred_until'])} UTC" if proposal.get("deferred_until") else ""
+        print(f"Proposal #{proposal['id']} of {project} is {proposal['state']}{until}: {proposal['title']}")
+        return 0
+
+    return run
+
+
+cmd_accept = _answer("accept")
+cmd_reject = _answer("reject")
+cmd_defer = _answer("defer")
+
+
+@_client_command
+def cmd_findings(args) -> int:
+    hub, _ = _signed_in()
+    project = _project(args)
+    query = _query(run_id=args.run, lens=args.lens, limit=args.limit, offset=args.offset or None)
+    found = hub.call("GET", _curator_path(project, "findings") + query)
+    if args.json:
+        _print_json(found)
+        return 0
+    rows = [
+        (f"#{f['id']}", f["severity"], f["lens"], f"#{f['run_id']}", len(f["evidence"]), f["title"])
+        for f in found["findings"]
+    ]
+    if rows:
+        _table(("ID", "SEVERITY", "LENS", "RUN", "EVIDENCE", "TITLE"), rows)
+    print(f"{len(rows)} of {found['total']} finding(s) of {project}")
+    return 0
+
+
+@_client_command
+def cmd_figures(args) -> int:
+    hub, _ = _signed_in()
+    project = _project(args)
+    found = hub.call("GET", _curator_path(project, "figures") + _query(night=args.night))
+    if args.json:
+        _print_json(found)
+        return 0
+    review = f", review run #{found['run_id']}" if found.get("run_id") else ""
+    print(
+        f"Figures of {found['project']} for the night of {found['night']}{review}: sessions and runs from "
+        f"{_when(found['since'])} to {_when(found['until'])} UTC"
+    )
+    print(json.dumps(found["figures"], ensure_ascii=False, indent=2))
+    return 0
+
+
 def register_curator(hsub) -> None:
-    curator = hsub.add_parser("curator", help="the night shift of a project: its charter, status, pause and resume")
+    curator = hsub.add_parser(
+        "curator", help="the night shift of a project: its charter, status, pause, resume, and its review's proposals"
+    )
     csub = curator.add_subparsers(dest="curator_command", required=True)
     project_help = "hub project (default: hub.project in the harness.yaml around the current directory)"
 
@@ -257,3 +457,57 @@ def register_curator(hsub) -> None:
     with_project(resume)
     json_option(resume, STATUS)
     resume.set_defaults(func=cmd_resume)
+
+    proposal = csub.add_parser("proposal", help="the proposals of the review runs: list, show, accept, reject, defer")
+    psub = proposal.add_subparsers(dest="proposal_command", required=True)
+    listed = psub.add_parser("list", help="the proposals, newest first")
+    with_project(listed)
+    listed.add_argument("--state", action="append", choices=PROPOSAL_STATES, help="any of these states; repeat it")
+    listed.add_argument("--tier", action="append", type=int, choices=range(4), help="any of these tiers; repeat it")
+    listed.add_argument("--lens", choices=list(LENSES), help="of this lens")
+    listed.add_argument("--run", type=int, metavar="ID", help="of this review run")
+    listed.add_argument("--limit", type=int, default=50, choices=range(1, 201), metavar="N", help="1 to 200")
+    listed.add_argument("--offset", type=int, default=0, metavar="N", help="the proposals to pass over")
+    json_option(listed, returns_object("proposals", "total", "limit", "offset", schema="ProposalList"))
+    listed.set_defaults(func=cmd_proposal_list)
+    shown = psub.add_parser("show", help="one proposal: its tier and why, its evidence, its draft plan")
+    shown.add_argument("id", type=int, help="the proposal's id")
+    with_project(shown)
+    json_option(shown, PROPOSAL)
+    shown.set_defaults(func=cmd_proposal_show)
+    helps = {
+        "accept": "accept the proposal; an admin of the project only",
+        "reject": "reject it: one like it is dropped for 30 days, unless its evidence doubles",
+        "defer": "defer it: it opens again after --days (7 by default)",
+    }
+    for action, func in zip(ANSWERS, (cmd_accept, cmd_reject, cmd_defer), strict=True):
+        answer = psub.add_parser(action, help=helps[action])
+        answer.add_argument("id", type=int, help="the proposal's id")
+        answer.add_argument("--note", help="why, in one line")
+        if action == "defer":
+            answer.add_argument(
+                "--days", type=int, choices=range(DEFER_DAYS[0], DEFER_DAYS[1] + 1), metavar="N", help="1 to 90"
+            )
+        with_project(answer)
+        json_option(answer, PROPOSAL)
+        answer.set_defaults(func=func)
+
+    findings = csub.add_parser("findings", help="what the review runs found, newest first")
+    with_project(findings)
+    findings.add_argument("--run", type=int, metavar="ID", help="of this review run")
+    findings.add_argument("--lens", choices=list(LENSES), help="of this lens")
+    findings.add_argument("--limit", type=int, default=50, choices=range(1, 201), metavar="N", help="1 to 200")
+    findings.add_argument("--offset", type=int, default=0, metavar="N", help="the findings to pass over")
+    json_option(findings, returns_object("findings", "total", "limit", "offset", schema="FindingList"))
+    findings.set_defaults(func=cmd_findings)
+
+    figures = csub.add_parser("figures", help="the figures curator.collect counted for the latest night, or --night")
+    with_project(figures)
+    figures.add_argument("--night", metavar="YYYY-MM-DD", help="the night, the local date its window opened")
+    json_option(
+        figures,
+        returns_object(
+            "project", "night", "since", "until", "run_id", "figures", "created_at", schema="NightFiguresView"
+        ),
+    )
+    figures.set_defaults(func=cmd_figures)

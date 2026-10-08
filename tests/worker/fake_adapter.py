@@ -24,11 +24,11 @@ EVO_FAKE_SCENARIOS names a JSON file ``{"<step key>": [action, ...]}``; a run fo
   of the agent's process group (``group_pid``); the adapter kills its group once the turn is over, so only a daemon
   that dies first leaves it running.
 
-A plan run (no step key) follows ``"plan:<plan id>"``. The n-th start of the same run in this process follows
-``"<key>/<n>"`` when the scenarios have it (a plan run's turn after its owner answered); otherwise a run that goes on
-with a session (after a handback, or a plan run resumed after it was parked) follows ``"<key>/resume"`` when the
-scenarios have it. Each ``cli`` and ``sh`` action is written as a JSON line ``{"run", "turn", "cmd", "exit",
-"stdout", "stderr"}`` to the file EVO_FAKE_CLI names.
+A plan run (no step key) follows ``"plan:<plan id>"``, and a review run ``"review"``. The n-th start of the same run
+in this process follows ``"<key>/<n>"`` when the scenarios have it (a plan run's turn after its owner answered);
+otherwise a run that goes on with a session (after a handback, or a plan run resumed after it was parked) follows
+``"<key>/resume"`` when the scenarios have it. Each ``cli`` and ``sh`` action is written as a JSON line ``{"run",
+"turn", "cmd", "exit", "stdout", "stderr"}`` to the file EVO_FAKE_CLI names.
 ``stop_at_turn_boundary`` ends a ``wait_for`` or ``sleep`` as a completed turn, as a takeover would. Each start is
 written as a JSON line ``{"run", "session", "resume", "prompt", "cwd", "leased", "budget", "spent_usd",
 "spent_seconds"}`` to the file EVO_FAKE_STARTS names.
@@ -260,7 +260,10 @@ class FakeAdapter(Adapter):
         path = context.env.get("EVO_FAKE_SCENARIOS")
         scenarios = json.loads(Path(path).read_text(encoding="utf-8")) if path else {}
         run = context.run
-        key = str(run.get("step_key")) if run.get("step_key") is not None else f"plan:{run.get('plan_id')}"
+        if run.get("kind") == "review":
+            key = "review"
+        else:
+            key = str(run.get("step_key")) if run.get("step_key") is not None else f"plan:{run.get('plan_id')}"
         self.turn = FakeAdapter.starts[context.run_id] = FakeAdapter.starts.get(context.run_id, 0) + 1
         if self.turn > 1 and f"{key}/{self.turn}" in scenarios:
             key = f"{key}/{self.turn}"
