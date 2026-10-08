@@ -1,7 +1,8 @@
 """The api's side of a knowledge graph on the hub: the built graphs it keeps in its cache, and the kg_* tools answered
 from them with the code of ``evo-agents kg serve``.
 
-A tool call reads the project's latest successful build that still holds an artifact (``built_graphs``). Its
+A tool call reads the project's latest successful build that still holds an artifact (``BuiltGraph``, which
+``built_graphs`` of ``evo_agents.hub.server.kg`` reads from Postgres: this module imports no database library). Its
 artifact, the SQLite file the worker uploaded, is looked up in ``<data dir>/kg/graphs/<project>/<sha256>.sqlite``;
 when it is not there it is fetched from the blob store into a temporary file in the same directory, its SHA-256 and
 size are checked, and only then is it renamed into place, so a file in the cache always holds the bytes its name
@@ -29,10 +30,6 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncConnection
-
-from evo_agents.hub import tables
 from evo_agents.hub.blobs import BlobStore, BlobStoreUnavailable, blob_key
 from evo_agents.kg.policy import Label, Policy
 from evo_agents.kg.serve import HANDLE_TTL, TOOLS, Session, ToolError
@@ -62,32 +59,6 @@ class BuiltGraph:
     nodes: int
     edges: int
     finished_at: datetime
-
-
-async def built_graphs(conn: AsyncConnection, project_id: int, limit: int) -> list[BuiltGraph]:
-    """The successful builds of a project that still hold an artifact, newest first, at most ``limit``. Several
-    builds may share one artifact (a build with unchanged content reuses it), and the retention takes away the
-    artifact of older ones (``evo_agents.hub.kg_prune``)."""
-    builds = tables.kg_builds
-    query = (
-        select(
-            builds.c.id.label("build_id"),
-            builds.c.artifact_sha256.label("sha256"),
-            builds.c.artifact_size.label("size"),
-            builds.c.content_hash,
-            builds.c.nodes,
-            builds.c.edges,
-            builds.c.finished_at,
-        )
-        .where(
-            builds.c.project_id == project_id,
-            builds.c.status == "succeeded",
-            builds.c.artifact_sha256.is_not(None),
-        )
-        .order_by(builds.c.id.desc())
-        .limit(limit)
-    )
-    return [BuiltGraph(**row._mapping) for row in await conn.execute(query)]
 
 
 @dataclass(frozen=True)

@@ -64,9 +64,9 @@ from evo_agents.hub.kg_build import QueueBusy, procrastinate_jobs, queue_build
 from evo_agents.hub.kg_graph import (
     TOOL_NAMES,
     ArtifactMismatch,
+    BuiltGraph,
     GraphUnavailable,
     answer,
-    built_graphs,
 )
 from evo_agents.hub.kg_ingest import (
     LogProblem,
@@ -685,6 +685,34 @@ async def request_build(request: Request, project: ProjectName, user: CurrentUse
 
 
 # The tools
+
+
+async def built_graphs(conn: AsyncConnection, project_id: int, limit: int) -> list[BuiltGraph]:
+    """The successful builds of a project that still hold an artifact, newest first, at most ``limit``: what the
+    tools here and the web's graph pages (``evo_agents.hub.server.kg_web``) read from. Several builds may share one
+    artifact (a build with unchanged content reuses it), and the retention takes away the artifact of older ones
+    (``evo_agents.hub.kg_prune``). It lives here rather than in ``evo_agents.hub.kg_graph``, which imports no database
+    library."""
+    builds = tables.kg_builds
+    query = (
+        select(
+            builds.c.id.label("build_id"),
+            builds.c.artifact_sha256.label("sha256"),
+            builds.c.artifact_size.label("size"),
+            builds.c.content_hash,
+            builds.c.nodes,
+            builds.c.edges,
+            builds.c.finished_at,
+        )
+        .where(
+            builds.c.project_id == project_id,
+            builds.c.status == "succeeded",
+            builds.c.artifact_sha256.is_not(None),
+        )
+        .order_by(builds.c.id.desc())
+        .limit(limit)
+    )
+    return [BuiltGraph(**row._mapping) for row in await conn.execute(query)]
 
 
 def _read_sink(access: ProjectAccess, sink: str) -> str:
