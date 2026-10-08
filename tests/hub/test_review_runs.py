@@ -532,6 +532,36 @@ def test_tier_2_proposals_reach_the_inbox_within_max_decisions_per_day(review):
     assert client.get("/v1/me/notifications/count", headers=headers["owner"]).json()["open_proposals"] == 0
 
 
+def test_the_overview_reads_each_curator_with_statements_built_once(review, monkeypatch):
+    """GET /v1/me/overview is a busy route: its Curator part runs statements built at import with bind parameters,
+    a list of projects bound as one array (docs/hub.md, Data access), and builds none on a request."""
+    from sqlalchemy.dialects import postgresql
+
+    from evo_agents.hub.server import curator as curator_routes
+
+    client, worker, headers = review.client, review.worker, review.headers
+    run_id = held_review(review)
+    proposed(client, worker, run_id, kind="feature", title="a feature")
+
+    def built(*args, **kwargs):
+        raise AssertionError("the overview's Curator part built a statement on a request")
+
+    monkeypatch.setattr(curator_routes, "select", built)
+    response = client.get("/v1/me/overview", headers=headers["owner"])
+    assert response.status_code == 200, response.text
+    (mine,) = [item["curator"] for item in response.json()["projects"] if item["name"] == PROJECT]
+    assert (mine["state"], mine["active_run_id"], mine["open_proposals"]) == ("running", run_id, 1)
+    dialect = postgresql.psycopg.dialect()
+    for statement in (
+        curator_routes._NEWEST_CHARTERS,
+        curator_routes._SCHEDULES_HELD,
+        curator_routes._OPEN_PROPOSAL_LABELS,
+    ):
+        binds = statement.compile(dialect=dialect).binds
+        assert isinstance(binds["projects"].type, postgresql.ARRAY)  # the projects, one array bound at execution
+        assert not any(bind.expanding for bind in binds.values())  # no IN list, expanded at each execution
+
+
 def test_the_curator_says_its_state_its_nights_and_the_proposals_waiting(review):
     """What the web's Curator pages and Home read: the state in a word and the open proposals in GET .../curator and
     GET /v1/me/overview, the nights with their runs, cost and review run, and the counts of the proposals' filters."""
