@@ -100,6 +100,7 @@ RUN_KEYS = (
     "verify",
     "evidence",
     "usage",
+    "budget",
     "error",
     "log_sha256",
     "diff_sha256",

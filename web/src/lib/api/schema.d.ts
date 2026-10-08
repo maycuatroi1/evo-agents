@@ -1904,6 +1904,110 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project}/curator/charter": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Charter
+         * @description The project's charter, at its newest revision or at ``revision``.
+         */
+        get: operations["show_charter_v1_projects__project__curator_charter_get"];
+        /**
+         * Write Charter
+         * @description Write a new revision of the project's charter; the admins of the project alone may.
+         */
+        put: operations["write_charter_v1_projects__project__curator_charter_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/curator/charter/revisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Charter Revisions
+         * @description Every revision of the project's charter, newest first; empty without one.
+         */
+        get: operations["charter_revisions_v1_projects__project__curator_charter_revisions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/curator": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Status
+         * @description The charter, the schedules and the night of the project's night shift.
+         */
+        get: operations["status_v1_projects__project__curator_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/curator/pause": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pause
+         * @description Pause every schedule of the project, and cancel the runs they queued that are still queued.
+         */
+        post: operations["pause_v1_projects__project__curator_pause_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/curator/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resume
+         * @description Let every schedule of the project run again.
+         */
+        post: operations["resume_v1_projects__project__curator_resume_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/secrets": {
         parameters: {
             query?: never;
@@ -2252,6 +2356,188 @@ export interface components {
              */
             expires_at: string;
         };
+        /** Charter */
+        Charter: {
+            /**
+             * Goals
+             * @description the product's goals, highest first
+             */
+            goals?: components["schemas"]["Goal"][];
+            window: components["schemas"]["Window"];
+            /**
+             * Worker
+             * @description the worker on duty, by name: one of the writer's own
+             */
+            worker: string;
+            /**
+             * Night Budget Usd
+             * @description the most a night may cost
+             */
+            night_budget_usd: number;
+            /**
+             * Run Budget Usd
+             * @description the most one run may cost; null: what the night has
+             */
+            run_budget_usd?: number | null;
+            /**
+             * Run Max Turns
+             * @description turns of the agent in one run
+             * @default 300
+             */
+            run_max_turns: number;
+            /**
+             * Run Minutes
+             * @description agent time one run may use
+             * @default 120
+             */
+            run_minutes: number;
+            /**
+             * Max Runs Per Night
+             * @default 6
+             */
+            max_runs_per_night: number;
+            /**
+             * Night Plans
+             * @description the plans the night shift may run, in the order it takes them
+             */
+            night_plans?: string[];
+            /**
+             * Max Decisions Per Day
+             * @default 5
+             */
+            max_decisions_per_day: number;
+            /**
+             * Brief At
+             * @description HH:MM, 24 hours, in the window's zone
+             * @default 07:00
+             */
+            brief_at: string;
+            /**
+             * Auto Merge
+             * @description the tiers the hub may merge by itself
+             */
+            auto_merge?: 0[];
+            /**
+             * Protected Paths
+             * @description globs no change of the Curator may touch below tier 3
+             */
+            protected_paths?: string[];
+            circuit_breaker?: components["schemas"]["CircuitBreaker"];
+            reviewer?: components["schemas"]["Role"];
+            builder?: components["schemas"]["Role"];
+            judge?: components["schemas"]["Judge"];
+            /** Project */
+            project: string;
+            /** Revision */
+            revision: number;
+            /**
+             * Updated By
+             * @description who wrote this revision
+             */
+            updated_by: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * Worker Id
+             * @description the worker on duty
+             */
+            worker_id: number;
+            /**
+             * Schedule Owner
+             * @description the member the night shift dispatches its runs as: the worker's owner
+             */
+            schedule_owner: string;
+        };
+        /** CharterRevision */
+        CharterRevision: {
+            /** Revision */
+            revision: number;
+            /** Updated By */
+            updated_by: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Worker */
+            worker: string;
+            /** Worker Id */
+            worker_id: number;
+        };
+        /** CharterWrite */
+        CharterWrite: {
+            /**
+             * Goals
+             * @description the product's goals, highest first
+             */
+            goals?: components["schemas"]["Goal"][];
+            window: components["schemas"]["Window"];
+            /**
+             * Worker
+             * @description the worker on duty, by name: one of the writer's own
+             */
+            worker: string;
+            /**
+             * Night Budget Usd
+             * @description the most a night may cost
+             */
+            night_budget_usd: number;
+            /**
+             * Run Budget Usd
+             * @description the most one run may cost; null: what the night has
+             */
+            run_budget_usd?: number | null;
+            /**
+             * Run Max Turns
+             * @description turns of the agent in one run
+             * @default 300
+             */
+            run_max_turns: number;
+            /**
+             * Run Minutes
+             * @description agent time one run may use
+             * @default 120
+             */
+            run_minutes: number;
+            /**
+             * Max Runs Per Night
+             * @default 6
+             */
+            max_runs_per_night: number;
+            /**
+             * Night Plans
+             * @description the plans the night shift may run, in the order it takes them
+             */
+            night_plans?: string[];
+            /**
+             * Max Decisions Per Day
+             * @default 5
+             */
+            max_decisions_per_day: number;
+            /**
+             * Brief At
+             * @description HH:MM, 24 hours, in the window's zone
+             * @default 07:00
+             */
+            brief_at: string;
+            /**
+             * Auto Merge
+             * @description the tiers the hub may merge by itself
+             */
+            auto_merge?: 0[];
+            /**
+             * Protected Paths
+             * @description globs no change of the Curator may touch below tier 3
+             */
+            protected_paths?: string[];
+            circuit_breaker?: components["schemas"]["CircuitBreaker"];
+            reviewer?: components["schemas"]["Role"];
+            builder?: components["schemas"]["Role"];
+            judge?: components["schemas"]["Judge"];
+        };
         /**
          * CheckoutReport
          * @description One checkout of a project's repo on the machine, which the daemon makes worktrees from.
@@ -2264,6 +2550,14 @@ export interface components {
              * @description checked out there
              */
             branch?: string | null;
+        };
+        /** CircuitBreaker */
+        CircuitBreaker: {
+            /**
+             * Max Failed In A Row
+             * @default 2
+             */
+            max_failed_in_a_row: number;
         };
         /** Claim */
         Claim: {
@@ -2278,6 +2572,39 @@ export interface components {
              * @default 25
              */
             wait_s: number;
+        };
+        /**
+         * ClaimedBudget
+         * @description A run's caps as its worker gets them, with what it spent already when it goes on from a parked run.
+         */
+        ClaimedBudget: {
+            /**
+             * Max Usd
+             * @description the most it may cost; Claude Code stops there
+             */
+            max_usd?: number | null;
+            /**
+             * Max Turns
+             * @description the most turns its agent may take
+             */
+            max_turns?: number | null;
+            /**
+             * Max Seconds
+             * @description the agent time it may use; a Codex run stops there
+             */
+            max_seconds?: number | null;
+            /**
+             * Spent Usd
+             * @description what the agent session it goes on in cost so far
+             * @default 0
+             */
+            spent_usd: number;
+            /**
+             * Spent Seconds
+             * @description the agent time it used so far
+             * @default 0
+             */
+            spent_seconds: number;
         };
         /** Clearance */
         Clearance: {
@@ -2385,6 +2712,21 @@ export interface components {
              * @default X-Evo-CSRF
              */
             header: string;
+        };
+        /** CuratorStatus */
+        CuratorStatus: {
+            /** Project */
+            project: string;
+            charter: components["schemas"]["Charter"] | null;
+            /**
+             * Paused
+             * @description every schedule of the project is paused
+             */
+            paused: boolean;
+            /** Schedules */
+            schedules: components["schemas"]["Schedule"][];
+            /** @description null without a charter */
+            night: components["schemas"]["Night"] | null;
         };
         /** DayCount */
         DayCount: {
@@ -2768,6 +3110,13 @@ export interface components {
              */
             revoked: number;
         };
+        /** Goal */
+        Goal: {
+            /** Id */
+            id: string;
+            /** What */
+            what: string;
+        };
         /** Grant */
         Grant: {
             /** Project */
@@ -3041,6 +3390,25 @@ export interface components {
              * @description the pairing code, XXXX-XXXX
              */
             code: string;
+        };
+        /** Judge */
+        Judge: {
+            /**
+             * Runtime
+             * @default claude-code
+             * @enum {string}
+             */
+            runtime: "claude-code" | "opencode" | "codex";
+            /**
+             * Model
+             * @description as the runtime names it; null: the runtime's own choice
+             */
+            model?: string | null;
+            /**
+             * Hidden Checks
+             * @description commands the Judge runs that no Builder sees; shown to the project's admins alone, null to anyone else, and null in a write keeps those of the newest revision
+             */
+            hidden_checks?: string[] | null;
         };
         /** KgConfig */
         KgConfig: {
@@ -3362,6 +3730,41 @@ export interface components {
             left_out: number;
             /** Truncated */
             truncated: boolean;
+        };
+        /** Night */
+        Night: {
+            /**
+             * Night
+             * Format: date
+             * @description the local date the window opened on: the night now, or the last one
+             */
+            night: string;
+            /** In Window */
+            in_window: boolean;
+            /**
+             * Local Time
+             * @description HH:MM now, in the charter's time zone
+             */
+            local_time: string;
+            /**
+             * Runs
+             * @description the runs the night shift queued that night
+             */
+            runs: number;
+            /** Max Runs */
+            max_runs: number;
+            /**
+             * Cost Usd
+             * @description what they cost, from their usage, each agent session once
+             */
+            cost_usd: number;
+            /** Budget Usd */
+            budget_usd: number;
+            /**
+             * Active Run Id
+             * @description the run of the schedule queued or held now, if any
+             */
+            active_run_id: number | null;
         };
         /** NodeDetail */
         NodeDetail: {
@@ -4497,6 +4900,23 @@ export interface components {
              */
             next_before: number | null;
         };
+        /**
+         * Role
+         * @description The runtime and model one role of the Curator runs on.
+         */
+        Role: {
+            /**
+             * Runtime
+             * @default claude-code
+             * @enum {string}
+             */
+            runtime: "claude-code" | "opencode" | "codex";
+            /**
+             * Model
+             * @description as the runtime names it; null: the runtime's own choice
+             */
+            model?: string | null;
+        };
         /** Run */
         Run: {
             /** Id */
@@ -4533,9 +4953,9 @@ export interface components {
             dispatched_by: string;
             /**
              * Dispatched Via
-             * @description the credential it was dispatched with: web, a web session; machine, a token (the command line, an agent); null for a run dispatched before 0.5.0
+             * @description the credential it was dispatched with: web, a web session; machine, a token (the command line, an agent); schedule, the night shift of the project's charter, for its owner; null for a run dispatched before 0.5.0
              */
-            dispatched_via: ("machine" | "web") | null;
+            dispatched_via: ("machine" | "web" | "schedule") | null;
             /**
              * Worker Id
              * @description the worker that claimed it
@@ -4630,6 +5050,8 @@ export interface components {
             usage: {
                 [key: string]: unknown;
             } | null;
+            /** @description the caps of a run the night shift queued; null for any other */
+            budget?: components["schemas"]["RunBudget"] | null;
             /** Error */
             error: string | null;
             /**
@@ -4710,6 +5132,27 @@ export interface components {
             log_sha256: string | null;
             /** Diff Sha256 */
             diff_sha256: string | null;
+        };
+        /**
+         * RunBudget
+         * @description The caps of a run the night shift queued (``evo_agents.hub.curator``).
+         */
+        RunBudget: {
+            /**
+             * Max Usd
+             * @description the most it may cost; Claude Code stops there
+             */
+            max_usd?: number | null;
+            /**
+             * Max Turns
+             * @description the most turns its agent may take
+             */
+            max_turns?: number | null;
+            /**
+             * Max Seconds
+             * @description the agent time it may use; a Codex run stops there
+             */
+            max_seconds?: number | null;
         };
         /** RunCommitted */
         RunCommitted: {
@@ -5148,6 +5591,8 @@ export interface components {
             prompt: string;
             /** @description a plan run's plan at the hub's current revision, for .evo-run/plan.yaml; null for a run of one step */
             plan: components["schemas"]["PlanCopy"] | null;
+            /** @description the caps of a run the night shift queued; null otherwise */
+            budget?: components["schemas"]["ClaimedBudget"] | null;
         };
         /** RunState */
         RunState: {
@@ -5243,6 +5688,29 @@ export interface components {
              * @description the models the runtime lists on the machine, for a dispatch to suggest; null when it lists none
              */
             models?: string[] | null;
+        };
+        /** Schedule */
+        Schedule: {
+            /** Id */
+            id: number;
+            /**
+             * Kind
+             * @constant
+             */
+            kind: "night_shift";
+            /**
+             * Owner
+             * @description the member its runs are dispatched as
+             */
+            owner: string;
+            /** Worker Id */
+            worker_id: number;
+            /** Worker */
+            worker: string;
+            /** Paused At */
+            paused_at: string | null;
+            /** Paused By */
+            paused_by: string | null;
         };
         /**
          * Secret
@@ -5952,6 +6420,24 @@ export interface components {
             token: components["schemas"]["TokenInfo"];
             /** Grants */
             grants: components["schemas"]["GrantInfo"][];
+        };
+        /** Window */
+        Window: {
+            /**
+             * Start
+             * @description HH:MM, 24 hours, in the window's zone
+             */
+            start: string;
+            /**
+             * End
+             * @description when it is not after start, the window runs past midnight
+             */
+            end: string;
+            /**
+             * Timezone
+             * @description an IANA time zone, such as Asia/Ho_Chi_Minh
+             */
+            timezone: string;
         };
         /** Worker */
         Worker: {
@@ -12583,6 +13069,388 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    show_charter_v1_projects__project__curator_charter_get: {
+        parameters: {
+            query?: {
+                /** @description an older revision */
+                revision?: number | null;
+            };
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Charter"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    write_charter_v1_projects__project__curator_charter_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CharterWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Charter"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    charter_revisions_v1_projects__project__curator_charter_revisions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CharterRevision"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    status_v1_projects__project__curator_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CuratorStatus"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    pause_v1_projects__project__curator_pause_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CuratorStatus"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resume_v1_projects__project__curator_resume_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CuratorStatus"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

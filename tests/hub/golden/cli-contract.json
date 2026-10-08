@@ -133,6 +133,250 @@
       "options": [],
       "json": null
     },
+    "hub curator charter history": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "array",
+        "keys": [
+          "revision",
+          "updated_by",
+          "updated_at",
+          "worker",
+          "worker_id"
+        ],
+        "schema": "CharterRevision"
+      }
+    },
+    "hub curator charter set": {
+      "positionals": [
+        {
+          "name": "file",
+          "metavar": "FILE",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "goals",
+          "window",
+          "worker",
+          "night_budget_usd",
+          "run_budget_usd",
+          "run_max_turns",
+          "run_minutes",
+          "max_runs_per_night",
+          "night_plans",
+          "max_decisions_per_day",
+          "brief_at",
+          "auto_merge",
+          "protected_paths",
+          "circuit_breaker",
+          "reviewer",
+          "builder",
+          "judge",
+          "project",
+          "revision",
+          "updated_by",
+          "updated_at",
+          "worker_id",
+          "schedule_owner"
+        ],
+        "schema": "Charter"
+      }
+    },
+    "hub curator charter show": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--revision"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "goals",
+          "window",
+          "worker",
+          "night_budget_usd",
+          "run_budget_usd",
+          "run_max_turns",
+          "run_minutes",
+          "max_runs_per_night",
+          "night_plans",
+          "max_decisions_per_day",
+          "brief_at",
+          "auto_merge",
+          "protected_paths",
+          "circuit_breaker",
+          "reviewer",
+          "builder",
+          "judge",
+          "project",
+          "revision",
+          "updated_by",
+          "updated_at",
+          "worker_id",
+          "schedule_owner"
+        ],
+        "schema": "Charter"
+      }
+    },
+    "hub curator pause": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "charter",
+          "paused",
+          "schedules",
+          "night"
+        ],
+        "schema": "CuratorStatus"
+      }
+    },
+    "hub curator resume": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "charter",
+          "paused",
+          "schedules",
+          "night"
+        ],
+        "schema": "CuratorStatus"
+      }
+    },
+    "hub curator status": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "charter",
+          "paused",
+          "schedules",
+          "night"
+        ],
+        "schema": "CuratorStatus"
+      }
+    },
     "hub decision answer": {
       "positionals": [
         {
@@ -1625,6 +1869,7 @@
           "verify",
           "evidence",
           "usage",
+          "budget",
           "error",
           "log_sha256",
           "diff_sha256",
@@ -1707,6 +1952,7 @@
           "verify",
           "evidence",
           "usage",
+          "budget",
           "error",
           "log_sha256",
           "diff_sha256",
@@ -1904,6 +2150,7 @@
           "verify",
           "evidence",
           "usage",
+          "budget",
           "error",
           "log_sha256",
           "diff_sha256",
@@ -1986,6 +2233,7 @@
           "verify",
           "evidence",
           "usage",
+          "budget",
           "error",
           "log_sha256",
           "diff_sha256",
@@ -2313,6 +2561,7 @@
           "verify",
           "evidence",
           "usage",
+          "budget",
           "error",
           "log_sha256",
           "diff_sha256",
@@ -2395,6 +2644,7 @@
           "verify",
           "evidence",
           "usage",
+          "budget",
           "error",
           "log_sha256",
           "diff_sha256",
@@ -2526,6 +2776,7 @@
           "verify",
           "evidence",
           "usage",
+          "budget",
           "error",
           "log_sha256",
           "diff_sha256",
@@ -2608,6 +2859,7 @@
           "verify",
           "evidence",
           "usage",
+          "budget",
           "error",
           "log_sha256",
           "diff_sha256",
@@ -12854,6 +13106,512 @@
           }
         }
       },
+      "/v1/projects/{project}/curator/charter": {
+        "get": {
+          "tags": [
+            "curator"
+          ],
+          "summary": "Show Charter",
+          "description": "The project's charter, at its newest revision or at ``revision``.",
+          "operationId": "show_charter_v1_projects__project__curator_charter_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "revision",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "maximum": 2147483647,
+                    "minimum": 1
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "an older revision",
+                "title": "Revision"
+              },
+              "description": "an older revision"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Charter"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "put": {
+          "tags": [
+            "curator"
+          ],
+          "summary": "Write Charter",
+          "description": "Write a new revision of the project's charter; the admins of the project alone may.",
+          "operationId": "write_charter_v1_projects__project__curator_charter_put",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CharterWrite"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Charter"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/curator/charter/revisions": {
+        "get": {
+          "tags": [
+            "curator"
+          ],
+          "summary": "Charter Revisions",
+          "description": "Every revision of the project's charter, newest first; empty without one.",
+          "operationId": "charter_revisions_v1_projects__project__curator_charter_revisions_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/CharterRevision"
+                    },
+                    "title": "Response Charter Revisions V1 Projects  Project  Curator Charter Revisions Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/curator": {
+        "get": {
+          "tags": [
+            "curator"
+          ],
+          "summary": "Status",
+          "description": "The charter, the schedules and the night of the project's night shift.",
+          "operationId": "status_v1_projects__project__curator_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/CuratorStatus"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/curator/pause": {
+        "post": {
+          "tags": [
+            "curator"
+          ],
+          "summary": "Pause",
+          "description": "Pause every schedule of the project, and cancel the runs they queued that are still queued.",
+          "operationId": "pause_v1_projects__project__curator_pause_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/CuratorStatus"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/curator/resume": {
+        "post": {
+          "tags": [
+            "curator"
+          ],
+          "summary": "Resume",
+          "description": "Let every schedule of the project run again.",
+          "operationId": "resume_v1_projects__project__curator_resume_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/CuratorStatus"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "/v1/secrets": {
         "get": {
           "tags": [
@@ -13994,6 +14752,336 @@
           ],
           "title": "BundleTicket"
         },
+        "Charter": {
+          "properties": {
+            "goals": {
+              "items": {
+                "$ref": "#/components/schemas/Goal"
+              },
+              "type": "array",
+              "maxItems": 20,
+              "title": "Goals",
+              "description": "the product's goals, highest first"
+            },
+            "window": {
+              "$ref": "#/components/schemas/Window"
+            },
+            "worker": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
+              "title": "Worker",
+              "description": "the worker on duty, by name: one of the writer's own"
+            },
+            "night_budget_usd": {
+              "type": "number",
+              "maximum": 1000.0,
+              "exclusiveMinimum": 0.0,
+              "title": "Night Budget Usd",
+              "description": "the most a night may cost"
+            },
+            "run_budget_usd": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "maximum": 1000.0,
+                  "exclusiveMinimum": 0.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Budget Usd",
+              "description": "the most one run may cost; null: what the night has"
+            },
+            "run_max_turns": {
+              "type": "integer",
+              "maximum": 10000.0,
+              "minimum": 1.0,
+              "title": "Run Max Turns",
+              "description": "turns of the agent in one run",
+              "default": 300
+            },
+            "run_minutes": {
+              "type": "integer",
+              "maximum": 720.0,
+              "minimum": 10.0,
+              "title": "Run Minutes",
+              "description": "agent time one run may use",
+              "default": 120
+            },
+            "max_runs_per_night": {
+              "type": "integer",
+              "maximum": 100.0,
+              "minimum": 1.0,
+              "title": "Max Runs Per Night",
+              "default": 6
+            },
+            "night_plans": {
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$"
+              },
+              "type": "array",
+              "maxItems": 50,
+              "title": "Night Plans",
+              "description": "the plans the night shift may run, in the order it takes them"
+            },
+            "max_decisions_per_day": {
+              "type": "integer",
+              "maximum": 100.0,
+              "minimum": 0.0,
+              "title": "Max Decisions Per Day",
+              "default": 5
+            },
+            "brief_at": {
+              "type": "string",
+              "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$",
+              "title": "Brief At",
+              "description": "HH:MM, 24 hours, in the window's zone",
+              "default": "07:00"
+            },
+            "auto_merge": {
+              "items": {
+                "type": "integer",
+                "const": 0
+              },
+              "type": "array",
+              "title": "Auto Merge",
+              "description": "the tiers the hub may merge by itself"
+            },
+            "protected_paths": {
+              "items": {
+                "type": "string",
+                "maxLength": 500,
+                "minLength": 1,
+                "pattern": "^[^\\x00-\\x1f\\x7f]+$"
+              },
+              "type": "array",
+              "maxItems": 200,
+              "title": "Protected Paths",
+              "description": "globs no change of the Curator may touch below tier 3"
+            },
+            "circuit_breaker": {
+              "$ref": "#/components/schemas/CircuitBreaker"
+            },
+            "reviewer": {
+              "$ref": "#/components/schemas/Role"
+            },
+            "builder": {
+              "$ref": "#/components/schemas/Role"
+            },
+            "judge": {
+              "$ref": "#/components/schemas/Judge"
+            },
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "revision": {
+              "type": "integer",
+              "title": "Revision"
+            },
+            "updated_by": {
+              "type": "string",
+              "title": "Updated By",
+              "description": "who wrote this revision"
+            },
+            "updated_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Updated At"
+            },
+            "worker_id": {
+              "type": "integer",
+              "title": "Worker Id",
+              "description": "the worker on duty"
+            },
+            "schedule_owner": {
+              "type": "string",
+              "title": "Schedule Owner",
+              "description": "the member the night shift dispatches its runs as: the worker's owner"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "window",
+            "worker",
+            "night_budget_usd",
+            "project",
+            "revision",
+            "updated_by",
+            "updated_at",
+            "worker_id",
+            "schedule_owner"
+          ],
+          "title": "Charter"
+        },
+        "CharterRevision": {
+          "properties": {
+            "revision": {
+              "type": "integer",
+              "title": "Revision"
+            },
+            "updated_by": {
+              "type": "string",
+              "title": "Updated By"
+            },
+            "updated_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Updated At"
+            },
+            "worker": {
+              "type": "string",
+              "title": "Worker"
+            },
+            "worker_id": {
+              "type": "integer",
+              "title": "Worker Id"
+            }
+          },
+          "type": "object",
+          "required": [
+            "revision",
+            "updated_by",
+            "updated_at",
+            "worker",
+            "worker_id"
+          ],
+          "title": "CharterRevision"
+        },
+        "CharterWrite": {
+          "properties": {
+            "goals": {
+              "items": {
+                "$ref": "#/components/schemas/Goal"
+              },
+              "type": "array",
+              "maxItems": 20,
+              "title": "Goals",
+              "description": "the product's goals, highest first"
+            },
+            "window": {
+              "$ref": "#/components/schemas/Window"
+            },
+            "worker": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
+              "title": "Worker",
+              "description": "the worker on duty, by name: one of the writer's own"
+            },
+            "night_budget_usd": {
+              "type": "number",
+              "maximum": 1000.0,
+              "exclusiveMinimum": 0.0,
+              "title": "Night Budget Usd",
+              "description": "the most a night may cost"
+            },
+            "run_budget_usd": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "maximum": 1000.0,
+                  "exclusiveMinimum": 0.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Budget Usd",
+              "description": "the most one run may cost; null: what the night has"
+            },
+            "run_max_turns": {
+              "type": "integer",
+              "maximum": 10000.0,
+              "minimum": 1.0,
+              "title": "Run Max Turns",
+              "description": "turns of the agent in one run",
+              "default": 300
+            },
+            "run_minutes": {
+              "type": "integer",
+              "maximum": 720.0,
+              "minimum": 10.0,
+              "title": "Run Minutes",
+              "description": "agent time one run may use",
+              "default": 120
+            },
+            "max_runs_per_night": {
+              "type": "integer",
+              "maximum": 100.0,
+              "minimum": 1.0,
+              "title": "Max Runs Per Night",
+              "default": 6
+            },
+            "night_plans": {
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$"
+              },
+              "type": "array",
+              "maxItems": 50,
+              "title": "Night Plans",
+              "description": "the plans the night shift may run, in the order it takes them"
+            },
+            "max_decisions_per_day": {
+              "type": "integer",
+              "maximum": 100.0,
+              "minimum": 0.0,
+              "title": "Max Decisions Per Day",
+              "default": 5
+            },
+            "brief_at": {
+              "type": "string",
+              "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$",
+              "title": "Brief At",
+              "description": "HH:MM, 24 hours, in the window's zone",
+              "default": "07:00"
+            },
+            "auto_merge": {
+              "items": {
+                "type": "integer",
+                "const": 0
+              },
+              "type": "array",
+              "title": "Auto Merge",
+              "description": "the tiers the hub may merge by itself"
+            },
+            "protected_paths": {
+              "items": {
+                "type": "string",
+                "maxLength": 500,
+                "minLength": 1,
+                "pattern": "^[^\\x00-\\x1f\\x7f]+$"
+              },
+              "type": "array",
+              "maxItems": 200,
+              "title": "Protected Paths",
+              "description": "globs no change of the Curator may touch below tier 3"
+            },
+            "circuit_breaker": {
+              "$ref": "#/components/schemas/CircuitBreaker"
+            },
+            "reviewer": {
+              "$ref": "#/components/schemas/Role"
+            },
+            "builder": {
+              "$ref": "#/components/schemas/Role"
+            },
+            "judge": {
+              "$ref": "#/components/schemas/Judge"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "window",
+            "worker",
+            "night_budget_usd"
+          ],
+          "title": "CharterWrite"
+        },
         "CheckoutReport": {
           "properties": {
             "path": {
@@ -14025,6 +15113,20 @@
           ],
           "title": "CheckoutReport",
           "description": "One checkout of a project's repo on the machine, which the daemon makes worktrees from."
+        },
+        "CircuitBreaker": {
+          "properties": {
+            "max_failed_in_a_row": {
+              "type": "integer",
+              "maximum": 10.0,
+              "minimum": 1.0,
+              "title": "Max Failed In A Row",
+              "default": 2
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "title": "CircuitBreaker"
         },
         "Claim": {
           "properties": {
@@ -14059,6 +15161,61 @@
           },
           "type": "object",
           "title": "ClaimRequest"
+        },
+        "ClaimedBudget": {
+          "properties": {
+            "max_usd": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Max Usd",
+              "description": "the most it may cost; Claude Code stops there"
+            },
+            "max_turns": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Max Turns",
+              "description": "the most turns its agent may take"
+            },
+            "max_seconds": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Max Seconds",
+              "description": "the agent time it may use; a Codex run stops there"
+            },
+            "spent_usd": {
+              "type": "number",
+              "title": "Spent Usd",
+              "description": "what the agent session it goes on in cost so far",
+              "default": 0.0
+            },
+            "spent_seconds": {
+              "type": "integer",
+              "title": "Spent Seconds",
+              "description": "the agent time it used so far",
+              "default": 0
+            }
+          },
+          "type": "object",
+          "title": "ClaimedBudget",
+          "description": "A run's caps as its worker gets them, with what it spent already when it goes on from a parked run."
         },
         "Clearance": {
           "properties": {
@@ -14304,6 +15461,56 @@
             "csrf"
           ],
           "title": "Csrf"
+        },
+        "CuratorStatus": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "charter": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Charter"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "paused": {
+              "type": "boolean",
+              "title": "Paused",
+              "description": "every schedule of the project is paused"
+            },
+            "schedules": {
+              "items": {
+                "$ref": "#/components/schemas/Schedule"
+              },
+              "type": "array",
+              "title": "Schedules"
+            },
+            "night": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Night"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "null without a charter"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "charter",
+            "paused",
+            "schedules",
+            "night"
+          ],
+          "title": "CuratorStatus"
         },
         "DayCount": {
           "properties": {
@@ -15234,6 +16441,28 @@
           ],
           "title": "GivenBack"
         },
+        "Goal": {
+          "properties": {
+            "id": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9-]{0,63}$",
+              "title": "Id"
+            },
+            "what": {
+              "type": "string",
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "What"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "id",
+            "what"
+          ],
+          "title": "Goal"
+        },
         "Grant": {
           "properties": {
             "project": {
@@ -15855,6 +17084,57 @@
             "code"
           ],
           "title": "JoinRequest"
+        },
+        "Judge": {
+          "properties": {
+            "runtime": {
+              "type": "string",
+              "enum": [
+                "claude-code",
+                "opencode",
+                "codex"
+              ],
+              "title": "Runtime",
+              "default": "claude-code"
+            },
+            "model": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "pattern": "^[^\\x00-\\x1f\\x7f]+$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Model",
+              "description": "as the runtime names it; null: the runtime's own choice"
+            },
+            "hidden_checks": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string",
+                    "maxLength": 2000,
+                    "minLength": 1,
+                    "pattern": "^[^\\x00]+$"
+                  },
+                  "type": "array",
+                  "maxItems": 50
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Hidden Checks",
+              "description": "commands the Judge runs that no Builder sees; shown to the project's admins alone, null to anyone else, and null in a write keeps those of the newest revision"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "title": "Judge"
         },
         "KgConfig": {
           "properties": {
@@ -16513,6 +17793,67 @@
             "truncated"
           ],
           "title": "Neighbourhood"
+        },
+        "Night": {
+          "properties": {
+            "night": {
+              "type": "string",
+              "format": "date",
+              "title": "Night",
+              "description": "the local date the window opened on: the night now, or the last one"
+            },
+            "in_window": {
+              "type": "boolean",
+              "title": "In Window"
+            },
+            "local_time": {
+              "type": "string",
+              "title": "Local Time",
+              "description": "HH:MM now, in the charter's time zone"
+            },
+            "runs": {
+              "type": "integer",
+              "title": "Runs",
+              "description": "the runs the night shift queued that night"
+            },
+            "max_runs": {
+              "type": "integer",
+              "title": "Max Runs"
+            },
+            "cost_usd": {
+              "type": "number",
+              "title": "Cost Usd",
+              "description": "what they cost, from their usage, each agent session once"
+            },
+            "budget_usd": {
+              "type": "number",
+              "title": "Budget Usd"
+            },
+            "active_run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Active Run Id",
+              "description": "the run of the schedule queued or held now, if any"
+            }
+          },
+          "type": "object",
+          "required": [
+            "night",
+            "in_window",
+            "local_time",
+            "runs",
+            "max_runs",
+            "cost_usd",
+            "budget_usd",
+            "active_run_id"
+          ],
+          "title": "Night"
         },
         "NodeDetail": {
           "properties": {
@@ -19143,6 +20484,39 @@
           ],
           "title": "Revisions"
         },
+        "Role": {
+          "properties": {
+            "runtime": {
+              "type": "string",
+              "enum": [
+                "claude-code",
+                "opencode",
+                "codex"
+              ],
+              "title": "Runtime",
+              "default": "claude-code"
+            },
+            "model": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "pattern": "^[^\\x00-\\x1f\\x7f]+$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Model",
+              "description": "as the runtime names it; null: the runtime's own choice"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "title": "Role",
+          "description": "The runtime and model one role of the Curator runs on."
+        },
         "Run": {
           "properties": {
             "id": {
@@ -19206,7 +20580,8 @@
                   "type": "string",
                   "enum": [
                     "machine",
-                    "web"
+                    "web",
+                    "schedule"
                   ]
                 },
                 {
@@ -19214,7 +20589,7 @@
                 }
               ],
               "title": "Dispatched Via",
-              "description": "the credential it was dispatched with: web, a web session; machine, a token (the command line, an agent); null for a run dispatched before 0.5.0"
+              "description": "the credential it was dispatched with: web, a web session; machine, a token (the command line, an agent); schedule, the night shift of the project's charter, for its owner; null for a run dispatched before 0.5.0"
             },
             "worker_id": {
               "anyOf": [
@@ -19477,6 +20852,17 @@
                 }
               ],
               "title": "Usage"
+            },
+            "budget": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/RunBudget"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "the caps of a run the night shift queued; null for any other"
             },
             "error": {
               "anyOf": [
@@ -19757,6 +21143,49 @@
             "diff_sha256"
           ],
           "title": "RunBlobs"
+        },
+        "RunBudget": {
+          "properties": {
+            "max_usd": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Max Usd",
+              "description": "the most it may cost; Claude Code stops there"
+            },
+            "max_turns": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Max Turns",
+              "description": "the most turns its agent may take"
+            },
+            "max_seconds": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Max Seconds",
+              "description": "the agent time it may use; a Codex run stops there"
+            }
+          },
+          "type": "object",
+          "title": "RunBudget",
+          "description": "The caps of a run the night shift queued (``evo_agents.hub.curator``)."
         },
         "RunCommitted": {
           "properties": {
@@ -20568,6 +21997,17 @@
                 }
               ],
               "description": "a plan run's plan at the hub's current revision, for .evo-run/plan.yaml; null for a run of one step"
+            },
+            "budget": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ClaimedBudget"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "the caps of a run the night shift queued; null otherwise"
             }
           },
           "type": "object",
@@ -20799,6 +22239,66 @@
           ],
           "title": "RuntimeReport",
           "description": "One runtime as the daemon found it on the machine."
+        },
+        "Schedule": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "kind": {
+              "type": "string",
+              "const": "night_shift",
+              "title": "Kind"
+            },
+            "owner": {
+              "type": "string",
+              "title": "Owner",
+              "description": "the member its runs are dispatched as"
+            },
+            "worker_id": {
+              "type": "integer",
+              "title": "Worker Id"
+            },
+            "worker": {
+              "type": "string",
+              "title": "Worker"
+            },
+            "paused_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Paused At"
+            },
+            "paused_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Paused By"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "kind",
+            "owner",
+            "worker_id",
+            "worker",
+            "paused_at",
+            "paused_by"
+          ],
+          "title": "Schedule"
         },
         "Secret": {
           "properties": {
@@ -22440,6 +23940,38 @@
             "grants"
           ],
           "title": "WhoAmI"
+        },
+        "Window": {
+          "properties": {
+            "start": {
+              "type": "string",
+              "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$",
+              "title": "Start",
+              "description": "HH:MM, 24 hours, in the window's zone"
+            },
+            "end": {
+              "type": "string",
+              "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$",
+              "title": "End",
+              "description": "when it is not after start, the window runs past midnight"
+            },
+            "timezone": {
+              "type": "string",
+              "maxLength": 64,
+              "minLength": 1,
+              "pattern": "^[A-Za-z][A-Za-z0-9_+-]*(/[A-Za-z0-9_+-]+)*$",
+              "title": "Timezone",
+              "description": "an IANA time zone, such as Asia/Ho_Chi_Minh"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "start",
+            "end",
+            "timezone"
+          ],
+          "title": "Window"
         },
         "Worker": {
           "properties": {

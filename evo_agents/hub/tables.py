@@ -1,4 +1,4 @@
-"""The hub's 33 tables as SQLAlchemy Core metadata: what the queries are written on, and what Alembic autogenerates
+"""The hub's 35 tables as SQLAlchemy Core metadata: what the queries are written on, and what Alembic autogenerates
 the next migration from (``evo_agents/hub/migrations/env.py``).
 
 The migrations make the schema; this module describes it, and ``tests/hub/test_schema_metadata.py`` keeps the two
@@ -18,6 +18,7 @@ from sqlalchemy import (
     Boolean,
     Column,
     Computed,
+    Date,
     DateTime,
     ForeignKeyConstraint,
     Identity,
@@ -494,7 +495,7 @@ Index(
     postgresql_where=kg_builds.c.artifact_sha256.is_not(None),
 )
 
-# Workers and runs (0009, 0010, 0011)
+# Workers and runs (0009, 0010, 0011, 0012)
 
 workers = Table(
     "workers",
@@ -626,6 +627,9 @@ runs = Table(
     _when("parked_at"),
     Column("resume_of_run_id", BigInteger),
     Column("dispatched_via", Text),
+    Column("schedule_id", BigInteger),
+    Column("schedule_night", Date),
+    Column("budget", JSONB),
     ForeignKeyConstraint(["dispatched_by"], ["users.id"], ondelete="RESTRICT", name="runs_dispatched_by_fkey"),
     ForeignKeyConstraint(["parent_run_id"], ["runs.id"], ondelete="RESTRICT", name="runs_parent_run_id_fkey"),
     ForeignKeyConstraint(["pinned_worker_id"], ["workers.id"], ondelete="RESTRICT", name="runs_pinned_worker_id_fkey"),
@@ -637,6 +641,7 @@ runs = Table(
     ),
     ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="RESTRICT", name="runs_project_id_fkey"),
     ForeignKeyConstraint(["resume_of_run_id"], ["runs.id"], ondelete="RESTRICT", name="runs_resume_of_run_id_fkey"),
+    ForeignKeyConstraint(["schedule_id"], ["schedules.id"], ondelete="RESTRICT", name="runs_schedule_id_fkey"),
     ForeignKeyConstraint(["worker_id"], ["workers.id"], ondelete="RESTRICT", name="runs_worker_id_fkey"),
     PrimaryKeyConstraint("id", name="runs_pkey"),
 )
@@ -668,6 +673,12 @@ Index("runs_project_idx", runs.c.project_id, runs.c.id.desc())
 Index("runs_step_idx", runs.c.project_id, runs.c.plan_id, runs.c.step_key, runs.c.id.desc())
 Index("runs_waiting_idx", runs.c.waiting_since, postgresql_where=runs.c.state == "waiting")
 Index("runs_parked_idx", runs.c.parked_at, postgresql_where=runs.c.state == "parked")
+Index(
+    "runs_schedule_idx",
+    runs.c.schedule_id,
+    runs.c.schedule_night,
+    postgresql_where=runs.c.schedule_id.is_not(None),
+)
 
 run_events = Table(
     "run_events",
@@ -909,4 +920,41 @@ Index(
     "credential_leases_sealed_idx",
     credential_leases.c.expires_at,
     postgresql_where=credential_leases.c.sealed_value.is_not(None),
+)
+
+# The night shift (0012)
+
+charters = Table(
+    "charters",
+    metadata,
+    Column("project_id", BigInteger, nullable=False),
+    Column("revision", Integer, nullable=False),
+    Column("body", JSONB, nullable=False),
+    Column("worker_id", BigInteger, nullable=False),
+    Column("created_by", BigInteger, nullable=False),
+    _stamp("created_at"),
+    ForeignKeyConstraint(["created_by"], ["users.id"], ondelete="RESTRICT", name="charters_created_by_fkey"),
+    ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name="charters_project_id_fkey"),
+    ForeignKeyConstraint(["worker_id"], ["workers.id"], ondelete="RESTRICT", name="charters_worker_id_fkey"),
+    PrimaryKeyConstraint("project_id", "revision", name="charters_pkey"),
+)
+
+schedules = Table(
+    "schedules",
+    metadata,
+    _id(),
+    Column("project_id", BigInteger, nullable=False),
+    Column("kind", Text, nullable=False),
+    Column("owner_id", BigInteger, nullable=False),
+    Column("worker_id", BigInteger, nullable=False),
+    _stamp("created_at"),
+    _stamp("updated_at"),
+    _when("paused_at"),
+    Column("paused_by", BigInteger),
+    ForeignKeyConstraint(["owner_id"], ["users.id"], ondelete="RESTRICT", name="schedules_owner_id_fkey"),
+    ForeignKeyConstraint(["paused_by"], ["users.id"], ondelete="RESTRICT", name="schedules_paused_by_fkey"),
+    ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name="schedules_project_id_fkey"),
+    ForeignKeyConstraint(["worker_id"], ["workers.id"], ondelete="RESTRICT", name="schedules_worker_id_fkey"),
+    PrimaryKeyConstraint("id", name="schedules_pkey"),
+    UniqueConstraint("project_id", "kind", name="schedules_project_id_kind_key"),
 )
