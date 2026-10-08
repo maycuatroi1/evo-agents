@@ -72,6 +72,8 @@ export const LIMITS = {
   runsPerNight: { min: 1, max: 100 },
   decisionsPerDay: { min: 0, max: 100 },
   circuitBreaker: { min: 1, max: 10 },
+  /** `ledger.OUTCOME_DAYS`: the days after a merge over which the hub counts a change's figures again. */
+  outcomeDays: { min: 1, max: 90 },
   lenses: { min: 1, max: LENSES.length },
   reviewDays: { min: 1, max: 30 },
   timeZoneChars: 64,
@@ -307,6 +309,7 @@ export type CharterForm = {
   autoMerge: boolean;
   protectedPaths: string;
   maxFailedInARow: string;
+  outcomeDays: string;
   reviewLenses: string;
   reviewDays: string;
   reviewBudget: string;
@@ -375,6 +378,7 @@ export function charterForm(charter: Charter | null, first: { worker: string; ti
       autoMerge: false,
       protectedPaths: "",
       maxFailedInARow: "2",
+      outcomeDays: "7",
       reviewLenses: "3",
       reviewDays: "7",
       reviewBudget: "",
@@ -401,6 +405,7 @@ export function charterForm(charter: Charter | null, first: { worker: string; ti
     autoMerge: (charter.auto_merge ?? []).includes(0),
     protectedPaths: (charter.protected_paths ?? []).join("\n"),
     maxFailedInARow: String(charter.circuit_breaker?.max_failed_in_a_row ?? 2),
+    outcomeDays: String(charter.outcome_days ?? 7),
     reviewLenses: String(charter.review?.lenses ?? 3),
     reviewDays: String(charter.review?.days ?? 7),
     reviewBudget: money(charter.review?.budget_usd),
@@ -492,6 +497,7 @@ export function charterBody(form: CharterForm): { body: CharterWrite; errors: nu
   const maxRunsPerNight = note<number>("maxRunsPerNight", wholeNumber(form.maxRunsPerNight, LIMITS.runsPerNight));
   const maxDecisionsPerDay = note<number>("maxDecisionsPerDay", wholeNumber(form.maxDecisionsPerDay, LIMITS.decisionsPerDay));
   const maxFailedInARow = note<number>("maxFailedInARow", wholeNumber(form.maxFailedInARow, LIMITS.circuitBreaker));
+  const outcomeDays = note<number>("outcomeDays", wholeNumber(form.outcomeDays, LIMITS.outcomeDays));
   const reviewLenses = note<number>("reviewLenses", wholeNumber(form.reviewLenses, LIMITS.lenses));
   const reviewDays = note<number>("reviewDays", wholeNumber(form.reviewDays, LIMITS.reviewDays));
   const nightPlans = note<string[]>("nightPlans", listOf(form.nightPlans, LIMITS.nightPlans, 100, (line) => PLAN_ID.test(line), "planId"));
@@ -524,6 +530,7 @@ export function charterBody(form: CharterForm): { body: CharterWrite; errors: nu
       auto_merge: form.autoMerge ? [...AUTO_MERGE_TIERS] : [],
       protected_paths: protectedPaths ?? [],
       circuit_breaker: { max_failed_in_a_row: maxFailedInARow as number },
+      outcome_days: outcomeDays as number,
       review: { lenses: reviewLenses as number, days: reviewDays as number, budget_usd: reviewBudget },
       reviewer,
       builder,
@@ -548,6 +555,7 @@ export const CHARTER_FIELDS: readonly CharterField[] = [
   "nightPlans",
   "maxDecisionsPerDay",
   "briefAt",
+  "outcomeDays",
   "protectedPaths",
   "maxFailedInARow",
   "reviewLenses",

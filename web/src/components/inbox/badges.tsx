@@ -3,6 +3,7 @@
 import {
   Boxes,
   CircleCheck,
+  CirclePause,
   CircleX,
   DatabaseZap,
   GitMerge,
@@ -50,6 +51,7 @@ export const NOTICE_LOOK: Record<NoticeKind, { icon: LucideIcon }> = {
   plan_finished: { icon: CircleCheck },
   run_failed: { icon: CircleX },
   curator_brief: { icon: Sunrise },
+  curator_paused: { icon: CirclePause },
 };
 
 /** What a notice is about, as the kit's tag: a kind is a name with square corners, never a round state pill. */

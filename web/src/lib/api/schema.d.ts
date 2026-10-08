@@ -2327,6 +2327,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project}/curator/proposals/{proposal_id}/ledger": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Ledger
+         * @description The ledger of a proposal: what happened to it, line by line, oldest first.
+         */
+        get: operations["show_ledger_v1_projects__project__curator_proposals__proposal_id__ledger_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{project}/digests/{session_id}": {
         parameters: {
             query?: never;
@@ -3041,6 +3061,12 @@ export interface components {
              */
             protected_paths?: string[];
             circuit_breaker?: components["schemas"]["CircuitBreaker"];
+            /**
+             * Outcome Days
+             * @description the days after a merge over which the hub counts a change's figures again, and then keeps it or proposes its revert
+             * @default 7
+             */
+            outcome_days: number;
             review?: components["schemas"]["ReviewSettings"];
             reviewer?: components["schemas"]["Role"];
             builder?: components["schemas"]["Role"];
@@ -3163,6 +3189,12 @@ export interface components {
              */
             protected_paths?: string[];
             circuit_breaker?: components["schemas"]["CircuitBreaker"];
+            /**
+             * Outcome Days
+             * @description the days after a merge over which the hub counts a change's figures again, and then keeps it or proposes its revert
+             * @default 7
+             */
+            outcome_days: number;
             review?: components["schemas"]["ReviewSettings"];
             reviewer?: components["schemas"]["Role"];
             builder?: components["schemas"]["Role"];
@@ -3195,6 +3227,7 @@ export interface components {
         CircuitBreaker: {
             /**
              * Max Failed In A Row
+             * @description jobs of a night in a row that failed or were reverted before the hub pauses the night shift
              * @default 2
              */
             max_failed_in_a_row: number;
@@ -4514,6 +4547,113 @@ export interface components {
              */
             integrity: "T" | "U";
         };
+        /** Ledger */
+        Ledger: {
+            /** Project */
+            project: string;
+            /** Proposal Id */
+            proposal_id: number;
+            /**
+             * Lines
+             * @description oldest first
+             */
+            lines: components["schemas"]["LedgerLine"][];
+            /**
+             * Outcome Due At
+             * @description when the hub counts the figures of its merged change again; null before the merge and once its outcome is in
+             */
+            outcome_due_at: string | null;
+        };
+        /**
+         * LedgerLine
+         * @description One line of a proposal's ledger, as the hub added it.
+         */
+        LedgerLine: {
+            /** Id */
+            id: number;
+            /** Proposal Id */
+            proposal_id: number;
+            /**
+             * Change Id
+             * @description the change it became, once it became one
+             */
+            change_id: number | null;
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "proposed" | "dropped" | "accepted" | "rejected" | "deferred" | "planned" | "built" | "build_failed" | "pull_opened" | "judged" | "merged" | "left_open" | "closed" | "outcome";
+            /**
+             * Actor
+             * @description curator: the hub's own code; agent: an agent of a run of the Curator; user: a member
+             * @enum {string}
+             */
+            actor: "curator" | "agent" | "user";
+            /**
+             * Actor Login
+             * @description the member, for a line of a user the hub knows
+             */
+            actor_login: string | null;
+            /**
+             * Run Id
+             * @description the run of the agent: the review run, the Builder or the Judge
+             */
+            run_id: number | null;
+            /**
+             * What
+             * @description what happened, in words
+             */
+            what: string;
+            /**
+             * Commit Sha
+             * @description the commit it is about: the head built, judged or merged
+             */
+            commit_sha: string | null;
+            /**
+             * Before Sha
+             * @description the default branch before the change
+             */
+            before_sha: string | null;
+            /**
+             * After Sha
+             * @description the default branch after it: the merge commit
+             */
+            after_sha: string | null;
+            /**
+             * Figures
+             * @description proposed: the figures that set it off; outcome: those figures before and after the merge
+             */
+            figures: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Verdict
+             * @description judged: whether it passed, the agent's verdict, the failures
+             */
+            verdict: {
+                [key: string]: unknown;
+            } | null;
+            /** Pr Url */
+            pr_url: string | null;
+            /** Pr Number */
+            pr_number: number | null;
+            /** Merged At */
+            merged_at: string | null;
+            /**
+             * Outcome
+             * @description outcome: keep, revert or unclear
+             */
+            outcome: ("keep" | "revert" | "unclear") | null;
+            /** Details */
+            details: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
         /** Live */
         Live: {
             /**
@@ -4989,7 +5129,7 @@ export interface components {
              * Notice Kind
              * @description a notice's kind; null for a decision
              */
-            notice_kind: ("push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief") | null;
+            notice_kind: ("push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused") | null;
             /** Project */
             project: string | null;
             /** Run Id */
@@ -5851,7 +5991,7 @@ export interface components {
             deferred_until: string | null;
             /**
              * Inbox At
-             * @description when it became an Inbox item of the owner; tier 2 only
+             * @description when it became an Inbox item of the owner; tier 2 only, and a revert the hub proposes
              */
             inbox_at: string | null;
             /**
@@ -5859,6 +5999,11 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /**
+             * Revert Of
+             * @description the proposal whose merged change it reverts: the hub proposed it once its figures got worse
+             */
+            revert_of?: number | null;
             /** Summary */
             summary: string | null;
             /** Paths */
@@ -5944,7 +6089,7 @@ export interface components {
              * @description the kind of change, which gives its first tier
              * @enum {string}
              */
-            kind: "docs" | "memory" | "test_add" | "fix" | "refactor" | "lint" | "skill" | "cli" | "release_prep" | "feature" | "api_change" | "schema_change" | "global_config" | "dependency_major" | "operation" | "test_loosen" | "verify_change" | "ci_change" | "credentials" | "curator_rules";
+            kind: "docs" | "memory" | "test_add" | "fix" | "refactor" | "lint" | "skill" | "cli" | "release_prep" | "revert" | "feature" | "api_change" | "schema_change" | "global_config" | "dependency_major" | "operation" | "test_loosen" | "verify_change" | "ci_change" | "credentials" | "curator_rules";
             /** Title */
             title: string;
             /**
@@ -6033,7 +6178,7 @@ export interface components {
             deferred_until: string | null;
             /**
              * Inbox At
-             * @description when it became an Inbox item of the owner; tier 2 only
+             * @description when it became an Inbox item of the owner; tier 2 only, and a revert the hub proposes
              */
             inbox_at: string | null;
             /**
@@ -6041,6 +6186,11 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /**
+             * Revert Of
+             * @description the proposal whose merged change it reverts: the hub proposed it once its figures got worse
+             */
+            revert_of?: number | null;
         };
         /** Protection */
         Protection: {
@@ -7321,8 +7471,16 @@ export interface components {
             worker: string;
             /** Paused At */
             paused_at: string | null;
-            /** Paused By */
+            /**
+             * Paused By
+             * @description the member who paused it; null when the hub did, or while it runs
+             */
             paused_by: string | null;
+            /**
+             * Pause Reason
+             * @description why the hub paused it, its circuit breaker; null when a member did, or while it runs
+             */
+            pause_reason?: string | null;
         };
         /**
          * Secret
@@ -16379,6 +16537,67 @@ export interface operations {
             };
             /** @description Conflict */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    show_ledger_v1_projects__project__curator_proposals__proposal_id__ledger_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                proposal_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Ledger"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

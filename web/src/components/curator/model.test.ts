@@ -42,6 +42,7 @@ const CHARTER: Charter = {
   auto_merge: [0],
   protected_paths: ["curator.yaml", ".github/workflows/**"],
   circuit_breaker: { max_failed_in_a_row: 2 },
+  outcome_days: 7,
   review: { lenses: 3, days: 7, budget_usd: null },
   reviewer: { runtime: "claude-code", model: null },
   builder: { runtime: "claude-code", model: "claude-opus-5-5" },
@@ -219,6 +220,14 @@ describe("the charter as a form", () => {
     expect(charterBody({ ...form, goals: [{ id: "a", what: "x" }, { id: "a", what: "y" }] }).errors).toEqual({ goals: { code: "goalRepeated", id: "a" } });
     expect(charterBody({ ...form, nightBudget: "" }).errors).toEqual({ nightBudget: { code: "required" } });
     expect(charterBody({ ...form, briefAt: "7:00" }).errors).toEqual({ briefAt: { code: "time" } });
+  });
+
+  it("takes the days before an outcome from 1 to 90, as the hub does", () => {
+    const form = charterForm(CHARTER, { worker: "", timezone: "" });
+    expect(charterBody({ ...form, outcomeDays: "14" }).body?.outcome_days).toBe(14);
+    expect(charterBody({ ...form, outcomeDays: "0" }).errors).toEqual({ outcomeDays: { code: "whole", min: 1, max: 90 } });
+    expect(charterBody({ ...form, outcomeDays: "91" }).errors).toEqual({ outcomeDays: { code: "whole", min: 1, max: 90 } });
+    expect(charterBody(charterForm(null, { worker: "mini", timezone: "UTC" })).body?.outcome_days).toBe(7);
   });
 
   it("reads which revision the page shows and whether it edits", () => {

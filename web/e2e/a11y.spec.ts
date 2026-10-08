@@ -229,6 +229,7 @@ const PAGES: Entry[] = [
       await expectNoSeriousViolations(page, "the charter");
       await page.goto(`/p/${project}/curator/proposals/${night.proposals[2].id}`);
       await expect(page.locator("#main").getByTestId("proposal-finding")).toBeVisible();
+      await expect(page.locator("#main").getByTestId("ledger-figures")).toBeVisible();
       await page.locator("#main").getByTestId("evidence-digest-toggle").first().click();
       await expect(page.locator("#main").getByTestId("evidence-digest")).toBeVisible();
     },

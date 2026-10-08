@@ -151,10 +151,12 @@ export function CuratorHeader({ project, status, actions }: { project: string; s
   const pausedBy = status.schedules.find((schedule) => schedule.paused_at !== null) ?? null;
   const sub: ReactNode = charter
     ? status.paused && pausedBy
-      ? t.rich("sub.paused", {
-          login: pausedBy.paused_by ?? "?",
-          ago: () => <Ago value={pausedBy.paused_at} never="" />,
-        })
+      ? pausedBy.paused_by === null
+        ? t.rich("sub.pausedByHub", { ago: () => <Ago value={pausedBy.paused_at} never="" /> })
+        : t.rich("sub.paused", {
+            login: pausedBy.paused_by,
+            ago: () => <Ago value={pausedBy.paused_at} never="" />,
+          })
       : t.rich("sub.duty", {
           start: charter.window.start,
           end: charter.window.end,

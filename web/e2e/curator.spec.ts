@@ -13,9 +13,9 @@ import { toast } from "./support/toast";
  * duty): an admin writes the charter through the form, which refuses what the hub would, then pauses and resumes the
  * night shift; the Curator's page shows the night, the last review run and the nights before; the proposals list
  * filters by state, tier and lens with counts; a proposal shows its evidence (the run's log, the digest's entry, the
- * line of code), its findings and its draft plan, and takes Accept, Defer and Reject; the Inbox lists the tier 2
- * proposal beside the decisions and answers it in a sheet; Home says where each project's Curator stands; a reader
- * reads everything and changes nothing. axe checks every page and the dialogs in light and dark.
+ * line of code), its findings, its draft plan and its ledger, and takes Accept, Defer and Reject; the Inbox lists the
+ * tier 2 proposal beside the decisions and answers it in a sheet; Home says where each project's Curator stands; a
+ * reader reads everything and changes nothing. axe checks every page and the dialogs in light and dark.
  */
 test.skip(isDeployed, "writes charters and plays the night's worker through the local stack");
 
@@ -229,6 +229,40 @@ test("a proposal shows where its evidence leads and its draft plan, and an admin
   await expect(states.locator('[data-facet-value="accepted"]')).toContainText("Accepted 1");
   await expect(states.locator('[data-facet-value="deferred"]')).toContainText("Deferred 1");
   await expect(states.locator('[data-facet-value="rejected"]')).toContainText("Rejected 1");
+});
+
+test("a proposal's ledger says what happened to it, line by line, with the figures that set it off", async ({ page, member }) => {
+  const me = await member([{ role: "admin", maxLevel: "internal" }]);
+  const project = me.projects[0];
+  const night = await seedCurator(me, project, uniqueName("night"));
+  const wide = night.proposals[2];
+
+  await open(page, `/p/${project}/curator/proposals/${wide.id}`);
+  const ledger = main(page).getByTestId("proposal-ledger");
+  const lines = ledger.getByTestId("ledger-line");
+  await expect(lines).toHaveCount(1);
+  const first = lines.first();
+  await expect(first).toHaveAttribute("data-action", "proposed");
+  await expect(first.getByTestId("ledger-action")).toHaveText("Proposed");
+  await expect(first.getByTestId("ledger-actor")).toContainText("Agent");
+  await expect(first.getByTestId("ledger-run")).toHaveAttribute("href", `/p/${project}/runs/${night.runId}`);
+  await expect(first.getByTestId("ledger-what")).toHaveText(`Review run #${night.runId} proposed it (feature, tier 2): ${TITLES[2]}`);
+  // The night's figures of its lens, and the entry its finding's evidence points at: the blocked command.
+  await expect(first.getByTestId("ledger-figure")).toHaveCount(2);
+  await expect(first.getByTestId("ledger-figure").first()).toHaveAttribute("data-key", "environment");
+  await expect(first.getByTestId("ledger-figure").nth(1)).toContainText("failures from the environment of cause harness_blocked");
+  await expect(first.getByTestId("ledger-figure").nth(1)).toContainText("3");
+  await expect(ledger.getByTestId("ledger-outcome-due")).toHaveCount(0);
+  await expectNoSeriousViolations(page, "a proposal's ledger");
+
+  await main(page).getByTestId("proposal-header").getByTestId("proposal-accept").click();
+  const dialog = page.getByTestId("proposal-answer-dialog");
+  await dialog.getByTestId("proposal-answer-note").fill("Go.");
+  await dialog.getByTestId("proposal-answer-send").click();
+  await expect(lines).toHaveCount(2);
+  await expect(lines.nth(1)).toHaveAttribute("data-action", "accepted");
+  await expect(lines.nth(1).getByTestId("ledger-actor")).toContainText(me.login);
+  await expect(lines.nth(1).getByTestId("ledger-what")).toHaveText(`${me.login} accepted it: Go.`);
 });
 
 test("the Inbox lists the tier 2 proposal beside the decisions, and an admin answers it in a sheet", async ({ page, member }) => {
