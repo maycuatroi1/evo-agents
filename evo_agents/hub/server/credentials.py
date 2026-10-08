@@ -21,7 +21,10 @@ less, and from elsewhere: its GitHub token comes from the Curator's App (EVO_HUB
 tokens the rulesets of the repos keep off their default branches, never from the workers' App, and without the
 Curator's App it gets none, every repo on GitHub missing with that reason; no git secret answers for an origin on
 GitHub; for other origins only the git secret the charter names (``git_secret``) is leased, and of the env secrets only
-those the charter lists (``env_secrets``).
+those the charter lists (``env_secrets``). Each ask of a Builder of the Curator checks again, with the Curator's App,
+that the ruleset of each of its repos on GitHub still keeps that App off the default branch
+(``pulls.check_ruleset``, kept as the repo's last check): a repo whose check does not pass, or cannot be made now, gets
+no token, and its reason says why.
 
 The answer is {leases, missing}: each lease as ``evo_agents.hub.credentials.Lease.to_json`` writes it, value included,
 and for each of the run's repos whose origin nothing covers, the repo, its origin and why: no origin registered, no
@@ -607,6 +610,10 @@ async def lease_credentials(request: Request, run_id: RunId, user: CurrentUser, 
     app: GitHubApp | None = getattr(state, "curator_app", None) if curator else state.github_app
     made: list[InstallationToken] | None = None
     reasons: dict[str, str] = {}
+    unchecked: dict[str, str] = {}
+    if sealer is not None and app is not None and curator and survey.run.curator.role == "builder" and survey.github:
+        unchecked = await _rulesets_now(engine, app, survey)
+        _drop_github(survey, unchecked)
     if sealer is not None and survey.github and not survey.reusable():
         if app is None:
             unset = ", ".join(state.config.curator_app_missing() if curator else state.config.github_app_missing())
@@ -622,6 +629,7 @@ async def lease_credentials(request: Request, run_id: RunId, user: CurrentUser, 
     try:
         async with engine.begin() as conn:
             worker_id, survey = await _survey(conn, user, run_id, lock=True)
+            _drop_github(survey, unchecked)
             if sealer is None:
                 missing_key = ", ".join(state.config.credentials_missing()) or "EVO_HUB_SECRETS_KEY"
                 leases: list[Lease] = []
@@ -662,6 +670,43 @@ async def lease_credentials(request: Request, run_id: RunId, user: CurrentUser, 
     log.info("credentials leased", extra=extra)
     response.headers.update(NO_STORE)
     return Credentials(leases=[CredentialLease.model_validate(lease.to_json()) for lease in leases], missing=missing)
+
+
+async def _rulesets_now(engine: AsyncEngine, app: GitHubApp, survey: _Survey) -> dict[str, str]:
+    """For a Builder of the Curator: check again, with the Curator's App, the ruleset of each of its repos on GitHub,
+    and keep what each check found; repo -> why a repo whose ruleset does not keep the Curator off, or could not be
+    checked now, gets no token."""
+    from evo_agents.hub.server.changes import _store_check  # it reads runs through the routes that import this one
+    from evo_agents.hub.server.pulls import check_ruleset
+
+    refused: dict[str, str] = {}
+    for repo, (owner, name) in survey.github.items():
+        try:
+            found = await check_ruleset(app, owner, name)
+        except GitHubUnavailable as exc:
+            refused[repo] = (
+                f"the hub could not check the ruleset of {owner}/{name} now ({exc}): a Builder gets no token"
+            )
+            continue
+        async with engine.begin() as conn:
+            await _store_check(conn, survey.run.project_id, repo, f"{owner}/{name}", found, None)
+        if not found.protected:
+            refused[repo] = (
+                f"the ruleset of {owner}/{name} no longer keeps the Curator's App off its default branch "
+                f"({found.reason}): a Builder gets no token for it"
+            )
+    if refused:
+        log.warning(
+            "a builder's repos failed their ruleset check", extra={"run_id": survey.run.id, "repos": sorted(refused)}
+        )
+    return refused
+
+
+def _drop_github(survey: _Survey, refused: dict[str, str]) -> None:
+    """Take the repos of ``refused`` out of those that get a GitHub token, each missing with its reason."""
+    for repo, why in refused.items():
+        survey.github.pop(repo, None)
+        survey.missing[repo] = why
 
 
 def _names(values) -> str:

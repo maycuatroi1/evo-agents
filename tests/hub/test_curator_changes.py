@@ -60,6 +60,7 @@ RULESET = {
     "enforcement": "active",
     "rules": ["update", "deletion", "non_fast_forward"],
     "bypass": {"workers"},
+    "required_checks": ["test"],  # what a merge needs to have passed
 }
 HEAD = "1" * 40
 MOVED = "2" * 40
@@ -176,18 +177,29 @@ def builder(world, files=None) -> int:
 
 
 def judge_run(world) -> dict:
-    """The judge run the night shift queues, claimed; its spec."""
+    """The judge run the night shift queues, claimed; its spec, whose key ``inputs`` and ``verdict`` send."""
     assert fire(world.client, NIGHT)["judge"] == 1
-    spec = claim(world.client, world.worker)
+    spec = judge_key(claim(world.client, world.worker))
     assert spec["kind"] == "judge"
     return spec
 
 
-def inputs(world, run_id: int, worker=None):
-    return world.client.get(f"/v1/worker/runs/{run_id}/judge", headers=(worker or world.worker)["headers"])
+KEYS: dict[int, str] = {}  # judge run id -> the key its claim handed the worker
 
 
-def verdict(world, run_id: int, **body):
+def judge_key(spec: dict) -> dict:
+    """The judge run's spec, its key kept for ``inputs`` and ``verdict``, which a daemon sends with them."""
+    if spec.get("kind") == "judge" and (spec.get("curator") or {}).get("judge_key"):
+        KEYS[spec["id"]] = spec["curator"]["judge_key"]
+    return spec
+
+
+def inputs(world, run_id: int, worker=None, key: str | None = None):
+    headers = {**(worker or world.worker)["headers"], judge.JUDGE_KEY_HEADER: key or KEYS.get(run_id, "")}
+    return world.client.get(f"/v1/worker/runs/{run_id}/judge", headers=headers)
+
+
+def verdict(world, run_id: int, *, key: str | None = None, **body):
     sent = {
         "verdict": "pass",
         "reasons": "The test covers the helper.",
@@ -197,7 +209,8 @@ def verdict(world, run_id: int, **body):
         "signs": [],
         **body,
     }
-    return world.client.post(f"/v1/worker/runs/{run_id}/verdict", json=sent, headers=world.worker["headers"])
+    headers = {**world.worker["headers"], judge.JUDGE_KEY_HEADER: key or KEYS.get(run_id, "")}
+    return world.client.post(f"/v1/worker/runs/{run_id}/verdict", json=sent, headers=headers)
 
 
 def judged(world, **body) -> dict:
@@ -289,13 +302,14 @@ def test_curator_plan_never_names_a_default_branch_and_keeps_its_verify(world):
         {"steps": [{**plan["body"]["steps"][0], "verify": "true"}]},
         {"steps": [{**plan["body"]["steps"][0], "acceptance": ["anything"]}]},
         {"steps": [{**plan["body"]["steps"][0], "repo": "m1-identity"}]},
+        {"goal": "A clearer goal."},  # its goal, what and context are the hub's too (H1 of the security review)
     ):
         body = {**plan["body"], **change}
         put = {"body": body, "if_revision": plan["revision"]}
         refused = world.client.put(f"/v1/projects/{PROJECT}/plans/{PLAN_ID}", json=put, headers=owner)
         assert refused.status_code == 409, (change, refused.text)
         assert "is the Curator's: it works on curator/1-curator-fix-sleep of evo-agents alone" in refused.text
-    kept = {**plan["body"], "goal": "A clearer goal."}
+    kept = {**plan["body"], "steps": [{**plan["body"]["steps"][0], "status": "blocked", "note": "waits for CI"}]}
     put = {"body": kept, "if_revision": plan["revision"]}
     assert world.client.put(f"/v1/projects/{PROJECT}/plans/{PLAN_ID}", json=put, headers=owner).status_code == 200
 
@@ -383,6 +397,7 @@ def test_curator_plan_builder_gets_the_curators_token_and_a_members_plan_run_the
         "base_branch": None,
         "head_sha": None,
         "pr_url": None,
+        "judge_key": None,  # a judge run's alone
     }
     lease = next(
         item for item in leased(world.client, world.worker, spec["id"])["leases"] if item["provider"] == "github-app"

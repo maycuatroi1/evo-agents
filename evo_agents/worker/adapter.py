@@ -236,6 +236,14 @@ class Adapter(abc.ABC):
         for the run's log; the daemon writes each once a run, as a ``system`` event, once the agent has started."""
         return []
 
+    @classmethod
+    def login_refusal(cls, context: RunContext) -> str | None:
+        """Why the runtime may not start the agent of this run with the login this machine has, in a sentence for the
+        run's error; None when it may. The daemon asks before each start of the agent, off its event loop. Claude Code
+        refuses a run of the Curator without a Claude subscription login (plan decision 14 of the curator-agent
+        plan)."""
+        return None
+
     def __init__(self, context: RunContext):
         self.context = context
 

@@ -12,19 +12,32 @@ judge run on the worker on duty. The Judge reads the proposal, the diff, the pla
 checks; it never reads the Builder's transcript.
 
 ``hack_signs`` reads a diff, file by file, for what a change does to pass its checks rather than to do its work
-(SIGN_KINDS): an assertion removed, a skip or an xfail added, a number changed on an assertion's line of a test, a file
-the plan's verify runs or a plan's copy changed, a CI workflow or the configuration of lint and tests changed, a lint
-warning silenced, ``__eq__`` overloaded, the process exited from a test, a file of the charter's protected paths
-touched, or a diff that cannot be read. One sign is enough: the proposal goes to tier 3 and the Judge fails it.
+(SIGN_KINDS): an assertion removed (an assertion of a test file is compared with what that same file adds, never with
+another file's, and one put under a guard that never runs counts as removed), a skip or an xfail added (aliased or
+imported on its own included), a number changed on an assertion's line of a test, an expected value of a test changed
+on a line of its own, a golden or snapshot file of the tests changed, an assertion's failure caught, a file the plan's
+verify runs or a plan's copy changed (the Makefile, justfile, noxfile or script of package.json a verify command runs
+included), a CI workflow or the configuration of lint, types and tests changed, a lint warning silenced, ``__eq__``
+overloaded, the process exited from a test, a file of the charter's protected paths touched, or a diff that cannot be
+read: a binary or unknown file where tests, CI or configuration live counts, an image of the docs does not. One sign is
+enough: the proposal goes to tier 3 and the Judge fails it.
 
 ``judge_runtime`` says what the Judge runs on: Codex when the project's policy declares a sink for Codex (an id
 ``codex@...``) whose clearance covers the project's label and the worker on duty has it, else Claude Code with a model
 other than the Builder's. ``final_verdict`` passes a change only when the Judge's agent passed it, every verify command
 of the plan and every hidden check ran and exited 0, the diff showed no sign, and the commit judged is the pull
-request's head. ``ci_state`` reads the check runs and commit statuses of a commit, and ``merge_decision`` says whether
-the hub merges a pull request now, waits, or leaves it open for its owner: only a tier 0 change on GitHub, passed by
-the Judge at the pull request's head, with CI green, no protected path touched, a repo whose ruleset the hub checked,
-and tier 0 among the charter's ``auto_merge``.
+request's head. The Judge's agent gives its verdict as the JSON object that ends its last message
+(``verdict_from_message``): it travels in the daemon's memory, never through a file the code under test could write.
+``ci_state`` reads the check runs and commit statuses of a commit; asked with the checks the default branch's ruleset
+requires, it is green only when each of them passed (a check run of the App the ruleset names, when it names one), and
+never when the ruleset requires none or the head commit's message asks CI to skip it (SKIP_CI). ``merge_decision`` says
+whether the hub merges a pull request now, waits, or leaves it open for its owner: only a tier 0 change on GitHub,
+passed by the Judge at the pull request's head, with CI green, no protected path touched, a repo whose ruleset the hub
+checked, and tier 0 among the charter's ``auto_merge``.
+
+A Curator's plan is the hub's to write (``progress_free``): after the hub made it, a write may change the status,
+done_at, evidence and note of its steps and the plan's status, nothing else; and a plan whose id starts with
+CURATOR_PLAN_PREFIX is made from an accepted proposal alone.
 """
 
 from __future__ import annotations
@@ -53,20 +66,31 @@ ACTIVE_CHANGE_STATES = ("pr_pending", "judge_pending", "judging", "judged")  # w
 PLANNED_TIERS = (0, 1)  # the tiers whose accepted proposals become the Curator's plans
 FORGES = ("github", "gitlab")  # where a Curator change goes: a pull request, or a merge request (never merged)
 BRANCH_PREFIX = "curator/"
+CURATOR_PLAN_PREFIX = "curator-"  # the ids of the Curator's plans, which the hub alone makes
 SLUG_CHARS = 48
 MAX_PLAN_ID_CHARS = 100
 JUDGE_CHECK_NAME = "evo-agents Judge"  # the check run the hub writes on a pull request
 JUDGE_ATTEMPTS = 3  # judge runs of one change that end without a verdict before it is left open
+JUDGE_KEY_HEADER = "X-Evo-Judge-Key"  # a judge run's own credential, which its claim hands the daemon alone
 VERDICTS = ("pass", "fail")
-VERDICT_FILE = f"{RESULT_DIR}/verdict.json"  # {"verdict": "pass" | "fail", "reasons": str}, the Judge agent writes it
 MAX_REASONS_CHARS = 8000
+MAX_VERDICT_MESSAGE = 64 * 1024  # the end of the Judge's last message read for its verdict
+MAX_VERDICT_TRIES = 200  # opening braces tried, from the end, for the JSON object that ends it
 MAX_SIGNS = 50
 MAX_SIGN_TEXT = 200
+MAX_PATHS = 3000  # changed paths a verdict names, as GitHub lists at most 3000 files of a pull request
 MAX_CHECK_OUTPUT_CHARS = 60_000  # GitHub takes 65535 in a check run's summary
 CODEX_SINK = "codex@"  # the start of the id of a sink of the Codex runtime in a project's policy
 CI_OK = frozenset({"success", "neutral", "skipped"})  # a check run's conclusion that lets a merge go
+REQUIRED_OK = frozenset({"success"})  # what a check the ruleset requires must have concluded
 GITLAB_PUSH_OPTIONS = ("merge_request.create", "merge_request.target={target}", "merge_request.remove_source_branch")
 RULE_UPDATE = "update"  # the ruleset rule that keeps everyone but its bypass actors from updating a branch
+RULE_REQUIRED_CHECKS = "required_status_checks"  # the ruleset rule that names the checks a merge needs
+# What a commit message writes to keep CI from running on it, as GitHub Actions reads it, or to pass check suites.
+SKIP_CI = re.compile(
+    r"\[(?:skip ci|ci skip|no ci|skip actions|actions skip)\]|\*\*\*NO_CI\*\*\*|^skip-checks:\s*true\s*$",
+    re.IGNORECASE | re.MULTILINE,
+)
 
 SIGN_KINDS: dict[str, str] = {
     "assert_removed": "an assertion of a test removed",
@@ -81,6 +105,9 @@ SIGN_KINDS: dict[str, str] = {
     "exit_in_test": "the process exited from a test",
     "protected_path": "a protected path of the charter touched",
     "diff_unreadable": "a file whose diff cannot be read",
+    "expected_changed": "an expected value of a test changed",
+    "golden_changed": "a golden, snapshot or data file of the tests changed",
+    "assert_caught": "the failure of an assertion caught",
 }
 
 CI_PATHS = (
@@ -125,6 +152,26 @@ LINT_CONFIG_PATHS = (
     "**/vitest.config.*",
     "playwright.config.*",
     "**/playwright.config.*",
+    "tsconfig.json",
+    "**/tsconfig.json",
+    "tsconfig.*.json",
+    "**/tsconfig.*.json",
+    "jsconfig.json",
+    "**/jsconfig.json",
+    "pyrightconfig.json",
+    "**/pyrightconfig.json",
+    ".golangci.*",
+    "**/.golangci.*",
+    ".mocharc*",
+    "**/.mocharc*",
+    "karma.conf.*",
+    "**/karma.conf.*",
+    "cypress.config.*",
+    "**/cypress.config.*",
+    ".nycrc*",
+    "**/.nycrc*",
+    ".c8rc*",
+    "**/.c8rc*",
 )
 SECTIONED_CONFIG = (
     "pyproject.toml",
@@ -134,7 +181,72 @@ SECTIONED_CONFIG = (
     "package.json",
     "**/package.json",
 )
+# Golden, snapshot and expected-output files, wherever they live: a change to one changes what a test expects.
+GOLDEN_PATHS = (
+    "**/__snapshots__/**",
+    "**/*.snap",
+    "**/snapshots/**",
+    "**/golden/**",
+    "**/goldens/**",
+    "**/*.golden",
+    "**/testdata/**",
+    "**/expected/**",
+    "**/*.approved.*",
+    "**/*.received.*",
+)
 ASSET_SUFFIXES = (".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".ico", ".pdf")
+# The files of a test area that are code a reader can judge line by line; any other file there is the tests' data.
+SOURCE_SUFFIXES = (
+    ".py",
+    ".pyi",
+    ".js",
+    ".jsx",
+    ".mjs",
+    ".cjs",
+    ".ts",
+    ".tsx",
+    ".mts",
+    ".cts",
+    ".go",
+    ".rs",
+    ".rb",
+    ".java",
+    ".kt",
+    ".kts",
+    ".scala",
+    ".swift",
+    ".c",
+    ".cc",
+    ".cpp",
+    ".h",
+    ".hpp",
+    ".cs",
+    ".php",
+    ".sh",
+    ".bash",
+    ".ex",
+    ".exs",
+    ".dart",
+    ".lua",
+    ".vue",
+    ".svelte",
+)
+# The runners a verify command may call, and the files that say what each one runs.
+RUNNER_FILES = {
+    "make": ("Makefile", "**/Makefile", "makefile", "**/makefile", "GNUmakefile", "**/GNUmakefile", "**/*.mk"),
+    "gmake": ("Makefile", "**/Makefile", "makefile", "**/makefile", "GNUmakefile", "**/GNUmakefile", "**/*.mk"),
+    "just": ("justfile", "**/justfile", "Justfile", "**/Justfile", ".justfile", "**/.justfile"),
+    "nox": ("noxfile.py", "**/noxfile.py"),
+    "tox": ("tox.ini", "**/tox.ini"),
+    "invoke": ("tasks.py", "**/tasks.py"),
+    "inv": ("tasks.py", "**/tasks.py"),
+    "task": ("Taskfile.yml", "**/Taskfile.yml", "Taskfile.yaml", "**/Taskfile.yaml"),
+}
+PACKAGE_RUNNERS = ("npm", "pnpm", "yarn", "bun")  # their scripts live in package.json
+# Words before the command a verify command runs: wrappers that run what follows.
+WRAPPERS = {"uv": ("run",), "poetry": ("run",), "pipenv": ("run",), "hatch": ("run",), "pdm": ("run",)}
+PASS_THROUGH = ("env", "time", "nice", "exec", "command", "npx", "timeout", "xvfb-run")
+SHELL_OPERATOR = re.compile(r"&&|\|\||[;|&\n()]")
 
 ASSERTION = re.compile(
     r"\bassert\b|\bself\.assert\w*\s*\(|\bassert\w*\s*\(|\bexpect\s*\(|\bpytest\.raises\b|\.should\b"
@@ -144,7 +256,12 @@ SKIP = re.compile(
     r"\bpytest\.(?:mark\.)?(?:skip|skipif|xfail|importorskip)\b|\bunittest\.(?:skip\w*|expectedFailure)\b"
     r"|@skip\w*\b|\b(?:it|test|describe|context)\.(?:skip|only|todo|fixme)\s*\(|\bx(?:it|describe|test)\s*\("
     r"|\bt\.Skip\w*\s*\(|#\[ignore\]"
+    r"|\bmark\.(?:skip|skipif|xfail)\b|\bskipTest\s*\(|\bSkipTest\b|@expectedFailure\b|\b__test__\s*=\s*False\b"
+    r"|^\s*from\s+(?:pytest|_pytest[\w.]*|unittest[\w.]*|nose\w*)\s+import\b.*\b(?:skip\w*|xfail|importorskip"
+    r"|SkipTest|expectedFailure|mark)\b"
 )
+# In a test file, besides SKIP: a skip, an xfail or an only called through any name, as an alias of pytest does.
+TEST_SKIP = re.compile(r"\.(?:skip|skipif|xfail|only|todo|fixme)\s*\(|(?<![\w.])(?:skip|xfail|importorskip)\s*\(")
 SUPPRESS = re.compile(
     r"#\s*noqa\b|#\s*type:\s*ignore|#\s*pyright:\s*ignore|#\s*pylint:\s*disable|#\s*nosec\b|#\s*fmt:\s*off"
     r"|#\s*pragma:\s*no\s*cover|eslint-disable|@ts-(?:ignore|nocheck|expect-error)|biome-ignore"
@@ -152,6 +269,20 @@ SUPPRESS = re.compile(
 EQ_OVERLOAD = re.compile(r"\bdef\s+__(?:eq|ne)__\s*\(|\b__(?:eq|ne)__\s*=")
 EXIT = re.compile(
     r"\bsys\.exit\s*\(|\bos\._exit\s*\(|\braise\s+SystemExit\b|^\s*(?:exit|quit)\s*\(|\bprocess\.exit\s*\("
+    r"|\bgetattr\s*\(\s*(?:os|sys)\s*,|\b__import__\s*\(\s*['\"](?:os|sys)['\"]\s*\)|\bos\.(?:abort|kill|killpg)\s*\("
+    r"|\bpytest\.exit\s*\(|\bSystemExit\s*\(|\bbuiltins\.(?:exit|quit)\b"
+)
+# An assertion's failure caught: `except AssertionError`, a bare or BaseException except, contextlib.suppress of it,
+# pytest.raises(AssertionError), or an empty catch in JavaScript.
+CATCH = re.compile(
+    r"^\s*except\s*(?::|\(?\s*(?:[\w.]*\.)?(?:AssertionError|BaseException)\b)|\bsuppress\s*\([^)]*\b(?:AssertionError"
+    r"|BaseException)\b|\braises\s*\(\s*AssertionError\b|\bcatch\s*(?:\(\s*\w*\s*\))?\s*\{\s*\}|\.catch\s*\(\s*\(\s*\w*"
+    r"\s*\)\s*=>\s*(?:\{\s*\}|undefined|null|void 0)\s*\)"
+)
+# A guard that never lets what it holds run: an assertion put under it is an assertion removed.
+DEAD_GUARD = re.compile(
+    r"^\s*(?:el)?if\s*\(?\s*(?:False|false|0|None|null|undefined|not\s+True|!\s*true|!\s*1)\s*\)?\s*"
+    r"(?::|\{|$)|^\s*while\s*\(?\s*(?:False|false|0)\s*\)?\s*(?::|\{|$)"
 )
 TOLERANCE = re.compile(
     r"approx|isclose|allclose|toleran|\brel\s*=|\babs\s*=|atol|rtol|\bdelta\b|\bplaces\b|threshold|timeout"
@@ -159,12 +290,16 @@ TOLERANCE = re.compile(
     re.IGNORECASE,
 )
 NUMBER = re.compile(r"\d+(?:\.\d+)?(?:[eE][-+]?\d+)?")
+STRING = re.compile(r"\"(?:[^\"\\]|\\.)*\"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`")
 CONFIG_KEY = re.compile(
-    r"^\s*\[tool\.(?:ruff|pytest|mypy|coverage|pyright|black|isort|pylint|flake8|bandit)\b"
+    r"^\s*\[\[?tool\.(?:ruff|pytest|mypy|coverage|pyright|black|isort|pylint|flake8|bandit)\b"
+    r"|^\s*\[(?:tool:pytest|pytest|mypy[^\]]*|flake8|pycodestyle|pylint[^\]]*|coverage:[^\]]*|isort|tool:isort)\]"
     r"|^\s*(?:select|ignore|extend-select|extend-ignore|per-file-ignores|exclude|extend-exclude|addopts"
-    r"|filterwarnings|fail_under|fail-under|strict|testpaths|python_files|markers|ignore_missing_imports"
-    r"|disallow_\w+|warn_\w+)\s*="
-    r"|\"(?:lint|test|typecheck|check|format)[\w:-]*\"\s*:"
+    r"|filterwarnings|fail_under|fail-under|strict\w*|testpaths|python_files|python_classes|python_functions|markers"
+    r"|ignore_missing_imports|ignore_errors|follow_imports|disable_error_code|norecursedirs|collect_ignore\w*"
+    r"|minversion|required_plugins|disallow_\w+|warn_\w+|check_untyped_defs|no_implicit_optional|omit)\s*="
+    r"|\"(?:lint|test|typecheck|check|format|jest|vitest|eslintConfig|prettier|mocha|ava|c8|nyc)[\w:-]*\"\s*:"
+    r"|\"(?:testMatch|testRegex|testPathIgnorePatterns|coveragePathIgnorePatterns|coverageThreshold|strict\w*)\"\s*:"
 )
 HUNK = re.compile(r"^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@")
 SHA = re.compile(r"^[0-9a-f]{40}([0-9a-f]{24})?$")
@@ -236,6 +371,28 @@ def plan_checks(body: dict) -> dict[str, tuple]:
             key = str(step.get("id", step.get("order", index)))
             found[key] = (step.get("verify"), json.dumps(step.get("acceptance"), sort_keys=True))
     return found
+
+
+PLAN_PROGRESS = ("status",)  # what a write of a Curator's plan may change of the plan itself
+
+
+def progress_free(body: dict) -> str:
+    """A Curator's plan without what its progress writes (the plan's status; each step's status, done_at, evidence
+    and note), as canonical JSON: two writes of it differ in anything else exactly when these differ."""
+    found = {key: value for key, value in (body if isinstance(body, dict) else {}).items() if key not in PLAN_PROGRESS}
+    found.pop("hub", None)
+    steps = found.get("steps")
+    if isinstance(steps, list):
+        found["steps"] = [
+            {key: value for key, value in step.items() if key not in STEP_PROGRESS} if isinstance(step, dict) else step
+            for step in steps
+        ]
+    return json.dumps(found, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+
+
+def is_curator_plan_id(plan_id: str | None) -> bool:
+    """Whether ``plan_id`` is an id of the Curator's plans, which the hub alone makes."""
+    return isinstance(plan_id, str) and plan_id.startswith(CURATOR_PLAN_PREFIX)
 
 
 def verify_commands(body: dict) -> list[str]:
@@ -412,6 +569,72 @@ def verify_paths(commands: list[str]) -> set[str]:
     return found
 
 
+def _simple_commands(command: str) -> list[list[str]]:
+    """The words of each simple command of a shell command line, split at its operators; words of a quoted
+    ``sh -c`` or ``bash -c`` argument read as commands too."""
+    found: list[list[str]] = []
+    try:
+        lexer = shlex.shlex(command or "", posix=True, punctuation_chars=True)
+        lexer.whitespace_split = True
+        tokens = list(lexer)
+    except ValueError:  # an open quote: read it as words between the operators
+        tokens = [word for part in SHELL_OPERATOR.split(command or "") for word in [*part.split(), ";"]]
+    groups: list[list[str]] = [[]]
+    for token in tokens:
+        if token and all(char in "&|;()<>" for char in token):
+            groups.append([])
+        else:
+            groups[-1].append(token)
+    for words in groups:
+        while words and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*=.*", words[0]):  # FOO=bar before the command
+            words = words[1:]
+        if not words:
+            continue
+        if words[0].rsplit("/", 1)[-1] in ("sh", "bash", "zsh", "dash") and "-c" in words[1:-1]:
+            found += _simple_commands(words[words.index("-c") + 1])
+            continue
+        found.append(words)
+    return found
+
+
+def _runner(words: list[str]) -> tuple[str | None, list[str]]:
+    """(the program a simple command runs, its arguments), past the wrappers that run another program."""
+    while words:
+        head = words[0].rsplit("/", 1)[-1]
+        if head in PASS_THROUGH:
+            words = [word for word in words[1:] if not word.startswith("-")] if head != "timeout" else words[2:]
+            continue
+        if head in WRAPPERS and len(words) > 1 and words[1] in WRAPPERS[head]:
+            words = words[2:]
+            continue
+        if re.fullmatch(r"python[0-9.]*", head) and len(words) > 2 and words[1] == "-m":
+            return words[2], words[3:]
+        return head, words[1:]
+    return None, []
+
+
+def verify_runners(commands: list[str]) -> tuple[set[str], set[str]]:
+    """(globs of the files that say what the verify commands run, such as the Makefile of ``make check``; the names of
+    the package.json scripts they run, such as ``test`` of ``pnpm test``)."""
+    globs: set[str] = set()
+    scripts: set[str] = set()
+    for command in commands or []:
+        for words in _simple_commands(command):
+            program, args = _runner(words)
+            if program is None:
+                continue
+            globs.update(RUNNER_FILES.get(program, ()))
+            if program in PACKAGE_RUNNERS:
+                args = [arg for arg in args if not arg.startswith("-")]
+                if args[:1] == ["run"]:
+                    args = args[1:]
+                if args and args[0] not in ("exec", "dlx", "install", "ci", "add", "x"):
+                    scripts.add(args[0])
+                elif not args:
+                    scripts.add("test" if program == "npm" else "install")
+    return globs, scripts
+
+
 def hack_signs(
     files: list[FileDiff], *, repo: str, protected: list[str], verify_commands: list[str] = ()
 ) -> list[dict]:
@@ -423,8 +646,12 @@ def hack_signs(
         if len(signs) < MAX_SIGNS:
             signs.append({"kind": kind, "path": path, "line": line, "text": " ".join(text.split())[:MAX_SIGN_TEXT]})
 
-    added_texts = {" ".join(text.split()) for diff in files for _, text in diff.added}
-    named = verify_paths(list(verify_commands or []))
+    commands = list(verify_commands or [])
+    named = verify_paths(commands)
+    runner_globs, scripts = verify_runners(commands)
+    script_key = (
+        re.compile(r"\"(?:" + "|".join(re.escape(name) for name in sorted(scripts)) + r")\"\s*:") if scripts else None
+    )
     for diff in files:
         paths = [diff.path] + ([diff.old_path] if diff.old_path and diff.old_path != diff.path else [])
         for path in paths:
@@ -432,22 +659,28 @@ def hack_signs(
             if glob is not None:
                 sign("protected_path", path, None, f"protected by the charter ({glob})")
         path = diff.path
-        if _matches(CI_PATHS, repo, path) or (diff.old_path and _matches(CI_PATHS, repo, diff.old_path)):
+        ci = any(_matches(CI_PATHS, repo, item) for item in paths)
+        lint = any(_matches(LINT_CONFIG_PATHS, repo, item) for item in paths)
+        if ci:
             sign("ci_changed", path)
-        if _matches(LINT_CONFIG_PATHS, repo, path) or (
-            diff.old_path and _matches(LINT_CONFIG_PATHS, repo, diff.old_path)
-        ):
+        if lint:
             sign("lint_config_changed", path)
         if any(_matches(("plans/**",), repo, item) for item in paths):
             sign("verify_changed", path, None, "a copy of a plan")
-        if diff.status != "added" and any(item in named for item in paths) and not _is_test(repo, path):
+        runs_it = any(item in named or _matches(runner_globs, repo, item) for item in paths)
+        if diff.status != "added" and runs_it and not _is_test(repo, path):
             sign("verify_changed", path, None, "a file the plan's verify runs")
         doc = _is_doc(repo, path)
+        test = any(_is_test(repo, item) for item in paths)
+        golden = any(_matches(GOLDEN_PATHS, repo, item) for item in paths)
+        data = test and not doc and not any(item.lower().endswith(SOURCE_SUFFIXES) for item in paths)
+        guarded = test or golden or ci or lint or runs_it or any(_matches(protected, repo, item) for item in paths)
+        if (golden or data) and diff.status != "added":
+            sign("golden_changed", path, None, "what a test compares with")
         if not diff.readable:
-            if not doc and not path.lower().endswith(ASSET_SUFFIXES):
+            if guarded or not (doc or path.lower().endswith(ASSET_SUFFIXES)):
                 sign("diff_unreadable", path)
             continue
-        test = _is_test(repo, path) or _is_test(repo, diff.old_path or path)
         if test and diff.status == "removed":
             sign("test_removed", diff.old_path or path, None, "the whole file")
         sectioned = _matches(SECTIONED_CONFIG, repo, path) is not None
@@ -456,10 +689,15 @@ def hack_signs(
                 if CONFIG_KEY.search(text):
                     sign("lint_config_changed", path, number, text)
                     break
-        if doc:
+            if script_key is not None and path.endswith("package.json"):
+                for number, text in [*diff.added, *diff.removed]:
+                    if script_key.search(text):
+                        sign("verify_changed", path, number, text)
+                        break
+        if doc or (test and data):
             continue
         for number, text in diff.added:
-            if SKIP.search(text):
+            if SKIP.search(text) or (test and TEST_SKIP.search(text)):
                 sign("skip_added", path, number, text)
             if SUPPRESS.search(text):
                 sign("lint_suppressed", path, number, text)
@@ -467,9 +705,16 @@ def hack_signs(
                 sign("eq_overridden", path, number, text)
             if test and EXIT.search(text):
                 sign("exit_in_test", path, number, text)
+            if test and CATCH.search(text):
+                sign("assert_caught", path, number, text)
+            if test and DEAD_GUARD.search(text):
+                sign("assert_removed", path, number, f"a guard that never runs what it holds: {text}")
         if not test:
             continue
+        # This file's own lines alone: an assertion moved to another file, which may never run, is one removed here.
+        added_texts = {" ".join(text.split()) for _, text in diff.added}
         added_masked = {_masked(text) for _, text in diff.added}
+        added_literal = {_literal_free(text) for _, text in diff.added}
         for number, text in diff.removed:
             flat = " ".join(text.split())
             if not flat or flat in added_texts:
@@ -481,7 +726,24 @@ def hack_signs(
                 sign("assert_removed", path, number, text)
             elif TEST_DEFINITION.search(text):
                 sign("test_removed", path, number, text)
+            elif _has_literal(text) and _literal_free(text) in added_literal:
+                sign("expected_changed", path, number, text)
     return signs
+
+
+def _literal_free(text: str) -> str:
+    """``text`` with its strings and numbers each one mark, blanks folded: equal for two lines that differ in their
+    literals alone."""
+    return NUMBER.sub("#", STRING.sub("'#'", " ".join(text.split())))
+
+
+def _has_literal(text: str) -> bool:
+    return bool(NUMBER.search(text) or STRING.search(text))
+
+
+def changed_paths(files: list[FileDiff]) -> list[str]:
+    """Every path a diff touches, both sides of a rename, sorted, each once."""
+    return sorted({item for diff in files for item in (diff.path, diff.old_path) if item})
 
 
 def raised_reason(signs: list[dict]) -> str:
@@ -577,39 +839,99 @@ def final_verdict(
 
 
 def read_verdict(text: str) -> tuple[str | None, str]:
-    """(verdict, reasons) of the file the Judge agent wrote; (None, why) when it is not one."""
+    """(verdict, reasons) of the Judge's verdict as a JSON object; (None, why) when it is not one."""
     try:
         data = json.loads(text)
     except ValueError as exc:
-        return None, f"{VERDICT_FILE} is not JSON ({exc})"
+        return None, f"the verdict is not JSON ({exc})"
     if not isinstance(data, dict) or data.get("verdict") not in VERDICTS:
-        return None, f"{VERDICT_FILE} holds no verdict of {' or '.join(VERDICTS)}"
+        return None, f"the verdict holds no verdict of {' or '.join(VERDICTS)}"
     reasons = data.get("reasons")
     text = reasons.strip() if isinstance(reasons, str) else ""
     return data["verdict"], text[:MAX_REASONS_CHARS]
 
 
+def verdict_from_message(message: str | None) -> tuple[str | None, str]:
+    """(verdict, reasons) of the JSON object that ends the Judge agent's last message (a code fence around it is
+    fine, nothing may follow it); (None, why) when the message ends otherwise. The worker reads it from the agent's
+    own output, which the code under test cannot write."""
+    text = (message or "").strip()[-MAX_VERDICT_MESSAGE:]
+    text = re.sub(r"\s*`{3,}\s*$", "", text)
+    if not text.endswith("}"):
+        return None, "the Judge's last message does not end with its verdict as a JSON object"
+    starts = [found.start() for found in re.finditer(r"\{", text)]
+    for start in reversed(starts[-MAX_VERDICT_TRIES:]):
+        candidate = text[start:]
+        try:
+            data = json.loads(candidate)
+        except ValueError:
+            continue
+        if isinstance(data, dict) and "verdict" in data:
+            return read_verdict(candidate)
+    return None, "the JSON object that ends the Judge's last message holds no verdict"
+
+
 # CI and the merge
 
 
+def skip_ci_marker(message: str | None) -> str | None:
+    """The marker in a commit message that asks CI not to run on it, such as ``[skip ci]``; None without one."""
+    found = SKIP_CI.search(message or "")
+    return found.group(0).strip() if found else None
+
+
+def required_checks(rules: list[dict]) -> list[dict]:
+    """The checks the ``required_status_checks`` rules among ``rules`` (as GET .../rules/branches/{branch} lists them)
+    require: each ``{context, integration_id}``, the App None when the rule names none; each context once."""
+    found: dict[tuple, dict] = {}
+    for rule in rules or []:
+        if not isinstance(rule, dict) or rule.get("type") != RULE_REQUIRED_CHECKS:
+            continue
+        parameters = rule.get("parameters") if isinstance(rule.get("parameters"), dict) else {}
+        for item in parameters.get("required_status_checks") or []:
+            if isinstance(item, dict) and isinstance(item.get("context"), str) and item["context"].strip():
+                app = item.get("integration_id") if type(item.get("integration_id")) is int else None
+                found.setdefault((item["context"], app), {"context": item["context"], "integration_id": app})
+    return list(found.values())
+
+
 def ci_state(
-    check_runs: list[dict] | None, statuses: dict | None, *, own_name: str = JUDGE_CHECK_NAME
+    check_runs: list[dict] | None,
+    statuses: dict | None,
+    *,
+    own_name: str = JUDGE_CHECK_NAME,
+    required: list[dict] | None = None,
+    head_message: str | None = None,
 ) -> tuple[str, list[str]]:
     """(state, why) of CI on a commit, from its check runs and its combined status (None when either could not be
     read): ``green``, ``pending``, ``red``, ``none`` (no CI ran) or ``unreadable``. The Judge's own check run does not
-    count."""
+    count. With ``required``, the checks the default branch's ruleset requires (``required_checks``), CI is green only
+    when each of them concluded success, as a check run of its App when it names one or as a commit status, and red
+    when the ruleset requires none; a ``head_message`` that asks CI to skip the commit makes it red."""
     if check_runs is None or statuses is None:
         return "unreadable", ["the hub could not read the commit's check runs and statuses"]
     runs = [item for item in check_runs if isinstance(item, dict) and item.get("name") != own_name]
     count = statuses.get("total_count") if isinstance(statuses.get("total_count"), int) else 0
     if not runs and count == 0:
         return "none", ["no CI ran on the commit"]
+    marker = skip_ci_marker(head_message)
+    if marker is not None:
+        return "red", [f"the head commit's message asks CI to skip it ({marker}): what ran is not the whole of CI"]
+    needed: list[dict] = []
+    if required is not None:
+        needed = [item for item in required if item.get("context") and item["context"] != own_name]
+        if not needed:
+            return "red", [
+                "the ruleset of the default branch requires no status check: the hub merges only once the checks a "
+                "ruleset requires have passed"
+            ]
     red, pending = [], []
+    names = {item["context"] for item in needed}
     for item in runs:
         name = str(item.get("name") or "a check")
         if item.get("status") != "completed":
             pending.append(f"{name} is {item.get('status') or 'not done'}")
-        elif item.get("conclusion") not in CI_OK:
+        elif item.get("conclusion") not in (REQUIRED_OK if name in names else CI_OK):
             red.append(f"{name} ended {item.get('conclusion') or 'without a conclusion'}")
     if count:
         state = statuses.get("state")
@@ -617,6 +939,18 @@ def ci_state(
             pending.append("a commit status is pending")
         elif state != "success":
             red.append(f"the commit statuses are {state or 'unknown'}")
+    reported = [item for item in statuses.get("statuses") or [] if isinstance(item, dict)]
+    for check in needed:
+        context, app = check["context"], check.get("integration_id")
+        own = [item for item in runs if item.get("name") == context]
+        mine = [item for item in own if app is None or (item.get("app") or {}).get("id") == app]
+        stated = [item for item in reported if item.get("context") == context] if app is None else []
+        if own and not mine:
+            red.append(f"{context} is required from App {app}, and another App wrote it")
+        elif not mine and not stated:
+            pending.append(f"the required check {context} has not reported")
+        elif stated and not mine and any(item.get("state") != "success" for item in stated):
+            pending.append(f"the required status {context} is not success yet")
     if red:
         return "red", red
     if pending:
@@ -656,6 +990,9 @@ def merge_decision(facts: MergeFacts) -> tuple[str, list[str]]:
         return "open", [f"the pull request is {facts.pr_state or 'gone'}"]
     if not facts.passed:
         return "open", ["the Judge did not pass it"]
+    if facts.signs:  # before the tier, which the same files may have raised: the signs say more
+        kinds = sorted({item.get("kind", "?") for item in facts.signs})
+        return "open", [f"its files show signs of score hacking or protected paths: {', '.join(kinds)}"]
     if facts.tier != 0:
         return "open", [f"tier {facts.tier} waits for its owner to merge it"]
     if 0 not in facts.auto_merge:
@@ -666,9 +1003,6 @@ def merge_decision(facts: MergeFacts) -> tuple[str, list[str]]:
         return "open", ["the pull request's head is not the commit the Judge passed"]
     if not facts.default_branch or facts.pr_base != facts.default_branch:
         return "open", [f"the pull request is not into the default branch {facts.default_branch or '(unknown)'}"]
-    if facts.signs:
-        kinds = sorted({item.get("kind", "?") for item in facts.signs})
-        return "open", [f"its files show signs of score hacking or protected paths: {', '.join(kinds)}"]
     if facts.mergeable is False:
         return "open", ["GitHub cannot merge it as it is: it conflicts with the default branch"]
     if facts.ci == "pending":
@@ -716,9 +1050,18 @@ def _judge_rules(base: str, head: str | None) -> list[str]:
         "- Pass the change only when it does what the proposal and the plan's acceptance say, and nothing else; when "
         "no test, assertion, threshold, lint rule or CI step was weakened, skipped or removed to make it pass; and "
         "when the verify commands and the hidden checks below all exited 0. When in doubt, fail it.",
-        f'- Before you stop, write {VERDICT_FILE} as a JSON object: "verdict", "pass" or "fail", and "reasons", what '
-        "you checked and why you decided so, in a few lines.",
+        VERDICT_RULE,
     ]
+
+
+# How the Judge's agent gives its verdict: at the end of its last message, which the worker reads from the agent's own
+# output; a file would be open to the code under test.
+VERDICT_RULE = (
+    "- End your last message with your verdict as one JSON object, and nothing after it: "
+    '{"verdict": "pass" or "fail", "reasons": "what you checked and why you decided so, in a few lines"}. '
+    "Write no verdict file: the worker reads the verdict from your last message alone, and a message that does not "
+    "end with it fails the change."
+)
 
 
 def build_judge_prompt(

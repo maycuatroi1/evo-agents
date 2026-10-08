@@ -528,14 +528,24 @@ def _stale(access: ProjectAccess, held: Held, given: int | None) -> PlanError:
     return PlanError(409, message, code=REVISION_CONFLICT, current=held.view(access.name))
 
 
-async def _store(conn, access, user, held: Held | None, *, area, label, body, summary, action) -> Held | None:
+async def _store(
+    conn, access, user, held: Held | None, *, area, label, body, summary, action, made_by_curator: bool = False
+) -> Held | None:
     """Write the next revision of a plan (the first when ``held`` is None); None when another request created the
     plan first. The stored body is read back and must carry the digest of the body given. A write of a plan the
-    Curator made that names another repo or branch, or changes a step's verify or acceptance, is a 409
+    Curator made that names another repo or branch, or changes more than the progress of its steps, and a new plan
+    with an id of the Curator's that the hub does not make from a proposal (``made_by_curator``), are a 409
     (``changes.plan_write_refusal``)."""
     from evo_agents.hub.server.changes import plan_write_refusal  # it reads plans through this module
 
-    refusal = await plan_write_refusal(conn, access.project_id, body["id"], None if held is None else held.body, body)
+    refusal = await plan_write_refusal(
+        conn,
+        access.project_id,
+        body["id"],
+        None if held is None else held.body,
+        body,
+        made_by_curator=made_by_curator,
+    )
     if refusal is not None:
         raise PlanError(409, refusal)
     digest = plan_digest(body)
