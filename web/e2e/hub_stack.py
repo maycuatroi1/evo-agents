@@ -30,6 +30,10 @@ and each resize with ``size: <cols>x<rows>``; GET /terminal/worker/<run_id> says
 The Insights specs need runs that ended on earlier days: POST /runs/backdate {run_id, days, seconds} moves an ended run
 ``days`` whole UTC days back, every time of it alike, and with ``seconds`` makes it start that long before it ended.
 
+The Curator specs need the night's review run without waiting for the hub's worker: POST /curator/collect runs one pass
+of the job curator.collect (``evo_agents.hub.server.collect.collect``) on the stack's database, as that worker does
+every minute: in each charter's window it counts the night's figures and queues the night's review run.
+
 The admin specs need tokens nobody used lately: POST /tokens/idle {token_id, days} makes a token look last used
 ``days`` days ago, its expiry TOKEN_TTL after that, as the hub would have left it; the token must not be used again,
 since a use moves both forward.
@@ -255,6 +259,26 @@ def idle_token(dsn: str, body: dict) -> dict:
     return {"token_id": row[0], "last_used_at": row[1].isoformat(), "expires_at": row[2].isoformat()}
 
 
+def collect_curator(dsn: str) -> dict:
+    """One pass of the job curator.collect over every night_shift schedule of the stack's hub, at the database's now;
+    what it answers (how many schedules queued their review run, and so on)."""
+    import asyncio
+
+    from sqlalchemy.ext.asyncio import create_async_engine
+    from sqlalchemy.pool import NullPool
+
+    from evo_agents.hub.server.collect import collect
+
+    async def once() -> dict:
+        engine = create_async_engine(dsn.replace("postgresql://", "postgresql+psycopg://", 1), poolclass=NullPool)
+        try:
+            return await collect(engine)
+        finally:
+            await engine.dispose()
+
+    return asyncio.run(once())
+
+
 INPUT, OUTPUT, RESIZE = 0, 1, 2  # evo_agents.hub.terminal: the frame types
 CONNECT_FOR = 30.0  # seconds the fake worker keeps trying while no browser waits
 
@@ -417,6 +441,11 @@ def control_server(
                     self._reply(200, idle_token(dsn, body))
                 except LookupError as exc:
                     self._reply(404, {"error": str(exc)})
+            elif self.path == "/curator/collect":
+                try:
+                    self._reply(200, collect_curator(dsn))
+                except Exception as exc:  # the test shows what failed
+                    self._reply(500, {"error": f"{type(exc).__name__}: {exc}"})
             elif self.path in ("/kg/seed", "/kg/build"):
                 try:
                     self._reply(200, seeder.handle(self.path, body))

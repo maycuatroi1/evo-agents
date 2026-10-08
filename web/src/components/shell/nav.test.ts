@@ -23,7 +23,7 @@ describe("nav", () => {
       ["home", "/", null],
       ["inbox", "/inbox", "openDecisions"],
     ]);
-    expect(PROJECT_NAV.map((item) => item.label)).toEqual(["overview", "plans", "runs", "insights", "memories", "skills", "kg"]);
+    expect(PROJECT_NAV.map((item) => item.label)).toEqual(["overview", "plans", "runs", "insights", "curator", "memories", "skills", "kg"]);
     expect(PROJECT_NAV.filter((item) => item.count).map((item) => [item.label, item.count])).toEqual([
       ["runs", "activeRuns"],
     ]);

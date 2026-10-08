@@ -28,9 +28,11 @@ export type InboxFilters = {
   page: number;
   /** The decision shown in the sheet over the list, as `/inbox?decision=ID` names it. */
   decision: number | null;
+  /** The proposal of the Curator shown in the sheet over the list, as `/inbox?proposal=ID` names it. */
+  proposal: number | null;
 };
 
-export const NO_FILTERS: InboxFilters = { kind: null, project: null, unread: false, page: 1, decision: null };
+export const NO_FILTERS: InboxFilters = { kind: null, project: null, unread: false, page: 1, decision: null, proposal: null };
 
 function isKind(value: string | null): value is NotificationKind {
   return (NOTIFICATION_KINDS as readonly string[]).includes(value ?? "");
@@ -46,6 +48,7 @@ export function readInboxFilters(source: ParamSource): InboxFilters {
     unread: source.get("unread") === "1",
     page: Number.isInteger(page) && page >= 1 && page <= MAX_PAGE ? page : 1,
     decision: parseRunId(source.get("decision")?.trim() ?? ""),
+    proposal: parseRunId(source.get("proposal")?.trim() ?? ""),
   };
 }
 
@@ -53,6 +56,7 @@ export function readInboxFilters(source: ParamSource): InboxFilters {
 export function inboxSearch(filters: InboxFilters): string {
   const params = new URLSearchParams();
   if (filters.decision !== null) params.set("decision", String(filters.decision));
+  if (filters.proposal !== null) params.set("proposal", String(filters.proposal));
   if (filters.kind) params.set("kind", filters.kind);
   if (filters.project) params.set("project", filters.project);
   if (filters.unread) params.set("unread", "1");
@@ -61,7 +65,7 @@ export function inboxSearch(filters: InboxFilters): string {
   return text ? `?${text}` : "";
 }
 
-/** Whether the list is narrowed by a filter (the page and the decision shown are not filters). */
+/** Whether the list is narrowed by a filter (the page and the decision or proposal shown are not filters). */
 export function isFiltered(filters: InboxFilters): boolean {
   return filters.kind !== null || filters.project !== null || filters.unread;
 }
@@ -82,20 +86,35 @@ export function isOpenDecision(notification: Pick<Notification, "kind" | "decisi
   return notification.kind === "decision" && notification.decision_state === "open";
 }
 
+/** A tier 2 proposal of the Curator that still waits for an admin's answer. */
+export function isOpenProposal(notification: Pick<Notification, "kind" | "proposal_state">): boolean {
+  return notification.kind === "proposal" && notification.proposal_state === "open";
+}
+
+/** What waits for an answer: an open decision, or an open proposal. */
+export function isWaiting(notification: Pick<Notification, "kind" | "decision_state" | "proposal_state">): boolean {
+  return isOpenDecision(notification) || isOpenProposal(notification);
+}
+
 /**
- * A page of notifications as the Inbox shows it: the decisions still open first (the API sends them first), then the
- * notices and the decisions answered, expired or cancelled, newest first.
+ * A page of notifications as the Inbox shows it: the decisions and the proposals still open first (the API sends them
+ * first), then the notices and the decisions and proposals answered, expired or cancelled, newest first.
  */
 export function splitInbox(notifications: readonly Notification[]): { waiting: Notification[]; rest: Notification[] } {
   const waiting: Notification[] = [];
   const rest: Notification[] = [];
-  for (const notification of notifications) (isOpenDecision(notification) ? waiting : rest).push(notification);
+  for (const notification of notifications) (isWaiting(notification) ? waiting : rest).push(notification);
   return { waiting, rest };
 }
 
 /** The notifications of a page not read yet, at most as many as one request marks read. */
 export function unreadIds(notifications: readonly Notification[], limit = 500): number[] {
   return notifications.filter((notification) => notification.read_at === null).map((notification) => notification.id).slice(0, limit);
+}
+
+/** The notification of proposal `id` on a page, if the page holds it. */
+export function notificationOfProposal(notifications: readonly Notification[], id: number): Notification | null {
+  return notifications.find((notification) => notification.kind === "proposal" && notification.proposal_id === id) ?? null;
 }
 
 /** The notification of decision `id` on a page, if the page holds it. */

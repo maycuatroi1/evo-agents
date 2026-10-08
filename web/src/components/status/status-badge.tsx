@@ -3,14 +3,18 @@
 import {
   Activity,
   Ban,
+  CalendarClock,
   CircleCheck,
   CircleDashed,
   CircleDot,
   CircleHelp,
   CircleMinus,
+  CircleOff,
+  CirclePause,
   CirclePlay,
   CircleX,
   Clock,
+  CopyX,
   Eye,
   GitMerge,
   Hand,
@@ -19,8 +23,11 @@ import {
   Lock,
   type LucideIcon,
   MessageSquare,
+  Moon,
+  MoonStar,
   OctagonPause,
   Terminal,
+  ThumbsDown,
   TimerOff,
   Unplug,
   WifiOff,
@@ -53,6 +60,9 @@ export type PlanStatus = Schemas["PlanSummary"]["area"] | "pending" | "blocked";
 /** A step's status as a plan run's worker reports it, and blocked, which only people write in a plan. */
 export type StepStatus = Schemas["StepReport"]["status"] | "blocked";
 export type DecisionStatus = Schemas["Decision"]["state"];
+export type ProposalStatus = Schemas["ProposalSummary"]["state"];
+/** Where a project's night shift stands (`CuratorStatus["state"]`), and off while it has no charter. */
+export type CuratorStatusWord = NonNullable<Schemas["CuratorStatus"]["state"]> | "off";
 export type { RepoStatus };
 
 type StatusOfKind = {
@@ -62,6 +72,8 @@ type StatusOfKind = {
   step: StepStatus;
   repo: RepoStatus;
   decision: DecisionStatus;
+  proposal: ProposalStatus;
+  curator: CuratorStatusWord;
 };
 export type StatusKind = keyof StatusOfKind;
 export type StatusOf<K extends StatusKind> = StatusOfKind[K];
@@ -129,6 +141,27 @@ const DECISION = {
   cancelled: { tone: "outline", icon: Ban },
 } as const satisfies Record<DecisionStatus, StatusLook>;
 
+/** A proposal of the Curator: open waits for an admin's answer, as a decision waits for its owner's. */
+const PROPOSAL = {
+  open: { tone: "attention", icon: MessageSquare },
+  deferred: { tone: "neutral", icon: CalendarClock },
+  accepted: { tone: "success", icon: CircleCheck },
+  rejected: { tone: "outline", icon: ThumbsDown },
+  dropped: { tone: "outline", icon: CopyX },
+} as const satisfies Record<ProposalStatus, StatusLook>;
+
+/**
+ * A project's night shift: running while a run of it is in flight (the run itself carries the pulsing dot, so this
+ * pill does not); paused waits for a person to resume it.
+ */
+const CURATOR = {
+  running: { tone: "running", icon: CirclePlay },
+  on_duty: { tone: "neutral", icon: MoonStar },
+  idle: { tone: "outline", icon: Moon },
+  paused: { tone: "attention", icon: CirclePause },
+  off: { tone: "outline", icon: CircleOff },
+} as const satisfies Record<CuratorStatusWord, StatusLook>;
+
 export const STATUS_LOOKS: { [K in StatusKind]: Record<StatusOf<K>, StatusLook> } = {
   run: RUN,
   worker: WORKER,
@@ -136,6 +169,8 @@ export const STATUS_LOOKS: { [K in StatusKind]: Record<StatusOf<K>, StatusLook> 
   step: STEP,
   repo: REPO,
   decision: DECISION,
+  proposal: PROPOSAL,
+  curator: CURATOR,
 };
 
 /** A status the hub does not know yet (a plan written by hand): neutral, with a question mark and the text as written. */
@@ -175,6 +210,8 @@ const TEST_ID: Record<StatusKind, string> = {
   step: "step-status",
   repo: "repo-status",
   decision: "decision-state",
+  proposal: "proposal-state",
+  curator: "curator-state",
 };
 
 type StatusKey = { [K in StatusKind]: `${K}.${StatusOf<K>}` }[StatusKind];

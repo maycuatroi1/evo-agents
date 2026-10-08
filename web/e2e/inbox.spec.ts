@@ -52,7 +52,7 @@ test("the bell counts unread notifications, and the Inbox lists open decisions f
     branch: "main",
     commits: [COMMIT, SHA_2],
   });
-  expect(await notificationCount(me)).toEqual({ unread: 2, open_decisions: 1 });
+  expect(await notificationCount(me)).toEqual({ unread: 2, open_decisions: 1, open_proposals: 0 });
 
   await open(page, "/");
   const bell = page.getByTestId("inbox-bell");
@@ -114,7 +114,7 @@ test("the bell counts unread notifications, and the Inbox lists open decisions f
   await expect(bell).toHaveAccessibleName("Inbox: no unread notification, 2 decisions wait for your answer");
   await expect(page.getByTestId("inbox-bell-count")).toHaveCount(0);
   await expect(main(page).getByTestId("inbox-waiting").getByTestId("notification")).toHaveCount(2);
-  expect(await notificationCount(me)).toEqual({ unread: 0, open_decisions: 2 });
+  expect(await notificationCount(me)).toEqual({ unread: 0, open_decisions: 2, open_proposals: 0 });
 });
 
 test("the owner answers a decision from the Inbox, and an answered decision takes no second answer", async ({ page, member }) => {

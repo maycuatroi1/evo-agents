@@ -428,8 +428,8 @@ export async function sendNotice(live: LiveWorker, runId: number, notice: Notice
   return answer.id;
 }
 
-/** The member's unread notifications and open decisions, as the bell reads them. */
-export async function notificationCount(account: Account): Promise<{ unread: number; open_decisions: number }> {
+/** The member's unread notifications, open decisions and open proposals, as the bell reads them. */
+export async function notificationCount(account: Account): Promise<components["schemas"]["NotificationCount"]> {
   const api = bearerClient(await machineToken(account));
   return call(api.GET("/v1/me/notifications/count"));
 }

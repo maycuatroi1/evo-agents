@@ -36,7 +36,7 @@
     "runDiff": "Diff",
     "inbox": "Inbox",
     "counts": {
-      "openDecisions": "{count, plural, other {# quyết định chờ bạn trả lời}}",
+      "openDecisions": "{count, plural, other {# quyết định hoặc đề xuất chờ bạn trả lời}}",
       "activeRuns": "{count, plural, other {# run đang hoạt động}}"
     },
     "fleet": {
@@ -45,7 +45,10 @@
       "offline": "<b>Không có worker nào online</b>, {registered} đã đăng ký",
       "none": "Chưa có worker nào",
       "error": "Không đọc được danh sách worker"
-    }
+    },
+    "curator": "Curator",
+    "curatorProposals": "Đề xuất",
+    "curatorCharter": "Charter"
   },
   "projectSwitcher": {
     "label": "Dự án",
@@ -143,7 +146,8 @@
       "goRuns": "Run",
       "goWorkers": "Worker",
       "dispatch": "Dispatch một bước",
-      "send": "Gửi câu trả lời hoặc tin nhắn"
+      "send": "Gửi câu trả lời hoặc tin nhắn",
+      "goCurator": "Curator"
     },
     "where": {
       "project": "Của dự án đang mở",
@@ -163,7 +167,7 @@
     },
     "needProject": {
       "title": "Mở một dự án trước",
-      "text": "Plan và run thuộc về một dự án. Chọn dự án ở thanh bên."
+      "text": "Plan, run và Curator thuộc về một dự án. Chọn dự án ở thanh bên."
     }
   },
   "userMenu": {
@@ -240,7 +244,21 @@
       "expired": "Hết hạn",
       "cancelled": "Đã huỷ"
     },
-    "other": "Trạng thái khác: {status}"
+    "other": "Trạng thái khác: {status}",
+    "proposal": {
+      "open": "Đang mở",
+      "deferred": "Đã hoãn",
+      "accepted": "Đã chấp nhận",
+      "rejected": "Đã từ chối",
+      "dropped": "Đã bỏ"
+    },
+    "curator": {
+      "running": "Đang chạy",
+      "on_duty": "Đang trực",
+      "idle": "Nghỉ",
+      "paused": "Tạm dừng",
+      "off": "Chưa thiết lập"
+    }
   },
   "identifier": {
     "copy": "Sao chép {value}",
@@ -335,7 +353,9 @@
     "projects": {
       "title": "Dự án",
       "count": "{count, plural, other {# dự án}}",
-      "open": "Mở dự án {name}"
+      "open": "Mở dự án {name}",
+      "curator": "Curator: {state}",
+      "proposals": "{count} đề xuất chờ"
     },
     "empty": {
       "title": "Bạn chưa được cấp dự án nào",
@@ -2353,7 +2373,8 @@
         "waited": "Đã chờ",
         "revision": "Revision của plan",
         "revisionValue": "r{revision}",
-        "copySession": "Sao chép mã phiên"
+        "copySession": "Sao chép mã phiên",
+        "approvalReview": "Không cần duyệt: review run không đổi gì"
       },
       "result": {
         "title": "Kết quả",
@@ -2467,7 +2488,8 @@
         "conflict": "Run đã đổi trạng thái trong lúc đó. Trang đang hiện trạng thái mới; hãy xem lại rồi thử lại.",
         "full": "Log của run đã đầy (20.000 sự kiện), nên run không nhận thêm tin nhắn.",
         "apiMessage": "Hub báo: {message}"
-      }
+      },
+      "reviewSub": "Lần review ban đêm của <curatorLink>Curator</curatorLink> cho dự án: chỉ đọc, không đổi gì. <proposalsLink>Các đề xuất của nó</proposalsLink>"
     },
     "diff": {
       "metaTitle": "Diff của run #{id} thuộc {project}",
@@ -2609,7 +2631,7 @@
     "markedAll": "{count, plural, =0 {Không còn thông báo nào chưa đọc} other {Đã đánh dấu # thông báo là đã đọc}}",
     "count": "{count, plural, other {# thông báo}}",
     "waitingTitle": "Đang chờ bạn trả lời",
-    "restTitle": "Thông báo và quyết định đã xong",
+    "restTitle": "Thông báo, quyết định và đề xuất đã xong",
     "allTitle": "Thông báo",
     "pagerLabel": "thông báo",
     "summary": {
@@ -2626,11 +2648,12 @@
       "decisions": "Quyết định",
       "notices": "Thông báo",
       "project": "Dự án",
-      "allProjects": "Mọi dự án"
+      "allProjects": "Mọi dự án",
+      "proposals": "Đề xuất"
     },
     "empty": {
       "title": "Inbox đang trống",
-      "description": "Khi agent của một plan run bạn giao hỏi bạn một quyết định, hay push hoặc merge vào nhánh mặc định, thông báo sẽ hiện ở đây và trên chuông ở thanh trên cùng."
+      "description": "Khi agent của một plan run bạn giao hỏi bạn một quyết định, push hoặc merge vào nhánh mặc định, hay Curator của dự án đề xuất một thay đổi cần đồng ý, thông báo sẽ hiện ở đây và trên chuông ở thanh trên cùng."
     },
     "noResults": {
       "title": "Không có thông báo nào khớp",
@@ -2638,13 +2661,14 @@
       "clear": "Xoá bộ lọc"
     },
     "bell": {
-      "label": "Inbox: {unread, plural, =0 {không có thông báo chưa đọc} other {# thông báo chưa đọc}}{decisions, plural, =0 {} other {, # quyết định chờ bạn trả lời}}",
+      "label": "Inbox: {unread, plural, =0 {không có thông báo chưa đọc} other {# thông báo chưa đọc}}{decisions, plural, =0 {} other {, # quyết định chờ bạn trả lời}}{proposals, plural, =0 {} other {, # đề xuất chờ trả lời}}",
       "labelUnknown": "Inbox",
       "arrived": "{count, plural, other {Có # thông báo mới trong inbox.}}"
     },
     "kind": {
       "decision": "Quyết định",
-      "notice": "Thông báo"
+      "notice": "Thông báo",
+      "proposal": "Đề xuất"
     },
     "category": {
       "deploy": "Triển khai",
@@ -2677,7 +2701,10 @@
       "commits": "{count, plural, other {# commit}}",
       "commitFull": "commit {sha}",
       "moreCommits": "và {count} commit nữa",
-      "fewerCommits": "Thu gọn"
+      "fewerCommits": "Thu gọn",
+      "answerProposalLabel": "Trả lời đề xuất #{id}",
+      "viewProposalLabel": "Xem đề xuất #{id}",
+      "openProposal": "Mở đề xuất #{id}"
     },
     "sheet": {
       "title": "Quyết định #{id}",
@@ -2752,7 +2779,17 @@
       "readGone": "Các thông báo này đã thay đổi trong lúc đó. Danh sách vừa được tải lại."
     },
     "markedOne": "Đã đánh dấu thông báo là đã đọc",
-    "markFailed": "Không đánh dấu đã đọc được"
+    "markFailed": "Không đánh dấu đã đọc được",
+    "openProposals": "{count, plural, other {# đề xuất chờ trả lời}}",
+    "proposal": {
+      "title": "Đề xuất #{id}",
+      "titleUnknown": "Đề xuất",
+      "close": "Đóng",
+      "notFoundTitle": "Không tìm thấy đề xuất #{id}",
+      "notFoundDescription": "Đề xuất thuộc dự án bạn không đọc được, nhãn của nó vượt quá quyền của bạn, hoặc đường dẫn sai.",
+      "where": "Dự án {project}, do <runLink>review run #{run}</runLink> đề xuất",
+      "openPage": "Mở trang đầy đủ"
+    }
   },
   "toast": {
     "region": "Thông báo",
@@ -2789,5 +2826,477 @@
     },
     "retry": "Thử lại ngay",
     "resume": "Tiếp tục"
+  },
+  "curator": {
+    "metaTitle": "Curator của {project}",
+    "metaProposals": "Đề xuất của {project}",
+    "metaProposal": "Đề xuất #{id} của {project}",
+    "metaCharter": "Charter của {project}",
+    "title": "Curator",
+    "reviewRun": "Review run",
+    "lensWord": "Lăng kính:",
+    "tabs": {
+      "label": "Các trang của Curator",
+      "overview": "Tổng quan",
+      "proposals": "Đề xuất",
+      "charter": "Charter",
+      "waiting": "{count} đề xuất chờ trả lời"
+    },
+    "sub": {
+      "duty": "Ca đêm trên <worker></worker> với tư cách {owner}, từ {start} đến {end} {timezone}",
+      "paused": "{login} đã tạm dừng <ago></ago>"
+    },
+    "pause": "Tạm dừng",
+    "pausing": "Đang tạm dừng",
+    "resume": "Chạy tiếp",
+    "resuming": "Đang bật lại",
+    "paused": {
+      "title": "Đã tạm dừng ca đêm",
+      "text": "Không run nào được xếp cho tới khi bật lại. Các run đã xếp mà chưa worker nào nhận đã bị huỷ."
+    },
+    "resumed": {
+      "title": "Đã bật lại ca đêm",
+      "text": "Ca đêm lại xếp run trong cửa sổ của nó."
+    },
+    "resumeFailed": "Không bật lại được ca đêm",
+    "confirmPause": {
+      "title": "Tạm dừng ca đêm?",
+      "text": "Mọi lịch của {project} dừng ngay, và các run đã xếp mà chưa worker nào nhận sẽ bị huỷ. Run đang chạy vẫn chạy cho xong.",
+      "confirm": "Tạm dừng ca đêm",
+      "cancel": "Để chạy tiếp"
+    },
+    "errors": {
+      "forbidden": {
+        "pause": "Chỉ admin của dự án, hoặc chủ lịch của dự án, mới tạm dừng hay bật lại ca đêm.",
+        "charter": "Chỉ admin của dự án mới viết charter.",
+        "answer": "Chỉ admin của dự án mới trả lời đề xuất."
+      },
+      "notFound": "Dự án hoặc đề xuất không còn, hoặc bạn không còn quyền đọc.",
+      "conflict": {
+        "pause": "Dự án chưa có lịch: hãy viết charter trước.",
+        "charter": "Hub từ chối charter như hiện tại.",
+        "answer": "Đề xuất đã được trả lời trong lúc này; trang đang hiện đúng trạng thái hub giữ."
+      },
+      "apiMessage": "Hub trả lời: {message}"
+    },
+    "empty": {
+      "title": "Chưa có charter",
+      "description": "Charter cho Curator biết khi nào làm việc, trên worker nào, trong ngân sách bao nhiêu và được đổi những gì. Mỗi đêm Curator xem xét dự án và đề xuất thay đổi, mỗi đề xuất kèm bằng chứng.",
+      "admin": "Viết charter",
+      "reader": "Admin của dự án viết charter, tại đây hoặc bằng <command></command>."
+    },
+    "metrics": {
+      "label": "Ca đêm lúc này",
+      "tonight": "đêm nay",
+      "lastNight": "đêm {night}",
+      "runsTonight": "Run đêm nay",
+      "runsLast": "Run đêm qua",
+      "runsMeta": "trên tối đa {max} một đêm",
+      "runsMetaLast": "trên tối đa {max}, {which}",
+      "runsActive": "Run #{id} đang chạy",
+      "cost": "Chi phí của đêm",
+      "costMeta": "{share}% của {budget}",
+      "waiting": "Chờ trả lời",
+      "waitingMeta": "Đề xuất của mọi đêm",
+      "waitingNone": "Không có gì chờ",
+      "review": "Lần review cuối",
+      "reviewExtra": "{count, plural, other {đề xuất đã ghi}}",
+      "reviewMeta": "#{id}, {findings} phát hiện, {night}",
+      "reviewNone": "Chưa có review run"
+    },
+    "schedule": {
+      "title": "Lịch",
+      "charter": "Charter, bản {revision}",
+      "window": "Cửa sổ",
+      "windowValue": "Từ {start} đến {end}, {timezone}",
+      "now": "Giờ địa phương",
+      "inWindow": "trong cửa sổ",
+      "outWindow": "ngoài cửa sổ",
+      "worker": "Worker trực",
+      "owner": "Chạy với tư cách",
+      "caps": "Mỗi đêm",
+      "capsValue": "tối đa {budget} và {runs} run",
+      "brief": "Bản tin sáng",
+      "briefValue": "lúc {at}",
+      "paused": "Tạm dừng",
+      "pausedBy": "bởi {login},"
+    },
+    "lastReview": {
+      "title": "Review run gần nhất",
+      "none": "Review run đầu tiên được xếp khi cửa sổ kế tiếp mở, trên worker trực.",
+      "run": "Run",
+      "openRun": "Mở review run #{id}",
+      "night": "Đêm",
+      "lenses": "Lăng kính",
+      "wrote": "Đã ghi",
+      "wroteValue": "{findings} phát hiện và {proposals} đề xuất",
+      "ended": "Kết thúc",
+      "notEnded": "Chưa",
+      "proposalsLink": "{count, plural, =0 {Không có đề xuất} other {# đề xuất của nó}}"
+    },
+    "nights": {
+      "title": "Các đêm",
+      "caption": "Các đêm của ca đêm dự án {project}",
+      "empty": "Chưa có đêm nào: đêm đầu bắt đầu lúc {start} {timezone}.",
+      "emptyNoCharter": "Chưa có đêm nào.",
+      "columns": {
+        "night": "Đêm",
+        "runs": "Run",
+        "cost": "Chi phí",
+        "review": "Review run",
+        "proposals": "Đề xuất"
+      },
+      "costOf": "trên ngân sách {budget}",
+      "noReview": "Không có review run",
+      "openRun": "Mở review run #{id}",
+      "proposalsOf": "{count} đề xuất của review run #{id}",
+      "outcome": {
+        "active": "{active} run đang chạy, {done} xong",
+        "failed": "{failed} run lỗi hoặc mất, {done} xong",
+        "done": "{done} run xong",
+        "empty": "Không xếp run nào"
+      },
+      "mobileMeta": "{runs} run, {cost}, {proposals} đề xuất"
+    },
+    "proposals": {
+      "caption": "Đề xuất của {project}",
+      "count": "{count} đề xuất",
+      "listSummary": {
+        "all": "{count} đề xuất",
+        "filtered": "{count} đề xuất khớp"
+      },
+      "facets": {
+        "state": "Trạng thái",
+        "all": "Tất cả",
+        "tier": "Tầng",
+        "allTiers": "Mọi tầng",
+        "lens": "Lăng kính",
+        "allLenses": "Mọi lăng kính",
+        "run": "Review run"
+      },
+      "tierValue": "Tầng {tier}",
+      "lensOption": "{lens} ({count})",
+      "runFilter": "Review run #{id}",
+      "clearRun": "Hiện đề xuất của mọi review run, không chỉ #{id}",
+      "columns": {
+        "id": "#",
+        "proposal": "Đề xuất",
+        "tier": "Tầng",
+        "evidence": "Bằng chứng",
+        "state": "Trạng thái",
+        "created": "Ngày đề xuất"
+      },
+      "sub": "{kind}, qua lăng kính {lens}",
+      "evidenceCount": "{count} bằng chứng",
+      "mobileMeta": "#{id}, tầng {tier}, {kind}, {lens}",
+      "pagerLabel": "Các trang đề xuất",
+      "empty": {
+        "title": "Chưa có đề xuất",
+        "description": "Mỗi đêm review run đọc run, phiên và code của dự án rồi đề xuất thay đổi kèm bằng chứng. Đề xuất hiện ở đây, cùng thứ nó định đổi và lý do."
+      },
+      "noResults": {
+        "title": "Không đề xuất nào khớp bộ lọc"
+      }
+    },
+    "tier": {
+      "tag": "Tầng {tier}",
+      "meaning": {
+        "0": "Hub được tự merge khi charter cho phép, sau khi CI và Judge đạt.",
+        "1": "Ca đêm làm thành pull request, người dùng merge.",
+        "2": "Cần người dùng đồng ý trước khi làm: đề xuất vào Inbox.",
+        "3": "Chạm vào thứ chỉ người dùng đổi: vùng cấm, CI, test bị nới, thông tin xác thực."
+      }
+    },
+    "lenses": {
+      "tool_errors": "Lỗi công cụ",
+      "environment": "Môi trường",
+      "corrections": "Lần sửa lưng",
+      "failed_runs": "Run lỗi",
+      "tech_debt": "Nợ kỹ thuật",
+      "code_health": "Sức khoẻ code",
+      "docs_drift": "Tài liệu lệch",
+      "skills_memory": "Skill và memory",
+      "cost": "Chi phí",
+      "security": "Bảo mật",
+      "product_goals": "Mục tiêu sản phẩm"
+    },
+    "kinds": {
+      "docs": "Tài liệu",
+      "memory": "Memory",
+      "test_add": "Thêm test",
+      "fix": "Sửa lỗi",
+      "refactor": "Refactor",
+      "lint": "Luật lint",
+      "skill": "Skill",
+      "cli": "Lệnh",
+      "release_prep": "Chuẩn bị phát hành",
+      "feature": "Tính năng",
+      "api_change": "Đổi API",
+      "schema_change": "Đổi schema",
+      "global_config": "Cấu hình toàn cục",
+      "dependency_major": "Nâng major phụ thuộc",
+      "operation": "Vận hành",
+      "test_loosen": "Nới test",
+      "verify_change": "Đổi verify",
+      "ci_change": "Đổi CI",
+      "credentials": "Thông tin xác thực",
+      "curator_rules": "Luật của Curator"
+    },
+    "proposal": {
+      "notFoundTitle": "Không tìm thấy đề xuất #{id}",
+      "notFoundDescription": "Dự án không có đề xuất này, hoặc nhãn của nó vượt quá quyền của bạn.",
+      "sub": "Đề xuất #{id} của <runLink>review run #{run}</runLink>, <ago></ago>",
+      "readOnly": "Chỉ admin của dự án trả lời đề xuất. Bạn đọc được đề xuất và bằng chứng của nó.",
+      "droppedNote": "Hub đã bỏ đề xuất này: nó lặp lại một đề xuất bị từ chối trong 30 ngày qua, và bằng chứng chưa tăng gấp đôi.",
+      "summary": "Tóm tắt",
+      "noSummary": "Review run không viết tóm tắt.",
+      "evidence": "Bằng chứng ({count})",
+      "ownEvidence": "Bằng chứng riêng",
+      "draft": "Plan nháp",
+      "why": "Vì sao tầng {tier}",
+      "touches": "{count, plural, =0 {Thứ nó định đổi} other {# đường dẫn nó định đổi}}",
+      "noPaths": "Đề xuất không nêu đường dẫn nào.",
+      "impacted": "Những gì các đường dẫn đó chạm tới trong knowledge graph",
+      "noGraph": "Dự án chưa có knowledge graph, nên chỉ tính chính các đường dẫn.",
+      "nothingImpacted": "Không gì ngoài chính các đường dẫn.",
+      "answerTitle": "Trả lời",
+      "waitingYou": "Đang chờ bạn trả lời: chấp nhận, hoãn hay từ chối ở phía trên.",
+      "waitingAdmin": "Đang chờ admin của dự án.",
+      "answeredBy": "{state, select, accepted {Đã chấp nhận bởi} rejected {Đã từ chối bởi} deferred {Đã hoãn bởi} other {Đã trả lời bởi}} <who>{login}</who> <ago></ago>",
+      "deferredUntil": "Mở lại <at></at>.",
+      "acceptedNext": "Đề xuất được chấp nhận sẽ thành plan của Curator ở bước sau của ca đêm.",
+      "dropped": "Bị bỏ vì lặp lại <link>đề xuất #{id}</link>.",
+      "droppedPlain": "Bị bỏ vì lặp lại một đề xuất đã bị từ chối.",
+      "inbox": "Nằm trong Inbox của chủ dự án từ <ago></ago>."
+    },
+    "finding": {
+      "title": "{count, plural, other {# phát hiện làm căn cứ}}",
+      "unreadable": "Quyền của bạn không đọc được phát hiện #{id}.",
+      "severity": {
+        "low": "Thấp",
+        "medium": "Vừa",
+        "high": "Cao"
+      }
+    },
+    "evidence": {
+      "none": "Không có bằng chứng riêng.",
+      "run": "Run #{run}, sự kiện {seq}",
+      "session": "Phiên",
+      "entry": "{field}, mục {index}",
+      "showEntry": "Xem mục",
+      "hideEntry": "Ẩn mục",
+      "loadingDigest": "Đang đọc digest của phiên",
+      "digestBy": "{login} đẩy lên, {messages} message trong {cwd}, <ago></ago>",
+      "digestGone": "Digest không còn (hub giữ digest 90 ngày) hoặc vượt quá quyền của bạn.",
+      "digestFailed": "Không đọc được digest.",
+      "entryMissing": "Digest không còn mục này.",
+      "opensElsewhere": "(mở trang mã nguồn ở thẻ mới)",
+      "resolved": {
+        "digest": "Tìm thấy trong digest của phiên",
+        "run_event": "Tìm thấy trong log của run",
+        "repo": "Một file trong repo của dự án",
+        "graph": "Một file trong knowledge graph của dự án"
+      }
+    },
+    "draft": {
+      "view": "Xem plan nháp dạng",
+      "rendered": "Plan",
+      "raw": "JSON",
+      "goal": "Mục tiêu",
+      "steps": "{count} bước",
+      "untitled": "Bước chưa có tên",
+      "acceptance": "Xong khi",
+      "verify": "Verify"
+    },
+    "answer": {
+      "button": {
+        "accept": "Chấp nhận",
+        "defer": "Hoãn",
+        "reject": "Từ chối"
+      },
+      "buttonLabel": {
+        "accept": "Chấp nhận đề xuất #{id}",
+        "defer": "Hoãn đề xuất #{id}",
+        "reject": "Từ chối đề xuất #{id}"
+      },
+      "title": {
+        "accept": "Chấp nhận đề xuất #{id}?",
+        "defer": "Hoãn đề xuất #{id}?",
+        "reject": "Từ chối đề xuất #{id}?"
+      },
+      "text": {
+        "accept": "Hub ghi lại câu trả lời của bạn. Bước sau của ca đêm biến đề xuất được chấp nhận thành plan của Curator.",
+        "defer": "Đề xuất rời danh sách chờ và mở lại sau số ngày bạn chọn.",
+        "reject": "Đề xuất giống nó sẽ bị bỏ trong 30 ngày, trừ khi bằng chứng tăng gấp đôi."
+      },
+      "days": "Số ngày",
+      "daysHint": "Từ 1 đến 90.",
+      "note": "Ghi chú",
+      "notePlaceholder": "Một dòng để lưu lại (không bắt buộc)",
+      "noteHint": "Không bắt buộc, một dòng, lưu cùng câu trả lời.",
+      "errors": {
+        "days": "Nhập số ngày nguyên từ 1 đến 90.",
+        "noteLine": "Ghi chú chỉ một dòng.",
+        "noteLong": "Ghi chú tối đa 2.000 ký tự."
+      },
+      "cancel": "Huỷ",
+      "send": {
+        "accept": "Chấp nhận",
+        "defer": "Hoãn",
+        "reject": "Từ chối"
+      },
+      "sending": {
+        "accept": "Đang chấp nhận",
+        "defer": "Đang hoãn",
+        "reject": "Đang từ chối"
+      },
+      "done": {
+        "accept": "Đã chấp nhận đề xuất #{id}",
+        "defer": "Đã hoãn đề xuất #{id}",
+        "reject": "Đã từ chối đề xuất #{id}"
+      },
+      "doneText": {
+        "accept": "Đề xuất sẽ thành plan ở bước sau của ca đêm.",
+        "defer": "Đề xuất mở lại sau {days} ngày.",
+        "reject": "Đề xuất giống nó sẽ bị bỏ trong 30 ngày."
+      },
+      "openProposal": "Mở đề xuất"
+    },
+    "charter": {
+      "formLabel": "Charter của ca đêm",
+      "edit": "Sửa charter",
+      "create": "Viết charter",
+      "save": "Lưu charter",
+      "saving": "Đang lưu",
+      "cancel": "Huỷ",
+      "saved": {
+        "title": "Đã lưu charter thành bản {revision}",
+        "text": "Ca đêm theo bản này từ run kế tiếp."
+      },
+      "unchanged": {
+        "title": "Charter không đổi",
+        "text": "Nội dung giống bản mới nhất nên không ghi bản mới."
+      },
+      "problems": "{count} ô cần sửa trước khi lưu charter.",
+      "readOnly": "Chỉ admin của dự án đổi charter. Mọi bản cũ đều được giữ.",
+      "noneAdmin": "Dự án chưa có charter. Viết charter để bắt đầu ca đêm.",
+      "noneReader": "Dự án chưa có charter. Admin của dự án sẽ viết.",
+      "oldRevision": "Bản {revision}, do {login} viết. Ca đêm theo bản mới nhất.",
+      "showNewest": "Xem bản mới nhất",
+      "noGoals": "Chưa có mục tiêu. Curator cân đề xuất theo các mục tiêu, mục tiêu đầu tiên quan trọng nhất.",
+      "addGoal": "Thêm mục tiêu",
+      "removeGoal": "Bỏ mục tiêu {n}",
+      "noWorkerOption": "Không worker nào của bạn nhận được",
+      "windowValue": "Từ {start} đến {end}, {timezone}",
+      "runBudgetNone": "Phần còn lại của đêm",
+      "reviewBudgetNone": "Như mọi run trong đêm",
+      "minutes": "{minutes} phút",
+      "days": "{days} ngày",
+      "circuitValue": "Dừng sau {count} run lỗi liên tiếp",
+      "nightPlansNone": "Không có: ca đêm chỉ review, không chạy plan",
+      "autoMergeOn": "Tầng {tiers}, khi CI và Judge đạt",
+      "autoMergeOff": "Không: mọi pull request chờ người dùng",
+      "protectedNone": "Không có",
+      "hiddenForAdmins": "Chỉ admin của dự án xem được",
+      "hiddenNone": "Không có",
+      "modelDefault": "model mặc định của runtime",
+      "roleValue": "{runtime}, {model}",
+      "groups": {
+        "goals": "Mục tiêu",
+        "window": "Cửa sổ và worker",
+        "budget": "Ngân sách và giới hạn",
+        "scope": "Được làm gì",
+        "review": "Review",
+        "roles": "Vai trò"
+      },
+      "groupHints": {
+        "goals": "Mục tiêu của sản phẩm, quan trọng nhất trước.",
+        "window": "Ca đêm làm khi nào, trên worker của ai, và bản tin sáng đến lúc nào.",
+        "budget": "Một đêm và mỗi run được tốn bao nhiêu. Hub ngừng xếp run ở giới hạn đầu tiên chạm tới.",
+        "scope": "Plan được chạy, số quyết định mỗi ngày, thứ được merge và thứ không bao giờ đụng.",
+        "review": "Review run hằng đêm: nhìn qua bao nhiêu lăng kính và đếm lùi bao xa.",
+        "roles": "Runtime và model của Reviewer, Builder và Judge."
+      },
+      "roles": {
+        "reviewer": "Reviewer",
+        "builder": "Builder",
+        "judge": "Judge"
+      },
+      "fields": {
+        "goalId": "Mục tiêu {n}, id",
+        "goalWhat": "Mục tiêu {n}, nội dung",
+        "window": "Cửa sổ",
+        "windowStart": "Cửa sổ mở",
+        "windowEnd": "Cửa sổ đóng",
+        "timezone": "Múi giờ",
+        "briefAt": "Bản tin sáng lúc",
+        "worker": "Worker trực",
+        "owner": "Chạy với tư cách",
+        "nightBudget": "Ngân sách đêm, USD",
+        "runBudget": "Ngân sách mỗi run, USD",
+        "maxRunsPerNight": "Số run mỗi đêm",
+        "runMaxTurns": "Số lượt mỗi run",
+        "runMinutes": "Số phút mỗi run",
+        "maxFailedInARow": "Số run lỗi liên tiếp trước khi dừng",
+        "nightPlans": "Plan của ca đêm",
+        "maxDecisionsPerDay": "Quyết định mỗi ngày",
+        "autoMerge": "Cho hub tự merge pull request tầng 0",
+        "autoMergeShort": "Tự merge",
+        "protectedPaths": "Vùng cấm",
+        "reviewLenses": "Lăng kính mỗi đêm",
+        "reviewDays": "Số ngày đếm",
+        "reviewBudget": "Ngân sách review, USD",
+        "runtime": "Runtime",
+        "model": "Model",
+        "hiddenChecks": "Check ẩn của Judge"
+      },
+      "hints": {
+        "windowEnd": "Nếu sớm hơn giờ mở, cửa sổ kéo qua nửa đêm.",
+        "timezone": "Tên IANA, ví dụ Asia/Ho_Chi_Minh.",
+        "briefAt": "Bản tóm tắt buổi sáng cho chủ dự án, theo múi giờ của cửa sổ.",
+        "worker": "Một worker của chính bạn phục vụ dự án này và nhận run từ hub; ca đêm chạy với tư cách chủ worker.",
+        "noWorker": "Không worker nào của bạn nhận được run của ca đêm. <link>Đăng ký một worker</link> cho dự án này.",
+        "usd": "Lớn hơn 0, tối đa {max}.",
+        "runBudget": "Để trống: run được dùng phần còn lại của đêm.",
+        "range": "Từ {min} đến {max}.",
+        "circuit": "Từ 1 đến 10 run lỗi liên tiếp.",
+        "nightPlans": "Mỗi dòng một id plan, theo thứ tự ca đêm làm.",
+        "nightPlansKnown": "Mỗi dòng một id plan, theo thứ tự ca đêm làm. Plan đang active: {plans}.",
+        "decisions": "Số đề xuất tầng 2 vào Inbox mỗi ngày, từ 0 đến 100.",
+        "autoMerge": "Chỉ tầng 0 được tự merge; tầng 1 chờ plan riêng.",
+        "protectedPaths": "Mỗi dòng một glob, ví dụ .github/workflows/**. Thay đổi chạm vào đây là tầng 3.",
+        "reviewBudget": "Để trống: như mọi run trong đêm.",
+        "model": "Để trống: runtime tự chọn.",
+        "hiddenChecks": "Mỗi dòng một lệnh. Judge chạy chúng; Builder không thấy."
+      },
+      "placeholders": {
+        "model": "mặc định của runtime"
+      },
+      "errors": {
+        "required": "Hãy điền ô này.",
+        "time": "Nhập giờ dạng HH:MM, 24 giờ.",
+        "timezone": "Nhập múi giờ IANA, ví dụ Asia/Tokyo.",
+        "sameTime": "Cửa sổ mở và đóng cùng giờ: hãy cho nó độ dài.",
+        "worker": "Tên worker: chữ, số, dấu chấm, gạch ngang và gạch dưới.",
+        "money": "Lớn hơn 0 và tối đa {max} USD.",
+        "overNight": "Vượt ngân sách đêm: một run không bao giờ được nhiều hơn cả đêm.",
+        "whole": "Số nguyên từ {min} đến {max}.",
+        "goalId": "Mục tiêu {line}: id gồm chữ thường, số và gạch ngang.",
+        "goalWhat": "Mục tiêu {line}: ghi nội dung, tối đa {max} ký tự.",
+        "goalRepeated": "Id mục tiêu {id} bị dùng hai lần.",
+        "tooMany": "Tối đa {max}.",
+        "planId": "Dòng {line} không phải id plan.",
+        "lineTooLong": "Dòng {line} dài quá {max} ký tự.",
+        "control": "Dòng {line} có ký tự điều khiển.",
+        "model": "Một dòng, tối đa {max} ký tự."
+      },
+      "revisions": {
+        "title": "Các bản",
+        "count": "{count} bản",
+        "loading": "Đang đọc các bản",
+        "number": "Bản {revision}",
+        "worker": "trên {worker}"
+      }
+    }
   }
 }

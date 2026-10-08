@@ -17,7 +17,8 @@ import { INBOX_HREF, notificationCountQuery } from "./queries";
  * The bell in the top bar: a link to the Inbox with the number of unread notifications, read every 10 seconds. Its
  * accessible name says the number and how many decisions wait for the visitor's answer; when the number grows, a
  * polite live region says how many arrived, so a screen reader hears of them without moving to the bell. Until the
- * first count arrives (and when it cannot be read) the bell shows no number.
+ * first count arrives (and when it cannot be read) the bell shows no number. The name says the Curator's proposals that
+ * wait for an answer too, when there are some.
  *
  * As in the kit, the number is an attention pill (a person is needed), raised beside the glyph rather than over it, so
  * the bell stays whole; the link widens to hold it. A ghost icon control: 32 px, 44 px with a 20 px glyph under 768 px.
@@ -28,6 +29,7 @@ export function InboxBell() {
   const { data } = useQuery(notificationCountQuery(browserApi));
   const unread = data?.unread ?? 0;
   const decisions = data?.open_decisions ?? 0;
+  const proposals = data?.open_proposals ?? 0;
   const [seen, setSeen] = useState<number | null>(null);
   const [arrived, setArrived] = useState(0);
   // Compare each count with the last one seen while rendering (no effect): more unread than before is news.
@@ -37,7 +39,7 @@ export function InboxBell() {
     setSeen(unread);
   }
   const current = pathname === INBOX_HREF;
-  const label = data ? t("label", { unread, decisions }) : t("labelUnknown");
+  const label = data ? t("label", { unread, decisions, proposals }) : t("labelUnknown");
 
   return (
     <>

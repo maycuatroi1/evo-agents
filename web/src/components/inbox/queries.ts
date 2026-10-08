@@ -26,7 +26,7 @@ export type DecisionOption = Schemas["DecisionOption"];
 export type AnswerRequest = Schemas["AnswerIn"];
 
 /** `runs.NOTIFICATION_KINDS`, `runs.NOTICE_KINDS`, `runs.DECISION_STATES` and `runs.DECISION_CATEGORIES`, in order. */
-export const NOTIFICATION_KINDS = ["decision", "notice"] as const satisfies readonly NotificationKind[];
+export const NOTIFICATION_KINDS = ["decision", "notice", "proposal"] as const satisfies readonly NotificationKind[];
 export const NOTICE_KINDS = [
   "push_default_branch",
   "merge_default_branch",

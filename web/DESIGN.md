@@ -206,6 +206,8 @@ states and the phone top bar. Icons sit before their label and inherit its colou
 | Decision, waiting for you | `MessageSquare` |
 | Runs | `Activity` |
 | Insights | `ChartColumn` |
+| Curator, its night shift | `MoonStar` |
+| Proposal of the Curator | `Lightbulb` |
 | Plans | `ListChecks` |
 | Workers | `Server` |
 | Secrets | `LockKeyhole` |
@@ -352,7 +354,9 @@ Shared pieces built on them:
   the time zone note included, and applies with Filter, which closes the sheet unless a field is wrong (its error
   shows in the sheet).
 - `components/status/status-badge.tsx`: one `StatusBadge` (`kind` and `status`) and one map per kind, run, worker,
-  plan, step, repo and decision; each state has a tone, a Lucide icon and its words under `status.<kind>` in
+  plan, step, repo, decision, proposal (open in `attention`, deferred, accepted, rejected, dropped) and curator (the
+  night shift: running, on duty, idle, paused in `attention`, off without a charter; no pulsing dot, which the run
+  itself carries); each state has a tone, a Lucide icon and its words under `status.<kind>` in
   `messages/en.json` and `vi.json`. The maps are `satisfies Record<...>` on the API's own types in
   `src/lib/api/schema.d.ts` (`Run["state"]`; `Worker["status"]` with online split into idle and busy;
   `PlanSummary["area"]` with pending and blocked; `StepReport["status"]` with blocked; `Decision["state"]`), and
@@ -372,9 +376,9 @@ Shared pieces built on them:
   `brand` on hover.
 - `components/shell`: the kit's AppShell. The sidebar (`app-sidebar.tsx`, links in `nav.ts`) carries the mark and
   "evo-agents hub" (Plex Sans 600, the mark at 24 px), the project switcher, then Home and Inbox, the current project
-  (Overview, Plans, Runs, Insights, Memories, Skills, Knowledge graph), the hub (Workers, My memories, Shared skills,
-  Administration for a hub admin), and at the foot the fleet line and the account. Inbox counts the decisions waiting
-  for the visitor's answer in `attention`, Runs the project's active runs in `running` (`nav-counts.ts`, through the
+  (Overview, Plans, Runs, Insights, Curator, Memories, Skills, Knowledge graph), the hub (Workers, My memories, Shared
+  skills, Administration for a hub admin), and at the foot the fleet line and the account. Inbox counts the decisions
+  and the Curator's proposals waiting for the visitor's answer in `attention`, Runs the project's active runs in `running` (`nav-counts.ts`, through the
   same queries as the bell and the runs pages); a count is a round pill drawn for the eye, said in words to screen
   readers after the label, hidden at zero, and a dot on the icon when the sidebar is folded. The fleet line
   (`fleet-line.tsx`) reads `GET /v1/workers` like the Workers page ("2 workers online, 1 busy"; a `success` dot while
@@ -787,6 +791,33 @@ Shared pieces built on them:
   inside its own focusable region of at most 352 px whose head stays in view. The charts are one chunk loaded with
   `next/dynamic` behind skeletons of the plot's height, so Recharts is in no page's first load. With no run ended in the
   range the cards give way to the EmptyState, with the runs page and, under 90 days, Show 90 days.
+- `components/curator`, a project's Curator (`/p/{project}/curator`, in the sidebar's project group after Insights;
+  G then C): one head on its three pages, "Curator" with the night shift's `StatusBadge` (`curator`), Pause (confirmed
+  in `ConfirmAction`, since it cancels the runs queued) or Resume (the primary button while paused) for an admin or the
+  schedule's owner, and one line naming the worker on duty, the member it runs as and the window, or who paused it;
+  then the area's tabs (Overview, Proposals with the open count in `attention`, Charter), drawn as the admin area's.
+  Overview: the MetricStrip of the night now or the last one (its runs against the night's cap, the cost against the
+  budget, what waits for an answer, the last review's proposals), the Schedule and Last review run cards of Home's
+  shape, and the nights in a DataCard (a night's date over its outcome, a failure in `danger`; runs, cost, the review
+  run as `#N` with its state, its proposals as a link to the list filtered by that run; a list under 768 px). A project
+  without a charter shows the EmptyState that says what the Curator does, with Write the charter for an admin and the
+  CLI command for anyone else. Proposals: the DataCard with State and Tier as facets and Lens as a select, each value
+  with the count the API gives with the other filters applied, a review run's filter as a removable pressed chip, all in
+  the URL; rows of `#N`, the title over its kind and lens, the tier as a `Tag` (its meaning as the tooltip and to screen
+  readers), the evidence count, the state and the day. A proposal's page: its title as the h1, its state, tier, kind and
+  lens, Accept (primary), Defer and Reject for an admin; the summary as SafeMarkdown, the evidence (a run's event
+  opens the run's log, a session's entry unfolds in place from the digest, read when asked, a line of code opens on
+  GitHub or GitLab at the commit the review read, in a new tab, said to screen readers), the findings it rests on, the
+  draft plan as steps or as its JSON (a segmented control); beside them from xl, the answer and Why tier N with its
+  reasons and paths. Each answer is confirmed in a dialog (`answer-dialog.tsx`): what it does, the defer days (1 to 90),
+  an optional one-line note, Cmd or Ctrl with Enter to send, a refusal shown in place. Charter: the charter in cards
+  (goals, window and worker, budget and caps, what it may do, review, roles, the Judge's hidden checks to admins only)
+  with its revisions beside it, any revision readable (`?revision=N`); an admin edits it in a form of the same groups
+  (`?edit=1`, `charter-form.tsx`) whose fields repeat the hub's limits (`model.ts`), so the first wrong field takes
+  focus and nothing goes out; a hub's refusal shows above Save. The Inbox lists a tier 2 proposal with the open
+  decisions and opens it in a sheet of its own (`/inbox?proposal=ID`, `inbox/proposal-sheet.tsx`); Home's Projects
+  card says each project's Curator state and what waits. A review run's page carries the Review run tag and links to
+  the Curator and to the run's proposals.
 - `components/memories/markdown.tsx`: Markdown written by people (memory bodies) through react-markdown without
   raw HTML: tags show as text, only listed elements render, links keep http(s), mailto and anchors, images are
   never loaded, headings move under the page's h1 and the card's h2.
@@ -802,7 +833,8 @@ so the server renders a page the same way for everyone who has not picked a lang
   brand cobalt) with a 2 px offset on every focusable element.
 - A skip link to `#main`, one `<main>`, a labelled `<nav>` and breadcrumb, an `h1` on every page.
 - Keys (`components/shell/shortcuts.tsx` lists them all, and `?` shows them): Cmd K or Ctrl K opens the command
-  palette, `/` focuses the page's search, G then H, I, P, R or W goes to Home, Inbox, Plans, Runs or Workers, D
+  palette, `/` focuses the page's search, G then H, I, P, R, C or W goes to Home, Inbox, Plans, Runs, the Curator or
+  Workers, D
   opens Dispatch on a writer's project page, `?` lists the keys, Cmd or Ctrl with Enter sends an answer or a message,
   Ctrl or Cmd with B folds the sidebar, Esc closes and gives focus back; each is shown in a `kbd` beside what it does
   or in the palette's foot. A single key never takes a key pressed with Cmd, Ctrl or Alt (the browser's and the

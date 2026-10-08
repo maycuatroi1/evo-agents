@@ -193,8 +193,9 @@ test("? lists every key; single keys turn off and on, and stay so after a reload
   const dialog = page.getByRole("dialog", { name: "Keyboard shortcuts" });
   await expect(dialog).toBeVisible();
   const rows = dialog.getByTestId("shortcut-row");
-  await expect(rows).toHaveCount(12);
+  await expect(rows).toHaveCount(13);
   await expect(dialog.locator('[data-shortcut="goRuns"]')).toContainText("G then R");
+  await expect(dialog.locator('[data-shortcut="goCurator"]')).toContainText("G then C");
   await expect(dialog.locator('[data-shortcut="palette"]')).toContainText(/(Command|Control) K/);
   await expect(dialog.locator('[data-shortcut="dispatch"]')).toContainText("On a project's pages, with the Writer role");
   for (const scheme of ["light", "dark"] as const) {

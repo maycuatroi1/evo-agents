@@ -84,10 +84,10 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | secrets | `GET /v1/secrets`, `PUT` and `DELETE /v1/secrets/{name}`, the caller's own only (`docs/credentials.md`) |
 | runs | `/v1/projects/{project}/plans/{plan_id}/ready-steps`, `GET` and `POST /v1/projects/{project}/runs`, `GET .../runs/stats`, `POST /v1/projects/{project}/plan-runs`, `.../runs/{id}`, `.../events`, `.../stream`, `.../diff`, `.../messages`, `.../credentials`, `.../tool-stats`, `.../{cancel,approve,rerun,takeover,handback}`, and `GET /v1/projects/{project}/tool-stats` |
 | session digests | `GET /v1/projects/{project}/digests`, `GET` and `PUT /v1/projects/{project}/digests/{session_id}` |
-| curator | `GET /v1/projects/{project}/curator`, `.../curator/charter` (`GET`, `PUT`), `.../charter/revisions`, `POST .../curator/{pause,resume}`, `GET .../curator/figures`, `.../curator/findings`, `.../findings/{id}`, `.../curator/proposals`, `.../proposals/{id}`, `POST .../proposals/{id}/answer` |
+| curator | `GET /v1/projects/{project}/curator`, `.../curator/charter` (`GET`, `PUT`), `.../charter/revisions`, `POST .../curator/{pause,resume}`, `GET .../curator/nights`, `.../curator/figures`, `.../curator/findings`, `.../findings/{id}`, `.../curator/proposals`, `.../proposals/{id}`, `POST .../proposals/{id}/answer` |
 | decisions | `GET /v1/projects/{project}/decisions`, `.../decisions/{id}`, `POST .../decisions/{id}/answer` |
 | notifications | `GET /v1/me/notifications`, `GET /v1/me/notifications/count`, `POST /v1/me/notifications/read` |
-| overview | `GET /v1/me/overview`: counts, active, recent runs and open decisions over the projects you hold a grant on, for the web's Home |
+| overview | `GET /v1/me/overview`: counts, active, recent runs and open decisions over the projects you hold a grant on, and where each project's Curator stands, for the web's Home |
 | worker protocol | `/v1/worker/{claim,heartbeat}`, `/v1/worker/runs/{id}/{state,events,inbox,uploads,blobs,plan,decisions,notices,credentials,findings,proposals}`, `/v1/worker/runs/{id}/steps/{key}` |
 
 `/mcp` speaks MCP's Streamable HTTP transport, statelessly: each POST carries one JSON-RPC message and gets one JSON
@@ -382,7 +382,7 @@ tells the owner of them, and of pushes to a default branch, in notifications:
 evo-agents hub decision list --state open                     # newest first; --run, --plan, --limit, --offset
 evo-agents hub decision show 7                                # the question, its context, the options, the answer
 evo-agents hub decision answer 7 --option postgres            # or --text "...", or both; --text - reads stdin
-evo-agents hub notifications --unread                         # yours, open decisions first, then newest first
+evo-agents hub notifications --unread                         # yours, open decisions and proposals first, then newest
 evo-agents hub notifications --read all                       # or --read 12,14
 ```
 
@@ -442,8 +442,20 @@ evo-agents hub curator findings --run 41
 evo-agents hub curator figures --night 2026-10-08
 ```
 
-`hub curator status` names the project's last review run with what it wrote. Accepting a proposal records the answer;
+`hub curator status` names the project's last review run with what it wrote, the night shift's `state` in a word
+(`paused`; `running` while a run of it is queued or held; `on_duty` in its window with none; `idle` outside it) and
+how many of the project's proposals wait for an answer; `GET /v1/me/overview` says the same for each project with a
+charter (`projects[].curator`). `GET .../curator/nights` lists the latest nights (14 by default, up to 90): the runs
+the night shift queued for each by how they stand, their cost, the night's review run with what it wrote, and whether
+the night's figures were counted. `proposal list` (`GET .../curator/proposals`) answers `counts` with its proposals:
+what each state, tier and lens would list with the other filters applied. Accepting a proposal records the answer;
 turning it into a plan of the night shift comes later in the curator-agent plan.
+
+The web shows the same under each project's Curator (`/p/{project}/curator`): the night now and the nights before,
+the schedule and Pause or Resume, the proposals with their filters, a proposal's evidence (the run's log, the digest's
+entry, the line of code on the forge) and draft plan with Accept, Defer and Reject for the project's admins, and the
+charter with its revisions and, for an admin, its form. Tier 2 proposals in the Inbox open in a sheet of their own
+(`/inbox?proposal=ID`), and Home says where each project's Curator stands.
 
 ## Memories, skills and knowledge graphs
 
