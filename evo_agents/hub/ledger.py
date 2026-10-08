@@ -360,18 +360,19 @@ def revert_draft(
 def revert_summary(*, proposal_id: int, change_id: int, merge_sha: str, pr_url: str | None, outcome: Mapping) -> str:
     """The summary of a revert proposal: why, and each figure before and after, as markdown."""
     lines = [
-        f"The hub merged the Curator's change #{change_id} of proposal #{proposal_id} as {merge_sha}"
+        f"The Curator's change #{change_id} of proposal #{proposal_id} merged as {merge_sha}"
         + (f" ({pr_url})" if pr_url else "")
         + f". Counted again from {outcome.get('since')} to {outcome.get('until')}: {outcome.get('reason')}.",
         "",
-        "| Figure | Before | After | Per session or run, before | After | Change |",
+        "| Figure | Before | After | Per session or run, before | Per session or run, after | Change |",
         "| --- | --- | --- | --- | --- | --- |",
     ]
     for item in _list(outcome.get("metrics")):
         if isinstance(item, Mapping):
+            what = str(item.get("what"))[:200].replace("|", "\\|")  # a pipe of a command would end the cell
             lines.append(
-                f"| {str(item.get('what'))[:200]} | {item.get('before')} | "
-                f"{item.get('after')} | {item.get('before_rate')} | {item.get('after_rate')} | {item.get('change')} |"
+                f"| {what} | {item.get('before')} | {item.get('after')} | {item.get('before_rate')} | "
+                f"{item.get('after_rate')} | {item.get('change')} |"
             )
     lines += [
         "",
