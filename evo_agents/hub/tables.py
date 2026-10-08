@@ -1,4 +1,4 @@
-"""The hub's 35 tables as SQLAlchemy Core metadata: what the queries are written on, and what Alembic autogenerates
+"""The hub's 37 tables as SQLAlchemy Core metadata: what the queries are written on, and what Alembic autogenerates
 the next migration from (``evo_agents/hub/migrations/env.py``).
 
 The migrations make the schema; this module describes it, and ``tests/hub/test_schema_metadata.py`` keeps the two
@@ -957,4 +957,42 @@ schedules = Table(
     ForeignKeyConstraint(["worker_id"], ["workers.id"], ondelete="RESTRICT", name="schedules_worker_id_fkey"),
     PrimaryKeyConstraint("id", name="schedules_pkey"),
     UniqueConstraint("project_id", "kind", name="schedules_project_id_kind_key"),
+)
+
+# Session digests and the tool figures of runs (0013)
+
+session_digests = Table(
+    "session_digests",
+    metadata,
+    _id(),
+    Column("project_id", BigInteger, nullable=False),
+    Column("session_id", Text, nullable=False),
+    Column("user_id", BigInteger, nullable=False),
+    Column("label", JSONB, nullable=False),
+    Column("cwd", Text, nullable=False),
+    Column("messages", Integer, nullable=False),
+    Column("model", Text),
+    _when("started_at"),
+    _when("ended_at"),
+    Column("body", JSONB, nullable=False),
+    _stamp("created_at"),
+    _stamp("updated_at"),
+    ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name="session_digests_project_id_fkey"),
+    ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="RESTRICT", name="session_digests_user_id_fkey"),
+    PrimaryKeyConstraint("id", name="session_digests_pkey"),
+    UniqueConstraint("project_id", "session_id", name="session_digests_project_id_session_id_key"),
+    Index("session_digests_project_idx", "project_id", "updated_at"),
+    Index("session_digests_updated_idx", "updated_at"),
+)
+
+run_tool_stats = Table(
+    "run_tool_stats",
+    metadata,
+    Column("run_id", BigInteger, nullable=False),
+    Column("tool_name", Text, nullable=False),
+    Column("calls", Integer, nullable=False),
+    Column("errors", Integer, nullable=False),
+    Column("duration_ms", BigInteger, nullable=False),
+    ForeignKeyConstraint(["run_id"], ["runs.id"], ondelete="CASCADE", name="run_tool_stats_run_id_fkey"),
+    PrimaryKeyConstraint("run_id", "tool_name", name="run_tool_stats_pkey"),
 )

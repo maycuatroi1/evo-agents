@@ -1726,6 +1726,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project}/runs/{run_id}/tool-stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Run Tool Stats
+         * @description What the tool calls of run ``run_id`` came to, per tool.
+         */
+        get: operations["run_tool_stats_v1_projects__project__runs__run_id__tool_stats_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/tool-stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Project Tool Stats
+         * @description The tool figures of the runs of the plans the caller may read that ended in the last ``days`` days, per tool and
+         *     runtime.
+         */
+        get: operations["project_tool_stats_v1_projects__project__tool_stats_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{project}/decisions": {
         parameters: {
             query?: never;
@@ -2002,6 +2043,50 @@ export interface paths {
          * @description Let every schedule of the project run again.
          */
         post: operations["resume_v1_projects__project__curator_resume_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/digests/{session_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Digest
+         * @description The digest of session ``session_id``, when the caller may read it.
+         */
+        get: operations["show_digest_v1_projects__project__digests__session_id__get"];
+        /**
+         * Put Digest
+         * @description Write the digest of session ``session_id``, replacing the one this member pushed before.
+         */
+        put: operations["put_digest_v1_projects__project__digests__session_id__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/digests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Digests
+         * @description The digests of the project the caller may read, the latest pushed first.
+         */
+        get: operations["list_digests_v1_projects__project__digests_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2613,6 +2698,13 @@ export interface components {
             /** Location */
             location?: string | null;
         };
+        /** CommandCount */
+        CommandCount: {
+            /** Command */
+            command: string;
+            /** N */
+            n: number;
+        };
         /** CommitRequest */
         CommitRequest: {
             /**
@@ -2900,6 +2992,96 @@ export interface components {
             /** Deletions */
             deletions: number;
         };
+        /** DigestList */
+        DigestList: {
+            /**
+             * Digests
+             * @description the latest pushed first
+             */
+            digests: components["schemas"]["DigestSummary"][];
+            /**
+             * Total
+             * @description digests the caller may read that match the filters
+             */
+            total: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+        };
+        /** DigestRecord */
+        DigestRecord: {
+            /** Session Id */
+            session_id: string;
+            /**
+             * Login
+             * @description the member who pushed it
+             */
+            login: string;
+            /** Cwd */
+            cwd: string;
+            /** Messages */
+            messages: number;
+            /** Model */
+            model: string | null;
+            /** Started At */
+            started_at: string | null;
+            /** Ended At */
+            ended_at: string | null;
+            /** Label */
+            label: {
+                [key: string]: unknown;
+            };
+            /**
+             * Created At
+             * Format: date-time
+             * @description its first push
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description its latest push
+             */
+            updated_at: string;
+            digest: components["schemas"]["SessionDigest"];
+        };
+        /** DigestSummary */
+        DigestSummary: {
+            /** Session Id */
+            session_id: string;
+            /**
+             * Login
+             * @description the member who pushed it
+             */
+            login: string;
+            /** Cwd */
+            cwd: string;
+            /** Messages */
+            messages: number;
+            /** Model */
+            model: string | null;
+            /** Started At */
+            started_at: string | null;
+            /** Ended At */
+            ended_at: string | null;
+            /** Label */
+            label: {
+                [key: string]: unknown;
+            };
+            /**
+             * Created At
+             * Format: date-time
+             * @description its first push
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description its latest push
+             */
+            updated_at: string;
+        };
         /** Dispatch */
         Dispatch: {
             /** Plan Id */
@@ -2966,6 +3148,21 @@ export interface components {
             detail?: {
                 [key: string]: unknown;
             }[] | null;
+        };
+        /** ErrorText */
+        ErrorText: {
+            /** Gen Ai.Tool.Name */
+            "gen_ai.tool.name": string;
+            /**
+             * Text
+             * @description the tool's result, cut
+             */
+            text: string;
+            /**
+             * N
+             * @description how many results said exactly this
+             */
+            n: number;
         };
         /** EventBatch */
         EventBatch: {
@@ -3701,6 +3898,16 @@ export interface components {
             origin: string | null;
             /** Reason */
             reason: string;
+        };
+        /** ModelCount */
+        ModelCount: {
+            /** Model */
+            model: string;
+            /**
+             * Messages
+             * @description messages of the model that name it
+             */
+            messages: number;
         };
         /** Neighbourhood */
         Neighbourhood: {
@@ -4500,6 +4707,18 @@ export interface components {
             /** Message */
             message: string;
         };
+        /** ProgramCount */
+        ProgramCount: {
+            /**
+             * Program
+             * @description the program a Bash call ran, with its subcommand: git push, python -m pytest
+             */
+            program: string;
+            /** Calls */
+            calls: number;
+            /** Errors */
+            errors: number;
+        };
         /** Project */
         Project: {
             /** Name */
@@ -4597,6 +4816,33 @@ export interface components {
              * @description builds whose artifact was dropped: they keep their content hash and counts
              */
             builds: number;
+        };
+        /** ProjectToolStats */
+        ProjectToolStats: {
+            /** Project */
+            project: string;
+            /** Days */
+            days: number;
+            /**
+             * First Day
+             * Format: date
+             */
+            first_day: string;
+            /**
+             * Last Day
+             * Format: date
+             */
+            last_day: string;
+            /**
+             * Runs
+             * @description runs that ended in those days, with tool calls or without
+             */
+            runs: number;
+            /**
+             * Tools
+             * @description per tool and runtime, the most called first
+             */
+            tools: components["schemas"]["RuntimeToolStat"][];
         };
         /** PruneRequest */
         PruneRequest: {
@@ -5645,6 +5891,25 @@ export interface components {
             /** @description the whole span: its counts and tokens are by_day's added up, its percentiles over every run */
             total: components["schemas"]["RunFigures"];
         };
+        /** RunToolStats */
+        RunToolStats: {
+            /** Run Id */
+            run_id: number;
+            /** Runtime */
+            runtime: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "queued" | "leased" | "running" | "interactive" | "verifying" | "waiting" | "review" | "parked" | "done" | "failed" | "lost" | "cancelled";
+            /** Finished At */
+            finished_at: string | null;
+            /**
+             * Tools
+             * @description the most called first; empty for a run that has not ended
+             */
+            tools: components["schemas"]["ToolStat"][];
+        };
         /** RunUploadRequest */
         RunUploadRequest: {
             /**
@@ -5688,6 +5953,33 @@ export interface components {
              * @description the models the runtime lists on the machine, for a dispatch to suggest; null when it lists none
              */
             models?: string[] | null;
+        };
+        /** RuntimeToolStat */
+        RuntimeToolStat: {
+            /**
+             * Gen Ai.Tool.Name
+             * @description the tool, as the module of tool_stats names it
+             */
+            "gen_ai.tool.name": string;
+            /** Calls */
+            calls: number;
+            /**
+             * Errors
+             * @description calls an update of which said failed
+             */
+            errors: number;
+            /**
+             * Duration Ms
+             * @description from each call to its result, added up; calls that never ended count none
+             */
+            duration_ms: number;
+            /** Runtime */
+            runtime: string;
+            /**
+             * Runs
+             * @description runs that called the tool
+             */
+            runs: number;
         };
         /** Schedule */
         Schedule: {
@@ -5860,6 +6152,53 @@ export interface components {
              * @description false when a secret of this name was replaced
              */
             created: boolean;
+        };
+        /**
+         * SessionDigest
+         * @description The digest of one session, as ``evo_agents.hub.digest.build`` makes it.
+         */
+        SessionDigest: {
+            /**
+             * Cwd
+             * @description the session's working directory
+             */
+            cwd: string;
+            /**
+             * Messages
+             * @description of the person and the model
+             */
+            messages: number;
+            /** Started At */
+            started_at?: string | null;
+            /** Ended At */
+            ended_at?: string | null;
+            /**
+             * Model
+             * @description the model most messages name
+             */
+            model?: string | null;
+            /** Models */
+            models?: components["schemas"]["ModelCount"][];
+            usage?: components["schemas"]["TokenUsage"];
+            /** Tools */
+            tools?: components["schemas"]["ToolCount"][];
+            /** Bash */
+            bash?: components["schemas"]["ProgramCount"][];
+            /** User Turns */
+            user_turns?: string[];
+            /** Commands */
+            commands?: string[];
+            /** Repeated Commands */
+            repeated_commands?: components["schemas"]["CommandCount"][];
+            /** Errors */
+            errors?: components["schemas"]["ErrorText"][];
+            /**
+             * Files Read
+             * @default 0
+             */
+            files_read: number;
+            /** Files Edited */
+            files_edited?: string[];
         };
         /** SignedIn */
         SignedIn: {
@@ -6241,6 +6580,29 @@ export interface components {
             /** Current */
             current: boolean;
         };
+        /** TokenUsage */
+        TokenUsage: {
+            /**
+             * Input Tokens
+             * @default 0
+             */
+            input_tokens: number;
+            /**
+             * Output Tokens
+             * @default 0
+             */
+            output_tokens: number;
+            /**
+             * Cache Creation Input Tokens
+             * @default 0
+             */
+            cache_creation_input_tokens: number;
+            /**
+             * Cache Read Input Tokens
+             * @default 0
+             */
+            cache_read_input_tokens: number;
+        };
         /** ToolCall */
         ToolCall: {
             /** Arguments */
@@ -6252,6 +6614,21 @@ export interface components {
              * @default claude-code@anthropic
              */
             sink: string;
+        };
+        /** ToolCount */
+        ToolCount: {
+            /**
+             * Gen Ai.Tool.Name
+             * @description the tool, as the runtime names it
+             */
+            "gen_ai.tool.name": string;
+            /** Calls */
+            calls: number;
+            /**
+             * Errors
+             * @description calls whose result was an error
+             */
+            errors: number;
         };
         /** ToolResult */
         ToolResult: {
@@ -6265,6 +6642,26 @@ export interface components {
             } | null;
             /** Iserror */
             isError?: boolean | null;
+        };
+        /** ToolStat */
+        ToolStat: {
+            /**
+             * Gen Ai.Tool.Name
+             * @description the tool, as the module of tool_stats names it
+             */
+            "gen_ai.tool.name": string;
+            /** Calls */
+            calls: number;
+            /**
+             * Errors
+             * @description calls an update of which said failed
+             */
+            errors: number;
+            /**
+             * Duration Ms
+             * @description from each call to its result, added up; calls that never ended count none
+             */
+            duration_ms: number;
         };
         /** UploadItem */
         UploadItem: {
@@ -12585,6 +12982,134 @@ export interface operations {
             };
         };
     };
+    run_tool_stats_v1_projects__project__runs__run_id__tool_stats_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunToolStats"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    project_tool_stats_v1_projects__project__tool_stats_get: {
+        parameters: {
+            query?: {
+                /** @description the last days in UTC to count, today included */
+                days?: number;
+                /** @description the runs of this plan */
+                plan_id?: string | null;
+                /** @description the runs of this runtime */
+                runtime?: ("claude-code" | "opencode" | "codex") | null;
+            };
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectToolStats"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_decisions_v1_projects__project__decisions_get: {
         parameters: {
             query?: {
@@ -13437,6 +13962,208 @@ export interface operations {
             };
             /** @description Conflict */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    show_digest_v1_projects__project__digests__session_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                /** @description the id Claude Code gives the session, as its transcript names it */
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DigestRecord"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_digest_v1_projects__project__digests__session_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the id Claude Code gives the session, as its transcript names it */
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SessionDigest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DigestSummary"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_digests_v1_projects__project__digests_get: {
+        parameters: {
+            query?: {
+                /** @description pushed at or after this time */
+                since?: string | null;
+                /** @description pushed by this member */
+                login?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DigestList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

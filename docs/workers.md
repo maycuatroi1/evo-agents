@@ -640,6 +640,25 @@ shares one listening connection.
 `GET .../runs/{id}/diff` answers a presigned GET of the run's diff, working for 5 minutes, with its sha256 and size;
 `download=true` asks the store to answer as the attachment `run-<id>.diff`. A run without a diff gets 404.
 
+### Tool figures
+
+When a run ends (done, failed, lost or cancelled) the hub adds up its `tool_call` and `tool_call_update` events per
+tool into `run_tool_stats`, in the transaction of the move: the calls, the calls an update of which said `failed`,
+and `duration_ms`, the time from each call to its first update that said `completed` or `failed`, by the times the
+worker gave the events (a call that never finished counts no time). Events that arrive after the end, from the
+worker's spool, are added in again, and `hub.prune_run_events` writes the figures of a run once more just before it
+deletes its events, so they stay when the log goes. The name a call counts under, `gen_ai.tool.name` as
+OpenTelemetry's GenAI conventions call it, is its title for Claude Code, which is the tool's name (`Bash`, `Read`,
+`mcp__server__tool`); Codex and opencode title a call by what it does, so for them it is the call's kind (`execute`,
+`edit`, `read`, `search`, `fetch`, `think`), and the title for a call of kind `other`, an MCP tool.
+
+`GET .../runs/{id}/tool-stats` answers a run's `runtime`, `state`, `finished_at` and `tools`, each with
+`gen_ai.tool.name`, `calls`, `errors` and `duration_ms`, the most called first (none before the run ends), to whoever
+may read the run. `GET /v1/projects/{p}/tool-stats` adds them up per tool and runtime, with the `runs` that called
+each, over the runs of the plans the caller may read that ended on the last `days` UTC days, today included (1 to
+90, 7 by default), filtered by `plan_id` and `runtime`; `runs` there counts every run that ended in those days. The
+MCP tool `run_tool_stats` answers both, with `run_id` for one run.
+
 ### Messages
 
 `POST .../runs/{id}/messages` with `{"text": "..."}` (at most 8 KiB of UTF-8, not blank) leaves a message for the

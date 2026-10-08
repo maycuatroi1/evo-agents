@@ -56,6 +56,9 @@ comes back.
   (`evo-agents hub skills sync` brings them). A plan file edited by hand is left as it is and named there.
 - After each turn, memory files that changed since the last sync go to the hub. A conflict keeps the hub's version
   under the file's name and this machine's next to it as `<name>.conflict-<host>.md`, to merge and delete.
+- After each turn of a session with 6 messages or more in a directory of a hub project, the session's digest goes to
+  that project: tool calls and errors, Bash errors by program, what the person wrote, model and tokens, with every
+  string that looks like a secret replaced on this machine first. A worker run's session sends none.
 - Not signed in, the hooks send nothing; `evo-agents hub login --url URL` signs in.
 
 ## Tools
@@ -70,4 +73,5 @@ comes back.
 | `plan_step` | set a step's status with evidence or a note |
 | `skill_list` | the skills on the hub you can see |
 | `hub_projects` | the projects you hold a grant on, with role and sinks |
+| `run_tool_stats` | calls, failures and time per tool of one run, or of the runs of the last days |
 | `kg_*` | the project's knowledge graph, as in the evo-kg plugin |

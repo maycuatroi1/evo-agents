@@ -12306,6 +12306,253 @@
           }
         }
       },
+      "/v1/projects/{project}/runs/{run_id}/tool-stats": {
+        "get": {
+          "tags": [
+            "runs"
+          ],
+          "summary": "Run Tool Stats",
+          "description": "What the tool calls of run ``run_id`` came to, per tool.",
+          "operationId": "run_tool_stats_v1_projects__project__runs__run_id__tool_stats_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/RunToolStats"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/tool-stats": {
+        "get": {
+          "tags": [
+            "runs"
+          ],
+          "summary": "Project Tool Stats",
+          "description": "The tool figures of the runs of the plans the caller may read that ended in the last ``days`` days, per tool and\nruntime.",
+          "operationId": "project_tool_stats_v1_projects__project__tool_stats_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "days",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 90,
+                "minimum": 1,
+                "description": "the last days in UTC to count, today included",
+                "default": 7,
+                "title": "Days"
+              },
+              "description": "the last days in UTC to count, today included"
+            },
+            {
+              "name": "plan_id",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^[a-z0-9][a-z0-9-]{0,99}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "the runs of this plan",
+                "title": "Plan Id"
+              },
+              "description": "the runs of this plan"
+            },
+            {
+              "name": "runtime",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "claude-code",
+                      "opencode",
+                      "codex"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "the runs of this runtime",
+                "title": "Runtime"
+              },
+              "description": "the runs of this runtime"
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ProjectToolStats"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "/v1/projects/{project}/decisions": {
         "get": {
           "tags": [
@@ -13598,6 +13845,364 @@
                 }
               },
               "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/digests/{session_id}": {
+        "put": {
+          "tags": [
+            "digests"
+          ],
+          "summary": "Put Digest",
+          "description": "Write the digest of session ``session_id``, replacing the one this member pushed before.",
+          "operationId": "put_digest_v1_projects__project__digests__session_id__put",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "session_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$",
+                "description": "the id Claude Code gives the session, as its transcript names it",
+                "title": "Session Id"
+              },
+              "description": "the id Claude Code gives the session, as its transcript names it"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionDigest"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/DigestSummary"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        },
+        "get": {
+          "tags": [
+            "digests"
+          ],
+          "summary": "Show Digest",
+          "description": "The digest of session ``session_id``, when the caller may read it.",
+          "operationId": "show_digest_v1_projects__project__digests__session_id__get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "session_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$",
+                "description": "the id Claude Code gives the session, as its transcript names it",
+                "title": "Session Id"
+              },
+              "description": "the id Claude Code gives the session, as its transcript names it"
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/DigestRecord"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/digests": {
+        "get": {
+          "tags": [
+            "digests"
+          ],
+          "summary": "List Digests",
+          "description": "The digests of the project the caller may read, the latest pushed first.",
+          "operationId": "list_digests_v1_projects__project__digests_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "since",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "pushed at or after this time",
+                "title": "Since"
+              },
+              "description": "pushed at or after this time"
+            },
+            {
+              "name": "login",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "pushed by this member",
+                "title": "Login"
+              },
+              "description": "pushed by this member"
+            },
+            {
+              "name": "limit",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 200,
+                "minimum": 1,
+                "default": 50,
+                "title": "Limit"
+              }
+            },
+            {
+              "name": "offset",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 10000,
+                "minimum": 0,
+                "default": 0,
+                "title": "Offset"
+              }
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/DigestList"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
             },
             "422": {
               "description": "Validation Error",
@@ -15247,6 +15852,27 @@
           ],
           "title": "Clearance"
         },
+        "CommandCount": {
+          "properties": {
+            "command": {
+              "type": "string",
+              "maxLength": 400,
+              "title": "Command"
+            },
+            "n": {
+              "type": "integer",
+              "maximum": 1000000000.0,
+              "minimum": 0.0,
+              "title": "N"
+            }
+          },
+          "type": "object",
+          "required": [
+            "command",
+            "n"
+          ],
+          "title": "CommandCount"
+        },
         "CommitRequest": {
           "properties": {
             "project": {
@@ -15960,6 +16586,217 @@
           ],
           "title": "Diffstat"
         },
+        "DigestList": {
+          "properties": {
+            "digests": {
+              "items": {
+                "$ref": "#/components/schemas/DigestSummary"
+              },
+              "type": "array",
+              "title": "Digests",
+              "description": "the latest pushed first"
+            },
+            "total": {
+              "type": "integer",
+              "title": "Total",
+              "description": "digests the caller may read that match the filters"
+            },
+            "limit": {
+              "type": "integer",
+              "title": "Limit"
+            },
+            "offset": {
+              "type": "integer",
+              "title": "Offset"
+            }
+          },
+          "type": "object",
+          "required": [
+            "digests",
+            "total",
+            "limit",
+            "offset"
+          ],
+          "title": "DigestList"
+        },
+        "DigestRecord": {
+          "properties": {
+            "session_id": {
+              "type": "string",
+              "title": "Session Id"
+            },
+            "login": {
+              "type": "string",
+              "title": "Login",
+              "description": "the member who pushed it"
+            },
+            "cwd": {
+              "type": "string",
+              "title": "Cwd"
+            },
+            "messages": {
+              "type": "integer",
+              "title": "Messages"
+            },
+            "model": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Model"
+            },
+            "started_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Started At"
+            },
+            "ended_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ended At"
+            },
+            "label": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Label"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At",
+              "description": "its first push"
+            },
+            "updated_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Updated At",
+              "description": "its latest push"
+            },
+            "digest": {
+              "$ref": "#/components/schemas/SessionDigest"
+            }
+          },
+          "type": "object",
+          "required": [
+            "session_id",
+            "login",
+            "cwd",
+            "messages",
+            "model",
+            "started_at",
+            "ended_at",
+            "label",
+            "created_at",
+            "updated_at",
+            "digest"
+          ],
+          "title": "DigestRecord"
+        },
+        "DigestSummary": {
+          "properties": {
+            "session_id": {
+              "type": "string",
+              "title": "Session Id"
+            },
+            "login": {
+              "type": "string",
+              "title": "Login",
+              "description": "the member who pushed it"
+            },
+            "cwd": {
+              "type": "string",
+              "title": "Cwd"
+            },
+            "messages": {
+              "type": "integer",
+              "title": "Messages"
+            },
+            "model": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Model"
+            },
+            "started_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Started At"
+            },
+            "ended_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ended At"
+            },
+            "label": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Label"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At",
+              "description": "its first push"
+            },
+            "updated_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Updated At",
+              "description": "its latest push"
+            }
+          },
+          "type": "object",
+          "required": [
+            "session_id",
+            "login",
+            "cwd",
+            "messages",
+            "model",
+            "started_at",
+            "ended_at",
+            "label",
+            "created_at",
+            "updated_at"
+          ],
+          "title": "DigestSummary"
+        },
         "Dispatch": {
           "properties": {
             "plan_id": {
@@ -16122,6 +16959,36 @@
             "message"
           ],
           "title": "ErrorBody"
+        },
+        "ErrorText": {
+          "properties": {
+            "gen_ai.tool.name": {
+              "type": "string",
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Gen Ai.Tool.Name"
+            },
+            "text": {
+              "type": "string",
+              "maxLength": 400,
+              "title": "Text",
+              "description": "the tool's result, cut"
+            },
+            "n": {
+              "type": "integer",
+              "maximum": 1000000000.0,
+              "minimum": 0.0,
+              "title": "N",
+              "description": "how many results said exactly this"
+            }
+          },
+          "type": "object",
+          "required": [
+            "gen_ai.tool.name",
+            "text",
+            "n"
+          ],
+          "title": "ErrorText"
         },
         "EventBatch": {
           "properties": {
@@ -17732,6 +18599,29 @@
           ],
           "title": "MissingOrigin",
           "description": "A repo of the run whose origin no lease covers: git uses the machine's own credentials for it."
+        },
+        "ModelCount": {
+          "properties": {
+            "model": {
+              "type": "string",
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Model"
+            },
+            "messages": {
+              "type": "integer",
+              "maximum": 1000000000.0,
+              "minimum": 0.0,
+              "title": "Messages",
+              "description": "messages of the model that name it"
+            }
+          },
+          "type": "object",
+          "required": [
+            "model",
+            "messages"
+          ],
+          "title": "ModelCount"
         },
         "Neighbourhood": {
           "properties": {
@@ -19538,6 +20428,36 @@
           ],
           "title": "Problem"
         },
+        "ProgramCount": {
+          "properties": {
+            "program": {
+              "type": "string",
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Program",
+              "description": "the program a Bash call ran, with its subcommand: git push, python -m pytest"
+            },
+            "calls": {
+              "type": "integer",
+              "maximum": 1000000000.0,
+              "minimum": 0.0,
+              "title": "Calls"
+            },
+            "errors": {
+              "type": "integer",
+              "maximum": 1000000000.0,
+              "minimum": 0.0,
+              "title": "Errors"
+            }
+          },
+          "type": "object",
+          "required": [
+            "program",
+            "calls",
+            "errors"
+          ],
+          "title": "ProgramCount"
+        },
         "Project": {
           "properties": {
             "name": {
@@ -19753,6 +20673,51 @@
             "builds"
           ],
           "title": "ProjectPruned"
+        },
+        "ProjectToolStats": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "days": {
+              "type": "integer",
+              "title": "Days"
+            },
+            "first_day": {
+              "type": "string",
+              "format": "date",
+              "title": "First Day"
+            },
+            "last_day": {
+              "type": "string",
+              "format": "date",
+              "title": "Last Day"
+            },
+            "runs": {
+              "type": "integer",
+              "title": "Runs",
+              "description": "runs that ended in those days, with tool calls or without"
+            },
+            "tools": {
+              "items": {
+                "$ref": "#/components/schemas/RuntimeToolStat"
+              },
+              "type": "array",
+              "title": "Tools",
+              "description": "per tool and runtime, the most called first"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "days",
+            "first_day",
+            "last_day",
+            "runs",
+            "tools"
+          ],
+          "title": "ProjectToolStats"
         },
         "PruneRequest": {
           "properties": {
@@ -22132,6 +23097,65 @@
           ],
           "title": "RunStats"
         },
+        "RunToolStats": {
+          "properties": {
+            "run_id": {
+              "type": "integer",
+              "title": "Run Id"
+            },
+            "runtime": {
+              "type": "string",
+              "title": "Runtime"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "queued",
+                "leased",
+                "running",
+                "interactive",
+                "verifying",
+                "waiting",
+                "review",
+                "parked",
+                "done",
+                "failed",
+                "lost",
+                "cancelled"
+              ],
+              "title": "State"
+            },
+            "finished_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Finished At"
+            },
+            "tools": {
+              "items": {
+                "$ref": "#/components/schemas/ToolStat"
+              },
+              "type": "array",
+              "title": "Tools",
+              "description": "the most called first; empty for a run that has not ended"
+            }
+          },
+          "type": "object",
+          "required": [
+            "run_id",
+            "runtime",
+            "state",
+            "finished_at",
+            "tools"
+          ],
+          "title": "RunToolStats"
+        },
         "RunUploadRequest": {
           "properties": {
             "items": {
@@ -22239,6 +23263,48 @@
           ],
           "title": "RuntimeReport",
           "description": "One runtime as the daemon found it on the machine."
+        },
+        "RuntimeToolStat": {
+          "properties": {
+            "gen_ai.tool.name": {
+              "type": "string",
+              "title": "Gen Ai.Tool.Name",
+              "description": "the tool, as the module of tool_stats names it"
+            },
+            "calls": {
+              "type": "integer",
+              "title": "Calls"
+            },
+            "errors": {
+              "type": "integer",
+              "title": "Errors",
+              "description": "calls an update of which said failed"
+            },
+            "duration_ms": {
+              "type": "integer",
+              "title": "Duration Ms",
+              "description": "from each call to its result, added up; calls that never ended count none"
+            },
+            "runtime": {
+              "type": "string",
+              "title": "Runtime"
+            },
+            "runs": {
+              "type": "integer",
+              "title": "Runs",
+              "description": "runs that called the tool"
+            }
+          },
+          "type": "object",
+          "required": [
+            "gen_ai.tool.name",
+            "calls",
+            "errors",
+            "duration_ms",
+            "runtime",
+            "runs"
+          ],
+          "title": "RuntimeToolStat"
         },
         "Schedule": {
           "properties": {
@@ -22620,6 +23686,146 @@
             "created"
           ],
           "title": "SecretWritten"
+        },
+        "SessionDigest": {
+          "properties": {
+            "cwd": {
+              "type": "string",
+              "maxLength": 4096,
+              "minLength": 1,
+              "title": "Cwd",
+              "description": "the session's working directory"
+            },
+            "messages": {
+              "type": "integer",
+              "maximum": 1000000000.0,
+              "minimum": 6.0,
+              "title": "Messages",
+              "description": "of the person and the model"
+            },
+            "started_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Started At"
+            },
+            "ended_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ended At"
+            },
+            "model": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Model",
+              "description": "the model most messages name"
+            },
+            "models": {
+              "items": {
+                "$ref": "#/components/schemas/ModelCount"
+              },
+              "type": "array",
+              "maxItems": 20,
+              "title": "Models"
+            },
+            "usage": {
+              "$ref": "#/components/schemas/TokenUsage"
+            },
+            "tools": {
+              "items": {
+                "$ref": "#/components/schemas/ToolCount"
+              },
+              "type": "array",
+              "maxItems": 200,
+              "title": "Tools"
+            },
+            "bash": {
+              "items": {
+                "$ref": "#/components/schemas/ProgramCount"
+              },
+              "type": "array",
+              "maxItems": 100,
+              "title": "Bash"
+            },
+            "user_turns": {
+              "items": {
+                "type": "string",
+                "maxLength": 600
+              },
+              "type": "array",
+              "maxItems": 40,
+              "title": "User Turns"
+            },
+            "commands": {
+              "items": {
+                "type": "string",
+                "maxLength": 400
+              },
+              "type": "array",
+              "maxItems": 60,
+              "title": "Commands"
+            },
+            "repeated_commands": {
+              "items": {
+                "$ref": "#/components/schemas/CommandCount"
+              },
+              "type": "array",
+              "maxItems": 20,
+              "title": "Repeated Commands"
+            },
+            "errors": {
+              "items": {
+                "$ref": "#/components/schemas/ErrorText"
+              },
+              "type": "array",
+              "maxItems": 20,
+              "title": "Errors"
+            },
+            "files_read": {
+              "type": "integer",
+              "maximum": 1000000000.0,
+              "minimum": 0.0,
+              "title": "Files Read",
+              "default": 0
+            },
+            "files_edited": {
+              "items": {
+                "type": "string",
+                "maxLength": 1024
+              },
+              "type": "array",
+              "maxItems": 40,
+              "title": "Files Edited"
+            }
+          },
+          "type": "object",
+          "required": [
+            "cwd",
+            "messages"
+          ],
+          "title": "SessionDigest",
+          "description": "The digest of one session, as ``evo_agents.hub.digest.build`` makes it."
         },
         "SignedIn": {
           "properties": {
@@ -23497,6 +24703,40 @@
           ],
           "title": "TokenRow"
         },
+        "TokenUsage": {
+          "properties": {
+            "input_tokens": {
+              "type": "integer",
+              "maximum": 1000000000.0,
+              "minimum": 0.0,
+              "title": "Input Tokens",
+              "default": 0
+            },
+            "output_tokens": {
+              "type": "integer",
+              "maximum": 1000000000.0,
+              "minimum": 0.0,
+              "title": "Output Tokens",
+              "default": 0
+            },
+            "cache_creation_input_tokens": {
+              "type": "integer",
+              "maximum": 1000000000.0,
+              "minimum": 0.0,
+              "title": "Cache Creation Input Tokens",
+              "default": 0
+            },
+            "cache_read_input_tokens": {
+              "type": "integer",
+              "maximum": 1000000000.0,
+              "minimum": 0.0,
+              "title": "Cache Read Input Tokens",
+              "default": 0
+            }
+          },
+          "type": "object",
+          "title": "TokenUsage"
+        },
         "ToolCall": {
           "properties": {
             "arguments": {
@@ -23515,6 +24755,37 @@
           },
           "type": "object",
           "title": "ToolCall"
+        },
+        "ToolCount": {
+          "properties": {
+            "gen_ai.tool.name": {
+              "type": "string",
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Gen Ai.Tool.Name",
+              "description": "the tool, as the runtime names it"
+            },
+            "calls": {
+              "type": "integer",
+              "maximum": 1000000000.0,
+              "minimum": 0.0,
+              "title": "Calls"
+            },
+            "errors": {
+              "type": "integer",
+              "maximum": 1000000000.0,
+              "minimum": 0.0,
+              "title": "Errors",
+              "description": "calls whose result was an error"
+            }
+          },
+          "type": "object",
+          "required": [
+            "gen_ai.tool.name",
+            "calls",
+            "errors"
+          ],
+          "title": "ToolCount"
         },
         "ToolResult": {
           "properties": {
@@ -23555,6 +24826,37 @@
             "content"
           ],
           "title": "ToolResult"
+        },
+        "ToolStat": {
+          "properties": {
+            "gen_ai.tool.name": {
+              "type": "string",
+              "title": "Gen Ai.Tool.Name",
+              "description": "the tool, as the module of tool_stats names it"
+            },
+            "calls": {
+              "type": "integer",
+              "title": "Calls"
+            },
+            "errors": {
+              "type": "integer",
+              "title": "Errors",
+              "description": "calls an update of which said failed"
+            },
+            "duration_ms": {
+              "type": "integer",
+              "title": "Duration Ms",
+              "description": "from each call to its result, added up; calls that never ended count none"
+            }
+          },
+          "type": "object",
+          "required": [
+            "gen_ai.tool.name",
+            "calls",
+            "errors",
+            "duration_ms"
+          ],
+          "title": "ToolStat"
         },
         "UploadItem": {
           "properties": {

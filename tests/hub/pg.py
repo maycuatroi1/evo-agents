@@ -56,6 +56,8 @@ NOTIFICATION_TABLES = frozenset({"decisions", "notifications", "notification_cha
 CREDENTIAL_TABLES = frozenset({"secrets", "secret_bindings", "credential_leases"})
 # Tables of migration 0012: the charters of projects at every revision, and the schedules they make
 CURATOR_TABLES = frozenset({"charters", "schedules"})
+# Tables of migration 0013: the digests of Claude Code sessions, and the tool figures of runs
+DIGEST_TABLES = frozenset({"session_digests", "run_tool_stats"})
 HUB_ENV = ("EVO_HUB_",)  # variables a test environment must not inherit from the shell running pytest
 AWAY = "_away"  # suffix of the copy a database waits in while set_reachable keeps it from its clients
 END_EVERY = 0.05  # seconds between two rounds of ending the connections to a database being copied

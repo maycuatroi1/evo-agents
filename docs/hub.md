@@ -82,7 +82,8 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | knowledge graphs | `/v1/kg/{project}/config`, `.../runs`, `.../blobs/check`, `.../builds`, `.../tools/{tool}`, and the web's `.../graph`, `.../nodes`, `.../node`, `.../neighbourhood` |
 | workers | `POST /v1/workers/pairings`, `GET /v1/workers/pairings/{id}`, `POST /v1/worker/join`, `GET` and `POST /v1/workers`, `GET /v1/workers/{id}`, `POST /v1/workers/{id}/{drain,undrain,dispatch-from,revoke}` |
 | secrets | `GET /v1/secrets`, `PUT` and `DELETE /v1/secrets/{name}`, the caller's own only (`docs/credentials.md`) |
-| runs | `/v1/projects/{project}/plans/{plan_id}/ready-steps`, `GET` and `POST /v1/projects/{project}/runs`, `GET .../runs/stats`, `POST /v1/projects/{project}/plan-runs`, `.../runs/{id}`, `.../events`, `.../stream`, `.../diff`, `.../messages`, `.../credentials`, `.../{cancel,approve,rerun,takeover,handback}` |
+| runs | `/v1/projects/{project}/plans/{plan_id}/ready-steps`, `GET` and `POST /v1/projects/{project}/runs`, `GET .../runs/stats`, `POST /v1/projects/{project}/plan-runs`, `.../runs/{id}`, `.../events`, `.../stream`, `.../diff`, `.../messages`, `.../credentials`, `.../tool-stats`, `.../{cancel,approve,rerun,takeover,handback}`, and `GET /v1/projects/{project}/tool-stats` |
+| session digests | `GET /v1/projects/{project}/digests`, `GET` and `PUT /v1/projects/{project}/digests/{session_id}` |
 | decisions | `GET /v1/projects/{project}/decisions`, `.../decisions/{id}`, `POST .../decisions/{id}/answer` |
 | notifications | `GET /v1/me/notifications`, `GET /v1/me/notifications/count`, `POST /v1/me/notifications/read` |
 | overview | `GET /v1/me/overview`: counts, active, recent runs and open decisions over the projects you hold a grant on, for the web's Home |
@@ -92,9 +93,9 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 answer. It takes a machine token, or the worker token of the agent of a run (below), never a web session, and the
 `Host` header must be the host of `EVO_HUB_PUBLIC_URL` or a loopback name. Runtimes reach it through
 `evo-agents hub mcp`, a stdio proxy that adds the token, the session's project (`X-Evo-Project`) and its sink
-(`X-Evo-Sink`, `claude-code@anthropic` by default). Its 15 tools are the seven `kg_*` tools of `evo-agents kg serve`
-plus `memory_search`, `memory_get`, `memory_write`, `plan_list`, `plan_show`, `plan_step`, `skill_list` and
-`hub_projects`, and they follow the same rules as the REST routes.
+(`X-Evo-Sink`, `claude-code@anthropic` by default). Its 16 tools are the seven `kg_*` tools of `evo-agents kg serve`
+plus `memory_search`, `memory_get`, `memory_write`, `plan_list`, `plan_show`, `plan_step`, `skill_list`,
+`hub_projects` and `run_tool_stats`, and they follow the same rules as the REST routes.
 
 The agent of a run on a worker reaches `/mcp` with its worker's token. Inside a run (`EVO_RUN_ID`, which the daemon
 sets, and a token in the worker's state, `$EVO_WORKER_HOME` or `~/.evo/worker`) `evo-agents hub mcp` sends that
@@ -284,7 +285,9 @@ Schema 0009 holds the workers and runs: `workers`, `worker_projects`, `worker_pa
 `run_inbox`. Schema 0010 adds plan runs (`runs.kind` is `step` or `plan`, a plan run has `repos` instead of a step key
 and a repo, and the states `waiting` and `parked`), the decisions their agents ask (`decisions`) and what reaches the
 members (`notifications`, `notification_channels`, `notification_deliveries`), which `docs/notifications.md`
-describes. Going back to 0009 deletes the plan runs with their decisions and notifications.
+describes. Going back to 0009 deletes the plan runs with their decisions and notifications. Schema 0013 adds
+`run_tool_stats`, the tool figures of each run that ended (`docs/workers.md`, "Tool figures"), and `session_digests`
+(Memories, skills and knowledge graphs, below); going back to 0012 drops both.
 
 The daemon on the member's machine is the `evo-agents worker` command group, which needs the `worker` extra
 (`uv tool install 'evo-ak[worker]'`). It is not `evo-agents hub worker`, the hub's own job worker (see Worker and
@@ -403,6 +406,22 @@ next to it as `<name>.conflict-<host>.md`. Deletions cross only with `--prune`. 
 phrase"` searches what you see. The plugin pulls at SessionStart and pushes at Stop; in the session of a run's
 agent on a worker (`EVO_RUN_ID` set) Stop pushes nothing, since nobody reviews that unattended session.
 
+**Session digests.** Stop also pushes the digest of the session once its transcript holds 6 messages, and again after
+each turn that changed it, to the project the session's directory belongs to, decided as for memories; a directory of
+no project, and the session of a run's agent, whose trace is on the hub already, push none. A digest
+(`evo_agents/hub/digest.py`) counts the calls and failures of each tool (under `gen_ai.tool.name`) and of each program
+Bash ran, and keeps what the person wrote, the Bash commands and the text of failed results, each cut short, with the
+model, the tokens, the session's id and its directory. Before it leaves the machine every string that looks like a
+secret is replaced by `***` (`evo_agents/hub/redact.py`): GitHub, Anthropic, OpenAI, AWS, Slack and Google keys and
+tokens, private keys in PEM, hub, web and worker tokens, passwords in URIs, Bearer and Basic credentials, and the value
+of any variable or key named as a secret, which is how a lease's value shows in a session; the machine's own hub
+token is replaced wherever it appears. The push follows the write rule (the writer role and a hub sink), and the
+digest carries the project's default label, so only members whose grant, and the sink they read through, clear it
+see it (`GET /v1/projects/{project}/digests`). A later turn replaces the digest; only the member who pushed a session
+may. When the hub does not answer, the digest waits in `~/.evo/hub/digest-state.json` and the next Stop that reaches
+the hub pushes it, with up to three others that waited. `hub.prune_digests` deletes the digests not pushed for 90
+days.
+
 **Skills.** `evo-agents hub skills publish skills/house-style --scope global` packs a skill directory (10 MiB at
 most) and publishes a new version; `--scope project:demo` publishes it to a project. `evo-agents hub skills sync`
 writes the latest version of every skill you see into the skills directories of each runtime on the machine
@@ -477,11 +496,14 @@ Postgres database; there is no separate broker. The api only defers jobs. Jobs:
   answer is parked, and one parked for 7 days cancelled (`docs/workers.md`).
 - `hub.deliver_notifications`, every minute: hands each notification delivery that is due to its channel's class, and
   tries a failing one again with a backoff, failing it after 5 tries (`docs/notifications.md`).
-- `hub.prune_run_events`, daily at 04:13: deletes the events of runs that ended more than `EVO_HUB_RUN_LOG_DAYS` ago.
+- `hub.prune_run_events`, daily at 04:13: deletes the events of runs that ended more than `EVO_HUB_RUN_LOG_DAYS` ago,
+  once the tool figures of each such run are written from them (a run writes them when it ends; this covers the runs
+  that ended before schema 0013).
 - `hub.fire_schedules`, every minute: the night shift of each project with a charter queues its next plan run inside
   the charter's window and within the night's budget, pinned to the charter's worker and dispatched as that worker's
   owner, and cancels the runs it queued that are still queued once the window ends or the project is paused
   (`evo-agents hub curator pause`).
+- `hub.prune_digests`, daily at 04:23: deletes the session digests not pushed for 90 days.
 - `hub.cleanup_uploads`, hourly: removes uploads nobody committed within 24 hours.
 - `hub.prune_jobs`, daily: removes finished jobs older than 14 days.
 

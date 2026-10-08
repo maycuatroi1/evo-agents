@@ -36,6 +36,7 @@ RECOVER_RUNS = "hub.recover_runs"  # every minute: runs whose lease ran out beco
 PRUNE_RUN_EVENTS = "hub.prune_run_events"  # daily: events of runs that ended more than EVO_HUB_RUN_LOG_DAYS ago
 DELIVER_NOTIFICATIONS = "hub.deliver_notifications"  # every minute: notifications due on their channels, retried
 FIRE_SCHEDULES = "hub.fire_schedules"  # every minute: the night shift of each charter queues its next run
+PRUNE_DIGESTS = "hub.prune_digests"  # daily: session digests not pushed again for 90 days
 
 
 def kg_lock(project: str) -> str:

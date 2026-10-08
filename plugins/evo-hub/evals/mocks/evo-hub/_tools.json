@@ -438,6 +438,48 @@
         "properties": {},
         "additionalProperties": false
       }
+    },
+    {
+      "name": "run_tool_stats",
+      "description": "What the tool calls of runs on workers came to, per tool (gen_ai.tool.name): calls, failed calls and the time they took, kept after the run logs are pruned. With run_id, that run of the project; without it, the runs that ended in the last days, per tool and runtime.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "run_id": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9223372036854775807,
+            "description": "one run of the project"
+          },
+          "days": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 90,
+            "default": 7,
+            "description": "without run_id: the last days in UTC, today included"
+          },
+          "plan_id": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+            "description": "without run_id: this plan's"
+          },
+          "runtime": {
+            "type": "string",
+            "enum": [
+              "claude-code",
+              "opencode",
+              "codex"
+            ],
+            "description": "without run_id: this runtime's"
+          },
+          "project": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+            "description": "a project on the hub (see hub_projects); default: the session's project"
+          }
+        },
+        "additionalProperties": false
+      }
     }
   ]
 }
