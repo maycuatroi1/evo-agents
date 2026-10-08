@@ -491,9 +491,12 @@ refuses to start without a blob store, since builds read from it and write to it
 
 The api and the worker each hold one psycopg 3 connection pool and a SQLAlchemy 2.1 engine on it
 (`evo_agents/hub/db.py`). The engine keeps no connection of its own (`NullPool`): it takes each one from the pool
-(`async_creator=pool.getconn`), and the pool is made with `close_returns=True`, so a connection the engine closes
-goes back to it. The pool's size, timeout and health check govern both. The lifespan opens the pool, then the engine,
-and disposes of the engine before it closes the pool. The worker's jobs reach the engine through `HubContext`.
+(`async_creator=pool.getconn`), and the pool is made with `close_returns=True`, so a connection the engine closes goes
+back to it. The pool's size, timeout and health check govern both. To `NullPool` each checkout is a new connection, so
+the psycopg dialect's connect hook, which adds a handler that logs the server's notices, runs on every checkout of the
+same pooled connection; `make_engine` takes the handler off as the engine gives the connection back, so it does not pile
+up (`tests/hub/test_db_bridge.py`). The lifespan opens the pool, then the engine, and disposes of the engine before it
+closes the pool. The worker's jobs reach the engine through `HubContext`.
 
 A request takes one `AsyncConnection` with `async with request.app.state.engine.begin() as conn:`; its transaction
 commits when the block ends cleanly and rolls back on any exception, an `HTTPException` included. A savepoint is
