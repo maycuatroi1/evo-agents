@@ -25,6 +25,12 @@ budget also says what the run spent already (``spent_usd``, ``spent_seconds``), 
 At the charter's ``brief_at``, in its time zone, the hub sends the schedule's owner the morning brief of the night
 (``brief_due``, ``evo_agents.hub.server.brief``).
 
+The circuit breaker stops a night shift that keeps failing: once the charter's ``circuit_breaker.max_failed_in_a_row``
+jobs of one night failed in a row (``failed_in_a_row``), a run of the schedule that ended failed or a merged change of
+the project whose figures the hub found worse (an outcome ``revert``), the hub pauses the project's schedules and tells
+their owner (``evo_agents.hub.server.outcomes``). A run that ended done breaks the row; a cancelled one, or a lost one
+the hub tries again, leaves it as it is. Resuming the night shift starts the count again.
+
 Claude Code 2.1.293 reports ``total_cost_usd`` as the running total of the session: each result carries the total so
 far, and a resumed session starts from the total its transcript saved, while ``--max-budget-usd`` counts only the
 spend of the process it is given to (the description of ``total_cost_usd`` in the CLI's own SDK schema). So a run's
@@ -119,6 +125,17 @@ def _number(value) -> float | None:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return None
     return float(value) if math.isfinite(value) else None
+
+
+def failed_in_a_row(bad: list[bool]) -> int:
+    """How many jobs at the end of ``bad`` (a night's jobs, oldest first, True for one that failed or was reverted)
+    failed one after the other."""
+    count = 0
+    for failed in reversed(bad):
+        if not failed:
+            break
+        count += 1
+    return count
 
 
 def run_cost(usage) -> float:

@@ -27,7 +27,9 @@ GET .../rulesets/{id}, whose ``current_user_can_bypass`` says whether the token'
 Apps; POST and GET .../pulls (a pull request of a branch whose head ``push`` set, its files ``files`` set) and GET
 .../pulls/{n} and .../pulls/{n}/files; GET .../commits/{sha}/check-runs and .../status (``ci`` sets them); POST
 .../check-runs; and PUT .../pulls/{n}/merge, which refuses a head that moved (409) and a base branch whose ruleset
-the token's App may not bypass (405), and otherwise merges.
+the token's App may not bypass (405), and otherwise merges. A pull request names the base's commit it opened on, and
+once merged its merge commit, when and by whom; ``merge_by_hand`` and ``close_by_hand`` play a member doing either on
+GitHub's page.
 """
 
 from __future__ import annotations
@@ -92,6 +94,9 @@ class FakePull:
     merged: bool = False
     mergeable: bool | None = True
     merge_sha: str | None = None
+    base_sha: str | None = None  # the base branch's commit when it opened
+    merged_at: str | None = None
+    merged_by: str | None = None
 
 
 @dataclass
@@ -230,6 +235,22 @@ class FakeGitHub:
             self.check_runs[sha] = [dict(item) for item in runs or []]
             if statuses is not None:
                 self.statuses[sha] = statuses
+
+    def merge_by_hand(self, owner: str, name: str, branch: str, login: str, sha: str) -> FakePull:
+        """A member merges the open pull request of ``branch`` on GitHub's page, as merge commit ``sha``."""
+        with self._lock:
+            pull = self.pull_of(owner, name, branch)
+            repo = self.repos[(owner.lower(), name.lower())]
+            pull.state, pull.merged, pull.merge_sha, pull.merged_at, pull.merged_by = "closed", True, sha, _now(), login
+            repo.heads[pull.base] = sha
+        return pull
+
+    def close_by_hand(self, owner: str, name: str, branch: str) -> FakePull:
+        """A member closes the open pull request of ``branch`` without a merge."""
+        with self._lock:
+            pull = self.pull_of(owner, name, branch)
+            pull.state = "closed"
+        return pull
 
     def pull_of(self, owner: str, name: str, branch: str) -> FakePull | None:
         return next(
@@ -505,7 +526,10 @@ class FakeGitHub:
             "mergeable": pull.mergeable,
             "html_url": f"https://github.com/{pull.owner}/{pull.name}/pull/{pull.number}",
             "head": {"ref": pull.head, "sha": pull.head_sha},
-            "base": {"ref": pull.base},
+            "base": {"ref": pull.base, "sha": pull.base_sha},
+            "merge_commit_sha": pull.merge_sha,
+            "merged_at": pull.merged_at,
+            "merged_by": {"login": pull.merged_by} if pull.merged_by else None,
         }
 
     def _blocks(self, repo: FakeRepo, branch: str, app: str | None) -> list[dict]:
@@ -570,7 +594,9 @@ class FakeGitHub:
             if any(item.head == branch and item.state == "open" for item in self.pulls.values()):
                 return 422, {"message": "A pull request already exists"}
             number = 1 + sum(1 for key in self.pulls if key[:2] == (owner.lower(), name.lower()))
-            pull = FakePull(number, repo.owner, repo.name, branch, repo.heads[branch], base)
+            pull = FakePull(
+                number, repo.owner, repo.name, branch, repo.heads[branch], base, base_sha=repo.heads.get(base)
+            )
             with self._lock:
                 self.pulls[(owner.lower(), name.lower(), number)] = pull
             return 201, self._pull_answer(pull)
@@ -613,6 +639,7 @@ class FakeGitHub:
                 merged = secrets.token_hex(20)
                 with self._lock:
                     pull.state, pull.merged, pull.merge_sha = "closed", True, merged
+                    pull.merged_at, pull.merged_by = _now(), f"evo-agents-{app}[bot]"
                     repo.heads[pull.base] = merged
                     self.merges.append((repo.owner, repo.name, pull.number, asked.get("sha"), app))
                 return 200, {"sha": merged, "merged": True, "message": "Pull Request successfully merged"}
@@ -671,6 +698,11 @@ class FakeGitHub:
         if path == "/moved":
             return 302, None, {"Location": f"{self.url}/user"}
         return 404, {"message": "Not Found"}
+
+
+def _now() -> str:
+    """Now as GitHub writes a moment: UTC, to the second, with Z."""
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
 
 def _unb64(text: str) -> bytes:

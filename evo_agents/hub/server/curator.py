@@ -19,7 +19,8 @@ GET /v1/projects/{p}/curator (reader) says where the night shift stands: the cha
 schedule with its owner and worker, and the night now (or the last one, outside the window): its runs and its cost,
 the run of the schedule that is queued or held, if any. POST .../curator/pause (an admin of the project, or the owner of
 one of its schedules) pauses every schedule of the project at once and cancels each run they queued that is still
-queued and resumes no parked run; .../curator/resume lets them run again. Each is audited (curator.pause,
+queued and resumes no parked run; .../curator/resume lets them run again, a night shift the circuit breaker paused
+included, and starts its count of jobs gone wrong again. Each is audited (curator.pause,
 curator.resume); a second pause keeps the first one's time. GET .../curator says the night shift's ``state`` in a word
 (CURATOR_STATES) and how many of the project's proposals wait for an answer; ``curator_overview`` says the same of
 every project of the caller for GET /v1/me/overview. GET .../curator/nights (reader) lists the latest nights, newest
@@ -27,8 +28,12 @@ first: for each, the runs the schedules queued for it by how they stand, their c
 review run with what it wrote, and whether curator.collect counted its figures.
 
 ``fire_schedules`` is the job ``hub.fire_schedules``, run every minute by the hub's worker: for each schedule of kind
-night_shift, under its row's lock (a schedule another run of the job holds is passed over), it cancels its queued runs
-when it is paused or outside its window, and otherwise queues at most one run (``gate_of`` says when it may): the
+night_shift, under its row's lock (a schedule another run of the job holds is passed over), it first lets the circuit
+breaker look at the night (``outcomes.check_circuit``: once the charter's ``circuit_breaker.max_failed_in_a_row`` jobs
+of the night in a row failed or were reverted, every schedule of the project is paused with the reason in
+``pause_reason`` and no member in ``paused_by``, and their owner gets the notice curator_paused), then it cancels its
+queued runs when it is paused or outside its window, and otherwise queues at most one run (``gate_of`` says when it
+may): the
 night's review run first, when the night has none yet and the worker runs review runs
 (``evo_agents.hub.server.collect``), else the judge run of a change of the Curator that waits for one, else the
 Builder of a change the Curator planned (``evo_agents.hub.server.changes``), else a plan run of the charter's
@@ -71,7 +76,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from evo_agents.hub import curator, review, runs, tables
+from evo_agents.hub import curator, ledger, review, runs, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.credentials import SECRET_NAME
 from evo_agents.hub.db import one_of
@@ -165,7 +170,12 @@ class Judge(Role):
 class CircuitBreaker(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    max_failed_in_a_row: int = Field(2, ge=curator.CIRCUIT_BREAKER[0], le=curator.CIRCUIT_BREAKER[1])
+    max_failed_in_a_row: int = Field(
+        2,
+        ge=curator.CIRCUIT_BREAKER[0],
+        le=curator.CIRCUIT_BREAKER[1],
+        description="jobs of a night in a row that failed or were reverted before the hub pauses the night shift",
+    )
 
 
 class ReviewSettings(BaseModel):
@@ -219,6 +229,13 @@ class CharterBody(BaseModel):
         description="globs no change of the Curator may touch below tier 3",
     )
     circuit_breaker: CircuitBreaker = Field(default_factory=CircuitBreaker)
+    outcome_days: int = Field(
+        ledger.DEFAULT_OUTCOME_DAYS,
+        ge=ledger.OUTCOME_DAYS[0],
+        le=ledger.OUTCOME_DAYS[1],
+        description="the days after a merge over which the hub counts a change's figures again, and then keeps it "
+        "or proposes its revert",
+    )
     review: ReviewSettings = Field(default_factory=ReviewSettings)
     reviewer: Role = Field(default_factory=Role)
     builder: Role = Field(default_factory=Role)
@@ -295,7 +312,10 @@ class Schedule(BaseModel):
     worker_id: int
     worker: str
     paused_at: datetime | None
-    paused_by: str | None
+    paused_by: str | None = Field(description="the member who paused it; null when the hub did, or while it runs")
+    pause_reason: str | None = Field(
+        None, description="why the hub paused it, its circuit breaker; null when a member did, or while it runs"
+    )
 
 
 class Night(BaseModel):
@@ -674,6 +694,7 @@ def _schedules(project_id: int):
             w.c.name.label("worker"),
             s.c.paused_at,
             pauser.c.login.label("paused_by"),
+            s.c.pause_reason,
         )
         .join_from(s, owner, owner.c.id == s.c.owner_id)
         .join(w, w.c.id == s.c.worker_id)
@@ -1071,7 +1092,7 @@ async def resume(request: Request, project: ProjectName, user: CurrentUser) -> C
         access, ids = await _pausable(conn, user, project, "resume")
         await conn.execute(
             update(s)
-            .values(paused_at=None, paused_by=None, updated_at=func.now())
+            .values(paused_at=None, paused_by=None, pause_reason=None, updated_at=func.now())
             .where(s.c.id.in_(ids), s.c.paused_at.is_not(None))
         )
         await audit.record(
@@ -1274,14 +1295,17 @@ async def gate_of(conn: AsyncConnection, due, *, figures_first: bool = False):
     outside its window, the schedule's queued runs are cancelled. With ``figures_first`` (the job curator.collect),
     the night's figures are counted as soon as the window is open, before a run of the schedule held now ends."""
     from evo_agents.hub.server.collect import Gate, ensure_figures  # it queues runs through this module
+    from evo_agents.hub.server.outcomes import check_circuit  # it pauses through this module
 
     s = tables.schedules
-    locked = select(s.c.paused_at).where(s.c.id == due.id).with_for_update(skip_locked=True)
+    locked = select(s.c.paused_at, s.c.updated_at).where(s.c.id == due.id).with_for_update(skip_locked=True)
     found = (await conn.execute(locked)).one_or_none()
     if found is None:
         return "locked", None
     window = due.body["window"]
     inside, night = curator.window_state(due.local_now, window["start"], window["end"])
+    if found.paused_at is None and await check_circuit(conn, due, night, found.updated_at):
+        return "circuit", None
     if found.paused_at is not None or not inside:
         why = "paused" if found.paused_at is not None else "outside its window"
         cancelled = await _cancel_queued(conn, [due.id], f"the night shift of {due.project} is {why}")

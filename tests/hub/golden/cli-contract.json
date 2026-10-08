@@ -302,6 +302,7 @@
           "auto_merge",
           "protected_paths",
           "circuit_breaker",
+          "outcome_days",
           "review",
           "reviewer",
           "builder",
@@ -363,6 +364,7 @@
           "auto_merge",
           "protected_paths",
           "circuit_breaker",
+          "outcome_days",
           "review",
           "reviewer",
           "builder",
@@ -591,6 +593,7 @@
           "deferred_until",
           "inbox_at",
           "created_at",
+          "revert_of",
           "summary",
           "paths",
           "impacted",
@@ -667,6 +670,7 @@
           "deferred_until",
           "inbox_at",
           "created_at",
+          "revert_of",
           "summary",
           "paths",
           "impacted",
@@ -839,6 +843,7 @@
           "deferred_until",
           "inbox_at",
           "created_at",
+          "revert_of",
           "summary",
           "paths",
           "impacted",
@@ -897,6 +902,7 @@
           "deferred_until",
           "inbox_at",
           "created_at",
+          "revert_of",
           "summary",
           "paths",
           "impacted",
@@ -4205,6 +4211,7 @@
             "skill",
             "cli",
             "release_prep",
+            "revert",
             "feature",
             "api_change",
             "schema_change",
@@ -16211,6 +16218,107 @@
           }
         }
       },
+      "/v1/projects/{project}/curator/proposals/{proposal_id}/ledger": {
+        "get": {
+          "tags": [
+            "curator"
+          ],
+          "summary": "Show Ledger",
+          "description": "The ledger of a proposal: what happened to it, line by line, oldest first.",
+          "operationId": "show_ledger_v1_projects__project__curator_proposals__proposal_id__ledger_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "proposal_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Proposal Id"
+              }
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Ledger"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "/v1/projects/{project}/digests/{session_id}": {
         "put": {
           "tags": [
@@ -18516,6 +18624,14 @@
             "circuit_breaker": {
               "$ref": "#/components/schemas/CircuitBreaker"
             },
+            "outcome_days": {
+              "type": "integer",
+              "maximum": 90.0,
+              "minimum": 1.0,
+              "title": "Outcome Days",
+              "description": "the days after a merge over which the hub counts a change's figures again, and then keeps it or proposes its revert",
+              "default": 7
+            },
             "review": {
               "$ref": "#/components/schemas/ReviewSettings"
             },
@@ -18743,6 +18859,14 @@
             "circuit_breaker": {
               "$ref": "#/components/schemas/CircuitBreaker"
             },
+            "outcome_days": {
+              "type": "integer",
+              "maximum": 90.0,
+              "minimum": 1.0,
+              "title": "Outcome Days",
+              "description": "the days after a merge over which the hub counts a change's figures again, and then keeps it or proposes its revert",
+              "default": 7
+            },
             "review": {
               "$ref": "#/components/schemas/ReviewSettings"
             },
@@ -18829,6 +18953,7 @@
               "maximum": 10.0,
               "minimum": 1.0,
               "title": "Max Failed In A Row",
+              "description": "jobs of a night in a row that failed or were reverted before the hub pauses the night shift",
               "default": 2
             }
           },
@@ -21947,6 +22072,284 @@
           ],
           "title": "LabelIn"
         },
+        "Ledger": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "proposal_id": {
+              "type": "integer",
+              "title": "Proposal Id"
+            },
+            "lines": {
+              "items": {
+                "$ref": "#/components/schemas/LedgerLine"
+              },
+              "type": "array",
+              "title": "Lines",
+              "description": "oldest first"
+            },
+            "outcome_due_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Outcome Due At",
+              "description": "when the hub counts the figures of its merged change again; null before the merge and once its outcome is in"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "proposal_id",
+            "lines",
+            "outcome_due_at"
+          ],
+          "title": "Ledger"
+        },
+        "LedgerLine": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "proposal_id": {
+              "type": "integer",
+              "title": "Proposal Id"
+            },
+            "change_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Change Id",
+              "description": "the change it became, once it became one"
+            },
+            "action": {
+              "type": "string",
+              "enum": [
+                "proposed",
+                "dropped",
+                "accepted",
+                "rejected",
+                "deferred",
+                "planned",
+                "built",
+                "build_failed",
+                "pull_opened",
+                "judged",
+                "merged",
+                "left_open",
+                "closed",
+                "outcome"
+              ],
+              "title": "Action"
+            },
+            "actor": {
+              "type": "string",
+              "enum": [
+                "curator",
+                "agent",
+                "user"
+              ],
+              "title": "Actor",
+              "description": "curator: the hub's own code; agent: an agent of a run of the Curator; user: a member"
+            },
+            "actor_login": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Actor Login",
+              "description": "the member, for a line of a user the hub knows"
+            },
+            "run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id",
+              "description": "the run of the agent: the review run, the Builder or the Judge"
+            },
+            "what": {
+              "type": "string",
+              "title": "What",
+              "description": "what happened, in words"
+            },
+            "commit_sha": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Commit Sha",
+              "description": "the commit it is about: the head built, judged or merged"
+            },
+            "before_sha": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Before Sha",
+              "description": "the default branch before the change"
+            },
+            "after_sha": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "After Sha",
+              "description": "the default branch after it: the merge commit"
+            },
+            "figures": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Figures",
+              "description": "proposed: the figures that set it off; outcome: those figures before and after the merge"
+            },
+            "verdict": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Verdict",
+              "description": "judged: whether it passed, the agent's verdict, the failures"
+            },
+            "pr_url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pr Url"
+            },
+            "pr_number": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pr Number"
+            },
+            "merged_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Merged At"
+            },
+            "outcome": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "keep",
+                    "revert",
+                    "unclear"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Outcome",
+              "description": "outcome: keep, revert or unclear"
+            },
+            "details": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Details"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "proposal_id",
+            "change_id",
+            "action",
+            "actor",
+            "actor_login",
+            "run_id",
+            "what",
+            "commit_sha",
+            "before_sha",
+            "after_sha",
+            "figures",
+            "verdict",
+            "pr_url",
+            "pr_number",
+            "merged_at",
+            "outcome",
+            "details",
+            "created_at"
+          ],
+          "title": "LedgerLine",
+          "description": "One line of a proposal's ledger, as the hub added it."
+        },
         "Live": {
           "properties": {
             "status": {
@@ -22919,7 +23322,8 @@
                     "merge_default_branch",
                     "plan_finished",
                     "run_failed",
-                    "curator_brief"
+                    "curator_brief",
+                    "curator_paused"
                   ]
                 },
                 {
@@ -24864,12 +25268,24 @@
                 }
               ],
               "title": "Inbox At",
-              "description": "when it became an Inbox item of the owner; tier 2 only"
+              "description": "when it became an Inbox item of the owner; tier 2 only, and a revert the hub proposes"
             },
             "created_at": {
               "type": "string",
               "format": "date-time",
               "title": "Created At"
+            },
+            "revert_of": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Revert Of",
+              "description": "the proposal whose merged change it reverts: the hub proposed it once its figures got worse"
             },
             "summary": {
               "anyOf": [
@@ -25086,6 +25502,7 @@
                 "skill",
                 "cli",
                 "release_prep",
+                "revert",
                 "feature",
                 "api_change",
                 "schema_change",
@@ -25317,12 +25734,24 @@
                 }
               ],
               "title": "Inbox At",
-              "description": "when it became an Inbox item of the owner; tier 2 only"
+              "description": "when it became an Inbox item of the owner; tier 2 only, and a revert the hub proposes"
             },
             "created_at": {
               "type": "string",
               "format": "date-time",
               "title": "Created At"
+            },
+            "revert_of": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Revert Of",
+              "description": "the proposal whose merged change it reverts: the hub proposed it once its figures got worse"
             }
           },
           "type": "object",
@@ -28290,7 +28719,20 @@
                   "type": "null"
                 }
               ],
-              "title": "Paused By"
+              "title": "Paused By",
+              "description": "the member who paused it; null when the hub did, or while it runs"
+            },
+            "pause_reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pause Reason",
+              "description": "why the hub paused it, its circuit breaker; null when a member did, or while it runs"
             }
           },
           "type": "object",

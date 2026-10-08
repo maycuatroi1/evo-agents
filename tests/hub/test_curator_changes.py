@@ -564,6 +564,8 @@ def test_judge_runs_codex_when_the_projects_policy_clears_it(world):
 
 
 def test_judge_a_run_that_ends_without_a_verdict_queues_another_then_leaves_the_change_open(world):
+    # its judge runs fail, and two failures in a row would trip the circuit breaker (tests/hub/test_curator_ledger.py)
+    written(world.client, world.headers["owner"], curator_charter(circuit_breaker={"max_failed_in_a_row": 10}))
     accepted(world)
     builder(world)
     moved_on(world)

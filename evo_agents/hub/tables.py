@@ -1,4 +1,4 @@
-"""The hub's 44 tables as SQLAlchemy Core metadata: what the queries are written on, and what Alembic autogenerates
+"""The hub's 45 tables as SQLAlchemy Core metadata: what the queries are written on, and what Alembic autogenerates
 the next migration from (``evo_agents/hub/migrations/env.py``).
 
 The migrations make the schema; this module describes it, and ``tests/hub/test_schema_metadata.py`` keeps the two
@@ -983,6 +983,7 @@ schedules = Table(
     _stamp("updated_at"),
     _when("paused_at"),
     Column("paused_by", BigInteger),
+    Column("pause_reason", Text),  # why the hub paused it, its circuit breaker; NULL when a member did (0018)
     ForeignKeyConstraint(["owner_id"], ["users.id"], ondelete="RESTRICT", name="schedules_owner_id_fkey"),
     ForeignKeyConstraint(["paused_by"], ["users.id"], ondelete="RESTRICT", name="schedules_paused_by_fkey"),
     ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name="schedules_project_id_fkey"),
@@ -1100,8 +1101,10 @@ proposals = Table(
     _when("inbox_at"),
     Column("label", JSONB, nullable=False),
     _stamp("created_at"),
+    Column("revert_of", BigInteger),  # the proposal whose merged change the hub proposes to revert (0018)
     ForeignKeyConstraint(["answered_by"], ["users.id"], ondelete="RESTRICT", name="proposals_answered_by_fkey"),
     ForeignKeyConstraint(["duplicate_of"], ["proposals.id"], ondelete="RESTRICT", name="proposals_duplicate_of_fkey"),
+    ForeignKeyConstraint(["revert_of"], ["proposals.id"], ondelete="SET NULL", name="proposals_revert_of_fkey"),
     ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name="proposals_project_id_fkey"),
     ForeignKeyConstraint(["run_id"], ["runs.id"], ondelete="CASCADE", name="proposals_run_id_fkey"),
     PrimaryKeyConstraint("id", name="proposals_pkey"),
@@ -1224,4 +1227,48 @@ curator_repo_checks = Table(
         ["project_id"], ["projects.id"], ondelete="CASCADE", name="curator_repo_checks_project_id_fkey"
     ),
     PrimaryKeyConstraint("project_id", "repo", name="curator_repo_checks_pkey"),
+)
+
+# The Curator's ledger: what happened to each proposal, line by line, never changed or deleted; and the outcome of each
+# merged change (0018)
+
+curator_ledger = Table(
+    "curator_ledger",
+    metadata,
+    _id(),
+    Column("project_id", BigInteger, nullable=False),
+    Column("proposal_id", BigInteger, nullable=False),
+    Column("change_id", BigInteger),
+    Column("action", Text, nullable=False),
+    Column("actor", Text, nullable=False),
+    Column("actor_id", BigInteger),
+    Column("run_id", BigInteger),
+    Column("what", Text, nullable=False),
+    Column("commit_sha", Text),
+    Column("before_sha", Text),
+    Column("after_sha", Text),
+    Column("figures", JSONB),
+    Column("verdict", JSONB),
+    Column("pr_url", Text),
+    Column("pr_number", Integer),
+    _when("merged_at"),
+    Column("outcome", Text),
+    Column("details", JSONB),
+    _stamp("created_at"),
+    ForeignKeyConstraint(["actor_id"], ["users.id"], ondelete="RESTRICT", name="curator_ledger_actor_id_fkey"),
+    ForeignKeyConstraint(
+        ["change_id"], ["curator_changes.id"], ondelete="CASCADE", name="curator_ledger_change_id_fkey"
+    ),
+    ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name="curator_ledger_project_id_fkey"),
+    ForeignKeyConstraint(["proposal_id"], ["proposals.id"], ondelete="CASCADE", name="curator_ledger_proposal_id_fkey"),
+    ForeignKeyConstraint(["run_id"], ["runs.id"], ondelete="RESTRICT", name="curator_ledger_run_id_fkey"),
+    PrimaryKeyConstraint("id", name="curator_ledger_pkey"),
+    Index("curator_ledger_proposal_idx", "proposal_id", "id"),
+)
+Index("curator_ledger_project_idx", curator_ledger.c.project_id, curator_ledger.c.created_at)
+Index(  # a merged change has one outcome
+    "curator_ledger_outcome_key",
+    curator_ledger.c.change_id,
+    unique=True,
+    postgresql_where=curator_ledger.c.action == "outcome",
 )

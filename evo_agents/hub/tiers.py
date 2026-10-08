@@ -49,6 +49,7 @@ CHANGE_KINDS: dict[str, tuple[int, str]] = {
     "skill": (1, "a skill of the project, or a learned skill reviewed with evidence of its use"),
     "cli": (1, "a new command for a chain of commands people type again and again"),
     "release_prep": (1, "preparing a release: changelog, version, the release pull request"),
+    "revert": (1, "a git revert of a change the Curator merged whose figures got worse after it; the hub proposes it"),
     "feature": (2, "a new feature"),
     "api_change": (2, "a change of an API, a command line or a JSON key"),
     "schema_change": (2, "a change of a database schema or a migration"),

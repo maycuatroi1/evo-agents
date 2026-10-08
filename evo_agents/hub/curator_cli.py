@@ -60,6 +60,7 @@ CHARTER_BODY_KEYS = (
     "auto_merge",
     "protected_paths",
     "circuit_breaker",
+    "outcome_days",
     "review",
     "reviewer",
     "builder",
@@ -96,6 +97,7 @@ PROPOSAL_SUMMARY_KEYS = (
     "deferred_until",
     "inbox_at",
     "created_at",
+    "revert_of",
 )
 PROPOSAL_KEYS = PROPOSAL_SUMMARY_KEYS + (
     "summary",
@@ -195,6 +197,7 @@ def _print_charter(charter: dict) -> None:
         ("auto merge", ", ".join(f"tier {tier}" for tier in charter["auto_merge"]) or "none"),
         ("protected", ", ".join(charter["protected_paths"]) or "none"),
         ("breaker", f"{charter['circuit_breaker']['max_failed_in_a_row']} failed in a row"),
+        ("outcome", f"figures counted again {charter.get('outcome_days', 7)} days after a merge"),
         ("review", _review(charter.get("review") or {})),
         ("reviewer", _role(charter["reviewer"])),
         ("builder", _role(charter["builder"])),
@@ -267,12 +270,11 @@ def _print_status(status: dict) -> None:
     state = "paused" if status["paused"] else "on"
     print(f"Night shift of {status['project']}: {state}, charter revision {charter['revision']}")
     for schedule in status["schedules"]:
-        paused = (
-            f", paused by {schedule['paused_by']} at {_when(schedule['paused_at'])} UTC"
-            if schedule["paused_at"]
-            else ""
-        )
+        by = schedule["paused_by"] or "the hub"
+        paused = f", paused by {by} at {_when(schedule['paused_at'])} UTC" if schedule["paused_at"] else ""
         print(f"  {schedule['kind']}: worker {schedule['worker']}, runs dispatched as {schedule['owner']}{paused}")
+        if schedule.get("pause_reason"):
+            print(f"    {schedule['pause_reason']}")
     night = status["night"]
     if night is not None:
         where = "inside" if night["in_window"] else "outside"
@@ -375,7 +377,7 @@ def _print_proposal(proposal: dict) -> None:
     lines = [
         ("tier", str(proposal["tier"])),
         ("state", proposal["state"] + (f" (repeats #{proposal['duplicate_of']})" if proposal["duplicate_of"] else "")),
-        ("kind", proposal["kind"]),
+        ("kind", proposal["kind"] + (f" of #{proposal['revert_of']}" if proposal.get("revert_of") else "")),
         ("lens", proposal["lens"]),
         ("run", f"#{proposal['run_id']}, {_when(proposal['created_at'])} UTC"),
         ("paths", ", ".join(f"{p['repo']}:{p['path']}" for p in proposal["paths"]) or "none"),

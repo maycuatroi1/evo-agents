@@ -36,7 +36,10 @@ the proposal is open or deferred (409 otherwise); it reads the proposal's notifi
 curator.proposal. Accepting a proposal of tier 0 or 1 also makes its draft the Curator's plan, which the night shift
 builds on a branch of its own (``evo_agents.hub.server.changes``); a draft that cannot become one leaves a change open
 with the reason, and nothing of it runs. A deferred proposal opens again once its time has passed (the job
-curator.collect).
+curator.collect). Recording a proposal and answering it each add a line to its ledger
+(``evo_agents.hub.server.ledger``), the first with the figures that set it off. A proposal of kind ``revert`` with
+``revert_of`` is the hub's own, made when the figures of a merged change got worse
+(``evo_agents.hub.server.outcomes``).
 """
 
 from __future__ import annotations
@@ -59,6 +62,7 @@ from evo_agents.hub import judge, review, runs, tables, tiers
 from evo_agents.hub.access import has_role
 from evo_agents.hub.plans import PlanProblem, check_body, check_json
 from evo_agents.hub.server import audit
+from evo_agents.hub.server import ledger as ledger_lines
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
@@ -210,8 +214,13 @@ class ProposalSummary(BaseModel):
     answered_by: str | None
     answered_at: datetime | None
     deferred_until: datetime | None
-    inbox_at: datetime | None = Field(description="when it became an Inbox item of the owner; tier 2 only")
+    inbox_at: datetime | None = Field(
+        description="when it became an Inbox item of the owner; tier 2 only, and a revert the hub proposes"
+    )
     created_at: datetime
+    revert_of: int | None = Field(
+        None, description="the proposal whose merged change it reverts: the hub proposed it once its figures got worse"
+    )
 
 
 class Proposal(ProposalSummary):
@@ -573,6 +582,7 @@ def _proposals():
         p.c.draft.label("plan"),
         p.c.note,
         p.c.label,
+        p.c.revert_of,
     ).select_from(p.outerjoin(u, u.c.id == p.c.answered_by))
 
 
@@ -636,6 +646,7 @@ async def record_proposal(request: Request, run_id: RunId, body: ProposalIn, use
             "label": label,
         }
         proposal_id = (await conn.execute(insert(p).values(**values).returning(p.c.id))).scalar_one()
+        await ledger_lines.proposal_recorded(conn, run.project_id, proposal_id)
         what = f"dropped as a repeat of rejected proposal #{rejected.id}" if dropped else f"tier {tier.tier}"
         event = {"text": f"proposal #{proposal_id} ({body.kind}, {what}): {body.title}", "proposal": proposal_id}
         await write_event(conn, run_id, event)
@@ -888,6 +899,17 @@ async def answer_proposal_as(
         "deferred_until": func.now() + timedelta(days=days) if body.action == "defer" else None,
     }
     await conn.execute(update(p).values(**values).where(p.c.id == proposal_id))
+    await ledger_lines.proposal_answered(
+        conn,
+        project_id=access.project_id,
+        proposal_id=proposal_id,
+        user_id=user.user_id,
+        login=user.login,
+        action=body.action,
+        note=body.note,
+        days=days if body.action == "defer" else None,
+        via=via,
+    )
     if body.action == "accept" and row.tier in judge.PLANNED_TIERS:
         from evo_agents.hub.server.changes import plan_from_proposal  # it reads proposals through this module
 

@@ -336,7 +336,7 @@ def test_decisions_and_notices_the_plan_names():
     assert set(runs.DECISION_CATEGORY_TEXT) == set(runs.DECISION_CATEGORIES)
     assert all(text and "\n" not in text for text in runs.DECISION_CATEGORY_TEXT.values())
     assert runs.WORKER_NOTICE_KINDS == ("push_default_branch", "merge_default_branch", "plan_finished", "run_failed")
-    assert runs.NOTICE_KINDS == (*runs.WORKER_NOTICE_KINDS, "curator_brief")
+    assert runs.NOTICE_KINDS == (*runs.WORKER_NOTICE_KINDS, "curator_brief", "curator_paused")
     assert runs.NOTIFICATION_KINDS == ("decision", "notice", "proposal")
     assert runs.DECISION_STATES == ("open", "answered", "expired", "cancelled")
     assert runs.DELIVERY_STATES == ("pending", "delivered", "failed")

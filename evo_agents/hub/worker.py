@@ -29,7 +29,8 @@ Jobs (names in ``evo_agents.hub.jobs``):
   values of the GitHub tokens leased to runs that are past their end.
 - ``hub.fire_schedules``, every minute: each schedule of a project's charter that is not paused queues its next run
   inside its window and within its night's budget, the night's review run first, and cancels its queued runs outside
-  it (``evo_agents.hub.server.curator``).
+  it; its circuit breaker pauses a project's night shift once the charter's max_failed_in_a_row jobs of a night in a
+  row failed or were reverted (``evo_agents.hub.server.curator``, ``evo_agents.hub.server.outcomes``).
 - ``curator.collect``, every minute: in each charter's window, the night's figures of the project, counted once
   without any model, and its review run; and the deferred proposals whose time has passed open again
   (``evo_agents.hub.server.collect``).
@@ -38,8 +39,11 @@ Jobs (names in ``evo_agents.hub.jobs``):
 - ``curator.brief``, every minute: at each charter's brief_at, in its time zone, the morning brief of the night to the
   owner of the project's schedule, once a day (``evo_agents.hub.server.brief``).
 - ``curator.changes``, every minute: the Curator's changes move on: their pull requests opened, the Judge's check runs
-  written, the tier 0 ones merged when everything allows it, the others left open for their owner; and the rulesets
-  checked again once a day (``evo_agents.hub.server.changes``).
+  written, the tier 0 ones merged when everything allows it, the others left open for their owner and read again
+  hourly for a merge or a close by hand; and the rulesets checked again once a day (``evo_agents.hub.server.changes``).
+- ``curator.outcomes``, every 10 minutes: the figures of each change of the Curator merged the charter's outcome_days
+  ago counted again, its outcome (keep, revert or unclear) in its proposal's ledger, and a revert proposed when they
+  got worse (``evo_agents.hub.server.outcomes``).
 
 procrastinate allows one App per process; ``queue`` is that App here. ``run`` gives it a connector of its own for
 the time it runs, and the jobs reach the hub's tables, the blob store, the sealing key and the GitHub App through
@@ -220,6 +224,14 @@ async def curator_changes(context: JobContext, timestamp: int | None = None) -> 
 
     found = hub(context)
     return await advance(found.engine, found.github_app, getattr(found, "curator_app", None))
+
+
+@queue.periodic(cron="*/10 * * * *")
+@queue.task(name=jobs.CURATOR_OUTCOMES, pass_context=True, queueing_lock=jobs.CURATOR_OUTCOMES)
+async def curator_outcomes(context: JobContext, timestamp: int | None = None) -> dict:
+    from evo_agents.hub.server.outcomes import measure_outcomes
+
+    return await measure_outcomes(hub(context).engine)
 
 
 @queue.periodic(cron="13 4 * * *")
