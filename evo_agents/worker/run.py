@@ -34,9 +34,9 @@ last outcome reported it, or as the claim said for a run that resumes a parked o
 the budget stopped fails the run, and the log's last note names the cap (``cap``: cost, turns or time).
 
 The leases stay in the daemon's memory (``credentials.RunCredentials``): the run's git gets them through
-``git_env``, its agent through ``agent_env``, each event goes through ``credentials.scrub`` before the spool, and
-they are given back once the run ends here, whether it ended, was parked, or the daemon stops. A push of the daemon
-that fails to authenticate on a leased origin takes the leases again once and pushes once more
+``credentials.ticketed``, its agent through ``agent_env``, each event goes through ``credentials.scrub`` before the
+spool, and they are given back once the run ends here, whether it ended, was parked, or the daemon stops. A push of the
+daemon that fails to authenticate on a leased origin takes the leases again once and pushes once more
 (``RunCredentials.with_renewal``). What the runtime leaves out of the agent's environment because of the leases (Claude
 Code drops the daemon's ANTHROPIC_API_KEY next to a leased CLAUDE_CODE_OAUTH_TOKEN) is noted once a run
 (``_note_environment``).
@@ -52,20 +52,32 @@ proposals with ``evo-agents worker finding|propose``, and the run ends done with
 committed or pushed (``gitops.check_push`` refuses a review run), and the run's GitHub token reads only.
 
 A judge run (kind ``judge``, ``JudgeRun``) is the Curator's Judge of one change: its worktree is detached at the commit
-it judges (the pull request's head, else the tip of the change's branch on origin); the worker reads the diff from the
-merge base with origin's default branch, finds the signs of score hacking in it (``evo_agents.hub.judge.hack_signs``),
-reads the plan's verify commands and the project's hidden checks from the hub (GET /v1/worker/runs/{id}/judge, held in
-memory, never written to a file, an event or a log line), runs each of them in the worktree, and starts the Judge's
-agent, unless a sign already fails the change, on the hub's prompt and what it ran: exit codes alone for the hidden
-checks. The agent writes ``judge.VERDICT_FILE``; the worker posts the verdict (POST /v1/worker/runs/{id}/verdict) and
-ends the run done, committing and pushing nothing.
+it judges (the pull request's head, else the tip of the change's branch on origin), made and read with no hook of the
+checkout; the worker reads the diff from the merge base with origin's default branch before any code of the change
+runs, finds the signs of score hacking in it (``evo_agents.hub.judge.hack_signs``; a diff longer than the worker reads
+is a sign too), reads the plan's verify commands and the project's hidden checks from the hub (GET
+/v1/worker/runs/{id}/judge with the run's own key, which the claim handed the daemon and only its memory holds; the
+checks are held in memory, never written to a file, an event or a log line), and runs the hidden checks, then the
+verify commands, in the worktree as code it does not trust (``evo_agents.worker.untrusted``): each one on the standard
+input of ``/bin/sh -s``, in a session of its own, with an environment that holds neither the worker's home nor the
+run's id nor a credential, the worktree put back at the commit judged before it, and every process it left killed
+after it. It then starts the Judge's agent, unless a sign already fails the change, on the worktree put back again,
+the hub's prompt and what it ran (exit codes alone for the hidden checks). The agent's verdict is the JSON object that
+ends its last message (``judge.verdict_from_message``), which reaches the worker from the agent's own output: no file
+the code under test could write. The worker posts the verdict with the run's key and the paths the diff touches (POST
+/v1/worker/runs/{id}/verdict) and ends the run done, committing and pushing nothing.
 
 A run of the Curator (``spec["curator"]``: a review run, a judge run, or a Builder, the plan run of a plan the Curator
 made) is watched: after each heartbeat the daemon compares each of its worktrees with the charter's protected paths, and
 its agent time and cost with its caps (``Run.watch``); a protected file changed, or a cap passed, stops the run, which
-fails naming why, and the hub tells its owner (notice run_failed). A Builder pushes its branch ``curator/...`` alone
-and never a default branch (``gitops.check_push``, kind ``curator``), only with a leased credential, and on GitLab with
-the push options that open a merge request into the default branch.
+fails naming why, and the hub tells its owner (notice run_failed). Its agent never holds a push credential
+(``credentials.RunCredentials.guarded``): only the daemon's own git gets the run's leases, through a ticket of one
+command. A Builder's branch ``curator/...`` is pushed by the daemon alone, never a default branch
+(``gitops.check_push``, kind ``curator``), only with a leased credential, and on GitLab with the push options that open
+a merge request into the default branch; when its agent reports a step done, ``evo-agents worker step`` asks the daemon
+to push (``_push_for_agent``). On Claude Code a run of the Curator uses the Claude subscription login alone (plan
+decision 14): ANTHROPIC_API_KEY is left out of its agent's environment, and a machine that has no subscription login
+for it fails the run before the agent starts, saying so (``Adapter.login_refusal``).
 
 A plan run (kind ``plan``, ``PlanRun``) does every step of a plan not done yet, in one session:
 
@@ -109,7 +121,7 @@ import yaml
 
 from evo_agents.hub import curator, judge, runs, tiers
 from evo_agents.hub.credentials import normalize_origin
-from evo_agents.worker import credentials, figures, gitops, interactive, orphans
+from evo_agents.worker import credentials, figures, gitops, interactive, orphans, untrusted
 from evo_agents.worker.adapter import AgentEvent, AgentFinished, Outcome, RunContext
 from evo_agents.worker.checkouts import default_branch_of
 from evo_agents.worker.credentials import RunCredentials
@@ -121,6 +133,7 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("evo_agents.worker")
 
+API_KEY = "ANTHROPIC_API_KEY"  # left out of the agent of a run of the Curator on Claude Code (plan decision 14)
 RUN_BRANCH = "evo-run/{id}"
 RUN_REPO_BRANCH = "evo-run/{id}/{folder}"  # a plan run's worktree of a repo whose branch is checked out elsewhere
 RESULT_MAX_BYTES = 1024 * 1024
@@ -374,6 +387,8 @@ class Run:
         self.budget = budget
         found = spec.get("curator")
         self.curator: dict | None = found if isinstance(found, dict) else None  # a run of the Curator: its role
+        # A judge run's own key: in this object alone, out of the spec its adapter and records see.
+        self._judge_key: str | None = self.curator.pop("judge_key", None) if self.curator is not None else None
         self.watchdog_reason: str | None = None  # why the watchdog stopped the run
         self.cost_seen = 0.0  # the session's cost so far, as the agent's usage events said it
         self.spent_usd = budget.get("spent_usd") or 0.0  # the cost of the agent's session so far
@@ -389,7 +404,7 @@ class Run:
         self.log_bytes = 0
         self.spool = Spool(home.spool_dir, self.id, daemon.budget)
         self.sender = Sender(daemon, self.spool)
-        self.credentials = RunCredentials(self.id, home, daemon.env, self.note)
+        self.credentials = RunCredentials(self.id, home, daemon.env, self.note, guarded=self.curator is not None)
         self.record = {
             "id": self.id,
             "kind": spec.get("kind") or "step",
@@ -812,7 +827,8 @@ class Run:
                 raise RunFailed(f"the checkout at {checkout} has no remote named origin to fetch from and push to")
             self.note(f"Fetching origin in {checkout}.")
             try:
-                await gitops.fetch(checkout, env=self.git_env())
+                with self.credentials.ticketed(self.daemon.env) as env:
+                    await gitops.fetch(checkout, env=env)
             except gitops.GitError as exc:
                 raise RunFailed(f"git fetch in {checkout} failed: {exc}") from None
             if not await gitops.check_branch_name(checkout, branch):
@@ -874,10 +890,6 @@ class Run:
                     origins[name] = await gitops.remote_urls(checkout)
         await self.credentials.take(self.daemon.hub, origins, stop=self.daemon.hard_stop)
 
-    def git_env(self) -> dict[str, str]:
-        """The environment of the run's git: the daemon's, with the run's credential helper for its leased origins."""
-        return {**self.daemon.env, **self.credentials.git_vars}
-
     # The agent
 
     def agent_env(self) -> dict[str, str]:
@@ -893,7 +905,33 @@ class Run:
             }
         )
         env.update(self.credentials.agent_vars)  # env leases, and git's configuration for the leased origins
+        if self.subscription_only:  # plan decision 14: the Claude subscription login alone
+            env.pop(API_KEY, None)
         return env
+
+    @property
+    def subscription_only(self) -> bool:
+        """Whether this run's agent is a run of the Curator on Claude Code, which uses the Claude subscription login
+        alone, never ANTHROPIC_API_KEY (plan decision 14)."""
+        return self.curator is not None and self.runtime == "claude-code"
+
+    async def _check_login(self, cls, context: RunContext) -> None:
+        """Fail the run before its agent starts when the runtime may not start it with this machine's login: a run of
+        the Curator on Claude Code needs a Claude subscription login (``Adapter.login_refusal``)."""
+        if not self.subscription_only:
+            return
+        has_key = API_KEY in self.daemon.env or API_KEY in self.credentials.agent_vars
+        if has_key:
+            note = (
+                f"{API_KEY} is left out of the agent's environment: a run of the Curator on Claude Code uses the "
+                "Claude subscription login alone (plan decision 14)."
+            )
+            if note not in self._environment_noted:
+                self._environment_noted.add(note)
+                self.note(note)
+        why = await asyncio.to_thread(cls.login_refusal, context)
+        if why:
+            raise RunFailed(why + (f"; this machine has {API_KEY} alone, which it does not use" if has_key else ""))
 
     async def _run_agent(self, cls) -> None:
         """Run the agent until its last turn is over (``_turns``), on the run's prompt."""
@@ -965,6 +1003,7 @@ class Run:
     async def _headless(self, cls, prompt: str, session_id: str | None) -> Outcome:
         """The agent headless, on a new session or going on with ``session_id``, until its events end."""
         context = self._context(prompt, session_id)
+        await self._check_login(cls, context)
         adapter = cls(context)
         self.adapter = adapter
         self.phase = "headless"
@@ -1008,6 +1047,7 @@ class Run:
         tmux = self.daemon.tmux
         name = interactive.session_name(self.id)
         context = self._context(prompt, session_id)
+        await self._check_login(cls, context)
         tui = cls.tui(context, session_id)
         try:
             for line in await tui.prepare():
@@ -1381,7 +1421,8 @@ class Run:
         self._check()
 
         async def push() -> gitops.Pushed:
-            return await gitops.push(wt, self.branch, protected=self.protected, kind="step", env=self.git_env())
+            with self.credentials.ticketed(self.daemon.env) as env:
+                return await gitops.push(wt, self.branch, protected=self.protected, kind="step", env=env)
 
         try:  # a default branch was refused before the agent started; gitops refuses it again before every push
             pushed = await self.credentials.with_renewal(self.repo, push)
@@ -1470,6 +1511,9 @@ class PlanRun(Run):
         self.resume_of = int(spec["resume_of_run_id"]) if spec.get("resume_of_run_id") else None
         self.session_id: str | None = spec.get("session_id") or None
         self.targets: dict[str, str] = {}  # a Builder's repo -> the default branch its merge request goes into
+        self._push_lock = asyncio.Lock()  # one push of the run at a time, the daemon's own or one its agent asked for
+        if self.builder:  # its agent pushes nothing itself: `evo-agents worker step` asks the daemon
+            self.credentials.pusher = self._push_for_agent
         self.record.update({"dir": None, "repos": [], "resume_of_run_id": self.resume_of})
         daemon.home.save_run(self.record)
 
@@ -1601,7 +1645,8 @@ class PlanRun(Run):
                 raise RunFailed(f"the checkout at {checkout} has no remote named origin to fetch from and push to")
             self.note(f"Fetching origin in {checkout}.")
             try:
-                await gitops.fetch(checkout, env=self.git_env())
+                with self.credentials.ticketed(self.daemon.env) as env:
+                    await gitops.fetch(checkout, env=env)
             except gitops.GitError as exc:
                 raise RunFailed(f"git fetch in {checkout} failed: {exc}") from None
             if not await gitops.check_branch_name(checkout, branch):
@@ -1903,18 +1948,20 @@ class PlanRun(Run):
                 )
 
             async def push(path=path, workspace=workspace, name=name, options=options) -> gitops.Pushed:
-                return await gitops.push(
-                    path,
-                    workspace.branch,
-                    protected=workspace.protected,
-                    kind="curator" if self.builder else "plan",
-                    plan_branch=named.get(name),
-                    env=self.git_env(),
-                    options=options,
-                )
+                with self.credentials.ticketed(self.daemon.env) as env:
+                    return await gitops.push(
+                        path,
+                        workspace.branch,
+                        protected=workspace.protected,
+                        kind="curator" if self.builder else "plan",
+                        plan_branch=named.get(name),
+                        env=env,
+                        options=options,
+                    )
 
             try:
-                pushed = await self.credentials.with_renewal(name, push)
+                async with self._push_lock:
+                    pushed = await self.credentials.with_renewal(name, push)
             except gitops.PushRefused as exc:
                 raise RunFailed(f"{name}: {exc}") from None
             except gitops.GitError as exc:
@@ -1934,6 +1981,62 @@ class PlanRun(Run):
             else:
                 self.note(f"{workspace.branch} of {name} on origin is at {pushed.head[:12]} already: nothing to push.")
         return total
+
+    async def _push_for_agent(self, name: str, title: str | None) -> dict:
+        """Push the run's branch of repo ``name`` for the Builder's agent, which reported a step done and holds no
+        credential: what is committed in its worktree, to its branch curator/... alone, with the run's lease, and on
+        GitLab with the push options that open the merge request. The answer the agent's command prints, or why not."""
+        workspace = self.workspaces.get(name)
+        if not self.builder or workspace is None:
+            return {"error": f"run {self.id} pushes no repo {name} for its agent"}
+        try:
+            head_branch = await gitops.current_branch(workspace.worktree)
+            if head_branch != workspace.local_branch:
+                return {
+                    "error": f"{workspace.worktree} is on {head_branch or 'a detached HEAD'}, not "
+                    f"{workspace.local_branch}: the daemon pushes the run's branch alone"
+                }
+            if self._forge_origin(name) and not self.credentials.covers(name):
+                return {
+                    "error": f"{name}: a run of the Curator pushes only with the credential the hub leased it, and no "
+                    "lease covers its origin"
+                }
+            options = (
+                judge.gitlab_push_options(self.targets.get(name) or "main", title)
+                if self.curator.get("forge") == "gitlab"
+                else []
+            )
+
+            async def push() -> gitops.Pushed:
+                with self.credentials.ticketed(self.daemon.env) as env:
+                    return await gitops.push(
+                        workspace.worktree,
+                        workspace.branch,
+                        protected=workspace.protected,
+                        kind="curator",
+                        plan_branch=None,
+                        env=env,
+                        options=options,
+                    )
+
+            async with self._push_lock:
+                pushed = await self.credentials.with_renewal(name, push)
+        except gitops.GitError as exc:  # PushRefused among them
+            return {"error": f"git push of {name} to {workspace.branch} failed: {exc}"}
+        if pushed.changed:
+            self.note(
+                f"Pushed {pushed.head[:12]} of {name} to {workspace.branch} on origin for the agent "
+                f"({len(pushed.commits)} commit(s)).",
+                commit_sha=pushed.head,
+                repo=name,
+            )
+        return {
+            "branch": pushed.branch,
+            "head": pushed.head,
+            "default": pushed.default,
+            "changed": pushed.changed,
+            "commits": list(pushed.commits),
+        }
 
     def _forge_origin(self, name: str) -> bool:
         """Whether the origin of ``name`` is on a forge (https or SSH), which takes a credential; a path on this
@@ -2049,7 +2152,8 @@ class ReviewRun(PlanRun):
                 raise RunFailed(f"the checkout at {checkout} has no remote named origin to fetch from")
             self.note(f"Fetching origin in {checkout}.")
             try:
-                await gitops.fetch(checkout, env=self.git_env())
+                with self.credentials.ticketed(self.daemon.env) as env:
+                    await gitops.fetch(checkout, env=env)
             except gitops.GitError as exc:
                 raise RunFailed(f"git fetch in {checkout} failed: {exc}") from None
             remote_head = await gitops.remote_default_branch(checkout)
@@ -2119,8 +2223,9 @@ class ReviewRun(PlanRun):
 
 class JudgeRun(ReviewRun):
     """A judge run (kind ``judge``, see the module's docstring): the change at the commit it judges, its diff read for
-    signs of score hacking, the plan's verify commands and the project's hidden checks run in its worktree, the Judge's
-    agent on what they found, and the verdict posted; nothing committed or pushed."""
+    signs of score hacking, the project's hidden checks and the plan's verify commands run in its worktree as code the
+    worker does not trust, the Judge's agent on what they found, and the verdict, which ends the agent's last message,
+    posted; nothing committed or pushed."""
 
     def __init__(self, daemon: Daemon, spec: dict):
         super().__init__(daemon, spec)
@@ -2128,6 +2233,7 @@ class JudgeRun(ReviewRun):
         self.title = spec.get("title") or f"judge of change #{change.get('change_id')}"
         self.head: str | None = None
         self.merge_base: str | None = None
+        self._git_dir: str | None = None  # the worktree's git directory, as it was made
 
     async def _steps(self) -> None:
         spec, change = self.spec, self.curator or {}
@@ -2149,25 +2255,36 @@ class JudgeRun(ReviewRun):
         await self._prepare_judge(name, change)
         self._check()
         workspace = self.workspaces[name]
-        diff = await gitops.diff_text(workspace.worktree, self.merge_base, self.head)
+        # The diff is read before any code of the change runs, with no textconv of the repository.
+        diff, cut = await gitops.diff_text(
+            workspace.worktree, self.merge_base, self.head, env=gitops.without_hooks(self.daemon.env)
+        )
+        files = judge.parse_diff(diff)
         inputs = await self._inputs()
         hidden = [item for item in inputs.get("hidden_checks") or [] if isinstance(item, str)]
         verify_commands = [item for item in inputs.get("verify") or [] if isinstance(item, str)]
         protected = [item for item in inputs.get("protected_paths") or [] if isinstance(item, str)]
-        signs = judge.hack_signs(
-            judge.parse_diff(diff), repo=name, protected=protected, verify_commands=verify_commands
-        )
+        signs = judge.hack_signs(files, repo=name, protected=protected, verify_commands=verify_commands)
+        if cut:  # first, so the cap on signs never drops it
+            cut_sign = {
+                "kind": "diff_unreadable",
+                "path": "(the diff)",
+                "line": None,
+                "text": f"the diff is longer than the {gitops.DIFF_TEXT_LIMIT} characters the worker reads",
+            }
+            signs = [cut_sign, *signs][: judge.MAX_SIGNS]
         if signs:
             kinds = ", ".join(sorted({item["kind"] for item in signs}))
             self.note(
                 f"The diff shows signs of score hacking ({kinds}): the change fails, and its Judge does not start."
             )
-        verify = await self._run_checks(workspace.worktree, verify_commands)
         results = await self._run_hidden(workspace.worktree, hidden)
         hidden.clear()  # the commands go: only their exit codes stay
         inputs.clear()
+        verify = await self._run_checks(workspace.worktree, verify_commands)
         verdict, reasons = None, None
         if not signs:
+            await self._restore(workspace.worktree)
             prompt = runs.clip(self._prompt() + judge.results_text(verify, results, signs), runs.MAX_PROMPT_BYTES)
             await self._plan_turns(cls, prompt, None)
             verdict, reasons = self._read_verdict()
@@ -2179,9 +2296,10 @@ class JudgeRun(ReviewRun):
             "verify": verify,
             "hidden": results,
             "signs": signs,
+            "paths": judge.changed_paths(files)[: judge.MAX_PATHS],
         }
         try:
-            answer = await self.daemon.hub.verdict(self.id, body)
+            answer = await self.daemon.hub.verdict(self.id, body, self._judge_key)
         except HubProblem as exc:
             raise RunFailed(f"the hub did not take the Judge's verdict: {exc}") from None
         passed = answer.get("passed") if isinstance(answer, dict) else None
@@ -2194,16 +2312,16 @@ class JudgeRun(ReviewRun):
         await self._end("done", summary=_cut(self.summary, MAX_SUMMARY_CHARS), usage=usage)
 
     async def _inputs(self) -> dict:
-        """What the hub gives the Judge to read; held in memory alone."""
+        """What the hub gives the Judge to read, asked with the run's own key; held in memory alone."""
         try:
-            found = await self.daemon.hub.judge_inputs(self.id)
+            found = await self.daemon.hub.judge_inputs(self.id, self._judge_key)
         except HubProblem as exc:
             raise RunFailed(f"the hub did not give the Judge its inputs: {exc}") from None
         return found if isinstance(found, dict) else {}
 
     async def _prepare_judge(self, name: str, change: dict) -> None:
-        """The run's directory with a worktree of ``name`` detached at the commit to judge, and the merge base with
-        origin's default branch, which the diff starts at."""
+        """The run's directory with a worktree of ``name`` detached at the commit to judge, made with no hook of the
+        checkout, and the merge base with origin's default branch, which the diff starts at."""
         self.directory = self.daemon.home.worktree_path(self.project, self.id)
         if self.directory.exists():
             raise RunFailed(f"{self.directory} exists already; remove it and queue the judge run again")
@@ -2219,7 +2337,8 @@ class JudgeRun(ReviewRun):
                 raise RunFailed(f"the checkout at {checkout} has no remote named origin to fetch from")
             self.note(f"Fetching origin in {checkout}.")
             try:
-                await gitops.fetch(checkout, env=self.git_env())
+                with self.credentials.ticketed(self.daemon.env) as env:
+                    await gitops.fetch(checkout, env=env)
             except gitops.GitError as exc:
                 raise RunFailed(f"git fetch in {checkout} failed: {exc}") from None
             wanted = change.get("head_sha")
@@ -2243,9 +2362,12 @@ class JudgeRun(ReviewRun):
             if base is None:
                 raise RunFailed(f"{name}: no merge base of {head[:12]} with origin's {base_branch}")
             try:
-                await gitops.add_detached_worktree(checkout, path, head)
+                await gitops.add_detached_worktree(checkout, path, head, env=gitops.without_hooks(self.daemon.env))
             except gitops.GitError as exc:
                 raise RunFailed(f"cannot make the worktree {path}: {exc}") from None
+            self._git_dir = await gitops.git_dir(path)
+            if self._git_dir is None:
+                raise RunFailed(f"the worktree {path} has no git directory of its own")
         self.head, self.merge_base = head, base
         self.workspaces[name] = gitops.Workspace(
             repo=name,
@@ -2265,15 +2387,67 @@ class JudgeRun(ReviewRun):
             worktree=str(path),
         )
 
+    async def _restore(self, cwd: Path) -> None:
+        """Put the worktree back at the commit judged: what a command of the change wrote in it before goes."""
+        try:
+            await gitops.restore(
+                cwd, self.head, expected_git_dir=self._git_dir, env=gitops.without_hooks(self.daemon.env)
+            )
+        except gitops.GitError as exc:
+            raise RunFailed(f"the worktree {cwd} could not be put back at {self.head[:12]}: {exc}") from None
+
+    async def _untrusted(self, command: str, cwd: Path) -> tuple[int, str]:
+        """(exit code, the end of its output) of ``command``, code of the change the worker does not trust
+        (``evo_agents.worker.untrusted``): in the worktree put back at the commit judged, on the standard input of
+        ``/bin/sh -s``, in a session of its own, with an environment that leads to no credential, and every process
+        it left killed once it ends; Stopped when the run is asked to stop or runs out of time first."""
+        await self._restore(cwd)
+        marker = untrusted.new_marker()
+        env = untrusted.scrubbed_env(self.daemon.env, credentials.held_values())
+        proc = await untrusted.start(command, cwd=cwd, env=env, marker=marker)
+        tail = bytearray()
+
+        async def read() -> None:
+            while chunk := await proc.stdout.read(65536):
+                tail.extend(chunk)
+                del tail[:-OUTPUT_TAIL]
+
+        reader = asyncio.create_task(read())
+        waiter = asyncio.create_task(proc.wait())
+        stopper = asyncio.create_task(self._stop.wait())
+        try:
+            done, _ = await asyncio.wait(
+                {waiter, stopper},
+                timeout=max(0.0, self.deadline - self.loop.time()),
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+        finally:
+            stopper.cancel()
+            killed = await untrusted.kill_leftovers(proc.pid, marker)
+            if not waiter.done():
+                await waiter
+        if killed:
+            log.info("processes a judged command left were killed", extra={"run_id": self.id, "killed": killed})
+        if waiter not in done:
+            reader.cancel()
+            if self.stop_reason is None:
+                self.stop_reason = "timeout"
+            raise Stopped(self.stop_reason)
+        with contextlib.suppress(asyncio.TimeoutError):
+            await asyncio.wait_for(reader, 5)
+        reader.cancel()
+        return proc.returncode, tail.decode(errors="replace")
+
     async def _run_checks(self, cwd: Path, commands: list[str]) -> list[dict]:
-        """Run each verify command of the plan in the worktree, as the Builder's were run: each one's exit code."""
+        """Run each verify command of the plan in the worktree, as code the worker does not trust: each one's exit
+        code."""
         results = []
         if commands:
             self.note(f"Running the {len(commands)} verify command(s) of the plan.")
         for command in commands:
             self._check()
             started = self.loop.time()
-            code, output = await self._shell(command, self.deadline - started, cwd)
+            code, output = await self._untrusted(command, cwd)
             duration_ms = int((self.loop.time() - started) * 1000)
             results.append({"command": command, "exit_code": code, "duration_ms": duration_ms})
             self.event(
@@ -2289,29 +2463,24 @@ class JudgeRun(ReviewRun):
         return results
 
     async def _run_hidden(self, cwd: Path, checks: list[str]) -> list[dict]:
-        """Run each hidden check of the project in the worktree: each one's place and exit code alone. Neither the
-        command nor its output reaches an event, a log line or a file."""
+        """Run each hidden check of the project in the worktree, first, as code the worker does not trust: each one's
+        place and exit code alone. Neither the command nor its output reaches an event, a log line, a file or an
+        argument of a process."""
         results = []
         for index, command in enumerate(checks, start=1):
             self._check()
             started = self.loop.time()
-            code, _ = await self._shell(command, self.deadline - started, cwd)
+            code, _ = await self._untrusted(command, cwd)
             duration_ms = int((self.loop.time() - started) * 1000)
             results.append({"index": index, "exit_code": code, "duration_ms": duration_ms})
             self.note(f"hidden check {index} of {len(checks)} exited {code} after {duration_ms} ms")
         return results
 
     def _read_verdict(self) -> tuple[str | None, str | None]:
-        path = self.directory / judge.VERDICT_FILE
-        if path.is_symlink() or not path.is_file():
-            self.note(f"The Judge wrote no {judge.VERDICT_FILE}: it gave no verdict, which fails the change.")
-            return None, None
-        try:
-            if path.stat().st_size > RESULT_MAX_BYTES:
-                raise ValueError(f"it is over {RESULT_MAX_BYTES} bytes")
-            verdict, reasons = judge.read_verdict(path.read_text(encoding="utf-8"))
-        except (OSError, ValueError) as exc:
-            verdict, reasons = None, f"{judge.VERDICT_FILE} was not read ({exc})"
+        """The verdict that ends the Judge agent's last message, from its own output (``judge.verdict_from_message``);
+        a file in the run's directory, which the code under test can write, counts for nothing."""
+        message = self.outcome.summary if self.outcome is not None else None
+        verdict, reasons = judge.verdict_from_message(message)
         if verdict is None:
             self.note(f"{reasons}: no verdict, which fails the change.")
             return None, None

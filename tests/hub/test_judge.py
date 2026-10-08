@@ -379,7 +379,7 @@ def test_judge_reads_its_agents_verdict_file():
         pr_url="https://github.com/o/r/pull/3",
     )
     assert "the Builder's own words" not in prompt  # never what the Builder wrote
-    assert "git diff origin/main...aaaaaaaaaaaa" in prompt and judge.VERDICT_FILE in prompt
+    assert "git diff origin/main...aaaaaaaaaaaa" in prompt and judge.VERDICT_RULE in prompt
     results = judge.results_text(VERIFY, [{"index": 1, "exit_code": 0}], [])
     assert "hidden check 1 exited 0" in results
 
@@ -458,3 +458,208 @@ def test_merge_refusals_leave_the_pull_request_open(changes, why):
 
 def test_merge_waits_while_ci_runs():
     assert judge.merge_decision(facts(ci="pending", ci_reasons=("test is queued",))) == ("wait", ["test is queued"])
+
+
+# The gaps the security review of step 6 found in the detector (H2), each a sign now, file by file
+
+
+def test_hack_an_assertion_moved_to_another_file_is_removed_from_its_own():
+    moved = signs_of(
+        file_diff("tests/test_queue.py", " def test_claim():", "-    assert claim() == 1", "+    claim()"),
+        file_diff("scripts/never_run.py", "+    assert claim() == 1", mode="new file mode 100644"),
+    )
+    assert kinds(moved) == ["assert_removed"]  # never pooled across files
+    unguarded = file_diff(
+        "tests/test_queue.py", "+    if False:", "-    assert claim() == 1", "+        assert claim() == 1"
+    )
+    found = signs_of(unguarded)
+    assert kinds(found) == ["assert_removed"] and "a guard that never runs" in found[0]["text"]
+    assert kinds(signs_of(file_diff("web/e2e/run.spec.ts", "+  if (false) {"))) == ["assert_removed"]
+    assert signs_of(file_diff("tests/test_queue.py", "+if TYPE_CHECKING:", "+    from queue import Queue")) == []
+
+
+def test_hack_an_expected_value_changed_off_the_assertions_line_is_a_sign():
+    found = signs_of(
+        file_diff("tests/test_queue.py", "-    expected = 3", "+    expected = 4", "     assert claim() == expected")
+    )
+    assert kinds(found) == ["expected_changed"]
+    words = signs_of(file_diff("tests/test_brief.py", '-    want = "two runs"', '+    want = "no run"'))
+    assert kinds(words) == ["expected_changed"]
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "tests/__snapshots__/test_brief.ambr",
+        "web/src/__snapshots__/card.test.tsx.snap",
+        "tests/hub/golden/cli-contract.json",
+        "tests/data/expected.json",
+        "pkg/testdata/out.txt",
+    ],
+)
+def test_hack_a_golden_or_snapshot_file_changed_is_a_sign(path):
+    assert "golden_changed" in kinds(signs_of(file_diff(path, '-  "a": 1', '+  "a": 2')))
+
+
+def test_hack_a_new_snapshot_of_a_new_test_is_no_sign():
+    assert signs_of(file_diff("tests/__snapshots__/test_new.ambr", "+x", mode="new file mode 100644")) == []
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "+        self.skipTest('later')",
+        "+    raise unittest.SkipTest('later')",
+        "+from pytest import mark",
+        "+@mark.skip",
+        "+@pt.mark.xfail(strict=False)",
+        "+from pytest import skip as later",
+        "+    pt.skip('not today')",
+        "+__test__ = False",
+    ],
+)
+def test_hack_a_skip_aliased_or_imported_on_its_own_is_a_sign(line):
+    assert "skip_added" in kinds(signs_of(file_diff("tests/test_queue.py", line)))
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        '+    getattr(os, "_exit")(0)',
+        "+    __import__('os')._exit(0)",
+        "+    os.kill(os.getpid(), 9)",
+        "+    pytest.exit('done', returncode=0)",
+    ],
+)
+def test_hack_an_exit_through_another_door_is_a_sign(line):
+    assert kinds(signs_of(file_diff("tests/test_queue.py", line))) == ["exit_in_test"]
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "+    except AssertionError:",
+        "+    except (AssertionError, ValueError):",
+        "+    except:",
+        "+    except BaseException:",
+        "+    with contextlib.suppress(AssertionError):",
+        "+  } catch (e) {}",
+    ],
+)
+def test_hack_an_assertions_failure_caught_is_a_sign(line):
+    assert kinds(signs_of(file_diff("tests/test_queue.py", line))) == ["assert_caught"]
+
+
+@pytest.mark.parametrize(
+    "path, line",
+    [
+        ("pyproject.toml", '+norecursedirs = ["tests/slow"]'),
+        ("pyproject.toml", "+[[tool.mypy.overrides]]"),
+        ("pyproject.toml", "+ignore_errors = true"),
+        ("setup.cfg", "+[mypy-evo_agents.*]"),
+        ("web/tsconfig.json", '-    "strict": true,'),
+        ("web/tsconfig.app.json", '+    "noImplicitAny": false,'),
+        ("web/package.json", '+  "jest": {"testPathIgnorePatterns": ["e2e"]},'),
+    ],
+)
+def test_hack_configuration_of_tests_and_types_is_a_sign(path, line):
+    assert "lint_config_changed" in kinds(signs_of(file_diff(path, line)))
+
+
+@pytest.mark.parametrize(
+    "path, verify",
+    [
+        ("Makefile", "make check"),
+        ("justfile", "cd web && just test"),
+        ("noxfile.py", "uv run nox -s tests"),
+        ("noxfile.py", "python -m nox"),
+        ("tasks.py", "invoke test"),
+    ],
+)
+def test_hack_the_file_of_a_runner_the_verify_calls_is_a_sign(path, verify):
+    changed = file_diff(path, "-\tpytest -q", "+\ttrue")
+    assert kinds(signs_of(changed, verify=[verify])) == ["verify_changed"]
+    assert signs_of(changed, verify=["python -m pytest -q"]) == []  # a runner the verify does not call
+
+
+def test_hack_a_package_script_the_verify_runs_is_a_sign():
+    script = file_diff("web/package.json", '-    "check:all": "vitest run",', '+    "check:all": "true",')
+    assert "verify_changed" in kinds(signs_of(script, verify=["cd web && pnpm check:all"]))
+    other = file_diff("web/package.json", '-    "dev": "vite",', '+    "dev": "vite --host",')
+    assert signs_of(other, verify=["cd web && pnpm check:all"]) == []
+
+
+def test_hack_an_unknown_or_unreadable_file_where_tests_or_ci_live_fails_closed():
+    image = "diff --git a/tests/golden/plot.png b/tests/golden/plot.png\nBinary files a/x and b/y differ"
+    assert {"golden_changed", "diff_unreadable"} <= set(kinds(signs_of(image)))
+    blob = "diff --git a/tests/data/cases.bin b/tests/data/cases.bin\nBinary files a/x and b/y differ"
+    assert "diff_unreadable" in kinds(signs_of(blob))
+    workflow = "diff --git a/.github/workflows/logo.png b/.github/workflows/logo.png\nBinary files a/x and b/y differ"
+    assert "diff_unreadable" in kinds(signs_of(workflow))
+    docs = "diff --git a/docs/flow.png b/docs/flow.png\nBinary files a/docs/flow.png and b/docs/flow.png differ"
+    assert signs_of(docs) == []  # an image of the docs is still fine
+
+
+def test_hack_the_runners_a_verify_command_calls():
+    globs, scripts = judge.verify_runners(
+        ["cd web && pnpm test", "bash -c 'make lint && just check'", "FOO=1 uv run nox -s unit", "npm run e2e:ci"]
+    )
+    assert {"Makefile", "justfile", "noxfile.py"} <= globs and scripts == {"test", "e2e:ci"}
+
+
+# The verdict in the agent's last message, and the plan the hub's
+
+
+def test_judge_reads_the_verdict_that_ends_its_agents_last_message():
+    message = 'I ran the tests and read the diff.\n\n```json\n{"verdict": "fail", "reasons": "a {brace} too far"}\n```'
+    assert judge.verdict_from_message(message) == ("fail", "a {brace} too far")
+    assert judge.verdict_from_message('{"verdict": "pass"}') == ("pass", "")
+    assert judge.verdict_from_message('{"verdict": "pass"} and then more words')[0] is None
+    assert judge.verdict_from_message("I think it passes.")[0] is None
+    assert judge.verdict_from_message(None)[0] is None
+    assert judge.verdict_from_message('{"reasons": "no verdict"}')[0] is None
+
+
+def test_curator_plan_progress_is_all_a_write_may_change():
+    body = {
+        "id": "curator-7-x",
+        "status": "active",
+        "goal": "g",
+        "steps": [{"id": 1, "what": "w", "verify": "v", "status": "pending"}],
+    }
+    done = {**body, "status": "done", "steps": [{**body["steps"][0], "status": "done", "evidence": "e", "note": "n"}]}
+    assert judge.progress_free(done) == judge.progress_free(body)
+    for changed in ({"goal": "other"}, {"context": "c"}, {"steps": [{**body["steps"][0], "what": "x"}]}):
+        assert judge.progress_free({**body, **changed}) != judge.progress_free(body)
+    assert judge.is_curator_plan_id("curator-7-x") and not judge.is_curator_plan_id("my-curator")
+
+
+# CI the ruleset requires
+
+
+REQUIRED = [{"context": "test", "integration_id": None}]
+
+
+def test_merge_ci_is_green_only_once_the_required_checks_passed():
+    assert judge.ci_state(GREEN, NO_STATUS, required=REQUIRED) == ("green", [])
+    lint = [{"name": "lint", "status": "completed", "conclusion": "success"}]
+    assert judge.ci_state(lint, NO_STATUS, required=REQUIRED) == (
+        "pending",
+        ["the required check test has not reported"],
+    )
+    skipped = [{"name": "test", "status": "completed", "conclusion": "skipped"}]
+    assert judge.ci_state(skipped, NO_STATUS, required=REQUIRED)[0] == "red"
+    assert judge.ci_state(GREEN, NO_STATUS, required=[])[0] == "red"  # a ruleset that requires nothing
+    from_app = [{"context": "test", "integration_id": 15368}]
+    assert judge.ci_state([{**GREEN[0], "app": {"id": 1}}], NO_STATUS, required=from_app)[0] == "red"
+    assert judge.ci_state([{**GREEN[0], "app": {"id": 15368}}], NO_STATUS, required=from_app)[0] == "green"
+    status = {"state": "success", "total_count": 1, "statuses": [{"context": "test", "state": "success"}]}
+    assert judge.ci_state([], status, required=REQUIRED)[0] == "green"
+    assert judge.ci_state(GREEN, NO_STATUS, required=REQUIRED, head_message="wip [skip ci]")[0] == "red"
+    assert judge.skip_ci_marker("Fix\n\nskip-checks: true") == "skip-checks: true"
+    assert judge.skip_ci_marker("Fix the skip ci docs") is None
+    rules = [
+        {"type": "update", "ruleset_id": 1},
+        {"type": "required_status_checks", "ruleset_id": 1, "parameters": {"required_status_checks": from_app}},
+    ]
+    assert judge.required_checks(rules) == from_app

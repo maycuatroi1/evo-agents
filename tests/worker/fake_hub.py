@@ -14,11 +14,13 @@ import asyncio
 import copy
 import itertools
 import json
+import secrets
 from datetime import UTC, datetime, timedelta
 
 from aiohttp import web
 
 from evo_agents.hub import runs
+from evo_agents.hub.judge import JUDGE_KEY_HEADER
 
 TOKEN = "evw_" + "f" * 43
 
@@ -42,6 +44,8 @@ class FakeHub:
         self.verdicts: list[dict] = []  # what the judge runs posted, with the run's id
         self.judge_inputs: dict[int, dict] = {}  # run id -> what GET .../judge answers it
         self.judge_reads: list[int] = []  # the judge runs that read their inputs, in order
+        self.judge_keys: dict[int, str] = {}  # run id -> the key its claim hands the daemon, which its routes take
+        self.judge_refused: list[tuple[str, int]] = []  # (route, run id) of each ask without the run's key
         self.last_heartbeat: dict | None = None
         self.leases: dict[int, dict] = {}  # run id -> the {leases, missing} its ask for credentials gets
         self.credential_calls: list[tuple[str, int]] = []  # ("ask" or "give back", run id), in order
@@ -206,7 +210,8 @@ class FakeHub:
 
     def queue_judge_run(self, repo: str, curator: dict, inputs: dict, prompt: str = "Judge the change.") -> int:
         """A judge run of the change ``curator`` names, in ``repo``, as the night shift queues it; ``inputs`` is what
-        its GET .../judge answers."""
+        its GET .../judge answers, to the run's own key alone, which its claim hands the daemon."""
+        key = secrets.token_urlsafe(16)
         run_id = self.queue_run(
             kind="judge",
             project=self.project,
@@ -230,9 +235,10 @@ class FakeHub:
             lease_expires_at=_now(),
             prompt=prompt,
             plan=None,
-            curator={"role": "judge", **curator},
+            curator={"role": "judge", **curator, "judge_key": key},
         )
         self.judge_inputs[run_id] = inputs
+        self.judge_keys[run_id] = key
         return run_id
 
     def answer(self, decision_id: int, option: str) -> int:
@@ -502,10 +508,16 @@ class FakeHub:
             {**answer, "tier_reasons": ["kind fix (a bug fix that comes with its test) is tier 1"]}, status=201
         )
 
+    def _judge_key(self, request: web.Request, run_id: int, route: str) -> None:
+        if request.headers.get(JUDGE_KEY_HEADER) != self.judge_keys.get(run_id):
+            self.judge_refused.append((route, run_id))
+            raise _refusal(403, f"run {run_id} is a judge run: its routes take the run's own key")
+
     async def _judge(self, request: web.Request) -> web.Response:
         run_id, run = self._run(request)
         if run["state"] not in runs.HELD_STATES or run["spec"]["kind"] != "judge":
             raise _refusal(404, f"run {run_id} is not held by this worker, or not a judge run")
+        self._judge_key(request, run_id, "judge")
         self.judge_reads.append(run_id)
         return web.json_response(self.judge_inputs.get(run_id) or {})
 
@@ -513,6 +525,7 @@ class FakeHub:
         run_id, run = self._run(request)
         if run["state"] not in runs.HELD_STATES or run["spec"]["kind"] != "judge":
             raise _refusal(404, f"run {run_id} is not held by this worker, or not a judge run")
+        self._judge_key(request, run_id, "verdict")
         body = await request.json()
         self.verdicts.append({"run_id": run_id, **body})
         passed = body.get("verdict") == "pass" and not body.get("signs")

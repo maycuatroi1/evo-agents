@@ -249,9 +249,46 @@ async def add_worktree(cwd: Path, path: Path, branch: str, start: str, *, reset:
     await git(cwd, "worktree", "add", "--no-track", "-B" if reset else "-b", branch, str(path), start)
 
 
-async def add_detached_worktree(cwd: Path, path: Path, start: str) -> None:
+async def add_detached_worktree(cwd: Path, path: Path, start: str, *, env: Mapping[str, str] | None = None) -> None:
     """A worktree at ``path`` with HEAD detached at ``start``, on no branch: a review run's, which commits nothing."""
-    await git(cwd, "worktree", "add", "--detach", str(path), start)
+    await git(cwd, "worktree", "add", "--detach", str(path), start, env=env)
+
+
+def without_hooks(base: Mapping[str, str] | None = None) -> dict[str, str]:
+    """``base`` (this process's environment when None) with git's configuration that runs no hook and no fsmonitor of
+    the repository, whatever its own configuration says: for the git commands of a judge run in the checkout and
+    worktree of the change it judges (its diff also takes no textconv or external diff, ``diff_text``)."""
+    env = dict(os.environ if base is None else base)
+    try:
+        start = max(0, int(env.get("GIT_CONFIG_COUNT") or 0))
+    except ValueError:
+        start = 0
+    entries = (("core.hooksPath", os.devnull), ("core.fsmonitor", "false"))
+    for offset, (key, value) in enumerate(entries):
+        env[f"GIT_CONFIG_KEY_{start + offset}"] = key
+        env[f"GIT_CONFIG_VALUE_{start + offset}"] = value
+    env["GIT_CONFIG_COUNT"] = str(start + len(entries))
+    return env
+
+
+async def git_dir(cwd: Path, *, env: Mapping[str, str] | None = None) -> str | None:
+    """The absolute git directory of the work tree at ``cwd``, found there and never above it; None without one."""
+    found = {**(env if env is not None else os.environ), "GIT_CEILING_DIRECTORIES": str(Path(cwd).parent)}
+    code, out, _ = await git(cwd, "rev-parse", "--absolute-git-dir", check=False, env=found)
+    return out.strip() if code == 0 and out.strip() else None
+
+
+async def restore(cwd: Path, head: str, *, expected_git_dir: str, env: Mapping[str, str] | None = None) -> None:
+    """Put the work tree at ``cwd`` back at commit ``head``, detached: every tracked file as ``head`` has it, every
+    untracked one that git does not ignore removed. Between two commands of the code a judge run judges, which may have
+    removed the work tree's link to its repository or pointed it elsewhere: GitError then, before git touches
+    anything, since its git directory is no longer ``expected_git_dir``."""
+    local = {**(env if env is not None else os.environ), "GIT_CEILING_DIRECTORIES": str(Path(cwd).parent)}
+    found = await git_dir(cwd, env=local)
+    if found is None or Path(found).resolve() != Path(expected_git_dir).resolve():
+        raise GitError(f"{cwd} is no longer the worktree it was made as: its git directory is {found or 'gone'}")
+    await git(cwd, "checkout", "--quiet", "--force", "--detach", head, env=local)
+    await git(cwd, "clean", "-ffdq", env=local)
 
 
 async def current_branch(cwd: Path) -> str | None:
@@ -463,11 +500,28 @@ async def merge_base(cwd: Path, first: str, second: str) -> str | None:
     return out.strip() if code == 0 and out.strip() else None
 
 
-async def diff_text(cwd: Path, base: str, head: str, limit: int = 8 * 1024 * 1024) -> str:
-    """The text diff from ``base`` to ``head`` as ``git diff`` writes it, binary files named; at most ``limit``
-    bytes, its end cut."""
-    _, out, _ = await git(cwd, "diff", "--no-color", "--no-ext-diff", "--find-renames", base, head, timeout=TIMEOUT)
-    return out[:limit]
+DIFF_TEXT_LIMIT = 8 * 1024 * 1024  # the most of a judged diff read; a longer one is not judged in part
+
+
+async def diff_text(
+    cwd: Path, base: str, head: str, limit: int | None = None, *, env: Mapping[str, str] | None = None
+) -> tuple[str, bool]:
+    """(the text diff from ``base`` to ``head`` as ``git diff`` writes it, binary files named and no textconv of the
+    repository applied, at most ``limit`` characters; whether it was longer and so was cut)."""
+    limit = DIFF_TEXT_LIMIT if limit is None else limit
+    _, out, _ = await git(
+        cwd,
+        "diff",
+        "--no-color",
+        "--no-ext-diff",
+        "--no-textconv",
+        "--find-renames",
+        base,
+        head,
+        timeout=TIMEOUT,
+        env=env,
+    )
+    return out[:limit], len(out) > limit
 
 
 async def detach(cwd: Path) -> None:

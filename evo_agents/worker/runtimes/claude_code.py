@@ -49,6 +49,11 @@ here.
   ``options.env``), and the daemon notes it in the run's log (``environment_notes``). Such a token only calls the
   model and cannot open a Remote Control session, so the terminal UI then starts without ``--remote-control``
   (``evo_agents.worker.interactive``).
+- A run of the Curator (``context.run["curator"]``) uses the Claude subscription login alone, never an API key (plan
+  decision 14 of the curator-agent plan): ANTHROPIC_API_KEY is left out of its agent's environment and unset by the
+  launcher whatever leases it, and ``login_refusal`` refuses to start it on a machine where Claude Code has no
+  subscription login for it (``subscription_login``: CLAUDE_CODE_OAUTH_TOKEN in the run's environment, the
+  credentials file of Claude Code's configuration directory, or on macOS its keychain item).
 - A run the night shift queued has a budget (``evo_agents.hub.curator``): ``max_budget_usd`` is what is left of its
   ``max_usd`` once the session it goes on in has cost ``context.spent_usd`` (the CLI counts only the spend of its own
   process against it, while its ``total_cost_usd`` goes on from the total the session's transcript saved), and
@@ -71,10 +76,14 @@ import collections
 import contextlib
 import dataclasses
 import logging
+import os
 import re
 import shutil
+import subprocess
+import sys
 import tempfile
 import uuid
+from collections.abc import Callable, Mapping
 from pathlib import Path
 
 from evo_agents.hub import curator, runs
@@ -169,15 +178,72 @@ TOOL_KINDS = {
 }
 
 
+CREDENTIALS_FILE = ".credentials.json"  # where Claude Code keeps its login on Linux, in its configuration directory
+KEYCHAIN_ITEM = "Claude Code-credentials"  # and on macOS
+KEYCHAIN_TIMEOUT = 10.0
+
+
+def curator_run(context: RunContext) -> bool:
+    """Whether the run is a run of the Curator, which uses the Claude subscription login alone."""
+    return isinstance(context.run.get("curator"), dict)
+
+
+def _keychain_item() -> bool:
+    """Whether macOS keeps Claude Code's login in the keychain: the item's attributes only, never its secret."""
+    if sys.platform != "darwin":
+        return False
+    try:
+        done = subprocess.run(
+            ["security", "find-generic-password", "-s", KEYCHAIN_ITEM],
+            capture_output=True,
+            timeout=KEYCHAIN_TIMEOUT,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return done.returncode == 0
+
+
+def subscription_login(env: Mapping[str, str], *, keychain: Callable[[], bool] | None = None) -> str | None:
+    """Where Claude Code finds a Claude subscription login for an agent started with ``env``: CLAUDE_CODE_OAUTH_TOKEN
+    in it, the credentials file of its configuration directory (CLAUDE_CONFIG_DIR, else ~/.claude), or the macOS
+    keychain item (``keychain`` asks for it; tests hand their own); None when there is none."""
+    if env.get(OAUTH_TOKEN):
+        return f"{OAUTH_TOKEN} in the run's environment"
+    configured = env.get("CLAUDE_CONFIG_DIR") or ""
+    home = env.get("HOME") or os.path.expanduser("~")
+    directory = Path(configured) if os.path.isabs(configured) else Path(home) / ".claude"
+    if (directory / CREDENTIALS_FILE).is_file():
+        return str(directory / CREDENTIALS_FILE)
+    if (keychain or _keychain_item)():
+        return f"the keychain item {KEYCHAIN_ITEM}"
+    return None
+
+
+def curator_login_refusal(context: RunContext, *, keychain: Callable[[], bool] | None = None) -> str | None:
+    """Why a run of the Curator may not start on Claude Code here: it has no subscription login (plan decision 14);
+    None for any other run, and for one that has it."""
+    if not curator_run(context) or subscription_login(context.env, keychain=keychain) is not None:
+        return None
+    return (
+        "a run of the Curator on Claude Code uses the Claude subscription login alone, never ANTHROPIC_API_KEY (plan "
+        f"decision 14), and this machine has none for it: no {OAUTH_TOKEN} in the run's environment, no "
+        f"{CREDENTIALS_FILE} in Claude Code's configuration directory, no keychain item {KEYCHAIN_ITEM}. Sign Claude "
+        f"Code in with the subscription on the worker, or give the charter's env_secrets a secret {OAUTH_TOKEN} made "
+        "by `claude setup-token`"
+    )
+
+
 def leased_oauth(context: RunContext) -> bool:
     """Whether a lease of the run sets CLAUDE_CODE_OAUTH_TOKEN in the agent's environment."""
     return OAUTH_TOKEN in context.leased and bool(context.env.get(OAUTH_TOKEN))
 
 
 def drops_api_key(context: RunContext) -> bool:
-    """Whether ANTHROPIC_API_KEY stays out of Claude Code's environment: a lease sets CLAUDE_CODE_OAUTH_TOKEN and none
-    sets the key, which Claude Code would take first."""
-    return leased_oauth(context) and API_KEY not in context.leased
+    """Whether ANTHROPIC_API_KEY stays out of Claude Code's environment: a run of the Curator, which uses the Claude
+    subscription login alone; or a lease sets CLAUDE_CODE_OAUTH_TOKEN and none sets the key, which Claude Code would
+    take first."""
+    return curator_run(context) or (leased_oauth(context) and API_KEY not in context.leased)
 
 
 def dropped_env(context: RunContext) -> tuple[str, ...]:
@@ -187,8 +253,9 @@ def dropped_env(context: RunContext) -> tuple[str, ...]:
 
 
 def auth_notes(context: RunContext) -> list[str]:
-    """API_KEY_NOTE when the daemon's ANTHROPIC_API_KEY is left out of the agent's environment."""
-    return [API_KEY_NOTE] if drops_api_key(context) and API_KEY in context.env else []
+    """API_KEY_NOTE when the daemon's ANTHROPIC_API_KEY is left out of the agent's environment for a leased token."""
+    leased = leased_oauth(context) and API_KEY not in context.leased
+    return [API_KEY_NOTE] if leased and API_KEY in context.env else []
 
 
 def help_models(text: str | None) -> list[str] | None:
@@ -427,6 +494,10 @@ class ClaudeCodeAdapter(QueueAdapter):
     @classmethod
     def environment_notes(cls, context: RunContext) -> list[str]:
         return auth_notes(context)
+
+    @classmethod
+    def login_refusal(cls, context: RunContext) -> str | None:
+        return curator_login_refusal(context)
 
     def __init__(self, context: RunContext):
         super().__init__(context)

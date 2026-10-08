@@ -15,6 +15,10 @@ default branch, GET /repos/{o}/{r}/rules/branches/{branch} the rules that apply 
 of type ``update`` (only its bypass actors may update the branch), GET /repos/{o}/{r}/rulesets/{id} must say it is
 ``active`` and, asked with the Curator's own token, ``current_user_can_bypass`` ``never``, and must not list the
 Curator's App among its bypass actors when it shows them. Anything else, a field missing included, is not protected.
+It also names the checks the active rulesets of the branch require (``required_checks``), which a merge needs.
+
+A list GitHub pages through ends at MAX_PAGES: one longer than that is ``Truncated`` (a ``GitHubRefused``), never read
+in part, so a pull request of more files than the hub reads, or of more check runs, fails closed.
 """
 
 from __future__ import annotations
@@ -25,7 +29,7 @@ from dataclasses import dataclass, field
 from typing import TypeVar
 from urllib.parse import quote
 
-from evo_agents.hub.judge import JUDGE_CHECK_NAME, RULE_UPDATE
+from evo_agents.hub.judge import JUDGE_CHECK_NAME, RULE_REQUIRED_CHECKS, RULE_UPDATE, required_checks
 from evo_agents.hub.server.github import API_HEADERS, GitHubRefused, GitHubUnavailable
 from evo_agents.hub.server.github_app import GitHubApp, not_installed
 
@@ -45,14 +49,20 @@ MAX_PAGES = 30  # GitHub lists at most 3000 files of a pull request
 MERGE_METHOD = "merge"  # a merge commit, which `git revert -m 1` undoes
 
 
+class Truncated(GitHubRefused):
+    """GitHub lists more than the hub reads: the list is not read in part."""
+
+
 @dataclass(frozen=True)
 class RulesetCheck:
-    """What ``check_ruleset`` found of a repo: whether its default branch keeps the Curator's App off, and why."""
+    """What ``check_ruleset`` found of a repo: whether its default branch keeps the Curator's App off, and why; and the
+    checks its active rulesets require before a merge."""
 
     protected: bool
     default_branch: str | None
     reason: str
     rulesets: list[dict] = field(default_factory=list)  # each {id, enforcement, can_bypass}
+    required_checks: list[dict] = field(default_factory=list)  # each {context, integration_id}
 
 
 def _path(*parts: str | int) -> str:
@@ -147,12 +157,18 @@ async def _pages(app: GitHubApp, token: str, path: str, doing: str, key: str | N
         found += [item for item in items if isinstance(item, dict)]
         if len(items) < PAGE:
             return found
-    return found
+    raise Truncated(f"GitHub lists more than {MAX_PAGES * PAGE} items while {doing}: the hub does not read a part")
 
 
 async def pull_files(app: GitHubApp, token: str, owner: str, repo: str, number: int) -> list[dict]:
     doing = f"reading the files of pull request #{number} of {owner}/{repo}"
     return await _pages(app, token, _path("repos", owner, repo, "pulls", number, "files"), doing)
+
+
+async def pull_commits(app: GitHubApp, token: str, owner: str, repo: str, number: int) -> list[dict]:
+    """The commits of pull request ``number``, oldest first, as GitHub lists them (250 at most)."""
+    doing = f"reading the commits of pull request #{number} of {owner}/{repo}"
+    return await _pages(app, token, _path("repos", owner, repo, "pulls", number, "commits"), doing)
 
 
 async def check_runs(app: GitHubApp, token: str, owner: str, repo: str, sha: str) -> list[dict] | None:
@@ -234,18 +250,37 @@ async def check_ruleset(curator_app: GitHubApp, owner: str, repo: str) -> Rulese
         path = _path("repos", owner, repo, "rules", "branches", branch)
         rules = await _pages(curator_app, token, path, doing)
         blocking = sorted({rule.get("ruleset_id") for rule in rules if rule.get("type") == RULE_UPDATE} - {None})
+        asking = sorted({rule.get("ruleset_id") for rule in rules if rule.get("type") == RULE_REQUIRED_CHECKS} - {None})
+        rulesets: dict = {}
+
+        async def ruleset(ruleset_id) -> dict | None:
+            if ruleset_id not in rulesets:
+                doing = f"reading ruleset {ruleset_id} of {owner}/{repo}"
+                response = await _api(
+                    curator_app, token, "GET", _path("repos", owner, repo, "rulesets", ruleset_id), doing
+                )
+                rulesets[ruleset_id] = curator_app._json(response, doing) if response.status_code == 200 else None
+            return rulesets[ruleset_id]
+
+        active = []
+        for ruleset_id in asking:  # the checks of a ruleset only evaluated are not required
+            data = await ruleset(ruleset_id)
+            if data is not None and data.get("enforcement") == "active":
+                active.append(ruleset_id)
+        required = required_checks([rule for rule in rules if rule.get("ruleset_id") in active])
         if not blocking:
             return RulesetCheck(
-                False, branch, f"no ruleset restricts updates of {branch} on {owner}/{repo}: anyone who may push can"
+                False,
+                branch,
+                f"no ruleset restricts updates of {branch} on {owner}/{repo}: anyone who may push can",
+                required_checks=required,
             )
         seen, keeping = [], False
         for ruleset_id in blocking:
-            doing = f"reading ruleset {ruleset_id} of {owner}/{repo}"
-            response = await _api(curator_app, token, "GET", _path("repos", owner, repo, "rulesets", ruleset_id), doing)
-            if response.status_code != 200:
+            data = await ruleset(ruleset_id)
+            if data is None:
                 seen.append({"id": ruleset_id, "enforcement": None, "can_bypass": None})
                 continue
-            data = curator_app._json(response, doing)
             bypass = data.get("current_user_can_bypass")
             actors = data.get("bypass_actors") if isinstance(data.get("bypass_actors"), list) else []
             listed = curator_app.app_id is not None and any(
@@ -258,12 +293,13 @@ async def check_ruleset(curator_app: GitHubApp, owner: str, repo: str) -> Rulese
             if data.get("enforcement") == "active" and bypass == "never" and not listed:
                 keeping = True
         if keeping:
-            return RulesetCheck(True, branch, f"an active ruleset keeps the Curator's App off {branch}", seen)
+            return RulesetCheck(True, branch, f"an active ruleset keeps the Curator's App off {branch}", seen, required)
         return RulesetCheck(
             False,
             branch,
             f"no active ruleset of {branch} on {owner}/{repo} says the Curator's App may never bypass it",
             seen,
+            required,
         )
 
     try:

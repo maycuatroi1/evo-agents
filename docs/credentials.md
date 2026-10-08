@@ -352,7 +352,10 @@ medium findings as `warning:` lines; they never stop the install.
   Curator's worker on duty therefore holds no credential of its owner but its leases, takes one run at a time
   (`--slots 1`), and the night shift never runs a Builder and the Judge of the same change at once. A git push the
   agent makes on its own with the owner's own credentials would get past the ruleset, since the owner bypasses it: keep
-  none on that machine. The daemon pushes a Builder's branch only with a lease that covers its origin.
+  none on that machine. The daemon pushes a Builder's branch only with a lease that covers its origin, and the agent of
+  a run of the Curator never gets the lease: the run's socket answers only a git command of the daemon's own, with the
+  ticket of that command. [Inference] A process of the same user that reads the environment of such a git command
+  while it runs could take its ticket; a separate user, or a VM per worker, closes that too.
 - A worker set to `web` takes no run, message or decision answer from a token, but a plan run reads its plan as the
   hub holds it now (`GET /v1/worker/runs/{id}/plan`), and a machine token of a writer of the project may still edit
   that plan (`PUT` or `PATCH .../plans/{plan}`, `evo-agents hub plan put` or `plan patch`, a step's status through

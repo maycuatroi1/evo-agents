@@ -1196,6 +1196,7 @@ curator_changes = Table(
     Column("merge_sha", Text),
     _stamp("created_at"),
     _stamp("updated_at"),
+    Column("judge_key", Text),  # SHA-256 of the key the claim of its judge run handed the daemon (0019)
     ForeignKeyConstraint(
         ["builder_run_id"], ["runs.id"], ondelete="RESTRICT", name="curator_changes_builder_run_id_fkey"
     ),

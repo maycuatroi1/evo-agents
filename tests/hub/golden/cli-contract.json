@@ -16044,7 +16044,7 @@
             "worker protocol"
           ],
           "summary": "Judge Inputs",
-          "description": "What the judge run this worker holds reads: its change, its proposal, the plan's verify commands, the\ncharter's protected paths and the project's hidden checks.",
+          "description": "What the judge run this worker holds reads: its change, its proposal, the plan's verify commands, the\ncharter's protected paths and the project's hidden checks; with the run's own key.",
           "operationId": "judge_inputs_v1_worker_runs__run_id__judge_get",
           "parameters": [
             {
@@ -16057,6 +16057,25 @@
                 "minimum": 1,
                 "title": "Run Id"
               }
+            },
+            {
+              "name": "X-Evo-Judge-Key",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "the judge run's own key, which its claim handed the daemon; the worker token alone is refused",
+                "title": "X-Evo-Judge-Key"
+              },
+              "description": "the judge run's own key, which its claim handed the daemon; the worker token alone is refused"
             }
           ],
           "responses": {
@@ -16129,7 +16148,7 @@
             "worker protocol"
           ],
           "summary": "Record Verdict",
-          "description": "The verdict of the judge run this worker holds: the hub passes the change only as ``judge.final_verdict``\nsays.",
+          "description": "The verdict of the judge run this worker holds, with the run's own key: the hub passes the change only as\n``judge.final_verdict`` says, and the paths the diff touches give its proposal its tier again.",
           "operationId": "record_verdict_v1_worker_runs__run_id__verdict_post",
           "parameters": [
             {
@@ -16142,6 +16161,25 @@
                 "minimum": 1,
                 "title": "Run Id"
               }
+            },
+            {
+              "name": "X-Evo-Judge-Key",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "the judge run's own key, which its claim handed the daemon; the worker token alone is refused",
+                "title": "X-Evo-Judge-Key"
+              },
+              "description": "the judge run's own key, which its claim handed the daemon; the worker token alone is refused"
             }
           ],
           "requestBody": {
@@ -19454,6 +19492,18 @@
                 }
               ],
               "title": "Pr Url"
+            },
+            "judge_key": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Judge Key",
+              "description": "a judge run's own key, for GET .../judge and POST .../verdict (X-Evo-Judge-Key); the daemon keeps it in memory alone, never in a file, an environment or a log line"
             }
           },
           "type": "object",
@@ -29224,7 +29274,10 @@
                 "eq_overridden",
                 "exit_in_test",
                 "protected_path",
-                "diff_unreadable"
+                "diff_unreadable",
+                "expected_changed",
+                "golden_changed",
+                "assert_caught"
               ],
               "title": "Kind"
             },
@@ -30834,6 +30887,17 @@
               "type": "array",
               "maxItems": 50,
               "title": "Signs"
+            },
+            "paths": {
+              "items": {
+                "type": "string",
+                "maxLength": 500,
+                "minLength": 1
+              },
+              "type": "array",
+              "maxItems": 3000,
+              "title": "Paths",
+              "description": "every path the diff judged touches; they give the proposal its tier again, which only raises it"
             }
           },
           "type": "object",

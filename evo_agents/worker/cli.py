@@ -515,8 +515,8 @@ def _agent_run(command: str, kinds: tuple[str, ...] = ("plan",)) -> _AgentRun:
             )
         if kind == "judge":
             raise WorkerStateError(
-                f"run {run_id} is a judge run, which reads and judges only: it writes its verdict to "
-                f"{runs.RESULT_DIR}/verdict.json, not with `evo-agents worker {command}`"
+                f"run {run_id} is a judge run, which reads and judges only: its verdict is the JSON object that ends "
+                f"the agent's last message, not `evo-agents worker {command}`"
             )
         raise WorkerStateError(
             f"run {run_id} is a run of one step: only the agent of a plan run uses `evo-agents worker {command}`; a "
@@ -661,28 +661,36 @@ def cmd_step(args) -> int:
                 )
             plan_branch = gitops.plan_branches(body).get(name) if "repos" in body else workspace.plan_branch
             curator = agent.record.get("curator") if isinstance(agent.record.get("curator"), dict) else None
-            builder = curator is not None and curator.get("role") == "builder"
-            options = []
-            if builder and curator.get("forge") == "gitlab":
-                from evo_agents.hub.judge import gitlab_push_options
+            if curator is not None and curator.get("role") == "builder":
+                # A Builder of the Curator holds no credential: the daemon pushes the run's branch for it.
+                from evo_agents.worker import credentials
 
-                target = (curator.get("targets") or {}).get(name) or "main"
-                options = gitlab_push_options(target, step.get("title") if isinstance(step, dict) else None)
-            try:
-                pushed = await gitops.push(
-                    path,
-                    workspace.branch,
-                    protected=workspace.protected,
-                    kind="curator" if builder else "plan",
-                    plan_branch=plan_branch,
-                    options=options,
+                answer = await asyncio.to_thread(credentials.ask_push, agent.home, agent.run_id, name, title)
+                if answer.get("error") or not isinstance(answer.get("head"), str):
+                    why = answer.get("error") or "the daemon did not say what it pushed"
+                    raise WorkerStateError(f"{name}: {why}; step {args.key} is not reported done")
+                pushed = gitops.Pushed(
+                    str(answer.get("branch") or workspace.branch),
+                    answer["head"],
+                    bool(answer.get("default")),
+                    bool(answer.get("changed")),
+                    tuple(answer.get("commits") or ()),
                 )
-            except gitops.PushRefused as exc:
-                raise WorkerStateError(f"{name}: {exc}; step {args.key} is not reported done") from None
-            except gitops.GitError as exc:
-                raise WorkerStateError(
-                    f"git push of {name} to {workspace.branch} failed: {exc}; step {args.key} is not reported done"
-                ) from None
+            else:
+                try:
+                    pushed = await gitops.push(
+                        path,
+                        workspace.branch,
+                        protected=workspace.protected,
+                        kind="plan",
+                        plan_branch=plan_branch,
+                    )
+                except gitops.PushRefused as exc:
+                    raise WorkerStateError(f"{name}: {exc}; step {args.key} is not reported done") from None
+                except gitops.GitError as exc:
+                    raise WorkerStateError(
+                        f"git push of {name} to {workspace.branch} failed: {exc}; step {args.key} is not reported done"
+                    ) from None
             if pushed.default and pushed.changed:
                 from evo_agents.worker.hubapi import HubProblem
 

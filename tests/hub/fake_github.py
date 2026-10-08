@@ -29,7 +29,10 @@ Apps; POST and GET .../pulls (a pull request of a branch whose head ``push`` set
 .../check-runs; and PUT .../pulls/{n}/merge, which refuses a head that moved (409) and a base branch whose ruleset
 the token's App may not bypass (405), and otherwise merges. A pull request names the base's commit it opened on, and
 once merged its merge commit, when and by whom; ``merge_by_hand`` and ``close_by_hand`` play a member doing either on
-GitHub's page.
+GitHub's page. A ruleset's ``required_checks`` (a context, or {context, integration_id}) is a rule
+required_status_checks of its own; GET .../pulls/{n}/commits lists the head commit with the message ``push`` gave it
+(``messages``); a pull request says it changes ``claimed_files`` of its branch when the test set it, else as many files
+as it lists.
 """
 
 from __future__ import annotations
@@ -80,6 +83,8 @@ class FakeRepo:
     heads: dict = field(default_factory=dict)
     rulesets: list = field(default_factory=list)
     files: dict = field(default_factory=dict)  # branch -> the files of its pull request, as GitHub lists them
+    messages: dict = field(default_factory=dict)  # commit -> its message
+    claimed_files: dict = field(default_factory=dict)  # branch -> how many files its pull request says it changes
 
 
 @dataclass
@@ -218,11 +223,16 @@ class FakeGitHub:
             self.repos[(owner.lower(), name.lower())] = repo
         return repo
 
-    def push(self, owner: str, name: str, branch: str, sha: str, files: list | None = None) -> None:
-        """``branch`` of owner/name now points at ``sha``, and a pull request of it lists ``files``."""
+    def push(
+        self, owner: str, name: str, branch: str, sha: str, files: list | None = None, message: str | None = None
+    ) -> None:
+        """``branch`` of owner/name now points at ``sha``, whose message is ``message``, and a pull request of it lists
+        ``files``."""
         with self._lock:
             repo = self.repos[(owner.lower(), name.lower())]
             repo.heads[branch] = sha
+            if message is not None:
+                repo.messages[sha] = message
             if files is not None:
                 repo.files[branch] = files
             for found in self.pulls.values():
@@ -519,7 +529,10 @@ class FakeGitHub:
         return {"full_name": f"{repo.owner}/{repo.name}", "default_branch": repo.default_branch}
 
     def _pull_answer(self, pull: FakePull) -> dict:
+        repo = self.repos[(pull.owner.lower(), pull.name.lower())]
+        listed = len(repo.files.get(pull.head, []))
         return {
+            "changed_files": repo.claimed_files.get(pull.head, listed),
             "number": pull.number,
             "state": pull.state,
             "merged": pull.merged,
@@ -566,6 +579,22 @@ class FakeGitHub:
                         {"type": rule, "ruleset_id": item["id"], "ruleset_source_type": "Repository"}
                         for rule in item.get("rules", ())
                     ]
+                    if item.get("required_checks"):
+                        checks = [
+                            check if isinstance(check, dict) else {"context": check}
+                            for check in item["required_checks"]
+                        ]
+                        rules.append(
+                            {
+                                "type": "required_status_checks",
+                                "ruleset_id": item["id"],
+                                "ruleset_source_type": "Repository",
+                                "parameters": {
+                                    "required_status_checks": checks,
+                                    "strict_required_status_checks_policy": False,
+                                },
+                            }
+                        )
             return 200, rules
         if method == "GET" and rest[:1] == ["rulesets"] and len(rest) == 2:
             _, app, refused = need("metadata", "read")
@@ -618,6 +647,12 @@ class FakeGitHub:
             if method == "GET" and len(rest) == 2:
                 _, _, refused = need("pull_requests", "read")
                 return refused or (200, self._pull_answer(pull))
+            if method == "GET" and rest[2:] == ["commits"]:
+                _, _, refused = need("pull_requests", "read")
+                if refused:
+                    return refused
+                message = repo.messages.get(pull.head_sha, "the Builder's change")
+                return 200, [{"sha": pull.head_sha, "commit": {"message": message}}]
             if method == "GET" and rest[2:] == ["files"]:
                 _, _, refused = need("pull_requests", "read")
                 if refused:

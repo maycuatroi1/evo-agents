@@ -102,7 +102,7 @@ def test_judge_run_reads_the_change_runs_the_checks_and_posts_its_verdict(machin
             "judge": [
                 {"sh": "git -C alpha rev-parse HEAD; git -C alpha symbolic-ref -q HEAD || echo detached"},
                 {"sh": "git -C alpha diff --name-only origin/main...HEAD"},
-                {"write": {".evo-run/verdict.json": json.dumps({"verdict": "pass", "reasons": "The test is real."})}},
+                {"say": "I read the diff.\n" + json.dumps({"verdict": "pass", "reasons": "The test is real."})},
             ]
         }
     )
@@ -145,7 +145,7 @@ def test_judge_run_reads_the_change_runs_the_checks_and_posts_its_verdict(machin
 def test_judge_run_with_a_sign_of_score_hacking_fails_the_change_without_its_agent(machine):  # noqa: F811
     hacked = "import pytest\n\n\n@pytest.mark.skip(reason='later')\ndef test_wait():\n    assert wait_for()\n"
     head = change_branch(machine, {"tests/test_wait.py": hacked, "curator.yaml": "auto_merge: [0, 1]\n"})
-    machine.scenarios({"judge": [{"write": {".evo-run/verdict.json": '{"verdict": "pass"}'}}]})
+    machine.scenarios({"judge": [{"say": '{"verdict": "pass"}'}]})
     found = {}
 
     async def body(hub, daemon):
@@ -165,7 +165,7 @@ def test_judge_run_with_a_sign_of_score_hacking_fails_the_change_without_its_age
 
 def test_judge_run_of_a_gitlab_change_reads_the_tip_of_its_branch(machine):  # noqa: F811
     head = change_branch(machine, {"tests/test_wait.py": TEST_FILE})
-    machine.scenarios({"judge": [{"write": {".evo-run/verdict.json": '{"verdict": "fail", "reasons": "Too thin."}'}}]})
+    machine.scenarios({"judge": [{"say": '{"verdict": "fail", "reasons": "Too thin."}'}]})
     found = {}
 
     async def body(hub, daemon):

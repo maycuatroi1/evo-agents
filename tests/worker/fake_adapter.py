@@ -17,6 +17,8 @@ EVO_FAKE_SCENARIOS names a JSON file ``{"<step key>": [action, ...]}``; a run fo
 - ``{"sleep": seconds}``.
 - ``{"result": {...}}``: write .evo-run/result.json.
 - ``{"fail": "why"}``: end the turn as failed; with ``"cap": "cost"`` (or turns, time), as the run's budget stopped it.
+- ``{"say": "text"}``: the agent's last message is ``text`` (``Outcome.summary``), as a message chunk too: a Judge's
+  verdict ends it.
 - ``{"usage": {...}}``: the usage the turn ends with, such as Claude Code's ``total_cost_usd``.
 - ``{"cli": [args]}``: run ``evo-agents worker ARGS`` as the agent would, in its directory and environment.
 - ``{"sh": "command"}``: run a shell command there.
@@ -37,6 +39,9 @@ written as a JSON line ``{"run", "session", "resume", "prompt", "cwd", "leased",
 The messages ``send`` hands the agent are written, one per line, to the file EVO_FAKE_MESSAGES names.
 ``environment_notes`` names the variables the run's leases set, but for git's configuration, so the daemon's tests see
 where its notes go.
+
+``login_refusal`` is Claude Code's (``claude_code.curator_login_refusal``) once EVO_FAKE_CLAUDE_HOME names a HOME for it
+to look in, the keychain left out; without it the fake refuses nothing.
 
 The adapter is interactive: its terminal UI (``FakeTui``) is ``tests/worker/fake_tui.py``, which prints its session and
 the first line of its prompt, echoes each line typed (``echo: <line>``), clears the screen on ``clear`` and ends on
@@ -249,6 +254,20 @@ class FakeAdapter(Adapter):
         names = sorted(name for name in context.leased if not name.startswith("GIT_CONFIG_"))
         return [f"The fake agent's environment has the leased {', '.join(names)}."] if names else []
 
+    @classmethod
+    def login_refusal(cls, context) -> str | None:
+        """Claude Code's refusal of a run of the Curator without a subscription login, looked for in the HOME that
+        EVO_FAKE_CLAUDE_HOME names, the keychain left out; None without that variable."""
+        home = context.env.get("EVO_FAKE_CLAUDE_HOME")
+        if not home:
+            return None
+        from dataclasses import replace
+
+        from evo_agents.worker.runtimes import claude_code
+
+        local = replace(context, env={**context.env, "HOME": home, "CLAUDE_CONFIG_DIR": ""})
+        return claude_code.curator_login_refusal(local, keychain=lambda: False)
+
     def __init__(self, context):
         super().__init__(context)
         self._session = context.resume_session or str(uuid.uuid4())
@@ -421,6 +440,9 @@ class FakeAdapter(Adapter):
                     return
                 elif "usage" in action:
                     usage = action["usage"]
+                elif "say" in action:
+                    summary = str(action["say"])
+                    await self._queue.put(AgentEvent("agent_message_chunk", {"content": text_block(summary)}))
                 elif "cli" in action:
                     await self._command([sys.executable, "-m", "evo_agents", "worker", *action["cli"]], action["cli"])
                 elif "sh" in action:

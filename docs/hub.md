@@ -300,7 +300,9 @@ below); going back to 0016 deletes the judge runs and drops the two tables. Sche
 revert the hub proposes (`proposals.kind` `revert` with `revert_of`), the reason the circuit breaker paused a schedule
 (`schedules.pause_reason`, with `paused_by` null) and the notice `curator_paused` (The Curator's ledger, below); going
 back to 0017 drops the ledger, deletes the revert proposals and the notices `curator_paused`, and keeps a schedule the
-breaker paused paused, as its owner's pause.
+breaker paused paused, as its owner's pause. Schema 0019 adds `curator_changes.judge_key`, the SHA-256 of the key a
+judge run's claim hands its daemon (The Curator's changes, below); going back to 0018 drops it, and a judge run in
+flight then takes the worker token alone again.
 
 The daemon on the member's machine is the `evo-agents worker` command group, which needs the `worker` extra
 (`uv tool install 'evo-ak[worker]'`). It is not `evo-agents hub worker`, the hub's own job worker (see Worker and
@@ -483,8 +485,10 @@ the admin who accepted it (schema 0017, `evo_agents/hub/server/changes.py`, `evo
 `curator-<proposal>-<slug>`, in the one repo the proposal names, every step pending, on the branch
 `curator/<proposal>-<slug>`, and a change of the Curator that says where it stands. A draft that names several repos,
 or a repo without an origin, becomes no plan: its change stays `open` with the reason. A write of a Curator's plan that
-names another repo or branch, or changes a step's verify or acceptance, is 409, and no member dispatches its steps or a
-plan run of it (409): the night shift alone runs it.
+names another repo or branch, or changes anything but the progress of its steps (`status`, `done_at`, `evidence`,
+`note`) and its `status`, is 409: its what, goal, context, verify and acceptance stay as the hub made them. A plan whose
+id starts with `curator-` is made this way alone (a member's put of one is 409). No member dispatches the steps of a
+Curator's plan or a plan run of it (409): the night shift alone runs it.
 
 Each night, after its review run, the night shift queues the judge run of a change waiting for one, else the Builder
 of a planned change: a plan run of its plan, pinned to the worker on duty, with the night's caps. A change on GitHub
@@ -496,19 +500,33 @@ When the Builder ends done with every step of its plan done, the job `curator.ch
 GitHub with the workers' App (on GitLab the push opened the merge request) and reads its files for the signs of score
 hacking (`judge.hack_signs`): an assertion removed, a skip or xfail added, a threshold of a test changed, a plan's
 verify or a file it runs changed, CI or the configuration of lint and tests changed, a lint warning silenced, `__eq__`
-overloaded, an exit in a test, a protected path of the charter touched. A sign fails the change and puts its proposal
-at tier 3. Otherwise the night shift queues its judge run, which reads the proposal, the diff, the plan's verify and the
+overloaded, an exit in a test, a protected path of the charter touched, and the gaps a security review found: an
+assertion compared with its own file's lines alone (moved to another file, or under a guard that never runs, it is
+removed), an expected value changed on a line of its own, a golden, snapshot or data file of the tests changed, an
+assertion's failure caught, a skip aliased or imported on its own, an exit through `getattr(os, "_exit")` and the like,
+the configuration of tests and types (`norecursedirs`, mypy's `ignore_errors`, `tsconfig.json`), the Makefile,
+justfile, noxfile or package script a verify command runs, and a binary or unknown file where tests, CI or
+configuration live. A list of files GitHub cuts short (more than it lists, or fewer than the pull request says it
+changes) is a sign too. A sign fails the change and puts its proposal at tier 3. The files also give the proposal its
+tier again (`tiers.tier_of` over the paths the pull request really changes, which only ever raises it), at the pull
+request and again before a merge, so a proposal of docs whose pull request changes code is tier 1 and stays open.
+Otherwise the night shift queues its judge run, which reads the proposal, the diff, the plan's verify and the
 project's hidden checks (`docs/workers.md`, A judge run on the machine), never the Builder's transcript, on Codex when
 the project's policy declares a sink for Codex (an id `codex@...`) that clears the change's label and the worker has
 it, else on Claude Code with a model other than the Builder's. The change passes only when the Judge's agent passed it,
 every verify command and hidden check ran and exited 0, the worker found no sign either, and the commit judged is the
-pull request's head. The hub writes the verdict on the pull request as a check run of the workers' App,
-`evo-agents Judge`, and merges the pull request with the workers' App, at the head the Judge passed, only when the
-change is tier 0, tier 0 is in the charter's `auto_merge`, the repo's ruleset still keeps the Curator off (checked
-again then), the pull request is open into the default branch, its files show no sign and no protected path, and CI is
-green (every check run but the Judge's ended success, neutral or skipped, the commit statuses success, and at least
-one of them). It waits while CI runs, up to 6 hours. Any other change, tier 1, a GitLab merge request, or a refusal,
-stays open for its owner with the reason; the morning brief lists it with the runs that wait in review.
+pull request's head; the paths the worker read in the diff give the proposal its tier again. The hub writes the
+verdict on the pull request as a check run of the workers' App, `evo-agents Judge`, and merges the pull request with
+the workers' App, at the head the Judge passed, only when the change is tier 0, tier 0 is in the charter's
+`auto_merge`, the repo's ruleset still keeps the Curator off (checked again then), the pull request is open into the
+default branch, its files show no sign and no protected path, and CI is green: each check the default branch's active
+rulesets require (`required_status_checks`) concluded success, as a check run of the App the rule names when it names
+one, every other check run ended success, neutral or skipped, and the commit statuses are success. A ruleset that
+requires no check, or a head commit whose message asks CI to skip it (`[skip ci]`, `[ci skip]`, `[no ci]`,
+`[skip actions]`, `[actions skip]`, `skip-checks: true`), leaves the pull request open. It waits while CI runs, up to 6
+hours, and while the project's night shift is paused (by a member or its circuit breaker) it merges nothing: a judged
+change waits for it. Any other change, tier 1, a GitLab merge request, or a refusal, stays open for its owner with the
+reason; the morning brief lists it with the runs that wait in review.
 
 ```sh
 evo-agents hub curator changes                        # what each accepted proposal became: plan, branch, PR, verdict
@@ -518,9 +536,13 @@ evo-agents hub curator protection --check evo-agents  # check one now, with the 
 
 `GET /v1/projects/{p}/curator/changes` and `GET .../curator/protection` are for readers of the project, `POST
 .../curator/protection/{repo}/check` for its admins (audited as curator.protection). The hub checks again, once a day,
-every ruleset it checked before. A judge run reads its inputs with `GET /v1/worker/runs/{id}/judge`, which no other
-run and no other token reads, and posts its verdict with `POST /v1/worker/runs/{id}/verdict`; a worker token gets 403
-on the charter's routes, as on every route of a project.
+every ruleset it checked before, and once more each time a Builder asks for its leases: a repo whose ruleset no longer
+keeps the Curator off gets no token. A judge run reads its inputs with `GET /v1/worker/runs/{id}/judge`, which no other
+run reads, and posts its verdict with `POST /v1/worker/runs/{id}/verdict`, both with the run's own key in
+`X-Evo-Judge-Key`: the hub makes it when the run is claimed, hands it to the daemon in the claim alone (`curator.judge_key`),
+keeps its SHA-256 (`curator_changes.judge_key`, schema 0019) and forgets it with the verdict, so the worker token alone,
+which code on the worker's machine can read, gets 403 there. A worker token gets 403 on the charter's routes, as on
+every route of a project.
 
 ## The Curator's ledger, outcomes and circuit breaker
 
