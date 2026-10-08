@@ -14,7 +14,7 @@ import functools
 import json
 import logging
 import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -26,13 +26,14 @@ if not pg.DSN:
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi.testclient import TestClient
+from sqlalchemy import func, select, update
 
+from evo_agents.hub import tables
 from evo_agents.hub.credentials import GITHUB_TOKEN_REFRESH_SECONDS, Lease
 from evo_agents.hub.server import run_state
 from evo_agents.hub.server.app import create_app
 from evo_agents.hub.server.credentials import GITHUB_GIT_USERNAME
 from evo_agents.hub.server.sealing import KEY_BYTES, Sealed, Sealer, lease_aad
-from evo_agents.isotime import parse_iso
 from tests.hub.fake_github import Account
 from tests.hub.live import ADMIN, bearer, sql, table_dump
 from tests.hub.test_plans import registration as plans_registration
@@ -209,39 +210,58 @@ def revoked_at_github(github) -> list[str]:
 
 def leases_of(db, run_id: int) -> list[tuple]:
     """(id, provider, secret name, target, revoked, sealed, external_id) of each lease of the run."""
+    leases, owned = tables.credential_leases, tables.secrets
     return sql(
         db,
-        "SELECT l.id, l.provider, s.name, l.target, l.revoked_at IS NOT NULL, l.sealed_value IS NOT NULL, "
-        "l.external_id FROM credential_leases l LEFT JOIN secrets s ON s.id = l.secret_id WHERE l.run_id = %s "
-        "ORDER BY l.id",
-        (run_id,),
+        select(
+            leases.c.id,
+            leases.c.provider,
+            owned.c.name,
+            leases.c.target,
+            leases.c.revoked_at.is_not(None),
+            leases.c.sealed_value.is_not(None),
+            leases.c.external_id,
+        )
+        .join_from(leases, owned, owned.c.id == leases.c.secret_id, isouter=True)
+        .where(leases.c.run_id == run_id)
+        .order_by(leases.c.id),
     )
 
 
 def secret_ids(db, *names: str, owner: str = OWNER) -> str:
     """The ids of ``owner``'s live secrets ``names``, as an audit row lists them: ``12,15``."""
+    owned, users = tables.secrets, tables.users
     rows = sql(
         db,
-        "SELECT s.id FROM secrets s JOIN users u ON u.id = s.owner_id "
-        "WHERE u.login = %s AND s.name = ANY(%s) AND s.deleted_at IS NULL ORDER BY s.id",
-        (owner, list(names)),
+        select(owned.c.id)
+        .join_from(owned, users, users.c.id == owned.c.owner_id)
+        .where(users.c.login == owner, owned.c.name.in_(names), owned.c.deleted_at.is_(None))
+        .order_by(owned.c.id),
     )
     assert len(rows) == len(names), (names, rows)
     return ",".join(str(row[0]) for row in rows)
 
 
 def audit_rows(db, action: str) -> list[tuple]:
+    audit, users, projects = tables.audit, tables.users, tables.projects
     return sql(
         db,
-        "SELECT a.target, u.login, p.name, a.token_id IS NOT NULL FROM audit a LEFT JOIN users u ON u.id = a.actor_id "
-        "LEFT JOIN projects p ON p.id = a.project_id WHERE a.action = %s ORDER BY a.id",
-        (action,),
+        select(audit.c.target, users.c.login, projects.c.name, audit.c.token_id.is_not(None))
+        .join_from(audit, users, users.c.id == audit.c.actor_id, isouter=True)
+        .outerjoin(projects, projects.c.id == audit.c.project_id)
+        .where(audit.c.action == action)
+        .order_by(audit.c.id),
     )
+
+
+def count_leases(db, *where) -> list[tuple]:
+    leases = tables.credential_leases
+    return sql(db, select(func.count()).select_from(leases).where(*where))
 
 
 def reap(client) -> dict:
     state = client.app.state
-    reaper = functools.partial(run_state.recover_runs, state.pool, sealer=state.sealer, github_app=state.github_app)
+    reaper = functools.partial(run_state.recover_runs, state.engine, sealer=state.sealer, github_app=state.github_app)
     return client.portal.call(reaper)
 
 
@@ -275,8 +295,8 @@ def test_a_run_gets_its_owners_secrets_and_an_app_token_for_its_own_github_repos
         f"https://github.com/{MINE}",
         GITHUB_GIT_USERNAME,
     )
-    expires = parse_iso(app["expires_at"])
-    assert timedelta(minutes=55) < expires - datetime.now(timezone.utc) <= timedelta(hours=1)
+    expires = datetime.fromisoformat(app["expires_at"])
+    assert timedelta(minutes=55) < expires - datetime.now(UTC) <= timedelta(hours=1)
     # the token opens the run's repo of that owner, and not another repo the App is installed on
     assert github.covers(app["value"], MINE, "evo-agents")
     assert not github.covers(app["value"], MINE, "agent-skills")
@@ -301,8 +321,9 @@ def test_a_run_gets_its_owners_secrets_and_an_app_token_for_its_own_github_repos
     target = f"https://github.com/{MINE}/evo-agents"
     assert rows["github-app"][1:] == ("github-app", None, target, False, True, "1001")
     # the token is kept sealed under its lease's id, for the revocation
+    leases = tables.credential_leases
     ((sealed, nonce, key_id),) = sql(
-        hub_db, "SELECT sealed_value, nonce, key_id FROM credential_leases WHERE id = %s", (lease_id,)
+        hub_db, select(leases.c.sealed_value, leases.c.nonce, leases.c.key_id).where(leases.c.id == lease_id)
     )
     assert Sealer(config.secrets_key).open(Sealed(sealed, nonce, key_id), lease_aad(lease_id)) == app["value"]
 
@@ -381,7 +402,8 @@ def test_a_secret_bound_to_a_worker_goes_to_that_worker_alone(client, hub, hub_d
     env_secret(client, hub["owner"], "box-api", "API_TOKEN", values["box-api"], workers=["box"])
     env_secret(client, hub["owner"], "box-only", "BOX_TOKEN", values["box-only"], workers=["box"])
     env_secret(client, hub["owner"], "stale", "STALE_TOKEN", values["stale"])
-    sql(hub_db, "UPDATE secrets SET expires_at = now() - interval '1 minute' WHERE name = 'stale'")
+    stale = update(tables.secrets).values(expires_at=func.now() - timedelta(minutes=1))
+    sql(hub_db, stale.where(tables.secrets.c.name == "stale"))
     env_secret(client, hub["other"], "theirs", "THEIR_TOKEN", values["theirs"])
     on_box = step_run(client, hub["owner"], "notes", box)
     on_desk = step_run(client, hub["owner"], "m1-kb-docs", desk)
@@ -503,7 +525,8 @@ def test_asking_again_keeps_the_leases_until_the_github_token_nears_its_end(clie
 
     # less than GITHUB_TOKEN_REFRESH_SECONDS left: a new token in a new lease; the old one works until its end
     left = timedelta(seconds=GITHUB_TOKEN_REFRESH_SECONDS - 60)
-    sql(hub_db, "UPDATE credential_leases SET expires_at = now() + %s WHERE provider = 'github-app'", (left,))
+    leases = tables.credential_leases
+    sql(hub_db, update(leases).values(expires_at=func.now() + left).where(leases.c.provider == "github-app"))
     renewed = by_name(leased(client, worker, run_id))
     old, new = first[f"github-app:{MINE}"], renewed[f"github-app:{MINE}"]
     assert new["id"] != old["id"] and new["value"] != old["value"]
@@ -610,13 +633,15 @@ def test_revoking_a_worker_revokes_every_lease_still_out(client, hub, github, hu
     token = by_name(leased(client, worker, on_github))[f"github-app:{MINE}"]["value"]
     assert len(leased(client, worker, on_gitlab)["leases"]) == 2
     # a run that left the worker without a move, as an older hub could leave one, keeps its leases out
-    sql(hub_db, "UPDATE runs SET state = 'done', finished_at = now() WHERE id = %s", (on_github,))
+    runs = tables.runs
+    sql(hub_db, update(runs).values(state="done", finished_at=func.now()).where(runs.c.id == on_github))
 
     revoked = client.post(f"/v1/workers/{worker['id']}/revoke", headers=hub["owner"])
     assert revoked.status_code == 200, revoked.text
     assert state_of(hub_db, on_gitlab) == "failed"  # pinned to the worker revoked
-    assert sql(hub_db, "SELECT count(*) FROM credential_leases WHERE revoked_at IS NULL") == [(0,)]
-    assert sql(hub_db, "SELECT count(*) FROM credential_leases WHERE sealed_value IS NOT NULL") == [(0,)]
+    leases = tables.credential_leases
+    assert count_leases(hub_db, leases.c.revoked_at.is_(None)) == [(0,)]
+    assert count_leases(hub_db, leases.c.sealed_value.is_not(None)) == [(0,)]
     assert revoked_at_github(github) == [token] and not github.covers(token, MINE, "evo-agents")
     both, oauth = secret_ids(hub_db, "claude-oauth", "gitlab-kb"), secret_ids(hub_db, "claude-oauth")
     assert [row[:2] for row in audit_rows(hub_db, "credential.revoke")] == [
@@ -640,9 +665,11 @@ def test_the_pruning_drops_the_sealed_tokens_past_their_end(client, hub, github,
     leased(client, worker, run_id)
     sql(
         hub_db,
-        "UPDATE credential_leases SET issued_at = now() - interval '2 hours', expires_at = now() - interval '1 hour'",
+        update(tables.credential_leases).values(
+            issued_at=func.now() - timedelta(hours=2), expires_at=func.now() - timedelta(hours=1)
+        ),
     )
-    report_ = client.portal.call(run_state.prune_run_events, client.app.state.pool, 30)
+    report_ = client.portal.call(run_state.prune_run_events, client.app.state.engine, 30)
     assert report_ == {"deleted": 0, "days": 30, "tokens_dropped": 1}
     assert [(row[4], row[5]) for row in leases_of(hub_db, run_id)] == [(False, False)]
     assert report(client, worker, run_id, "failed", error="the agent gave up").status_code == 200

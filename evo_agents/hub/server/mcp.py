@@ -54,9 +54,13 @@ from mcp.server.transport_security import DEFAULT_MAX_REQUEST_BODY_SIZE, Transpo
 from mcp_types import CallToolResult
 from mcp_types import Tool as McpTool
 from pydantic import ValidationError
+from sqlalchemy import and_, select
+from sqlalchemy import exc as sa_exc
+from sqlalchemy.ext.asyncio import AsyncConnection
 from starlette.requests import Request
 
 from evo_agents import __version__
+from evo_agents.hub import tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.client import HubError
 from evo_agents.hub.config import HubConfig
@@ -119,16 +123,21 @@ NOT_HELD = (
     f"this worker does not hold run {{run}} now: it ended, or another worker holds it, and {MOUNT} opens for the "
     "agent of a run its worker holds only"
 )
-# The run a worker token names, when that worker (live) holds it for its owner: its state, its project and the owner's
-# grant there.
-RUN_SCOPE = """
-SELECT r.state, p.name, g.role, g.max_level
-  FROM workers w
-  JOIN runs r ON r.worker_id = w.id AND r.dispatched_by = w.owner_id
-  JOIN projects p ON p.id = r.project_id
-  LEFT JOIN grants g ON g.project_id = r.project_id AND g.user_id = w.owner_id
- WHERE w.token_id = %(token)s AND w.revoked_at IS NULL AND r.id = %(run)s
-"""
+
+
+def _held_run(token_id: int, run_id: int):
+    """The run ``run_id`` that the live worker of token ``token_id`` holds for its owner: its state, its project and
+    the owner's grant there (role and max_level None without one)."""
+    workers, runs, projects, grants = tables.workers, tables.runs, tables.projects, tables.grants
+    return (
+        select(runs.c.state, projects.c.name, grants.c.role, grants.c.max_level)
+        .select_from(
+            workers.join(runs, and_(runs.c.worker_id == workers.c.id, runs.c.dispatched_by == workers.c.owner_id))
+            .join(projects, projects.c.id == runs.c.project_id)
+            .outerjoin(grants, and_(grants.c.project_id == runs.c.project_id, grants.c.user_id == workers.c.owner_id))
+        )
+        .where(workers.c.token_id == token_id, workers.c.revoked_at.is_(None), runs.c.id == run_id)
+    )
 
 
 class Refusal(Exception):
@@ -269,13 +278,13 @@ class McpGate:
             return error_response(request, 400, f"{RUN_HEADER} goes with a worker token: a machine token is no run's")
         if run is not None and not _RUN.fullmatch(run):
             return error_response(request, 400, f"{RUN_HEADER} must be the id of a run")
-        config, pool = request.app.state.config, request.app.state.pool
+        config, engine = request.app.state.config, request.app.state.engine
         try:
-            principal = await authenticate(pool, token, kind, config)
+            principal = await authenticate(engine, token, kind, config)
             if principal is not None and kind == WORKER:
-                async with pool.connection() as conn:
+                async with engine.begin() as conn:
                     principal = replace(principal, scope=await run_scope(conn, principal, int(run)))
-        except psycopg.OperationalError as exc:  # PoolTimeout is one; bugs stay 500s
+        except (psycopg.OperationalError, sa_exc.OperationalError) as exc:  # PoolTimeout is one; bugs stay 500s
             log.warning("cannot check a credential: database unavailable", extra={"error": type(exc).__name__})
             return error_response(request, 503, "the hub database is unavailable; try again shortly")
         except HTTPException as exc:  # a run its worker does not hold
@@ -289,12 +298,12 @@ class McpGate:
         return None
 
 
-async def run_scope(conn, user: Principal, run_id: int) -> RunScope:
+async def run_scope(conn: AsyncConnection, user: Principal, run_id: int) -> RunScope:
     """The scope of the agent of run ``run_id`` for the worker whose token ``user`` authenticated: the run's project,
     the owner's grant there with its role capped at writer. HTTPException 403 when that worker does not hold the run
     now (another worker's, one that ended, none) or the owner holds no grant on the project any more."""
-    row = await (await conn.execute(RUN_SCOPE, {"token": user.token_id, "run": run_id})).fetchone()
-    if row is None or row[0] not in HELD_STATES:
+    row = (await conn.execute(_held_run(user.token_id, run_id))).first()
+    if row is None or row.state not in HELD_STATES:
         raise HTTPException(403, NOT_HELD.format(run=run_id))
     _, project, role, max_level = row
     if role is None:
@@ -428,7 +437,7 @@ class HubMcp(MCPServer):
             return _error(str(exc))
         except HTTPException as exc:
             return _error(_detail(exc))
-        except psycopg.OperationalError as exc:  # PoolTimeout is one
+        except (psycopg.OperationalError, sa_exc.OperationalError) as exc:  # PoolTimeout is one
             log.warning("mcp tool: database unavailable", extra={"tool": name, "error": type(exc).__name__})
             return _error("the hub database is unavailable; try again shortly")
         except Exception:
@@ -453,7 +462,7 @@ class HubMcp(MCPServer):
 
     async def _readable(self, caller: Caller, project: str) -> ProjectAccess:
         """The caller's access to ``project`` when anything of it is visible through the session's sink."""
-        async with self.hub.state.pool.connection() as conn:
+        async with self.hub.state.engine.begin() as conn:
             access = await project_access(conn, caller.user, project)
         if access.role is None:
             raise Refusal(f"reading project {project} needs a grant on it")

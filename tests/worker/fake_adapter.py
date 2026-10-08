@@ -318,7 +318,7 @@ class FakeAdapter(Adapter):
         """Sleep; whether an interrupt or the end of the turn came first."""
         try:
             await asyncio.wait_for(self._interrupted.wait(), seconds)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             return self._boundary.is_set()
         return True
 

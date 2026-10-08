@@ -51,8 +51,13 @@ from typing import Annotated, Literal
 import psycopg
 from fastapi import APIRouter, HTTPException, Path, Query, Request, Response
 from pydantic import BaseModel, Field
+from sqlalchemy import BigInteger, Text, any_, delete, exists, func, insert, literal, select, update
+from sqlalchemy import exc as sa_exc
+from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import runs
+from evo_agents.hub import runs, tables
 from evo_agents.hub.access import ROLES, has_role
 from evo_agents.hub.credentials import DISPATCH_FROM
 from evo_agents.hub.server import audit, credentials
@@ -297,44 +302,55 @@ class WorkerCredential(BaseModel):
 
 # Reading workers
 
-WORKERS = """
-SELECT w.id, w.name, u.login, w.hostname, w.os, w.arch, w.agent_version, w.slots, w.labels,
-       ARRAY(SELECT p.name FROM worker_projects wp JOIN projects p ON p.id = wp.project_id
-              WHERE wp.worker_id = w.id ORDER BY p.name),
-       w.runtimes, w.checkouts, w.free_slots, w.allow_web_terminal, w.dispatch_from,
-       (SELECT count(*) FROM runs r WHERE r.worker_id = w.id AND r.state = ANY(%(held)s)),
-       w.created_at, w.last_heartbeat_at, w.drained_at, w.revoked_at, now()
-  FROM workers w JOIN users u ON u.id = w.owner_id
- WHERE {where}
- ORDER BY w.created_at DESC, w.id DESC
-"""
-WORKER_FIELDS = (
-    "id",
-    "name",
-    "owner",
-    "hostname",
-    "os",
-    "arch",
-    "agent_version",
-    "slots",
-    "labels",
-    "projects",
-    "runtimes",
-    "checkouts",
-    "free_slots",
-    "allow_web_terminal",
-    "dispatch_from",
-    "held_runs",
-    "created_at",
-    "last_heartbeat_at",
-    "drained_at",
-    "revoked_at",
-)
+
+def _listed(*where):
+    """The workers that match ``where``, newest first, with what a Worker shows of each and the database's now."""
+    w, users, wp, projects = tables.workers, tables.users, tables.worker_projects, tables.projects
+    names = (
+        select(projects.c.name)
+        .join_from(wp, projects, projects.c.id == wp.c.project_id)
+        .where(wp.c.worker_id == w.c.id)
+        .order_by(projects.c.name)
+    )
+    held_runs = (
+        select(func.count())
+        .select_from(tables.runs)
+        .where(tables.runs.c.worker_id == w.c.id, tables.runs.c.state.in_(runs.HELD_STATES))
+        .scalar_subquery()
+    )
+    return (
+        select(
+            w.c.id,
+            w.c.name,
+            users.c.login.label("owner"),
+            w.c.hostname,
+            w.c.os,
+            w.c.arch,
+            w.c.agent_version,
+            w.c.slots,
+            w.c.labels,
+            func.array(names.scalar_subquery(), type_=ARRAY(Text)).label("projects"),
+            w.c.runtimes,
+            w.c.checkouts,
+            w.c.free_slots,
+            w.c.allow_web_terminal,
+            w.c.dispatch_from,
+            held_runs.label("held_runs"),
+            w.c.created_at,
+            w.c.last_heartbeat_at,
+            w.c.drained_at,
+            w.c.revoked_at,
+            func.now().label("now"),
+        )
+        .join_from(w, users, users.c.id == w.c.owner_id)
+        .where(*where)
+        .order_by(w.c.created_at.desc(), w.c.id.desc())
+    )
 
 
 def _worker(row) -> Worker:
-    *values, now = row
-    fields = dict(zip(WORKER_FIELDS, values, strict=True))
+    fields = dict(row._mapping)
+    now = fields.pop("now")
     status = runs.worker_status(
         last_heartbeat_at=fields["last_heartbeat_at"],
         drained_at=fields["drained_at"],
@@ -344,25 +360,28 @@ def _worker(row) -> Worker:
     return Worker(**fields, status=status)
 
 
-async def _workers(conn, where: str, params: dict) -> list[Worker]:
-    cursor = await conn.execute(WORKERS.format(where=where), {"held": list(runs.HELD_STATES), **params})
-    return [_worker(row) for row in await cursor.fetchall()]
+async def _workers(conn: AsyncConnection, *where) -> list[Worker]:
+    return [_worker(row) for row in await conn.execute(_listed(*where))]
 
 
-async def _one_worker(conn, worker_id: int) -> Worker:
-    (found,) = await _workers(conn, "w.id = %(id)s", {"id": worker_id})
+async def _one_worker(conn: AsyncConnection, worker_id: int) -> Worker:
+    (found,) = await _workers(conn, tables.workers.c.id == worker_id)
     return found
 
 
-async def _owned(conn, user: Principal, worker_id: int, *, lock: bool = False):
+async def _owned(conn: AsyncConnection, user: Principal, worker_id: int, *, lock: bool = False):
     """(owner_id, owner login, name, token_id, drained_at, revoked_at) of a worker ``user`` owns, or any worker for a
     hub admin; 404 otherwise, the same as for an id the hub never gave out."""
+    w, users = tables.workers, tables.users
     statement = (
-        "SELECT w.owner_id, u.login, w.name, w.token_id, w.drained_at, w.revoked_at "
-        "FROM workers w JOIN users u ON u.id = w.owner_id WHERE w.id = %s"
+        select(w.c.owner_id, users.c.login, w.c.name, w.c.token_id, w.c.drained_at, w.c.revoked_at)
+        .join_from(w, users, users.c.id == w.c.owner_id)
+        .where(w.c.id == worker_id)
     )
-    row = await (await conn.execute(statement + (" FOR UPDATE OF w" if lock else ""), (worker_id,))).fetchone()
-    if row is None or (row[0] != user.user_id and not user.admin):
+    if lock:
+        statement = statement.with_for_update(of=w)
+    row = (await conn.execute(statement)).one_or_none()
+    if row is None or (row.owner_id != user.user_id and not user.admin):
         raise HTTPException(404, NO_WORKER.format(id=worker_id))
     return row
 
@@ -382,25 +401,18 @@ async def _writable(conn, user: Principal, names: list[str]) -> list[int]:
     return ids
 
 
-async def _name_taken(conn, owner_id: int, name: str) -> bool:
-    statement = "SELECT 1 FROM workers WHERE owner_id = %s AND lower(name) = lower(%s) AND revoked_at IS NULL"
-    return await (await conn.execute(statement, (owner_id, name))).fetchone() is not None
+async def _name_taken(conn: AsyncConnection, owner_id: int, name: str) -> bool:
+    w = tables.workers
+    taken = exists().where(w.c.owner_id == owner_id, func.lower(w.c.name) == func.lower(name), w.c.revoked_at.is_(None))
+    return (await conn.execute(select(taken))).scalar_one()
 
 
 def _name_conflict(name: str) -> HTTPException:
     return HTTPException(409, f"there is a worker named {name} already: revoke it first, or choose another name")
 
 
-INSERT_WORKER = """
-INSERT INTO workers (owner_id, token_id, name, hostname, os, arch, agent_version, slots, labels, allow_web_terminal)
-VALUES (%(owner)s, %(token)s, %(name)s, %(hostname)s, %(os)s, %(arch)s, %(agent_version)s, %(slots)s,
-        %(labels)s::text[], %(allow_web_terminal)s)
-RETURNING id
-"""
-
-
 async def _create_worker(
-    conn,
+    conn: AsyncConnection,
     owner_id: int,
     *,
     name: str,
@@ -414,22 +426,32 @@ async def _create_worker(
     if await _name_taken(conn, owner_id, name):
         raise _name_conflict(name)
     issued = await issue_token(conn, owner_id, WORKER, host.hostname)
-    params = {
-        "owner": owner_id,
-        "token": issued.token_id,
-        "name": name,
-        "slots": slots,
-        "labels": labels,
-        "allow_web_terminal": allow_web_terminal,
-        **host.model_dump(include={"hostname", "os", "arch", "agent_version"}),
-    }
+    w = tables.workers
+    statement = (
+        insert(w)
+        .values(
+            owner_id=owner_id,
+            token_id=issued.token_id,
+            name=name,
+            slots=slots,
+            labels=labels,
+            allow_web_terminal=allow_web_terminal,
+            **host.model_dump(include={"hostname", "os", "arch", "agent_version"}),
+        )
+        .returning(w.c.id)
+    )
     try:
-        worker_id = (await (await conn.execute(INSERT_WORKER, params)).fetchone())[0]
-    except psycopg.errors.UniqueViolation:  # another registration took the name meanwhile
+        worker_id = (await conn.execute(statement)).scalar_one()
+    except sa_exc.IntegrityError as exc:  # another registration took the name meanwhile
+        if not isinstance(exc.orig, psycopg.errors.UniqueViolation):
+            raise
         raise _name_conflict(name) from None
+    wp = tables.worker_projects
+    projects = literal(list(project_ids), ARRAY(BigInteger))
     await conn.execute(
-        "INSERT INTO worker_projects (worker_id, project_id) SELECT %s, unnest(%s::bigint[])",
-        (worker_id, list(project_ids)),
+        insert(wp).from_select(
+            ["worker_id", "project_id"], select(literal(worker_id, BigInteger), func.unnest(projects))
+        )
     )
     return issued, worker_id
 
@@ -438,25 +460,49 @@ def _unique(values: list[str]) -> list[str]:
     return list(dict.fromkeys(values))
 
 
-async def _credential(conn, issued, worker_id: int) -> WorkerCredential:
+async def _credential(conn: AsyncConnection, issued, worker_id: int) -> WorkerCredential:
     worker = await _one_worker(conn, worker_id)
     return WorkerCredential(token=issued.token, token_id=issued.token_id, expires_at=issued.expires_at, worker=worker)
 
 
 # Pairings
 
-PRUNE_PAIRINGS = "DELETE FROM worker_pairings WHERE used_at IS NULL AND expires_at < now() - %s"
-# A locked code holds its selector until it is pruned, so it counts as live until it expires: a member cannot take
-# more selectors by locking codes with wrong tries.
-LIVE_PAIRINGS = "SELECT count(*) FROM worker_pairings WHERE owner_id = %s AND used_at IS NULL AND expires_at > now()"
-INSERT_PAIRING = """
-INSERT INTO worker_pairings (code_selector, code_hash, owner_id, name, projects, slots, labels, allow_web_terminal,
-                             expires_at)
-VALUES (%(selector)s, %(hash)s, %(owner)s, %(name)s, %(projects)s::bigint[], %(slots)s, %(labels)s::text[],
-        %(allow_web_terminal)s, now() + %(ttl)s)
-ON CONFLICT (code_selector) WHERE used_at IS NULL DO NOTHING
-RETURNING id, expires_at
-"""
+
+async def _prune_pairings(conn: AsyncConnection) -> None:
+    """Delete the unused pairings whose expiry is PAIRING_KEPT behind."""
+    wp = tables.worker_pairings
+    await conn.execute(delete(wp).where(wp.c.used_at.is_(None), wp.c.expires_at < func.now() - PAIRING_KEPT))
+
+
+async def _live_pairings(conn: AsyncConnection, owner_id: int) -> int:
+    """The pairings of ``owner_id`` neither used nor expired. A locked code holds its selector until it is pruned, so
+    it counts as live until it expires: a member cannot take more selectors by locking codes with wrong tries."""
+    wp = tables.worker_pairings
+    live = (
+        select(func.count())
+        .select_from(wp)
+        .where(wp.c.owner_id == owner_id, wp.c.used_at.is_(None), wp.c.expires_at > func.now())
+    )
+    return (await conn.execute(live)).scalar_one()
+
+
+def _insert_pairing(code: str, secret: str, owner_id: int, body: PairingRequest, project_ids, labels):
+    """A pairing of ``code``, unless an unused pairing holds its selector already: then it returns no row."""
+    wp = tables.worker_pairings
+    statement = pg_insert(wp).values(
+        code_selector=code[:SELECTOR_LENGTH],
+        code_hash=code_hash(secret, code),
+        owner_id=owner_id,
+        name=body.name,
+        projects=project_ids,
+        slots=body.slots,
+        labels=labels,
+        allow_web_terminal=body.allow_web_terminal,
+        expires_at=func.now() + PAIRING_TTL,
+    )
+    return statement.on_conflict_do_nothing(
+        index_elements=[wp.c.code_selector], index_where=wp.c.used_at.is_(None)
+    ).returning(wp.c.id, wp.c.expires_at)
 
 
 @router.post(
@@ -469,12 +515,13 @@ async def create_pairing(request: Request, body: PairingRequest, user: CurrentUs
     """A code a machine joins with as a worker of the caller; shown once."""
     projects, labels = _unique(body.projects), _unique(body.labels)
     secret = _pairing_secret(request)
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         project_ids = await _writable(conn, user, projects)
         # One pairing of a member at a time, so two of them cannot both pass the count.
-        await conn.execute("SELECT 1 FROM users WHERE id = %s FOR UPDATE", (user.user_id,))
-        await conn.execute(PRUNE_PAIRINGS, (PAIRING_KEPT,))
-        live = (await (await conn.execute(LIVE_PAIRINGS, (user.user_id,))).fetchone())[0]
+        users = tables.users
+        await conn.execute(select(users.c.id).where(users.c.id == user.user_id).with_for_update())
+        await _prune_pairings(conn)
+        live = await _live_pairings(conn, user.user_id)
         if live >= MAX_LIVE_PAIRINGS:
             raise HTTPException(
                 409,
@@ -483,19 +530,10 @@ async def create_pairing(request: Request, body: PairingRequest, user: CurrentUs
             )
         if await _name_taken(conn, user.user_id, body.name):
             raise _name_conflict(body.name)
-        params = {
-            "owner": user.user_id,
-            "name": body.name,
-            "projects": project_ids,
-            "slots": body.slots,
-            "labels": labels,
-            "allow_web_terminal": body.allow_web_terminal,
-            "ttl": PAIRING_TTL,
-        }
         for _ in range(DRAWS):
             code = new_code()
-            params |= {"selector": code[:SELECTOR_LENGTH], "hash": code_hash(secret, code)}
-            row = await (await conn.execute(INSERT_PAIRING, params)).fetchone()
+            statement = _insert_pairing(code, secret, user.user_id, body, project_ids, labels)
+            row = (await conn.execute(statement)).one_or_none()
             if row is not None:
                 break
         else:
@@ -517,35 +555,41 @@ async def create_pairing(request: Request, body: PairingRequest, user: CurrentUs
     )
 
 
-async def _project_names(conn, project_ids: list[int]) -> list[str]:
-    cursor = await conn.execute(
-        "SELECT name FROM projects WHERE id = ANY(%s::bigint[]) ORDER BY array_position(%s::bigint[], id)",
-        (project_ids, project_ids),
-    )
-    return [row[0] for row in await cursor.fetchall()]
+async def _project_names(conn: AsyncConnection, project_ids: list[int]) -> list[str]:
+    projects = tables.projects
+    ids = literal(list(project_ids), ARRAY(BigInteger))
+    names = select(projects.c.name).where(projects.c.id == any_(ids)).order_by(func.array_position(ids, projects.c.id))
+    return list((await conn.execute(names)).scalars())
 
 
 @router.get("/pairings/{pairing_id}", response_model=PairingState, responses={404: {"model": ErrorBody}})
 async def pairing_state(request: Request, pairing_id: WorkerId, user: CurrentUser, response: Response) -> PairingState:
     """Whether a machine has joined with one of the caller's pairings yet."""
-    async with request.app.state.pool.connection() as conn:
-        row = await (
-            await conn.execute(
-                "SELECT owner_id, name, projects, slots, labels, allow_web_terminal, attempts, created_at, expires_at, "
-                "used_at, worker_id, expires_at <= now() FROM worker_pairings WHERE id = %s",
-                (pairing_id,),
-            )
-        ).fetchone()
-        if row is None or row[0] != user.user_id:
+    wp = tables.worker_pairings
+    statement = select(
+        wp.c.owner_id,
+        wp.c.name,
+        wp.c.projects,
+        wp.c.slots,
+        wp.c.labels,
+        wp.c.allow_web_terminal,
+        wp.c.attempts,
+        wp.c.created_at,
+        wp.c.expires_at,
+        wp.c.used_at,
+        wp.c.worker_id,
+        (wp.c.expires_at <= func.now()).label("expired"),
+    ).where(wp.c.id == pairing_id)
+    async with request.app.state.engine.begin() as conn:
+        row = (await conn.execute(statement)).one_or_none()
+        if row is None or row.owner_id != user.user_id:
             raise HTTPException(404, f"you have no pairing {pairing_id} on this hub")
-        _, name, project_ids, slots, labels, terminal, attempts, created_at, expires_at, used_at, worker_id = row[:11]
-        expired = row[11]
-        projects = await _project_names(conn, project_ids)
-    if used_at is not None:
+        projects = await _project_names(conn, row.projects)
+    if row.used_at is not None:
         status = "joined"
-    elif attempts >= MAX_WRONG_TRIES:
+    elif row.attempts >= MAX_WRONG_TRIES:
         status = "locked"
-    elif expired:
+    elif row.expired:
         status = "expired"
     else:
         status = "waiting"
@@ -553,26 +597,38 @@ async def pairing_state(request: Request, pairing_id: WorkerId, user: CurrentUse
     return PairingState(
         id=pairing_id,
         status=status,
-        name=name,
+        name=row.name,
         projects=projects,
-        slots=slots,
-        labels=labels,
-        allow_web_terminal=terminal,
-        tries_left=max(MAX_WRONG_TRIES - attempts, 0),
-        created_at=created_at,
-        expires_at=expires_at,
-        used_at=used_at,
-        worker_id=worker_id,
+        slots=row.slots,
+        labels=row.labels,
+        allow_web_terminal=row.allow_web_terminal,
+        tries_left=max(MAX_WRONG_TRIES - row.attempts, 0),
+        created_at=row.created_at,
+        expires_at=row.expires_at,
+        used_at=row.used_at,
+        worker_id=row.worker_id,
     )
 
 
-FIND_PAIRING = """
-SELECT id, code_hash, owner_id, name, projects, slots, labels, allow_web_terminal, attempts, expires_at > now()
-  FROM worker_pairings
- WHERE code_selector = %s AND used_at IS NULL
-   FOR UPDATE
-"""
-OWNER_WRITES = "SELECT count(*) FROM grants WHERE user_id = %s AND project_id = ANY(%s::bigint[]) AND role = ANY(%s)"
+def _find_pairing(selector: str):
+    """The unused pairing that holds ``selector``, its row locked, and whether it has not expired."""
+    wp = tables.worker_pairings
+    return (
+        select(
+            wp.c.id,
+            wp.c.code_hash,
+            wp.c.owner_id,
+            wp.c.name,
+            wp.c.projects,
+            wp.c.slots,
+            wp.c.labels,
+            wp.c.allow_web_terminal,
+            wp.c.attempts,
+            (wp.c.expires_at > func.now()).label("live"),
+        )
+        .where(wp.c.code_selector == selector, wp.c.used_at.is_(None))
+        .with_for_update()
+    )
 
 
 @worker_router.post(
@@ -603,15 +659,17 @@ async def join(request: Request, body: JoinRequest, response: Response) -> Worke
         raise HTTPException(422, f"a pairing code is {CODE_LENGTH} characters of Crockford base32, written XXXX-XXXX")
     secret = _pairing_secret(request)
     refused = False
-    async with request.app.state.pool.connection() as conn:
-        row = await (await conn.execute(FIND_PAIRING, (code[:SELECTOR_LENGTH],))).fetchone()
-        if row is None or row[8] >= MAX_WRONG_TRIES or not row[9]:
+    async with request.app.state.engine.begin() as conn:
+        row = (await conn.execute(_find_pairing(code[:SELECTOR_LENGTH]))).one_or_none()
+        if row is None or row.attempts >= MAX_WRONG_TRIES or not row.live:
             refused = True
-        elif not same(code_hash(secret, code), row[1]):
+        elif not same(code_hash(secret, code), row.code_hash):
             # Counted in this transaction, which commits: a refusal must not roll the wrong try back.
-            await conn.execute("UPDATE worker_pairings SET attempts = attempts + 1 WHERE id = %s", (row[0],))
+            wp = tables.worker_pairings
+            await conn.execute(update(wp).values(attempts=wp.c.attempts + 1).where(wp.c.id == row.id))
             refused = True
-            log.warning("wrong pairing code", extra={"pairing_id": row[0], "tries_left": MAX_WRONG_TRIES - row[8] - 1})
+            tries_left = MAX_WRONG_TRIES - row.attempts - 1
+            log.warning("wrong pairing code", extra={"pairing_id": row.id, "tries_left": tries_left})
         else:
             credential = await _join(conn, row, body)
     if refused:
@@ -623,9 +681,19 @@ async def join(request: Request, body: JoinRequest, response: Response) -> Worke
     return credential
 
 
-async def _join(conn, pairing, host: JoinRequest) -> WorkerCredential:
-    pairing_id, _, owner_id, name, project_ids, slots, labels, terminal, _, _ = pairing
-    writes = (await (await conn.execute(OWNER_WRITES, (owner_id, project_ids, WRITER_ROLES))).fetchone())[0]
+async def _join(conn: AsyncConnection, pairing, host: JoinRequest) -> WorkerCredential:
+    pairing_id, owner_id, name, project_ids = pairing.id, pairing.owner_id, pairing.name, pairing.projects
+    grants = tables.grants
+    owner_writes = (
+        select(func.count())
+        .select_from(grants)
+        .where(
+            grants.c.user_id == owner_id,
+            grants.c.project_id == any_(literal(list(project_ids), ARRAY(BigInteger))),
+            grants.c.role.in_(WRITER_ROLES),
+        )
+    )
+    writes = (await conn.execute(owner_writes)).scalar_one()
     if writes != len(set(project_ids)):
         raise HTTPException(
             409,
@@ -636,15 +704,14 @@ async def _join(conn, pairing, host: JoinRequest) -> WorkerCredential:
         conn,
         owner_id,
         name=name,
-        slots=slots,
-        labels=list(labels),
-        allow_web_terminal=terminal,
+        slots=pairing.slots,
+        labels=list(pairing.labels),
+        allow_web_terminal=pairing.allow_web_terminal,
         project_ids=project_ids,
         host=host,
     )
-    await conn.execute(
-        "UPDATE worker_pairings SET used_at = now(), worker_id = %s WHERE id = %s", (worker_id, pairing_id)
-    )
+    wp = tables.worker_pairings
+    await conn.execute(update(wp).values(used_at=func.now(), worker_id=worker_id).where(wp.c.id == pairing_id))
     target = f"worker:{worker_id} name={name} pairing:{pairing_id}"
     await audit.record(conn, actor_id=owner_id, token_id=issued.token_id, action=audit.WORKER_JOIN, target=target)
     log.info("worker joined", extra={"worker_id": worker_id, "pairing_id": pairing_id, "token_id": issued.token_id})
@@ -667,7 +734,7 @@ async def register(
             "on the web, create a pairing code instead",
         )
     projects = _unique(body.projects)
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         project_ids = await _writable(conn, user, projects)
         issued, worker_id = await _create_worker(
             conn,
@@ -698,18 +765,19 @@ async def list_workers(
     revoked: Annotated[bool, Query(description="also list revoked workers")] = False,
 ) -> list[Worker]:
     """The caller's workers, newest first; every worker for a hub admin."""
-    where = ["true"]
+    w = tables.workers
+    where = []
     if not user.admin:
-        where.append("w.owner_id = %(owner)s")
+        where.append(w.c.owner_id == user.user_id)
     if not revoked:
-        where.append("w.revoked_at IS NULL")
-    async with request.app.state.pool.connection() as conn:
-        return await _workers(conn, " AND ".join(where), {"owner": user.user_id})
+        where.append(w.c.revoked_at.is_(None))
+    async with request.app.state.engine.begin() as conn:
+        return await _workers(conn, *where)
 
 
 @router.get("/{worker_id}", response_model=Worker, responses={404: {"model": ErrorBody}})
 async def show_worker(request: Request, worker_id: WorkerId, user: CurrentUser) -> Worker:
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         await _owned(conn, user, worker_id)
         return await _one_worker(conn, worker_id)
 
@@ -719,7 +787,7 @@ def _target(worker_id: int, name: str, owner: str) -> str:
 
 
 async def _set_drain(request: Request, user: Principal, worker_id: int, drain: bool) -> Worker:
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         owner_id, owner, name, _, drained_at, revoked_at = await _owned(conn, user, worker_id, lock=True)
         if not drain and owner_id != user.user_id:  # a hub admin may stop a worker, never set one going again
             raise HTTPException(
@@ -728,8 +796,8 @@ async def _set_drain(request: Request, user: Principal, worker_id: int, drain: b
         if revoked_at is not None:
             raise HTTPException(409, f"worker {worker_id} was revoked at {revoked_at.isoformat()}; it takes no runs")
         if (drained_at is not None) != drain:  # drained already, or not drained: nothing changes, nothing is audited
-            statement = "UPDATE workers SET drained_at = CASE WHEN %s THEN now() END WHERE id = %s"
-            await conn.execute(statement, (drain, worker_id))
+            w = tables.workers
+            await conn.execute(update(w).values(drained_at=func.now() if drain else None).where(w.c.id == worker_id))
             action = audit.WORKER_DRAIN if drain else audit.WORKER_UNDRAIN
             target = _target(worker_id, name, owner)
             await audit.record(conn, actor_id=user.user_id, token_id=user.token_id, action=action, target=target)
@@ -760,16 +828,16 @@ async def set_dispatch_from(request: Request, worker_id: WorkerId, body: Dispatc
     """Set who may hand the worker its runs: its owner, from a web session only."""
     if user.kind != WEB:
         raise HTTPException(403, DISPATCH_FROM_SESSION)
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         owner_id, owner, name, _, _, revoked_at = await _owned(conn, user, worker_id, lock=True)
         if owner_id != user.user_id:
             raise HTTPException(403, f"only {owner}, who owns worker {worker_id}, may set who dispatches to it")
         if revoked_at is not None:
             raise HTTPException(409, f"worker {worker_id} was revoked at {revoked_at.isoformat()}; it takes no runs")
-        row = await (await conn.execute("SELECT dispatch_from FROM workers WHERE id = %s", (worker_id,))).fetchone()
-        if row[0] != body.value:  # the value it has already: nothing changes, nothing is audited
-            statement = "UPDATE workers SET dispatch_from = %s WHERE id = %s"
-            await conn.execute(statement, (body.value, worker_id))
+        w = tables.workers
+        value = (await conn.execute(select(w.c.dispatch_from).where(w.c.id == worker_id))).scalar_one()
+        if value != body.value:  # the value it has already: nothing changes, nothing is audited
+            await conn.execute(update(w).values(dispatch_from=body.value).where(w.c.id == worker_id))
             target = f"{_target(worker_id, name, owner)} dispatch_from={body.value}"
             action = audit.WORKER_DISPATCH_FROM
             await audit.record(conn, actor_id=user.user_id, token_id=user.token_id, action=action, target=target)
@@ -780,7 +848,7 @@ async def set_dispatch_from(request: Request, worker_id: WorkerId, body: Dispatc
 @router.post("/{worker_id}/revoke", response_model=Worker, responses=REFUSALS)
 async def revoke(request: Request, worker_id: WorkerId, user: CurrentUser) -> Worker:
     """End the worker and its token at once, and release the runs it holds."""
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         _, owner, name, token_id, _, revoked_at = await _owned(conn, user, worker_id, lock=True)
         if revoked_at is not None:
             raise HTTPException(409, f"worker {worker_id} was revoked already, at {revoked_at.isoformat()}")
@@ -791,29 +859,35 @@ async def revoke(request: Request, worker_id: WorkerId, user: CurrentUser) -> Wo
     return worker
 
 
-LIVE_WORKER_OF_TOKEN = """
-SELECT w.id, w.name, u.login
-  FROM workers w JOIN users u ON u.id = w.owner_id
- WHERE w.token_id = %(token)s AND w.revoked_at IS NULL AND (%(owner)s::bigint IS NULL OR w.owner_id = %(owner)s)
-   FOR UPDATE OF w
-"""
-
-
-async def lock_worker_of_token(conn, token_id: int, owner_id: int | None = None) -> tuple[int, str, str] | None:
+async def lock_worker_of_token(
+    conn: AsyncConnection, token_id: int, owner_id: int | None = None
+) -> tuple[int, str, str] | None:
     """(id, name, owner login) of the live worker whose token is ``token_id``, of ``owner_id`` when given, with its
     row locked; None for any other token. Called before the token's row is changed, so a token revocation locks the
     two rows in the order POST /v1/workers/{id}/revoke does, and neither waits on the other in the opposite order."""
-    params = {"token": token_id, "owner": owner_id}
-    row = await (await conn.execute(LIVE_WORKER_OF_TOKEN, params)).fetchone()
+    w, users = tables.workers, tables.users
+    statement = (
+        select(w.c.id, w.c.name, users.c.login)
+        .join_from(w, users, users.c.id == w.c.owner_id)
+        .where(w.c.token_id == token_id, w.c.revoked_at.is_(None))
+    )
+    if owner_id is not None:
+        statement = statement.where(w.c.owner_id == owner_id)
+    row = (await conn.execute(statement.with_for_update(of=w))).one_or_none()
     return None if row is None else tuple(row)
 
 
-async def end_worker(conn, actor: Principal, worker_id: int, name: str, owner: str, token_id: int) -> int:
+async def end_worker(
+    conn: AsyncConnection, actor: Principal, worker_id: int, name: str, owner: str, token_id: int
+) -> int:
     """Revoke a live worker whose row the caller holds locked, and its token, release the runs it holds, give back
     every lease it still has and add the worker.revoke audit row, all in the caller's transaction; the caller revokes
     their GitHub tokens once it commits (``revoke_leased_tokens``). Returns how many runs were released."""
-    await conn.execute("UPDATE workers SET revoked_at = now() WHERE id = %s", (worker_id,))
-    await conn.execute("UPDATE tokens SET revoked_at = now() WHERE id = %s AND revoked_at IS NULL", (token_id,))
+    w, tokens = tables.workers, tables.tokens
+    await conn.execute(update(w).values(revoked_at=func.now()).where(w.c.id == worker_id))
+    await conn.execute(
+        update(tokens).values(revoked_at=func.now()).where(tokens.c.id == token_id, tokens.c.revoked_at.is_(None))
+    )
     released = await release_runs(conn, worker_id, f"its worker {name} was revoked")
     # The runs it released gave theirs back as they moved; this takes the rest, of runs that left it otherwise.
     await credentials.end_leases(
@@ -827,4 +901,4 @@ async def end_worker(conn, actor: Principal, worker_id: int, name: str, owner: s
 async def revoke_leased_tokens(app_state, worker_id: int) -> None:
     """Once ``end_worker`` committed: revoke at GitHub the tokens the worker's leases held. GitHub failing leaves them
     to the reaper's next pass."""
-    await credentials.revoke_tokens(app_state.pool, app_state.sealer, app_state.github_app, worker_id=worker_id)
+    await credentials.revoke_tokens(app_state.engine, app_state.sealer, app_state.github_app, worker_id=worker_id)

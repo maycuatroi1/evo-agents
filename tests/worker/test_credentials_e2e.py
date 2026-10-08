@@ -57,7 +57,9 @@ pytest.importorskip("aiohttp", reason="the daemon needs the worker extra, evo-ak
 import httpx
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
+from sqlalchemy import BigInteger, func, insert, literal, select
 
+from evo_agents.hub import tables
 from tests.hub import live
 from tests.hub.fake_github import Account
 from tests.hub.live import ADMIN, bearer
@@ -191,13 +193,20 @@ def install_graph(db: pg.Database, cache: Path, root: Path, monkeypatch) -> None
     target = cache / "kg" / "graphs" / PROJECT / f"{sha256}.sqlite"
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_bytes(data)
-    live.sql(
-        db,
-        "INSERT INTO kg_builds (project_id, status, artifact_sha256, artifact_size, content_hash, nodes, edges, "
-        "started_at, finished_at) SELECT id, 'succeeded', %s, %s, %s, %s, %s, now(), now() FROM projects "
-        "WHERE name = %s",
-        (sha256, len(data), report.content_hash, report.nodes, report.edges, PROJECT),
-    )
+    builds, projects = tables.kg_builds, tables.projects
+    built = select(
+        projects.c.id,
+        literal("succeeded"),
+        literal(sha256),
+        literal(len(data), BigInteger),
+        literal(report.content_hash),
+        literal(report.nodes),
+        literal(report.edges),
+        func.now(),
+        func.now(),
+    ).where(projects.c.name == PROJECT)
+    columns = ["project_id", "status", "artifact_sha256", "artifact_size", "content_hash", "nodes", "edges"]
+    live.sql(db, insert(builds).from_select([*columns, "started_at", "finished_at"], built))
 
 
 # The worker machine
@@ -397,7 +406,7 @@ class World:
             response = self.client.put(f"/v1/secrets/{name}", json=body, headers=self.owner)
             assert response.status_code == 200, response.text
             assert self.glpat not in response.text and self.oauth not in response.text
-            (secret_id,) = live.sql(self.hub.db, "SELECT id FROM secrets WHERE name = %s", (name,))[0]
+            (secret_id,) = live.sql(self.hub.db, select(tables.secrets.c.id).where(tables.secrets.c.name == name))[0]
             self.secret_ids[name] = secret_id
 
     def dispatch(self, repo: str) -> int:

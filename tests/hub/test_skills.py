@@ -413,7 +413,21 @@ def committed(hub, login: str, data: bytes, project: str | None = None) -> None:
 
 
 def rows(db, table: str) -> int:
-    return live.sql(db, f"SELECT count(*) FROM {table}")[0][0]
+    from sqlalchemy import func, select
+
+    from evo_agents.hub import tables
+
+    return live.sql(db, select(func.count()).select_from(tables.metadata.tables[table]))[0][0]
+
+
+def published(db) -> list[tuple]:
+    """The action and target of the audit rows of skill publishing."""
+    from sqlalchemy import select
+
+    from evo_agents.hub import tables
+
+    audit = tables.audit
+    return live.sql(db, select(audit.c.action, audit.c.target).where(audit.c.action == "skill.publish"))
 
 
 @needs_pg
@@ -501,9 +515,22 @@ def test_a_version_needs_its_bundle_committed_with_that_sha256(hub, tmp_path):
     answer = created.json()
     assert answer["created"] and answer["scope"] == "global" and answer["project"] is None
     assert answer["latest"]["version"] == 1 and answer["latest"]["published_by"] == live.ADMIN
+    from sqlalchemy import select
+
+    from evo_agents.hub import tables
+
+    versions = tables.skill_versions
     assert live.sql(
         hub.db,
-        "SELECT name, description, sha256, size, r2_key, source_repo, source_commit FROM skill_versions",
+        select(
+            versions.c.name,
+            versions.c.description,
+            versions.c.sha256,
+            versions.c.size,
+            versions.c.r2_key,
+            versions.c.source_repo,
+            versions.c.source_commit,
+        ),
     ) == [
         (
             "stop-slop",
@@ -516,11 +543,11 @@ def test_a_version_needs_its_bundle_committed_with_that_sha256(hub, tmp_path):
         )
     ]
     audit = [("skill.publish", "skill:global/stop-slop")]
-    assert live.sql(hub.db, "SELECT action, target FROM audit WHERE action = 'skill.publish'") == audit
+    assert published(hub.db) == audit
     again = hub.client.post(path, json=body, headers=admin)
     assert again.status_code == 200 and not again.json()["created"] and again.json()["latest"]["version"] == 1
     assert rows(hub.db, "skill_versions") == 1
-    assert live.sql(hub.db, "SELECT action, target FROM audit WHERE action = 'skill.publish'") == audit
+    assert published(hub.db) == audit
     dump = live.table_dump(hub.db)
     assert "- delve" not in dump and "references/phrases.md" not in dump  # metadata only, never the bundle
 
@@ -592,10 +619,17 @@ def test_who_publishes_and_who_may_download_a_project_skill(hub, tmp_path):
     assert rows(hub.db, "skill_versions") == 2
 
     # Each row of the trail is filed under the project it happened in (schema 0007); global skills have none.
+    from sqlalchemy import select
+
+    from evo_agents.hub import tables
+
+    audit, projects = tables.audit, tables.projects
     filed = live.sql(
         hub.db,
-        "SELECT a.action, a.target, p.name FROM audit a LEFT JOIN projects p ON p.id = a.project_id "
-        "WHERE a.action IN ('blob.commit', 'skill.publish') ORDER BY a.id",
+        select(audit.c.action, audit.c.target, projects.c.name)
+        .join_from(audit, projects, projects.c.id == audit.c.project_id, isouter=True)
+        .where(audit.c.action.in_(("blob.commit", "skill.publish")))
+        .order_by(audit.c.id),
     )
     assert filed == [
         ("blob.commit", "plain", "plain"),
@@ -604,6 +638,40 @@ def test_who_publishes_and_who_may_download_a_project_skill(hub, tmp_path):
         ("blob.commit", "(global)", None),
         ("skill.publish", "skill:global/house-style", None),
         ("blob.commit", "demo", "demo"),  # Team-Notes: the bundle went up, the version was refused
+    ]
+
+
+@needs_pg
+def test_the_list_orders_by_scope_then_project_then_name_ignoring_case_with_the_latest_version(hub):
+    from sqlalchemy import insert, select
+
+    from evo_agents.hub import tables
+
+    skills, versions = tables.skills, tables.skill_versions
+    with live.engine(hub.db).begin() as conn:
+        admin = conn.execute(select(tables.users.c.id).where(tables.users.c.login == live.ADMIN)).scalar_one()
+        projects = dict(conn.execute(select(tables.projects.c.name, tables.projects.c.id)).all())
+        for scope, project, name in (
+            ("project", "plain", "beta"),
+            ("global", None, "zeta"),
+            ("project", "demo", "Gamma"),
+            ("global", None, "Alpha"),
+            ("project", "demo", "delta"),
+        ):
+            values = {"scope": scope, "project_id": projects.get(project), "name": name, "created_by": admin}
+            skill_id = conn.execute(insert(skills).values(**values).returning(skills.c.id)).scalar_one()
+            for number in (1, 2):
+                digest = f"{number:064x}"
+                version = {"skill_id": skill_id, "version": number, "name": name, "sha256": digest, "size": number}
+                conn.execute(insert(versions).values(**version, r2_key=f"blobs/sha256/{digest}", published_by=admin))
+    listed = hub.client.get("/v1/skills", headers=hub.who["alice"])
+    assert listed.status_code == 200, listed.text
+    assert [(s["scope"], s["project"], s["name"], s["version"]) for s in listed.json()] == [
+        ("global", None, "Alpha", 2),
+        ("global", None, "zeta", 2),
+        ("project", "demo", "delta", 2),
+        ("project", "demo", "Gamma", 2),
+        ("project", "plain", "beta", 2),
     ]
 
 
@@ -838,17 +906,23 @@ def test_a_downloaded_bundle_with_another_sha256_stops_the_sync_before_any_write
     hub.s3.put(key, alpha.data)
     evil = tarball(entry("../../escape.sh", b"#!/bin/sh\n"), skill="evil")
     committed(hub, live.ADMIN, evil)
-    live.sql(
-        hub.db,
-        "WITH s AS (INSERT INTO skills (scope, name, created_by) SELECT 'global', 'evil', id FROM users "
-        "WHERE login = %s RETURNING id, created_by) INSERT INTO skill_versions (skill_id, version, name, sha256, size, "
-        "r2_key, published_by) SELECT id, 1, 'evil', %s, %s, %s, created_by FROM s",
-        (live.ADMIN, sha(evil), len(evil), f"blobs/sha256/{sha(evil)}"),
-    )
+    from sqlalchemy import delete, insert, select
+
+    from evo_agents.hub import tables
+
+    skills = tables.skills
+    with live.engine(hub.db).begin() as conn:
+        admin_id = conn.execute(select(tables.users.c.id).where(tables.users.c.login == live.ADMIN)).scalar_one()
+        evil_skill = insert(skills).values(scope="global", name="evil", created_by=admin_id).returning(skills.c.id)
+        skill_id = conn.execute(evil_skill).scalar_one()
+        version = {"skill_id": skill_id, "version": 1, "name": "evil", "sha256": sha(evil), "size": len(evil)}
+        conn.execute(
+            insert(tables.skill_versions).values(**version, r2_key=f"blobs/sha256/{sha(evil)}", published_by=admin_id)
+        )
     with pytest.raises(HubError, match="not one this client writes"):
         sync(carol, home=home)
     assert tree_hash(tmp_path) == before and not (tmp_path / "escape.sh").exists()
-    live.sql(hub.db, "DELETE FROM skills WHERE name = 'evil'")
+    live.sql(hub.db, delete(skills).where(skills.c.name == "evil"))
 
     report = sync(carol, home=home, adopt=True)
     assert report.errors == [] and actions(report, claude) == {"alpha": "install", "beta": "adopt"}
@@ -981,32 +1055,36 @@ def test_the_cli_publishes_lists_and_syncs_against_hub_serve(hub_db, tmp_path, s
 @needs_pg
 def test_the_schema_holds_bundles_of_global_skills_and_names_unique_ignoring_case(hub_db):
     from psycopg import errors
+    from sqlalchemy import insert, select
 
+    from evo_agents.hub import tables
     from evo_agents.hub.migrate import migrate
 
     migrate(hub_db.dsn)
     project = live.add_project(hub_db, "alpha")
-    with pg.admin(hub_db.admin_dsn) as conn:
-        user = conn.execute("SELECT created_by FROM projects WHERE id = %s", (project,)).fetchone()[0]
-        insert_blob = "INSERT INTO blobs (project_id, sha256, size, kind) VALUES (%s, %s, 1, %s)"
-        conn.execute(insert_blob, (None, "a" * 64, "skill-bundle"))
-        conn.execute(insert_blob, (project, "a" * 64, "kg-log"))  # a project may hold the same bytes
-        insert_skill = "INSERT INTO skills (scope, project_id, name, created_by) VALUES (%s, %s, %s, %s)"
-        conn.execute(insert_skill, ("global", None, "stop-slop", user))
-        conn.execute(insert_skill, ("project", project, "Stop-Slop", user))  # another scope
-        for statement, params, error in (
-            (insert_blob, (None, "a" * 64, "skill-bundle"), errors.UniqueViolation),  # NULLS NOT DISTINCT
-            (insert_blob, (None, "b" * 64, "kg-log"), errors.CheckViolation),
-            (
-                "INSERT INTO blob_uploads (upload_id, project_id, sha256, size, kind, created_by) "
-                "VALUES (%s, NULL, %s, 1, 'kg-blob', %s)",
-                (str(uuid.uuid4()), "c" * 64, user),
-                errors.CheckViolation,
-            ),
-            (insert_skill, ("global", None, "Stop-Slop", user), errors.UniqueViolation),
-            (insert_skill, ("project", project, "stop-SLOP", user), errors.UniqueViolation),
-            (insert_skill, ("global", None, "Synced", user), errors.CheckViolation),
-            (insert_skill, ("global", None, "learned", user), errors.CheckViolation),
+    with live.connect(hub_db, admin=True) as conn:
+        projects = tables.projects
+        user = conn.execute(select(projects.c.created_by).where(projects.c.id == project)).scalar_one()
+
+        def insert_blob(project_id, sha256, kind):
+            return insert(tables.blobs).values(project_id=project_id, sha256=sha256, size=1, kind=kind)
+
+        def insert_skill(scope, project_id, name):
+            return insert(tables.skills).values(scope=scope, project_id=project_id, name=name, created_by=user)
+
+        conn.execute(insert_blob(None, "a" * 64, "skill-bundle"))
+        conn.execute(insert_blob(project, "a" * 64, "kg-log"))  # a project may hold the same bytes
+        conn.execute(insert_skill("global", None, "stop-slop"))
+        conn.execute(insert_skill("project", project, "Stop-Slop"))  # another scope
+        upload = {"upload_id": uuid.uuid4(), "project_id": None, "sha256": "c" * 64, "size": 1, "kind": "kg-blob"}
+        for statement, error in (
+            (insert_blob(None, "a" * 64, "skill-bundle"), errors.UniqueViolation),  # NULLS NOT DISTINCT
+            (insert_blob(None, "b" * 64, "kg-log"), errors.CheckViolation),
+            (insert(tables.blob_uploads).values(**upload, created_by=user), errors.CheckViolation),
+            (insert_skill("global", None, "Stop-Slop"), errors.UniqueViolation),
+            (insert_skill("project", project, "stop-SLOP"), errors.UniqueViolation),
+            (insert_skill("global", None, "Synced"), errors.CheckViolation),
+            (insert_skill("global", None, "learned"), errors.CheckViolation),
         ):
             with pytest.raises(error):
-                conn.execute(statement, params)
+                conn.execute(statement)

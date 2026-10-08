@@ -31,10 +31,14 @@ from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Header, HTTPException, Path, Query, Request
 from fastapi.responses import JSONResponse
-from psycopg.types.json import Jsonb
 from pydantic import BaseModel, Field
+from sqlalchemy import ColumnElement, Label, Select, bindparam, case, func, insert, select, update
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.harness import load_schema, plan_body, plan_digest, plan_semantics
+from evo_agents.hub import tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.plan_diff import DEFAULT_CONTEXT, MAX_CONTEXT, plan_diff
 from evo_agents.hub.plans import (
@@ -224,24 +228,29 @@ class Held:
         return Plan(project=project, **vars(self)).model_dump(mode="json")
 
 
-SELECT_PLAN = """
-SELECT p.plan_id, p.area, p.label, p.body, p.revision, p.digest, p.created_at, p.updated_at, u.login
-  FROM plans p JOIN users u ON u.id = p.updated_by
- WHERE p.project_id = %s AND p.plan_id = %s
-"""
-
-
-async def _held(conn, access: ProjectAccess, plan_id: str, *, lock: bool = False) -> Held | None:
+async def _held(conn: AsyncConnection, access: ProjectAccess, plan_id: str, *, lock: bool = False) -> Held | None:
     """The plan as held, its row locked until the transaction ends with ``lock``. The lock is taken on the plan alone:
     a locking query joined to users would, after waiting for another writer, recheck the join against the old
     updater and lose the row. The read after it sees the other writer's commit (a new snapshot per statement)."""
-    params = (access.project_id, plan_id)
+    plans, users = tables.plans, tables.users
+    this = (plans.c.project_id == access.project_id, plans.c.plan_id == plan_id)
     if lock:
-        locked = "SELECT 1 FROM plans WHERE project_id = %s AND plan_id = %s FOR UPDATE"
-        if await (await conn.execute(locked, params)).fetchone() is None:
+        locked = select(plans.c.plan_id).where(*this).with_for_update()
+        if (await conn.execute(locked)).first() is None:
             return None
-    row = await (await conn.execute(SELECT_PLAN, params)).fetchone()
-    return Held(*row) if row else None
+    held = select(
+        plans.c.plan_id,
+        plans.c.area,
+        plans.c.label,
+        plans.c.body,
+        plans.c.revision,
+        plans.c.digest,
+        plans.c.created_at,
+        plans.c.updated_at,
+        users.c.login.label("updated_by"),
+    ).join_from(plans, users, users.c.id == plans.c.updated_by)
+    row = (await conn.execute(held.where(*this))).first()
+    return Held(**row._mapping) if row else None
 
 
 def _sink(access: ProjectAccess, sink: str | None) -> str | None:
@@ -259,31 +268,59 @@ def _reader(access: ProjectAccess) -> None:
         raise HTTPException(403, f"reading the plans of project {access.name} needs a grant on it")
 
 
-async def _visible(conn, access: ProjectAccess, plan_id: str, sink: str | None, *, lock: bool = False) -> Held:
+async def _visible(
+    conn: AsyncConnection, access: ProjectAccess, plan_id: str, sink: str | None, *, lock: bool = False
+) -> Held:
     held = await _held(conn, access, plan_id, lock=lock)
     if held is None or not access.visible(held.label, _sink(access, sink)):
         raise HTTPException(404, not_found(access.name, plan_id))
     return held
 
 
-def step_counts(body: str) -> str:
-    """Two SQL columns over the plan body the expression ``body`` names: how many steps it has, and how many of them
-    are done, as GET .../plans and GET /v1/me/overview count them."""
-    steps = f"{body} -> 'steps'"
-    return f"""CASE WHEN jsonb_typeof({steps}) = 'array' THEN jsonb_array_length({steps}) ELSE 0 END,
-       CASE WHEN jsonb_typeof({steps}) = 'array'
-            THEN (SELECT count(*) FROM jsonb_array_elements({steps}) s
-                   WHERE jsonb_typeof(s) = 'object' AND s ->> 'status' = 'done')
-            ELSE 0 END"""
+def step_counts(body: ColumnElement) -> tuple[Label, Label]:
+    """Two columns over ``body``, the JSONB expression of a plan body: how many steps it has (``steps_total``), and
+    how many of them are done (``steps_done``), as GET .../plans and GET /v1/me/overview count them. Steps that are
+    not an array count as none."""
+    steps = body["steps"]
+    listed = func.jsonb_typeof(steps) == "array"
+    step = func.jsonb_array_elements(steps, type_=JSONB).column_valued("s")
+    done = (
+        select(func.count())
+        .where(func.jsonb_typeof(step) == "object", step["status"].astext == "done")
+        .scalar_subquery()
+    )
+    return (
+        case((listed, func.jsonb_array_length(steps)), else_=0).label("steps_total"),
+        case((listed, done), else_=0).label("steps_done"),
+    )
 
 
-LIST_PLANS = f"""
-SELECT p.plan_id, p.area, p.label, p.revision, p.digest, p.body ->> 'title', p.updated_at, u.login,
-       {step_counts("p.body")}
-  FROM plans p JOIN users u ON u.id = p.updated_by
- WHERE p.project_id = %(project)s AND (%(area)s::text IS NULL OR p.area = %(area)s)
- ORDER BY p.plan_id
-"""
+def _listed(project_id, area) -> Select:
+    """The plans of project ``project_id`` with what PlanSummary shows, column by field name, and their label; those
+    of ``area`` alone when given. Built once per shape (_LISTED) with bind parameters for both."""
+    plans, users = tables.plans, tables.users
+    query = (
+        select(
+            plans.c.plan_id,
+            plans.c.area,
+            plans.c.label,
+            plans.c.revision,
+            plans.c.digest,
+            plans.c.body["title"].astext.label("title"),
+            plans.c.updated_at,
+            users.c.login.label("updated_by"),
+            *step_counts(plans.c.body),
+        )
+        .join_from(plans, users, users.c.id == plans.c.updated_by)
+        .where(plans.c.project_id == project_id)
+    )
+    if area is not None:
+        query = query.where(plans.c.area == area)
+    return query.order_by(plans.c.plan_id)
+
+
+# GET .../plans, with an area and without one: :project_id, :area
+_LISTED = {False: _listed(bindparam("project_id"), bindparam("area")), True: _listed(bindparam("project_id"), None)}
 
 
 @router.get("", response_model=list[PlanSummary], responses=READ_REFUSALS)
@@ -294,26 +331,12 @@ async def list_plans(
     area: Literal[AREAS] | None = None,
     sink: Annotated[str | None, Header(alias=SINK_HEADER)] = None,
 ) -> list[PlanSummary]:
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
         _reader(access)
-        rows = await (await conn.execute(LIST_PLANS, {"project": access.project_id, "area": area})).fetchall()
+        rows = (await conn.execute(_LISTED[area is None], {"project_id": access.project_id, "area": area})).all()
     through = _sink(access, sink)
-    return [
-        PlanSummary(
-            plan_id=plan_id,
-            area=plan_area,
-            revision=revision,
-            digest=digest,
-            title=title,
-            updated_at=updated_at,
-            updated_by=login,
-            steps_total=total,
-            steps_done=done,
-        )
-        for plan_id, plan_area, label, revision, digest, title, updated_at, login, total, done in rows
-        if access.visible(label, through)
-    ]
+    return [PlanSummary(**row._mapping) for row in rows if access.visible(row.label, through)]
 
 
 @router.get("/{plan_id}", response_model=Plan, responses=READ_REFUSALS)
@@ -324,27 +347,40 @@ async def show(
     user: CurrentUser,
     sink: Annotated[str | None, Header(alias=SINK_HEADER)] = None,
 ) -> dict:
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
         _reader(access)
         held = await _visible(conn, access, plan_id, sink)
     return held.view(project)
 
 
-REVISIONS = """
-SELECT r.revision, r.area, r.label, r.digest, r.summary, u.login, r.created_at, r.body
-  FROM plan_revisions r JOIN users u ON u.id = r.actor_id
- WHERE r.project_id = %s AND r.plan_id = %s AND (%s::integer IS NULL OR r.revision = %s)
- ORDER BY r.revision DESC
-"""
-
-
-async def _revisions(conn, access: ProjectAccess, plan_id: str, sink: str | None, revision: int | None = None):
+async def _revisions(
+    conn: AsyncConnection, access: ProjectAccess, plan_id: str, sink: str | None, revision: int | None = None
+):
+    """The revisions of the plan the caller sees, with what RevisionBody shows by column name, the latest first;
+    revision ``revision`` alone when given."""
     _reader(access)
     await _visible(conn, access, plan_id, sink)
-    cursor = await conn.execute(REVISIONS, (access.project_id, plan_id, revision, revision))
+    revisions, users = tables.plan_revisions, tables.users
+    query = (
+        select(
+            revisions.c.revision,
+            revisions.c.area,
+            revisions.c.label,
+            revisions.c.digest,
+            revisions.c.summary,
+            users.c.login.label("actor"),
+            revisions.c.created_at,
+            revisions.c.body,
+        )
+        .join_from(revisions, users, users.c.id == revisions.c.actor_id)
+        .where(revisions.c.project_id == access.project_id, revisions.c.plan_id == plan_id)
+    )
+    if revision is not None:
+        query = query.where(revisions.c.revision == revision)
+    rows = (await conn.execute(query.order_by(revisions.c.revision.desc()))).all()
     through = _sink(access, sink)
-    return [row for row in await cursor.fetchall() if access.visible(row[2], through)]
+    return [row for row in rows if access.visible(row.label, through)]
 
 
 @router.get("/{plan_id}/revisions", response_model=list[Revision], responses=READ_REFUSALS)
@@ -355,13 +391,10 @@ async def history(
     user: CurrentUser,
     sink: Annotated[str | None, Header(alias=SINK_HEADER)] = None,
 ) -> list[Revision]:
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
         rows = await _revisions(conn, access, plan_id, sink)
-    return [
-        Revision(revision=r, area=a, digest=d, summary=s, actor=actor, created_at=at)
-        for r, a, _label, d, s, actor, at, _body in rows
-    ]
+    return [Revision(**row._mapping) for row in rows]
 
 
 @router.get("/{plan_id}/revisions/{revision}", response_model=RevisionBody, responses=READ_REFUSALS)
@@ -373,21 +406,19 @@ async def show_revision(
     user: CurrentUser,
     sink: Annotated[str | None, Header(alias=SINK_HEADER)] = None,
 ) -> RevisionBody:
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
         rows = await _revisions(conn, access, plan_id, sink, revision)
     if not rows:
         raise HTTPException(404, f"plan {plan_id} of project {project} has no revision {revision} that you can see")
-    r, a, label, d, s, actor, at, body = rows[0]
-    return RevisionBody(revision=r, area=a, digest=d, summary=s, actor=actor, created_at=at, label=label, body=body)
+    return RevisionBody(**rows[0]._mapping)
 
 
-async def _one_revision(conn, access: ProjectAccess, plan_id: str, sink: str | None, revision: int):
+async def _one_revision(conn: AsyncConnection, access: ProjectAccess, plan_id: str, sink: str | None, revision: int):
     rows = await _revisions(conn, access, plan_id, sink, revision)
     if not rows:
         raise HTTPException(404, f"plan {plan_id} of project {access.name} has no revision {revision} that you can see")
-    r, a, _label, d, s, actor, at, body = rows[0]
-    return Revision(revision=r, area=a, digest=d, summary=s, actor=actor, created_at=at), body
+    return Revision(**rows[0]._mapping), rows[0].body
 
 
 @router.get("/{plan_id}/diff", response_model=PlanDiff, responses=READ_REFUSALS)
@@ -405,7 +436,7 @@ async def diff(
 ) -> PlanDiff:
     """The lines that changed from one revision of the plan to another, as their git copies read; 404 when
     either revision is not one the caller can see."""
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
         older, old_body = await _one_revision(conn, access, plan_id, sink, from_revision)
         newer, new_body = await _one_revision(conn, access, plan_id, sink, to_revision)
@@ -443,12 +474,13 @@ class _Registered:
         return self.names
 
 
-async def _known_repos(conn, access: ProjectAccess) -> _Registered:
-    cursor = await conn.execute("SELECT name FROM project_repos WHERE project_id = %s", (access.project_id,))
-    names = {row[0] for row in await cursor.fetchall()}
-    row = await (await conn.execute("SELECT harness_path FROM projects WHERE id = %s", (access.project_id,))).fetchone()
-    if row and row[0]:
-        names.add(PurePosixPath(row[0]).name)  # the harness repo goes by its directory name, as in the loader
+async def _known_repos(conn: AsyncConnection, access: ProjectAccess) -> _Registered:
+    repos, projects = tables.project_repos, tables.projects
+    names = set((await conn.execute(select(repos.c.name).where(repos.c.project_id == access.project_id))).scalars())
+    harness = select(projects.c.harness_path).where(projects.c.id == access.project_id)
+    harness_path = (await conn.execute(harness)).scalar()
+    if harness_path:
+        names.add(PurePosixPath(harness_path).name)  # the harness repo goes by its directory name, as in the loader
     return _Registered(names)
 
 
@@ -471,7 +503,7 @@ def _schema_checked(body: dict, plan_id: str) -> None:
         )
 
 
-async def _warnings(conn, access: ProjectAccess, body: dict, area: str) -> list[Problem]:
+async def _warnings(conn: AsyncConnection, access: ProjectAccess, body: dict, area: str) -> list[Problem]:
     path = PurePosixPath("plans", area, f"{body['id']}.yaml")
     issues = validate(body, load_schema("plan")) + plan_semantics(body, path, await _known_repos(conn, access))
     return [Problem(path=i.path, message=i.message) for i in issues if i.severity == "warning"]
@@ -501,20 +533,37 @@ async def _store(conn, access, user, held: Held | None, *, area, label, body, su
     plan first. The stored body is read back and must carry the digest of the body given."""
     digest = plan_digest(body)
     revision = 1 if held is None else held.revision + 1
+    plans = tables.plans
     if held is None:
-        cursor = await conn.execute(
-            "INSERT INTO plans (project_id, plan_id, area, label, body, revision, digest, updated_by) "
-            "VALUES (%s, %s, %s, %s, %s, 1, %s, %s) ON CONFLICT DO NOTHING "
-            "RETURNING body, created_at, updated_at",
-            (access.project_id, body["id"], area, Jsonb(label), Jsonb(body), digest, user.user_id),
+        written = (
+            pg_insert(plans)
+            .values(
+                project_id=access.project_id,
+                plan_id=body["id"],
+                area=area,
+                label=label,
+                body=body,
+                revision=1,
+                digest=digest,
+                updated_by=user.user_id,
+            )
+            .on_conflict_do_nothing()
         )
     else:
-        cursor = await conn.execute(
-            "UPDATE plans SET area = %s, label = %s, body = %s, revision = %s, digest = %s, updated_at = now(), "
-            "updated_by = %s WHERE project_id = %s AND plan_id = %s RETURNING body, created_at, updated_at",
-            (area, Jsonb(label), Jsonb(body), revision, digest, user.user_id, access.project_id, body["id"]),
+        written = (
+            update(plans)
+            .values(
+                area=area,
+                label=label,
+                body=body,
+                revision=revision,
+                digest=digest,
+                updated_at=func.now(),
+                updated_by=user.user_id,
+            )
+            .where(plans.c.project_id == access.project_id, plans.c.plan_id == body["id"])
         )
-    row = await cursor.fetchone()
+    row = (await conn.execute(written.returning(plans.c.body, plans.c.created_at, plans.c.updated_at))).first()
     if row is None:
         return None
     stored, created_at, updated_at = row
@@ -525,9 +574,17 @@ async def _store(conn, access, user, held: Held | None, *, area, label, body, su
             "Nothing was written",
         )
     await conn.execute(
-        "INSERT INTO plan_revisions (project_id, plan_id, revision, area, label, body, digest, summary, actor_id) "
-        "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
-        (access.project_id, body["id"], revision, area, Jsonb(label), Jsonb(body), digest, summary, user.user_id),
+        insert(tables.plan_revisions).values(
+            project_id=access.project_id,
+            plan_id=body["id"],
+            revision=revision,
+            area=area,
+            label=label,
+            body=body,
+            digest=digest,
+            summary=summary,
+            actor_id=user.user_id,
+        )
     )
     target = f"{access.name}/{body['id']}@{revision}"
     await audit.record(conn, actor_id=user.user_id, token_id=user.token_id, action=action, target=target)
@@ -557,7 +614,7 @@ async def put(request: Request, project: ProjectName, plan_id: PlanId, payload: 
     body = plan_body(payload.body)
     try:
         _schema_checked(body, plan_id)
-        async with request.app.state.pool.connection() as conn:
+        async with request.app.state.engine.begin() as conn:
             access = await project_access(conn, user, project)
             _writer(access)
             given_label = access.push_label(payload.label)
@@ -629,7 +686,7 @@ async def patch(request: Request, project: ProjectName, plan_id: PlanId, payload
     if payload.step is not None and payload.section != "steps":
         raise HTTPException(422, "step names an item of the steps section only; give index for other sections")
     try:
-        async with request.app.state.pool.connection() as conn:
+        async with request.app.state.engine.begin() as conn:
             access = await project_access(conn, user, project)
             _writer(access)
             stored, changed, warnings = await apply_patch(
@@ -695,7 +752,7 @@ async def complete(
     """Move the plan to the completed area; refused while a step is not done, as evo-cli's complete_plan."""
     given = payload.if_revision if payload else None
     try:
-        async with request.app.state.pool.connection() as conn:
+        async with request.app.state.engine.begin() as conn:
             access = await project_access(conn, user, project)
             _writer(access)
             held = await _visible(conn, access, plan_id, None, lock=True)

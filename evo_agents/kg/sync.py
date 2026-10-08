@@ -299,7 +299,7 @@ def due_sources(project: Project, corpus: Corpus | None = None, now: dt.datetime
     ``refresh`` ago, less a slack of DUE_SLACK_SECONDS (at most a tenth of the interval). A source without
     ``refresh`` is never due; a failed run does not reset the clock."""
     corpus = corpus or project.corpus()
-    now = now or dt.datetime.now(dt.timezone.utc)
+    now = now or dt.datetime.now(dt.UTC)
     due = []
     for src in project.sources():
         if src.get("refresh") is None:

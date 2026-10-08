@@ -7,8 +7,8 @@ A database at a revision this package does not know (written by a newer release)
 anything runs: a hub never writes to a schema it cannot read.
 
 Alembic is driven from code against the scripts shipped in ``evo_agents/hub/migrations``; there is no
-alembic.ini. SQLAlchemy is used here and in the migration scripts only, over psycopg 3
-(``postgresql+psycopg``); the server itself runs hand-written SQL on a psycopg pool.
+alembic.ini. Migrating runs on an engine of its own over psycopg 3 (``postgresql+psycopg``), apart from the
+server's pool and the engine on it (``evo_agents.hub.db``).
 """
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ import psycopg
 from alembic import command
 from alembic.config import Config
 from alembic.script import ScriptDirectory
-from sqlalchemy import create_engine, text
+from sqlalchemy import BigInteger, column, create_engine, func, literal, select, table
 from sqlalchemy.engine import Connection
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.pool import NullPool
@@ -81,34 +81,44 @@ def _engine(dsn: str):
     return create_engine("postgresql+psycopg://", creator=connect, poolclass=NullPool)
 
 
+# Alembic's record of the revisions applied; the table is Alembic's, not the hub's, so it is not in tables.py.
+ALEMBIC_VERSION = table("alembic_version", column("version_num"))
+
+
+def _key():
+    return literal(LOCK_KEY, BigInteger)  # beyond integer: bound as bigint
+
+
 def _lock(conn: Connection, timeout: float) -> None:
-    if conn.execute(text("SELECT pg_try_advisory_lock(:key)"), {"key": LOCK_KEY}).scalar():
+    if conn.execute(select(func.pg_try_advisory_lock(_key()))).scalar():
         conn.commit()
         return
     log.info("waiting for the migration lock held by another hub process", extra={"timeout_s": timeout})
     started = time.monotonic()
-    conn.execute(text("SELECT set_config('lock_timeout', :ms, false)"), {"ms": f"{int(timeout * 1000)}ms"})
+    # lock_timeout holds for this transaction only: the commit once the lock is taken resets it, and the lock, taken
+    # for the session, stays.
+    conn.execute(select(func.set_config("lock_timeout", f"{int(timeout * 1000)}ms", True)))
     try:
-        conn.execute(text("SELECT pg_advisory_lock(:key)"), {"key": LOCK_KEY})
+        conn.execute(select(func.pg_advisory_lock(_key())))
     except OperationalError as exc:
         if isinstance(exc.orig, psycopg.errors.LockNotAvailable):
             raise MigrationError(f"another process held the migration lock for more than {timeout:.0f}s") from None
         raise
-    conn.execute(text("RESET lock_timeout"))
     conn.commit()
     log.info("migration lock acquired", extra={"waited_s": round(time.monotonic() - started, 3)})
 
 
 def _recorded(conn: Connection) -> tuple[str, ...]:
     """The revisions in alembic_version, empty before the first migration."""
-    if conn.execute(text("SELECT to_regclass('alembic_version')")).scalar() is None:
+    if conn.execute(select(func.to_regclass("alembic_version"))).scalar() is None:
         return ()
-    return tuple(conn.execute(text("SELECT version_num FROM alembic_version ORDER BY version_num")).scalars())
+    version = ALEMBIC_VERSION.c.version_num
+    return tuple(conn.execute(select(version).order_by(version)).scalars())
 
 
 def _unlock(conn: Connection) -> None:
     try:
-        conn.execute(text("SELECT pg_advisory_unlock(:key)"), {"key": LOCK_KEY})
+        conn.execute(select(func.pg_advisory_unlock(_key())))
         conn.commit()
     except Exception as exc:  # closing the connection releases the lock anyway
         log.warning("could not release the migration lock: %s", type(exc).__name__)

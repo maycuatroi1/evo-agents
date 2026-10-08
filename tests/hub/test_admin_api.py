@@ -6,7 +6,7 @@ shows every user's tokens, and revoking one makes it 401 at once, answers 404 an
 and leaves an audit row naming the token and its owner."""
 
 import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -15,19 +15,19 @@ from tests.hub import live, pg
 if not pg.DSN:
     pytest.skip(pg.SKIP_REASON, allow_module_level=True)
 
-import psycopg
 from alembic import command
 from fastapi.testclient import TestClient
-from psycopg.types.json import Jsonb
+from sqlalchemy import column, func, insert, select, table, update
+from sqlalchemy.ext.asyncio import create_async_engine
 
 from evo_agents.hub import migrate as hub_migrate
+from evo_agents.hub import tables
 from evo_agents.hub.migrate import alembic_config, migrate
 from evo_agents.hub.openapi import document
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.admin_console import decode_cursor, encode_cursor
 from evo_agents.hub.server.app import create_app
 from evo_agents.hub.server.security import SESSION_COOKIE
-from evo_agents.isotime import parse_iso
 from tests.hub.fake_github import Account
 from tests.hub.live import ADMIN, add_project, bearer, sql
 from tests.hub.test_web_auth import cookie, csrf_for, set_cookie, web_sign_in
@@ -50,6 +50,10 @@ def client(config):
 @pytest.fixture
 def admin(client, github) -> dict:
     return bearer(live.sign_in(client, github, ADMIN, ADMIN_ID)["token"])
+
+
+def count(db, table_, *conditions) -> int:
+    return sql(db, select(func.count()).select_from(table_).where(*conditions))[0][0]
 
 
 def grant_path(project: str, login: str) -> str:
@@ -84,15 +88,15 @@ def test_every_admin_route_is_403_for_a_member_by_token_and_by_web_session(clien
         ("PUT", "/v1/admin/projects/demo/grants/someone"),
         ("DELETE", "/v1/admin/projects/demo/grants/someone"),
     } <= set(routes)
-    before = sql(hub_db, "SELECT count(*) FROM audit")
+    before = count(hub_db, tables.audit)
     for method, path in routes:
         body = READER if method == "PUT" else None
         for headers in (bearer(member["token"]), {**cookie(session), **csrf}):
             response = client.request(method, path, json=body, headers=headers)
             assert response.status_code == 403, (method, path, response.text)
             assert response.json()["error"] == "forbidden" and "EVO_HUB_ADMINS" in response.json()["message"]
-    assert sql(hub_db, "SELECT count(*) FROM audit") == before  # a refusal writes nothing
-    assert sql(hub_db, "SELECT revoked_at FROM tokens WHERE id = 1") == [(None,)]
+    assert count(hub_db, tables.audit) == before  # a refusal writes nothing
+    assert sql(hub_db, select(tables.tokens.c.revoked_at).where(tables.tokens.c.id == 1)) == [(None,)]
 
 
 def test_an_admin_web_session_grants_only_with_the_csrf_header(client, github, hub_db):
@@ -101,8 +105,8 @@ def test_an_admin_web_session_grants_only_with_the_csrf_header(client, github, h
     for headers in ({}, {"X-Evo-CSRF": "forged"}):
         refused = client.put(grant_path("demo", "newbie"), json=READER, headers={**cookie(session), **headers})
         assert refused.status_code == 403 and "X-Evo-CSRF" in refused.json()["message"]
-    assert sql(hub_db, "SELECT count(*) FROM grants") == [(0,)]
-    assert sql(hub_db, "SELECT count(*) FROM audit WHERE action ~ '^grant[.]'") == [(0,)]
+    assert count(hub_db, tables.grants) == 0
+    assert count(hub_db, tables.audit, tables.audit.c.action.regexp_match("^grant[.]")) == 0
 
     csrf = {"X-Evo-CSRF": csrf_for(client, session)}
     granted = client.put(grant_path("demo", "newbie"), json=READER, headers={**cookie(session), **csrf})
@@ -127,12 +131,31 @@ def test_a_grant_shows_the_project_to_the_member_and_revoking_hides_it(client, g
         "internal",
         ADMIN,
     )
-    assert parse_iso(grant["granted_at"]) > datetime.now(timezone.utc) - timedelta(minutes=1)
+    assert datetime.fromisoformat(grant["granted_at"]) > datetime.now(UTC) - timedelta(minutes=1)
 
     assert client.delete(grant_path("demo", "member"), headers=admin).status_code == 204
     assert client.get("/v1/projects", headers=member).json() == []
     assert client.get("/v1/projects/demo", headers=member).status_code == 404
     assert client.delete(grant_path("demo", "member"), headers=admin).status_code == 404
+
+
+def test_users_come_by_login_whatever_its_case_and_grants_by_project(client, github, hub_db, admin):
+    for name in ("zeta", "alpha", "mid"):
+        add_project(hub_db, name)
+    member = bearer(live.sign_in(client, github, "member", 501)["token"])
+    live.sign_in(client, github, "Zed", 503)
+    live.sign_in(client, github, "amy", 504)
+    for project in ("zeta", "alpha", "mid"):
+        assert client.put(grant_path(project, "member"), json=READER, headers=admin).status_code == 200
+
+    users = client.get("/v1/admin/users", headers=admin).json()
+    assert [u["login"] for u in users] == ["alpha-owner", "amy", "member", "mid-owner", ADMIN, "Zed", "zeta-owner"]
+    (grants,) = [u["grants"] for u in users if u["login"] == "member"]
+    assert [g["project"] for g in grants] == ["alpha", "mid", "zeta"]
+    me = client.get("/v1/auth/whoami", headers=member).json()
+    assert [g["project"] for g in me["grants"]] == ["alpha", "mid", "zeta"]
+    overview = client.get("/v1/admin/overview", headers=admin).json()
+    assert [g["project"] for g in overview["grants"]] == ["alpha", "mid", "zeta"]
 
 
 # The audit trail
@@ -233,7 +256,7 @@ def test_the_trail_refuses_bad_filters_with_422(client, admin, params):
 
 
 def test_a_cursor_round_trips_its_sort_key():
-    at = datetime(2026, 10, 4, 7, 30, 1, 123456, tzinfo=timezone.utc)
+    at = datetime(2026, 10, 4, 7, 30, 1, 123456, tzinfo=UTC)
     assert decode_cursor(encode_cursor(at, 42)) == (at, 42)
 
 
@@ -258,27 +281,52 @@ def test_the_project_of_an_action_comes_from_its_target(action, target, expected
     assert audit.subject(action, target) == expected
 
 
+def creator(db, project_id: int) -> int:
+    projects = tables.projects
+    return sql(db, select(projects.c.created_by).where(projects.c.id == project_id))[0][0]
+
+
+def add_note(db, project_id: int, user_id: int) -> int:
+    """A memory note.md of the project, written by ``user_id``; its id."""
+    memories = tables.memories
+    note = insert(memories).values(
+        scope="project",
+        project_id=project_id,
+        location="harness",
+        name="note.md",
+        type="project",
+        owner_id=user_id,
+        label={"level": "public"},
+        body="body",
+        updated_by=user_id,
+    )
+    return sql(db, note.returning(memories.c.id))[0][0]
+
+
 def test_a_memory_action_is_filed_under_the_memory_s_project(client, hub_db):
     project_id = add_project(hub_db, "demo")
-    (user_id,) = sql(hub_db, "SELECT created_by FROM projects WHERE id = %s", (project_id,))[0]
-    (memory_id,) = sql(
-        hub_db,
-        "INSERT INTO memories (scope, project_id, location, name, type, owner_id, label, body, updated_by) "
-        "VALUES ('project', %s, 'harness', 'note.md', 'project', %s, %s, 'body', %s) RETURNING id",
-        (project_id, user_id, Jsonb({"level": "public"}), user_id),
-    )[0]
+    user_id = creator(hub_db, project_id)
+    memory_id = add_note(hub_db, project_id, user_id)
 
     async def write():
-        async with await psycopg.AsyncConnection.connect(hub_db.dsn, autocommit=True) as conn:
-            await audit.record(conn, actor_id=user_id, token_id=None, action="memory.put", target=f"memory:{memory_id}")
-            await audit.record(conn, actor_id=user_id, token_id=None, action="auth.logout", target="token:1")
-            other = await (await conn.execute("SELECT id FROM projects WHERE name = 'demo'")).fetchone()
-            await audit.record(
-                conn, actor_id=user_id, token_id=None, action="custom.thing", target="x", project_id=other[0]
-            )
+        engine = create_async_engine(hub_db.dsn.replace("postgresql://", "postgresql+psycopg://", 1))
+        try:
+            async with engine.begin() as conn:
+                await audit.record(
+                    conn, actor_id=user_id, token_id=None, action="memory.put", target=f"memory:{memory_id}"
+                )
+                await audit.record(conn, actor_id=user_id, token_id=None, action="auth.logout", target="token:1")
+                projects = tables.projects
+                other = (await conn.execute(select(projects.c.id).where(projects.c.name == "demo"))).scalar_one()
+                await audit.record(
+                    conn, actor_id=user_id, token_id=None, action="custom.thing", target="x", project_id=other
+                )
+        finally:
+            await engine.dispose()
 
     asyncio.run(write())
-    rows = sql(hub_db, "SELECT action, project_id FROM audit ORDER BY id")
+    trail = tables.audit
+    rows = sql(hub_db, select(trail.c.action, trail.c.project_id).order_by(trail.c.id))
     assert rows == [("memory.put", project_id), ("auth.logout", None), ("custom.thing", project_id)]
 
 
@@ -297,13 +345,8 @@ def test_0007_files_the_rows_written_before_it_under_their_project(hub_db):
     move_to(hub_db, "0006")
     project_id = add_project(hub_db, "demo")
     add_project(hub_db, "demo-two")
-    (user_id,) = sql(hub_db, "SELECT created_by FROM projects WHERE id = %s", (project_id,))[0]
-    (memory_id,) = sql(
-        hub_db,
-        "INSERT INTO memories (scope, project_id, location, name, type, owner_id, label, body, updated_by) "
-        "VALUES ('project', %s, 'harness', 'note.md', 'project', %s, %s, 'body', %s) RETURNING id",
-        (project_id, user_id, Jsonb({"level": "public"}), user_id),
-    )[0]
+    user_id = creator(hub_db, project_id)
+    memory_id = add_note(hub_db, project_id, user_id)
     rows = [
         ("grant.put", "demo/member role=reader max_level=public"),
         ("plan.put", "demo/agent-hub@2"),
@@ -315,12 +358,18 @@ def test_0007_files_the_rows_written_before_it_under_their_project(hub_db):
         ("grant.put", "gone/member role=reader max_level=public"),  # a project no longer registered
         ("kg.build", "demo-two"),
     ]
-    for action, target in rows:
-        sql(hub_db, "INSERT INTO audit (actor_id, action, target) VALUES (%s, %s, %s)", (user_id, action, target))
+    trail, projects = tables.audit, tables.projects
+    for action, target in rows:  # schema 0006 has no audit.project_id: the insert names only the columns it sets
+        sql(hub_db, insert(trail).values(actor_id=user_id, action=action, target=target))
 
     result = migrate(hub_db.dsn)
     assert result.applied[0] == "0007"
-    filed = sql(hub_db, "SELECT a.action, a.target, p.name FROM audit a LEFT JOIN projects p ON p.id = a.project_id")
+    filed = sql(
+        hub_db,
+        select(trail.c.action, trail.c.target, projects.c.name).select_from(
+            trail.outerjoin(projects, projects.c.id == trail.c.project_id)
+        ),
+    )
     assert [name for _, _, name in sorted(filed, key=lambda row: rows.index(row[:2]))] == [
         "demo",
         "demo",
@@ -333,12 +382,13 @@ def test_0007_files_the_rows_written_before_it_under_their_project(hub_db):
         "demo-two",
     ]
     with pytest.raises(Exception, match="audit rows are never updated"):  # the trigger is back on
-        sql(hub_db, "UPDATE audit SET target = 'changed'")
+        sql(hub_db, update(trail).values(target="changed"))
 
     move_to(hub_db, "0006", down=True)
-    columns = sql(hub_db, "SELECT column_name FROM information_schema.columns WHERE table_name = 'audit'")
+    described = table("columns", column("table_name"), column("column_name"), schema="information_schema")
+    columns = sql(hub_db, select(described.c.column_name).where(described.c.table_name == "audit"))
     assert "project_id" not in {row[0] for row in columns}
-    assert len(sql(hub_db, "SELECT id FROM audit")) == len(rows)
+    assert len(sql(hub_db, select(trail.c.id))) == len(rows)
 
 
 # Tokens of every user
@@ -399,7 +449,7 @@ def test_revoking_any_token_makes_it_401_and_is_audited(client, github, hub_db, 
 
     (row,) = audit_page(client, admin, action="token.revoke")["items"]
     assert (row["actor"], row["target"], row["project"]) == (ADMIN, f"token:{member['token_id']} login=member", None)
-    assert member["token"] not in str(sql(hub_db, "SELECT target FROM audit"))
+    assert member["token"] not in str(sql(hub_db, select(tables.audit.c.target)))
 
     revoked = tokens_page(client, admin, state="revoked")["items"]
     assert [(row["id"], row["state"]) for row in revoked] == [(member["token_id"], "revoked")]

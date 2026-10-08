@@ -44,14 +44,17 @@ from urllib.parse import urlsplit
 import anyio
 import psycopg
 from fastapi import APIRouter, HTTPException, WebSocket
+from sqlalchemy import exc as sa_exc
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncConnection
 from starlette.websockets import WebSocketDisconnect, WebSocketState
 
-from evo_agents.hub import runs
+from evo_agents.hub import runs, tables
 from evo_agents.hub import terminal as frames
 from evo_agents.hub.runs import PROTOCOL_HEADER, PROTOCOL_VERSION
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.admin import ProjectName
-from evo_agents.hub.server.runs import ASK_TAKEOVER, NOT_HELD, RunId, _run_target, readable_run
+from evo_agents.hub.server.runs import NOT_HELD, RunId, _run_target, ask_takeover, readable_run
 from evo_agents.hub.server.security import (
     JOIN_HINT,
     PREFIXES,
@@ -179,7 +182,7 @@ class Session:
             return
         target = f"{self.target} to_worker={self.to_worker} to_browser={self.to_browser} end={self.how}"
         try:
-            async with self.browser.app.state.pool.connection() as conn:
+            async with self.browser.app.state.engine.begin() as conn:
                 await audit.record(
                     conn,
                     actor_id=self.user.user_id,
@@ -188,7 +191,11 @@ class Session:
                     target=target,
                     project_id=self.project_id,
                 )
-        except (psycopg.Error, OSError) as exc:  # the session is over either way; the log keeps what was lost
+        except (
+            psycopg.Error,
+            sa_exc.DBAPIError,
+            OSError,
+        ) as exc:  # the session is over either way; the log keeps what was lost
             log.warning(
                 "terminal close not audited",
                 extra={"run_id": self.run_id, "target": target, "error": type(exc).__name__},
@@ -260,7 +267,7 @@ async def _hello(websocket: WebSocket) -> dict | None:
     """The browser's first message as a dict, or None when the browser left first."""
     try:
         message = await asyncio.wait_for(websocket.receive(), HELLO_SECONDS)
-    except asyncio.TimeoutError:  # not TimeoutError itself before Python 3.11
+    except TimeoutError:
         raise Refusal(frames.CLOSE_TIMEOUT, f"no hello within {HELLO_SECONDS:g} seconds") from None
     if message["type"] == "websocket.disconnect":
         return None
@@ -301,72 +308,95 @@ async def _open(websocket: WebSocket, project: str, run_id: int) -> Session | No
         except frames.FrameError as exc:
             raise Refusal(frames.CLOSE_UNSUPPORTED, f"the hello's size: {exc}") from None
         size = (hello["cols"], hello["rows"])
-    pool = app.state.pool
+    engine = app.state.engine
     terminals: Terminals = app.state.terminals
     try:
-        user = await authenticate(pool, token, WEB, config)
+        user = await authenticate(engine, token, WEB, config)
         if user is None:
             raise Refusal(frames.CLOSE_UNAUTHENTICATED, "the web session is revoked, expired or unknown: sign in again")
         session = Session(terminals, run_id=run_id, browser=websocket, user=user)
         session.size = size
         try:
-            async with pool.connection() as conn:  # the reservation stands only once the transaction committed
+            async with engine.begin() as conn:  # the reservation stands only once the transaction committed
                 await _open_session(conn, session, project)
         except BaseException:
             terminals.drop(session)
             raise
         return session
-    except (psycopg.OperationalError, OSError) as exc:  # PoolTimeout is an OperationalError; bugs stay errors
+    except (
+        psycopg.OperationalError,
+        sa_exc.OperationalError,
+        OSError,
+    ) as exc:  # PoolTimeout is an OperationalError; bugs stay errors
         log.warning("cannot open a terminal: database unavailable", extra={"error": type(exc).__name__})
         raise Refusal(frames.CLOSE_UNAVAILABLE, "the hub database is unavailable; try again shortly") from None
 
 
-FRESH_SESSION = "SELECT created_at > now() - %s FROM tokens WHERE id = %s"
-TERMINAL_RUN = """
-SELECT r.dispatched_by, u.login, r.state, r.plan_id, r.step_key, r.worker_id, w.owner_id, w.name,
-       w.allow_web_terminal
-  FROM runs r JOIN users u ON u.id = r.dispatched_by LEFT JOIN workers w ON w.id = r.worker_id
- WHERE r.id = %s AND r.project_id = %s
-   FOR UPDATE OF r
-"""
+def _fresh_session(token_id: int):
+    """Whether the web session of token ``token_id`` was created within SESSION_MAX_AGE; no row without the token."""
+    tokens = tables.tokens
+    return select(tokens.c.created_at > func.now() - SESSION_MAX_AGE).where(tokens.c.id == token_id)
 
 
-async def _open_session(conn, session: Session, project: str) -> None:
+def _terminal_run(run_id: int, project_id: int):
+    """Run ``run_id`` of the project, locked, with its owner and the worker that holds it."""
+    runs_, users, workers = tables.runs, tables.users, tables.workers
+    return (
+        select(
+            runs_.c.dispatched_by,
+            users.c.login.label("owner"),
+            runs_.c.state,
+            runs_.c.plan_id,
+            runs_.c.step_key,
+            runs_.c.worker_id,
+            workers.c.owner_id.label("worker_owner"),
+            workers.c.name.label("worker"),
+            workers.c.allow_web_terminal,
+        )
+        .select_from(
+            runs_.join(users, users.c.id == runs_.c.dispatched_by).outerjoin(workers, workers.c.id == runs_.c.worker_id)
+        )
+        .where(runs_.c.id == run_id, runs_.c.project_id == project_id)
+        .with_for_update(of=runs_)
+    )
+
+
+async def _open_session(conn: AsyncConnection, session: Session, project: str) -> None:
     """Check the run and the session's age, reserve the run's terminal for ``session`` and audit it."""
     user, run_id = session.user, session.run_id
-    fresh = await (await conn.execute(FRESH_SESSION, (SESSION_MAX_AGE, user.token_id))).fetchone()
-    if not fresh or not fresh[0]:
+    fresh = (await conn.execute(_fresh_session(user.token_id))).scalar_one_or_none()
+    if not fresh:
         hours = int(SESSION_MAX_AGE.total_seconds() // 3600)
         raise Refusal(frames.CLOSE_FORBIDDEN, f"the web session is older than {hours} hours: sign in again")
     try:
         access = await readable_run(conn, user, project, run_id, None)
     except HTTPException as exc:
         raise Refusal(frames.CLOSE_FORBIDDEN, str(exc.detail)) from None
-    row = await (await conn.execute(TERMINAL_RUN, (run_id, access.project_id))).fetchone()
-    dispatched_by, owner, state, plan_id, key, worker_id, worker_owner, worker, allowed = row
-    if dispatched_by != user.user_id:
-        raise Refusal(frames.CLOSE_FORBIDDEN, f"only {owner}, who dispatched run {run_id}, may open its terminal")
-    if state not in OPEN_STATES or worker_id is None:
+    run = (await conn.execute(_terminal_run(run_id, access.project_id))).one()
+    state = run.state
+    if run.dispatched_by != user.user_id:
+        raise Refusal(frames.CLOSE_FORBIDDEN, f"only {run.owner}, who dispatched run {run_id}, may open its terminal")
+    if state not in OPEN_STATES or run.worker_id is None:
         raise Refusal(
             frames.CLOSE_FORBIDDEN,
             f"run {run_id} is {state}: a terminal opens on a run that is leased, running or interactive",
         )
-    if worker_owner != user.user_id:
-        raise Refusal(frames.CLOSE_FORBIDDEN, f"run {run_id} is on worker {worker}, which is not yours")
-    if not allowed:
-        raise Refusal(frames.CLOSE_FORBIDDEN, f"worker {worker} does not allow the web terminal")
-    session.worker_id = worker_id
+    if run.worker_owner != user.user_id:
+        raise Refusal(frames.CLOSE_FORBIDDEN, f"run {run_id} is on worker {run.worker}, which is not yours")
+    if not run.allow_web_terminal:
+        raise Refusal(frames.CLOSE_FORBIDDEN, f"worker {run.worker} does not allow the web terminal")
+    session.worker_id = run.worker_id
     if not session.terminals.reserve(session):
         raise Refusal(frames.CLOSE_BUSY, f"the terminal of run {run_id} is open in another browser")
-    target = _run_target(project, plan_id, key, run_id)
-    if state in runs.TAKEOVER_STATES and await (await conn.execute(ASK_TAKEOVER, (run_id,))).fetchone():
+    target = _run_target(project, run.plan_id, run.step_key, run_id)
+    if state in runs.TAKEOVER_STATES and await ask_takeover(conn, run_id):
         await _audit(conn, user, access.project_id, audit.RUN_TAKEOVER, target)
     await _audit(conn, user, access.project_id, audit.TERMINAL_OPEN, target)
     session.project_id = access.project_id
     session.target = target
 
 
-async def _audit(conn, user: Principal, project_id: int, action: str, target: str) -> None:
+async def _audit(conn: AsyncConnection, user: Principal, project_id: int, action: str, target: str) -> None:
     await audit.record(
         conn, actor_id=user.user_id, token_id=user.token_id, action=action, target=target, project_id=project_id
     )
@@ -425,7 +455,7 @@ async def _watch(session: Session) -> None:
             return
         try:
             await asyncio.wait_for(session.ended.wait(), min(idle_left, open_left))
-        except asyncio.TimeoutError:
+        except TimeoutError:
             pass
 
 
@@ -466,8 +496,16 @@ def _bearer(websocket: WebSocket) -> str:
     return token
 
 
-HOLDING_WORKER = "SELECT id, name, revoked_at FROM workers WHERE token_id = %s"
-HELD_RUN = "SELECT worker_id, state FROM runs WHERE id = %s"
+def _holding_worker(token_id: int):
+    """The worker of token ``token_id``, revoked or not."""
+    workers = tables.workers
+    return select(workers.c.id, workers.c.name, workers.c.revoked_at).where(workers.c.token_id == token_id)
+
+
+def _held_run(run_id: int):
+    """The worker that holds run ``run_id``, and its state."""
+    runs_ = tables.runs
+    return select(runs_.c.worker_id, runs_.c.state).where(runs_.c.id == run_id)
 
 
 async def _attach(websocket: WebSocket, run_id: int) -> Session:
@@ -481,13 +519,13 @@ async def _attach(websocket: WebSocket, run_id: int) -> Session:
     token = _bearer(websocket)
     app = websocket.app
     try:
-        user = await authenticate(app.state.pool, token, WORKER, app.state.config)
+        user = await authenticate(app.state.engine, token, WORKER, app.state.config)
         if user is None:
             raise Refusal(frames.CLOSE_UNAUTHENTICATED, f"the worker token is revoked, expired or unknown: {JOIN_HINT}")
-        async with app.state.pool.connection() as conn:
-            worker = await (await conn.execute(HOLDING_WORKER, (user.token_id,))).fetchone()
-            held = await (await conn.execute(HELD_RUN, (run_id,))).fetchone()
-    except (psycopg.OperationalError, OSError) as exc:
+        async with app.state.engine.begin() as conn:
+            worker = (await conn.execute(_holding_worker(user.token_id))).one_or_none()
+            held = (await conn.execute(_held_run(run_id))).one_or_none()
+    except (psycopg.OperationalError, sa_exc.OperationalError, OSError) as exc:
         log.warning("cannot attach a terminal: database unavailable", extra={"error": type(exc).__name__})
         raise Refusal(frames.CLOSE_UNAVAILABLE, "the hub database is unavailable; try again shortly") from None
     if worker is None or worker[2] is not None:

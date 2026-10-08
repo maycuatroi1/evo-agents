@@ -39,7 +39,7 @@ import re
 import sys
 import time
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import quote
 
@@ -124,7 +124,7 @@ def _config_of(url: str, answer: dict) -> tuple[WorkerConfig, str]:
         allow_web_terminal=bool(worker.get("allow_web_terminal")),
         owner=worker.get("owner"),
         token_id=answer.get("token_id"),
-        joined_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        joined_at=datetime.now(UTC).isoformat(timespec="seconds"),
     )
     return config, token
 
@@ -718,7 +718,7 @@ def cmd_ask(args) -> int:
     decision_id = answer.get("id") if isinstance(answer, dict) else None
     if not isinstance(decision_id, int):
         raise HubError("the hub did not answer with the decision's id")
-    noted = json.dumps({"id": decision_id, "asked_at": datetime.now(timezone.utc).isoformat(timespec="seconds")})
+    noted = json.dumps({"id": decision_id, "asked_at": datetime.now(UTC).isoformat(timespec="seconds")})
     with open(agent.home.decisions_path(agent.run_id), "a", encoding="utf-8") as handle:  # the daemon waits on it
         handle.write(noted + "\n")
     print(f"Decision #{decision_id} is open: {' '.join(args.question.split())}")

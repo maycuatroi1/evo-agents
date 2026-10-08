@@ -16,7 +16,7 @@ import pytest
 from evo_agents.hub.mirror import plan_text, read_plan
 from evo_agents.hub.plan_diff import MAX_CONTEXT, diff_lines, plan_diff
 from tests.hub import live
-from tests.hub.test_plans import COMPLETED, PROJECT, draft, needs_pg, plan_url, put, setup_project
+from tests.hub.test_plans import COMPLETED, PROJECT, counts, draft, needs_pg, plan_url, put, setup_project
 
 EVIDENCE = (
     "evo-agents@0960c9b: pnpm test 41 passed; playwright 26 passed.\n"
@@ -234,10 +234,10 @@ def test_reading_needs_a_grant_and_a_level_that_reaches_the_plan(client, github,
 def test_reads_change_nothing(client, github, hub_db):
     hubs = setup_project(client, github)
     assert put(hubs["alice"], draft("rollout")).status_code == 200
-    before = [live.sql(hub_db, f"SELECT count(*) FROM {table}")[0][0] for table in ("plans", "plan_revisions", "audit")]
+    before = counts(hub_db)
     reader = hubs["reader"]
     for path in [(), ("rollout",), ("rollout", "revisions"), ("rollout", "revisions", "1")]:
         assert get(reader, *path).status_code == 200
     assert get(reader, "rollout", "diff", **{"from": 1, "to": 1}).status_code == 200
-    after = [live.sql(hub_db, f"SELECT count(*) FROM {table}")[0][0] for table in ("plans", "plan_revisions", "audit")]
+    after = counts(hub_db)
     assert after == before

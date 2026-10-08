@@ -31,16 +31,18 @@ not shown. Answering a decision reads its notification too (``decisions``).
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, HTTPException, Query, Request
-from psycopg.types.json import Jsonb
 from pydantic import BaseModel, Field, model_validator
+from sqlalchemy import BigInteger, and_, exists, false, func, insert, literal, null, or_, select, union_all, update
+from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import runs
+from evo_agents.hub import runs, tables
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.admin import PROJECT_NAME
 from evo_agents.hub.server.errors import ErrorBody
@@ -92,22 +94,22 @@ def _body(text: str | None) -> str | None:
 
 # The outbox
 
-INSERT_NOTIFICATION = """
-INSERT INTO notifications (user_id, kind, notice_kind, project_id, run_id, decision_id, title, body, details, link)
-VALUES (%(user)s, %(kind)s, %(notice_kind)s, %(project)s, %(run)s, %(decision)s, %(title)s, %(body)s, %(details)s,
-        %(link)s)
-RETURNING id
-"""
-INSERT_DELIVERIES = """
-INSERT INTO notification_deliveries (notification_id, channel_id)
-SELECT %(id)s, NULL
- UNION ALL
-SELECT %(id)s, c.id FROM notification_channels c WHERE c.user_id = %(user)s AND c.enabled
-"""
+
+def _deliveries(notification_id: int, user_id: int):
+    """A delivery of notification ``notification_id`` on the web (no channel), then one for each channel of member
+    ``user_id`` that is enabled."""
+    channels = tables.notification_channels
+    notification = literal(notification_id, BigInteger)
+    rows = union_all(
+        select(notification, null()),
+        select(notification, channels.c.id).where(channels.c.user_id == user_id, channels.c.enabled),
+    )
+    deliveries = tables.notification_deliveries
+    return insert(deliveries).from_select([deliveries.c.notification_id, deliveries.c.channel_id], rows)
 
 
 async def notify(
-    conn,
+    conn: AsyncConnection,
     *,
     user_id: int,
     kind: str,
@@ -125,20 +127,25 @@ async def notify(
     cut to MAX_NOTICE_BODY_BYTES."""
     if kind not in runs.NOTIFICATION_KINDS:
         raise ValueError(f"{kind!r} is not a kind of notification")
-    params = {
-        "user": user_id,
-        "kind": kind,
-        "notice_kind": notice_kind,
-        "project": project_id,
-        "run": run_id,
-        "decision": decision_id,
-        "title": one_line(title) or kind,
-        "body": _body(body),
-        "details": Jsonb(details) if details is not None else None,
-        "link": link,
-    }
-    notification_id = (await (await conn.execute(INSERT_NOTIFICATION, params)).fetchone())[0]
-    await conn.execute(INSERT_DELIVERIES, {"id": notification_id, "user": user_id})
+    stored = tables.notifications
+    inserted = await conn.execute(
+        insert(stored)
+        .values(
+            user_id=user_id,
+            kind=kind,
+            notice_kind=notice_kind,
+            project_id=project_id,
+            run_id=run_id,
+            decision_id=decision_id,
+            title=one_line(title) or kind,
+            body=_body(body),
+            details=details if details is not None else null(),  # SQL NULL: None alone would store JSON null
+            link=link,
+        )
+        .returning(stored.c.id)
+    )
+    notification_id = inserted.scalar_one()
+    await conn.execute(_deliveries(notification_id, user_id))
     return notification_id
 
 
@@ -191,27 +198,82 @@ def backoff(attempts: int) -> timedelta:
     return timedelta(seconds=min(BACKOFF_SECONDS * 2 ** max(0, attempts - 1), BACKOFF_MAX_SECONDS))
 
 
-DUE = """
-SELECT id FROM notification_deliveries WHERE state = 'pending' AND next_at <= now() ORDER BY next_at, id LIMIT %s
-"""
-LOCK_DUE = """
-SELECT d.attempts, c.kind, c.config, c.enabled, n.id, n.user_id, u.login, n.kind, n.notice_kind, p.name, n.run_id,
-       n.decision_id, n.title, n.body, n.details, n.link, n.created_at, d.channel_id IS NOT NULL
-  FROM notification_deliveries d JOIN notifications n ON n.id = d.notification_id JOIN users u ON u.id = n.user_id
-  LEFT JOIN notification_channels c ON c.id = d.channel_id
-  LEFT JOIN projects p ON p.id = n.project_id
- WHERE d.id = %s AND d.state = 'pending' AND d.next_at <= now()
-   FOR UPDATE OF d SKIP LOCKED
-"""
-DELIVERED = """
-UPDATE notification_deliveries SET state = 'delivered', delivered_at = now(), attempts = attempts + 1 WHERE id = %s
-"""
-RETRY = """
-UPDATE notification_deliveries SET attempts = attempts + 1, next_at = now() + %s, last_error = %s WHERE id = %s
-"""
-FAILED = """
-UPDATE notification_deliveries SET attempts = attempts + 1, state = 'failed', last_error = %s WHERE id = %s
-"""
+def _due(batch: int):
+    """The first ``batch`` pending deliveries whose ``next_at`` has passed, the longest due first."""
+    deliveries = tables.notification_deliveries
+    return (
+        select(deliveries.c.id)
+        .where(deliveries.c.state == "pending", deliveries.c.next_at <= func.now())
+        .order_by(deliveries.c.next_at, deliveries.c.id)
+        .limit(batch)
+    )
+
+
+OUTGOING = tuple(field.name for field in dataclasses.fields(Outgoing))
+
+
+def _lock_due(delivery_id: int):
+    """Delivery ``delivery_id`` while it is pending and due, locked, with its channel and its notification as
+    Outgoing names the columns; no row when another pass holds it."""
+    deliveries, channels = tables.notification_deliveries, tables.notification_channels
+    stored, users, projects = tables.notifications, tables.users, tables.projects
+    return (
+        select(
+            deliveries.c.attempts,
+            channels.c.kind.label("channel_kind"),
+            channels.c.config.label("channel_config"),
+            channels.c.enabled,
+            stored.c.id,
+            stored.c.user_id,
+            users.c.login,
+            stored.c.kind,
+            stored.c.notice_kind,
+            projects.c.name.label("project"),
+            stored.c.run_id,
+            stored.c.decision_id,
+            stored.c.title,
+            stored.c.body,
+            stored.c.details,
+            stored.c.link,
+            stored.c.created_at,
+            deliveries.c.channel_id.is_not(None).label("has_channel"),
+        )
+        .select_from(
+            deliveries.join(stored, stored.c.id == deliveries.c.notification_id)
+            .join(users, users.c.id == stored.c.user_id)
+            .outerjoin(channels, channels.c.id == deliveries.c.channel_id)
+            .outerjoin(projects, projects.c.id == stored.c.project_id)
+        )
+        .where(deliveries.c.id == delivery_id, deliveries.c.state == "pending", deliveries.c.next_at <= func.now())
+        .with_for_update(of=deliveries, skip_locked=True)
+    )
+
+
+def _delivered(delivery_id: int):
+    deliveries = tables.notification_deliveries
+    return (
+        update(deliveries)
+        .values(state="delivered", delivered_at=func.now(), attempts=deliveries.c.attempts + 1)
+        .where(deliveries.c.id == delivery_id)
+    )
+
+
+def _retry(delivery_id: int, wait: timedelta, error: str):
+    deliveries = tables.notification_deliveries
+    return (
+        update(deliveries)
+        .values(attempts=deliveries.c.attempts + 1, next_at=func.now() + wait, last_error=error)
+        .where(deliveries.c.id == delivery_id)
+    )
+
+
+def _failed(delivery_id: int, error: str):
+    deliveries = tables.notification_deliveries
+    return (
+        update(deliveries)
+        .values(attempts=deliveries.c.attempts + 1, state="failed", last_error=error)
+        .where(deliveries.c.id == delivery_id)
+    )
 
 
 def _error_text(exc: BaseException) -> str:
@@ -219,49 +281,50 @@ def _error_text(exc: BaseException) -> str:
     return text[:MAX_ERROR_CHARS]
 
 
-async def _deliver_one(conn, delivery_id: int, instances: dict, config) -> str | None:
+async def _deliver_one(conn: AsyncConnection, delivery_id: int, instances: dict, config) -> str | None:
     """Try delivery ``delivery_id`` once, in the caller's transaction; delivered, retried or failed, or None when it
     is no longer due (taken by another pass, or done meanwhile)."""
-    row = await (await conn.execute(LOCK_DUE, (delivery_id,))).fetchone()
+    row = (await conn.execute(_lock_due(delivery_id))).one_or_none()
     if row is None:
         return None
-    attempts, channel_kind, channel_config, enabled, *fields, has_channel = row
-    notification = Outgoing(*fields)
-    kind = channel_kind if has_channel else WEB
+    found = row._mapping
+    attempts, has_channel = row.attempts, row.has_channel
+    notification = Outgoing(**{name: found[name] for name in OUTGOING})
+    kind = row.channel_kind if has_channel else WEB
     cls = CHANNELS.get(kind)
     if cls is None:
-        await conn.execute(FAILED, (f"the hub has no class for channels of kind {kind}", delivery_id))
+        await conn.execute(_failed(delivery_id, f"the hub has no class for channels of kind {kind}"))
         return "failed"
-    if has_channel and not enabled:
-        await conn.execute(FAILED, ("the channel was turned off before the notification went out", delivery_id))
+    if has_channel and not row.enabled:
+        await conn.execute(_failed(delivery_id, "the channel was turned off before the notification went out"))
         return "failed"
     channel = instances.get(kind)
     if channel is None:
         channel = instances[kind] = cls(config)
     try:
-        await asyncio.wait_for(channel.send(notification, dict(channel_config or {})), SEND_TIMEOUT_SECONDS)
+        await asyncio.wait_for(channel.send(notification, dict(row.channel_config or {})), SEND_TIMEOUT_SECONDS)
     except Exception as exc:  # any failure of a channel is the delivery's, never the job's
         error = _error_text(exc) or "the channel failed"
         if attempts + 1 >= runs.MAX_DELIVERY_ATTEMPTS:
-            await conn.execute(FAILED, (error, delivery_id))
+            await conn.execute(_failed(delivery_id, error))
             log.warning("notification delivery failed", extra={"delivery_id": delivery_id, "channel": kind})
             return "failed"
-        await conn.execute(RETRY, (backoff(attempts + 1), error, delivery_id))
+        await conn.execute(_retry(delivery_id, backoff(attempts + 1), error))
         log.info("notification delivery to try again", extra={"delivery_id": delivery_id, "channel": kind})
         return "retried"
-    await conn.execute(DELIVERED, (delivery_id,))
+    await conn.execute(_delivered(delivery_id))
     return "delivered"
 
 
-async def deliver_notifications(pool, *, config=None, batch: int = DELIVERY_BATCH) -> dict:
+async def deliver_notifications(engine, *, config=None, batch: int = DELIVERY_BATCH) -> dict:
     """One pass of the job hub.deliver_notifications: each pending delivery that is due, tried once in a transaction
     of its own. Returns how many were delivered, are to be tried again, and failed."""
     report = {"delivered": 0, "retried": 0, "failed": 0}
-    async with pool.connection() as conn:
-        due = [row[0] for row in await (await conn.execute(DUE, (batch,))).fetchall()]
+    async with engine.begin() as conn:
+        due = (await conn.execute(_due(batch))).scalars().all()
     instances: dict[str, Channel] = {}
     for delivery_id in due:
-        async with pool.connection() as conn:
+        async with engine.begin() as conn:
             outcome = await _deliver_one(conn, delivery_id, instances, config)
         if outcome is not None:
             report[outcome] += 1
@@ -317,15 +380,36 @@ class Notification(BaseModel):
     read_at: datetime | None
 
 
-NOTIFICATION_COLUMNS = """
-SELECT n.id, n.kind, n.notice_kind, p.name, n.run_id, n.decision_id, d.state, n.title, n.body, n.details, n.link,
-       n.created_at, n.read_at
-  FROM notifications n LEFT JOIN projects p ON p.id = n.project_id LEFT JOIN decisions d ON d.id = n.decision_id
-"""
+def _shown():
+    """Notifications with their project's name and their decision's state: the FROM of the member's routes."""
+    stored, projects, decisions = tables.notifications, tables.projects, tables.decisions
+    return stored.outerjoin(projects, projects.c.id == stored.c.project_id).outerjoin(
+        decisions, decisions.c.id == stored.c.decision_id
+    )
+
+
+def _notification_rows():
+    """The columns of Notification, by its field names, over ``_shown``."""
+    stored = tables.notifications
+    return select(
+        stored.c.id,
+        stored.c.kind,
+        stored.c.notice_kind,
+        tables.projects.c.name.label("project"),
+        stored.c.run_id,
+        stored.c.decision_id,
+        tables.decisions.c.state.label("decision_state"),
+        stored.c.title,
+        stored.c.body,
+        stored.c.details,
+        stored.c.link,
+        stored.c.created_at,
+        stored.c.read_at,
+    ).select_from(_shown())
 
 
 def _notifications(rows) -> list[Notification]:
-    return [Notification(**dict(zip(Notification.model_fields, row, strict=True))) for row in rows]
+    return [Notification(**row._mapping) for row in rows]
 
 
 @worker_router.post(
@@ -336,7 +420,7 @@ def _notifications(rows) -> list[Notification]:
 )
 async def send_notice(request: Request, run_id: RunId, body: NoticeIn, user: CurrentUser) -> Notification:
     """Notify the owner of a plan run this worker holds: a push or merge into a default branch, say."""
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         _, row = await _held_plan_run(conn, user, run_id, lock=True)
         _, _, _, project_id, project, plan_id, dispatcher_id, _, repos = row
         names = [entry.get("repo") for entry in repos or [] if isinstance(entry, dict)]
@@ -357,55 +441,60 @@ async def send_notice(request: Request, run_id: RunId, body: NoticeIn, user: Cur
         shown = f"notice {body.kind}: {body.title}"
         facts = {"kind": body.kind, "notification_id": notification_id, **(body.details() or {})}
         await write_event(conn, run_id, {"text": shown, "notice": facts})
-        (view,) = _notifications(
-            await (await conn.execute(NOTIFICATION_COLUMNS + " WHERE n.id = %s", (notification_id,))).fetchall()
-        )
+        stored = _notification_rows().where(tables.notifications.c.id == notification_id)
+        (view,) = _notifications((await conn.execute(stored)).all())
     log.info("notice sent", extra={"run_id": run_id, "kind": body.kind, "plan_id": plan_id})
     return view
 
 
 # The member's notifications
 
-VISIBLE = """
- WHERE n.user_id = %(user)s
-   AND (n.project_id IS NULL
-        OR EXISTS (SELECT 1 FROM grants g WHERE g.user_id = n.user_id AND g.project_id = n.project_id))
-"""
-LIST_FILTERS = (
-    VISIBLE
-    + """   AND (NOT %(unread)s OR n.read_at IS NULL)
-   AND (%(kind)s::text IS NULL OR n.kind = %(kind)s)
-   AND (%(project)s::text IS NULL OR p.name = %(project)s)
-"""
-)
-LIST_PAGE = (
-    NOTIFICATION_COLUMNS
-    + LIST_FILTERS
-    + """ ORDER BY coalesce(n.kind = 'decision' AND d.state = 'open', false) DESC, n.id DESC
- LIMIT %(limit)s OFFSET %(offset)s
-"""
-)
-LIST_TOTAL = (
-    "SELECT count(*) FROM notifications n LEFT JOIN projects p ON p.id = n.project_id "
-    "LEFT JOIN decisions d ON d.id = n.decision_id" + LIST_FILTERS
-)
-COUNTS = (
-    """
-SELECT count(*) FILTER (WHERE n.read_at IS NULL),
-       count(*) FILTER (WHERE n.kind = 'decision' AND d.state = 'open')
-  FROM notifications n LEFT JOIN decisions d ON d.id = n.decision_id
-"""
-    + VISIBLE
-)
-MARK_READ = (
-    """
-UPDATE notifications n SET read_at = now()
-"""
-    + VISIBLE
-    + """   AND n.read_at IS NULL AND (%(all)s OR n.id = ANY(%(ids)s::bigint[]))
-RETURNING n.id
-"""
-)
+
+def _visible(user_id: int):
+    """The notifications of member ``user_id`` that are of no project, or of a project they hold a grant on."""
+    stored, grants = tables.notifications, tables.grants
+    granted = exists().where(grants.c.user_id == stored.c.user_id, grants.c.project_id == stored.c.project_id)
+    return and_(stored.c.user_id == user_id, or_(stored.c.project_id.is_(None), granted))
+
+
+def _open_decision():
+    """A notification of a decision that still waits for its answer."""
+    return and_(tables.notifications.c.kind == "decision", tables.decisions.c.state == "open")
+
+
+def _listed(user_id: int, unread: bool, kind: str | None, project: str | None) -> list:
+    """The conditions of the list's filters, over ``_shown``."""
+    stored = tables.notifications
+    found = [_visible(user_id)]
+    if unread:
+        found.append(stored.c.read_at.is_(None))
+    if kind is not None:
+        found.append(stored.c.kind == kind)
+    if project is not None:
+        found.append(tables.projects.c.name == project)
+    return found
+
+
+def _counts(user_id: int):
+    """How many of the member's notifications are unread, and how many are of a decision still open."""
+    stored, decisions = tables.notifications, tables.decisions
+    return (
+        select(
+            func.count().filter(stored.c.read_at.is_(None)).label("unread"),
+            func.count().filter(_open_decision()).label("open_decisions"),
+        )
+        .select_from(stored.outerjoin(decisions, decisions.c.id == stored.c.decision_id))
+        .where(_visible(user_id))
+    )
+
+
+def _mark_read(user_id: int, ids: list[int] | None):
+    """Mark the member's unread notifications read, those of ``ids`` or all of them when it is None; their ids."""
+    stored = tables.notifications
+    marked = update(stored).values(read_at=func.now()).where(_visible(user_id), stored.c.read_at.is_(None))
+    if ids is not None:
+        marked = marked.where(stored.c.id.in_(ids))
+    return marked.returning(stored.c.id)
 
 
 class NotificationList(BaseModel):
@@ -449,34 +538,30 @@ async def list_notifications(
     offset: Annotated[int, Query(ge=0, le=MAX_OFFSET)] = 0,
 ) -> NotificationList:
     """The caller's notifications, open decisions first, then newest first."""
-    params = {
-        "user": user.user_id,
-        "unread": unread,
-        "kind": kind,
-        "project": project,
-        "limit": limit,
-        "offset": offset,
-    }
-    async with request.app.state.pool.connection() as conn:
-        page = _notifications(await (await conn.execute(LIST_PAGE, params)).fetchall())
-        total = (await (await conn.execute(LIST_TOTAL, params)).fetchone())[0]
-    return NotificationList(notifications=page, total=total, limit=limit, offset=offset)
+    found = _listed(user.user_id, unread, kind, project)
+    order = (func.coalesce(_open_decision(), false()).desc(), tables.notifications.c.id.desc())
+    listed = _notification_rows().where(*found).order_by(*order).limit(limit).offset(offset)
+    total = select(func.count()).select_from(_shown()).where(*found)
+    async with request.app.state.engine.begin() as conn:
+        page = _notifications((await conn.execute(listed)).all())
+        matching = (await conn.execute(total)).scalar_one()
+    return NotificationList(notifications=page, total=matching, limit=limit, offset=offset)
 
 
 @router.get("/notifications/count", response_model=NotificationCount)
 async def count_notifications(request: Request, user: CurrentUser) -> NotificationCount:
     """How many of the caller's notifications are unread, and how many decisions wait for their answer."""
-    async with request.app.state.pool.connection() as conn:
-        unread, open_decisions = await (await conn.execute(COUNTS, {"user": user.user_id})).fetchone()
-    return NotificationCount(unread=unread, open_decisions=open_decisions)
+    async with request.app.state.engine.begin() as conn:
+        counted = (await conn.execute(_counts(user.user_id))).one()
+    return NotificationCount(**counted._mapping)
 
 
 @router.post("/notifications/read", response_model=ReadResult, responses={422: {"model": ErrorBody}})
 async def read_notifications(request: Request, body: ReadRequest, user: CurrentUser) -> ReadResult:
     """Mark the caller's notifications read: those named, or all of them."""
-    params = {"user": user.user_id, "all": body.all, "ids": list(dict.fromkeys(body.ids or []))}
-    async with request.app.state.pool.connection() as conn:
-        marked = sorted(row[0] for row in await (await conn.execute(MARK_READ, params)).fetchall())
+    ids = None if body.all else list(dict.fromkeys(body.ids or []))
+    async with request.app.state.engine.begin() as conn:
+        marked = sorted((await conn.execute(_mark_read(user.user_id, ids))).scalars().all())
         if marked:
             target = "notifications:all" if body.all else "notifications:" + ",".join(map(str, marked))
             if body.all:
@@ -484,6 +569,6 @@ async def read_notifications(request: Request, body: ReadRequest, user: CurrentU
             await audit.record(
                 conn, actor_id=user.user_id, token_id=user.token_id, action=audit.NOTIFICATION_READ, target=target
             )
-        unread = (await (await conn.execute(COUNTS, {"user": user.user_id})).fetchone())[0]
+        unread = (await conn.execute(_counts(user.user_id))).one().unread
     log.info("notifications read", extra={"login": user.login, "read": len(marked)})
     return ReadResult(read=len(marked), unread=unread)

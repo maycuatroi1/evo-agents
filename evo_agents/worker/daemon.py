@@ -38,12 +38,11 @@ import os
 import shutil
 import signal
 from collections.abc import Mapping
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from evo_agents import __version__
 from evo_agents.hub import runs
-from evo_agents.isotime import parse_iso
 from evo_agents.worker import checkouts, gitops, interactive, orphans
 from evo_agents.worker.adapter import Adapter, detect_runtimes
 from evo_agents.worker.credentials import socket_path
@@ -450,7 +449,7 @@ class Daemon:
             if record.get("finished_at") is None:
                 with contextlib.suppress(OSError):  # its leases went with that daemon; the hub takes them back
                     socket_path(self.home, record["id"]).unlink(missing_ok=True)
-                record["finished_at"] = datetime.now(timezone.utc).isoformat()
+                record["finished_at"] = datetime.now(UTC).isoformat()
                 record["state"] = f"{record.get('state')} when the worker stopped"
                 with contextlib.suppress(OSError):
                     self.home.save_run(record)
@@ -483,18 +482,18 @@ class Daemon:
 
     async def cleanup(self, now: datetime | None = None) -> list[int]:
         """Remove the worktrees and records of runs that ended more than 7 days ago; their ids."""
-        now = now or datetime.now(timezone.utc)
+        now = now or datetime.now(UTC)
         removed = []
         for record in self.home.load_runs():
             run_id = record["id"]
             if run_id in self.runs or not record.get("finished_at"):
                 continue
             try:
-                finished = parse_iso(str(record["finished_at"]))
+                finished = datetime.fromisoformat(str(record["finished_at"]))
             except ValueError:
                 continue
             if finished.tzinfo is None:
-                finished = finished.replace(tzinfo=timezone.utc)
+                finished = finished.replace(tzinfo=UTC)
             if now - finished < KEEP_WORKTREES:
                 continue
             await self._remove_worktree(record)

@@ -702,7 +702,7 @@ class Browser:
             assert remaining > 0, f"{needle!r} never came; the terminal printed:\n{bytes(self.output[-3000:])!r}"
             try:
                 message = await asyncio.wait_for(self.ws.receive(), remaining)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 continue
             if message.type == aiohttp.WSMsgType.BINARY:
                 kind, payload = frames.parse(message.data)

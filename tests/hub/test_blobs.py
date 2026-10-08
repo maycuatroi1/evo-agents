@@ -15,7 +15,7 @@ import threading
 import time
 import urllib.request
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from urllib.parse import parse_qs, urlsplit
 
@@ -31,8 +31,10 @@ from botocore.awsrequest import AWSResponse
 from botocore.exceptions import ResponseStreamingError
 from fastapi.testclient import TestClient
 from psycopg import errors
+from sqlalchemy import Text, cast, delete, func, insert, literal, select, true, update
 
 from evo_agents import __version__
+from evo_agents.hub import tables
 from evo_agents.hub.blobs import (
     KIND_LIMITS,
     BlobStore,
@@ -43,12 +45,11 @@ from evo_agents.hub.blobs import (
     upload_key,
 )
 from evo_agents.hub.config import S3_VARIABLES, ConfigError, HubConfig, load_config
-from evo_agents.hub.db import open_pool
+from evo_agents.hub.db import make_engine, open_pool
 from evo_agents.hub.log import JsonFormatter, scrub
 from evo_agents.hub.migrate import head_revision, migrate
 from evo_agents.hub.server.app import create_app
 from evo_agents.hub.worker import remove_stale_uploads
-from evo_agents.isotime import parse_iso
 
 HEAD = head_revision()
 
@@ -80,12 +81,14 @@ def member(db, project_id: int, login: str, role: str | None) -> dict:
     """The Authorization header of ``login``, holding ``role`` on the project (no grant when None)."""
     token = live.insert_token(db, login)
     if role is not None:
-        live.sql(
-            db,
-            "INSERT INTO grants (user_id, project_id, role, max_level, granted_by) SELECT u.id, p.id, %s, "
-            "p.levels[1], p.created_by FROM users u, projects p WHERE u.login = %s AND p.id = %s",
-            (role, login, project_id),
+        users, projects = tables.users, tables.projects
+        granted = (
+            select(users.c.id, projects.c.id, literal(role), projects.c.levels[1], projects.c.created_by)
+            .join_from(users, projects, true())
+            .where(users.c.login == login, projects.c.id == project_id)
         )
+        columns = ["user_id", "project_id", "role", "max_level", "granted_by"]
+        live.sql(db, insert(tables.grants).from_select(columns, granted))
     return live.bearer(token)
 
 
@@ -120,15 +123,19 @@ def upload(hub, headers, project: str, data: bytes, kind: str = "kg-blob") -> di
 
 
 def blob_rows(db) -> list[tuple]:
-    return live.sql(
-        db,
-        "SELECT p.name, b.sha256, b.size, b.kind, u.login, b.verified_at IS NOT NULL FROM blobs b "
-        "JOIN projects p ON p.id = b.project_id LEFT JOIN users u ON u.id = b.created_by ORDER BY 1, 2",
+    blobs, projects, users = tables.blobs, tables.projects, tables.users
+    verified = blobs.c.verified_at.is_not(None)
+    rows = (
+        select(projects.c.name, blobs.c.sha256, blobs.c.size, blobs.c.kind, users.c.login, verified)
+        .join_from(blobs, projects, projects.c.id == blobs.c.project_id)
+        .join(users, users.c.id == blobs.c.created_by, isouter=True)
+        .order_by(projects.c.name, blobs.c.sha256)
     )
+    return live.sql(db, rows)
 
 
 def pending(db) -> int:
-    return live.sql(db, "SELECT count(*) FROM blob_uploads")[0][0]
+    return live.sql(db, select(func.count()).select_from(tables.blob_uploads))[0][0]
 
 
 def head(s3, key: str) -> tuple:
@@ -148,7 +155,7 @@ def test_an_upload_through_a_presigned_put_then_commit_writes_exactly_one_blob_r
     body = asked.json()
     (found,) = body["uploads"]
     assert body["present"] == [] and found["sha256"] == sha(data)
-    left = parse_iso(body["expires_at"]) - datetime.now(timezone.utc)
+    left = datetime.fromisoformat(body["expires_at"]) - datetime.now(UTC)
     assert timedelta(minutes=14) < left <= timedelta(minutes=15)
     url = urlsplit(found["url"])
     assert url.path == f"/{hub.s3.bucket}/uploads/{found['upload_id']}"
@@ -164,7 +171,10 @@ def test_an_upload_through_a_presigned_put_then_commit_writes_exactly_one_blob_r
     assert hub.s3.get(blob_key(sha(data))) == data
     assert hub.s3.keys("uploads/") == []  # the upload and its sealed copy are gone
     assert pending(hub.db) == 0
-    filed = "SELECT a.action, a.target, p.name FROM audit a LEFT JOIN projects p ON p.id = a.project_id"
+    audit, projects = tables.audit, tables.projects
+    filed = select(audit.c.action, audit.c.target, projects.c.name).join_from(
+        audit, projects, projects.c.id == audit.c.project_id, isouter=True
+    )
     assert live.sql(hub.db, filed) == [("blob.commit", "alpha", "alpha")]
 
     again = commit(hub, writer, "alpha", found["upload_id"])  # an upload commits once
@@ -456,7 +466,7 @@ def test_uploads_of_another_user_or_project_or_older_than_a_day_are_unknown_and_
     assert commit(hub, alice, "alpha", "not-an-id").status_code == 422
     assert hub.s3.get(staged) == data and pending(hub.db) == 1
 
-    live.sql(hub.db, "UPDATE blob_uploads SET created_at = now() - interval '25 hours'")
+    live.sql(hub.db, update(tables.blob_uploads).values(created_at=func.now() - timedelta(hours=25)))
     assert commit(hub, alice, "alpha", found["upload_id"]).status_code == 422
     assert hub.s3.get(staged) == data and blob_rows(hub.db) == []
 
@@ -624,26 +634,24 @@ def test_uploads_left_for_a_day_are_removed_with_their_rows(hub, tmp_path):
     old, fresh = ticket(hub, writer, "alpha", b"old"), ticket(hub, writer, "alpha", b"fresh")
     put_presigned(old["url"], b"old")
     put_presigned(fresh["url"], b"fresh")
-    live.sql(
-        hub.db,
-        "UPDATE blob_uploads SET created_at = now() - interval '25 hours' WHERE upload_id = %s",
-        (old["upload_id"],),
-    )
+    uploads = tables.blob_uploads
+    aged = update(uploads).values(created_at=func.now() - timedelta(hours=25))
+    live.sql(hub.db, aged.where(uploads.c.upload_id == uuid.UUID(old["upload_id"])))
     config = make_config(hub.db, tmp_path, hub.s3)
 
     async def clean(now):
         pool = await open_pool(config)
         try:
-            return await remove_stale_uploads(hub.store, pool, now)
+            return await remove_stale_uploads(hub.store, make_engine(pool), now)
         finally:
             await pool.close()
 
     # Now: the row a day old goes; every object is younger than a day and stays.
-    assert asyncio.run(clean(datetime.now(timezone.utc))) == {"objects": 0, "rows": 1}
-    assert live.sql(hub.db, "SELECT upload_id::text FROM blob_uploads") == [(fresh["upload_id"],)]
+    assert asyncio.run(clean(datetime.now(UTC))) == {"objects": 0, "rows": 1}
+    assert live.sql(hub.db, select(cast(uploads.c.upload_id, Text))) == [(fresh["upload_id"],)]
     assert len(hub.s3.keys("uploads/")) == 2
     # A day later: everything under uploads/ goes, and the blob stays.
-    assert asyncio.run(clean(datetime.now(timezone.utc) + timedelta(hours=25))) == {"objects": 2, "rows": 1}
+    assert asyncio.run(clean(datetime.now(UTC) + timedelta(hours=25))) == {"objects": 2, "rows": 1}
     assert hub.s3.keys("uploads/") == [] and pending(hub.db) == 0
     assert hub.s3.keys() == [blob_key(sha(kept))]
 
@@ -751,25 +759,22 @@ def test_hub_serve_logs_neither_the_s3_key_pair_nor_a_presigned_url(hub_db, tmp_
 @pytest.mark.parametrize(
     "values, error",
     [
-        ("{project}, repeat('A', 64), 1, 'kg-blob', NULL", errors.CheckViolation),
-        ("{project}, repeat('a', 64), -1, 'kg-blob', NULL", errors.CheckViolation),
-        ("{project}, repeat('a', 64), 1, 'Kg Blob', NULL", errors.CheckViolation),
-        ("{project}, repeat('b', 64), 1, 'kg-blob', NULL", errors.UniqueViolation),
-        ("{project} + 1000, repeat('a', 64), 1, 'kg-blob', NULL", errors.ForeignKeyViolation),
+        ({"sha256": "A" * 64, "size": 1, "kind": "kg-blob"}, errors.CheckViolation),
+        ({"sha256": "a" * 64, "size": -1, "kind": "kg-blob"}, errors.CheckViolation),
+        ({"sha256": "a" * 64, "size": 1, "kind": "Kg Blob"}, errors.CheckViolation),
+        ({"sha256": "b" * 64, "size": 1, "kind": "kg-blob"}, errors.UniqueViolation),
+        ({"sha256": "a" * 64, "size": 1, "kind": "kg-blob", "project_after": 1000}, errors.ForeignKeyViolation),
     ],
 )
 def test_the_blobs_table_refuses_bad_rows(hub_db, values, error):
     migrate(hub_db.dsn)
     project = live.add_project(hub_db, "alpha")
-    with pg.admin(hub_db.admin_dsn) as conn:
-        conn.execute(
-            "INSERT INTO blobs (project_id, sha256, size, kind) VALUES (%s, repeat('b', 64), 0, 'kg-blob')", (project,)
-        )
+    blobs, projects = tables.blobs, tables.projects
+    with live.connect(hub_db, admin=True) as conn:
+        conn.execute(insert(blobs).values(project_id=project, sha256="b" * 64, size=0, kind="kg-blob"))
+        row = {key: value for key, value in values.items() if key != "project_after"}
         with pytest.raises(error):
-            conn.execute(
-                "INSERT INTO blobs (project_id, sha256, size, kind, created_by) VALUES ("
-                + values.format(project=project)
-                + ")"
-            )
+            project_id = project + values.get("project_after", 0)
+            conn.execute(insert(blobs).values(project_id=project_id, **row, created_by=None))
         with pytest.raises(errors.ForeignKeyViolation):  # a project holding blobs is not deleted by accident
-            conn.execute("DELETE FROM projects WHERE id = %s", (project,))
+            conn.execute(delete(projects).where(projects.c.id == project))

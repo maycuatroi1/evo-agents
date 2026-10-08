@@ -13,6 +13,11 @@ from __future__ import annotations
 
 import re
 
+from sqlalchemy import BigInteger, Insert, String, bindparam, insert, select
+from sqlalchemy.ext.asyncio import AsyncConnection
+
+from evo_agents.hub import tables
+
 LOGIN = "auth.login"
 LOGOUT = "auth.logout"
 TOKEN_REVOKE = "token.revoke"
@@ -68,14 +73,6 @@ _FIRST_NAME = re.compile(r"([a-z0-9][a-z0-9-]{0,99})(?:[/ @]|$)")
 _PROJECT_SKILL = re.compile(r"skill:project/([a-z0-9][a-z0-9-]{0,99})/")
 _MEMORY = re.compile(r"memory:([0-9]{1,18})")
 
-INSERT = """
-INSERT INTO audit (actor_id, token_id, action, target, project_id)
-VALUES (%(actor_id)s, %(token_id)s, %(action)s, %(target)s,
-        coalesce(%(project_id)s::bigint,
-                 (SELECT id FROM projects WHERE name = %(project)s::text),
-                 (SELECT project_id FROM memories WHERE id = %(memory_id)s::bigint)))
-"""
-
 
 def subject(action: str, target: str) -> tuple[str | None, int | None]:
     """The project an action happened in, as a project name or the id of the memory it changed; (None, None) for
@@ -93,20 +90,48 @@ def subject(action: str, target: str) -> tuple[str | None, int | None]:
     return None, None
 
 
+def _insert(project_id) -> Insert:
+    """An audit row of :audit_actor, :audit_token, :audit_action and :audit_target in the project ``project_id``
+    gives. The parameters name no column of audit: an INSERT would take a parameter named after a column as the
+    value of that column."""
+    return insert(tables.audit).values(
+        actor_id=bindparam("audit_actor", type_=BigInteger),
+        token_id=bindparam("audit_token", type_=BigInteger),
+        action=bindparam("audit_action", type_=String),
+        target=bindparam("audit_target", type_=String),
+        project_id=project_id,
+    )
+
+
+# Built once (docs/hub.md, Data access): the project given by id, by name, as the memory's, or none.
+_IN_PROJECT = _insert(bindparam("audit_project_id", type_=BigInteger))
+_IN_NAMED = _insert(
+    select(tables.projects.c.id).where(tables.projects.c.name == bindparam("audit_project")).scalar_subquery()
+)
+_OF_MEMORY = _insert(
+    select(tables.memories.c.project_id).where(tables.memories.c.id == bindparam("audit_memory")).scalar_subquery()
+)
+
+
 async def record(
-    conn, *, actor_id: int | None, token_id: int | None, action: str, target: str, project_id: int | None = None
+    conn: AsyncConnection,
+    *,
+    actor_id: int | None,
+    token_id: int | None,
+    action: str,
+    target: str,
+    project_id: int | None = None,
 ) -> None:
-    project, memory_id = (None, None) if project_id is not None else subject(action, target)
-    params = {
-        "actor_id": actor_id,
-        "token_id": token_id,
-        "action": action,
-        "target": target,
-        "project_id": project_id,
-        "project": project,
-        "memory_id": memory_id,
-    }
-    await conn.execute(INSERT, params)
+    row = {"audit_actor": actor_id, "audit_token": token_id, "audit_action": action, "audit_target": target}
+    statement = _IN_PROJECT
+    if project_id is None:
+        project, memory_id = subject(action, target)
+        if project is not None:
+            statement, row["audit_project"] = _IN_NAMED, project
+        elif memory_id is not None:
+            statement, row["audit_memory"] = _OF_MEMORY, memory_id
+    row["audit_project_id"] = project_id
+    await conn.execute(statement, row)
 
 
 def token_target(token_id: int) -> str:

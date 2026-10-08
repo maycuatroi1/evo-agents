@@ -427,7 +427,12 @@ def test_dispatch_plan_and_rerun_print_why_a_worker_of_the_web_refuses_a_token(h
     pinned = ("dispatch", PLAN, str(STEPS["notes"]), "--worker", "mac-mini", "--json")
     queued = as_json(run_of(hub, monkeypatch, capsys, "owner", *pinned))
     ok(run_of(hub, monkeypatch, capsys, "owner", "cancel", str(queued[0]["id"])))
-    live.sql(hub.db, "UPDATE workers SET dispatch_from = 'web' WHERE id = %s", (worker["id"],))
+    from sqlalchemy import update
+
+    from evo_agents.hub import tables
+
+    workers = tables.workers
+    live.sql(hub.db, update(workers).values(dispatch_from="web").where(workers.c.id == worker["id"]))
 
     why = (
         "error: worker mac-mini takes only runs dispatched from a web session, as its owner set it, so a token cannot "

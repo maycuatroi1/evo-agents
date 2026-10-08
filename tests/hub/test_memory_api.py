@@ -374,8 +374,16 @@ def test_a_run_scope_reads_and_writes_the_memories_of_its_project_alone(client, 
     everything = ["customer-note.md", "diary.md", "internal-note.md", "other-note.md"]
     assert searched(client, who["alice"], "quokka", sink="hub") == everything  # alice's own machine token
 
+    from sqlalchemy import select
+
+    from evo_agents.hub import tables
+
+    users, tokens = tables.users, tables.tokens
     (user_id, token_id), *_ = live.sql(
-        hub_db, "SELECT u.id, t.id FROM users u JOIN tokens t ON t.user_id = u.id WHERE u.login = 'alice'"
+        hub_db,
+        select(users.c.id, tokens.c.id)
+        .join_from(users, tokens, tokens.c.user_id == users.c.id)
+        .where(users.c.login == "alice"),
     )
     agent = Principal(user_id, "alice", False, token_id, WORKER, "x", RunScope(7, "demo", "writer", "internal"))
     request = Request(
@@ -414,7 +422,8 @@ def test_a_run_scope_reads_and_writes_the_memories_of_its_project_alone(client, 
     assert refused(memories.put, body=memories.MemoryIn(**{**note, "project": "other"}), sink="hub").status_code == 404
     mine = refused(memories.put, body=memories.MemoryIn(**{**diary, "name": "agent-diary.md"}), sink="hub")
     assert mine.status_code == 403 and "a personal memory is its owner's" in mine.detail
-    assert sorted(row[0] for row in live.sql(hub_db, "SELECT name FROM memories")) == sorted([*everything, "agent.md"])
+    stored = live.sql(hub_db, select(tables.memories.c.name))
+    assert sorted(row[0] for row in stored) == sorted([*everything, "agent.md"])
 
     # The scope caps the grant, role and level alike: a reader's scope writes nothing.
     reader = replace(agent, scope=RunScope(7, "demo", "reader", "public"))
@@ -425,7 +434,7 @@ def test_a_run_scope_reads_and_writes_the_memories_of_its_project_alone(client, 
     assert names(call(memories.list_memories, user=reader, sink="hub")) == []
 
     async def grant_of(user) -> tuple:
-        async with client.app.state.pool.connection() as conn:
+        async with client.app.state.engine.begin() as conn:
             access = await project_access(conn, user, "demo")
         return access.role, access.max_level
 

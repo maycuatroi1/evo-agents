@@ -24,6 +24,12 @@ import logging
 from dataclasses import dataclass
 from datetime import timedelta
 
+from sqlalchemy import BigInteger, Text, any_, column, delete, exists, func, literal, or_, select, update
+from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.ext.asyncio import AsyncConnection
+
+from evo_agents.hub import tables
 from evo_agents.hub.blobs import BlobStore, blob_key
 
 log = logging.getLogger(__name__)
@@ -31,21 +37,24 @@ log = logging.getLogger(__name__)
 LOCK_KEY = 0x65766F2D626C6F62  # "evo-blob" in ASCII; the migrations' lock is another key
 KEEP_DELETED = timedelta(days=30)  # how long a deleted blob's row stays, for the record
 
-REFERENCED = """
-SELECT h.sha256 FROM unnest(%(hashes)s::text[]) AS h (sha256)
- WHERE EXISTS (SELECT 1 FROM blobs b WHERE b.sha256 = h.sha256)
-    OR EXISTS (SELECT 1 FROM skill_versions s WHERE s.sha256 = h.sha256)
-    OR EXISTS (SELECT 1 FROM kg_builds k WHERE k.artifact_sha256 = h.sha256)
-    OR EXISTS (SELECT 1 FROM kg_ingests i WHERE i.log_sha256 = h.sha256)
-    OR EXISTS (SELECT 1 FROM kg_pending_runs r WHERE r.log_sha256 = h.sha256)
-"""
-FORGET = """
-INSERT INTO blob_deletions (sha256, size, kind)
-SELECT sha256, size, kind FROM unnest(%s::text[], %s::bigint[], %s::text[]) AS d (sha256, size, kind)
-    ON CONFLICT (sha256) DO UPDATE SET size = excluded.size, kind = excluded.kind, requested_at = now(),
-       deleted_at = NULL
-"""
-PENDING = "SELECT sha256, size FROM blob_deletions WHERE deleted_at IS NULL ORDER BY sha256 FOR UPDATE"
+
+def hashes_in(sha256, hashes: list[str]):
+    """``sha256 = ANY(hashes)``, the list bound as one text[] parameter however long it is."""
+    return sha256 == any_(literal(hashes, ARRAY(Text)))
+
+
+def _referenced(hashes: list[str]):
+    """The hashes of ``hashes`` that a blobs row, a skill version, a kg build's artifact or the log of an ingested or
+    pending kg run refers to."""
+    h = func.unnest(literal(hashes, ARRAY(Text))).table_valued(column("sha256", Text)).render_derived(name="h")
+    references = (
+        tables.blobs.c.sha256,
+        tables.skill_versions.c.sha256,
+        tables.kg_builds.c.artifact_sha256,
+        tables.kg_ingests.c.log_sha256,
+        tables.kg_pending_runs.c.log_sha256,
+    )
+    return select(h.c.sha256).where(or_(*(exists().where(sha256 == h.c.sha256) for sha256 in references)))
 
 
 @dataclass(frozen=True)
@@ -55,65 +64,86 @@ class Deleted:
     dropped: int  # rows dropped because the blob is referred to again
 
 
-async def lock_exclusive(conn) -> None:
+async def lock_exclusive(conn: AsyncConnection) -> None:
     """Hold the blob lock exclusively until ``conn``'s transaction ends: for dropping references and deleting."""
-    await conn.execute("SELECT pg_advisory_xact_lock(%s)", (LOCK_KEY,))
+    await conn.execute(select(func.pg_advisory_xact_lock(literal(LOCK_KEY, BigInteger))))
 
 
-async def lock_shared(conn) -> None:
+async def lock_shared(conn: AsyncConnection) -> None:
     """Hold the blob lock shared until ``conn``'s transaction ends: for writing references (see the module)."""
-    await conn.execute("SELECT pg_advisory_xact_lock_shared(%s)", (LOCK_KEY,))
+    await conn.execute(select(func.pg_advisory_xact_lock_shared(literal(LOCK_KEY, BigInteger))))
 
 
-async def referenced(conn, hashes) -> set[str]:
+async def referenced(conn: AsyncConnection, hashes) -> set[str]:
     """The hashes of ``hashes`` that something refers to."""
-    cursor = await conn.execute(REFERENCED, {"hashes": sorted(set(hashes))})
-    return {row[0] for row in await cursor.fetchall()}
+    return set((await conn.execute(_referenced(sorted(set(hashes))))).scalars())
 
 
-async def forget(conn, blobs: dict[str, tuple[int, str]]) -> list[str]:
+async def forget(conn: AsyncConnection, blobs: dict[str, tuple[int, str]]) -> list[str]:
     """Record for deletion the blobs of ``blobs`` ({sha256: (size, kind)}) that nothing refers to any longer; the
     hashes recorded. In the transaction that dropped the references, holding the lock exclusively."""
     still = await referenced(conn, blobs)
     gone = sorted(sha for sha in blobs if sha not in still)
     if gone:
-        await conn.execute(FORGET, (gone, [blobs[sha][0] for sha in gone], [blobs[sha][1] for sha in gone]))
+        deletions = tables.blob_deletions
+        d = (
+            func.unnest(
+                literal(gone, ARRAY(Text)),
+                literal([blobs[sha][0] for sha in gone], ARRAY(BigInteger)),
+                literal([blobs[sha][1] for sha in gone], ARRAY(Text)),
+            )
+            .table_valued(column("sha256", Text), column("size", BigInteger), column("kind", Text))
+            .render_derived(name="d")
+        )
+        recorded = pg_insert(deletions).from_select(["sha256", "size", "kind"], select(d.c.sha256, d.c.size, d.c.kind))
+        again = {"size": recorded.excluded.size, "kind": recorded.excluded.kind}
+        await conn.execute(
+            recorded.on_conflict_do_update(
+                index_elements=[deletions.c.sha256], set_={**again, "requested_at": func.now(), "deleted_at": None}
+            )
+        )
     return gone
 
 
-async def revive(conn, hashes) -> list[str]:
+async def revive(conn: AsyncConnection, hashes) -> list[str]:
     """The hashes of ``hashes`` recorded for deletion, whose rows this deletes: their objects may be gone, and the
     caller must put the bytes back before its transaction commits. Holding the lock shared."""
-    cursor = await conn.execute(
-        "DELETE FROM blob_deletions WHERE sha256 = ANY(%s) RETURNING sha256", (sorted(set(hashes)),)
-    )
-    return sorted(row[0] for row in await cursor.fetchall())
+    deletions = tables.blob_deletions
+    revived = delete(deletions).where(hashes_in(deletions.c.sha256, sorted(set(hashes)))).returning(deletions.c.sha256)
+    return sorted((await conn.execute(revived)).scalars())
 
 
-async def pending(conn) -> tuple[int, int]:
+async def pending(conn: AsyncConnection) -> tuple[int, int]:
     """How many blobs wait for their objects to be deleted, and their bytes."""
-    row = await (
-        await conn.execute("SELECT count(*), coalesce(sum(size), 0) FROM blob_deletions WHERE deleted_at IS NULL")
-    ).fetchone()
-    return int(row[0]), int(row[1])
+    deletions = tables.blob_deletions
+    waiting = select(func.count(), func.coalesce(func.sum(deletions.c.size), 0)).where(deletions.c.deleted_at.is_(None))
+    count, size = (await conn.execute(waiting)).one()
+    return int(count), int(size)
 
 
-async def delete_pending(pool, store: BlobStore) -> Deleted:
+async def delete_pending(engine, store: BlobStore) -> Deleted:
     """Delete the objects of the blobs recorded for deletion, holding the lock exclusively, and mark their rows
     deleted; a blob referred to again meanwhile keeps its object and loses its row. Rows deleted over KEEP_DELETED
     ago go. Raises BlobStoreUnavailable when the bucket does not delete, leaving every row as it was."""
-    async with pool.connection() as conn:
+    deletions = tables.blob_deletions
+    async with engine.begin() as conn:
         await lock_exclusive(conn)
-        rows = await (await conn.execute(PENDING)).fetchall()
-        sizes = dict(rows)
+        waiting = (
+            select(deletions.c.sha256, deletions.c.size)
+            .where(deletions.c.deleted_at.is_(None))
+            .order_by(deletions.c.sha256)
+            .with_for_update()
+        )
+        sizes = {row.sha256: row.size for row in await conn.execute(waiting)}
         again = await referenced(conn, sizes)
         if again:
-            await conn.execute("DELETE FROM blob_deletions WHERE sha256 = ANY(%s)", (sorted(again),))
+            await conn.execute(delete(deletions).where(hashes_in(deletions.c.sha256, sorted(again))))
         doomed = sorted(sha for sha in sizes if sha not in again)
         if doomed:
             await asyncio.to_thread(store.delete, [blob_key(sha) for sha in doomed])
-            await conn.execute("UPDATE blob_deletions SET deleted_at = now() WHERE sha256 = ANY(%s)", (doomed,))
-        await conn.execute("DELETE FROM blob_deletions WHERE deleted_at < now() - %s", (KEEP_DELETED,))
+            deleted = update(deletions).values(deleted_at=func.now()).where(hashes_in(deletions.c.sha256, doomed))
+            await conn.execute(deleted)
+        await conn.execute(delete(deletions).where(deletions.c.deleted_at < func.now() - KEEP_DELETED))
     result = Deleted(len(doomed), sum(sizes[sha] for sha in doomed), len(again))
     if doomed or again:
         log.info(

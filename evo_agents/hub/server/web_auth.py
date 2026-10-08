@@ -139,7 +139,7 @@ async def web_callback(
             user = await github.user(github_token)
     except HTTPException as exc:
         return _refuse(request, exc.status_code, exc.detail)
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         signed = await sign_in(conn, config, user, WEB, None)
     response = RedirectResponse(AFTER_LOGIN, status_code=303, headers=NO_STORE)
     set_session_cookie(response, signed.token)

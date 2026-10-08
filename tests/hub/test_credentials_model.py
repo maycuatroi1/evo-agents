@@ -3,7 +3,7 @@
 The checks step 2 of the worker-credentials plan names: normalize_origin on the four real origins of the hub's
 projects, DENIED_ENV refuses PATH and EVO_HUB_URL, and repr(Lease) does not carry the value."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -74,7 +74,7 @@ def test_denied_env():
 
 def test_lease_repr_leaves_out_the_value():
     value = "sk-ant-oat01-do-not-print-me"
-    expires = datetime(2026, 10, 6, 12, 0, tzinfo=timezone.utc)
+    expires = datetime(2026, 10, 6, 12, 0, tzinfo=UTC)
     lease = Lease(1, "env", "secret", "claude", env_var="CLAUDE_CODE_OAUTH_TOKEN", value=value, expires_at=expires)
     for text in (repr(lease), str(lease), f"{lease}", repr([lease]), repr({"lease": lease})):
         assert value not in text
@@ -83,15 +83,15 @@ def test_lease_repr_leaves_out_the_value():
 
 
 def test_a_lease_from_the_hub_is_read_with_a_trailing_z():
-    """The hub's JSON writes a UTC time as ``...Z``, which datetime.fromisoformat of Python 3.10 refuses."""
+    """The hub's JSON writes a UTC time as ``...Z``, with or without a fraction of a second."""
     sent = {"id": 2, "kind": "git", "provider": "github-app", "expires_at": "2026-10-07T00:41:08Z"}
-    assert Lease.from_json(sent).expires_at == datetime(2026, 10, 7, 0, 41, 8, tzinfo=timezone.utc)
+    assert Lease.from_json(sent).expires_at == datetime(2026, 10, 7, 0, 41, 8, tzinfo=UTC)
     sent["expires_at"] = "2026-10-07T00:41:08.123Z"
-    assert Lease.from_json(sent).expires_at == datetime(2026, 10, 7, 0, 41, 8, 123000, tzinfo=timezone.utc)
+    assert Lease.from_json(sent).expires_at == datetime(2026, 10, 7, 0, 41, 8, 123000, tzinfo=UTC)
 
 
 def test_github_lease_needs_refresh_near_its_end():
-    now = datetime(2026, 10, 6, 12, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 10, 6, 12, 0, tzinfo=UTC)
     left = timedelta(seconds=credentials.GITHUB_TOKEN_REFRESH_SECONDS)
     github = Lease(2, "git", "github-app", "github-app:maycuatroi1", url_prefix="https://github.com/a/b", value="t")
     assert not github.needs_refresh(now)

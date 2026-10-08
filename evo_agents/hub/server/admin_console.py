@@ -27,7 +27,9 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, Response
 from pydantic import AwareDatetime, BaseModel, Field
+from sqlalchemy import and_, case, func, literal, select, tuple_, update
 
+from evo_agents.hub import tables
 from evo_agents.hub.server import audit, workers
 from evo_agents.hub.server.admin import (
     LOGIN_NAME,
@@ -40,7 +42,6 @@ from evo_agents.hub.server.admin import (
 )
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.security import WEB, AdminUser, admin, delete_session_cookie
-from evo_agents.isotime import parse_iso
 
 log = logging.getLogger(__name__)
 
@@ -71,7 +72,7 @@ def decode_cursor(value: str) -> tuple[datetime, int]:
     try:
         text = base64.urlsafe_b64decode(value + "=" * (-len(value) % 4)).decode()
         at_text, _, id_text = text.partition("|")
-        at, row_id = parse_iso(at_text), int(id_text)
+        at, row_id = datetime.fromisoformat(at_text), int(id_text)
     except (ValueError, UnicodeError, binascii.Error):
         at, row_id = None, 0
     if at is None or at.tzinfo is None or not 1 <= row_id <= MAX_ID:
@@ -99,35 +100,60 @@ class AuditPage(BaseModel):
     next_cursor: str | None = Field(description="pass as cursor for the rows after these; null on the last page")
 
 
-AUDIT = """
-SELECT a.id, a.at, u.login, a.token_id, a.action, a.target, p.name
-  FROM audit a LEFT JOIN users u ON u.id = a.actor_id LEFT JOIN projects p ON p.id = a.project_id
- WHERE {where}
- ORDER BY a.at DESC, a.id DESC
- LIMIT %(limit)s
-"""
-AUDIT_FILTERS = {
-    "actor": "a.actor_id = (SELECT id FROM users WHERE lower(login) = lower(%(actor)s))",
-    "action": "a.action = %(action)s",
-    "project": "a.project_id = (SELECT id FROM projects WHERE name = %(project)s)",
-    "since": "a.at >= %(since)s",
-    "until": "a.at < %(until)s",
-    "after": "(a.at, a.id) < (%(after_at)s, %(after_id)s)",
-}
-# Every distinct action without reading the whole table: one index probe per action (audit_action_idx, schema 0007).
-ACTIONS = """
-WITH RECURSIVE found(action) AS (
-    (SELECT action FROM audit ORDER BY action LIMIT 1)
-    UNION ALL
-    SELECT (SELECT a.action FROM audit a WHERE a.action > found.action ORDER BY a.action LIMIT 1)
-      FROM found WHERE found.action IS NOT NULL
-)
-SELECT action FROM found WHERE action IS NOT NULL
-"""
+def _key(after: tuple[datetime, int], at, row_id):
+    """The sort key of a cursor, bound with the types of its columns (an id may need all of bigint)."""
+    return tuple_(literal(after[0], at.type), literal(after[1], row_id.type))
 
 
-def _where(filters: dict[str, str], params: dict) -> str:
-    return " AND ".join(condition for name, condition in filters.items() if params.get(name) is not None) or "TRUE"
+def _trail(actor, action, project, since, until, after: tuple[datetime, int] | None, limit: int):
+    """The audit rows the filters leave, newest first, at most ``limit``; only those after the sort key ``after``."""
+    trail, users, projects = tables.audit, tables.users, tables.projects
+    query = select(
+        trail.c.id,
+        trail.c.at,
+        users.c.login.label("actor"),
+        trail.c.token_id,
+        trail.c.action,
+        trail.c.target,
+        projects.c.name.label("project"),
+    ).select_from(
+        trail.outerjoin(users, users.c.id == trail.c.actor_id).outerjoin(projects, projects.c.id == trail.c.project_id)
+    )
+    if actor is not None:
+        named = users.alias("named_user")  # the actor's row, apart from the users joined for every row's login
+        actor_id = select(named.c.id).where(func.lower(named.c.login) == func.lower(actor)).scalar_subquery()
+        query = query.where(trail.c.actor_id == actor_id)
+    if action is not None:
+        query = query.where(trail.c.action == action)
+    if project is not None:
+        named = projects.alias("named_project")
+        project_id = select(named.c.id).where(named.c.name == project).scalar_subquery()
+        query = query.where(trail.c.project_id == project_id)
+    if since is not None:
+        query = query.where(trail.c.at >= since)
+    if until is not None:
+        query = query.where(trail.c.at < until)
+    if after is not None:
+        query = query.where(tuple_(trail.c.at, trail.c.id) < _key(after, trail.c.at, trail.c.id))
+    return query.order_by(trail.c.at.desc(), trail.c.id.desc()).limit(limit)
+
+
+def _actions():
+    """Every distinct action without reading the whole table: one index probe per action (audit_action_idx, schema
+    0007). A recursive CTE starts from the first action and each step takes the next one after it."""
+    trail = tables.audit
+    first = select(trail.c.action).order_by(trail.c.action).limit(1)
+    found = first.cte("found", recursive=True)
+    later = trail.alias("a")
+    following = (
+        select(later.c.action)
+        .where(later.c.action > found.c.action)
+        .order_by(later.c.action)
+        .limit(1)
+        .scalar_subquery()
+    )
+    found = found.union_all(select(following).where(found.c.action.is_not(None)))
+    return select(found.c.action).where(found.c.action.is_not(None))
 
 
 @router.get("/audit", response_model=AuditPage, responses=INVALID)
@@ -143,15 +169,10 @@ async def audit_trail(
 ) -> AuditPage:
     """The audit trail, newest first, filtered and paged by cursor."""
     _check_range(since, until)
-    after_at, after_id = decode_cursor(cursor) if cursor else (None, None)
-    params = {"actor": actor, "action": action, "project": project, "since": since, "until": until}
-    params |= {"after": after_at, "after_at": after_at, "after_id": after_id, "limit": limit + 1}
-    async with request.app.state.pool.connection() as conn:
-        rows = await (await conn.execute(AUDIT.format(where=_where(AUDIT_FILTERS, params)), params)).fetchall()
-    items = [
-        AuditRow(id=row_id, at=at, actor=login, token_id=token_id, action=name, target=target, project=project_name)
-        for row_id, at, login, token_id, name, target, project_name in rows[:limit]
-    ]
+    after = decode_cursor(cursor) if cursor else None
+    async with request.app.state.engine.begin() as conn:
+        rows = (await conn.execute(_trail(actor, action, project, since, until, after, limit + 1))).all()
+    items = [AuditRow(**row._mapping) for row in rows[:limit]]
     more = len(rows) > limit
     return AuditPage(items=items, next_cursor=encode_cursor(items[-1].at, items[-1].id) if more else None)
 
@@ -159,8 +180,8 @@ async def audit_trail(
 @router.get("/audit/actions", response_model=list[str])
 async def audit_actions(request: Request) -> list[str]:
     """Every action the trail holds at least one row of, in alphabetical order, for the action filter."""
-    async with request.app.state.pool.connection() as conn:
-        return [row[0] for row in await (await conn.execute(ACTIONS)).fetchall()]
+    async with request.app.state.engine.begin() as conn:
+        return list((await conn.execute(_actions())).scalars())
 
 
 TokenState = Literal["active", "revoked", "expired"]
@@ -188,29 +209,45 @@ class TokenPage(BaseModel):
     next_cursor: str | None = Field(description="pass as cursor for the tokens after these; null on the last page")
 
 
-STATE = "CASE WHEN t.revoked_at IS NOT NULL THEN 'revoked' WHEN t.expires_at <= now() THEN 'expired' ELSE 'active' END"
-TOKENS = f"""
-SELECT t.id, u.login, t.kind, t.host, t.created_at, t.last_used_at, t.expires_at, t.revoked_at, {STATE}
-  FROM tokens t JOIN users u ON u.id = t.user_id
- WHERE {{where}}
- ORDER BY t.created_at DESC, t.id DESC
- LIMIT %(limit)s
-"""
+_tokens = tables.tokens
+# What each ``state`` of GET /v1/admin/tokens keeps; ``any`` keeps every token.
 TOKEN_FILTERS = {
-    "login": "lower(u.login) = lower(%(login)s)",
-    "kind": "t.kind = %(kind)s",
     "active": TOKEN_LIVE,
-    "revoked": "t.revoked_at IS NOT NULL",
-    "expired": "t.revoked_at IS NULL AND t.expires_at <= now()",
+    "revoked": _tokens.c.revoked_at.is_not(None),
+    "expired": and_(_tokens.c.revoked_at.is_(None), _tokens.c.expires_at <= func.now()),
     "expiring": TOKEN_EXPIRING,
     "unused": TOKEN_UNUSED,
-    "after": "(t.created_at, t.id) < (%(after_at)s, %(after_id)s)",
 }
-REVOKE = """
-UPDATE tokens t SET revoked_at = now() FROM users u
- WHERE t.id = %s AND u.id = t.user_id AND t.revoked_at IS NULL
-RETURNING u.login
-"""
+
+
+def _listed(login, kind, state: str, after: tuple[datetime, int] | None, limit: int):
+    """The tokens of every user the filters leave, newest first, at most ``limit``; only those after ``after``."""
+    tokens, users = tables.tokens, tables.users
+    token_state = case(
+        (tokens.c.revoked_at.is_not(None), "revoked"),
+        (tokens.c.expires_at <= func.now(), "expired"),
+        else_="active",
+    )
+    query = select(
+        tokens.c.id,
+        users.c.login,
+        tokens.c.kind,
+        tokens.c.host,
+        tokens.c.created_at,
+        tokens.c.last_used_at,
+        tokens.c.expires_at,
+        tokens.c.revoked_at,
+        token_state.label("state"),
+    ).join_from(tokens, users, users.c.id == tokens.c.user_id)
+    if login is not None:
+        query = query.where(func.lower(users.c.login) == func.lower(login))
+    if kind is not None:
+        query = query.where(tokens.c.kind == kind)
+    if state in TOKEN_FILTERS:
+        query = query.where(TOKEN_FILTERS[state])
+    if after is not None:
+        query = query.where(tuple_(tokens.c.created_at, tokens.c.id) < _key(after, tokens.c.created_at, tokens.c.id))
+    return query.order_by(tokens.c.created_at.desc(), tokens.c.id.desc()).limit(limit)
 
 
 @router.get("/tokens", response_model=TokenPage, responses=INVALID)
@@ -230,13 +267,10 @@ async def all_tokens(
     limit: Limit = DEFAULT_LIMIT,
 ) -> TokenPage:
     """The tokens and web sessions of every user, newest first, paged by cursor."""
-    after_at, after_id = decode_cursor(cursor) if cursor else (None, None)
-    params = {"login": login, "kind": kind, state: True, "after": after_at, "after_at": after_at, "after_id": after_id}
-    params["limit"] = limit + 1
-    async with request.app.state.pool.connection() as conn:
-        rows = await (await conn.execute(TOKENS.format(where=_where(TOKEN_FILTERS, params)), params)).fetchall()
-    fields = ("id", "login", "kind", "host", "created_at", "last_used_at", "expires_at", "revoked_at", "state")
-    items = [AdminToken(**dict(zip(fields, row, strict=True)), current=row[0] == user.token_id) for row in rows[:limit]]
+    after = decode_cursor(cursor) if cursor else None
+    async with request.app.state.engine.begin() as conn:
+        rows = (await conn.execute(_listed(login, kind, state, after, limit + 1))).all()
+    items = [AdminToken(**row._mapping, current=row.id == user.token_id) for row in rows[:limit]]
     more = len(rows) > limit
     return TokenPage(items=items, next_cursor=encode_cursor(items[-1].created_at, items[-1].id) if more else None)
 
@@ -251,15 +285,23 @@ async def revoke_any_token(
     request: Request, user: AdminUser, token_id: Annotated[int, Path(ge=1, le=MAX_ID)]
 ) -> Response:
     """Revoke a token or web session of any user; a worker token's worker is revoked with it."""
-    async with request.app.state.pool.connection() as conn:
+    async with request.app.state.engine.begin() as conn:
         worker = await workers.lock_worker_of_token(conn, token_id)  # before the token's row
-        row = await (await conn.execute(REVOKE, (token_id,))).fetchone()
-        if row is None:
-            found = await (await conn.execute("SELECT revoked_at FROM tokens WHERE id = %s", (token_id,))).fetchone()
-            if found is None:
+        tokens, users = tables.tokens, tables.users
+        revoked = await conn.execute(
+            update(tokens)
+            .values(revoked_at=func.now())
+            .where(tokens.c.id == token_id, users.c.id == tokens.c.user_id, tokens.c.revoked_at.is_(None))
+            .returning(users.c.login)
+        )
+        owner = revoked.scalar()
+        if owner is None:
+            found = await conn.execute(select(tokens.c.revoked_at).where(tokens.c.id == token_id))
+            row = found.first()
+            if row is None:
                 raise HTTPException(404, f"this hub never issued token {token_id}")
-            raise HTTPException(409, f"token {token_id} was revoked already, at {found[0].isoformat()}")
-        target = f"{audit.token_target(token_id)} login={row[0]}"
+            raise HTTPException(409, f"token {token_id} was revoked already, at {row.revoked_at.isoformat()}")
+        target = f"{audit.token_target(token_id)} login={owner}"
         action = audit.TOKEN_REVOKE
         await audit.record(conn, actor_id=user.user_id, token_id=user.token_id, action=action, target=target)
         released = await workers.end_worker(conn, user, *worker, token_id) if worker else 0

@@ -19,8 +19,9 @@ if not pg.DSN:
     pytest.skip(pg.SKIP_REASON, allow_module_level=True)
 
 from fastapi.testclient import TestClient
+from sqlalchemy import Boolean, column, func, select, table
 
-from evo_agents.hub import runs
+from evo_agents.hub import runs, tables
 from evo_agents.hub.server import runs as run_routes
 from evo_agents.hub.server.app import create_app
 from tests.hub.live import sql
@@ -34,10 +35,12 @@ from tests.hub.test_runs import (
     audit_rows,
     claim,
     control,
+    count_runs,
     expire,
     members,
     moved,
     moves,
+    of_run,
     recover,
     report,
     state_of,
@@ -49,6 +52,7 @@ REPO_NAMES = ("evo-agents", "agent-skills")
 CHECKOUTS = {f"{PROJECT}/{name}": {"path": f"/src/{name}", "branch": "main"} for name in REPO_NAMES}
 REPOS = [{"repo": "evo-agents", "branch": "feat/plan-runs"}, {"repo": "agent-skills", "branch": "main"}]
 FAILING = [{"command": "python -m pytest -q", "exit_code": 0}, {"command": "ruff check .", "exit_code": 1}]
+PG_LOCKS = table("pg_locks", column("locktype"), column("granted", Boolean))
 
 
 def plan_body(plan_id: str = PLAN) -> dict:
@@ -164,7 +168,7 @@ def started(client, hub, name: str = "mac-mini", **dispatch) -> tuple[dict, dict
 def wait_for_lock_waiters(db, count: int, timeout: float = 10.0) -> None:
     """Return once ``count`` sessions wait for an advisory lock; fail after ``timeout`` seconds."""
     deadline = time.monotonic() + timeout
-    query = "SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND NOT granted"
+    query = select(func.count()).select_from(PG_LOCKS).where(PG_LOCKS.c.locktype == "advisory", ~PG_LOCKS.c.granted)
     while sql(db, query)[0][0] < count:
         assert time.monotonic() < deadline, f"{count} requests never waited for the plan's lock"
         time.sleep(0.05)
@@ -173,20 +177,20 @@ def wait_for_lock_waiters(db, count: int, timeout: float = 10.0) -> None:
 def race(client, db, *calls) -> list:
     """Run ``calls`` at once while the plan's dispatch lock is held, release it once each waits for it, and return
     their answers in order: whichever gets the lock first, the others see its run."""
-    project_id = sql(db, "SELECT id FROM projects WHERE name = %s", (PROJECT,))[0][0]
+    project_id = sql(db, select(tables.projects.c.id).where(tables.projects.c.name == PROJECT))[0][0]
     key = run_routes.plan_lock_key(project_id, PLAN)
     answers = [None] * len(calls)
 
     def call(index):
         answers[index] = calls[index]()
 
-    with pg.admin(db.admin_dsn) as conn:
-        conn.execute("SELECT pg_advisory_lock(hashtextextended(%s, 0))", (key,))
+    with live.connect(db) as conn:
+        conn.execute(select(func.pg_advisory_lock(func.hashtextextended(key, 0))))
         threads = [threading.Thread(target=call, args=(index,)) for index in range(len(calls))]
         for thread in threads:
             thread.start()
         wait_for_lock_waiters(db, len(calls))
-        conn.execute("SELECT pg_advisory_unlock(hashtextextended(%s, 0))", (key,))
+        conn.execute(select(func.pg_advisory_unlock(func.hashtextextended(key, 0))))
         for thread in threads:
             thread.join(30)
     return answers
@@ -206,14 +210,14 @@ def test_a_plan_run_needs_the_writer_role_and_a_worker_of_the_callers_own(client
     nobodys = plan_run(client, hub["other"], worker_id=999999)
     assert nobodys.status_code == 403
     assert nobodys.json()["message"].replace("999999", str(mine["id"])) == refused.json()["message"]
-    assert sql(hub_db, "SELECT count(*) FROM runs") == [(0,)]
+    assert count_runs(hub_db) == [(0,)]
     assert client.post(f"/v1/workers/{mine['id']}/revoke", headers=hub["owner"]).status_code == 200
     revoked = plan_run(client, hub["owner"], worker_id=mine["id"])
     assert revoked.status_code == 409 and "revoked" in revoked.json()["message"]
     for extra in ({"timeout_h": 3}, {"timeout_h": 48}, {"model": "opus\nfast"}, {"model": ""}, {"runtime": "gemini"}):
         assert plan_run(client, hub["owner"], **extra).status_code == 422, extra
     assert plan_run(client, hub["owner"], plan_id="nothing").status_code == 404
-    assert sql(hub_db, "SELECT count(*) FROM runs") == [(0,)]
+    assert count_runs(hub_db) == [(0,)]
 
 
 def test_a_plan_run_holds_the_repos_of_the_steps_not_done_with_their_branches(client, hub, hub_db):
@@ -249,7 +253,7 @@ def test_a_plan_run_holds_the_repos_of_the_steps_not_done_with_their_branches(cl
     assert [(item["id"], item["kind"], item["repos"], item["model"]) for item in listed["runs"]] == [
         (run["id"], "plan", REPOS, "claude-opus-4-1")
     ]
-    default = sql(hub_db, "SELECT timeout_s FROM runs WHERE id = %s", (run["id"],))
+    default = of_run(hub_db, run["id"], "timeout_s")
     assert default == [(8 * 3600,)]
 
 
@@ -267,7 +271,7 @@ def test_a_plan_without_a_pending_step_or_with_a_step_without_a_repo_gets_409(cl
     assert (
         unnamed.status_code == 409 and "step 3 of plan loose is not done and names no repo" in unnamed.json()["message"]
     )
-    assert sql(hub_db, "SELECT count(*) FROM runs") == [(0,)]
+    assert count_runs(hub_db) == [(0,)]
     single = plan_body("single")
     single["repos"] = [{"repo": "evo-agents", "branch": "feat/one"}]
     for item in single["steps"]:
@@ -284,7 +288,7 @@ def test_two_plan_runs_dispatched_at_once_give_one_run(client, hub, hub_db):
     winner = next(answer.json() for answer in answers if answer.status_code == 201)
     loser = next(answer.json() for answer in answers if answer.status_code == 409)
     assert f"plan {PLAN} has plan run #{winner['id']}, queued" in loser["message"]
-    assert sql(hub_db, "SELECT count(*) FROM runs WHERE kind = 'plan'") == [(1,)]
+    assert count_runs(hub_db, tables.runs.c.kind == "plan") == [(1,)]
     # without the lock in the way, the second still gets 409, from the active run it sees
     again = plan_run(client, hub["owner"])
     assert again.status_code == 409 and f"plan run #{winner['id']}" in again.json()["message"]
@@ -316,7 +320,7 @@ def test_exclusive_a_step_is_not_dispatched_while_its_plan_has_a_plan_run_and_th
         refused = plan_run(client, hub[who])
         assert refused.status_code == 409, refused.text
         assert f"step 2 of plan {PLAN} has run #{step_id}, queued" in refused.json()["message"]
-    assert sql(hub_db, "SELECT count(*) FROM runs WHERE plan_id = %s AND kind = 'plan'", (PLAN,)) == [(1,)]
+    assert count_runs(hub_db, tables.runs.c.plan_id == PLAN, tables.runs.c.kind == "plan") == [(1,)]
 
 
 def test_exclusive_a_step_dispatch_and_a_plan_run_racing_for_the_lock_never_both_get_in(client, hub, hub_db):
@@ -329,7 +333,8 @@ def test_exclusive_a_step_dispatch_and_a_plan_run_racing_for_the_lock_never_both
         assert f"step 2 of plan {PLAN} has run #{steps.json()[0]['id']}" in plan.json()["message"]
     else:
         assert f"plan {PLAN} has plan run #{plan.json()['id']}" in steps.json()["message"]
-    active = sql(hub_db, "SELECT kind FROM runs WHERE plan_id = %s AND state = 'queued'", (PLAN,))
+    run = tables.runs
+    active = sql(hub_db, select(run.c.kind).where(run.c.plan_id == PLAN, run.c.state == "queued"))
     assert len(active) == 1
 
 
@@ -425,7 +430,7 @@ def test_a_run_pinned_to_a_worker_that_cannot_claim_it_gets_409_and_nothing_is_q
     step_refused = pinned_steps([2, 3], half)
     assert step_refused.status_code == 409, step_refused.text
     assert f"it has no checkout of {PROJECT}/agent-skills" in step_refused.json()["message"]
-    assert sql(hub_db, "SELECT count(*) FROM runs") == [(0,)]  # step 2 was not queued without step 3
+    assert count_runs(hub_db) == [(0,)]  # step 2 was not queued without step 3
     taken = pinned_steps([2], old)
     assert taken.status_code == 201, taken.text
     assert claim(client, old)["id"] == taken.json()[0]["id"]
@@ -528,13 +533,16 @@ def test_step_reports_write_the_plan_as_the_member_who_dispatched_the_run(client
         (before + 2, OWNER, "step 2: status in_progress -> done; set done_at, evidence"),
         (before + 1, OWNER, "step 2: status pending -> in_progress; set note"),
     ]
-    assert sql(hub_db, "SELECT DISTINCT token_id FROM audit WHERE action = 'plan.patch'") == [(worker["token_id"],)]
+    patches = select(tables.audit.c.token_id).distinct().where(tables.audit.c.action == "plan.patch")
+    assert sql(hub_db, patches) == [(worker["token_id"],)]
     assert [row for row in audit_rows(hub_db, "run") if row[0] == "run.step_report"] == [
         ("run.step_report", f"{PROJECT}/{PLAN}#2 run:{run_id} status=in_progress", OWNER, PROJECT),
         ("run.step_report", f"{PROJECT}/{PLAN}#2 run:{run_id} status=done", OWNER, PROJECT),
         ("run.step_report", f"{PROJECT}/{PLAN}#3 run:{run_id} status=pending", OWNER, PROJECT),
     ]
-    events = sql(hub_db, "SELECT body FROM run_events WHERE run_id = %s AND kind = 'system' ORDER BY seq", (run_id,))
+    run_events = tables.run_events
+    system = select(run_events.c.body).where(run_events.c.run_id == run_id, run_events.c.kind == "system")
+    events = sql(hub_db, system.order_by(run_events.c.seq))
     assert [body[0]["text"] for body in events] == [
         "step 2: in_progress",
         f"step 2: done (evo-agents@{SHA[:12]})",
@@ -570,7 +578,9 @@ def test_a_step_report_the_plan_cannot_take_gets_its_error_and_keeps_nothing(cli
         f"step 2 of plan {PLAN} was not written: {OWNER} no longer holds the writer role on {PROJECT}"
     )
     assert fleet_step(client, hub["owner"], 2)["status"] == "pending"
-    assert sql(hub_db, "SELECT count(*) FROM run_events WHERE run_id = %s AND kind = 'system'", (run["id"],)) == [(0,)]
+    run_events = tables.run_events
+    system = (run_events.c.run_id == run["id"], run_events.c.kind == "system")
+    assert sql(hub_db, select(func.count()).select_from(run_events).where(*system)) == [(0,)]
     assert [row for row in audit_rows(hub_db, "run") if row[0] == "run.step_report"] == []
 
 
@@ -638,7 +648,8 @@ def test_a_lost_plan_run_is_tried_again_as_a_plan_run_and_the_last_attempt_gives
     reported(client, worker, first, 2, "in_progress")
     expire(hub_db, first)
     assert recover(client) == {"lost": 1, "failed": 0, "cancelled": 0, "parked": 0}
-    ((second,),) = sql(hub_db, "SELECT id FROM runs WHERE parent_run_id = %s", (first,))
+    runs_table = tables.runs
+    ((second,),) = sql(hub_db, select(runs_table.c.id).where(runs_table.c.parent_run_id == first))
     again = client.get(f"/v1/projects/{PROJECT}/runs/{second}", headers=hub["owner"]).json()
     assert {key: again[key] for key in ("kind", "step_key", "repos", "model", "attempt", "state", "timeout_min")} == {
         "kind": "plan",
@@ -655,11 +666,11 @@ def test_a_lost_plan_run_is_tried_again_as_a_plan_run_and_the_last_attempt_gives
     assert (spec["id"], spec["kind"], spec["attempt"]) == (second, "plan", 2)
     expire(hub_db, second)
     assert recover(client)["lost"] == 1
-    ((third,),) = sql(hub_db, "SELECT id FROM runs WHERE parent_run_id = %s", (second,))
+    ((third,),) = sql(hub_db, select(runs_table.c.id).where(runs_table.c.parent_run_id == second))
     assert claim(client, worker)["attempt"] == 3
     expire(hub_db, third)
     assert recover(client) == {"lost": 0, "failed": 1, "cancelled": 0, "parked": 0}
-    ((error,),) = sql(hub_db, "SELECT error FROM runs WHERE id = %s", (third,))
+    ((error,),) = of_run(hub_db, third, "error")
     back = fleet_step(client, hub["owner"], 2)  # reported by the first attempt, given back by the last
     assert (back["status"], back["note"]) == ("pending", f"run #{third} failed: {error}")
     assert ready(client, hub["reader"])["plan_run"] is None

@@ -19,7 +19,7 @@ uv tool install 'evo-ak[graphify] @ git+https://github.com/maycuatroi1/evo-agent
 # or, from a checkout: python -m pip install -e '.[test,graphify]'
 ```
 
-The core needs Python 3.10+ and PyYAML; nothing else. The `graphify` extra adds graphify's tree-sitter
+The core needs Python 3.11+ and PyYAML; nothing else. The `graphify` extra adds graphify's tree-sitter
 extractors, which give code symbols for about 40 languages; without it only Python files get symbols,
 and `kg build` and `kg status` warn with the number of code files left without them. A source that sets
 `code: {backend: graphify-ast}` fails the build instead when the extra is missing.
@@ -121,8 +121,8 @@ Hooks:
   off.
 
 The plugin needs [uv](https://docs.astral.sh/uv/) on `PATH` and pins the release it runs: the server
-starts with `uvx --from evo-ak==0.6.0 evo-agents`, which downloads and caches that version on first start. The hooks
-run `uvx --offline --from evo-ak==0.6.0 evo-agents`, so they never wait on the network; they stay silent when `uvx`
+starts with `uvx --from evo-ak==0.7.0 evo-agents`, which downloads and caches that version on first start. The hooks
+run `uvx --offline --from evo-ak==0.7.0 evo-agents`, so they never wait on the network; they stay silent when `uvx`
 is missing or until the server has cached the package.
 
 ### The team hub
