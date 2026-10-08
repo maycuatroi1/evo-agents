@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import re
 
-from sqlalchemy import insert, select
+from sqlalchemy import BigInteger, Insert, String, bindparam, insert, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import tables
@@ -90,6 +90,29 @@ def subject(action: str, target: str) -> tuple[str | None, int | None]:
     return None, None
 
 
+def _insert(project_id) -> Insert:
+    """An audit row of :audit_actor, :audit_token, :audit_action and :audit_target in the project ``project_id``
+    gives. The parameters name no column of audit: an INSERT would take a parameter named after a column as the
+    value of that column."""
+    return insert(tables.audit).values(
+        actor_id=bindparam("audit_actor", type_=BigInteger),
+        token_id=bindparam("audit_token", type_=BigInteger),
+        action=bindparam("audit_action", type_=String),
+        target=bindparam("audit_target", type_=String),
+        project_id=project_id,
+    )
+
+
+# Built once (docs/hub.md, Data access): the project given by id, by name, as the memory's, or none.
+_IN_PROJECT = _insert(bindparam("audit_project_id", type_=BigInteger))
+_IN_NAMED = _insert(
+    select(tables.projects.c.id).where(tables.projects.c.name == bindparam("audit_project")).scalar_subquery()
+)
+_OF_MEMORY = _insert(
+    select(tables.memories.c.project_id).where(tables.memories.c.id == bindparam("audit_memory")).scalar_subquery()
+)
+
+
 async def record(
     conn: AsyncConnection,
     *,
@@ -99,19 +122,16 @@ async def record(
     target: str,
     project_id: int | None = None,
 ) -> None:
+    row = {"audit_actor": actor_id, "audit_token": token_id, "audit_action": action, "audit_target": target}
+    statement = _IN_PROJECT
     if project_id is None:
         project, memory_id = subject(action, target)
         if project is not None:
-            projects = tables.projects
-            project_id = select(projects.c.id).where(projects.c.name == project).scalar_subquery()
+            statement, row["audit_project"] = _IN_NAMED, project
         elif memory_id is not None:
-            memories = tables.memories
-            project_id = select(memories.c.project_id).where(memories.c.id == memory_id).scalar_subquery()
-    await conn.execute(
-        insert(tables.audit).values(
-            actor_id=actor_id, token_id=token_id, action=action, target=target, project_id=project_id
-        )
-    )
+            statement, row["audit_memory"] = _OF_MEMORY, memory_id
+    row["audit_project_id"] = project_id
+    await conn.execute(statement, row)
 
 
 def token_target(token_id: int) -> str:

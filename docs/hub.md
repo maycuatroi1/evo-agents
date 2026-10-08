@@ -600,9 +600,12 @@ refuses to start without a blob store, since builds read from it and write to it
 
 The api and the worker each hold one psycopg 3 connection pool and a SQLAlchemy 2.1 engine on it
 (`evo_agents/hub/db.py`). The engine keeps no connection of its own (`NullPool`): it takes each one from the pool
-(`async_creator=pool.getconn`), and the pool is made with `close_returns=True`, so a connection the engine closes
-goes back to it. The pool's size, timeout and health check govern both. The lifespan opens the pool, then the engine,
-and disposes of the engine before it closes the pool. The worker's jobs reach the engine through `HubContext`.
+(`async_creator=pool.getconn`), and the pool is made with `close_returns=True`, so a connection the engine closes goes
+back to it. The pool's size, timeout and health check govern both. To `NullPool` each checkout is a new connection, so
+the psycopg dialect's connect hook, which adds a handler that logs the server's notices, runs on every checkout of the
+same pooled connection; `make_engine` takes the handler off as the engine gives the connection back, so it does not pile
+up (`tests/hub/test_db_bridge.py`). The lifespan opens the pool, then the engine, and disposes of the engine before it
+closes the pool. The worker's jobs reach the engine through `HubContext`.
 
 A request takes one `AsyncConnection` with `async with request.app.state.engine.begin() as conn:`; its transaction
 commits when the block ends cleanly and rolls back on any exception, an `HTTPException` included. A savepoint is
@@ -618,6 +621,15 @@ labelled as the model's fields, never by position. A JSONB column takes and retu
 error of the database arrives as SQLAlchemy's wrapper (`sqlalchemy.exc.IntegrityError` and so on) with the psycopg
 error, which names the SQLSTATE, in `.orig`. `print(statement.compile(dialect=postgresql.psycopg.dialect()))` shows
 the SQL a statement sends.
+
+A statement every request of a busy route runs (the token check, a project's access, the reads of GET
+/v1/me/overview, of a project's runs and plans, and of memories) is built once, at import or with `functools.cache`
+once per shape of its filters, and runs with bind parameters: `await conn.execute(STATEMENT, {"name": value})`.
+Building a statement and its cache key on each call costs more than its round trip to Postgres. A bind parameter of
+an INSERT or UPDATE, or of one inside a CTE, never has the name of a column of its table: the execution would set
+that column too (`tests/hub/test_prebuilt.py`). `db.one_of(column, values)`, or `one_of(column, name=...)` for a list
+bound at execution, is `column = ANY(array)`: an `in_()` list is expanded into one parameter per value at each
+execution.
 
 `driver(conn)` returns the psycopg connection under an engine connection, in the same transaction. Only `jobs.py`
 takes it, to hand it to procrastinate, so a job deferred with `connection=conn` exists only if the caller's
@@ -683,7 +695,7 @@ the variables in the platform's environment, never in a committed file. `deploy/
 
 | Variable | Used by | Meaning |
 | --- | --- | --- |
-| `EVO_HUB_VERSION` | compose | image tag, a released version such as `0.6.0` |
+| `EVO_HUB_VERSION` | compose | image tag, a released version such as `0.7.0` |
 | `EVO_HUB_DSN` | api, worker | `postgresql://` URI of the hub database (required) |
 | `EVO_HUB_ADMINS` | api | GitHub logins of hub admins, comma-separated |
 | `EVO_HUB_GITHUB_CLIENT_ID` | api | the OAuth App's client id; without it nobody can sign in |

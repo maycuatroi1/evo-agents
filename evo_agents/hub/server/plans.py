@@ -32,7 +32,7 @@ from typing import Annotated, Any, Literal
 from fastapi import APIRouter, Header, HTTPException, Path, Query, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import ColumnElement, Label, Select, case, func, insert, select, update
+from sqlalchemy import ColumnElement, Label, Select, bindparam, case, func, insert, select, update
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
@@ -295,9 +295,9 @@ def step_counts(body: ColumnElement) -> tuple[Label, Label]:
     )
 
 
-def _listed(project_id: int, area: str | None) -> Select:
+def _listed(project_id, area) -> Select:
     """The plans of project ``project_id`` with what PlanSummary shows, column by field name, and their label; those
-    of ``area`` alone when given."""
+    of ``area`` alone when given. Built once per shape (_LISTED) with bind parameters for both."""
     plans, users = tables.plans, tables.users
     query = (
         select(
@@ -319,6 +319,10 @@ def _listed(project_id: int, area: str | None) -> Select:
     return query.order_by(plans.c.plan_id)
 
 
+# GET .../plans, with an area and without one: :project_id, :area
+_LISTED = {False: _listed(bindparam("project_id"), bindparam("area")), True: _listed(bindparam("project_id"), None)}
+
+
 @router.get("", response_model=list[PlanSummary], responses=READ_REFUSALS)
 async def list_plans(
     request: Request,
@@ -330,7 +334,7 @@ async def list_plans(
     async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
         _reader(access)
-        rows = (await conn.execute(_listed(access.project_id, area))).all()
+        rows = (await conn.execute(_LISTED[area is None], {"project_id": access.project_id, "area": area})).all()
     through = _sink(access, sink)
     return [PlanSummary(**row._mapping) for row in rows if access.visible(row.label, through)]
 

@@ -402,6 +402,24 @@ def test_the_proxy_sends_every_message_over_one_kept_alive_connection():
         hub.stop()
 
 
+def wait_for_the_close(connections, timeout: float = 10.0) -> None:
+    """Wait until every connection idle in ``connections`` shows that the hub closed it, as ``Connections`` checks
+    before it reuses one. The close of a loopback peer reaches this side a moment after the hub's close() returned (on
+    macOS the kernel hands it over asynchronously, later still on a busy runner), and a request sent in between leaves
+    on a connection the hub already closed, which the client must fail rather than send twice."""
+    from evo_agents.hub.client import _dropped
+
+    deadline = time.monotonic() + timeout
+    while True:
+        with connections._lock:
+            idle = [conn.sock for held in connections._idle.values() for _, conn in held]
+        assert idle, "no kept-alive connection to wait on"
+        if all(_dropped(sock) for sock in idle):
+            return
+        assert time.monotonic() < deadline, f"the hub's close did not reach the client within {timeout:g}s"
+        time.sleep(0.01)
+
+
 def test_a_kept_alive_connection_the_hub_closed_is_replaced_and_no_request_goes_twice():
     from evo_agents.hub.client import Connections
 
@@ -419,13 +437,14 @@ def test_a_kept_alive_connection_the_hub_closed_is_replaced_and_no_request_goes_
         for id_ in range(1, 6):
             client.post(call(id_, "kg_status"), "2025-06-18")
             if id_ == 2:
-                time.sleep(0.2)  # the server's close reaches this side
+                wait_for_the_close(connections)  # the server's close reaches this side
         assert sent == [1, 2, 3, 4, 5]  # every call answered, none sent twice
         assert hub.connections == 2 and connections.opened == 2
     finally:
         hub.stop()
 
-    # the hub restarts on the same port: the next call reaches it on a new connection
+    # the hub restarts on the same port: once its close reaches this side, the next call reaches it on a new connection
+    wait_for_the_close(connections)
     restarted = FakeHub(mcp_reply, port=int(hub.url.rsplit(":", 1)[1]), keep_alive=True)
     try:
         assert client.call_tool("kg_status", {})["content"][0]["text"] == "called kg_status"
