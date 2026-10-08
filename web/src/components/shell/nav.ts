@@ -9,6 +9,7 @@ import {
   ListChecks,
   LockKeyhole,
   type LucideIcon,
+  MoonStar,
   Network,
   Server,
   Shield,
@@ -29,6 +30,7 @@ export type NavLabel =
   | "plans"
   | "runs"
   | "insights"
+  | "curator"
   | "memories"
   | "skills"
   | "kg"
@@ -71,6 +73,7 @@ export const PROJECT_NAV: readonly ProjectNavItem[] = [
   { label: "plans", icon: ListChecks, segment: "plans" },
   { label: "runs", icon: Activity, segment: "runs", count: "activeRuns" },
   { label: "insights", icon: ChartColumn, segment: "insights" },
+  { label: "curator", icon: MoonStar, segment: "curator" },
   { label: "memories", icon: BookOpen, segment: "memories" },
   { label: "skills", icon: Sparkles, segment: "skills" },
   { label: "kg", icon: Network, segment: "kg" },

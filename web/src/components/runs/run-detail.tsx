@@ -1,11 +1,14 @@
 "use client";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import type { Route } from "next";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { type ReactNode, useCallback, useEffect, useId, useMemo, useState } from "react";
 
+import { ReviewRunKindBadge } from "@/components/curator/badges";
+import { curatorHref } from "@/components/curator/queries";
 import { useLiveSignal } from "@/components/live/live-context";
 import { planHref, stepHref } from "@/components/plans/links";
 import { PageHeader } from "@/components/shell/page-header";
@@ -149,6 +152,7 @@ function RunPage({ run }: { run: Run }) {
     [run.id, run.dispatched_by, viewer?.login, describe, openIds, run.state, log.status, active],
   );
 
+  const review = run.kind === "review";
   const title = run.title ?? (plan ? run.plan_id : t("untitled"));
   const planLink = (chunks: ReactNode) => (
     <Link href={planHref(run.project, run.plan_id)} className={SUB_LINK} data-testid="run-plan-link">
@@ -166,9 +170,22 @@ function RunPage({ run }: { run: Run }) {
           </>
         }
         status={<StatusBadge kind="run" status={run.state} size="lg" />}
-        tags={plan ? <PlanRunKindBadge /> : null}
+        tags={plan ? <PlanRunKindBadge /> : review ? <ReviewRunKindBadge /> : null}
         sub={
-          plan || run.step_key === null
+          review
+            ? t.rich("reviewSub", {
+                curatorLink: (chunks) => (
+                  <Link href={curatorHref(run.project)} className={SUB_LINK} data-testid="run-curator-link">
+                    {chunks}
+                  </Link>
+                ),
+                proposalsLink: (chunks) => (
+                  <Link href={`${curatorHref(run.project, "proposals")}?run=${run.id}` as Route} className={SUB_LINK} data-testid="run-proposals-link">
+                    {chunks}
+                  </Link>
+                ),
+              })
+            : plan || run.step_key === null
             ? t.rich("planSub", { plan: run.plan_id, title, planLink })
             : t.rich("sub", {
                 plan: run.plan_id,

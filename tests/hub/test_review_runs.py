@@ -566,8 +566,8 @@ def test_the_curator_says_its_state_its_nights_and_the_proposals_waiting(review)
         assert report(client, worker, run_id, state).status_code == 200
     answered(client, headers["owner"], small["id"], "accept")
     nights = client.get(f"/v1/projects/{PROJECT}/curator/nights", headers=headers["reader"]).json()
-    (night,) = nights["nights"]
-    assert night == {
+    (listed_night,) = nights["nights"]
+    assert listed_night == {
         "night": THE_NIGHT.isoformat(),
         "runs": 1,
         "done": 1,

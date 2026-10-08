@@ -116,7 +116,9 @@ a member belong to that channel, like the Telegram ones below.
 
 A notification is read when its owner opens it on the web, marks it read (`POST /v1/me/notifications/read`, by ids or
 all), or answers its decision. The web shows the unread count on a bell in the top bar and the notifications in the
-Inbox, open decisions first. The audit row `notification.read` names the notifications, not their text.
+Inbox, open decisions and the Curator's open tier 2 proposals first; a proposal opens there in a sheet with its
+evidence, and an admin of its project answers it. The audit row `notification.read` names the notifications, not their
+text.
 
 ## Routes
 
@@ -141,7 +143,7 @@ For members, with a web session or a machine token:
 | `GET /v1/projects/{p}/decisions` | readers of the run's plan | the project's decisions, newest first, filtered by `state` (repeatable), `run_id` and `plan_id`, with `limit` and `offset` |
 | `GET /v1/projects/{p}/decisions/{id}` | readers of the run's plan | one decision: its options, the recommended one, its state, the answer, `answer_run_id` (the run whose inbox took the answer) and when the agent got it (`delivered_at`) |
 | `POST /v1/projects/{p}/decisions/{id}/answer` | the run's owner, who still holds writer | `{"option": KEY, "text": "..."}`, one or both; answers the decision |
-| `GET /v1/me/notifications` | the member | their notifications, open decisions first, then newest first, filtered by `unread`, `kind` and `project`, with `limit` and `offset` |
+| `GET /v1/me/notifications` | the member | their notifications, open decisions and proposals first, then newest first, filtered by `unread`, `kind` and `project`, with `limit` and `offset` |
 | `GET /v1/me/notifications/count` | the member | `{"unread": N, "open_decisions": M}`, for the bell |
 | `POST /v1/me/notifications/read` | the member | `{"ids": [...]}` or `{"all": true}`; answers how many it marked read and how many are left unread |
 
