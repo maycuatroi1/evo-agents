@@ -2685,7 +2685,8 @@
       "merge_default_branch": "Đã merge vào nhánh mặc định",
       "plan_finished": "Plan đã xong",
       "run_failed": "Run thất bại",
-      "curator_brief": "Bản tin sáng"
+      "curator_brief": "Bản tin sáng",
+      "curator_paused": "Ca đêm tạm dừng"
     },
     "item": {
       "unread": "Chưa đọc",
@@ -2884,7 +2885,8 @@
     },
     "sub": {
       "duty": "Ca đêm trên <worker></worker> với tư cách {owner}, từ {start} đến {end} {timezone}",
-      "paused": "{login} đã tạm dừng <ago></ago>"
+      "paused": "{login} đã tạm dừng <ago></ago>",
+      "pausedByHub": "Cầu dao đã tạm dừng <ago></ago>"
     },
     "pause": "Tạm dừng",
     "pausing": "Đang tạm dừng",
@@ -2962,7 +2964,9 @@
       "lastBriefValue": "đêm {night}, gửi {to}",
       "readBrief": "Đọc trong hộp thư",
       "paused": "Tạm dừng",
-      "pausedBy": "bởi {login},"
+      "pausedBy": "bởi {login},",
+      "pausedByHub": "bởi cầu dao,",
+      "pauseReason": "Lý do"
     },
     "lastReview": {
       "title": "Review run gần nhất",
@@ -3083,7 +3087,8 @@
       "verify_change": "Đổi verify",
       "ci_change": "Đổi CI",
       "credentials": "Thông tin xác thực",
-      "curator_rules": "Luật của Curator"
+      "curator_rules": "Luật của Curator",
+      "revert": "Revert"
     },
     "proposal": {
       "notFoundTitle": "Không tìm thấy đề xuất #{id}",
@@ -3110,7 +3115,72 @@
       "acceptedNext": "Đề xuất được chấp nhận sẽ thành plan của Curator ở bước sau của ca đêm.",
       "dropped": "Bị bỏ vì lặp lại <link>đề xuất #{id}</link>.",
       "droppedPlain": "Bị bỏ vì lặp lại một đề xuất đã bị từ chối.",
-      "inbox": "Nằm trong Inbox của chủ dự án từ <ago></ago>."
+      "inbox": "Nằm trong Inbox của chủ dự án từ <ago></ago>.",
+      "revertOf": "Hub đề xuất revert này: số liệu của <link>đề xuất #{id}</link> xấu đi sau khi nó được merge."
+    },
+    "ledger": {
+      "title": "Sổ ghi",
+      "caption": "Những gì đã xảy ra với đề xuất này, từng dòng, cũ nhất trước. Hub chỉ thêm dòng; không dòng nào bị sửa hay xoá.",
+      "empty": "Chưa có dòng nào.",
+      "unreadable": "Không đọc được sổ ghi.",
+      "retry": "Thử lại",
+      "lines": "Các dòng trong sổ ghi của đề xuất #{id}",
+      "by": "Bởi",
+      "actor": {
+        "curator": "Curator",
+        "agent": "Agent",
+        "user": "Thành viên"
+      },
+      "action": {
+        "proposed": "Đề xuất",
+        "dropped": "Bị bỏ",
+        "accepted": "Chấp nhận",
+        "rejected": "Từ chối",
+        "deferred": "Hoãn",
+        "planned": "Thành plan",
+        "built": "Đã dựng",
+        "build_failed": "Dựng lỗi",
+        "pull_opened": "Mở pull request",
+        "judged": "Đã chấm",
+        "merged": "Đã merge",
+        "left_open": "Để mở",
+        "closed": "Đã đóng",
+        "outcome": "Kết quả"
+      },
+      "outcome": {
+        "keep": "Giữ",
+        "revert": "Revert",
+        "unclear": "Chưa rõ"
+      },
+      "openRun": "Mở run #{id}",
+      "commit": "Commit",
+      "branch": "Nhánh mặc định",
+      "then": "rồi",
+      "copyCommit": "Chép commit {sha}",
+      "passed": "Đạt",
+      "failed": "Không đạt",
+      "pull": "Pull request #{number}",
+      "pullPlain": "Pull request",
+      "newTab": "(mở trong tab mới)",
+      "trigger": "Số liệu đã kích hoạt nó",
+      "triggerNone": "Đề xuất không nêu số liệu nào hub đếm lại được.",
+      "activity": "{count, plural, other {đếm # phiên và run}}",
+      "figuresOf": "Số liệu của dòng {id} trong sổ ghi",
+      "figure": "Số liệu",
+      "count": "Số đếm",
+      "before": "Trước",
+      "after": "Sau",
+      "rateBefore": "Mỗi phiên hay run, trước",
+      "rateAfter": "Mỗi phiên hay run, sau",
+      "change": "Thay đổi",
+      "changes": {
+        "better": "Tốt hơn",
+        "same": "Giữ nguyên",
+        "worse": "Xấu đi"
+      },
+      "counted": "Số phiên và run đã đếm: {before} trước khi merge, {after} sau",
+      "revertProposed": "Hub đã đề xuất revert nó: <link>đề xuất #{id}</link>.",
+      "outcomeDue": "Hub đếm lại số liệu của nó từ <at></at>."
     },
     "finding": {
       "title": "{count, plural, other {# phát hiện làm căn cứ}}",
@@ -3291,7 +3361,8 @@
         "reviewBudget": "Ngân sách review, USD",
         "runtime": "Runtime",
         "model": "Model",
-        "hiddenChecks": "Check ẩn của Judge"
+        "hiddenChecks": "Check ẩn của Judge",
+        "outcomeDays": "Số ngày trước khi đếm lại số liệu"
       },
       "hints": {
         "windowEnd": "Nếu sớm hơn giờ mở, cửa sổ kéo qua nửa đêm.",
@@ -3310,7 +3381,8 @@
         "protectedPaths": "Mỗi dòng một glob, ví dụ .github/workflows/**. Thay đổi chạm vào đây là tầng 3.",
         "reviewBudget": "Để trống: như mọi run trong đêm.",
         "model": "Để trống: runtime tự chọn.",
-        "hiddenChecks": "Mỗi dòng một lệnh. Judge chạy chúng; Builder không thấy."
+        "hiddenChecks": "Mỗi dòng một lệnh. Judge chạy chúng; Builder không thấy.",
+        "outcomeDays": "Sau khi merge, hub đếm lại số liệu đã kích hoạt đề xuất trong ngần ấy ngày, từ 1 đến 90, và đề xuất revert khi số liệu xấu đi."
       },
       "placeholders": {
         "model": "mặc định của runtime"
@@ -3339,7 +3411,8 @@
         "loading": "Đang đọc các bản",
         "number": "Bản {revision}",
         "worker": "trên {worker}"
-      }
+      },
+      "outcomeDaysValue": "{count, plural, other {# ngày sau khi merge}}"
     }
   }
 }

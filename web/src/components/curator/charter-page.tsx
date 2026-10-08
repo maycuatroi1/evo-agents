@@ -118,6 +118,9 @@ function CharterView({ project, charter }: { project: string; charter: Charter }
           <Fact label={t("fields.autoMergeShort")} testId="charter-auto-merge-value">
             {(charter.auto_merge ?? []).length > 0 ? t("autoMergeOn", { tiers: (charter.auto_merge ?? []).join(", ") }) : t("autoMergeOff")}
           </Fact>
+          <Fact label={t("fields.outcomeDays")} testId="charter-outcome-days-value">
+            {t("outcomeDaysValue", { count: charter.outcome_days ?? 7 })}
+          </Fact>
           <Fact label={t("fields.protectedPaths")}>
             <List items={charter.protected_paths ?? []} mono empty={t("protectedNone")} testId="charter-protected-value" />
           </Fact>

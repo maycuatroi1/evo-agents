@@ -178,7 +178,13 @@ function ScheduleCard({ project, status }: { project: string; status: CuratorSta
         ) : null}
         {schedule?.paused_at ? (
           <Fact label={t("paused")} testId="curator-paused-fact">
-            {t("pausedBy", { login: schedule.paused_by ?? "?" })} <Ago value={schedule.paused_at} never="" />
+            {schedule.paused_by === null ? t("pausedByHub") : t("pausedBy", { login: schedule.paused_by })}{" "}
+            <Ago value={schedule.paused_at} never="" />
+          </Fact>
+        ) : null}
+        {schedule?.pause_reason ? (
+          <Fact label={t("pauseReason")} testId="curator-pause-reason">
+            <span className="text-pretty">{schedule.pause_reason}</span>
           </Fact>
         ) : null}
       </Facts>

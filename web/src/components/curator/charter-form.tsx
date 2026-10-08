@@ -417,6 +417,9 @@ export function CharterFormView({ project, charter, login }: { project: string; 
             {t("hints.autoMerge")}
           </p>
         </div>
+        <Field base={base} field="outcomeDays" label={t("fields.outcomeDays")} className="md:col-span-2" hint={t("hints.outcomeDays")} errors={errors}>
+          {(props) => <Input {...props} type="number" inputMode="numeric" value={form.outcomeDays} onChange={(event) => set("outcomeDays", event.target.value)} className="md:max-w-40" data-testid="charter-outcome-days" />}
+        </Field>
         <Field base={base} field="protectedPaths" label={t("fields.protectedPaths")} className="md:col-span-2" hint={t("hints.protectedPaths")} errors={errors}>
           {(props) => (
             <Textarea {...props} rows={4} value={form.protectedPaths} onChange={(event) => set("protectedPaths", event.target.value)} className="font-mono" spellCheck={false} data-testid="charter-protected-paths" />

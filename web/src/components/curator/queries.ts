@@ -29,6 +29,8 @@ export type ProposalState = ProposalSummary["state"];
 export type ProposalAnswer = Schemas["ProposalAnswer"];
 export type ProposalAction = ProposalAnswer["action"];
 export type Finding = Schemas["Finding"];
+export type Ledger = Schemas["Ledger"];
+export type LedgerLine = Schemas["LedgerLine"];
 export type DigestRecord = Schemas["DigestRecord"];
 export type CuratorState = NonNullable<CuratorStatus["state"]>;
 export type Runtime = Schemas["Role"]["runtime"];
@@ -56,6 +58,8 @@ export const curatorKeys = {
   proposals: (project: string) => ["projects", project, "curator", "proposals"] as const,
   proposalList: (project: string, query: ProposalQuery) => ["projects", project, "curator", "proposals", "list", query] as const,
   proposal: (project: string, id: number) => ["projects", project, "curator", "proposals", "one", id] as const,
+  /** A proposal's ledger, below its proposals: an answer adds a line to it. */
+  ledger: (project: string, id: number) => ["projects", project, "curator", "proposals", "ledger", id] as const,
   finding: (project: string, id: number) => ["projects", project, "curator", "findings", id] as const,
   digest: (project: string, session: string) => ["projects", project, "digests", session] as const,
 };
@@ -160,6 +164,19 @@ export const proposalQuery = (api: ApiSource, project: string, id: number) =>
     queryFn: ({ signal }) =>
       call(
         api().GET("/v1/projects/{project}/curator/proposals/{proposal_id}", {
+          params: { path: { project, proposal_id: id } },
+          signal,
+        }),
+      ),
+  });
+
+/** What happened to a proposal, line by line, oldest first; the hub only ever adds lines. */
+export const ledgerQuery = (api: ApiSource, project: string, id: number) =>
+  queryOptions({
+    queryKey: curatorKeys.ledger(project, id),
+    queryFn: ({ signal }) =>
+      call(
+        api().GET("/v1/projects/{project}/curator/proposals/{proposal_id}/ledger", {
           params: { path: { project, proposal_id: id } },
           signal,
         }),

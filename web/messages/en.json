@@ -2685,7 +2685,8 @@
       "merge_default_branch": "Merged into a default branch",
       "plan_finished": "Plan finished",
       "run_failed": "Run failed",
-      "curator_brief": "Morning brief"
+      "curator_brief": "Morning brief",
+      "curator_paused": "Night shift paused"
     },
     "item": {
       "unread": "Unread",
@@ -2884,7 +2885,8 @@
     },
     "sub": {
       "duty": "Night shift on <worker></worker> as {owner}, {start} to {end} {timezone}",
-      "paused": "Paused by {login} <ago></ago>"
+      "paused": "Paused by {login} <ago></ago>",
+      "pausedByHub": "Paused by the circuit breaker <ago></ago>"
     },
     "pause": "Pause",
     "pausing": "Pausing",
@@ -2962,7 +2964,9 @@
       "lastBriefValue": "night of {night}, to {to}",
       "readBrief": "Read it in the Inbox",
       "paused": "Paused",
-      "pausedBy": "by {login},"
+      "pausedBy": "by {login},",
+      "pausedByHub": "by the circuit breaker,",
+      "pauseReason": "Why"
     },
     "lastReview": {
       "title": "Last review run",
@@ -3083,7 +3087,8 @@
       "verify_change": "Verify change",
       "ci_change": "CI change",
       "credentials": "Credentials",
-      "curator_rules": "Curator rules"
+      "curator_rules": "Curator rules",
+      "revert": "Revert"
     },
     "proposal": {
       "notFoundTitle": "Proposal #{id} not found",
@@ -3110,7 +3115,72 @@
       "acceptedNext": "An accepted proposal becomes a plan of the Curator in a later step of the night shift.",
       "dropped": "Dropped as a repeat of <link>proposal #{id}</link>.",
       "droppedPlain": "Dropped as a repeat of a rejected proposal.",
-      "inbox": "In the owner's Inbox since <ago></ago>."
+      "inbox": "In the owner's Inbox since <ago></ago>.",
+      "revertOf": "The hub proposes this revert: the figures of <link>proposal #{id}</link> got worse after it merged."
+    },
+    "ledger": {
+      "title": "Ledger",
+      "caption": "What happened to this proposal, line by line, oldest first. The hub only adds lines; none is ever changed or deleted.",
+      "empty": "No line yet.",
+      "unreadable": "The ledger could not be read.",
+      "retry": "Try again",
+      "lines": "Lines of the ledger of proposal #{id}",
+      "by": "By",
+      "actor": {
+        "curator": "Curator",
+        "agent": "Agent",
+        "user": "Member"
+      },
+      "action": {
+        "proposed": "Proposed",
+        "dropped": "Dropped",
+        "accepted": "Accepted",
+        "rejected": "Rejected",
+        "deferred": "Deferred",
+        "planned": "Planned",
+        "built": "Built",
+        "build_failed": "Build failed",
+        "pull_opened": "Pull request opened",
+        "judged": "Judged",
+        "merged": "Merged",
+        "left_open": "Left open",
+        "closed": "Closed",
+        "outcome": "Outcome"
+      },
+      "outcome": {
+        "keep": "Keep",
+        "revert": "Revert",
+        "unclear": "Unclear"
+      },
+      "openRun": "Open run #{id}",
+      "commit": "Commit",
+      "branch": "Default branch",
+      "then": "then",
+      "copyCommit": "Copy commit {sha}",
+      "passed": "Passed",
+      "failed": "Failed",
+      "pull": "Pull request #{number}",
+      "pullPlain": "Pull request",
+      "newTab": "(opens in a new tab)",
+      "trigger": "Figures that set it off",
+      "triggerNone": "It names no figure the hub counts again.",
+      "activity": "{count, plural, one {# session or run counted} other {# sessions and runs counted}}",
+      "figuresOf": "Figures of ledger line {id}",
+      "figure": "Figure",
+      "count": "Count",
+      "before": "Before",
+      "after": "After",
+      "rateBefore": "Per session or run, before",
+      "rateAfter": "Per session or run, after",
+      "change": "Change",
+      "changes": {
+        "better": "Better",
+        "same": "Held",
+        "worse": "Worse"
+      },
+      "counted": "Sessions and runs counted: {before} before the merge, {after} after",
+      "revertProposed": "The hub proposed reverting it: <link>proposal #{id}</link>.",
+      "outcomeDue": "The hub counts its figures again from <at></at>."
     },
     "finding": {
       "title": "{count, plural, one {The finding it rests on} other {The # findings it rests on}}",
@@ -3291,7 +3361,8 @@
         "reviewBudget": "Review budget, USD",
         "runtime": "Runtime",
         "model": "Model",
-        "hiddenChecks": "The Judge's hidden checks"
+        "hiddenChecks": "The Judge's hidden checks",
+        "outcomeDays": "Days before its figures are counted again"
       },
       "hints": {
         "windowEnd": "Before the start, the window runs past midnight.",
@@ -3310,7 +3381,8 @@
         "protectedPaths": "One glob a line, such as .github/workflows/**. A change that touches one is tier 3.",
         "reviewBudget": "Empty: as any run of the night.",
         "model": "Empty: the runtime's own choice.",
-        "hiddenChecks": "One command a line. The Judge runs them; no Builder sees them."
+        "hiddenChecks": "One command a line. The Judge runs them; no Builder sees them.",
+        "outcomeDays": "After a merge, the hub counts the figures that set the proposal off again over this many days, from 1 to 90, and proposes a revert when they got worse."
       },
       "placeholders": {
         "model": "the runtime's default"
@@ -3339,7 +3411,8 @@
         "loading": "Reading the revisions",
         "number": "Revision {revision}",
         "worker": "on {worker}"
-      }
+      },
+      "outcomeDaysValue": "{count, plural, one {# day after a merge} other {# days after a merge}}"
     }
   }
 }

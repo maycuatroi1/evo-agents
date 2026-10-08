@@ -1,7 +1,7 @@
 "use client";
 
 import { useQueries, useQuery } from "@tanstack/react-query";
-import { CopyX, FileCode2, Info } from "lucide-react";
+import { CopyX, FileCode2, Info, Undo2 } from "lucide-react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
@@ -26,6 +26,7 @@ import { KindTag, LensTag, TierTag } from "./badges";
 import { DraftPlan } from "./draft-plan";
 import { EvidenceList } from "./evidence";
 import { useCuratorViewer } from "./hooks";
+import { LedgerCard } from "./ledger";
 import type { RepoInfo } from "./model";
 import { TEXT_LINK } from "./parts";
 import { type Finding, findingQuery, type Proposal, type ProposalAction, proposalHref, proposalQuery } from "./queries";
@@ -260,11 +261,31 @@ function ProposalHead({ project, proposal, onAnswer }: { project: string; propos
   );
 }
 
+/** A revert the hub proposed itself, once the figures of a merged change got worse: which proposal it undoes. */
+function RevertNote({ project, of }: { project: string; of: number }) {
+  const t = useTranslations("curator.proposal");
+  return (
+    <div role="note" className="flex items-start gap-2.5 rounded-md border bg-surface-sunken px-4 py-3 text-[13px] text-muted-foreground" data-testid="proposal-revert-of">
+      <Undo2 className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+      <p className="text-pretty">
+        {t.rich("revertOf", {
+          id: of,
+          link: (chunks) => (
+            <Link href={proposalHref(project, of)} className={TEXT_LINK}>
+              {chunks}
+            </Link>
+          ),
+        })}
+      </p>
+    </div>
+  );
+}
+
 /**
  * One proposal of the Curator: what it would change and why, the evidence behind it (each piece a link to the run,
- * the digest's entry or the line of code), the findings it rests on, its draft plan, and for an admin of the project
- * Accept, Defer and Reject, each confirmed in a dialog with an optional note. A proposal the visitor may not read is
- * not found.
+ * the digest's entry or the line of code), the findings it rests on, its draft plan, its ledger (what happened to it,
+ * line by line), and for an admin of the project Accept, Defer and Reject, each confirmed in a dialog with an optional
+ * note. A proposal the visitor may not read is not found.
  */
 export function ProposalPage({ project, id, initialError }: { project: string; id: number; initialError: ApiErrorInfo | null }) {
   const t = useTranslations("curator.proposal");
@@ -291,7 +312,9 @@ export function ProposalPage({ project, id, initialError }: { project: string; i
               <p className="text-pretty">{t("readOnly")}</p>
             </div>
           ) : null}
+          {proposal.revert_of ? <RevertNote project={project} of={proposal.revert_of} /> : null}
           <ProposalBody project={project} proposal={proposal} admin={admin} />
+          <LedgerCard project={project} id={proposal.id} />
           {admin ? <AnswerDialog project={project} proposal={proposal} action={action} onClose={() => setAction(null)} /> : null}
         </div>
       )}
