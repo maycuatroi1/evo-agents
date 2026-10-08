@@ -1045,7 +1045,8 @@ then the verify commands, as code it does not trust (`evo_agents.worker.untruste
 its standard input (never an argument a process list shows), in a session of its own, with the daemon's environment
 less the worker's own variables (`EVO_*`, so no `EVO_WORKER_HOME` or `EVO_RUN_ID`), git's configuration, the ssh agent,
 any variable named like a credential or holding a URL with a password, and every lease value; the worktree is put back
-at the commit judged before each one, and once it ended every process it left is killed (its process group, its
+at the commit judged before each one, every file a command left removed, those its `.gitignore` hides included (so a
+command installs what it needs in the worktree itself, and the next one does again), and once it ended every process it left is killed (its process group, its
 session, and any process whose environment holds its marker). The log has each verify command with its exit code and
 the end of its output, and each hidden check by its number and its exit code alone, never its command or output.
 Unless the diff showed a sign, the agent starts, the worktree put back once more, in the run's directory on the hub's
