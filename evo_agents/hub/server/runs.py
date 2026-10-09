@@ -31,6 +31,17 @@ they look at its active runs, so the two exclude each other: a step of a plan wi
 has plan run #N"), and a plan run waits until no run of the plan's steps is active. Each plan run is audited
 (run.dispatch_plan). ready-steps names the plan's active plan run (``plan_run``), and no step is ready while it is.
 
+POST /v1/projects/{p}/author-runs (writer) queues an author run (``evo_agents.hub.author``): a plan written from the
+caller's request (at most ``author.MAX_REQUEST_BYTES`` of UTF-8, 422 otherwise) with create-exec-plan, on the worker of
+the caller's it names (403 for any other id), on claude-code alone (422 for another runtime, saying why). Its repos are
+the project's harness (409 for a project registered without one), then each repo of the project that worker has a
+checkout of. A dispatch to a worker whose last heartbeat says no checkout of the harness, or a daemon that does not
+run author runs, gets 409. It is audited (run.dispatch_author) without its request. A claim takes an author run only
+with a checkout of the harness and a daemon that says it runs author runs, and hands it a presigned GET of the latest
+version of the global skill create-exec-plan (``RunSpec.skills``); without that skill, or a blob store, the run fails
+at the claim, saying so. The author runs of a new plan are listed and read as a review run is, through the project's
+default label; one is never rerun (409).
+
 GET /v1/projects/{p}/runs (reader) lists the project's runs newest first, filtered by state, plan, step, worker,
 dispatcher and text, a page at a time, with how many runs each state has under the other filters; GET .../runs/{id}
 shows one. A reader sees the runs of the plans it may read through the sink it names (``visible_plans``), and a run
@@ -111,6 +122,7 @@ from fastapi import APIRouter, Header, HTTPException, Path, Query, Request
 from pydantic import BaseModel, ConfigDict, Field, create_model, model_validator
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     Date,
     Integer,
     Numeric,
@@ -135,8 +147,9 @@ from sqlalchemy.dialects.postgresql import ARRAY, DOUBLE_PRECISION, JSONB
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import curator, runs, tables
+from evo_agents.hub import author, curator, runs, tables
 from evo_agents.hub.access import has_role
+from evo_agents.hub.blobs import MAX_GET_TTL
 from evo_agents.hub.credentials import DISPATCHED_VIA, dispatch_credential
 from evo_agents.hub.db import one_of
 from evo_agents.hub.plans import PlanProblem, step_index, step_key
@@ -235,6 +248,24 @@ class Dispatch(BaseModel):
     )
 
 
+class AuthorRunDispatch(BaseModel):
+    request: str = Field(
+        min_length=1,
+        max_length=author.MAX_REQUEST_BYTES,
+        description=f"what the plan should achieve, in the member's words: at most {author.MAX_REQUEST_BYTES} bytes "
+        "of UTF-8",
+    )
+    worker_id: int = Field(ge=1, le=MAX_ID, description="the worker of yours the run goes to; an author run is pinned")
+    runtime: Literal[REQUESTED_RUNTIMES] = Field(
+        "claude-code",
+        description="claude-code, the one runtime an author run takes (any means it); another one is 422",
+    )
+    model: ModelName | None = Field(None, description="the model to use, as Claude Code names it; null: its own choice")
+    timeout_h: Literal[author.AUTHOR_TIMEOUT_CHOICES] = Field(
+        author.DEFAULT_TIMEOUT_H, description="hours of agent time the run may take"
+    )
+
+
 class PlanRunDispatch(BaseModel):
     plan_id: str = Field(pattern=plan_routes.PLAN_ID)
     worker_id: int | None = Field(None, ge=1, le=MAX_ID, description="pin the run to this worker of yours")
@@ -274,10 +305,13 @@ class Run(BaseModel):
     id: int
     kind: Literal[runs.RUN_KINDS] = Field(
         description="step: one step of the plan; plan: every step not done yet; review: the night's review of the "
-        "project by the Curator, on no plan; judge: the Curator's Judge of a change of its plan"
+        "project by the Curator, on no plan; judge: the Curator's Judge of a change of its plan; author: a plan "
+        "written from a member's request, on no plan when it writes a new one"
     )
     project: str
-    plan_id: str = Field(description="the plan it works on; empty for a review run, which works on none")
+    plan_id: str = Field(
+        description="the plan it works on; empty for a review run, which works on none, and an author run of a new plan"
+    )
     step_key: str | None = Field(description="null for a plan run")
     title: str | None = Field(description="the step's title when the run was dispatched; the plan's for a plan run")
     plan_revision: int | None = Field(
@@ -330,6 +364,7 @@ class Run(BaseModel):
     )
     parked_at: datetime | None = Field(description="when the run was parked, for want of an answer")
     finished_at: datetime | None
+    request: str | None = Field(None, description="the member's request of an author run; null for any other kind")
 
 
 class ClaimRequest(BaseModel):
@@ -363,6 +398,19 @@ class CuratorSpec(BaseModel):
         description="a judge run's own key, for GET .../judge and POST .../verdict (X-Evo-Judge-Key); the daemon keeps "
         "it in memory alone, never in a file, an environment or a log line",
     )
+
+
+class RunSkill(BaseModel):
+    """A skill the worker writes for the run's agent, as the hub holds it when the run is claimed: an author run's
+    create-exec-plan, global, at its latest version."""
+
+    name: str
+    scope: Literal["global"] = "global"
+    version: int
+    sha256: str = Field(description="what the downloaded bytes must hash to")
+    size: int
+    url: str = Field(description="presigned GET of the bundle; a bearer credential until it expires")
+    expires_at: datetime
 
 
 class RunSpec(BaseModel):
@@ -400,6 +448,11 @@ class RunSpec(BaseModel):
     budget: ClaimedBudget | None = Field(None, description="the caps of a run the night shift queued; null otherwise")
     curator: CuratorSpec | None = Field(
         None, description="a run of the Curator: its role and what its worker checks; null for any other run"
+    )
+    skills: list[RunSkill] = Field(
+        default_factory=list,
+        description=f"the skills the worker writes under {author.SKILLS_DIR} of the run's directory for its agent: an "
+        "author run's create-exec-plan; empty for any other run",
     )
 
 
@@ -621,6 +674,7 @@ def _run_select():
             r.c.waiting_since,
             r.c.parked_at,
             r.c.finished_at,
+            r.c.request,
         )
         .join_from(r, p, p.c.id == r.c.project_id)
         .join(u, u.c.id == r.c.dispatched_by)
@@ -779,19 +833,25 @@ async def readable_run(
 ) -> ProjectAccess:
     """The caller's access to ``project`` when it may read run ``run_id`` of it: a grant on the project (404 without,
     403 for a hub admin without one) and the run's plan visible to it (404 otherwise, as for no run). A review run,
-    which has no plan, reads as what it reads: the project, through the project's default label."""
+    which has no plan, reads as what it reads: the project, through the project's default label; so does an author run
+    of a new plan."""
     access = await project_access(conn, user, project)
     plan_routes._reader(access)
     r = tables.runs
     found = select(r.c.plan_id, r.c.kind).where(r.c.id == run_id, r.c.project_id == access.project_id)
     row = (await conn.execute(found)).one_or_none()
-    if row is not None and row.kind == "review":
-        visible = access.visible(access.rules.default_label, plan_routes._sink(access, sink))
+    if row is not None and row.plan_id is None:  # a review run, or an author run of a new plan
+        visible = _sees_unplanned(access, sink)
     else:
         visible = row is not None and row.plan_id in await visible_plans(conn, access, sink)
     if not visible:
         raise HTTPException(404, f"project {project} has no run {run_id}: see GET /v1/projects/{project}/runs")
     return access
+
+
+def _sees_unplanned(access: ProjectAccess, sink: str | None) -> bool:
+    """Whether the caller reads the runs of the project on no plan: through ``sink``, the project's default label."""
+    return access.visible(access.rules.default_label, plan_routes._sink(access, sink))
 
 
 RUN_NUMBER = re.compile(r"#?([0-9]{1,18})")
@@ -804,10 +864,12 @@ def _like(text: str) -> str:
 
 def _list_conditions(*, plan_id: bool, step: bool, worker_id: bool, login: bool, text: bool, number: bool) -> list:
     """The filters of GET .../runs but the state's, which the counts by state leave out: the runs of project
-    :project_id and of the plans in :plans, then each filter given, by its bind parameter (one not given leaves
-    every run): :plan_id, :step, :worker_id, :login, and the text as the ILIKE :pattern, or as the run :number."""
+    :project_id and of the plans in :plans, and its author runs of a new plan when :unplanned, then each filter given,
+    by its bind parameter (one not given leaves every run): :plan_id, :step, :worker_id, :login, and the text as the
+    ILIKE :pattern, or as the run :number."""
     r, u, w = tables.runs, tables.users, tables.workers
-    found = [r.c.project_id == bindparam("project_id"), one_of(r.c.plan_id, name="plans")]
+    unplanned = and_(r.c.kind == "author", r.c.plan_id.is_(None), bindparam("unplanned", type_=Boolean))
+    found = [r.c.project_id == bindparam("project_id"), or_(one_of(r.c.plan_id, name="plans"), unplanned)]
     if plan_id:
         found.append(r.c.plan_id == bindparam("plan_id"))
     if step:
@@ -883,6 +945,7 @@ async def list_runs(
             **filters,
             "project_id": access.project_id,
             "plans": plans,
+            "unplanned": _sees_unplanned(access, sink),
             "pattern": _like(text) if text else None,
             "number": int(number[1]) if number else None,
             "states": states,
@@ -1191,6 +1254,7 @@ async def _pinnable(conn: AsyncConnection, user: Principal, access: ProjectAcces
         w.c.checkouts,
         w.c.agent_version,
         w.c.dispatch_from,
+        w.c.run_kinds,
     ).where(w.c.id == worker_id)
     row = (await conn.execute(query)).one_or_none()
     if row is None or row.owner_id != user.user_id:  # the same answer for another member's worker and for no worker
@@ -1208,7 +1272,8 @@ async def _pinnable(conn: AsyncConnection, user: Principal, access: ProjectAcces
             f"worker {name} takes only runs dispatched from a web session, as its owner set it, so a token cannot "
             "hand it work: dispatch on the web, or to another worker; nothing was dispatched",
         )
-    return Pinned(worker_id, name, row.runtimes or {}, row.checkouts or {}, row.agent_version)
+    kinds = tuple(row.run_kinds or ())
+    return Pinned(worker_id, name, row.runtimes or {}, row.checkouts or {}, row.agent_version, kinds)
 
 
 def _unfit(worker: Pinned, project: str, kind: str, repos: list[str], runtime: str) -> list[str]:
@@ -1220,7 +1285,7 @@ def _unfit(worker: Pinned, project: str, kind: str, repos: list[str], runtime: s
             f"it runs evo-agents {worker.agent_version or 'of an unknown version'}, and a plan run needs "
             f"{runs.version_text(runs.PLAN_RUN_AGENT)} or later: upgrade it and restart its daemon"
         )
-    if kind in runs.CURATOR_KINDS and kind not in worker.run_kinds:
+    if (kind in runs.CURATOR_KINDS or kind == "author") and kind not in worker.run_kinds:
         problems.append(
             f"its daemon (evo-agents {worker.agent_version or 'of an unknown version'}) does not say it runs {kind} "
             "runs: upgrade it and restart its daemon"
@@ -1511,6 +1576,83 @@ async def dispatch_plan(request: Request, project: ProjectName, body: PlanRunDis
     return view
 
 
+async def _author_repos(conn: AsyncConnection, access: ProjectAccess, worker: Pinned) -> list[dict]:
+    """The repos of an author run on ``worker``: the project's harness first, where plans live, then each repo of the
+    project the worker has a checkout of, in name order, each with no branch, since an author run's worktrees are
+    detached. 409 when the project was registered without its harness."""
+    p, pr = tables.projects, tables.project_repos
+    path = (await conn.execute(select(p.c.harness_path).where(p.c.id == access.project_id))).scalar_one_or_none()
+    harness = author.harness_repo(path)
+    if harness is None:
+        raise HTTPException(
+            409,
+            f"project {access.name} was registered without its harness, where plans live, so an author run has "
+            "nowhere to read the project's plans: register it again with `evo-agents hub project register` from its "
+            "harness; nothing was dispatched",
+        )
+    names = await conn.execute(select(pr.c.name).where(pr.c.project_id == access.project_id).order_by(pr.c.name))
+    repos = [{"repo": harness, "branch": None}]
+    for name in names.scalars():
+        if name != harness and f"{access.name}/{name}" in worker.checkouts:
+            repos.append({"repo": name, "branch": None})
+    return repos
+
+
+@router.post(
+    "/{project}/author-runs",
+    status_code=201,
+    response_model=Run,
+    responses={**REFUSALS, 422: {"model": ErrorBody}},
+)
+async def dispatch_author(request: Request, project: ProjectName, body: AuthorRunDispatch, user: CurrentUser) -> Run:
+    """Queue an author run: a plan written from the caller's request, with create-exec-plan, on a worker of the
+    caller's (``evo_agents.hub.author``)."""
+    async with request.app.state.engine.begin() as conn:
+        access = await project_access(conn, user, project)
+        _dispatcher(access)
+        problem = author.request_problem(body.request) or author.runtime_problem(body.runtime)
+        if problem:
+            raise HTTPException(422, f"{problem}; nothing was dispatched")
+        runtime = author.AUTHOR_RUNTIMES[0] if body.runtime == "any" else body.runtime
+        pinned = await _pinnable(conn, user, access, body.worker_id)
+        repos = await _author_repos(conn, access, pinned)
+        _fits(pinned, access, "author", [repos[0]["repo"]], runtime)
+        values = {
+            "kind": "author",
+            "project_id": access.project_id,
+            "plan_id": None,
+            "title": author.author_title(body.request),
+            "plan_revision": None,
+            "dispatched_by": user.user_id,
+            "dispatched_via": dispatch_credential(user.kind),
+            "pinned_worker_id": pinned.id,
+            "requested_runtime": runtime,
+            "runtime": runtime,
+            "model": body.model,
+            "mode": "headless",
+            "approval": "auto",
+            "timeout_s": body.timeout_h * 3600,
+            "repos": repos,
+            "request": body.request,
+        }
+        try:
+            run_id = await _insert_run(conn, values)
+        except IntegrityError as exc:
+            if isinstance(exc.orig, psycopg.errors.CheckViolation):
+                raise HTTPException(
+                    422, "a repo name, or the number of repos, is not one a run can hold; nothing was dispatched"
+                ) from None
+            raise
+        await notify_queued(conn, run_id)
+        await _audit_run(conn, user, access, audit.RUN_DISPATCH_AUTHOR, f"{project}/author run:{run_id}")
+        view = await run_view(conn, run_id)
+    log.info(
+        "author run dispatched",
+        extra={"project": project, "run_id": run_id, "worker_id": pinned.id, "repos": len(repos)},
+    )
+    return view
+
+
 # The owner's controls
 
 
@@ -1710,6 +1852,10 @@ async def rerun(request: Request, project: ProjectName, run_id: RunId, user: Cur
             raise HTTPException(
                 409, f"run {run_id} is a {kind} run, which only the night shift of the project's charter queues"
             )
+        if kind == "author":
+            raise HTTPException(
+                409, f"run {run_id} is an author run: dispatch a new one with POST /v1/projects/{project}/author-runs"
+            )
         if state not in runs.TERMINAL_STATES:
             raise HTTPException(409, f"run {run_id} is still {state}: a run is rerun once it has ended")
         held = await plan_routes._visible(conn, access, plan_id, None)
@@ -1837,13 +1983,16 @@ def _claimable(
     web_only: bool,
     review_runs: bool = False,
     judge_runs: bool = False,
+    author_runs: bool = False,
 ):
     """The oldest queued run the worker may take now, locked, passing over one another claim holds locked: of its
     owner, in ``projects``, pinned to no other worker, asking for any runtime or one of ``runtimes``, of a repo it
     has a checkout of (``pairs`` of project id and repo). A run of one step needs a checkout of its repo, and a plan
     run one of every repo in its repos and a daemon of runs.PLAN_RUN_AGENT or later (``plan_runs``); a review run one
-    of every repo in its repos and a daemon that says it runs review runs (``review_runs``). A worker set to take runs
-    dispatched from the web only (``web_only``) passes over the others, those dispatched before schema 0011
+    of every repo in its repos and a daemon that says it runs review runs (``review_runs``), and a judge run likewise
+    (``judge_runs``); an author run one of its first repo, the project's harness, and a daemon that says it runs
+    author runs (``author_runs``): the worker leaves out the other repos it has no checkout of. A worker set to take
+    runs dispatched from the web only (``web_only``) passes over the others, those dispatched before schema 0011
     included."""
     r = tables.runs
     pids = literal([pid for pid, _ in pairs], ARRAY(BigInteger))
@@ -1859,13 +2008,14 @@ def _claimable(
     )
     every_repo = ~exists().select_from(needed).where(~has_needed)
     own_repo = exists().where(checkouts.c.project_id == r.c.project_id, checkouts.c.repo == r.c.repo)
-    query = select(r.c.id, r.c.runtime).where(
+    harness = exists().where(checkouts.c.project_id == r.c.project_id, checkouts.c.repo == r.c.repos[0]["repo"].astext)
+    query = select(r.c.id, r.c.runtime, r.c.kind).where(
         r.c.state == "queued",
         r.c.project_id.in_(projects),
         r.c.dispatched_by == owner_id,
         or_(r.c.pinned_worker_id.is_(None), r.c.pinned_worker_id == worker_id),
         or_(r.c.runtime == "any", r.c.runtime.in_(runtimes)),
-        case((r.c.kind.in_(("plan", "review", "judge")), every_repo), else_=own_repo),
+        case((r.c.kind.in_(("plan", "review", "judge")), every_repo), (r.c.kind == "author", harness), else_=own_repo),
     )
     if web_only:
         query = query.where(r.c.dispatched_via == "web")
@@ -1875,6 +2025,8 @@ def _claimable(
         query = query.where(r.c.kind != "review")
     if not judge_runs:
         query = query.where(r.c.kind != "judge")
+    if not author_runs:
+        query = query.where(r.c.kind != "author")
     return query.order_by(r.c.id).limit(1).with_for_update(of=r, skip_locked=True)
 
 
@@ -1898,12 +2050,74 @@ def lease_of(request: Request) -> timedelta:
     return timedelta(seconds=request.app.state.config.run_lease_seconds)
 
 
+@dataclass(frozen=True)
+class HeldSkill:
+    """The latest version of a global skill, as the hub holds it."""
+
+    name: str
+    version: int
+    sha256: str
+    size: int
+
+
+def _global_skill(name: str):
+    """The latest version of the global skill ``name`` (ignoring case, as names are unique): name, version, sha256,
+    size."""
+    sk, v = tables.skills, tables.skill_versions
+    return (
+        select(sk.c.name, v.c.version, v.c.sha256, v.c.size)
+        .join_from(sk, v, v.c.skill_id == sk.c.id)
+        .where(sk.c.scope == "global", func.lower(sk.c.name) == name.lower())
+        .order_by(v.c.version.desc())
+        .limit(1)
+    )
+
+
+async def author_skill(conn: AsyncConnection) -> HeldSkill | None:
+    """The version of ``author.AUTHOR_SKILL`` an author run claimed now gets; None when the hub has none."""
+    row = (await conn.execute(_global_skill(author.AUTHOR_SKILL))).one_or_none()
+    return None if row is None else HeldSkill(*row)
+
+
+def _skill_refusal(skill: HeldSkill | None, blobs) -> str | None:
+    """Why an author run cannot be handed its skill now, which fails it at its claim; None when it can."""
+    name = author.AUTHOR_SKILL
+    if skill is None:
+        return (
+            f"the hub holds no global skill {name}, which the agent of an author run writes the plan with: a hub admin "
+            f"publishes it with `evo-agents hub skills publish <agent-skills>/skills/{name}` (scope global), then "
+            "dispatch the author run again"
+        )
+    if blobs is None:
+        return (
+            f"the hub has no blob store, so it cannot hand the worker the bundle of skill {name} (version "
+            f"{skill.version}): configure the blob store of the hub, then dispatch the author run again"
+        )
+    return None
+
+
+async def _skill_ticket(blobs, skill: HeldSkill) -> RunSkill:
+    """A presigned GET of ``skill``'s bundle, for the worker that claimed the run; it works MAX_GET_TTL."""
+    expires_at = datetime.now(UTC) + MAX_GET_TTL  # taken before signing, so never later than the URL
+    filename = f"{skill.name}-v{skill.version}.tar.gz"
+    url = await asyncio.to_thread(blobs.presign_get, skill.sha256, MAX_GET_TTL, filename=filename)
+    return RunSkill(
+        name=skill.name, version=skill.version, sha256=skill.sha256, size=skill.size, url=url, expires_at=expires_at
+    )
+
+
 async def _try_claim(
-    engine, user: Principal, lease: timedelta, gone: Callable[[], Awaitable[bool]] | None = None
+    engine,
+    user: Principal,
+    lease: timedelta,
+    gone: Callable[[], Awaitable[bool]] | None = None,
+    blobs=None,
 ) -> RunSpec | None:
     """Lease the run the worker of ``user`` may take now, if any, for ``lease`` (see the module's docstring). When
     ``gone`` says the worker hung up once the run is leased, raise ClaimAbandoned before the transaction commits,
-    which rolls the lease back."""
+    which rolls the lease back. An author run comes with a presigned GET of its skill from the blob store ``blobs``;
+    one the hub cannot hand its skill (none published, or no blob store) fails here, as the reaper, saying why, and
+    the claim takes nothing this time."""
     async with engine.begin() as conn:
         found = await _worker_of(conn, user)
         worker_id, owner_id, name, slots, reported, checkouts, drained_at, _, version, dispatch_from, kinds = found
@@ -1935,11 +2149,20 @@ async def _try_claim(
             web_only=dispatch_from == "web",
             review_runs="review" in (kinds or ()),
             judge_runs="judge" in (kinds or ()),
+            author_runs="author" in (kinds or ()),
         )
         row = (await conn.execute(query)).one_or_none()
         if row is None:
             return None
-        run_id, asked = row
+        run_id, asked, kind = row
+        skill = None
+        if kind == "author":
+            skill = await author_skill(conn)
+            refused = _skill_refusal(skill, blobs)
+            if refused is not None:
+                await move_run(conn, run_id, "queued", "failed", "reaper", reason=refused, error=refused)
+                log.warning("author run failed at its claim", extra={"run_id": run_id, "worker_id": worker_id})
+                return None
         runtime = runtimes[0] if asked == "any" else asked
         await move_run(
             conn,
@@ -1953,6 +2176,8 @@ async def _try_claim(
             lease=lease,
         )
         spec = await _run_spec(conn, run_id)
+        if skill is not None:
+            spec.skills = [await _skill_ticket(blobs, skill)]
         if gone is not None and await gone():
             raise ClaimAbandoned(run_id)  # leaving the block rolls the transaction back
     log.info("run claimed", extra={"run_id": run_id, "worker_id": worker_id, "runtime": runtime})
@@ -1975,6 +2200,12 @@ async def _run_spec(conn: AsyncConnection, run_id: int) -> RunSpec:
         from evo_agents.hub.server.collect import review_prompt  # it queues runs through this module
 
         prompt = await review_prompt(conn, view)
+        title = view.title
+    elif view.kind == "author":
+        skill = await author_skill(conn)
+        repos = [repo.model_dump() for repo in view.repos or []]
+        version = skill.version if skill is not None else 0
+        prompt = author.build_author_prompt(view.project, view.dispatched_by, view.request or "", repos, version)
         title = view.title
     elif view.kind == "judge":
         from evo_agents.hub.server.changes import judge_prompt  # it queues runs through this module
@@ -2065,7 +2296,7 @@ async def claim(request: Request, user: CurrentUser, body: ClaimRequest | None =
                 return Claim(run=None)
             seen = wakeups.generation
             try:
-                spec = await _try_claim(engine, user, lease, request.is_disconnected)
+                spec = await _try_claim(engine, user, lease, request.is_disconnected, request.app.state.blobs)
             except ClaimAbandoned as exc:
                 log.info("claim abandoned; the run stays queued", extra={"run_id": exc.run_id, "worker_id": worker_id})
                 wakeups.wake()  # the run is queued again: the other claims waiting here look at it
@@ -2289,9 +2520,10 @@ async def report_state(request: Request, run_id: RunId, body: StateReport, user:
 def _check_verdict(run_id: int, kind: str, approval: str, body: StateReport) -> None:
     """409 for a verdict the run's approval, or its kind, does not allow. A plan run ends done without verify
     results, since each of its steps was verified when it was reported, and never waits in review."""
-    if kind in ("plan", "review", "judge"):
+    if kind in ("plan", "review", "judge", "author"):
         if body.state == "review":
-            raise HTTPException(409, f"run {run_id} is a {kind} run: report done or failed, not review")
+            article = "an" if kind[:1] in "aeiou" else "a"
+            raise HTTPException(409, f"run {run_id} is {article} {kind} run: report done or failed, not review")
         if body.state == "done" and any(item.exit_code != 0 for item in body.verify or []):
             raise HTTPException(409, f"run {run_id} is done only when every verify command it reports exited 0")
         return
@@ -2340,7 +2572,9 @@ async def _held_plan_run(conn: AsyncConnection, user: Principal, run_id: int, *,
     if row is None or row.worker_id != worker_id or row.state not in runs.HELD_STATES:
         raise HTTPException(404, NOT_HELD.format(id=run_id))
     if row.kind != "plan":
-        what = {"review": "a review run", "judge": "a judge run"}.get(row.kind, "a run of one step")
+        what = {"review": "a review run", "judge": "a judge run", "author": "an author run"}.get(
+            row.kind, "a run of one step"
+        )
         raise HTTPException(
             404,
             f"run {run_id} is {what}, which has no plan to read or steps to report: report its state with "

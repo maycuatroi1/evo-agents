@@ -309,6 +309,28 @@ or `cancelled` sets back to `pending` the steps it reported, it or an earlier at
 progress stays as it is. A plan run that is `lost` queues its next attempt as a plan run with the same repos and model,
 and leaves the steps as they are.
 
+## Author runs
+
+An author run (kind `author`, `evo_agents.hub.author`) writes an execution plan from a member's request with the
+create-exec-plan skill. A writer of the project dispatches it with `POST /v1/projects/{p}/author-runs` or
+`evo-agents hub run author REQUEST --worker W --project P`: a request of at most 16 KiB of UTF-8 (422 over it), the
+worker it runs on, which must be one of the member's own (403 otherwise; an author run is always pinned), runtime
+claude-code (422 for opencode or codex, saying why), an optional model and 1, 2 or 4 hours of agent time (2 by
+default). A reader gets 403. Its repos are the project's harness first, where plans live, then each repo of the
+project the worker has a checkout of; a project registered without its harness gets 409, and so does a worker whose
+last heartbeat shows no checkout of the harness or a daemon that does not say it runs author runs.
+
+Only that worker claims it, and only with a checkout of the harness and `author` in the heartbeat's `run_kinds`: a
+daemon of 0.8.0 or older never does. The claim hands the latest version of the global skill create-exec-plan with a
+presigned GET of its bundle (`skills`); a hub without that skill, or without a blob store, fails the run at the claim
+with the reason in `error`. The worker downloads and checks the bundle as `hub skills sync` does and writes it under
+`.claude/skills/` of the run's directory, the agent's working directory, so nobody syncs skills on the worker's
+machine. The agent works in worktrees detached at origin's default branch, in `EVO_RUN_KIND=author`, with Claude
+Code's AskUserQuestion turned off; the run commits and pushes nothing, its GitHub token reads only, and it ends
+`done` without verify results, writing no step. `evo-agents worker step`, `ask`, `notify`, `finding` and `propose`
+refuse inside it, and it is never rerun (409). An author run of a new plan is listed and read through the project's
+default label, as a review run is.
+
 ## Decisions and notices
 
 A plan run's agent stops for its owner only on a decision of one of the categories `docs/notifications.md` lists

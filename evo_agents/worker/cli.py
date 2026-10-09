@@ -506,12 +506,18 @@ def _agent_run(command: str, kinds: tuple[str, ...] = ("plan",)) -> _AgentRun:
     if kind not in kinds:
         if kinds == ("review",):
             raise WorkerStateError(
-                f"run {run_id} is a {kind} run: only the agent of a review run uses `evo-agents worker {command}`"
+                f"run {run_id} is {'an' if kind[:1] in 'aeiou' else 'a'} {kind} run: only the agent of a review run "
+                f"uses `evo-agents worker {command}`"
             )
         if kind == "review":
             raise WorkerStateError(
                 f"run {run_id} is a review run, which reads only: it records what it finds with `evo-agents worker "
                 f"finding` and `evo-agents worker propose`, not `evo-agents worker {command}`"
+            )
+        if kind == "author":
+            raise WorkerStateError(
+                f"run {run_id} is an author run, which writes a plan and changes nothing: it does not use "
+                f"`evo-agents worker {command}`"
             )
         if kind == "judge":
             raise WorkerStateError(

@@ -641,6 +641,55 @@ def fields_of(out: str) -> dict:
 
 
 @needs_pg
+def test_run_author_queues_an_author_run_from_stdin_and_shows_it(hub, monkeypatch, capsys):
+    from tests.hub.test_author_runs import CHECKOUTS, HARNESS, KINDS, beat
+
+    worker = add_worker(hub.client, hub.headers["owner"], "mac-author", checkouts=CHECKOUTS)
+    beat(hub.client, worker, KINDS)
+    request = "Plan the chat of an author run.\nWith a reply box."
+    run = as_json(
+        cli(
+            monkeypatch,
+            capsys,
+            hub.homes["owner"],
+            *("hub", "run", "author", "-", "--project", PROJECT, "--worker", "mac-author", "--model", "opus"),
+            *("--timeout-h", "1", "--json"),
+            stdin=request,
+        )
+    )
+    assert_json_keys("hub run author", run)
+    assert (run["kind"], run["plan_id"], run["request"], run["model"], run["timeout_min"]) == (
+        "author",
+        "",
+        request,
+        "opus",
+        60,
+    )
+    assert run["repos"][0] == {"repo": HARNESS, "branch": None} and run["pinned_worker_id"] == worker["id"]
+
+    printed = ok(runs_of(hub, monkeypatch, capsys, "owner", "author", "A second plan.", "--worker", "mac-author"))
+    second = run["id"] + 1
+    assert printed.out.splitlines() == [
+        f"Queued author run #{second}: author (Plan from: A second plan.), on worker #{worker['id']} over {HARNESS}, "
+        "agent-skills, evo-agents; runtime claude-code, timeout 2 h of agent time. It reads only and pushes nothing.",
+        f"Follow it with `evo-agents hub run logs {second} --follow --project {PROJECT}`.",
+    ]
+    other = runs_of(hub, monkeypatch, capsys, "owner", "author", "x", "--worker", "mac-author", "--runtime", "codex")
+    assert other.code == 1 and other.err.startswith("error: an author run runs on claude-code only, not codex: ")
+    reader = runs_of(hub, monkeypatch, capsys, "reader", "author", "x", "--worker", str(worker["id"]))
+    assert reader.code == 1 and "needs the writer role" in reader.err
+    empty = runs_of(hub, monkeypatch, capsys, "owner", "author", " ", "--worker", "mac-author")
+    assert empty.code == 2 and "the request is empty" in empty.err
+
+    fields = fields_of(ok(runs_of(hub, monkeypatch, capsys, "reader", "show", str(run["id"]))).out)
+    assert fields["kind"] == "author run: a plan written from your request with create-exec-plan; it pushes nothing"
+    assert fields["title"] == "Plan from: Plan the chat of an author run."
+    assert "plan" not in fields and fields["repos"].startswith(f"{HARNESS}, agent-skills")
+    assert fields["request"] == "Plan the chat of an author run."
+    assert fields["runtime"] == "claude-code, model opus, headless, timeout 1 h"
+
+
+@needs_pg
 def test_a_plan_run_is_dispatched_listed_and_shown(hub, monkeypatch, capsys):
     push(hub.client, hub.headers["owner"], fleet_body())
     worker = fleet_worker(hub.client, hub.headers["owner"], "mac-plan")

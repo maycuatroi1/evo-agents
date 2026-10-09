@@ -11,8 +11,10 @@ Reviewer of one night of a project's charter: it works on no plan, reads the pro
 proposals, and changes no code (``evo_agents.hub.review``). A ``judge`` run is the Curator's Judge of one change its
 Builder made: it reads the change at the head of its pull request, runs the plan's verify and the project's hidden
 checks, and says whether the change passes, without reading the Builder's transcript and without changing anything
-(``evo_agents.hub.judge``). A worker takes a kind of run only once its heartbeat says its daemon runs that kind
-(``run_kinds``): a daemon older than the review run reads every run as a step or plan run.
+(``evo_agents.hub.judge``). An ``author`` run writes an execution plan from a member's request with the
+create-exec-plan skill, on one of the member's own workers, and changes no code (``evo_agents.hub.author``). A worker
+takes a kind of run only once its heartbeat says its daemon runs that kind (``run_kinds``): a daemon older than the
+review run reads every run as a step or plan run.
 A run starts ``queued``; a worker
 claims it (``leased``), starts the agent (``running``, or ``interactive`` when a person drives the agent in a
 terminal), re-runs the agent's verify commands (``verifying``), and ends ``done``, ``failed`` or ``cancelled``, or in
@@ -63,8 +65,9 @@ MAX_RUN_EVENTS = 20_000  # events the hub keeps for one run
 MAX_MESSAGE_BYTES = 8 * 1024  # one message from the owner to a running agent
 MAX_PROMPT_BYTES = 32 * 1024  # the prompt build_prompt or build_plan_prompt returns, as UTF-8
 
-# one step; every step of a plan not done yet; a night's review of a project; the Judge of a change of the Curator
-RUN_KINDS = ("step", "plan", "review", "judge")
+# one step; every step of a plan not done yet; a night's review of a project; the Judge of a change of the Curator; a
+# plan written from a member's request
+RUN_KINDS = ("step", "plan", "review", "judge", "author")
 PLAN_KINDS = ("step", "plan")  # the kinds of run that work on a plan; a review run has none (its plan_id is null)
 CURATOR_KINDS = ("review", "judge")  # the kinds only the night shift queues, besides the Builder's plan runs
 PLAN_RUN_AGENT = (0, 4, 0)  # the first daemon release that runs a plan run; an older one reads it as a step run

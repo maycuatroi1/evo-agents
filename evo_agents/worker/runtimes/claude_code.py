@@ -59,6 +59,9 @@ here.
   process against it, while its ``total_cost_usd`` goes on from the total the session's transcript saved), and
   ``max_turns`` its ``max_turns``. A ``result`` of ``error_max_budget_usd`` or ``error_max_turns`` ends the run with
   an outcome that names the cap, ``cost`` or ``turns``.
+- An author run (``context.run["kind"]`` ``author``, ``evo_agents.hub.author``) has the tools that ask the person at
+  the terminal a question turned off (``disallowed_tools``, the CLI's ``--disallowedTools``: ``AskUserQuestion``):
+  nobody at the worker's machine answers it, and the agent asks its owner in its last message instead.
 - The model is the run's ``model`` (``options.model``, the CLI's ``--model``), else ``EVO_WORKER_CLAUDE_CODE_MODEL``,
   else Claude Code's own choice. Claude Code has no command that lists its models; for the heartbeat, ``models``
   gives the aliases its ``--model`` help names (``'opus'``, ``'sonnet'`` and the like), and a run may name any model
@@ -86,7 +89,7 @@ import uuid
 from collections.abc import Callable, Mapping
 from pathlib import Path
 
-from evo_agents.hub import curator, runs
+from evo_agents.hub import author, curator, runs
 from evo_agents.worker.adapter import AgentEvent, Detection, Outcome, RunContext, command_output
 from evo_agents.worker.runtimes.common import (
     HEADLESS_NOTE,
@@ -546,6 +549,8 @@ class ClaudeCodeAdapter(QueueAdapter):
             value = run_setting(self.context, self.runtime, key)
             if value:
                 settings[key] = value
+        if self.context.run.get("kind") == "author":  # nobody at this machine answers a question tool
+            settings["disallowed_tools"] = list(author.QUESTION_TOOLS)
         if self.budget is not None:
             usd = curator.usd_left(self.budget, self.context.spent_usd)
             if usd is not None:
