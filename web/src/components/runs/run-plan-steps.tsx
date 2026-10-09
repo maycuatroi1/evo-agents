@@ -70,7 +70,9 @@ export function RunPlanSteps({ run }: { run: Run }) {
                   <span className="mt-0.5 w-6 shrink-0 text-right font-mono text-xs text-muted-foreground tabular-nums">{step.key}</span>
                   <Link
                     href={stepHref(run.project, run.plan_id, step.key)}
-                    className="min-w-0 flex-1 text-brand underline-offset-4 [overflow-wrap:anywhere] hover:underline"
+                    // Under 768 px the link is a 44 px touch target, its padding taken back by its margin so the
+                    // row keeps its height.
+                    className="min-w-0 flex-1 text-brand underline-offset-4 [overflow-wrap:anywhere] hover:underline max-md:-my-3 max-md:py-3"
                   >
                     {stepLabel(step) || t("untitled")}
                   </Link>
