@@ -7,6 +7,7 @@ import { type ReactNode, useEffect, useRef } from "react";
 
 import { Identifier } from "@/components/data/identifier";
 import { useCanDispatch, usePlanRunToast } from "@/components/runs/hooks";
+import { ReviseWithAgentButton } from "@/components/runs/author-run";
 import { PlanRunBanner, RunPlanButton, usePlanActivity } from "@/components/runs/plan-run";
 import { LIVE_REFRESH_MS } from "@/components/runs/queries";
 import { QueryView, useHubQuery } from "@/components/states/query-view";
@@ -224,15 +225,20 @@ function Overview({ project, plan, activity }: { project: string; plan: Plan; ac
         current="steps"
         planRunActive={activity.planRun !== null}
         actions={
-          plan.area === "active" && canDispatch ? (
-            <RunPlanButton
-              project={project}
-              planId={plan.plan_id}
-              pending={counts.pending}
-              runs={activity.active}
-              loaded={activity.loaded}
-              onDispatched={dispatched}
-            />
+          canDispatch ? (
+            <>
+              <ReviseWithAgentButton project={project} planId={plan.plan_id} />
+              {plan.area === "active" ? (
+                <RunPlanButton
+                  project={project}
+                  planId={plan.plan_id}
+                  pending={counts.pending}
+                  runs={activity.active}
+                  loaded={activity.loaded}
+                  onDispatched={dispatched}
+                />
+              ) : null}
+            </>
           ) : null
         }
       />

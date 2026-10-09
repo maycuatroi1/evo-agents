@@ -6,6 +6,7 @@ import {
   ChevronDown,
   Layers,
   type LucideIcon,
+  MessageCircle,
   MessagesSquare,
   Pause,
   Play,
@@ -288,13 +289,13 @@ function LogStreamState({ status }: { status: LogStatus }) {
   );
 }
 
-export type SessionTab = "trace" | "log" | "terminal";
+export type SessionTab = "chat" | "trace" | "log" | "terminal";
 
-export const SESSION_TABS: readonly SessionTab[] = ["trace", "log", "terminal"];
+export const SESSION_TABS: readonly SessionTab[] = ["chat", "trace", "log", "terminal"];
 
 /**
- * The card of a run's session: the Trace (the kit's AgentTrace, first), the Raw log and, for the owner of the run and
- * of its worker, the Terminal, as tabs. Every panel stays mounted, so switching tabs keeps the terminal's session, the
+ * The card of a run's session: the Chat of an author run (first), the Trace (the kit's AgentTrace), the Raw log and,
+ * for the owner of the run and of its worker, the Terminal, as tabs. Every panel stays mounted, so switching tabs keeps the terminal's session, the
  * log's place and the trace's open rows. The composer sits under the Trace and the Raw log.
  */
 export function RunLogCard({
@@ -302,6 +303,7 @@ export function RunLogCard({
   log,
   active,
   composer,
+  chat = null,
   trace = null,
   terminal = null,
   frozen,
@@ -313,6 +315,8 @@ export function RunLogCard({
   /** The run may still write events: an empty log says it waits for them. */
   active: boolean;
   composer: ReactNode;
+  /** The Chat tab's panel of an author run, given whether it is the tab shown; first, and shown first, when given. */
+  chat?: ((shown: boolean) => ReactNode) | null;
   /** The Trace tab's panel, given whether it is the tab shown. Without it and a terminal, the card is the log alone. */
   trace?: ((shown: boolean) => ReactNode) | null;
   /**
@@ -334,10 +338,13 @@ export function RunLogCard({
   const format = useFormatter();
   const ids = useId();
   const phone = useIsMobile();
-  const [ownTab, setOwnTab] = useState<SessionTab>(trace ? "trace" : "log");
+  const first: SessionTab = chat ? "chat" : trace ? "trace" : "log";
+  const [ownTab, setOwnTab] = useState<SessionTab>(first);
   const wanted = heldTab ?? ownTab;
-  // A tab the card does not have (the Terminal once it is not offered, the Trace without one) shows the first it has.
-  const tab: SessionTab = wanted === "terminal" && !terminal ? (trace ? "trace" : "log") : wanted === "trace" && !trace ? "log" : wanted;
+  // A tab the card does not have (the Terminal once it is not offered, the Trace or the Chat without one) shows the
+  // first it has.
+  const tab: SessionTab =
+    (wanted === "terminal" && !terminal) || (wanted === "trace" && !trace) || (wanted === "chat" && !chat) ? first : wanted;
   const setTab = onTabChange ?? setOwnTab;
   const [group, setGroup] = useState<LogGroup | null>(null);
   const [query, setQuery] = useState("");
@@ -475,7 +482,7 @@ export function RunLogCard({
     </>
   );
 
-  if (!trace && !terminal) {
+  if (!chat && !trace && !terminal) {
     return (
       <section aria-labelledby={`${ids}-title`} className="flex min-w-0 flex-col rounded-md border bg-card shadow-raised" data-testid="run-log">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b px-4 py-3">
@@ -511,6 +518,12 @@ export function RunLogCard({
         </h2>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b px-4">
           <TabsList aria-label={tTabs("label")} className="w-auto max-w-full overflow-x-auto border-b-0">
+            {chat ? (
+              <TabsTrigger value="chat" className="h-12" data-testid="run-tab-chat">
+                <MessageCircle aria-hidden="true" />
+                {tTabs("chat")}
+              </TabsTrigger>
+            ) : null}
             {trace ? (
               <TabsTrigger value="trace" className="h-12" data-testid="run-tab-trace">
                 <ListTree aria-hidden="true" />
@@ -548,6 +561,11 @@ export function RunLogCard({
             </div>
           ) : null}
         </div>
+        {chat ? (
+          <TabsContent value="chat" forceMount className="gap-0 data-[state=inactive]:hidden">
+            {chat(tab === "chat")}
+          </TabsContent>
+        ) : null}
         {trace ? (
           <TabsContent value="trace" forceMount className="gap-0 data-[state=inactive]:hidden">
             {trace(tab === "trace")}
@@ -561,7 +579,7 @@ export function RunLogCard({
             {terminal(tab === "terminal")}
           </TabsContent>
         ) : null}
-        {tab !== "terminal" ? composer : null}
+        {tab !== "terminal" && tab !== "chat" ? composer : null}
       </section>
     </Tabs>
   );

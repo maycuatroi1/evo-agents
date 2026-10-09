@@ -5,6 +5,7 @@ import {
   isTerminalState,
   MESSAGE_STATES,
   type Run,
+  type RunChat,
   type RunLease,
   type RunState,
   TAKEOVER_STATES,
@@ -214,7 +215,7 @@ type ControlRun = Pick<Run, "kind" | "state" | "dispatched_by" | "cancel_request
  * What the page offers the visitor for this run, as the API decides it (docs/workers.md): every control belongs to
  * the member who dispatched the run, and approve and rerun also need the writer role on the project. An ask the
  * owner made already (cancel of a held run, takeover, handback) shows as asked until the worker answers it. A plan run
- * is never rerun (the hub answers 409: Run plan dispatches the plan again), and never in review.
+ * is never rerun (the hub answers 409: Run plan dispatches the plan again), and never in review; nor is an author run.
  */
 export function runControls(run: ControlRun, viewer: RunViewer | null): RunControls {
   if (!viewer || viewer.login !== run.dispatched_by) return NO_CONTROLS;
@@ -228,7 +229,8 @@ export function runControls(run: ControlRun, viewer: RunViewer | null): RunContr
     takeover: (TAKEOVER_STATES as readonly string[]).includes(state) ? (run.takeover_requested_at ? "asked" : "offer") : "none",
     handback: (HANDBACK_STATES as readonly string[]).includes(state) ? (run.handback_requested_at ? "asked" : "offer") : "none",
     approve: writer && state === "review",
-    rerun: writer && terminal && run.kind !== "plan" && run.kind !== "review", // a review run only the night shift queues
+    // A review run only the night shift queues; an author run is dispatched again, never rerun (409).
+    rerun: writer && terminal && run.kind !== "plan" && run.kind !== "review" && run.kind !== "author",
     message: (MESSAGE_STATES as readonly string[]).includes(state) && !(held && run.cancel_requested_at),
   };
 }
@@ -296,4 +298,22 @@ export function readVerify(value: unknown): VerifyResult[] {
 /** The first 7 characters of a commit, as git shows it. */
 export function shortSha(sha: string): string {
   return sha.slice(0, 7);
+}
+
+// The chat of an author run.
+
+type ChatState = Pick<RunChat, "status" | "state">;
+
+/**
+ * Whether the owner may reply in the chat now: until it ended, and not once they ended it (the hub refuses a message
+ * then). A reply while the agent works waits in the run's inbox for its next turn; one to a parked run resumes it.
+ */
+export function chatReplyable(chat: ChatState, run?: Pick<Run, "id" | "finish_requested_at">, chatRunId?: number): boolean {
+  if (chat.status === "ended") return false;
+  return !(run && run.finish_requested_at && (chatRunId === undefined || chatRunId === run.id));
+}
+
+/** Whether End chat is offered: a chat that has not ended, of a run a worker took (a queued one is cancelled instead). */
+export function chatEndable(chat: ChatState, run: Pick<Run, "finish_requested_at">): boolean {
+  return chat.status !== "ended" && chat.state !== "queued" && !run.finish_requested_at;
 }

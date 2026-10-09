@@ -16,13 +16,16 @@ import { planKeys } from "@/lib/plan-queries";
 import { whoamiQuery } from "@/lib/queries";
 
 import {
+  type AuthorRunRequest,
   controlRun,
+  dispatchAuthorRun,
   dispatchPlanRun,
   dispatchRuns,
   type DispatchRequest,
   type PlanRunRequest,
   type Run,
   type RunControl,
+  runChatHref,
   runHref,
   runKey,
   runKeys,
@@ -69,6 +72,41 @@ export function useDispatchPlanRun(project: string) {
         queryClient.invalidateQueries({ queryKey: workerKeys.all }),
       ]),
   });
+}
+
+/**
+ * An author run dispatched from the browser, as `useDispatchPlanRun`: either way the project's runs and the workers are
+ * read again, and the plan it revises, so what the hub holds shows at once.
+ */
+export function useDispatchAuthorRun(project: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: AuthorRunRequest) => dispatchAuthorRun(browserApi(), project, body),
+    onError: (error) => {
+      if (isApiError(error) && error.kind === "unauthorized") window.location.assign(LOGIN_PATH);
+    },
+    onSettled: (_data, _error, body) =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: runKeys.all(project) }),
+        body.plan_id ? queryClient.invalidateQueries({ queryKey: planKeys.one(project, body.plan_id) }) : null,
+        queryClient.invalidateQueries({ queryKey: workerKeys.all }),
+      ]),
+  });
+}
+
+/** The toast after New plan or Revise with agent: "Author run #15 dispatched", with a link to its chat. */
+export function useAuthorRunToast() {
+  const t = useTranslations("runs.author.toast");
+  return useCallback(
+    (run: Run) =>
+      void notify({
+        tone: "success",
+        text: t("dispatched", { id: run.id }),
+        description: run.plan_id ? t("reviseText", { plan: run.plan_id }) : t("newText"),
+        link: { label: t("openChat"), href: runChatHref(run.project, run.id) },
+      }),
+    [t],
+  );
 }
 
 /**

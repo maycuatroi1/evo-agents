@@ -1,6 +1,6 @@
 "use client";
 
-import { Workflow } from "lucide-react";
+import { FilePen, Workflow } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { Tag } from "@/components/data/identifier";
@@ -11,6 +11,17 @@ export function PlanRunKindBadge({ className }: { className?: string }) {
   return (
     <Tag className={className} data-testid="run-kind" data-kind="plan">
       <Workflow aria-hidden="true" />
+      {t("kind")}
+    </Tag>
+  );
+}
+
+/** "Author run": what tells a run that writes a plan from the other runs, in tables and on the run page. A kind, so a tag. */
+export function AuthorRunKindBadge({ className }: { className?: string }) {
+  const t = useTranslations("runs.author");
+  return (
+    <Tag className={className} data-testid="run-kind" data-kind="author">
+      <FilePen aria-hidden="true" />
       {t("kind")}
     </Tag>
   );
