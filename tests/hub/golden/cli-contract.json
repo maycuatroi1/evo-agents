@@ -1953,7 +1953,8 @@
           "digest",
           "summary",
           "actor",
-          "created_at"
+          "created_at",
+          "run_id"
         ],
         "schema": "Revision"
       }
@@ -2254,6 +2255,7 @@
               "summary",
               "actor",
               "created_at",
+              "run_id",
               "label",
               "body"
             ],
@@ -2568,6 +2570,14 @@
         {
           "flags": [
             "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--plan"
           ],
           "value": "string",
           "required": false,
@@ -4410,6 +4420,54 @@
         }
       ],
       "json": null
+    },
+    "worker put": {
+      "positionals": [
+        {
+          "name": "file",
+          "metavar": "FILE",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--if-revision"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "plan_id",
+          "area",
+          "revision",
+          "digest",
+          "label",
+          "body",
+          "created_at",
+          "updated_at",
+          "updated_by",
+          "created",
+          "changed",
+          "warnings"
+        ],
+        "schema": "evo_agents__hub__server__plans__Written"
+      }
     },
     "worker step": {
       "positionals": [
@@ -12246,7 +12304,7 @@
             "worker protocol"
           ],
           "summary": "Read Run Plan",
-          "description": "The plan of a plan run this worker holds, as the hub holds it now, read as the member who dispatched the run.",
+          "description": "The plan of a plan run or an author run this worker holds, as the hub holds it now, read as the member who\ndispatched the run; 404 for an author run that has written no plan yet and was dispatched on none.",
           "operationId": "read_run_plan_v1_worker_runs__run_id__plan_get",
           "parameters": [
             {
@@ -12321,6 +12379,109 @@
                   }
                 }
               }
+            }
+          }
+        },
+        "put": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Put Run Plan",
+          "description": "Put the plan an author run this worker holds wrote on the hub: in the run's project, as the member who\ndispatched the run, whose writer role is checked again now, with the checks of PUT /v1/projects/{p}/plans/{id}\n(``plans.write_plan``); the revision records the run. The run writes one plan, the one it was dispatched on or the\none its first write created (422 for another id), never replaces a plan without ``if_revision`` (409), and never\nchanges its progress (422, ``author.progress_problem``).",
+          "operationId": "put_run_plan_v1_worker_runs__run_id__plan_put",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthoredPlan"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/evo_agents__hub__server__plans__Written"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/evo_agents__hub__server__plans__Conflict"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
             }
           }
         }
@@ -18129,6 +18290,19 @@
               "title": "Worker Id",
               "description": "the worker of yours the run goes to; an author run is pinned"
             },
+            "plan_id": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[a-z0-9][a-z0-9-]{0,99}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Plan Id",
+              "description": "the plan the run revises, one you can read; null: the run writes a new plan"
+            },
             "runtime": {
               "type": "string",
               "enum": [
@@ -18174,6 +18348,47 @@
             "worker_id"
           ],
           "title": "AuthorRunDispatch"
+        },
+        "AuthoredPlan": {
+          "properties": {
+            "body": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Body",
+              "description": "the plan as its YAML file reads; a hub key in it is ignored"
+            },
+            "if_revision": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If Revision",
+              "description": "the revision being replaced; leave it out, or 0, to create the plan"
+            },
+            "label": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Label",
+              "description": "{level, location, integrity}; default: the project's, or the held"
+            }
+          },
+          "type": "object",
+          "required": [
+            "body"
+          ],
+          "title": "AuthoredPlan"
         },
         "Blob": {
           "properties": {
@@ -26977,6 +27192,18 @@
               "type": "string",
               "format": "date-time",
               "title": "Created At"
+            },
+            "run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id",
+              "description": "the author run that wrote the revision, as its dispatcher (actor); null for any other write"
             }
           },
           "type": "object",
@@ -27020,6 +27247,18 @@
               "type": "string",
               "format": "date-time",
               "title": "Created At"
+            },
+            "run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id",
+              "description": "the author run that wrote the revision, as its dispatcher (actor); null for any other write"
             },
             "label": {
               "additionalProperties": true,

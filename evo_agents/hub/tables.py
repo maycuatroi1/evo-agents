@@ -268,7 +268,11 @@ plan_revisions = Table(
     Column("summary", Text, nullable=False, server_default=""),
     Column("actor_id", BigInteger, nullable=False),
     _stamp("created_at"),
+    Column("run_id", BigInteger),  # the author run that wrote the revision, NULL for any other write (0021)
     ForeignKeyConstraint(["actor_id"], ["users.id"], ondelete="RESTRICT", name="plan_revisions_actor_id_fkey"),
+    ForeignKeyConstraint(  # runs name a revision of their plan too: created after both tables
+        ["run_id"], ["runs.id"], ondelete="SET NULL", name="plan_revisions_run_id_fkey", use_alter=True
+    ),
     ForeignKeyConstraint(
         ["project_id", "plan_id"],
         ["plans.project_id", "plans.plan_id"],

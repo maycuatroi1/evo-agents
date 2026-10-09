@@ -3,7 +3,8 @@
 ``dispatch`` queues one run per step named (POST /v1/projects/{p}/runs), all of them or none, ``plan`` queues a
 plan run, one run that does every step of the plan not done yet (POST /v1/projects/{p}/plan-runs), and ``author``
 queues an author run, a plan written from your request with the create-exec-plan skill on a worker of yours (POST
-/v1/projects/{p}/author-runs, ``evo_agents.hub.author``). ``list`` and ``show`` read runs of every kind. ``logs``
+/v1/projects/{p}/author-runs, ``evo_agents.hub.author``), or with ``--plan`` a new revision of a plan of the
+project. ``list`` and ``show`` read runs of every kind. ``logs``
 prints a run's events page by page (GET .../runs/{id}/events?after=SEQ), or with ``--follow`` reads the run's
 server-sent events (GET .../runs/{id}/stream) until the hub sends ``end``. ``send`` leaves a message for the run's
 agent, and ``cancel``, ``approve``, ``takeover``, ``handback`` and ``rerun`` are the owner's controls.
@@ -486,7 +487,7 @@ def cmd_author(args) -> int:
     hub, credentials = _signed_in()
     project = _project(args)
     body = {"request": text, "worker_id": _worker_id(hub, credentials.login, args.worker)}
-    chosen = {"runtime": args.runtime, "model": args.model, "timeout_h": args.timeout_h}
+    chosen = {"plan_id": args.plan, "runtime": args.runtime, "model": args.model, "timeout_h": args.timeout_h}
     body.update({key: value for key, value in chosen.items() if value is not None})
     run = hub.call("POST", f"{_project_path(project)}/author-runs", body)
     if args.json:
@@ -878,6 +879,11 @@ def register_runs(hsub) -> None:
         help=f"what the plan should achieve, at most {MAX_REQUEST_BYTES // 1024} KiB of UTF-8; - reads it from stdin",
     )
     with_project(authored)
+    authored.add_argument(
+        "--plan",
+        metavar="PLAN",
+        help="the plan to revise, one you can read; the agent puts it back with its revision (default: a new plan)",
+    )
     authored.add_argument(
         "--worker",
         required=True,

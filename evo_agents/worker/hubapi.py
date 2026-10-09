@@ -185,6 +185,10 @@ class WorkerHub:
     async def plan(self, run_id: int) -> dict:
         return await self.call("GET", f"/v1/worker/runs/{int(run_id)}/plan")
 
+    async def put_plan(self, run_id: int, body: dict) -> dict:
+        """An author run's plan put on the hub: ``body`` holds ``body`` and, to replace the plan, ``if_revision``."""
+        return await self.call("PUT", f"/v1/worker/runs/{int(run_id)}/plan", body)
+
     async def step(self, run_id: int, key: str, body: dict) -> dict:
         return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/steps/{quote(str(key), safe='')}", body)
 

@@ -57,7 +57,9 @@ def test_the_author_prompt_names_the_skill_mode_and_forbids_hub_plan_and_questio
     assert "Do not use an interactive question tool (AskUserQuestion, or any tool like it)" in prompt
     assert "an answer it makes up is not the member's" in prompt
     assert "Do not commit, push, open a pull request or merge in any repo" in prompt
-    assert f"to {author.DRAFT_FILE}" in prompt and runs.RESULT_FILE in prompt
+    assert f"with `{author.PUT_COMMAND} FILE`" in prompt and runs.RESULT_FILE in prompt
+    assert "without `--if-revision` the command never replaces a plan (409)" in prompt
+    assert "authored-plan.yaml" not in prompt and "This run revises plan" not in prompt
     assert "- evo-agents-harness: evo-agents-harness/\n- evo-agents: evo-agents-2/" in prompt
     assert prompt.endswith(f"# The request of binhna\n{request}\n")
     assert len(prompt.encode()) <= runs.MAX_PROMPT_BYTES
@@ -67,3 +69,45 @@ def test_the_author_prompt_keeps_a_request_of_16_kib_whole():
     request = "line of the request\n" * (author.MAX_REQUEST_BYTES // 20)
     prompt = author.build_author_prompt("p", "m", request, [{"repo": "h"}], 1)
     assert request.strip() in prompt and runs.TRUNCATION_MARK.split("{")[0] not in prompt
+
+
+def test_the_author_prompt_of_a_plan_names_it_its_revision_and_how_to_put_it_back():
+    prompt = author.build_author_prompt("p", "m", "Split step 3.", [{"repo": "h"}], 1, plan=("rollout", 4))
+    assert "This run revises plan rollout of the project, at revision 4 when the member asked" in prompt
+    assert f"`{author.READ_COMMAND}`" in prompt and f"`{author.PUT_COMMAND} FILE --if-revision REVISION`" in prompt
+    assert "Keep its id: this run writes no other plan." in prompt
+    assert "keep the status, done_at, evidence of each step and the status, merged_at of each repo" in prompt
+
+
+def test_an_author_write_keeps_the_progress_of_each_step_and_repo():
+    held = {
+        "id": "p",
+        "repos": [{"repo": "r", "status": "merged", "merged_at": "2026-10-01"}],
+        "steps": [
+            {"id": 1, "what": "a", "status": "done", "done_at": "2026-10-01", "evidence": "r@abc"},
+            {"id": 2, "what": "b", "status": "pending"},
+            {"id": 3, "what": "c"},
+        ],
+    }
+    same = {
+        "id": "p",
+        "goal": "new words",
+        "repos": [{"repo": "r", "status": "merged", "merged_at": "2026-10-01", "branch": "x"}],
+        "steps": [
+            {"id": 1, "what": "a, said better", "status": "done", "done_at": "2026-10-01", "evidence": "r@abc"},
+            {"id": 3, "what": "c", "status": "pending"},
+            {"id": 4, "what": "d"},
+        ],
+    }
+    assert author.progress_problem(held, same) is None, "words change, a pending step goes, progress stays"
+    assert author.progress_problem(None, {"id": "p", "steps": [{"id": 1, "status": "pending"}]}) is None
+
+    undone = {**same, "steps": [{**same["steps"][0], "status": "in_progress"}, *same["steps"][1:]]}
+    assert "step 1: status done -> in_progress" in author.progress_problem(held, undone)
+    unmerged = {**same, "repos": [{"repo": "r", "status": "merged"}]}
+    assert "repo r: merged_at 2026-10-01 -> unset" in author.progress_problem(held, unmerged)
+    dropped = {**same, "steps": same["steps"][1:]}
+    problem = author.progress_problem(held, dropped)
+    assert "step 1: status done -> unset" in problem and "step 1: evidence r@abc -> unset" in problem
+    started = {"id": "p", "steps": [{"id": 1, "status": "done"}]}
+    assert "none for a new plan" in author.progress_problem(None, started)
