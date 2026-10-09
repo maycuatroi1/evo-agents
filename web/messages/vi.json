@@ -35,9 +35,11 @@
     "secrets": "Secret",
     "runDiff": "Diff",
     "inbox": "Inbox",
+    "monitor": "Monitor",
     "counts": {
       "openDecisions": "{count, plural, other {# quyết định hoặc đề xuất chờ bạn trả lời}}",
-      "activeRuns": "{count, plural, other {# run đang hoạt động}}"
+      "activeRuns": "{count, plural, other {# run đang hoạt động}}",
+      "runningRuns": "{count, plural, other {# run đang chạy}}"
     },
     "fleet": {
       "onlineBusy": "<b>{online, plural, other {# worker online}}</b>, {busy} đang chạy",
@@ -324,7 +326,8 @@
       "waitingFor": "Đang chờ {owner}",
       "noWorker": "chưa có worker",
       "ran": "đã chạy {duration}",
-      "queuedAgo": "vào hàng đợi <time></time>"
+      "queuedAgo": "vào hàng đợi <time></time>",
+      "monitor": "Xem trên Monitor"
     },
     "recent": {
       "title": "Vừa kết thúc",
@@ -1756,6 +1759,7 @@
     "title": "Run",
     "metaTitle": "Run của {project}",
     "dispatchButton": "Dispatch",
+    "monitorButton": "Monitor",
     "count": "{count, plural, other {# run}}",
     "caption": "Run của dự án {project}",
     "pagerLabel": "run",
@@ -3410,6 +3414,56 @@
         "worker": "trên {worker}"
       },
       "outcomeDaysValue": "{count, plural, other {# ngày sau khi merge}}"
+    }
+  },
+  "monitor": {
+    "title": "Monitor",
+    "following": "Đang theo dõi mọi run đang diễn ra: run nào bắt đầu sẽ vào lưới.",
+    "chosen": "{count, plural, =0 {Lưới chưa có run nào.} other {Đang xem # run bạn chọn.}}",
+    "followAll": "Theo dõi mọi run đang diễn ra",
+    "list": {
+      "title": "Đang diễn ra",
+      "count": "{count, plural, other {# run đang diễn ra}}",
+      "show": "Hiện các run đang diễn ra",
+      "hide": "Ẩn các run đang diễn ra",
+      "watch": "Xem run #{id}",
+      "empty": "Không có run nào đang diễn ra.",
+      "full": "Lưới chứa tối đa {max} run. Đóng một ô để xem run khác."
+    },
+    "grid": {
+      "label": "Các run bạn đang xem",
+      "emptyTitle": "Lưới chưa có run nào",
+      "emptyText": "Chọn run trong danh sách để xem ở đây, hoặc theo dõi mọi run đang diễn ra.",
+      "hidden": "{count, plural, other {# run trong link không hiện: run không tồn tại hoặc bạn không đọc được.}}",
+      "capped": "Lưới hiện {max} run đầu tiên của link."
+    },
+    "empty": {
+      "title": "Không có run nào đang diễn ra",
+      "description": "Monitor hiện mỗi run đang chờ worker, đang chạy hay đang chờ quyết định thành một ô trực tiếp cạnh các run khác. Run hiện ở đây ngay khi được dispatch."
+    },
+    "tile": {
+      "label": "Run #{id}",
+      "open": "Mở run #{id}",
+      "close": "Thôi xem run #{id}",
+      "queued": "vào hàng đợi <time></time>",
+      "elapsed": "đã chạy {duration}",
+      "ran": "đã chạy {duration}",
+      "ended": "kết thúc <time></time>",
+      "noWorker": "chưa có worker",
+      "waitingYou": "Đang chờ bạn",
+      "waitingFor": "Đang chờ {owner}",
+      "steps": "xong {done} trên {total} bước",
+      "trace": "Trace của run #{id}",
+      "earlier": "Các sự kiện trước đó nằm ở trang của run.",
+      "waiting": "Đang chờ sự kiện đầu tiên…",
+      "quiet": "Trace chưa có gì.",
+      "noTrace": "Trace không có gì.",
+      "unavailable": "Không đọc được trace.",
+      "error": "Không đọc được run #{id}.",
+      "retry": "Thử lại",
+      "retrying": "Đang thử lại",
+      "latest": "Tới mục mới nhất",
+      "now": "Run #{id} giờ ở trạng thái {state}."
     }
   }
 }

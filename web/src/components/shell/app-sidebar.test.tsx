@@ -104,6 +104,7 @@ describe("AppSidebar", () => {
     expect(links.map((link) => link.getAttribute("data-testid"))).toEqual([
       "nav-home",
       "nav-inbox",
+      "nav-monitor",
       "nav-overview",
       "nav-plans",
       "nav-runs",
@@ -134,6 +135,28 @@ describe("AppSidebar", () => {
     await waitFor(() => expect(screen.getByTestId("nav-runs-count")).toHaveTextContent("3"));
     expect(screen.getByTestId("nav-runs-count").className).toContain("bg-running-soft");
     expect(screen.getByTestId("nav-runs")).toHaveAccessibleName("Run, 3 run đang hoạt động");
+  });
+
+  it("counts the runs at work in every project on Monitor, in running, and hides the count at zero", async () => {
+    api.answers["/v1/me/overview"] = { counts: { running: 3 } };
+    setup();
+    await waitFor(() => expect(screen.getByTestId("nav-monitor-count")).toHaveTextContent("3"));
+    expect(screen.getByTestId("nav-monitor-count").className).toContain("bg-running-soft");
+    expect(screen.getByTestId("nav-monitor")).toHaveAttribute("href", "/monitor");
+    expect(screen.getByTestId("nav-monitor")).toHaveAccessibleName("Monitor, 3 run đang chạy");
+  });
+
+  it("shows no Monitor count while nothing runs, or while the overview cannot be read", async () => {
+    api.answers["/v1/me/overview"] = { counts: { running: 0 } };
+    const { unmount } = setup();
+    await waitFor(() => expect(screen.getByTestId("nav-inbox-count")).toBeInTheDocument());
+    expect(screen.queryByTestId("nav-monitor-count")).toBeNull();
+    expect(screen.getByTestId("nav-monitor")).toHaveAccessibleName("Monitor");
+    unmount();
+    api.fail.add("/v1/me/overview");
+    setup();
+    await waitFor(() => expect(screen.getByTestId("nav-inbox-count")).toBeInTheDocument());
+    expect(screen.queryByTestId("nav-monitor-count")).toBeNull();
   });
 
   it("hides a count at zero, and the project's group outside a project", async () => {
