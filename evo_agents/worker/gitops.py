@@ -71,9 +71,9 @@ class Pushed:
     """What a push did."""
 
     branch: str  # the remote branch pushed to
-    head: str  # the commit it points at now
+    head: str  # HEAD of the worktree, which the branch has now: it points at it, or at a commit after it
     default: bool  # a default branch of the repo, which only a plan run whose plan names it pushes
-    changed: bool  # the push moved the branch; False when it pointed at ``head`` already, and nothing was sent
+    changed: bool  # the push moved the branch; False when the branch had ``head`` already, and nothing was sent
     commits: tuple[str, ...] = ()  # the commits it added to the branch, newest first, at most MAX_NOTICE_COMMITS
 
 
@@ -418,6 +418,21 @@ async def remote_tip(
     return None
 
 
+async def has_commit(
+    cwd: Path, tip: str, commit: str, branch: str, remote: str = "origin", *, env: Mapping[str, str] | None = None
+) -> bool:
+    """Whether ``tip``, which ``branch`` of the remote points at, has ``commit`` in its history: ``tip`` is fetched
+    first when this repository lacks it. False when git cannot tell."""
+    if await rev(cwd, tip) is None:
+        with contextlib.suppress(GitError):  # the push that follows says what went wrong
+            await git(
+                cwd, "fetch", "--quiet", remote, f"refs/heads/{branch}", timeout=NETWORK_TIMEOUT, env=env, check=False
+            )
+        if await rev(cwd, tip) is None:
+            return False
+    return await is_ancestor(cwd, commit, tip)
+
+
 async def new_commits(cwd: Path, before: str | None, remote: str = "origin", limit: int = MAX_NOTICE_COMMITS) -> list:
     """The commits of HEAD that ``before`` lacks (or that no branch of the remote has, when ``before`` is None),
     newest first, at most ``limit``; empty when git cannot tell."""
@@ -439,13 +454,14 @@ async def push(
 ) -> Pushed:
     """Push HEAD to ``branch`` of the remote, with git in ``env``: a fast-forward or nothing, never forced. A default
     branch of the repo (one of ``protected``) only as ``check_push`` allows, PushRefused before anything is sent
-    otherwise. A branch that points at HEAD already is left alone."""
+    otherwise. A branch that has HEAD already, pointing at it or at a commit after it, is left alone: a worktree the
+    remote moved past since the run began has nothing to push."""
     default = check_push(branch, protected, kind=kind, plan_branch=plan_branch)
     head = await rev(cwd, "HEAD")
     if head is None:
         raise GitError("HEAD names no commit: there is nothing to push")
     before = await remote_tip(cwd, branch, remote, env=env)
-    if before == head:
+    if before == head or (before is not None and await has_commit(cwd, before, head, branch, remote, env=env)):
         return Pushed(branch, head, default, False)
     commits = tuple(await new_commits(cwd, before, remote))
     sent = [f"--push-option={option}" for option in options]
