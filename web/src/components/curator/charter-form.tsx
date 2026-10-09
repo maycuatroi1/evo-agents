@@ -121,7 +121,10 @@ function Field({ base, field, label, hint, errors, className, children }: FieldP
   );
 }
 
-/** A group of fields as a card: its legend as the card's head. */
+/**
+ * A group of fields as a card: its legend as the card's head. Two fields to a row from md, four from 2xl, where two
+ * would stretch a time or a number across half a wide window; a field that spans two keeps half the row.
+ */
 function Group({ title, description, children, testId }: { title: string; description?: string; children: ReactNode; testId: string }) {
   return (
     <fieldset className="min-w-0 rounded-md border bg-card shadow-raised" data-testid={testId}>
@@ -130,7 +133,7 @@ function Group({ title, description, children, testId }: { title: string; descri
         <span className="text-[15px] leading-[22px] font-semibold">{title}</span>
         {description ? <span className="text-xs text-fg-subtle">{description}</span> : null}
       </div>
-      <div className="grid gap-4 px-4 py-4 md:grid-cols-2">{children}</div>
+      <div className="grid gap-4 px-4 py-4 md:grid-cols-2 2xl:grid-cols-4">{children}</div>
     </fieldset>
   );
 }
@@ -251,7 +254,7 @@ export function CharterFormView({ project, charter, login }: { project: string; 
   return (
     <form noValidate onSubmit={submit} className="flex flex-col gap-4" aria-label={t("formLabel")} data-testid="charter-form">
       <Group title={t("groups.goals")} description={t("groupHints.goals")} testId="charter-goals">
-        <div className="flex min-w-0 flex-col gap-3 md:col-span-2">
+        <div className="flex min-w-0 flex-col gap-3 md:col-span-2 2xl:col-span-4">
           {form.goals.length === 0 ? <p className="text-[13px] text-muted-foreground">{t("noGoals")}</p> : null}
           <ol className="flex flex-col gap-3">
             {form.goals.map((goal, index) => (

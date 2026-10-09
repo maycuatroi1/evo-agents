@@ -16,6 +16,7 @@ import { QueryView, useHubQuery } from "@/components/states/query-view";
 import { NotFoundState, PageSkeleton } from "@/components/states/states";
 import { StatusBadge, useStatusText } from "@/components/status/status-badge";
 import { workerQuery } from "@/components/workers/queries";
+import { useMediaQuery, XL_QUERY } from "@/hooks/use-media-query";
 import { browserApi } from "@/lib/api/browser";
 import type { ApiErrorInfo } from "@/lib/api/errors";
 import { whoamiQuery } from "@/lib/queries";
@@ -152,6 +153,9 @@ function RunPage({ run }: { run: Run }) {
     [run.id, run.dispatched_by, viewer?.login, describe, openIds, run.state, log.status, active],
   );
 
+  // From xl the side column is a scroll region of its own, which a key must reach; below, the page scrolls it.
+  const split = useMediaQuery(XL_QUERY);
+
   const review = run.kind === "review";
   const title = run.title ?? (plan ? run.plan_id : t("untitled"));
   const planLink = (chunks: ReactNode) => (
@@ -161,7 +165,17 @@ function RunPage({ run }: { run: Run }) {
   );
 
   return (
-    <div className="flex flex-col gap-6" data-testid="run-detail" data-run-id={run.id} data-state={run.state} data-kind={run.kind}>
+    // From xl the page is one window tall (the window less the top bar and the gutters), and the split below the
+    // timeline takes what the head leaves: as tall as the window allows, at least 30rem, the page scrolling past the
+    // head only when a short window leaves less (min-h-fit, with the split's size contained so its content does not
+    // count).
+    <div
+      className="flex flex-col gap-6 xl:h-[calc(100dvh-6.25rem)] xl:min-h-fit"
+      data-testid="run-detail"
+      data-run-id={run.id}
+      data-state={run.state}
+      data-kind={run.kind}
+    >
       <PageHeader
         // "Run #12" for every run, as the kit's RunScreen: a plan run says what it is once, in its Plan run tag.
         title={
@@ -186,7 +200,10 @@ function RunPage({ run }: { run: Run }) {
                 ),
               })
             : plan || run.step_key === null
-            ? t.rich("planSub", { plan: run.plan_id, title, planLink })
+            ? // The plan once, as its link; its title after it only when it says more than the id.
+              run.title && run.title !== run.plan_id
+              ? t.rich("planSubTitled", { plan: run.plan_id, title: run.title, planLink })
+              : t.rich("planSub", { plan: run.plan_id, planLink })
             : t.rich("sub", {
                 plan: run.plan_id,
                 step: run.step_key,
@@ -207,20 +224,36 @@ function RunPage({ run }: { run: Run }) {
       />
       <RunNotes run={run} controls={controls} />
       <RunTimeline run={run} moves={log.moves} />
-      {/* The kit's run screen: the trace on the left; the decision, details, usage and result in the side column from
-          xl. Below xl the side column moves under the timeline, the decision first, then the trace: the page reads in
-          that order at every width, and from md to xl the side cards sit two by two. */}
-      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_23rem]">
-        {plan ? <RunDecisions run={run} owner={controls.owner} onTakeOver={takeOver} className="xl:col-start-2 xl:row-start-1" /> : null}
-        <div className="grid min-w-0 items-start gap-4 md:grid-cols-2 xl:col-start-2 xl:grid-cols-1" data-testid="run-side">
-          <RunDetails run={run} viewer={viewer} />
-          <UsageMeter run={run} events={log.events} />
-          {plan ? <RunPlanSteps run={run} /> : null}
-          <RunResult run={run} />
-          {controls.owner ? <RunCredentials run={run} /> : null}
-        </div>
-        <div id={logId} className="min-w-0 scroll-mt-16 xl:col-start-1 xl:row-span-2 xl:row-start-1">
+      {/* The kit's run screen. From xl, two regions that scroll on their own, side by side and as tall as each other:
+          the session (Trace, Raw log, Terminal) on the left, filling the window down to its bottom gutter, and the side
+          column (the decision a plan run waits on, Details, Usage, the plan's steps, the Result, Credentials) on the
+          right. Below xl the side column moves under the timeline, the decision first, then the session: the page
+          reads in that order at every width, and from md to xl the side cards sit two by two. */}
+      <div
+        className="grid gap-4 xl:min-h-[30rem] xl:flex-1 xl:grid-cols-[minmax(0,1fr)_23rem] xl:grid-rows-[minmax(0,1fr)] xl:[contain:size]"
+        data-testid="run-split"
+      >
+        {/* The side column's 4 px of padding, taken back by its margin, keep the cards' shadows and focus outlines
+            inside its scroll region, so its edges and the session card's line up. Relative, so what its cards place
+            absolutely (the words for screen readers) is clipped with them, instead of lengthening the page. */}
+        <section
+          aria-label={t("aside", { id: run.id })}
+          tabIndex={split ? 0 : undefined}
+          className="relative flex min-w-0 flex-col gap-4 xl:col-start-2 xl:row-start-1 xl:-m-1 xl:overflow-y-auto xl:overscroll-contain xl:p-1 xl:focus-visible:outline-offset-[-2px]"
+          data-testid="run-aside"
+        >
+          {plan ? <RunDecisions run={run} owner={controls.owner} onTakeOver={takeOver} /> : null}
+          <div className="grid min-w-0 items-start gap-4 md:grid-cols-2 xl:grid-cols-1" data-testid="run-side">
+            <RunDetails run={run} viewer={viewer} />
+            <UsageMeter run={run} events={log.events} />
+            {plan ? <RunPlanSteps run={run} /> : null}
+            <RunResult run={run} />
+            {controls.owner ? <RunCredentials run={run} /> : null}
+          </div>
+        </section>
+        <div id={logId} className="flex min-w-0 scroll-mt-16 flex-col xl:col-start-1 xl:row-start-1 xl:min-h-0 xl:scroll-mt-19">
           <RunLogCard
+            fill
             runId={run.id}
             log={log}
             frozen={{ at: frozenAt, set: setFrozenAt }}
@@ -228,11 +261,11 @@ function RunPage({ run }: { run: Run }) {
             composer={controls.message ? <RunComposer run={run} /> : null}
             tab={sessionTab}
             onTabChange={setSessionTab}
-            trace={(shown) => <AgentTrace events={log.events} status={log.status} context={traceContext} shown={shown} />}
+            trace={(shown) => <AgentTrace events={log.events} status={log.status} context={traceContext} shown={shown} fill />}
             terminal={
               terminal
                 ? (shown) => (
-                    <RunTerminalPanel run={run} open={terminal.open} active={shown} sessionCreatedAt={terminal.sessionCreatedAt} />
+                    <RunTerminalPanel run={run} open={terminal.open} active={shown} sessionCreatedAt={terminal.sessionCreatedAt} fill />
                   )
                 : null
             }

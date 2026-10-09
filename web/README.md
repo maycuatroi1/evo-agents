@@ -71,7 +71,9 @@ also at 375 px).
 
 The runs specs are the worker themselves: they claim runs, report states and send events, messages and diffs with a
 worker token, as the daemon does (`e2e/support/runs.ts`), and `e2e/run-detail.spec.ts` checks the run page's live log
-against them. `e2e/inbox.spec.ts` asks decisions and sends notices the same way, then checks the bell, the Inbox and
+against them; `e2e/monitor.spec.ts` checks the Monitor's list, its grid at each tile count and the tiles' live
+traces the same way, and `e2e/layout-width.spec.ts` measures every area's content frame at 1920 by 1080.
+`e2e/inbox.spec.ts` asks decisions and sends notices the same way, then checks the bell, the Inbox and
 the answers from the Inbox and from a plan run's page against what reaches the run's inbox. For the terminal the stack plays the worker's end (`FakeTerminal` in `e2e/hub_stack.py`, driven through
 `e2e/support/terminal.ts`): once a browser waits on a run it connects with the worker's token over a real PTY, whose line
 discipline echoes what is typed and whose program answers each line with `echo: <line>` and each resize with
