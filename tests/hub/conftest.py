@@ -39,10 +39,31 @@ def pg_server():
     assert stray is None, "a test migrated the database named by EVO_HUB_TEST_DSN instead of its own"
 
 
-@pytest.fixture
-def hub_db(pg_server):
-    """A fresh database for one test, dropped afterwards. A connection the test leaves open fails it."""
+@pytest.fixture(scope="session")
+def hub_template(pg_server):
+    """A database at the head of the hub migrations, migrated once per pytest process (once per xdist worker), that
+    ``hub_db`` copies; dropped at the end of the session."""
+    from evo_agents.hub.migrate import migrate
+
     db = pg.create_database()
+    try:
+        migrate(db.dsn)
+        pg.make_template(db)
+        yield db
+    finally:
+        pg.drop_database(db)
+
+
+@pytest.fixture
+def hub_db(request, pg_server):
+    """A fresh database for one test, dropped afterwards. A connection the test leaves open fails it.
+
+    It is at the head of the hub migrations already, a copy of ``hub_template``, so the hub the test starts finds
+    nothing to migrate. A test of migrating itself marks ``@pytest.mark.empty_db`` and gets an empty database."""
+    if request.node.get_closest_marker("empty_db"):
+        db = pg.create_database()
+    else:
+        db = pg.clone_database(request.getfixturevalue("hub_template"))
     try:
         yield db
         leaked = pg.wait_no_backends(db.name)
