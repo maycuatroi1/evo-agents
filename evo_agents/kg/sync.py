@@ -41,6 +41,7 @@ class SyncResult:
     removals: int = 0
     held: list[dict] = field(default_factory=list)
     issues: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
     returncode: int | None = None
     exception: str | None = None
     stderr_tail: list[str] = field(default_factory=list)
@@ -156,6 +157,8 @@ def sync_source(
                 else:
                     if kind == "error":
                         result.errors += 1
+                    elif kind == "log" and message["level"] in ("warning", "error"):
+                        result.warnings.append(message["message"])
                     writer.write(message)
         except ConnectorError as exc:
             result.issues.append(str(exc))
