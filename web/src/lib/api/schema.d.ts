@@ -6818,11 +6818,6 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
-            /**
-             * Run Id
-             * @description the author run that wrote the revision, as its dispatcher (actor); null for any other write
-             */
-            run_id?: number | null;
             /** Label */
             label: {
                 [key: string]: unknown;

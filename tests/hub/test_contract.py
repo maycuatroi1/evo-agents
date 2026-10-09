@@ -246,9 +246,9 @@ def test_assert_json_keys_follows_kind_and_variants():
         "summary": "s",
         "actor": "a",
         "created_at": "t",
-        "run_id": 1,
     }
     assert_json_keys("hub plan show", {**body, "label": "l", "body": {}}, "--revision")
+    assert_json_keys("hub plan history", [{**body, "run_id": 1}])
 
 
 # Commands in markdown

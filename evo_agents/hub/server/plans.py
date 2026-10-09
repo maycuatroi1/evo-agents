@@ -129,19 +129,24 @@ class Written(Plan):
     warnings: list[Problem] = Field(description="what plan_semantics found; the plan was stored anyway")
 
 
-class Revision(BaseModel):
+class RevisionFields(BaseModel):
     revision: int
     area: Literal[AREAS]
     digest: str
     summary: str
     actor: str
     created_at: datetime
+
+
+class Revision(RevisionFields):
     run_id: int | None = Field(
         None, description="the author run that wrote the revision, as its dispatcher (actor); null for any other write"
     )
 
 
-class RevisionBody(Revision):
+# One revision with its body keeps the keys of 0.8.0, which consumers of `hub plan show --revision` pin exactly (seam
+# hub-cli-v1); the author run that wrote a revision is in the history (Revision.run_id).
+class RevisionBody(RevisionFields):
     label: dict
     body: dict
 

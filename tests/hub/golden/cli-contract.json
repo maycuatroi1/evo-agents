@@ -2255,7 +2255,6 @@
               "summary",
               "actor",
               "created_at",
-              "run_id",
               "label",
               "body"
             ],
@@ -27895,18 +27894,6 @@
               "type": "string",
               "format": "date-time",
               "title": "Created At"
-            },
-            "run_id": {
-              "anyOf": [
-                {
-                  "type": "integer"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Run Id",
-              "description": "the author run that wrote the revision, as its dispatcher (actor); null for any other write"
             },
             "label": {
               "additionalProperties": true,

@@ -146,7 +146,8 @@ def test_an_author_run_puts_a_new_plan_as_its_dispatcher_and_the_history_names_t
         (1, OWNER, run_id),
     ]
     one = client.get(f"/v1/projects/{PROJECT}/plans/{NEW}/revisions/2", headers=hub["owner"]).json()
-    assert one["run_id"] == run_id and one["body"]["title"] == "Another title"
+    assert one["body"]["title"] == "Another title"
+    assert "run_id" not in one, "a revision keeps the keys of 0.8.0 (hub-cli-v1); history names the run"
     assert [item["run_id"] for item in history(client, hub["owner"], PLAN)] == [None], "a member's put names no run"
     assert [row for row in audit_rows(hub_db, "plan") if NEW in row[1]] == [
         ("plan.create", f"{PROJECT}/{NEW}@1", OWNER, PROJECT),

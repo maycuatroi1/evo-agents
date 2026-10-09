@@ -55,7 +55,7 @@ PLAN_KEYS = (
     "updated_by",
 )
 WRITTEN_KEYS = (*PLAN_KEYS, "created", "changed", "warnings")
-REVISION_KEYS = ("revision", "area", "digest", "summary", "actor", "created_at", "run_id")
+REVISION_KEYS = ("revision", "area", "digest", "summary", "actor", "created_at")
 SUMMARY_KEYS = (
     "plan_id",
     "area",
@@ -498,7 +498,7 @@ def register_plans(hsub) -> None:
 
     history = psub.add_parser("history", help="the revisions of a plan: who changed it, when and what")
     history.add_argument("plan", metavar="PLAN")
-    common(history, returns_array(*REVISION_KEYS, schema="Revision"))
+    common(history, returns_array(*REVISION_KEYS, "run_id", schema="Revision"))
     history.set_defaults(func=cmd_history)
 
     put = psub.add_parser(
