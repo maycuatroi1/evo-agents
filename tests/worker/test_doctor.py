@@ -68,10 +68,11 @@ class Tools:
 
     def ssh_keygen(self) -> None:
         """Opens a key whose name holds "plain", refuses one whose name holds "open" for its mode, and asks the
-        passphrase of any other."""
+        passphrase of any other. It reads the file's name, not its path: under pytest-xdist every tmp_path holds
+        "popen-gw<n>"."""
         self.add(
             "ssh-keygen",
-            'for last; do :; done\ncase "$last" in\n'
+            'for last; do :; done\ncase "${last##*/}" in\n'
             '  *plain*) echo "ssh-ed25519 AAAAC3Nz fake"; exit 0 ;;\n'
             '  *open*) echo "Load key \\"$last\\": bad permissions" >&2; exit 255 ;;\n'
             '  *) echo "Load key \\"$last\\": incorrect passphrase supplied to decrypt private key" >&2; exit 255 ;;\n'
