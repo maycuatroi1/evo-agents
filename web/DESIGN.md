@@ -379,7 +379,8 @@ Shared pieces built on them:
   `OtherStatusBadge`, kept as written. `StatusIcon` is the icon alone with its word for screen readers, and the
   test ids stay those the e2e specs read (`run-state`, `worker-status`, `decision-state`).
 - `components/data/identifier.tsx`: names. `Identifier` is a mono chip on `surface-sunken` with 4 px corners for a
-  worker, branch, revision, session or hash, a link in text colour turning `brand` on hover when it has a page, with
+  worker, branch, revision, session or hash, a link in text colour turning `brand` on hover when it has a page (on the
+  hub, or with `externalHref` on a forge, in a new tab), with
   an optional copy button (24 px, a 44 px hit area under 768 px) that says what it copied in a toast and
   selects the text where the clipboard is refused (`useClipboard`, which every copy button of the web goes through). `RunRef` writes a run as `#N` in mono with tabular figures.
   `Tag` is a kind or a role (Admin, Plan run, Deploy, Blocking): an icon and a word on `surface-sunken` with 4 px
@@ -712,7 +713,8 @@ Shared pieces built on them:
   order at every width (`run-side`). Take over shows the Terminal tab, focuses its tab and scrolls the session card
   into view; `?view=` picks the tab at every width. The head
   is "Run #12" for every run, a plan run saying so in its Plan run tag, over the plan (in the body font) and step as
-  `brand` links with a quiet underline, so colour is not all that sets them apart from the line. The owner's controls sit in the header, each shown only when the state and the visitor's rights allow it
+  `brand` links with a quiet underline, so colour is not all that sets them apart from the line. A plan run names its
+  plan once, as the link, and its title after it only when the title differs from the id. The owner's controls sit in the header, each shown only when the state and the visitor's rights allow it
   (`run-model.ts`, `runControls`), in the kit's order: Take over (a dialog with `evo-agents worker attach N` and, for
   Claude Code, the Remote Control session `evo-run-N`), the diff with its `+12 −3` in mono `success` and `danger` once
   the worker reported a diffstat, Rerun, Hand back, Approve, and Cancel (confirmed in a dialog) last, plus the composer
@@ -720,12 +722,25 @@ Shared pieces built on them:
   breakpoint (`PageHeader`'s `actions`, which take a line of their own when the title leaves no room), so they wrap
   instead of pushing the page sideways.
 - `run-credentials.tsx`, the owner's Credentials card in the side column, drawn as the other side cards (`surface`,
-  `shadow-raised`, a `section-title` head with one `caption` line in `fg-subtle`): each lease the run got, its name in
-  mono, its provider as a tag (Your secret with `KeyRound`, or GitHub App with the GitHub mark), the variable or the
-  origins it answered for, when and to which worker it was issued, when it ends and when it was revoked, and its state
-  as a pill (Out in `brand`, Expired neutral, Revoked outlined with `Ban`); read every 5 seconds while the run is
-  active and again when it moves, and never a value. Nobody else gets the card, as the API answers them 403; its foot
-  links to the Secrets page.
+  `shadow-raised`, a `section-title` head with a link to the Secrets page on its right, 13 px `brand` with a chevron):
+  each lease the run got, its name in mono, its provider as a tag (Your secret with `KeyRound`, or GitHub App with the
+  GitHub mark), the variable or the origins it answered for (each a link to the repo's page), when and to which worker
+  it was issued, when it ends and when it was revoked, and its state as a pill (Out in `brand`, Expired neutral,
+  Revoked outlined with `Ban`); read every 5 seconds while the run is active and again when it moves, and never a
+  value. Nobody else gets the card, as the API answers them 403. The side cards say nothing of when they fill or who
+  sees them: Usage and the Result with nothing to show are their head alone, the title and a `caption` state on the
+  right ("Nothing reported yet", "None yet"; "Nothing reported", "None" once the run ended).
+- `forge.ts` and `links.tsx`, the run page's links out of the hub. A repo leads to its page on its forge, read from the
+  origin the project registered (`GET /v1/projects/{project}`): https without the user, `.git` and trailing slash, SSH
+  (`git@host:owner/repo.git`, `ssh://git@host[:port]/owner/repo.git`) as https on the same host. On GitHub
+  (`github.com`) and GitLab (a host whose name says gitlab, as the Curator's code links) its branches lead to
+  `/tree/` and `/-/tree/`, its commits to `/commit/` and `/-/commit/`; on another forge only the repo links. A repo
+  without an origin, or with one that is not http, https or SSH or holds characters no forge path does, stays text.
+  Every http and https address in the trace, the Result and a git lease's targets is a link too, and nothing else
+  ever is (no `javascript:`, `data:` or `file:`). Each opens a new tab with `rel="noopener noreferrer"`; its name is
+  its text then "(opens in a new tab)" (`aria-label`, so the text in the page stays the text); on cards it is `brand`
+  with a quiet underline, on the trace's `term-bg` `term-agent` underlined. A tool row's folded argument stays text, as
+  a link in a `summary` would also toggle the row; open, its Input shows the address as a link.
 - `run-timeline.tsx`, the kit's RunTimeline (`timelineModel` in `run-model.ts`): the phases left to right (top to
   bottom under 768 px), the time from each phase to the next on the line between them, mono 11 px in `fg-muted` on
   `card`. Done phases are `fg-muted` nodes on a solid `fg-subtle` line; the current one is a `running` node with the
@@ -765,7 +780,8 @@ Shared pieces built on them:
   cost "as reported" or "Cost not reported"; nothing is priced by the page. Once the worker reported the run's end it
   reads `run.usage`; while it runs it adds up the `usage_update` events, as each runtime reports them: Claude Code per
   turn with the session's cost so far, opencode per step with the step's cost, Codex the thread's running total (its
-  cached input inside its input, reasoning inside output). The Result card no longer lists raw usage keys.
+  cached input inside its input, reasoning inside output). The note under the rows names the cache writes alone, the
+  cost being said on its line. The Result card no longer lists raw usage keys.
 - The Raw log (`use-run-log.ts`, `run-log.tsx`) follows the run's server-sent events with an EventSource; the browser
   reconnects by itself with `Last-Event-ID`, every event is kept once by its seq, and the stream's `end` closes it for
   good. When the stream fails (closed by the browser, three errors without opening, or 10 seconds behind the run's

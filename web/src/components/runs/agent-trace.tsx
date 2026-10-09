@@ -27,6 +27,8 @@ import { SafeMarkdown } from "@/components/memories/markdown";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
+import { splitLinks } from "./forge";
+import { LinkedText } from "./links";
 import type { DescribeMove } from "./log-model";
 import { decisionAnchor, decisionHref, type RunEvent } from "./queries";
 import {
@@ -48,7 +50,9 @@ import type { LogStatus } from "./use-run-log";
  * messages, "Asked you" for a decision with a link to its card, and the moves between states in `caption`. A running
  * run ends with the typing dots. It reads the same events as the Raw log (SSE, then polling), in a `role="log"` region
  * (polite) that follows the newest item unless the person scrolled up; past 500 items only the ones in view render.
- * Tool rows are `details`, so they open and close without script.
+ * Tool rows are `details`, so they open and close without script. Every http and https address in what the trace shows
+ * is a link to a new tab (links.tsx); the one in a tool row's folded line is text there, since a link inside its
+ * `summary` would also open and close the row, and the row's Input shows it as a link once opened.
  */
 
 /** How close to the end (px) still counts as at the end. */
@@ -137,10 +141,10 @@ function TermBlock({ text, diff = false, label, testId }: { text: string; diff?:
         {diff
           ? body.split("\n").map((line, index) => (
               <span key={index} className={cn("block", line.startsWith("+") ? "text-term-ok" : line.startsWith("-") ? "text-term-error" : "")}>
-                {line || " "}
+                {line ? <LinkedText text={line} tone="term" /> : " "}
               </span>
             ))
-          : body}
+          : <LinkedText text={body} tone="term" />}
       </pre>
       {cut ? (
         <button
@@ -199,7 +203,9 @@ function ToolRow({ tool, at, open, onToggle, active }: { tool: ToolCall; at: str
   const failed = tool.status === "failed" || (tool.exitCode !== null && tool.exitCode !== 0);
   const { name: named, arg } = toolLabel(tool);
   const name = named ?? t(`kind.${tool.kind}`);
-  const nothing = !tool.output && !tool.change && !tool.input;
+  // The folded line shows the argument as text; an address in it is a link in the Input once the row is open.
+  const input = tool.input ?? (arg && splitLinks(arg).some((piece) => piece.href) ? arg : null);
+  const nothing = !tool.output && !tool.change && !input;
   return (
     <Row
       icon={KIND_ICON[tool.kind]}
@@ -208,7 +214,11 @@ function ToolRow({ tool, at, open, onToggle, active }: { tool: ToolCall; at: str
       head={
         <>
           <Who>{name}</Who>
-          {tool.description ? <span className="min-w-0 truncate">{tool.description}</span> : null}
+          {tool.description ? (
+            <span className="min-w-0 truncate">
+              <LinkedText text={tool.description} />
+            </span>
+          ) : null}
         </>
       }
     >
@@ -242,7 +252,7 @@ function ToolRow({ tool, at, open, onToggle, active }: { tool: ToolCall; at: str
             <div className="min-w-0">
               {tool.change ? <TermBlock text={tool.change} diff testId="trace-tool-change" /> : null}
               {tool.output ? <TermBlock text={tool.output} diff={tool.kind === "edit"} testId="trace-tool-output" /> : null}
-              {tool.input ? <TermBlock text={tool.input} label={t("input")} testId="trace-tool-input" /> : null}
+              {input ? <TermBlock text={input} label={t("input")} testId="trace-tool-input" /> : null}
             </div>
           )
         ) : null}
@@ -265,7 +275,9 @@ function AgentRow({ item }: { item: Extract<TraceItem, { type: "agent" }> }) {
               {thought.ms >= 1000 ? t("thought", { duration: short(thought.ms) }) : t("thoughtBrief")}
               <ChevronRight className="size-3 transition-transform duration-[var(--transition-duration-base)] group-open/thought:rotate-90" aria-hidden="true" />
             </summary>
-            <div className="mt-2 border-l-2 border-border pl-3 break-words whitespace-pre-wrap">{thought.text}</div>
+            <div className="mt-2 border-l-2 border-border pl-3 break-words whitespace-pre-wrap">
+              <LinkedText text={thought.text} />
+            </div>
           </details>
         ) : null}
         {item.text ? <SafeMarkdown className="leading-[21px]" testId="trace-message">{item.text}</SafeMarkdown> : null}
@@ -302,7 +314,9 @@ function PlanRow({ item }: { item: Extract<TraceItem, { type: "plan" }> }) {
                 aria-hidden="true"
               />
               <span className="sr-only">{t(`planStatus.${entry.status}`)}: </span>
-              <span className={cn("min-w-0 [overflow-wrap:anywhere]", entry.status === "completed" && "text-muted-foreground")}>{entry.content}</span>
+              <span className={cn("min-w-0 [overflow-wrap:anywhere]", entry.status === "completed" && "text-muted-foreground")}>
+                <LinkedText text={entry.content} />
+              </span>
             </li>
           );
         })}
@@ -325,7 +339,7 @@ function AskRow({ item, context }: { item: Extract<TraceItem, { type: "ask" }>; 
         <>
           <Who>{mine ? t("askedYou") : t("asked", { login: context.owner })}</Who>
           <span className="min-w-0 text-foreground [overflow-wrap:anywhere]" data-testid="trace-ask-question">
-            {item.question}
+            <LinkedText text={item.question} />
           </span>
           {onPage ? (
             <a href={`#${decisionAnchor(item.decisionId)}`} className={link} data-testid="trace-ask-link">
@@ -361,7 +375,9 @@ function UserRow({ item, context }: { item: Extract<TraceItem, { type: "user" }>
         </Who>
       }
     >
-      <p className="text-sm leading-[21px] break-words whitespace-pre-wrap text-foreground">{item.text}</p>
+      <p className="text-sm leading-[21px] break-words whitespace-pre-wrap text-foreground">
+        <LinkedText text={item.text} />
+      </p>
     </Row>
   );
 }
@@ -375,7 +391,11 @@ function SystemRow({ item }: { item: Extract<TraceItem, { type: "system" }> }) {
       look="system"
       system
       at={item.at}
-      head={<span className={cn("min-w-0 break-words whitespace-pre-wrap", item.tone === "error" && "text-danger", item.tone === "ok" && "text-success")}>{item.text}</span>}
+      head={
+        <span className={cn("min-w-0 break-words whitespace-pre-wrap", item.tone === "error" && "text-danger", item.tone === "ok" && "text-success")}>
+          <LinkedText text={item.text} />
+        </span>
+      }
     >
       {item.output ? (
         <details className="group/out min-w-0 overflow-hidden rounded-sm border" data-testid="trace-system-output">
@@ -399,7 +419,11 @@ function MoveRow({ item, context }: { item: Extract<TraceItem, { type: "move" }>
       look="system"
       system
       at={item.at}
-      head={<span className={cn("min-w-0 [overflow-wrap:anywhere]", bad && "text-danger", good && "text-success")}>{context.describe(item.move)}</span>}
+      head={
+        <span className={cn("min-w-0 [overflow-wrap:anywhere]", bad && "text-danger", good && "text-success")}>
+          <LinkedText text={context.describe(item.move)} />
+        </span>
+      }
     />
   );
 }

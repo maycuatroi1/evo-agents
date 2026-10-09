@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { Ban, CircleDot, KeyRound, TimerOff } from "lucide-react";
+import { Ban, ChevronRight, CircleDot, KeyRound, TimerOff } from "lucide-react";
 import Link from "next/link";
 import { useFormatter, useTranslations } from "next-intl";
 import { useId } from "react";
@@ -14,14 +14,17 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { browserApi } from "@/lib/api/browser";
 
+import { repoWeb } from "./forge";
+import { ExternalLink } from "./links";
 import { isActiveState, type Run, type RunLease, runCredentialsQuery } from "./queries";
 import { type LeaseState, leaseState, leaseTargets } from "./run-model";
 
 /**
  * The credentials a run got from the hub (docs/credentials.md, What a run got), a card of the run page's side column:
- * each lease's name, its provider as a tag, what it answered for, when it was issued, when it ends and when it was
- * given back, and its state as a pill. Never a value: the hub's answer carries none. Shown to the member who
- * dispatched the run alone, as the API answers only them.
+ * each lease's name, its provider as a tag, what it answered for (a git lease's repos as links to their pages), when it
+ * was issued, when it ends and when it was given back, and its state as a pill, with a link to the Secrets page in its
+ * head. Never a value: the hub's answer carries none. Shown to the member who dispatched the run alone, as the API
+ * answers only them.
  */
 
 /** A lease's state in the kit's tones: out is held by the run's worker now (`brand`), the others are over. */
@@ -65,9 +68,11 @@ function LeaseItem({ lease, now }: { lease: RunLease; now: number | null }) {
         <dt className="text-muted-foreground">{lease.kind === "env" ? t("variable") : t("repos")}</dt>
         <dd className="min-w-0" data-testid="run-lease-target">
           <ul className="flex flex-col gap-0.5 font-mono [overflow-wrap:anywhere]">
-            {targets.map((target) => (
-              <li key={target}>{target}</li>
-            ))}
+            {targets.map((target) => {
+              // A git lease answered for its repos' origins, which the hub keeps as https://host/path.
+              const web = lease.kind === "env" ? null : repoWeb(target);
+              return <li key={target}>{web ? <ExternalLink href={web.url} label={target} testId="run-lease-repo-link" /> : target}</li>;
+            })}
           </ul>
         </dd>
         <dt className="text-muted-foreground">{t("issued")}</dt>
@@ -94,11 +99,18 @@ export function RunCredentials({ run }: { run: Run }) {
 
   return (
     <section className="flex min-w-0 flex-col rounded-md border bg-card shadow-raised" aria-labelledby={id} data-testid="run-credentials">
-      <div className="flex flex-col gap-0.5 border-b px-4 py-3">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b px-4 py-3">
         <h2 id={id} className="text-[15px] leading-[22px] font-semibold">
           {t("title")}
         </h2>
-        <p className="text-xs text-pretty text-fg-subtle">{t("description")}</p>
+        <Link
+          href={SECRETS_HREF}
+          className="ml-auto inline-flex items-center gap-0.5 rounded-xs text-[13px] font-medium text-brand underline-offset-4 hover:text-brand-hover hover:underline max-md:py-3"
+          data-testid="run-credentials-secrets-link"
+        >
+          {t("secrets")}
+          <ChevronRight className="size-3.5" aria-hidden="true" />
+        </Link>
       </div>
       <div className="min-w-0 px-4 py-3 text-sm">
         {query.isPending ? (
@@ -121,19 +133,6 @@ export function RunCredentials({ run }: { run: Run }) {
             ))}
           </ul>
         )}
-        <p className="mt-3 border-t pt-3 text-xs text-fg-subtle">
-          {t.rich("manage", {
-            link: (chunks) => (
-              <Link
-                href={SECRETS_HREF}
-                className="rounded-xs text-brand underline decoration-brand/40 underline-offset-4 hover:decoration-current"
-                data-testid="run-credentials-secrets-link"
-              >
-                {chunks}
-              </Link>
-            ),
-          })}
-        </p>
       </div>
     </section>
   );
