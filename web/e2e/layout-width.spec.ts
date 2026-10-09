@@ -8,9 +8,9 @@ import { planRunUnderway, runPath, say, seedPlanRunPlan, sendEvents } from "./su
 /**
  * The content frame of every page takes the whole width between the sidebar and the window's right edge, less the
  * 24 px gutter on each side (web/DESIGN.md, Spacing and layout): no cap of the shell's, so a 1920 px window is not
- * left with two empty margins. Measured at 1920 by 1080 on Home, the Inbox, a project's Runs, a run, a plan, My
- * memories, Workers and the administration, with the sidebar open and folded, within 1 px; the page's own content
- * reaches across the frame too, so no page caps itself either.
+ * left with two empty margins. Measured at 1920 by 1080 on Home, the Inbox, the Monitor, a project's Runs, a run, a
+ * plan, My memories, Workers and the administration, with the sidebar open and folded, within 1 px; the page's own
+ * content reaches across the frame too, so no page caps itself either.
  */
 test.skip(isDeployed, "seeds projects, plans and runs through the local stack");
 
@@ -68,6 +68,7 @@ test("every page of a member takes the full width beside the sidebar at 1920 px,
   const pages: { path: string; ready?: (page: Page) => Promise<void> }[] = [
     { path: "/", ready: async (p) => expect(p.locator("#main").getByTestId("needs-you-item").first()).toBeVisible() },
     { path: "/inbox" },
+    { path: "/monitor", ready: async (p) => expect(p.locator("#main").getByTestId("monitor-tile").first()).toBeVisible() },
     { path: `/p/${project}/runs`, ready: async (p) => expect(p.locator("#main").getByTestId("runs-table")).toBeVisible() },
     { path: runPath(project, run.id), ready: async (p) => expect(p.locator("#main").getByTestId("trace-message")).toBeVisible() },
     { path: `/p/${project}/plans/${ACTIVE_PLAN}` },

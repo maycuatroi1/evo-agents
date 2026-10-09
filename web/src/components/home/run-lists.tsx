@@ -10,6 +10,7 @@ import { useWriteFailure } from "@/components/admin/notice";
 import { Identifier, NAME_LINK, RunRef } from "@/components/data/identifier";
 import { notify, notifyFailure } from "@/components/feedback/toast";
 import { useNow } from "@/components/kg/use-now";
+import { MONITOR_PATH } from "@/components/monitor/model";
 import { StepBar } from "@/components/plans/progress";
 import { PlanRunKindBadge } from "@/components/runs/badges";
 import { useRunControl } from "@/components/runs/hooks";
@@ -21,7 +22,7 @@ import { queryKeys } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 
 import { canRerun, decisionOfRun, isRunningState, type Overview, type OverviewRun, ranFor } from "./model";
-import { HomeCard, LiveDot, Relative, Row, useDuration } from "./parts";
+import { CARD_LINK, HomeCard, LiveDot, Relative, Row, useDuration } from "./parts";
 
 /** Home's In flight (the runs queued, at work, waiting or parked) and Recent (the runs that ended last, with Rerun). */
 
@@ -102,6 +103,11 @@ export function InFlight({ overview, viewer }: { overview: Overview; viewer: str
     <HomeCard
       title={t("title")}
       count={{ value: overview.active_runs.length, tone: "running", words: t("count", { count: overview.active_runs.length }) }}
+      action={
+        <Link href={MONITOR_PATH} className={CARD_LINK} data-testid="in-flight-monitor">
+          {t("monitor")}
+        </Link>
+      }
       testId="in-flight"
     >
       <ul>

@@ -82,6 +82,7 @@ test("an admin with an open decision and runs in flight sees them counted and li
   await expect(rows.nth(1).getByTestId("home-plan-progress")).toHaveAttribute("data-total", "4");
   await expect(rows.nth(1).getByTestId("home-plan-progress")).toContainText("1 of 4 steps done");
   await expect(rows.nth(2).getByTestId("run-state")).toHaveText("Queued");
+  await expect(flight.getByRole("link", { name: "Watch on Monitor" })).toHaveAttribute("href", "/monitor");
 
   // Fleet: both workers of the member's, each busy with the run it holds.
   const fleet = main(page).getByTestId("fleet");
