@@ -51,6 +51,16 @@ waiting for review in them (``figures``) into ``.evo-run/worktree-figures.json``
 proposals with ``evo-agents worker finding|propose``, and the run ends done with the agent's summary: nothing is
 committed or pushed (``gitops.check_push`` refuses a review run), and the run's GitHub token reads only.
 
+An author run (kind ``author``, ``AuthorRun``, ``evo_agents.hub.author``) writes an execution plan from its owner's
+request: before anything else the worker downloads the skills its claim names (create-exec-plan, as the hub holds it in
+the global scope) through their presigned GETs, checks each one's size, SHA-256 and contents, and fails the run when one
+is missing or wrong; then makes a worktree of each of its repos it has a checkout of (the project's harness first,
+which it needs; the others it leaves out, saying so), detached at the commit origin's default branch has, as a review
+run does, and writes the skills under ``.claude/skills`` of the run's directory, the agent's working directory, so
+nobody syncs skills on this machine. The agent works in EVO_RUN_KIND ``author`` on Claude Code alone, with Claude
+Code's question tools turned off (``author.QUESTION_TOOLS``), and the run ends done with its summary: nothing is
+committed or pushed (``gitops.check_push`` refuses an author run), and the run's GitHub token reads only.
+
 A judge run (kind ``judge``, ``JudgeRun``) is the Curator's Judge of one change: its worktree is detached at the commit
 it judges (the pull request's head, else the tip of the change's branch on origin), made and read with no hook of the
 checkout; the worker reads the diff from the merge base with origin's default branch before any code of the change
@@ -119,7 +129,8 @@ from typing import TYPE_CHECKING
 
 import yaml
 
-from evo_agents.hub import curator, judge, runs, tiers
+from evo_agents.hub import author, curator, judge, runs, skill_sync, skills, tiers
+from evo_agents.hub.client import HubError
 from evo_agents.hub.credentials import normalize_origin
 from evo_agents.worker import credentials, figures, gitops, interactive, orphans, untrusted
 from evo_agents.worker.adapter import AgentEvent, AgentFinished, Outcome, RunContext
@@ -2498,8 +2509,137 @@ class JudgeRun(ReviewRun):
 WORKTREE_FIGURES = "worktree-figures.json"  # in .evo-run/ of a review run's directory
 
 
+class AuthorRun(ReviewRun):
+    """An author run (kind ``author``, see the module's docstring): the skills its claim names downloaded and checked,
+    a worktree of each of its repos this worker has a checkout of, detached at origin's default branch, the skills
+    written for the agent in the run's directory, the agent writing a plan from its owner's request, and nothing
+    committed or pushed at its end."""
+
+    def __init__(self, daemon: Daemon, spec: dict):
+        super().__init__(daemon, spec)
+        self.title = spec.get("title") or f"author run of {spec.get('project')}"
+        self.left_out: list[str] = []  # repos of the run this worker has no checkout of
+
+    async def _steps(self) -> None:
+        spec = self.spec
+        repos = [entry for entry in spec.get("repos") or [] if isinstance(entry, dict)]
+        names = ", ".join(str(entry.get("repo")) for entry in repos) or "no repo"
+        self.note(
+            f"Run #{self.id} claimed by worker {self.daemon.config.name}: an author run of project {self.project} over "
+            f"{names}, {self.runtime}, timeout {self.timeout_s // 60} min of agent time. It reads only: nothing is "
+            "committed or pushed."
+        )
+        if self.runtime not in author.AUTHOR_RUNTIMES:
+            raise RunFailed(f"an author run runs on {', '.join(author.AUTHOR_RUNTIMES)} only, not {self.runtime}")
+        cls = self.daemon.adapters.get(self.runtime)
+        if cls is None:
+            raise RunFailed(f"this worker has no adapter for {self.runtime}")
+        if self.mode == "interactive":
+            raise RunFailed("an author run runs headless only")
+        if not repos:
+            raise RunFailed("the author run names no repo, not even the project's harness")
+        bundles = await self._fetch_skills()
+        held = self._held_repos(repos)
+        await self._take_credentials(entry.get("repo") for entry in held)
+        self._check()
+        await self._prepare_review(held)
+        self._check()
+        self._write_skills(bundles)
+        await self._plan_turns(cls, self._prompt(), None)
+        self.summary = self._read_summary()
+        await self._ensure_running()
+        await self._report("verifying")
+        self._check()
+        await self._end("done", summary=self.summary, usage=self.outcome.usage if self.outcome else None)
+
+    def _held_repos(self, repos: list[dict]) -> list[dict]:
+        """The repos of the run this worker has a checkout of; RunFailed without one of the first, the harness."""
+        harness = repos[0].get("repo")
+        if not isinstance(harness, str) or self.daemon.checkout_for(self.project, harness) is None:
+            raise RunFailed(
+                f"this worker has no checkout of {self.project}/{harness}, the project's harness, which an author run "
+                "reads the project's plans in: clone it where the harness registry places it, then dispatch again"
+            )
+        held = []
+        for entry in repos:
+            name = entry.get("repo")
+            if isinstance(name, str) and self.daemon.checkout_for(self.project, name) is not None:
+                held.append(entry)
+            else:
+                self.left_out.append(str(name))
+        if self.left_out:
+            self.note(f"No checkout of {', '.join(self.left_out)} on this worker: the agent works without them.")
+        return held
+
+    async def _fetch_skills(self) -> list[tuple[dict, skills.Contents]]:
+        """Each skill the claim names, downloaded through its presigned GET and checked (size, SHA-256, contents) as
+        ``hub skills sync`` checks it; RunFailed when one is wrong or author.AUTHOR_SKILL is not among them."""
+        wanted = author.AUTHOR_SKILL
+        items = [item for item in self.spec.get("skills") or [] if isinstance(item, dict)]
+        if not any(str(item.get("name") or "").lower() == wanted.lower() for item in items):
+            raise RunFailed(
+                f"the claim handed this author run no skill {wanted}: the hub holds none in the global scope, or is "
+                "older than this worker; publish it with `evo-agents hub skills publish`, then dispatch again"
+            )
+        found = []
+        for item in items:
+            name, version = str(item.get("name") or ""), item.get("version")
+            problem = skills.name_problem(name)
+            if problem:
+                raise RunFailed(f"the claim names a skill this worker cannot write: {problem}")
+            try:
+                size = int(item["size"])
+                data = await asyncio.to_thread(skill_sync.get_bundle, str(item["url"]), size)
+            except (KeyError, TypeError, ValueError):
+                raise RunFailed(f"the claim names skill {name} without its bundle's URL and size") from None
+            except HubError as exc:
+                raise RunFailed(f"the bundle of skill {name} (version {version}) did not download: {exc}") from None
+            if len(data) != size or hashlib.sha256(data).hexdigest() != item.get("sha256"):
+                raise RunFailed(
+                    f"the bundle of skill {name} (version {version}) is not the one the hub recorded: another size or "
+                    "SHA-256; nothing was written"
+                )
+            try:
+                contents = skills.read_bundle(data, name)
+            except skills.BundleError as exc:
+                raise RunFailed(f"the bundle of skill {name} (version {version}) is not a skill: {exc}") from None
+            found.append((item, contents))
+        self.note(
+            "Skills from the hub for the agent: "
+            + ", ".join(f"{item.get('name')} version {item.get('version')}" for item, _ in found)
+            + "."
+        )
+        return found
+
+    def _write_skills(self, bundles: list[tuple[dict, skills.Contents]]) -> None:
+        """Write each skill under author.SKILLS_DIR of the run's directory, where the agent's runtime finds it."""
+        base = self.directory.joinpath(*author.SKILLS_DIR.split("/"))
+        try:
+            base.mkdir(mode=0o700, parents=True, exist_ok=True)
+            for item, contents in bundles:
+                target = base / str(item["name"])
+                target.mkdir(mode=0o700)
+                skills.write_tree(contents, target)
+        except (OSError, skills.BundleError) as exc:
+            raise RunFailed(f"cannot write the skills under {base}: {exc}") from None
+        written = ", ".join(f"{author.SKILLS_DIR}/{item['name']}" for item, _ in bundles)
+        self.note(f"Wrote {written} in {self.directory}.")
+
+    def _prompt(self) -> str:
+        """The run's prompt, with where each repo's worktree is when a folder is not named as its repo, and the repos
+        this worker has no checkout of."""
+        prompt = self.spec.get("prompt") or ""
+        moved = [f"- {name}: {ws.worktree.name}/" for name, ws in self.workspaces.items() if ws.worktree.name != name]
+        extra = []
+        if moved:
+            extra += ["", "Worktree folders that are not named as their repo:", *moved]
+        if self.left_out:
+            extra += ["", f"Repos of the project this worker has no checkout of: {', '.join(self.left_out)}."]
+        return runs.clip(prompt + "\n".join(extra) + ("\n" if extra else ""), runs.MAX_PROMPT_BYTES)
+
+
 def run_class(spec: dict) -> type[Run]:
     """The class of the run ``spec`` claims: PlanRun for kind plan, ReviewRun for kind review, JudgeRun for kind
-    judge, Run otherwise."""
+    judge, AuthorRun for kind author, Run otherwise."""
     kind = spec.get("kind")
-    return {"plan": PlanRun, "review": ReviewRun, "judge": JudgeRun}.get(kind, Run)
+    return {"plan": PlanRun, "review": ReviewRun, "judge": JudgeRun, "author": AuthorRun}.get(kind, Run)

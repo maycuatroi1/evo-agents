@@ -582,7 +582,9 @@ runs = Table(
     metadata,
     _id(),
     Column("project_id", BigInteger, nullable=False),
-    Column("plan_id", Text),  # NULL for a review run, which works on no plan (0014)
+    Column(
+        "plan_id", Text
+    ),  # NULL for a review run, which works on no plan (0014), and an author run of a new one (0020)
     Column("step_key", Text),
     Column("title", Text),
     Column("plan_revision", Integer),
@@ -631,6 +633,7 @@ runs = Table(
     Column("schedule_id", BigInteger),
     Column("schedule_night", Date),
     Column("budget", JSONB),
+    Column("request", Text),  # the member's request of an author run, NULL for any other kind (0020)
     ForeignKeyConstraint(["dispatched_by"], ["users.id"], ondelete="RESTRICT", name="runs_dispatched_by_fkey"),
     ForeignKeyConstraint(["parent_run_id"], ["runs.id"], ondelete="RESTRICT", name="runs_parent_run_id_fkey"),
     ForeignKeyConstraint(["pinned_worker_id"], ["workers.id"], ondelete="RESTRICT", name="runs_pinned_worker_id_fkey"),

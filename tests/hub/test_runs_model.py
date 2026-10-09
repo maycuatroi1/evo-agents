@@ -83,7 +83,7 @@ def test_the_table_covers_every_state_and_only_known_actors():
         "lost",
         "cancelled",
     )
-    assert runs.RUN_KINDS == ("step", "plan", "review", "judge")
+    assert runs.RUN_KINDS == ("step", "plan", "review", "judge", "author")
     assert ACTORS == ("worker", "owner", "reaper")
     assert set(TRANSITIONS) == set(RUN_STATES)
     assert set(HELD_STATES) | set(ACTIVE_STATES) | set(TERMINAL_STATES) == set(RUN_STATES)

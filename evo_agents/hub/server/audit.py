@@ -43,6 +43,7 @@ WORKER_DISPATCH_FROM = "worker.dispatch_from"
 # run:<id>" for a plan run), never a prompt or evidence.
 RUN_DISPATCH = "run.dispatch"  # a member queued a run of a ready step
 RUN_DISPATCH_PLAN = "run.dispatch_plan"  # a member queued a plan run: "<project>/<plan> run:<id>", no step
+RUN_DISPATCH_AUTHOR = "run.dispatch_author"  # a member queued an author run: "<project>/author run:<id>", no request
 RUN_STEP_REPORT = "run.step_report"  # a plan run's worker wrote a step, as the dispatcher: "... run:<id> status=<s>"
 RUN_CANCEL = "run.cancel"  # the owner cancelled a run, or asked its worker to stop it
 RUN_APPROVE = "run.approve"  # the owner approved a run in review, and the step is done

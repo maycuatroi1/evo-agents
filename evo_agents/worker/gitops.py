@@ -14,8 +14,8 @@ credential it does not take, fails with ``GitAuthError``, so the run can take it
 the repo: there the push goes ahead, never forced, and the answer says it was a default branch with the commits it
 added, for the notice ``push_default_branch`` the caller sends the run's owner (``push_notice``). A run of one step
 never pushes a default branch. A Builder of the Curator (kind ``curator``) pushes a branch ``curator/...`` alone, and a
-default branch never, whatever its plan names; a review run and a judge run push nothing. ``push`` sends the push
-options it is given (``--push-option``), with which a push to GitLab opens a merge request.
+default branch never, whatever its plan names; a review run, a judge run and an author run push nothing. ``push``
+sends the push options it is given (``--push-option``), with which a push to GitLab opens a merge request.
 
 A commit of a run (``commit_run``) holds only the run's own work. It leaves out, at any depth, the paths under
 RUN_COMMIT_EXCLUDES (what hooks of the owner's runtime write in a session's directory, such as the learned skills of
@@ -381,10 +381,10 @@ async def diff(cwd: Path, base: str, head: str = "HEAD", prefix: str | None = No
 def check_push(branch: str, protected: Collection[str], *, kind: str, plan_branch: str | None) -> bool:
     """Whether a push to ``branch`` goes to a default branch of the repo (one of ``protected``): False when it does
     not; True when it does and the run may push it, a plan run (``kind`` plan) whose plan names exactly that branch for
-    the repo (``plan_branch``); PushRefused otherwise, so a run of one step never pushes a default branch. A review run
-    and a judge run push nothing at all, and a Builder of the Curator (``kind`` curator) only a branch ``curator/...``
-    that is no default branch."""
-    if kind in ("review", "judge"):
+    the repo (``plan_branch``); PushRefused otherwise, so a run of one step never pushes a default branch. A review run,
+    a judge run and an author run push nothing at all, and a Builder of the Curator (``kind`` curator) only a branch
+    ``curator/...`` that is no default branch."""
+    if kind in ("review", "judge", "author"):
         raise PushRefused(f"a {kind} run reads and pushes nothing")
     if kind == "curator":
         from evo_agents.hub.judge import is_curator_branch

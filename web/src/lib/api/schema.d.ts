@@ -1362,6 +1362,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project}/author-runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Dispatch Author
+         * @description Queue an author run: a plan written from the caller's request, with create-exec-plan, on a worker of the
+         *     caller's (``evo_agents.hub.author``).
+         */
+        post: operations["dispatch_author_v1_projects__project__author_runs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{project}/runs/{run_id}/cancel": {
         parameters: {
             query?: never;
@@ -2754,6 +2775,38 @@ export interface components {
              * @description whether GET /v1/auth/web/login is configured on this hub
              */
             web_login: boolean;
+        };
+        /** AuthorRunDispatch */
+        AuthorRunDispatch: {
+            /**
+             * Request
+             * @description what the plan should achieve, in the member's words: at most 16384 bytes of UTF-8
+             */
+            request: string;
+            /**
+             * Worker Id
+             * @description the worker of yours the run goes to; an author run is pinned
+             */
+            worker_id: number;
+            /**
+             * Runtime
+             * @description claude-code, the one runtime an author run takes (any means it); another one is 422
+             * @default claude-code
+             * @enum {string}
+             */
+            runtime: "any" | "claude-code" | "opencode" | "codex";
+            /**
+             * Model
+             * @description the model to use, as Claude Code names it; null: its own choice
+             */
+            model?: string | null;
+            /**
+             * Timeout H
+             * @description hours of agent time the run may take
+             * @default 2
+             * @enum {integer}
+             */
+            timeout_h: 1 | 2 | 4;
         };
         /** Blob */
         Blob: {
@@ -5386,7 +5439,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "step" | "plan" | "review" | "judge";
+            kind: "step" | "plan" | "review" | "judge" | "author";
             /** Project */
             project: string;
             /** Plan Id */
@@ -6636,15 +6689,15 @@ export interface components {
             id: number;
             /**
              * Kind
-             * @description step: one step of the plan; plan: every step not done yet; review: the night's review of the project by the Curator, on no plan; judge: the Curator's Judge of a change of its plan
+             * @description step: one step of the plan; plan: every step not done yet; review: the night's review of the project by the Curator, on no plan; judge: the Curator's Judge of a change of its plan; author: a plan written from a member's request, on no plan when it writes a new one
              * @enum {string}
              */
-            kind: "step" | "plan" | "review" | "judge";
+            kind: "step" | "plan" | "review" | "judge" | "author";
             /** Project */
             project: string;
             /**
              * Plan Id
-             * @description the plan it works on; empty for a review run, which works on none
+             * @description the plan it works on; empty for a review run, which works on none, and an author run of a new plan
              */
             plan_id: string;
             /**
@@ -6818,6 +6871,11 @@ export interface components {
             parked_at: string | null;
             /** Finished At */
             finished_at: string | null;
+            /**
+             * Request
+             * @description the member's request of an author run; null for any other kind
+             */
+            request?: string | null;
         };
         /** RunBlobCommit */
         RunBlobCommit: {
@@ -7223,6 +7281,40 @@ export interface components {
              */
             branch?: string | null;
         };
+        /**
+         * RunSkill
+         * @description A skill the worker writes for the run's agent, as the hub holds it when the run is claimed: an author run's
+         *     create-exec-plan, global, at its latest version.
+         */
+        RunSkill: {
+            /** Name */
+            name: string;
+            /**
+             * Scope
+             * @default global
+             * @constant
+             */
+            scope: "global";
+            /** Version */
+            version: number;
+            /**
+             * Sha256
+             * @description what the downloaded bytes must hash to
+             */
+            sha256: string;
+            /** Size */
+            size: number;
+            /**
+             * Url
+             * @description presigned GET of the bundle; a bearer credential until it expires
+             */
+            url: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+        };
         /** RunSpec */
         RunSpec: {
             /** Id */
@@ -7231,7 +7323,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "step" | "plan" | "review" | "judge";
+            kind: "step" | "plan" | "review" | "judge" | "author";
             /** Project */
             project: string;
             /**
@@ -7314,6 +7406,11 @@ export interface components {
             budget?: components["schemas"]["ClaimedBudget"] | null;
             /** @description a run of the Curator: its role and what its worker checks; null for any other run */
             curator?: components["schemas"]["CuratorSpec"] | null;
+            /**
+             * Skills
+             * @description the skills the worker writes under .claude/skills of the run's directory for its agent: an author run's create-exec-plan; empty for any other run
+             */
+            skills?: components["schemas"]["RunSkill"][];
         };
         /** RunState */
         RunState: {
@@ -13321,6 +13418,77 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["PlanRunDispatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Run"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    dispatch_author_v1_projects__project__author_runs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AuthorRunDispatch"];
             };
         };
         responses: {

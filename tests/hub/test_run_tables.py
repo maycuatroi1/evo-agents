@@ -95,6 +95,9 @@ def add_run(conn, ids, state: str = "queued", step: str = "3", kind: str = "step
     elif kind == "judge":  # the Judge of a change of the Curator's plan, queued by a schedule (0017)
         row |= {"kind": "judge", "step_key": None, "repo": None, "branch": None, "repos": REPOS}
         row |= {"dispatched_via": "schedule", "schedule_night": now.date()}
+    elif kind == "author":  # a plan written from a member's request, on no plan when it writes a new one (0020)
+        row |= {"kind": "author", "plan_id": None, "plan_revision": None, "step_key": None, "repo": None}
+        row |= {"branch": None, "repos": REPOS, "request": "Plan the chat of an author run."}
     elif kind != "step":
         row["kind"] = kind
     row |= columns
@@ -283,6 +286,8 @@ def test_the_tables_take_every_state_kind_runtime_mode_and_approval_of_the_runs_
         add_run(conn, ids, state, kind="review", schedule_id=schedule)
     for state in ("queued", *runs.TERMINAL_STATES):  # and one judge run (0017)
         add_run(conn, ids, state, kind="judge", schedule_id=schedule)
+    for state in runs.RUN_STATES:  # author runs, as many as their owners dispatch (0020)
+        add_run(conn, ids, state, kind="author")
     assert query_kinds(conn) == set(runs.RUN_KINDS)
     for runtime in ("any", *runs.RUNTIMES):
         for mode in runs.MODES:
@@ -1364,3 +1369,19 @@ def test_constraints_of_0010_accept_good_rows(plan_db):
     conn.execute(delete(run).where(the_run))
     for gone in (decisions, notifications, deliveries):
         assert one(conn, count(gone)) == 0, gone.name
+
+
+def test_an_author_run_holds_a_request_of_1_to_16_kib_and_no_other_kind_does(db):
+    conn, ids = db
+    add_run(conn, ids, kind="author")
+    assert add_run(conn, ids, kind="author", plan_id=PLAN, plan_revision=1)  # an author run may name its plan
+    for columns in (
+        {"kind": "author", "request": None},
+        {"kind": "author", "request": ""},
+        {"kind": "author", "request": "é" * 8193},
+        {"kind": "author", "plan_id": PLAN, "plan_revision": None},
+    ):
+        with pytest.raises(errors.CheckViolation):
+            add_run(conn, ids, **columns)
+    with pytest.raises(errors.CheckViolation):
+        add_run(conn, ids, step="with-request", request="Plan it.")

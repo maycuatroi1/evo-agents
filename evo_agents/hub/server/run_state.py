@@ -497,6 +497,8 @@ async def record_move(
 
         await changes.judge_ended(conn, found, old, new, reason=reason)
         return None
+    if found.kind == "author":  # it writes no step: the plan it authors reaches the hub through the run's own command
+        return None
     if found.kind == "plan":
         revision = await release_plan_steps(conn, found, new, reason=reason, token_id=token_id)
         await notify_plan_run_end(conn, found, old, new, reason=reason)
@@ -656,6 +658,7 @@ def _next_attempt(run_id: int):
         "schedule_id",
         "schedule_night",
         "budget",
+        "request",
     )
     source = select(
         *(r.c[name] for name in copied),
