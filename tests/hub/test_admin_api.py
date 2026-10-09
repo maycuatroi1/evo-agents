@@ -341,6 +341,7 @@ def move_to(db, revision: str, *, down: bool = False) -> None:
         engine.dispose()
 
 
+@pytest.mark.empty_db
 def test_0007_files_the_rows_written_before_it_under_their_project(hub_db):
     move_to(hub_db, "0006")
     project_id = add_project(hub_db, "demo")

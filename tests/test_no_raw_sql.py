@@ -13,7 +13,7 @@ The guard reads every module under evo_agents/hub and tests/hub and reports, by 
   other reach for that connection (``get_raw_connection``, ``driver_connection``) outside ``evo_agents.hub.db``.
 
 A few places keep SQL for good, each for a reason no query builder changes: the migrations that have run
-(MIGRATIONS_RUN), the LISTEN of the listener and the test databases' CREATE and DROP (ALLOWED_SQL,
+(MIGRATIONS_RUN), the LISTEN of the listener and the test databases' CREATE, ALTER and DROP (ALLOWED_SQL,
 ALLOWED_PSYCOPG_SQL), and procrastinate's connection (ALLOWED_DRIVER). A change that only raw SQL can make adds its
 place there in the same pull request, with the reason. docs/hub.md, section "Data access", says how to write the
 query instead.
@@ -91,8 +91,9 @@ MIGRATIONS_RUN_PATHS = frozenset(f"evo_agents/hub/migrations/versions/{name}" fo
 ALLOWED_SQL: dict[str, re.Pattern] = {
     # LISTEN has no SQLAlchemy construct; the listener keeps a psycopg connection of its own for it.
     "evo_agents/hub/server/listen.py": re.compile(r"^LISTEN\b"),
-    # A test's database and its owner role, made and dropped by a superuser outside any hub database.
-    "tests/hub/pg.py": re.compile(r"^(?:CREATE|DROP)\s+(?:DATABASE|ROLE)\b"),
+    # A test's database and its owner role, made, copied, handed over and dropped by a superuser outside any hub
+    # database; REASSIGN OWNED, which gives a copy's objects to its own role, has no SQLAlchemy construct either.
+    "tests/hub/pg.py": re.compile(r"^(?:CREATE|ALTER|DROP)\s+(?:DATABASE|ROLE)\b"),
 }
 ALLOWED_PSYCOPG_SQL = frozenset({"evo_agents/hub/server/listen.py", "tests/hub/pg.py"})  # quotes their identifiers
 ALLOWED_DRIVER = frozenset(
