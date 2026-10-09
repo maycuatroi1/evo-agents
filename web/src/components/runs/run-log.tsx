@@ -309,6 +309,7 @@ export function RunLogCard({
   frozen,
   tab: heldTab,
   onTabChange,
+  fill = false,
 }: {
   runId: number;
   log: RunLog;
@@ -332,6 +333,12 @@ export function RunLogCard({
   /** The tab shown, when the page holds it (a decision's Take over shows the Terminal tab); the card holds it otherwise. */
   tab?: SessionTab;
   onTabChange?: (tab: SessionTab) => void;
+  /**
+   * From the xl breakpoint, the card takes the height its parent gives (the run page's split layout, as tall as the
+   * window allows) and the panel shown fills it, above the composer; below xl, and without it, the panels keep their
+   * own heights.
+   */
+  fill?: boolean;
 }) {
   const t = useTranslations("runs.detail.log");
   const tTabs = useTranslations("runs.detail.terminal.tabs");
@@ -387,6 +394,8 @@ export function RunLogCard({
 
   const filtered = group !== null || deferredQuery.trim() !== "";
   const empty = shown.length === 0;
+  // The panel shown fills the card above the composer; its own scroll region takes what the bars leave.
+  const panelFill = fill ? "xl:min-h-0 xl:flex-1" : undefined;
 
   const status = (
     <span role="status" className="inline-flex">
@@ -459,7 +468,10 @@ export function RunLogCard({
         aria-busy={log.status === "connecting" || undefined}
         tabIndex={0}
         onScroll={onScroll}
-        className="h-[min(60vh,32rem)] min-h-64 overflow-y-auto overscroll-contain bg-term-bg py-2 font-mono text-[12.5px] leading-[1.6] text-term-fg [font-variant-ligatures:none] focus-visible:outline-offset-[-2px]"
+        className={cn(
+          "h-[min(60vh,32rem)] min-h-64 overflow-y-auto overscroll-contain bg-term-bg py-2 font-mono text-[12.5px] leading-[1.6] text-term-fg [font-variant-ligatures:none] focus-visible:outline-offset-[-2px]",
+          fill && "xl:h-auto xl:min-h-0 xl:flex-1",
+        )}
         data-testid="log-lines"
         data-virtual={virtual || undefined}
       >
@@ -484,7 +496,11 @@ export function RunLogCard({
 
   if (!chat && !trace && !terminal) {
     return (
-      <section aria-labelledby={`${ids}-title`} className="flex min-w-0 flex-col rounded-md border bg-card shadow-raised" data-testid="run-log">
+      <section
+        aria-labelledby={`${ids}-title`}
+        className={cn("flex min-w-0 flex-col rounded-md border bg-card shadow-raised", fill && "xl:min-h-0 xl:flex-1")}
+        data-testid="run-log"
+      >
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b px-4 py-3">
           <h2 id={`${ids}-title`} className="text-[15px] leading-[22px] font-semibold">
             {t("title")}
@@ -509,7 +525,7 @@ export function RunLogCard({
     >
       <section
         aria-labelledby={`${ids}-title`}
-        className="flex min-w-0 flex-col rounded-md border bg-card shadow-raised"
+        className={cn("flex min-w-0 flex-col rounded-md border bg-card shadow-raised", fill && "xl:min-h-0 xl:flex-1")}
         data-testid="run-log"
         data-tab={tab}
       >
@@ -568,15 +584,15 @@ export function RunLogCard({
           </TabsContent>
         ) : null}
         {trace ? (
-          <TabsContent value="trace" forceMount className="gap-0 data-[state=inactive]:hidden">
+          <TabsContent value="trace" forceMount className={cn("gap-0 data-[state=inactive]:hidden", panelFill)}>
             {trace(tab === "trace")}
           </TabsContent>
         ) : null}
-        <TabsContent value="log" forceMount className="gap-0 data-[state=inactive]:hidden">
+        <TabsContent value="log" forceMount className={cn("gap-0 data-[state=inactive]:hidden", panelFill)}>
           {logBody}
         </TabsContent>
         {terminal ? (
-          <TabsContent value="terminal" forceMount className="gap-0 data-[state=inactive]:hidden">
+          <TabsContent value="terminal" forceMount className={cn("gap-0 data-[state=inactive]:hidden", panelFill)}>
             {terminal(tab === "terminal")}
           </TabsContent>
         ) : null}

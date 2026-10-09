@@ -7,6 +7,7 @@ import { ADMIN_ACCOUNT, HubAdmin, machineToken, newAccount, uniqueName } from ".
 import { seedInsights } from "./support/insights";
 import { graphReady, grantOn, HUB_NODE, kgPath, nodePath, sharedKg } from "./support/kg";
 import { apiOf, memoryFile, putMemory } from "./support/memories";
+import { command, endedRuns, monitorPath, runningRuns, seedMonitorPlan } from "./support/monitor";
 import { ACTIVE_PLAN, EVIDENCE_STEP, open, seedPlans } from "./support/plans";
 import {
   askDecision,
@@ -183,6 +184,51 @@ const PAGES: Entry[] = [
       await page.setViewportSize({ width: 375, height: 812 });
       await open(page, "/");
       await expect(page.locator("#main").getByTestId("needs-you-item")).toHaveCount(1);
+    },
+  },
+  {
+    name: "monitor",
+    deployed: true,
+    open: async ({ page }) => {
+      await page.goto("/monitor");
+      await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+      await expect(page.locator("#main").getByTestId("state-loading")).toHaveCount(0);
+    },
+  },
+  {
+    name: "monitor with its list, a live tile with its trace and an ended tile",
+    open: async ({ page, me }) => {
+      const project = me.projects[0];
+      await seedMonitorPlan(me, project);
+      const [ended] = await endedRuns(me, project, ["5"]);
+      const {
+        live,
+        runs: [run],
+      } = await runningRuns(me, project, ["1"]);
+      await sendEvents(live, run.id, [say("Reading the plan."), command(1, "pnpm test")]);
+      await open(page, monitorPath([run, ended]));
+      const main = page.locator("#main");
+      await expect(main.getByTestId("flight-item")).toHaveCount(1);
+      await expect(main.getByTestId("monitor-tile")).toHaveCount(2);
+      await expect(main.getByTestId("tile-line")).toHaveCount(2);
+    },
+  },
+  {
+    name: "monitor on a small screen, the list unfolded",
+    open: async ({ page, me }) => {
+      const project = me.projects[0];
+      await seedMonitorPlan(me, project);
+      const {
+        live,
+        runs: [run],
+      } = await runningRuns(me, project, ["1"]);
+      await sendEvents(live, run.id, [say("Reading the plan.")]);
+      await page.setViewportSize({ width: 375, height: 812 });
+      await open(page, "/monitor");
+      const main = page.locator("#main");
+      await main.getByTestId("flight-toggle").click();
+      await expect(main.getByTestId("flight-item")).toHaveCount(1);
+      await expect(main.getByTestId("tile-line")).toHaveCount(1);
     },
   },
   {

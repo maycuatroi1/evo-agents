@@ -35,9 +35,11 @@
     "secrets": "Secret",
     "runDiff": "Diff",
     "inbox": "Inbox",
+    "monitor": "Monitor",
     "counts": {
       "openDecisions": "{count, plural, other {# quyết định hoặc đề xuất chờ bạn trả lời}}",
-      "activeRuns": "{count, plural, other {# run đang hoạt động}}"
+      "activeRuns": "{count, plural, other {# run đang hoạt động}}",
+      "runningRuns": "{count, plural, other {# run đang chạy}}"
     },
     "fleet": {
       "onlineBusy": "<b>{online, plural, other {# worker online}}</b>, {busy} đang chạy",
@@ -327,7 +329,8 @@
       "waitingFor": "Đang chờ {owner}",
       "noWorker": "chưa có worker",
       "ran": "đã chạy {duration}",
-      "queuedAgo": "vào hàng đợi <time></time>"
+      "queuedAgo": "vào hàng đợi <time></time>",
+      "monitor": "Xem trên Monitor"
     },
     "recent": {
       "title": "Vừa kết thúc",
@@ -1770,6 +1773,7 @@
     "title": "Run",
     "metaTitle": "Run của {project}",
     "dispatchButton": "Dispatch",
+    "monitorButton": "Monitor",
     "count": "{count, plural, other {# run}}",
     "caption": "Run của dự án {project}",
     "pagerLabel": "run",
@@ -2078,9 +2082,12 @@
       "title": "Run",
       "untitled": "Bước chưa có tên",
       "sub": "Plan <planLink>{plan}</planLink>, <stepLink>bước {step}: {title}</stepLink>",
-      "planSub": "Plan <planLink>{plan}</planLink>: {title}. Mọi bước chưa xong, trong một phiên.",
+      "planSub": "Plan <planLink>{plan}</planLink>",
+      "planSubTitled": "Plan <planLink>{plan}</planLink>: {title}",
       "notFoundTitle": "Không tìm thấy run #{id}",
       "notFoundDescription": "Run này không có trong dự án, hoặc thuộc một plan bạn không được đọc.",
+      "aside": "Thông tin run #{id}",
+      "newTab": "{label} (mở trong tab mới)",
       "timeline": {
         "section": "Dòng thời gian của run",
         "label": "Các pha của run #{id}",
@@ -2186,18 +2193,15 @@
         "tiny": "dưới 0,1",
         "bar": "Đọc cache {cacheRead} phần trăm, input {input}, output {output}, suy luận {reasoning}",
         "cacheWrite": "Ghi cache {count}.",
-        "costNote": "Chi phí đúng như runtime báo.",
-        "noCostNote": "Runtime không báo chi phí.",
-        "none": "Hiện khi agent xong lượt đầu tiên và runtime báo mức đã dùng.",
-        "noneEnded": "Runtime không báo mức dùng của run này."
+        "noneYet": "Chưa có số liệu",
+        "noneEnded": "Runtime không báo số liệu"
       },
       "planSteps": {
         "title": "Các bước của plan",
         "count": "Xong {done}/{total} ({percent}%)",
         "failed": "Không tải được plan.",
         "none": "Plan không có bước nào.",
-        "untitled": "Bước chưa có tên",
-        "hint": "Theo plan hub đang giữ lúc này; run ghi từng bước khi làm."
+        "untitled": "Bước chưa có tên"
       },
       "decision": {
         "waiting": "Đang chờ{since, select, none {} other { từ {since}}} {login} trả lời một quyết định.",
@@ -2333,7 +2337,6 @@
         "placeholder": "Nhắn cho agent. Agent đọc tin nhắn ở lượt kế tiếp.",
         "send": "Gửi",
         "sending": "Đang gửi…",
-        "hint": "Chỉ bạn thấy ô này vì bạn đã dispatch run.",
         "sent": "Đã gửi. Tin nhắn nằm trong inbox của run chờ lượt kế tiếp của agent.",
         "blank": "Hãy gõ tin nhắn trước.",
         "long": "Một tin nhắn tối đa {max} byte UTF-8. Hãy rút ngắn lại.",
@@ -2365,7 +2368,6 @@
         "lease": "Lease",
         "leaseLeft": "hết hạn sau {minutes} phút {seconds} giây",
         "leaseExpired": "đã hết hạn; hub xếp lại hoặc kết thúc run trong vòng một phút",
-        "leaseNone": "chưa có cho tới khi worker nhận run",
         "leaseReleased": "đã trả",
         "attempt": "Lần chạy",
         "attemptValue": "{attempt} trên {max}",
@@ -2395,14 +2397,14 @@
       },
       "result": {
         "title": "Kết quả",
-        "pending": "Hiện khi agent làm xong và worker đã chạy lại các lệnh verify.",
-        "empty": "Run kết thúc mà không có kết quả.",
+        "noneYet": "Chưa có",
+        "empty": "Không có",
         "verify": "Verify",
         "exit": "mã thoát {code}",
         "exitUnknown": "không rõ mã thoát",
         "seconds": "{seconds} giây",
         "commit": "Commit",
-        "onBranch": "trên {branch}",
+        "onBranch": "trên <link>{branch}</link>",
         "changes": "Thay đổi",
         "diffstat": "{files, plural, other {# file}}, +{insertions} -{deletions}",
         "viewDiff": "Xem diff",
@@ -2411,10 +2413,9 @@
       },
       "credentials": {
         "title": "Credential",
-        "description": "Những gì run nhận từ hub, không bao giờ có value. Chỉ bạn thấy mục này.",
         "loading": "Đang tải credential",
         "failed": "Không đọc được credential của run này.",
-        "emptyActive": "Chưa có: worker xin chúng ngay sau khi nhận run.",
+        "emptyActive": "Chưa có.",
         "empty": "Run này không nhận credential nào từ hub.",
         "provider": {
           "secret": "Secret của bạn",
@@ -2433,7 +2434,7 @@
         "noEnd": "không hết hạn",
         "revoked": "Thu hồi",
         "notRevoked": "chưa",
-        "manage": "Secret của bạn nằm ở trang <link>Secret</link>."
+        "secrets": "Secret"
       },
       "actions": {
         "diff": "Xem diff",
@@ -3530,6 +3531,56 @@
         "worker": "trên {worker}"
       },
       "outcomeDaysValue": "{count, plural, other {# ngày sau khi merge}}"
+    }
+  },
+  "monitor": {
+    "title": "Monitor",
+    "following": "Đang theo dõi mọi run đang diễn ra: run nào bắt đầu sẽ vào lưới.",
+    "chosen": "{count, plural, =0 {Lưới chưa có run nào.} other {Đang xem # run bạn chọn.}}",
+    "followAll": "Theo dõi mọi run đang diễn ra",
+    "list": {
+      "title": "Đang diễn ra",
+      "count": "{count, plural, other {# run đang diễn ra}}",
+      "show": "Hiện các run đang diễn ra",
+      "hide": "Ẩn các run đang diễn ra",
+      "watch": "Xem run #{id}",
+      "empty": "Không có run nào đang diễn ra.",
+      "full": "Lưới chứa tối đa {max} run. Đóng một ô để xem run khác."
+    },
+    "grid": {
+      "label": "Các run bạn đang xem",
+      "emptyTitle": "Lưới chưa có run nào",
+      "emptyText": "Chọn run trong danh sách để xem ở đây, hoặc theo dõi mọi run đang diễn ra.",
+      "hidden": "{count, plural, other {# run trong link không hiện: run không tồn tại hoặc bạn không đọc được.}}",
+      "capped": "Lưới hiện {max} run đầu tiên của link."
+    },
+    "empty": {
+      "title": "Không có run nào đang diễn ra",
+      "description": "Monitor hiện mỗi run đang chờ worker, đang chạy hay đang chờ quyết định thành một ô trực tiếp cạnh các run khác. Run hiện ở đây ngay khi được dispatch."
+    },
+    "tile": {
+      "label": "Run #{id}",
+      "open": "Mở run #{id}",
+      "close": "Thôi xem run #{id}",
+      "queued": "vào hàng đợi <time></time>",
+      "elapsed": "đã chạy {duration}",
+      "ran": "đã chạy {duration}",
+      "ended": "kết thúc <time></time>",
+      "noWorker": "chưa có worker",
+      "waitingYou": "Đang chờ bạn",
+      "waitingFor": "Đang chờ {owner}",
+      "steps": "xong {done} trên {total} bước",
+      "trace": "Trace của run #{id}",
+      "earlier": "Các sự kiện trước đó nằm ở trang của run.",
+      "waiting": "Đang chờ sự kiện đầu tiên…",
+      "quiet": "Trace chưa có gì.",
+      "noTrace": "Trace không có gì.",
+      "unavailable": "Không đọc được trace.",
+      "error": "Không đọc được run #{id}.",
+      "retry": "Thử lại",
+      "retrying": "Đang thử lại",
+      "latest": "Tới mục mới nhất",
+      "now": "Run #{id} giờ ở trạng thái {state}."
     }
   }
 }

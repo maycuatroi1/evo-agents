@@ -219,6 +219,7 @@ states and the phone top bar. Icons sit before their label and inherit its colou
 | Memories | `BookOpen` |
 | Skills | `Sparkles` |
 | Inbox; the bell in the top bar | `Inbox`; `Bell` |
+| Monitor, the runs watched live | `MonitorPlay` |
 | Home; a project's overview | `LayoutDashboard`; `FolderKanban` |
 | My memories; administration | `Brain`; `Shield` |
 | Sidebar toggle | `PanelLeft` |
@@ -230,20 +231,29 @@ shows at 20 px or larger beside the name in Plex Sans 600, and is never recolour
 
 ## Spacing and layout
 
-- A 4 px grid (Tailwind spacing). Page padding 16 px on phones and 24 px from 768 px, content at most 1280 px wide
-  (`max-w-7xl`), 24 px between sections, 16 px inside cards, 12 by 10 px in table cells.
+- A 4 px grid (Tailwind spacing). Page padding 16 px on phones and 24 px from 768 px, 24 px between sections, 16 px
+  inside cards, 12 by 10 px in table cells.
+- Full width. On every page the content takes the whole width between the sidebar and the window's right edge, less
+  the 24 px gutter (16 px on phones); the shell (`components/shell/app-shell.tsx`) sets no cap, and
+  `e2e/layout-width.spec.ts` measures the content frame at 1920 by 1080, open and folded sidebar, on Home, the Inbox,
+  the Monitor, a project's Runs, a run, a plan, My memories, Workers and the administration, within 1 px. A page that would stretch
+  thin on a wide window lays itself out for the width instead of narrowing the shell: a side column of fixed width
+  beside a fluid one (a run, Home, a memory), more fields to a row from 2xl in a form (four in the Curator's charter),
+  two facts to a row from 2xl in a list of facts that has the card to itself (a plan's step), a row of figures in one
+  container that shares out the width. Long text (a plan's markdown, a memory) keeps the width of its card; a line
+  length for it is still open.
 - The shell is the kit's AppShell: the sidebar is 240 px wide (`15rem`), folds to 56 px of icons on desktop (Ctrl or
   Cmd + B, or the top bar's toggle) and becomes a sheet below 768 px; the top bar is 52 px on `surface` and sticks to
   the top.
 - z-index: header 10, sidebar rail 20, menus, sheets and tooltips 50, toasts 60 (above an open dialog).
 - The kit's sizes: controls 32 px (28 in dense toolbars, 40 in dialog footers), every control at least 44 px under
-  768 px, table rows 44 px (36 compact), a 52 px top bar, a 240 px sidebar folding to 56 px, content at most 1280 px
-  with a 24 px gutter (16 on phones).
+  768 px, table rows 44 px (36 compact), a 52 px top bar, a 240 px sidebar folding to 56 px, content the full width
+  beside the sidebar with a 24 px gutter (16 on phones).
 - Checked widths: 375, 768, 1024 and 1440 px. Under 768 px a list's table becomes a list of rows (`DataList`) and its
   filters fold into a "Filters (n)" sheet; a table that stays a table (the knowledge graph's, a skill's versions)
   hides its secondary columns. Wide tables scroll inside their own focusable region, and the page itself never
-  scrolls sideways (`e2e/shell.spec.ts`; `e2e/no-sideways-scroll.spec.ts` checks a page of each area at 375, 768 and
-  1024 px; `e2e/mobile.spec.ts` the phone layout at 375 by 812 with a phone's user agent and touch). The shell's
+  scrolls sideways (`e2e/shell.spec.ts`; `e2e/no-sideways-scroll.spec.ts` checks a page of each area at 375, 768,
+  1024 and 1440 px; `e2e/mobile.spec.ts` the phone layout at 375 by 812 with a phone's user agent and touch). The shell's
   inset is `min-w-0`: as a flex item beside the sidebar it would otherwise grow to the natural width of the widest
   table.
 - The server renders the phone layout on a guess: `lib/mobile-hint.ts` reads `Sec-CH-UA-Mobile` and the user agent
@@ -372,18 +382,20 @@ Shared pieces built on them:
   `OtherStatusBadge`, kept as written. `StatusIcon` is the icon alone with its word for screen readers, and the
   test ids stay those the e2e specs read (`run-state`, `worker-status`, `decision-state`).
 - `components/data/identifier.tsx`: names. `Identifier` is a mono chip on `surface-sunken` with 4 px corners for a
-  worker, branch, revision, session or hash, a link in text colour turning `brand` on hover when it has a page, with
+  worker, branch, revision, session or hash, a link in text colour turning `brand` on hover when it has a page (on the
+  hub, or with `externalHref` on a forge, in a new tab), with
   an optional copy button (24 px, a 44 px hit area under 768 px) that says what it copied in a toast and
   selects the text where the clipboard is refused (`useClipboard`, which every copy button of the web goes through). `RunRef` writes a run as `#N` in mono with tabular figures.
   `Tag` is a kind or a role (Admin, Plan run, Deploy, Blocking): an icon and a word on `surface-sunken` with 4 px
   corners, never round. `NAME_LINK` is the name in a table's first column or a list's primary cell: text colour,
   `brand` on hover.
 - `components/shell`: the kit's AppShell. The sidebar (`app-sidebar.tsx`, links in `nav.ts`) carries the mark and
-  "evo-agents hub" (Plex Sans 600, the mark at 24 px), the project switcher, then Home and Inbox, the current project
+  "evo-agents hub" (Plex Sans 600, the mark at 24 px), the project switcher, then Home, Inbox and Monitor, the current project
   (Overview, Plans, Runs, Insights, Curator, Memories, Skills, Knowledge graph), the hub (Workers, My memories, Shared
   skills, Administration for a hub admin), and at the foot the fleet line and the account. Inbox counts the decisions
-  and the Curator's proposals waiting for the visitor's answer in `attention`, Runs the project's active runs in `running` (`nav-counts.ts`, through the
-  same queries as the bell and the runs pages); a count is a round pill drawn for the eye, said in words to screen
+  and the Curator's proposals waiting for the visitor's answer in `attention`, Monitor the runs at work in every project
+  of the grants (`counts.running` of `GET /v1/me/overview`, asked every 15 seconds while one runs) and Runs the project's
+  active runs, both in `running` (`nav-counts.ts`, through the same queries as the bell, Home and the runs pages); a count is a round pill drawn for the eye, said in words to screen
   readers after the label, hidden at zero, and a dot on the icon when the sidebar is folded. The fleet line
   (`fleet-line.tsx`) reads `GET /v1/workers` like the Workers page ("2 workers online, 1 busy"; a `success` dot while
   any is online, `danger` when every one is offline or draining, `neutral` before the first) and links there. The
@@ -459,7 +471,7 @@ Shared pieces built on them:
   sideways at 375 px. A plan's pages add their tabs under the head (`PlanHeader`).
 - `components/live`: the kit's LiveIndicator, in the top bar beside the bell. A page registers what keeps it current:
   its main query through `useHubQuery(..., { live: true })` (or `usePagedQuery`, `useLiveQuery`), a stream through
-  `useLiveSignal` (the run page's event stream, with the log's Pause); a page that registered nothing shows none, and a
+  `useLiveSignal` (the run page's event stream, with the log's Pause; the Monitor's worst tile); a page that registered nothing shows none, and a
   query that does not poll counts for nothing. `live-model.ts` is the state machine: Live while updates arrive (a
   `success-solid` dot that pulses, "updated 3s ago"); Reconnecting from the first failed read (TanStack's
   `fetchFailureCount`, or an error newer than the data) or while the log reads events instead of its stream (an
@@ -502,7 +514,7 @@ Shared pieces built on them:
   #7") open the DecisionSheet over Home, loaded on demand (`next/dynamic`, asked for when the pointer or focus reaches
   Answer), so Answer then Send answer answers with the agent's pick. In flight lists the active runs (the agent at work
   first with the live dot, waiting and parked, queued): a plan run carries its tag and its steps done of the total as a
-  bar; a waiting run says whose answer it waits for. Recent lists the runs that ended last, a failure's reason in
+  bar; a waiting run says whose answer it waits for; its head links to the Monitor ("Watch on Monitor"). Recent lists the runs that ended last, a failure's reason in
   `danger`, and Rerun (ghost, `RotateCcw`) on the visitor's own failed or lost run of one step where they write. Fleet
   lists the visitor's own workers with `HeartbeatBars`; Projects each project of the grants with the role, active plans,
   repos and open decisions. A member without a grant sees the EmptyState that says a hub administrator grants roles,
@@ -598,7 +610,8 @@ Shared pieces built on them:
   in progress and blocked ones away; a step that is not ready keeps a disabled checkbox and says why. Its footer says
   which of the visitor's own workers could take the runs now, from what their heartbeats report, the way the hub
   matches them at claim time. The Dispatch and Run this step buttons show only for a writer of the project (whoami's
-  grants); the API decides again on every dispatch.
+  grants); the API decides again on every dispatch. The runs page's head links to the Monitor for anyone (secondary,
+  `MonitorPlay`, before Dispatch).
 - `components/runs`, plan runs (`plan-run.tsx`, `plan-run-dialog.tsx`, shared fields in `dispatch-fields.tsx`): Run plan
   sits in the plan page's header (`PlanHeader`'s `actions`) and in an action column on the rows of the plans list's
   active area, only for a writer. It is shown but locked, with the reason in words beside it, while the plan has an
@@ -718,11 +731,21 @@ Shared pieces built on them:
   found answered after a 409, stays with its answer until the visitor leaves.
 - `components/runs`, a run's page (`/p/{project}/runs/{id}`), the kit's RunScreen: the page head, the `RunTimeline`,
   then the session card (Trace, Raw log, Terminal) on the left and, in a 23 rem side column from xl, the decision while
-  a plan run waits, Details, Usage, the plan's steps, the Result and, for the run's owner, Credentials. Below xl the
-  side column moves under the timeline, the decision first, then the side cards (two by two from md), then the
-  session card; the page reads in that order at every width (`run-side`). The head
+  a plan run waits, Details, Usage, the plan's steps, the Result and, for the run's owner, Credentials. From xl
+  (1280 px) the page is one window tall and the two are regions that scroll on their own, side by side below the
+  timeline (`run-split`): the session card fills the window down to its bottom gutter, the open tab's log, trace or
+  terminal taking what its bars and the composer leave (`fill` on `RunLogCard`, `AgentTrace` and
+  `RunTerminalPanel`), and the side column (`run-aside`) is exactly as tall, scrolling inside itself when its cards
+  are longer. It is a region named "About run #12" that Tab reaches from xl (`useMediaQuery`), its 4 px of padding
+  taken back by its margin so the cards' shadows and focus rings stay inside it and its last card ends level with
+  the session card. The split is at least 30 rem tall and its own size is contained, so a short window scrolls the
+  page past the head instead of squeezing the trace. Below xl the side column moves under the timeline, the decision
+  first, then the side cards (two by two from md), then the session card at its own height; the page reads in that
+  order at every width (`run-side`). Take over shows the Terminal tab, focuses its tab and scrolls the session card
+  into view; `?view=` picks the tab at every width. The head
   is "Run #12" for every run, a plan run saying so in its Plan run tag, over the plan (in the body font) and step as
-  `brand` links with a quiet underline, so colour is not all that sets them apart from the line. The owner's controls sit in the header, each shown only when the state and the visitor's rights allow it
+  `brand` links with a quiet underline, so colour is not all that sets them apart from the line. A plan run names its
+  plan once, as the link, and its title after it only when the title differs from the id. The owner's controls sit in the header, each shown only when the state and the visitor's rights allow it
   (`run-model.ts`, `runControls`), in the kit's order: Take over (a dialog with `evo-agents worker attach N` and, for
   Claude Code, the Remote Control session `evo-run-N`), the diff with its `+12 −3` in mono `success` and `danger` once
   the worker reported a diffstat, Rerun, Hand back, Approve, and Cancel (confirmed in a dialog) last, plus the composer
@@ -730,12 +753,25 @@ Shared pieces built on them:
   breakpoint (`PageHeader`'s `actions`, which take a line of their own when the title leaves no room), so they wrap
   instead of pushing the page sideways.
 - `run-credentials.tsx`, the owner's Credentials card in the side column, drawn as the other side cards (`surface`,
-  `shadow-raised`, a `section-title` head with one `caption` line in `fg-subtle`): each lease the run got, its name in
-  mono, its provider as a tag (Your secret with `KeyRound`, or GitHub App with the GitHub mark), the variable or the
-  origins it answered for, when and to which worker it was issued, when it ends and when it was revoked, and its state
-  as a pill (Out in `brand`, Expired neutral, Revoked outlined with `Ban`); read every 5 seconds while the run is
-  active and again when it moves, and never a value. Nobody else gets the card, as the API answers them 403; its foot
-  links to the Secrets page.
+  `shadow-raised`, a `section-title` head with a link to the Secrets page on its right, 13 px `brand` with a chevron):
+  each lease the run got, its name in mono, its provider as a tag (Your secret with `KeyRound`, or GitHub App with the
+  GitHub mark), the variable or the origins it answered for (each a link to the repo's page), when and to which worker
+  it was issued, when it ends and when it was revoked, and its state as a pill (Out in `brand`, Expired neutral,
+  Revoked outlined with `Ban`); read every 5 seconds while the run is active and again when it moves, and never a
+  value. Nobody else gets the card, as the API answers them 403. The side cards say nothing of when they fill or who
+  sees them: Usage and the Result with nothing to show are their head alone, the title and a `caption` state on the
+  right ("Nothing reported yet", "None yet"; "Nothing reported", "None" once the run ended).
+- `forge.ts` and `links.tsx`, the run page's links out of the hub. A repo leads to its page on its forge, read from the
+  origin the project registered (`GET /v1/projects/{project}`): https without the user, `.git` and trailing slash, SSH
+  (`git@host:owner/repo.git`, `ssh://git@host[:port]/owner/repo.git`) as https on the same host. On GitHub
+  (`github.com`) and GitLab (a host whose name says gitlab, as the Curator's code links) its branches lead to
+  `/tree/` and `/-/tree/`, its commits to `/commit/` and `/-/commit/`; on another forge only the repo links. A repo
+  without an origin, or with one that is not http, https or SSH or holds characters no forge path does, stays text.
+  Every http and https address in the trace, the Result and a git lease's targets is a link too, and nothing else
+  ever is (no `javascript:`, `data:` or `file:`). Each opens a new tab with `rel="noopener noreferrer"`; its name is
+  its text then "(opens in a new tab)" (`aria-label`, so the text in the page stays the text); on cards it is `brand`
+  with a quiet underline, on the trace's `term-bg` `term-agent` underlined. A tool row's folded argument stays text, as
+  a link in a `summary` would also toggle the row; open, its Input shows the address as a link.
 - `run-timeline.tsx`, the kit's RunTimeline (`timelineModel` in `run-model.ts`): the phases left to right (top to
   bottom under 768 px), the time from each phase to the next on the line between them, mono 11 px in `fg-muted` on
   `card`. Done phases are `fg-muted` nodes on a solid `fg-subtle` line; the current one is a `running` node with the
@@ -775,7 +811,8 @@ Shared pieces built on them:
   cost "as reported" or "Cost not reported"; nothing is priced by the page. Once the worker reported the run's end it
   reads `run.usage`; while it runs it adds up the `usage_update` events, as each runtime reports them: Claude Code per
   turn with the session's cost so far, opencode per step with the step's cost, Codex the thread's running total (its
-  cached input inside its input, reasoning inside output). The Result card no longer lists raw usage keys.
+  cached input inside its input, reasoning inside output). The note under the rows names the cache writes alone, the
+  cost being said on its line. The Result card no longer lists raw usage keys.
 - The Raw log (`use-run-log.ts`, `run-log.tsx`) follows the run's server-sent events with an EventSource; the browser
   reconnects by itself with `Last-Event-ID`, every event is kept once by its seq, and the stream's `end` closes it for
   good. When the stream fails (closed by the browser, three errors without opening, or 10 seconds behind the run's
@@ -799,7 +836,10 @@ Shared pieces built on them:
   badge reads Not connected, Loading terminal, Connecting, Waiting for the worker, Connected or Closed; every close of
   the hub (4401, 4403, 4408, 4409, 4426, 1011, a lost connection) says what happened and what to do, with the hub's own
   reason under it, and a sign-in older than 12 hours (whoami's `token.created_at`) asks to sign in again before
-  anything is tried. On a headless run the intro and the waiting message say that connecting takes the run over. The
+  anything is tried. From xl the screen fills the session card, and the bars around it keep their height from the hello to the
+  live terminal, so the worker gets no resize as the session starts: the sentence of where the TUI runs has a line of
+  its own, the size has its place in the foot before it is known, and the waiting message lies over the top of the
+  still blank screen. On a headless run the intro and the waiting message say that connecting takes the run over. The
   surface is the log's (`term-*` tokens, `hub-terminal` in `globals.css`): IBM Plex Mono 13 px, 16 ANSI colours drawn
   from the `term-*` tokens, a 2 px
   `ring` outline inside its edge while focused; Esc then Tab leaves it, as the footer says. The CSP allows
@@ -808,6 +848,50 @@ Shared pieces built on them:
 - The diff page (`/p/{project}/runs/{id}/diff`) reads the run's diff on the web's server through the presigned GET
   the API signs (`diff-blob.ts`), so the blob store needs no CORS rule and connect-src stays `'self'`; the download is
   a navigation to the presigned URL, as for skill bundles. It renders up to 20,000 lines, file by file.
+- `components/monitor`, the Monitor (`/monitor`, in the sidebar's first group after Inbox): every run in flight of the
+  projects of the visitor's grants in a list, and the runs the visitor watches as live tiles in a grid. One read of
+  `GET /v1/me/overview` (prefetched on the server with the runs the URL names; every 5 seconds while a run is in
+  flight, 30 otherwise; the page's LiveIndicator query). The head is "Monitor" over one line that says what the grid
+  follows ("Following every run in flight: a run that starts joins the grid.", "Watching 4 runs you chose."), with
+  Follow every run in flight (secondary) once the visitor chose.
+  - The URL (`model.ts`). `/monitor` alone follows every run in flight: a run that starts joins the grid, and one that
+    ends keeps its tile until it is closed. `?runs=project:id,project:id` names the tiles in grid order, ended runs
+    included, so a reload or a link shows the same grid: a project's name is `[a-z0-9-]`, so the colon never belongs
+    to it, and the run id tells the run inside its project. An empty value is a grid with no tile; an entry that is not
+    a project and a run id is left out; the grid holds 24 tiles at most and says so past them. Checking or unchecking
+    a row, or closing a tile, writes the tiles to the URL through `history.replaceState`; Follow every run in flight
+    goes back to `/monitor`.
+  - The layout. From xl the page is one window tall, as a run's: the list a column of 18 rem (20 rem from 2xl) that
+    scrolls inside itself, a region Tab reaches, and the grid beside it sharing out the rest: 1 tile takes it all, 2
+    sit side by side, 3 or 4 two by two, 5 or 6 three by two, 7 to 9 three by three, each row as tall as the others,
+    and nothing scrolls; from 10 tiles four columns of 17 rem tiles scroll inside the grid, a region Tab reaches. From
+    768 to 1279 px the grid has two columns (one for a single tile) of 22 rem tiles, under 768 px one of 20 rem, and
+    the page scrolls; the list is then a card above the grid that folds behind its head ("Show the runs in flight",
+    open while the grid is empty). A row of the list is its checkbox's label ("Watch run #12"): the number, the
+    project and the state pill, the plan's or step's title (with the Plan run tag), the worker, the time and a plan
+    run's steps as a bar and "3/11"; a watched row is `surface-selected`.
+  - A tile (`run-tile.tsx`) is for viewing only: `#12` as a link to the run's page ("Open run #12"), the project, the
+    `StatusBadge` (the pulsing dot only while running) and a ghost close button named "Stop watching run #12"; then the
+    title; then the worker, the time ("12 min so far", "queued 3 min ago", "ran 4 min", "ended 2 min ago"), a plan
+    run's steps, "Waiting for you" in `attention` with `MessageSquare` while the run waits on the visitor's decision
+    ("Waiting for octo" otherwise) and the stream's state as a still dot and a word (none once the run ended). No
+    Cancel, no message box, no terminal: those stay on the run's page and in the Inbox. The rest of the tile is the
+    tail of the trace (`tile-trace.tsx`) on `term-bg`: the last 60 things the run's Trace shows, one line each through
+    `agentDigest` (the agent's words, each tool with its argument and exit code or duration, the plan, the owner's
+    messages, "Asked you"), the 24-hour time in `term-muted`, who in their `term-*` tone, and a failed or lost run's
+    reason last in `term-error`; "Earlier events are on the run's page." heads it when the run had events before the
+    tail. It follows the newest line unless the visitor scrolled up, when Jump to the latest shows. The log region is
+    `aria-live="off"`, so nine tiles do not talk over each other; each tile says once, in a status region, when its
+    run moves ("Run #12 is now Done.").
+  - Reads. Each tile's run is read by the page (every 5 seconds while active); a run the visitor cannot read (403,
+    404) is left out, and a note says how many. A tile follows its trace with one EventSource from 200 events before
+    the run's `last_seq` (`useRunLog` with `startAfter`, keeping the latest 400 events), never the whole history, which
+    may hold 20,000 events; while the stream fails it reads `events?after=` as the run page does. The stream closes
+    when the tile closes, when the page is left and when the run ends. The top bar's LiveIndicator says the worst of
+    the tiles' streams and of the list's reads (`worstSignal`). Loading is a skeleton of the list and two tiles; no
+    run in flight while following is the EmptyState; a failed first read is the error state; a tile whose run cannot
+    be read says so with Try again. The hub serves HTTP/2, so a wall of streams shares one connection; the local web's
+    HTTP/1.1 allows six per origin, which `e2e/monitor.spec.ts` keeps in mind.
 - `components/insights`, a project's Insights (`/p/{project}/insights`, in the sidebar's project group after Runs): the
   runs that ended on each UTC day of the last 7, 30 or 90 days, from `GET /v1/projects/{p}/runs/stats` (prefetched on the
   server for the range the URL names). The range is the kit's segmented control in one row under the page head, with

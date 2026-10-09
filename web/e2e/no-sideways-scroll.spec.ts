@@ -5,6 +5,7 @@ import { ADMIN_ACCOUNT, machineToken } from "./support/hub";
 import { seedInsights } from "./support/insights";
 import { grantOn, kgPath, nodePath, SHARED_NODE, sharedKg } from "./support/kg";
 import { apiOf, memoryFile, putMemory } from "./support/memories";
+import { command, endedRuns, monitorPath, runningRuns, seedMonitorPlan } from "./support/monitor";
 import { ACTIVE_PLAN, open, seedPlans } from "./support/plans";
 import {
   askDecision,
@@ -33,9 +34,11 @@ import { heartbeat, registerWorker, RUNTIMES } from "./support/workers";
  * found a wide table widening the shell's <main> at 768 and 1024 px, where the open sidebar leaves the content its
  * narrowest for the breakpoint; the shell's inset is min-w-0 since. The pages with the widest tables of each area
  * (admin, plans, memories, skills, knowledge graph, workers, secrets, runs), Insights with its charts and a wide table,
- * and Home, seeded with long unbroken names, at 375, 768 and 1024 px.
+ * Home and the Monitor, seeded with long unbroken names, at 375, 768 and 1024 px, and at 1440 px, where the content is
+ * as wide as the window leaves beside the sidebar, the run page splits into its two scroll regions and the Monitor
+ * puts its list beside the grid.
  */
-const WIDTHS = [375, 768, 1024];
+const WIDTHS = [375, 768, 1024, 1440];
 const LONG = "a-rather-long-unbroken-name-that-never-wraps-in-a-table-cell";
 /** LONG as an environment variable a secret may set. */
 const LONG_VAR = LONG.toUpperCase().replaceAll("-", "_");
@@ -86,12 +89,12 @@ async function seedProject(me: Member): Promise<Visit[]> {
   ];
 }
 
-test("plans, memories and skills pages never scroll sideways at 375, 768 and 1024 px", async ({ page, member }) => {
+test("plans, memories and skills pages never scroll sideways at 375, 768, 1024 and 1440 px", async ({ page, member }) => {
   const me = await member([{ role: "writer", maxLevel: "customer" }]);
   await noSidewaysScroll(page, await seedProject(me));
 });
 
-test("knowledge graph pages never scroll sideways at 375, 768 and 1024 px", async ({ page, member }) => {
+test("knowledge graph pages never scroll sideways at 375, 768, 1024 and 1440 px", async ({ page, member }) => {
   const me = await member();
   const kg = await sharedKg();
   await grantOn(kg.project, me.login, "reader", "internal");
@@ -101,7 +104,7 @@ test("knowledge graph pages never scroll sideways at 375, 768 and 1024 px", asyn
   ]);
 });
 
-test("admin pages never scroll sideways at 375, 768 and 1024 px", async ({ page, signInAs }) => {
+test("admin pages never scroll sideways at 375, 768, 1024 and 1440 px", async ({ page, signInAs }) => {
   await signInAs(ADMIN_ACCOUNT);
   await machineToken(ADMIN_ACCOUNT); // a machine token row next to the web sessions
   await noSidewaysScroll(page, [
@@ -112,7 +115,7 @@ test("admin pages never scroll sideways at 375, 768 and 1024 px", async ({ page,
   ]);
 });
 
-test("workers pages never scroll sideways at 375, 768 and 1024 px", async ({ page, member }) => {
+test("workers pages never scroll sideways at 375, 768, 1024 and 1440 px", async ({ page, member }) => {
   const me = await member([{ role: "writer", maxLevel: "internal" }]);
   const worker = await registerWorker(me, { name: `${LONG}-worker`, projects: [me.projects[0]], slots: 8, labels: [LONG.slice(0, 40)] });
   await heartbeat(worker.id, {
@@ -125,7 +128,7 @@ test("workers pages never scroll sideways at 375, 768 and 1024 px", async ({ pag
   ]);
 });
 
-test("the secrets page never scrolls sideways at 375, 768 and 1024 px", async ({ page, member }) => {
+test("the secrets page never scrolls sideways at 375, 768, 1024 and 1440 px", async ({ page, member }) => {
   const me = await member([{ role: "writer", maxLevel: "internal" }]);
   const project = me.projects[0];
   const worker = await registerWorker(me, { name: `${LONG}-worker`, projects: [project] });
@@ -142,7 +145,7 @@ test("the secrets page never scrolls sideways at 375, 768 and 1024 px", async ({
   await noSidewaysScroll(page, [{ path: "/secrets", ready: shown("secrets-table") }]);
 });
 
-test("runs pages never scroll sideways at 375, 768 and 1024 px", async ({ page, member }) => {
+test("runs pages never scroll sideways at 375, 768, 1024 and 1440 px", async ({ page, member }) => {
   const me = await member([{ role: "writer", maxLevel: "internal" }]);
   const project = me.projects[0];
   await seedRunPlan(me, project);
@@ -171,7 +174,7 @@ test("runs pages never scroll sideways at 375, 768 and 1024 px", async ({ page, 
   ]);
 });
 
-test("home never scrolls sideways at 375, 768 and 1024 px", async ({ page, member }) => {
+test("home never scrolls sideways at 375, 768, 1024 and 1440 px", async ({ page, member }) => {
   const me = await member([{ role: "writer", maxLevel: "internal" }]);
   const project = me.projects[0];
   // Long unbroken names in every card: a worker, a decision's question and a failure.
@@ -186,7 +189,24 @@ test("home never scrolls sideways at 375, 768 and 1024 px", async ({ page, membe
   await noSidewaysScroll(page, [{ path: "/", ready: shown("needs-you-item") }]);
 });
 
-test("insights never scroll sideways at 375, 768 and 1024 px, charts or tables", async ({ page, member }) => {
+test("the monitor never scrolls sideways at 375, 768, 1024 and 1440 px", async ({ page, member }) => {
+  const me = await member([{ role: "writer", maxLevel: "internal" }]);
+  const project = me.projects[0];
+  // Long unbroken names in the list and the tiles: a worker, a line of the trace, a command and a failure.
+  await seedMonitorPlan(me, project);
+  const {
+    live,
+    runs: [run],
+  } = await runningRuns(me, project, ["1"], `${LONG}-worker`);
+  await sendEvents(live, run.id, [say(`${LONG}${LONG}`), command(1, `cat /${LONG}/${LONG}/${LONG}.ts`)]);
+  const [ended] = await endedRuns(me, project, ["2"], `${LONG}-ended`);
+  await noSidewaysScroll(page, [
+    { path: "/monitor", ready: shown("tile-line") },
+    { path: monitorPath([run, ended]), ready: shown("tile-error-line") },
+  ]);
+});
+
+test("insights never scroll sideways at 375, 768, 1024 and 1440 px, charts or tables", async ({ page, member }) => {
   const me = await member([{ role: "writer", maxLevel: "internal" }]);
   const project = me.projects[0];
   await seedInsights(me, project);
