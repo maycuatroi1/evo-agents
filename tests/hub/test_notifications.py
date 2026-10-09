@@ -345,8 +345,8 @@ def test_a_member_lists_counts_and_reads_their_notifications(client, hub, hub_db
     assert listed(client, hub["owner"], kind="notice")["total"] == 2
     assert listed(client, hub["owner"], project="elsewhere")["total"] == 0
     assert listed(client, hub["owner"], limit=1, offset=1)["notifications"][0]["id"] == second["id"]
-    assert count(client, hub["owner"]) == {"unread": 3, "open_decisions": 1}
-    assert count(client, hub["other"]) == {"unread": 0, "open_decisions": 0}
+    assert count(client, hub["owner"]) == {"unread": 3, "open_decisions": 1, "open_proposals": 0}
+    assert count(client, hub["other"]) == {"unread": 0, "open_decisions": 0, "open_proposals": 0}
 
     marked = read(client, hub["owner"], ids=[first["id"], 999999])
     assert marked.status_code == 200 and marked.json() == {"read": 1, "unread": 2}
@@ -356,7 +356,11 @@ def test_a_member_lists_counts_and_reads_their_notifications(client, hub, hub_db
     for body in ({}, {"ids": [first["id"]], "all": True}, {"ids": []}, {"all": False}):
         assert read(client, hub["owner"], **body).status_code == 422, body
     assert read(client, hub["owner"], all=True).json() == {"read": 2, "unread": 0}
-    assert count(client, hub["owner"]) == {"unread": 0, "open_decisions": 1}  # read, still to be answered
+    assert count(client, hub["owner"]) == {
+        "unread": 0,
+        "open_decisions": 1,
+        "open_proposals": 0,
+    }  # read, still to be answered
     # the audit names the notifications, never their text
     assert [row[:3] for row in audit_rows(hub_db, "notification")] == [
         ("notification.read", f"notifications:{first['id']}", OWNER),
@@ -368,7 +372,7 @@ def test_a_member_lists_counts_and_reads_their_notifications(client, hub, hub_db
     grants = f"/v1/admin/projects/{PROJECT}/grants/{OWNER}"
     assert client.delete(grants, headers=hub["admin"]).status_code in (200, 204)
     assert listed(client, hub["owner"])["total"] == 0
-    assert count(client, hub["owner"]) == {"unread": 0, "open_decisions": 0}
+    assert count(client, hub["owner"]) == {"unread": 0, "open_decisions": 0, "open_proposals": 0}
 
 
 def test_an_answered_decision_is_listed_by_age_and_the_project_filter_keeps_the_projects_own(client, hub):

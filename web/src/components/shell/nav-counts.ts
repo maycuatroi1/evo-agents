@@ -36,10 +36,10 @@ export function fleetOf(workers: readonly Pick<Worker, "status" | "held_runs">[]
   return fleet;
 }
 
-/** The decisions waiting for the visitor's answer; null until the hub has said. */
+/** The decisions and the Curator's proposals waiting for the visitor's answer; null until the hub has said. */
 export function useOpenDecisions(): number | null {
   const { data } = useQuery(notificationCountQuery(browserApi));
-  return data ? data.open_decisions : null;
+  return data ? data.open_decisions + (data.open_proposals ?? 0) : null;
 }
 
 /** The project's active runs; null outside a project, until the hub has said, or when the visitor may not list them. */

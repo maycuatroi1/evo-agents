@@ -15,6 +15,7 @@ import {
   notificationOfDecision,
   parkTiming,
   readInboxFilters,
+  notificationOfProposal,
   splitInbox,
   unreadIds,
 } from "./model";
@@ -43,7 +44,8 @@ const decision = (id: number, state: Notification["decision_state"], extra: Part
 describe("inbox filters", () => {
   it("reads the URL's filters, keeping only values the API takes", () => {
     const params = new URLSearchParams("kind=decision&project=demo&unread=1&page=3&decision=42");
-    expect(readInboxFilters(params)).toEqual({ kind: "decision", project: "demo", unread: true, page: 3, decision: 42 });
+    expect(readInboxFilters(params)).toEqual({ kind: "decision", project: "demo", unread: true, page: 3, decision: 42, proposal: null });
+    expect(readInboxFilters(new URLSearchParams("kind=proposal&proposal=9"))).toEqual({ ...NO_FILTERS, kind: "proposal", proposal: 9 });
     const bad = new URLSearchParams("kind=email&project=Bad%20Name&unread=yes&page=0&decision=-4");
     expect(readInboxFilters(bad)).toEqual(NO_FILTERS);
     expect(readInboxFilters(new URLSearchParams("decision=99999999999999999999")).decision).toBeNull();
@@ -51,15 +53,16 @@ describe("inbox filters", () => {
 
   it("writes them back in a stable order, leaving out what is not set", () => {
     expect(inboxSearch(NO_FILTERS)).toBe("");
-    expect(inboxSearch({ kind: "notice", project: "demo", unread: true, page: 2, decision: 7 })).toBe(
+    expect(inboxSearch({ kind: "notice", project: "demo", unread: true, page: 2, decision: 7, proposal: null })).toBe(
       "?decision=7&kind=notice&project=demo&unread=1&page=2",
     );
+    expect(inboxSearch({ ...NO_FILTERS, proposal: 12 })).toBe("?proposal=12");
     const round = readInboxFilters(new URLSearchParams(inboxSearch({ ...NO_FILTERS, project: "ops", decision: 3 }).slice(1)));
     expect(round).toEqual({ ...NO_FILTERS, project: "ops", decision: 3 });
   });
 
   it("asks the API for the page the filters name; the open decision is not a filter", () => {
-    expect(inboxQuery({ kind: "decision", project: null, unread: true, page: 3, decision: 9 })).toEqual({
+    expect(inboxQuery({ kind: "decision", project: null, unread: true, page: 3, decision: 9, proposal: 4 })).toEqual({
       kind: "decision",
       project: null,
       unread: true,
@@ -77,6 +80,17 @@ describe("a page of notifications", () => {
     const { waiting, rest } = splitInbox(page);
     expect(waiting.map((item) => item.id)).toEqual([5, 3]);
     expect(rest.map((item) => item.id)).toEqual([9, 1, 2]);
+  });
+
+  it("puts the proposals still open beside the open decisions, and answered ones with the rest", () => {
+    const proposal = (id: number, state: Notification["proposal_state"]) =>
+      note(id, { kind: "proposal", notice_kind: null, proposal_id: 200 + id, proposal_state: state, link: `/inbox?proposal=${200 + id}` });
+    const page = [decision(5, "open"), proposal(4, "open"), note(9), proposal(2, "accepted")];
+    const { waiting, rest } = splitInbox(page);
+    expect(waiting.map((item) => item.id)).toEqual([5, 4]);
+    expect(rest.map((item) => item.id)).toEqual([9, 2]);
+    expect(notificationOfProposal(page, 204)?.id).toBe(4);
+    expect(notificationOfProposal(page, 105)).toBeNull();
   });
 
   it("finds a decision's notification and the unread ones, up to what one request marks", () => {

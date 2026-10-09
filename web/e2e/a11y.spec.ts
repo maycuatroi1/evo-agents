@@ -2,7 +2,8 @@ import type { Page } from "@playwright/test";
 
 import { expectNoSeriousViolations } from "./support/a11y";
 import { expect, isDeployed, type Member, test } from "./support/fixtures";
-import { ADMIN_ACCOUNT, machineToken, newAccount, uniqueName } from "./support/hub";
+import { seedCurator } from "./support/curator";
+import { ADMIN_ACCOUNT, HubAdmin, machineToken, newAccount, uniqueName } from "./support/hub";
 import { seedInsights } from "./support/insights";
 import { graphReady, grantOn, HUB_NODE, kgPath, nodePath, sharedKg } from "./support/kg";
 import { apiOf, memoryFile, putMemory } from "./support/memories";
@@ -207,6 +208,30 @@ const PAGES: Entry[] = [
     open: async ({ page, me }) => {
       await page.goto(`/p/${me.projects[0]}`);
       await expect(page.getByTestId("label-ladder")).toBeVisible();
+    },
+  },
+  {
+    name: "a project's Curator, its proposals, a proposal and its charter, read by a writer",
+    open: async ({ page, me }) => {
+      // The charter is an admin's: another member is the project's admin and owns the night shift's worker.
+      const project = me.projects[0];
+      const owner = newAccount("owner");
+      await new HubAdmin().grant(project, owner.login, "admin", "internal");
+      const night = await seedCurator(owner, project, uniqueName("a11y"));
+      await page.goto(`/p/${project}/curator`);
+      await expect(page.locator("#main").getByTestId("curator-nights")).toBeVisible();
+      await expectNoSeriousViolations(page, "the Curator");
+      await page.goto(`/p/${project}/curator/proposals`);
+      await expect(page.locator("#main").getByTestId("proposals-table")).toBeVisible();
+      await expectNoSeriousViolations(page, "the proposals");
+      await page.goto(`/p/${project}/curator/charter`);
+      await expect(page.locator("#main").getByTestId("charter-view")).toBeVisible();
+      await expectNoSeriousViolations(page, "the charter");
+      await page.goto(`/p/${project}/curator/proposals/${night.proposals[2].id}`);
+      await expect(page.locator("#main").getByTestId("proposal-finding")).toBeVisible();
+      await expect(page.locator("#main").getByTestId("ledger-figures")).toBeVisible();
+      await page.locator("#main").getByTestId("evidence-digest-toggle").first().click();
+      await expect(page.locator("#main").getByTestId("evidence-digest")).toBeVisible();
     },
   },
   {

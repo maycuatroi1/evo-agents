@@ -254,6 +254,9 @@ def _kind(notification: dict) -> str:
     if notification["kind"] == "decision":
         state = f" ({notification['decision_state']})" if notification["decision_state"] else ""
         return f"decision #{notification['decision_id']}{state}"
+    if notification["kind"] == "proposal":
+        state = f" ({notification['proposal_state']})" if notification.get("proposal_state") else ""
+        return f"proposal #{notification.get('proposal_id')}{state}"
     return notification["notice_kind"] or notification["kind"]
 
 
@@ -305,9 +308,11 @@ def cmd_notifications(args) -> int:
     counts = hub.call("GET", "/v1/me/notifications/count")
     shown = len(rows)
     which = "unread notification(s)" if args.unread else "notification(s)"
+    proposals = counts.get("open_proposals") or 0
+    waiting = f" and {proposals} proposal(s)" if proposals else ""
     print(
         f"{shown} of {listed['total']} {which}; {counts['unread']} unread in all, {counts['open_decisions']} "
-        "decision(s) waiting for your answer"
+        f"decision(s){waiting} waiting for your answer"
     )
     if listed["offset"] + shown < listed["total"]:
         print(f"More with --offset {listed['offset'] + shown}.")

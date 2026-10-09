@@ -94,7 +94,7 @@ export function RunDetails({ run, viewer }: { run: Run; viewer: RunViewer | null
         <Fact label={t("model")} testId="run-model">
           {run.model ? <span className="font-mono text-xs">{run.model}</span> : <span className="text-muted-foreground">{t("modelDefault")}</span>}
         </Fact>
-        {run.kind === "plan" ? (
+        {run.kind === "plan" || run.kind === "review" || run.kind === "judge" ? (
           <Fact label={t("repos")} testId="run-repos">
             <ul className="flex flex-col gap-1">
               {(run.repos ?? []).map((repo) => (
@@ -148,9 +148,17 @@ export function RunDetails({ run, viewer }: { run: Run; viewer: RunViewer | null
             </>
           ) : null}
         </Fact>
-        <Fact label={t("approval")}>{run.kind === "plan" ? t("approvalPlan") : t(`approvals.${run.approval}`)}</Fact>
+        <Fact label={t("approval")}>
+          {run.kind === "plan"
+            ? t("approvalPlan")
+            : run.kind === "review"
+              ? t("approvalReview")
+              : run.kind === "judge"
+                ? t("approvalJudge")
+                : t(`approvals.${run.approval}`)}
+        </Fact>
         <Fact label={t("timeout")} testId="run-timeout">
-          {run.kind === "plan" ? (
+          {run.kind === "plan" || run.kind === "review" || run.kind === "judge" ? (
             <>
               <span>{t("timeoutHours", { hours: Math.round(run.timeout_min / 60) })}</span>
               <span className="block text-xs text-muted-foreground tabular-nums">
@@ -182,9 +190,11 @@ export function RunDetails({ run, viewer }: { run: Run; viewer: RunViewer | null
             <span className="tabular-nums">{duration(timing.durationMs)}</span>
           </Fact>
         ) : null}
-        <Fact label={t("revision")}>
-          <Identifier value={t("revisionValue", { revision: run.plan_revision })} />
-        </Fact>
+        {run.plan_revision !== null ? (
+          <Fact label={t("revision")}>
+            <Identifier value={t("revisionValue", { revision: run.plan_revision })} />
+          </Fact>
+        ) : null}
       </dl>
     </Card>
   );

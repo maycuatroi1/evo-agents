@@ -215,7 +215,7 @@ test.describe("shell", () => {
 
     await open(page, `/p/${project}/runs`);
     const sidebar = page.getByRole("navigation", { name: "Điều hướng chính" });
-    await expect(sidebar.getByRole("link")).toHaveCount(13);
+    await expect(sidebar.getByRole("link")).toHaveCount(14);
     const order = await sidebar.getByRole("link").evaluateAll((links) => links.map((link) => link.getAttribute("data-testid")));
     expect(order).toEqual([
       "nav-home",
@@ -224,6 +224,7 @@ test.describe("shell", () => {
       "nav-plans",
       "nav-runs",
       "nav-insights",
+      "nav-curator",
       "nav-memories",
       "nav-skills",
       "nav-kg",
@@ -236,7 +237,7 @@ test.describe("shell", () => {
 
     // Inbox counts the open decision (attention), Runs the active run (running); both said in words.
     await expect(page.getByTestId("nav-inbox-count")).toHaveText("1");
-    await expect(page.getByTestId("nav-inbox")).toHaveAccessibleName("Inbox, 1 quyết định chờ bạn trả lời");
+    await expect(page.getByTestId("nav-inbox")).toHaveAccessibleName("Inbox, 1 quyết định hoặc đề xuất chờ bạn trả lời");
     await expect(page.getByTestId("nav-runs-count")).toHaveText("1");
     await expect(page.getByTestId("nav-runs")).toHaveAccessibleName("Run, 1 run đang hoạt động");
 
@@ -267,7 +268,7 @@ test.describe("shell", () => {
     await toggle.click();
     await expect.poll(() => widthOf(page, "[data-slot=sidebar-container]")).toBe(56);
     await expect(page.getByTestId("nav-inbox-count")).toBeHidden();
-    await expect(page.getByTestId("nav-inbox")).toHaveAccessibleName("Inbox, 1 quyết định chờ bạn trả lời");
+    await expect(page.getByTestId("nav-inbox")).toHaveAccessibleName("Inbox, 1 quyết định hoặc đề xuất chờ bạn trả lời");
     await expect(page.getByTestId("brand")).toHaveAccessibleName("evo-agents hub");
     await toggle.click();
     await expect.poll(() => widthOf(page, "[data-slot=sidebar-container]")).toBe(240);

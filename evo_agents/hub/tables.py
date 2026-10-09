@@ -1,4 +1,4 @@
-"""The hub's 33 tables as SQLAlchemy Core metadata: what the queries are written on, and what Alembic autogenerates
+"""The hub's 45 tables as SQLAlchemy Core metadata: what the queries are written on, and what Alembic autogenerates
 the next migration from (``evo_agents/hub/migrations/env.py``).
 
 The migrations make the schema; this module describes it, and ``tests/hub/test_schema_metadata.py`` keeps the two
@@ -18,6 +18,7 @@ from sqlalchemy import (
     Boolean,
     Column,
     Computed,
+    Date,
     DateTime,
     ForeignKeyConstraint,
     Identity,
@@ -41,7 +42,7 @@ from sqlalchemy.dialects.postgresql import ARRAY, JSONB, TSVECTOR
 
 metadata = MetaData()
 
-# Run states the partial indexes of runs name (evo_agents/hub/migrations/versions/0010_plan_runs.py).
+# Run states the partial indexes of runs name (evo_agents/hub/migrations/versions/0010_plan_runs.py and 0014).
 RUN_ACTIVE = ("queued", "leased", "running", "interactive", "verifying", "waiting", "review", "parked")
 RUN_HELD = ("leased", "running", "interactive", "verifying", "waiting")
 
@@ -494,7 +495,7 @@ Index(
     postgresql_where=kg_builds.c.artifact_sha256.is_not(None),
 )
 
-# Workers and runs (0009, 0010, 0011)
+# Workers and runs (0009, 0010, 0011, 0012, 0014, 0017)
 
 workers = Table(
     "workers",
@@ -518,6 +519,7 @@ workers = Table(
     _when("drained_at"),
     _when("revoked_at"),
     Column("dispatch_from", Text, nullable=False, server_default="any"),
+    Column("run_kinds", ARRAY(Text)),
     ForeignKeyConstraint(["owner_id"], ["users.id"], ondelete="RESTRICT", name="workers_owner_id_fkey"),
     ForeignKeyConstraint(["token_id"], ["tokens.id"], ondelete="RESTRICT", name="workers_token_id_fkey"),
     PrimaryKeyConstraint("id", name="workers_pkey"),
@@ -580,10 +582,10 @@ runs = Table(
     metadata,
     _id(),
     Column("project_id", BigInteger, nullable=False),
-    Column("plan_id", Text, nullable=False),
+    Column("plan_id", Text),  # NULL for a review run, which works on no plan (0014)
     Column("step_key", Text),
     Column("title", Text),
-    Column("plan_revision", Integer, nullable=False),
+    Column("plan_revision", Integer),
     Column("dispatched_by", BigInteger, nullable=False),
     Column("pinned_worker_id", BigInteger),
     Column("worker_id", BigInteger),
@@ -626,6 +628,9 @@ runs = Table(
     _when("parked_at"),
     Column("resume_of_run_id", BigInteger),
     Column("dispatched_via", Text),
+    Column("schedule_id", BigInteger),
+    Column("schedule_night", Date),
+    Column("budget", JSONB),
     ForeignKeyConstraint(["dispatched_by"], ["users.id"], ondelete="RESTRICT", name="runs_dispatched_by_fkey"),
     ForeignKeyConstraint(["parent_run_id"], ["runs.id"], ondelete="RESTRICT", name="runs_parent_run_id_fkey"),
     ForeignKeyConstraint(["pinned_worker_id"], ["workers.id"], ondelete="RESTRICT", name="runs_pinned_worker_id_fkey"),
@@ -637,6 +642,7 @@ runs = Table(
     ),
     ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="RESTRICT", name="runs_project_id_fkey"),
     ForeignKeyConstraint(["resume_of_run_id"], ["runs.id"], ondelete="RESTRICT", name="runs_resume_of_run_id_fkey"),
+    ForeignKeyConstraint(["schedule_id"], ["schedules.id"], ondelete="RESTRICT", name="runs_schedule_id_fkey"),
     ForeignKeyConstraint(["worker_id"], ["workers.id"], ondelete="RESTRICT", name="runs_worker_id_fkey"),
     PrimaryKeyConstraint("id", name="runs_pkey"),
 )
@@ -656,6 +662,18 @@ Index(
     postgresql_where=(runs.c.kind == "plan") & runs.c.state.in_(RUN_ACTIVE),
 )
 Index(
+    "runs_active_review_key",
+    runs.c.project_id,
+    unique=True,
+    postgresql_where=(runs.c.kind == "review") & runs.c.state.in_(RUN_ACTIVE),
+)
+Index(  # a project has one judge run active at a time (0017)
+    "runs_active_judge_key",
+    runs.c.project_id,
+    unique=True,
+    postgresql_where=(runs.c.kind == "judge") & runs.c.state.in_(RUN_ACTIVE),
+)
+Index(
     "runs_claim_idx",
     runs.c.project_id,
     runs.c.dispatched_by,
@@ -668,6 +686,12 @@ Index("runs_project_idx", runs.c.project_id, runs.c.id.desc())
 Index("runs_step_idx", runs.c.project_id, runs.c.plan_id, runs.c.step_key, runs.c.id.desc())
 Index("runs_waiting_idx", runs.c.waiting_since, postgresql_where=runs.c.state == "waiting")
 Index("runs_parked_idx", runs.c.parked_at, postgresql_where=runs.c.state == "parked")
+Index(
+    "runs_schedule_idx",
+    runs.c.schedule_id,
+    runs.c.schedule_night,
+    postgresql_where=runs.c.schedule_id.is_not(None),
+)
 
 run_events = Table(
     "run_events",
@@ -682,7 +706,7 @@ run_events = Table(
     PrimaryKeyConstraint("run_id", "seq", name="run_events_pkey"),
 )
 
-# Decisions and notifications (0010)
+# Decisions and notifications (0010, 0014)
 
 decisions = Table(
     "decisions",
@@ -750,8 +774,10 @@ notifications = Table(
     Column("link", Text),
     _stamp("created_at"),
     _when("read_at"),
+    Column("proposal_id", BigInteger),
     ForeignKeyConstraint(["decision_id"], ["decisions.id"], ondelete="CASCADE", name="notifications_decision_id_fkey"),
     ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name="notifications_project_id_fkey"),
+    ForeignKeyConstraint(["proposal_id"], ["proposals.id"], ondelete="CASCADE", name="notifications_proposal_id_fkey"),
     ForeignKeyConstraint(["run_id"], ["runs.id"], ondelete="CASCADE", name="notifications_run_id_fkey"),
     ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE", name="notifications_user_id_fkey"),
     PrimaryKeyConstraint("id", name="notifications_pkey"),
@@ -765,6 +791,13 @@ Index(
     unique=True,
     postgresql_where=notifications.c.decision_id.is_not(None),
 )
+Index(
+    "notifications_proposal_key",
+    notifications.c.proposal_id,
+    notifications.c.user_id,
+    unique=True,
+    postgresql_where=notifications.c.proposal_id.is_not(None),
+)
 
 notification_channels = Table(
     "notification_channels",
@@ -775,9 +808,12 @@ notification_channels = Table(
     Column("config", JSONB, nullable=False, server_default="{}"),
     Column("enabled", Boolean, nullable=False, server_default=true()),
     _stamp("created_at"),
+    Column("token_id", BigInteger),  # the web session that linked the channel, which it lives no longer than (0016)
+    ForeignKeyConstraint(["token_id"], ["tokens.id"], ondelete="CASCADE", name="notification_channels_token_id_fkey"),
     ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE", name="notification_channels_user_id_fkey"),
     PrimaryKeyConstraint("id", name="notification_channels_pkey"),
     UniqueConstraint("user_id", "kind", name="notification_channels_user_id_kind_key"),
+    Index("notification_channels_token_idx", "token_id"),
 )
 
 notification_deliveries = Table(
@@ -792,6 +828,7 @@ notification_deliveries = Table(
     Column("last_error", Text),
     _stamp("created_at"),
     _when("delivered_at"),
+    Column("external_id", Text),
     ForeignKeyConstraint(
         ["channel_id"],
         ["notification_channels.id"],
@@ -817,6 +854,12 @@ Index(
     "notification_deliveries_due_idx",
     notification_deliveries.c.next_at,
     postgresql_where=notification_deliveries.c.state == "pending",
+)
+Index(  # a reply to a message a channel sent finds its notification (0015)
+    "notification_deliveries_external_idx",
+    notification_deliveries.c.channel_id,
+    notification_deliveries.c.external_id,
+    postgresql_where=notification_deliveries.c.external_id.is_not(None),
 )
 
 # Credentials (0011)
@@ -909,4 +952,324 @@ Index(
     "credential_leases_sealed_idx",
     credential_leases.c.expires_at,
     postgresql_where=credential_leases.c.sealed_value.is_not(None),
+)
+
+# The night shift (0012)
+
+charters = Table(
+    "charters",
+    metadata,
+    Column("project_id", BigInteger, nullable=False),
+    Column("revision", Integer, nullable=False),
+    Column("body", JSONB, nullable=False),
+    Column("worker_id", BigInteger, nullable=False),
+    Column("created_by", BigInteger, nullable=False),
+    _stamp("created_at"),
+    ForeignKeyConstraint(["created_by"], ["users.id"], ondelete="RESTRICT", name="charters_created_by_fkey"),
+    ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name="charters_project_id_fkey"),
+    ForeignKeyConstraint(["worker_id"], ["workers.id"], ondelete="RESTRICT", name="charters_worker_id_fkey"),
+    PrimaryKeyConstraint("project_id", "revision", name="charters_pkey"),
+)
+
+schedules = Table(
+    "schedules",
+    metadata,
+    _id(),
+    Column("project_id", BigInteger, nullable=False),
+    Column("kind", Text, nullable=False),
+    Column("owner_id", BigInteger, nullable=False),
+    Column("worker_id", BigInteger, nullable=False),
+    _stamp("created_at"),
+    _stamp("updated_at"),
+    _when("paused_at"),
+    Column("paused_by", BigInteger),
+    Column("pause_reason", Text),  # why the hub paused it, its circuit breaker; NULL when a member did (0018)
+    ForeignKeyConstraint(["owner_id"], ["users.id"], ondelete="RESTRICT", name="schedules_owner_id_fkey"),
+    ForeignKeyConstraint(["paused_by"], ["users.id"], ondelete="RESTRICT", name="schedules_paused_by_fkey"),
+    ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name="schedules_project_id_fkey"),
+    ForeignKeyConstraint(["worker_id"], ["workers.id"], ondelete="RESTRICT", name="schedules_worker_id_fkey"),
+    PrimaryKeyConstraint("id", name="schedules_pkey"),
+    UniqueConstraint("project_id", "kind", name="schedules_project_id_kind_key"),
+)
+
+# Session digests and the tool figures of runs (0013)
+
+session_digests = Table(
+    "session_digests",
+    metadata,
+    _id(),
+    Column("project_id", BigInteger, nullable=False),
+    Column("session_id", Text, nullable=False),
+    Column("user_id", BigInteger, nullable=False),
+    Column("label", JSONB, nullable=False),
+    Column("cwd", Text, nullable=False),
+    Column("messages", Integer, nullable=False),
+    Column("model", Text),
+    _when("started_at"),
+    _when("ended_at"),
+    Column("body", JSONB, nullable=False),
+    _stamp("created_at"),
+    _stamp("updated_at"),
+    ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name="session_digests_project_id_fkey"),
+    ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="RESTRICT", name="session_digests_user_id_fkey"),
+    PrimaryKeyConstraint("id", name="session_digests_pkey"),
+    UniqueConstraint("project_id", "session_id", name="session_digests_project_id_session_id_key"),
+    Index("session_digests_project_idx", "project_id", "updated_at"),
+    Index("session_digests_updated_idx", "updated_at"),
+)
+
+run_tool_stats = Table(
+    "run_tool_stats",
+    metadata,
+    Column("run_id", BigInteger, nullable=False),
+    Column("tool_name", Text, nullable=False),
+    Column("calls", Integer, nullable=False),
+    Column("errors", Integer, nullable=False),
+    Column("duration_ms", BigInteger, nullable=False),
+    ForeignKeyConstraint(["run_id"], ["runs.id"], ondelete="CASCADE", name="run_tool_stats_run_id_fkey"),
+    PrimaryKeyConstraint("run_id", "tool_name", name="run_tool_stats_pkey"),
+)
+
+# The review runs of the night shift: the night's figures, and what the Reviewer finds and proposes (0014)
+
+curator_figures = Table(
+    "curator_figures",
+    metadata,
+    _id(),
+    Column("project_id", BigInteger, nullable=False),
+    Column("schedule_id", BigInteger, nullable=False),
+    Column("night", Date, nullable=False),
+    Column("since", DateTime(timezone=True), nullable=False),
+    Column("until", DateTime(timezone=True), nullable=False),
+    Column("figures", JSONB, nullable=False),
+    Column("run_id", BigInteger),
+    _stamp("created_at"),
+    ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name="curator_figures_project_id_fkey"),
+    ForeignKeyConstraint(["run_id"], ["runs.id"], ondelete="RESTRICT", name="curator_figures_run_id_fkey"),
+    ForeignKeyConstraint(
+        ["schedule_id"], ["schedules.id"], ondelete="CASCADE", name="curator_figures_schedule_id_fkey"
+    ),
+    PrimaryKeyConstraint("id", name="curator_figures_pkey"),
+    UniqueConstraint("project_id", "night", name="curator_figures_project_id_night_key"),
+)
+
+findings = Table(
+    "findings",
+    metadata,
+    _id(),
+    Column("project_id", BigInteger, nullable=False),
+    Column("run_id", BigInteger, nullable=False),
+    Column("lens", Text, nullable=False),
+    Column("severity", Text, nullable=False),
+    Column("title", Text, nullable=False),
+    Column("body", Text),
+    Column("evidence", JSONB, nullable=False),
+    Column("label", JSONB, nullable=False),
+    _stamp("created_at"),
+    ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name="findings_project_id_fkey"),
+    ForeignKeyConstraint(["run_id"], ["runs.id"], ondelete="CASCADE", name="findings_run_id_fkey"),
+    PrimaryKeyConstraint("id", name="findings_pkey"),
+    Index("findings_run_idx", "run_id", "id"),
+)
+Index("findings_project_idx", findings.c.project_id, findings.c.id.desc())
+
+proposals = Table(
+    "proposals",
+    metadata,
+    _id(),
+    Column("project_id", BigInteger, nullable=False),
+    Column("run_id", BigInteger, nullable=False),
+    Column("lens", Text, nullable=False),
+    Column("kind", Text, nullable=False),
+    Column("title", Text, nullable=False),
+    Column("summary", Text),
+    Column("paths", JSONB, nullable=False),
+    Column("impacted", JSONB),
+    Column("tier", SmallInteger, nullable=False),
+    Column("tier_reasons", JSONB, nullable=False),
+    Column("finding_ids", ARRAY(BigInteger), nullable=False, server_default="{}"),
+    Column("evidence", JSONB, nullable=False),
+    Column("evidence_count", Integer, nullable=False),
+    Column("draft", JSONB, nullable=False),
+    Column("fingerprint", Text, nullable=False),
+    Column("state", Text, nullable=False, server_default="open"),
+    Column("duplicate_of", BigInteger),
+    Column("answered_by", BigInteger),
+    _when("answered_at"),
+    Column("note", Text),
+    _when("deferred_until"),
+    _when("inbox_at"),
+    Column("label", JSONB, nullable=False),
+    _stamp("created_at"),
+    Column("revert_of", BigInteger),  # the proposal whose merged change the hub proposes to revert (0018)
+    ForeignKeyConstraint(["answered_by"], ["users.id"], ondelete="RESTRICT", name="proposals_answered_by_fkey"),
+    ForeignKeyConstraint(["duplicate_of"], ["proposals.id"], ondelete="RESTRICT", name="proposals_duplicate_of_fkey"),
+    ForeignKeyConstraint(["revert_of"], ["proposals.id"], ondelete="SET NULL", name="proposals_revert_of_fkey"),
+    ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name="proposals_project_id_fkey"),
+    ForeignKeyConstraint(["run_id"], ["runs.id"], ondelete="CASCADE", name="proposals_run_id_fkey"),
+    PrimaryKeyConstraint("id", name="proposals_pkey"),
+    Index("proposals_run_idx", "run_id", "id"),
+)
+Index("proposals_project_idx", proposals.c.project_id, proposals.c.id.desc())
+Index(
+    "proposals_rejected_idx",
+    proposals.c.project_id,
+    proposals.c.fingerprint,
+    proposals.c.answered_at.desc(),
+    postgresql_where=proposals.c.state == "rejected",
+)
+Index("proposals_deferred_idx", proposals.c.deferred_until, postgresql_where=proposals.c.state == "deferred")
+Index(
+    "proposals_inbox_idx",
+    proposals.c.project_id,
+    proposals.c.inbox_at,
+    postgresql_where=proposals.c.inbox_at.is_not(None),
+)
+
+# The Curator's morning briefs, and the one-time codes that link a Telegram chat (0015)
+
+curator_briefs = Table(
+    "curator_briefs",
+    metadata,
+    _id(),
+    Column("project_id", BigInteger, nullable=False),
+    Column("day", Date, nullable=False),
+    Column("night", Date, nullable=False),
+    Column("user_id", BigInteger, nullable=False),
+    Column("body", JSONB, nullable=False),
+    Column("notification_id", BigInteger),
+    _stamp("created_at"),
+    ForeignKeyConstraint(
+        ["notification_id"], ["notifications.id"], ondelete="SET NULL", name="curator_briefs_notification_id_fkey"
+    ),
+    ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name="curator_briefs_project_id_fkey"),
+    ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE", name="curator_briefs_user_id_fkey"),
+    PrimaryKeyConstraint("id", name="curator_briefs_pkey"),
+    UniqueConstraint("project_id", "day", name="curator_briefs_project_id_day_key"),
+)
+
+telegram_links = Table(
+    "telegram_links",
+    metadata,
+    _id(),
+    Column("user_id", BigInteger, nullable=False),
+    Column("code_hash", Text, nullable=False),
+    _stamp("created_at"),
+    Column("expires_at", DateTime(timezone=True), nullable=False),
+    _when("used_at"),
+    Column("token_id", BigInteger),  # the web session that made the code (0016)
+    ForeignKeyConstraint(["token_id"], ["tokens.id"], ondelete="CASCADE", name="telegram_links_token_id_fkey"),
+    ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE", name="telegram_links_user_id_fkey"),
+    PrimaryKeyConstraint("id", name="telegram_links_pkey"),
+    UniqueConstraint("code_hash", name="telegram_links_code_hash_key"),
+    Index("telegram_links_user_idx", "user_id"),
+)
+
+# The Curator's changes: the plan an accepted proposal became, its pull request, its Judge and its merge; and the repos
+# whose ruleset the hub checked (0017)
+
+curator_changes = Table(
+    "curator_changes",
+    metadata,
+    _id(),
+    Column("project_id", BigInteger, nullable=False),
+    Column("proposal_id", BigInteger, nullable=False),
+    Column("plan_id", Text),
+    Column("repo", Text),
+    Column("branch", Text),
+    Column("forge", Text),
+    Column("tier", SmallInteger, nullable=False),
+    Column("state", Text, nullable=False, server_default="planned"),
+    Column("reason", Text),
+    Column("builder_run_id", BigInteger),
+    Column("judge_run_id", BigInteger),
+    Column("judge_attempts", SmallInteger, nullable=False, server_default="0"),
+    Column("pr_number", Integer),
+    Column("pr_url", Text),
+    Column("base_branch", Text),
+    Column("head_sha", Text),
+    Column("hidden_count", SmallInteger),
+    Column("verdict", JSONB),
+    Column("passed", Boolean),
+    Column("check_run_id", BigInteger),
+    _when("merged_at"),
+    Column("merge_sha", Text),
+    _stamp("created_at"),
+    _stamp("updated_at"),
+    Column("judge_key", Text),  # SHA-256 of the key the claim of its judge run handed the daemon (0019)
+    ForeignKeyConstraint(
+        ["builder_run_id"], ["runs.id"], ondelete="RESTRICT", name="curator_changes_builder_run_id_fkey"
+    ),
+    ForeignKeyConstraint(["judge_run_id"], ["runs.id"], ondelete="RESTRICT", name="curator_changes_judge_run_id_fkey"),
+    ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name="curator_changes_project_id_fkey"),
+    ForeignKeyConstraint(
+        ["proposal_id"], ["proposals.id"], ondelete="CASCADE", name="curator_changes_proposal_id_fkey"
+    ),
+    PrimaryKeyConstraint("id", name="curator_changes_pkey"),
+    UniqueConstraint("proposal_id", name="curator_changes_proposal_id_key"),
+    UniqueConstraint("project_id", "plan_id", name="curator_changes_project_id_plan_id_key"),
+    Index("curator_changes_state_idx", "state", "id"),
+)
+
+curator_repo_checks = Table(
+    "curator_repo_checks",
+    metadata,
+    Column("project_id", BigInteger, nullable=False),
+    Column("repo", Text, nullable=False),
+    Column("github_repo", Text, nullable=False),
+    Column("default_branch", Text),
+    Column("protected", Boolean, nullable=False),
+    Column("reason", Text, nullable=False),
+    Column("rulesets", JSONB, nullable=False),
+    Column("checked_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("checked_by", BigInteger),
+    ForeignKeyConstraint(["checked_by"], ["users.id"], ondelete="RESTRICT", name="curator_repo_checks_checked_by_fkey"),
+    ForeignKeyConstraint(
+        ["project_id"], ["projects.id"], ondelete="CASCADE", name="curator_repo_checks_project_id_fkey"
+    ),
+    PrimaryKeyConstraint("project_id", "repo", name="curator_repo_checks_pkey"),
+)
+
+# The Curator's ledger: what happened to each proposal, line by line, never changed or deleted; and the outcome of each
+# merged change (0018)
+
+curator_ledger = Table(
+    "curator_ledger",
+    metadata,
+    _id(),
+    Column("project_id", BigInteger, nullable=False),
+    Column("proposal_id", BigInteger, nullable=False),
+    Column("change_id", BigInteger),
+    Column("action", Text, nullable=False),
+    Column("actor", Text, nullable=False),
+    Column("actor_id", BigInteger),
+    Column("run_id", BigInteger),
+    Column("what", Text, nullable=False),
+    Column("commit_sha", Text),
+    Column("before_sha", Text),
+    Column("after_sha", Text),
+    Column("figures", JSONB),
+    Column("verdict", JSONB),
+    Column("pr_url", Text),
+    Column("pr_number", Integer),
+    _when("merged_at"),
+    Column("outcome", Text),
+    Column("details", JSONB),
+    _stamp("created_at"),
+    ForeignKeyConstraint(["actor_id"], ["users.id"], ondelete="RESTRICT", name="curator_ledger_actor_id_fkey"),
+    ForeignKeyConstraint(
+        ["change_id"], ["curator_changes.id"], ondelete="CASCADE", name="curator_ledger_change_id_fkey"
+    ),
+    ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name="curator_ledger_project_id_fkey"),
+    ForeignKeyConstraint(["proposal_id"], ["proposals.id"], ondelete="CASCADE", name="curator_ledger_proposal_id_fkey"),
+    ForeignKeyConstraint(["run_id"], ["runs.id"], ondelete="RESTRICT", name="curator_ledger_run_id_fkey"),
+    PrimaryKeyConstraint("id", name="curator_ledger_pkey"),
+    Index("curator_ledger_proposal_idx", "proposal_id", "id"),
+)
+Index("curator_ledger_project_idx", curator_ledger.c.project_id, curator_ledger.c.created_at)
+Index(  # a merged change has one outcome
+    "curator_ledger_outcome_key",
+    curator_ledger.c.change_id,
+    unique=True,
+    postgresql_where=curator_ledger.c.action == "outcome",
 )

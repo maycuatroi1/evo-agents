@@ -1,11 +1,13 @@
 "use client";
 
-import { ArrowRight, Check, ChevronDown, GitBranch, GitCommitHorizontal, MessageCircleQuestionMark } from "lucide-react";
+import { ArrowRight, Check, ChevronDown, GitBranch, GitCommitHorizontal, Lightbulb, MessageCircleQuestionMark } from "lucide-react";
 import type { Route } from "next";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { type MouseEvent, useId, useState } from "react";
 
+import { TierTag } from "@/components/curator/badges";
+import { proposalHref } from "@/components/curator/queries";
 import { Prose } from "@/components/plans/prose";
 import { runHref } from "@/components/runs/queries";
 import { StatusBadge } from "@/components/status/status-badge";
@@ -14,7 +16,7 @@ import { Ago } from "@/components/workers/ago";
 import { cn } from "@/lib/utils";
 
 import { NOTICE_LOOK, NoticeKindBadge } from "./badges";
-import { COMMITS_SHOWN, isBranchNotice, isOpenDecision, noticeFacts, shortCommit } from "./model";
+import { COMMITS_SHOWN, isBranchNotice, isOpenProposal, isWaiting, noticeFacts, shortCommit } from "./model";
 import type { Notification } from "./queries";
 
 /** A body longer than this, or of more lines, folds to three lines with a button to show the rest. */
@@ -114,34 +116,51 @@ function noticeHref(notification: Notification): Route | null {
 
 /**
  * One notification of the Inbox. A decision opens in a sheet over the list (its title is a link to
- * `/inbox?decision=ID`, which `onOpenDecision` follows without leaving the page); a notice links to its run. An unread
- * one is marked by a dot, a heavier title and the words "Unread" for screen readers, and offers Mark as read.
+ * `/inbox?decision=ID`, which `onOpenDecision` follows without leaving the page), and so does a tier 2 proposal of the
+ * Curator (`/inbox?proposal=ID`, `onOpenProposal`); a notice links to its run. An unread one is marked by a dot, a
+ * heavier title and the words "Unread" for screen readers, and offers Mark as read.
  */
 export function NotificationItem({
   notification,
   href,
   selected,
   onOpenDecision,
+  onOpenProposal,
   onRead,
   reading,
 }: {
   notification: Notification;
-  /** Where the decision's title leads: the Inbox with the decision open, the filters kept. */
+  /** Where the title of a decision or a proposal leads: the Inbox with it open, the filters kept. */
   href: Route | null;
   selected: boolean;
   onOpenDecision: (id: number) => void;
+  onOpenProposal?: (id: number) => void;
   onRead: (id: number) => void;
   reading: boolean;
 }) {
   const t = useTranslations("inbox.item");
   const unread = notification.read_at === null;
   const decision = notification.kind === "decision";
-  const open = isOpenDecision(notification);
-  const Icon = decision ? MessageCircleQuestionMark : notification.notice_kind ? NOTICE_LOOK[notification.notice_kind].icon : MessageCircleQuestionMark;
-  const target = decision ? null : noticeHref(notification);
+  const proposal = notification.kind === "proposal" && notification.proposal_id != null;
+  const asked = decision || proposal;
+  const open = isWaiting(notification);
+  const Icon = decision
+    ? MessageCircleQuestionMark
+    : proposal
+      ? Lightbulb
+      : notification.notice_kind
+        ? NOTICE_LOOK[notification.notice_kind].icon
+        : MessageCircleQuestionMark;
+  const target = asked ? null : noticeHref(notification);
+  const tier = typeof notification.details?.tier === "number" ? notification.details.tier : null;
 
   const follow = (event: MouseEvent<HTMLAnchorElement>) => {
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    if (proposal && notification.proposal_id != null && onOpenProposal) {
+      event.preventDefault();
+      onOpenProposal(notification.proposal_id);
+      return;
+    }
     if (notification.decision_id === null) return;
     event.preventDefault();
     onOpenDecision(notification.decision_id);
@@ -161,6 +180,8 @@ export function NotificationItem({
       data-notice-kind={notification.notice_kind ?? undefined}
       data-decision-id={notification.decision_id ?? undefined}
       data-decision-state={notification.decision_state ?? undefined}
+      data-proposal-id={notification.proposal_id ?? undefined}
+      data-proposal-state={notification.proposal_state ?? undefined}
       data-unread={unread ? "true" : "false"}
     >
       <span
@@ -181,11 +202,13 @@ export function NotificationItem({
             </span>
           ) : null}
           {decision && notification.decision_state ? <StatusBadge kind="decision" status={notification.decision_state} /> : null}
-          {!decision && notification.notice_kind ? <NoticeKindBadge kind={notification.notice_kind} /> : null}
+          {proposal && notification.proposal_state ? <StatusBadge kind="proposal" status={notification.proposal_state} /> : null}
+          {proposal && tier !== null ? <TierTag tier={tier} /> : null}
+          {!asked && notification.notice_kind ? <NoticeKindBadge kind={notification.notice_kind} /> : null}
           {notification.project ? <span className="font-mono [overflow-wrap:anywhere]">{notification.project}</span> : null}
           <Ago value={notification.created_at} never="-" />
         </div>
-        {decision && href ? (
+        {asked && href ? (
           <Link
             href={href}
             onClick={follow}
@@ -194,7 +217,8 @@ export function NotificationItem({
               unread ? "font-semibold" : "font-medium",
             )}
             data-testid="notification-open"
-            data-decision-link={notification.decision_id ?? undefined}
+            data-decision-link={decision ? (notification.decision_id ?? undefined) : undefined}
+            data-proposal-link={proposal ? (notification.proposal_id ?? undefined) : undefined}
           >
             {notification.title}
           </Link>
@@ -203,7 +227,7 @@ export function NotificationItem({
             {notification.title}
           </p>
         )}
-        {!decision && isBranchNotice(notification) ? <BranchFacts notification={notification} /> : null}
+        {!asked && isBranchNotice(notification) ? <BranchFacts notification={notification} /> : null}
         {!decision && notification.body ? <FoldedText text={notification.body} /> : null}
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 pt-0.5">
           {decision && href && notification.decision_id !== null ? (
@@ -213,6 +237,29 @@ export function NotificationItem({
                 {open ? t("answer") : t("view")}
               </Link>
             </Button>
+          ) : null}
+          {proposal && href && notification.proposal_id != null ? (
+            <Button asChild size="sm" variant={isOpenProposal(notification) ? "default" : "outline"}>
+              <Link
+                href={href}
+                onClick={follow}
+                data-testid="notification-answer"
+                aria-label={t(isOpenProposal(notification) ? "answerProposalLabel" : "viewProposalLabel", { id: notification.proposal_id })}
+              >
+                <Lightbulb aria-hidden="true" />
+                {isOpenProposal(notification) ? t("answer") : t("view")}
+              </Link>
+            </Button>
+          ) : null}
+          {proposal && notification.project && notification.proposal_id != null ? (
+            <Link
+              href={proposalHref(notification.project, notification.proposal_id)}
+              className="inline-flex min-h-7 items-center gap-1 text-sm text-brand underline-offset-4 hover:underline"
+              data-testid="notification-proposal-link"
+            >
+              {t("openProposal", { id: notification.proposal_id })}
+              <ArrowRight className="size-3.5" aria-hidden="true" />
+            </Link>
           ) : null}
           {target && notification.run_id !== null ? (
             <Link

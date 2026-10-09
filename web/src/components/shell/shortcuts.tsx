@@ -34,7 +34,7 @@ import { useCurrentProject } from "./project-switcher";
 /**
  * The hub's keyboard shortcuts in one registry, and the shell's own keys. `SHORTCUTS` lists every key the web answers
  * to, for the shortcuts dialog (`?`) and for the `kbd` shown beside each action. Most keys are handled here: G then H,
- * I, P, R or W (within a second) go to Home, Inbox, the project's Plans and Runs, and Workers; D opens Dispatch on a
+ * I, P, R, C or W (within a second) go to Home, Inbox, the project's Plans, Runs and Curator, and Workers; D opens Dispatch on a
  * project's pages for a writer; ? opens the dialog. The others stay with what they act on: Cmd K or Ctrl K in
  * palette/palette-context.tsx, `/` in data/search-shortcut.ts, Cmd or Ctrl with Enter in the answer and message
  * forms, Cmd or Ctrl with B in ui/sidebar.tsx, Esc in each dialog.
@@ -54,6 +54,7 @@ export type ShortcutId =
   | "goInbox"
   | "goPlans"
   | "goRuns"
+  | "goCurator"
   | "goWorkers"
   | "dispatch"
   | "send";
@@ -83,6 +84,7 @@ export const SHORTCUTS: readonly Shortcut[] = [
   { id: "goInbox", group: "goto", keys: [["g"], ["i"]], single: true },
   { id: "goPlans", group: "goto", keys: [["g"], ["p"]], single: true, where: "project" },
   { id: "goRuns", group: "goto", keys: [["g"], ["r"]], single: true, where: "project" },
+  { id: "goCurator", group: "goto", keys: [["g"], ["c"]], single: true, where: "project" },
   { id: "goWorkers", group: "goto", keys: [["g"], ["w"]], single: true },
 ];
 
@@ -107,7 +109,7 @@ export const LEAD_MS = 1_000;
 /** How long after G the hint of the second keys shows, so a quick G H does not flash it. */
 const HINT_MS = 400;
 
-type GoKey = "h" | "i" | "p" | "r" | "w";
+type GoKey = "h" | "i" | "p" | "r" | "c" | "w";
 
 /** Where each second key goes: a hub page, or a page of the project shown (or the visitor's only project). */
 const GO: Record<GoKey, { id: ShortcutId; label: NavLabel } & ({ href: Route } | { segment: string })> = {
@@ -115,6 +117,7 @@ const GO: Record<GoKey, { id: ShortcutId; label: NavLabel } & ({ href: Route } |
   i: { id: "goInbox", label: "inbox", href: "/inbox" },
   p: { id: "goPlans", label: "plans", segment: "plans" },
   r: { id: "goRuns", label: "runs", segment: "runs" },
+  c: { id: "goCurator", label: "curator", segment: "curator" },
   w: { id: "goWorkers", label: "workers", href: "/workers" },
 };
 
@@ -268,7 +271,7 @@ export function ShortcutsProvider({ children }: { children: ReactNode }) {
         if (target.href !== here) router.push(target.href);
         return;
       }
-      // Plans and Runs are a project's: the one shown, or the visitor's only one.
+      // Plans, Runs and the Curator are a project's: the one shown, or the visitor's only one.
       const project = now.current.project ?? (grants.length === 1 ? grants[0].project : null);
       if (project === null) {
         notify({ id: "shortcuts-need-project", tone: "info", text: t("needProject.title"), description: t("needProject.text") });
