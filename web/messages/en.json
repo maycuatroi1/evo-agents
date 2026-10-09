@@ -2064,10 +2064,12 @@
       "title": "Run",
       "untitled": "Untitled step",
       "sub": "Plan <planLink>{plan}</planLink>, <stepLink>step {step}: {title}</stepLink>",
-      "planSub": "Plan <planLink>{plan}</planLink>: {title}. Every step not done yet, in one session.",
+      "planSub": "Plan <planLink>{plan}</planLink>",
+      "planSubTitled": "Plan <planLink>{plan}</planLink>: {title}",
       "notFoundTitle": "Run #{id} not found",
       "notFoundDescription": "The run does not exist in this project, or it belongs to a plan you cannot read.",
       "aside": "About run #{id}",
+      "newTab": "{label} (opens in a new tab)",
       "timeline": {
         "section": "Timeline of the run",
         "label": "Phases of run #{id}",
@@ -2173,18 +2175,15 @@
         "tiny": "under 0.1",
         "bar": "Cache read {cacheRead} percent, input {input}, output {output}, reasoning {reasoning}",
         "cacheWrite": "Cache write {count}.",
-        "costNote": "Cost as the runtime reported it.",
-        "noCostNote": "The runtime reported no cost.",
-        "none": "Shows once the agent ends its first turn and the runtime reports what it used.",
-        "noneEnded": "The runtime reported no usage for this run."
+        "noneYet": "Nothing reported yet",
+        "noneEnded": "Nothing reported"
       },
       "planSteps": {
         "title": "Steps of the plan",
         "count": "{done} of {total} done ({percent}%)",
         "failed": "The plan could not be loaded.",
         "none": "The plan has no step.",
-        "untitled": "Untitled step",
-        "hint": "As the hub holds the plan now; the run reports each step as it goes."
+        "untitled": "Untitled step"
       },
       "decision": {
         "waiting": "Waiting{since, select, none {} other { since {since}}} for {login}'s answer to a decision.",
@@ -2319,7 +2318,6 @@
         "placeholder": "Message the agent. It reads this on its next turn.",
         "send": "Send",
         "sending": "Sending…",
-        "hint": "Only you see this box: you dispatched the run.",
         "sent": "Sent. It waits in the run's inbox for the agent's next turn.",
         "blank": "Type a message first.",
         "long": "A message is at most {max} bytes of UTF-8. Shorten it.",
@@ -2351,7 +2349,6 @@
         "lease": "Lease",
         "leaseLeft": "expires in {minutes} min {seconds} s",
         "leaseExpired": "expired; the hub requeues or ends the run within a minute",
-        "leaseNone": "none until a worker claims it",
         "leaseReleased": "released",
         "attempt": "Attempt",
         "attemptValue": "{attempt} of {max}",
@@ -2380,14 +2377,14 @@
       },
       "result": {
         "title": "Result",
-        "pending": "Shows once the agent finishes and the worker has run the verify commands again.",
-        "empty": "The run ended without a result.",
+        "noneYet": "None yet",
+        "empty": "None",
         "verify": "Verify",
         "exit": "exit {code}",
         "exitUnknown": "exit unknown",
         "seconds": "{seconds} s",
         "commit": "Commit",
-        "onBranch": "on {branch}",
+        "onBranch": "on <link>{branch}</link>",
         "changes": "Changes",
         "diffstat": "{files, plural, one {# file} other {# files}}, +{insertions} -{deletions}",
         "viewDiff": "View the diff",
@@ -2396,10 +2393,9 @@
       },
       "credentials": {
         "title": "Credentials",
-        "description": "What the run got from the hub, never a value. Only you see this.",
         "loading": "Loading the credentials",
         "failed": "Could not read the credentials of this run.",
-        "emptyActive": "None yet: the worker asks for them right after it claims the run.",
+        "emptyActive": "None yet.",
         "empty": "This run got no credential from the hub.",
         "provider": {
           "secret": "Your secret",
@@ -2418,7 +2414,7 @@
         "noEnd": "no end",
         "revoked": "Revoked",
         "notRevoked": "not yet",
-        "manage": "Your secrets are on the <link>Secrets</link> page."
+        "secrets": "Secrets"
       },
       "actions": {
         "diff": "View diff",
