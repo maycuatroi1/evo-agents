@@ -2067,6 +2067,7 @@
       "planSub": "Plan <planLink>{plan}</planLink>: {title}. Mọi bước chưa xong, trong một phiên.",
       "notFoundTitle": "Không tìm thấy run #{id}",
       "notFoundDescription": "Run này không có trong dự án, hoặc thuộc một plan bạn không được đọc.",
+      "aside": "Thông tin run #{id}",
       "timeline": {
         "section": "Dòng thời gian của run",
         "label": "Các pha của run #{id}",

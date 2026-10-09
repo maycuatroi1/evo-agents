@@ -2067,6 +2067,7 @@
       "planSub": "Plan <planLink>{plan}</planLink>: {title}. Every step not done yet, in one session.",
       "notFoundTitle": "Run #{id} not found",
       "notFoundDescription": "The run does not exist in this project, or it belongs to a plan you cannot read.",
+      "aside": "About run #{id}",
       "timeline": {
         "section": "Timeline of the run",
         "label": "Phases of run #{id}",
