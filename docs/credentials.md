@@ -188,8 +188,10 @@ Credentials card.
    not answer, git gets the token it has. A push of the daemon that the origin refuses for its credential (git says
    the authentication failed, or had no credential to send), on an origin a `git` lease covers, makes the daemon give
    the run's leases back and take them again once, which revokes the GitHub tokens held and makes new ones even when
-   they had time left, and push once more; a second refusal fails the run, with no further try. Runs of a plan may
-   last 24 hours.
+   they had time left, and push once more; a second refusal fails the run, with no further try. A refused push of a
+   repo in `missing` takes the leases again the same way, since its project may list it by now, and pushes once more
+   only when a lease covers the repo then; otherwise the run fails with git's error and "the hub leased no credential
+   for {repo}: {reason}". Runs of a plan may last 24 hours.
 3. **Give back.** When the run ends, is parked, or the daemon stops, the daemon calls `DELETE` on the same route,
    whatever state the run is in by then (404 only for a run this worker never held). The hub marks the leases
    revoked, revokes each GitHub token (`DELETE /installation/token`), drops its sealed value, audits
@@ -214,8 +216,9 @@ Credentials card.
   the run holds leases, and answers only processes of its own uid (`SO_PEERCRED` on Linux, `getpeereid` on macOS):
   one JSON request a connection, git's credential for a URL or the variables of the agent's environment.
 - **git.** The env of the run's git (the daemon's fetch and push) and of its agent carries `GIT_CONFIG_COUNT` entries,
-  after any the daemon's own environment sets: for each origin of the run's checkouts that a `git` lease covers, keyed
-  by its https URL (an https origin as it is, an SSH or plain http one as the same repo over https), an empty
+  after any the daemon's own environment sets: for each origin of the run's checkouts that a `git` lease covers and
+  whose repo is not in `missing`, keyed by its https URL (an https origin as it is, an SSH or plain http one as the
+  same repo over https), an empty
   `credential.{url}.helper` (which drops the machine's own helpers, such as osxkeychain or `gh auth git-credential`,
   for that URL) followed by `!evo-agents worker git-credential --run N` (this evo-agents by absolute path),
   `credential.{url}.useHttpPath=true`, so the helper learns which repo git asks for and picks the lease with the
@@ -230,7 +233,9 @@ Credentials card.
 - **Umask.** The service starts the daemon, and so its agents, with umask 077.
 - **No lease, machine's own.** An origin in `missing` gets a system event "no leased credential for {origin}:
   {reason}; git uses this machine's own", and git falls back to the machine's credentials, as before 0.5.0. A
-  laptop whose owner set no secret runs as it always did.
+  laptop whose owner set no secret runs as it always did. That holds even when a lease's `url_prefix` covers the
+  origin: `github-app:<owner>` is for `https://github.com/<owner>`, but GitHub made its token for the repos the hub
+  leased it for alone, so handed for another repo of the owner, one the project does not list say, it gets 403.
 
 With a `CLAUDE_CODE_OAUTH_TOKEN` lease the Claude Code adapter drops the daemon's `ANTHROPIC_API_KEY` from the agent's
 environment, unless a lease sets the key too (the API key comes first in Claude Code's order of authentication), and
