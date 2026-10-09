@@ -282,13 +282,18 @@ def test_commits_running_at_once_share_one_bound_on_the_uploads_they_work_on(hub
     alice = member(hub.db, alpha, "alice", "writer")
     batches = [[f"commit {c} blob {i}\n".encode() for i in range(40)] for c in range(3)]
     ids = [staged(hub, alice, "alpha", blobs) for blobs in batches]
-    lock = threading.Lock()
+    lock = threading.Condition()
     calls = SimpleNamespace(now=0, peak=0)
 
     def slow(**kwargs):  # every call takes a while, as on R2, and is counted while it does
         with lock:
             calls.now += 1
             calls.peak = max(calls.peak, calls.now)
+            lock.notify_all()
+            # Until more calls than one commit used to make run at once, each waits up to a second for the others: on
+            # a busy machine (pytest -n 4 on four CPUs) the commits' threads may start too far apart to overlap
+            # otherwise, and the peak would measure the scheduler instead of the bound.
+            lock.wait_for(lambda: calls.peak > 16, timeout=1.0)
         time.sleep(0.03)
         with lock:
             calls.now -= 1
