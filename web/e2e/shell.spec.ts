@@ -215,11 +215,12 @@ test.describe("shell", () => {
 
     await open(page, `/p/${project}/runs`);
     const sidebar = page.getByRole("navigation", { name: "Điều hướng chính" });
-    await expect(sidebar.getByRole("link")).toHaveCount(14);
+    await expect(sidebar.getByRole("link")).toHaveCount(15);
     const order = await sidebar.getByRole("link").evaluateAll((links) => links.map((link) => link.getAttribute("data-testid")));
     expect(order).toEqual([
       "nav-home",
       "nav-inbox",
+      "nav-monitor",
       "nav-overview",
       "nav-plans",
       "nav-runs",
@@ -240,6 +241,9 @@ test.describe("shell", () => {
     await expect(page.getByTestId("nav-inbox")).toHaveAccessibleName("Inbox, 1 quyết định hoặc đề xuất chờ bạn trả lời");
     await expect(page.getByTestId("nav-runs-count")).toHaveText("1");
     await expect(page.getByTestId("nav-runs")).toHaveAccessibleName("Run, 1 run đang hoạt động");
+    // Monitor counts the runs at work: a plan run waiting for a decision is not one.
+    await expect(page.getByTestId("nav-monitor")).toHaveAccessibleName("Monitor");
+    await expect(page.getByTestId("nav-monitor-count")).toHaveCount(0);
 
     // The page shown sits on surface-selected with a brand icon; the others stay muted.
     await expect(page.getByTestId("nav-runs")).toHaveAttribute("aria-current", "page");

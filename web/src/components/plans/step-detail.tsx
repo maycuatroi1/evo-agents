@@ -77,7 +77,11 @@ function Facts({ step, context }: { step: PlanStep; context: Context }) {
     ],
   ];
   return (
-    <dl className="grid grid-cols-1 gap-x-6 gap-y-3 rounded-md border bg-card shadow-raised p-4 sm:grid-cols-[auto_1fr]" data-testid="step-facts">
+    // One fact to a row, two from 2xl, so a wide window does not leave the short values a card's width from the edge.
+    <dl
+      className="grid grid-cols-1 gap-x-6 gap-y-3 rounded-md border bg-card shadow-raised p-4 sm:grid-cols-[auto_1fr] 2xl:grid-cols-[auto_minmax(0,1fr)_auto_minmax(0,1fr)]"
+      data-testid="step-facts"
+    >
       {rows.map(([label, value]) => (
         <div key={label} className="contents">
           <dt className="text-sm text-muted-foreground sm:pt-0.5">{label}</dt>

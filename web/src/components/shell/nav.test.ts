@@ -18,10 +18,11 @@ describe("nav", () => {
     expect(isActive("/p/demo", "/p/demo", true)).toBe(true);
   });
 
-  it("lists the groups in the kit's order, counting the inbox's decisions and the project's active runs", () => {
+  it("lists the groups in the kit's order, counting the inbox's decisions, the runs at work and the project's active runs", () => {
     expect(HOME_NAV.map((item) => [item.label, item.href, item.count ?? null])).toEqual([
       ["home", "/", null],
       ["inbox", "/inbox", "openDecisions"],
+      ["monitor", "/monitor", "runningRuns"],
     ]);
     expect(PROJECT_NAV.map((item) => item.label)).toEqual(["overview", "plans", "runs", "insights", "curator", "memories", "skills", "kg"]);
     expect(PROJECT_NAV.filter((item) => item.count).map((item) => [item.label, item.count])).toEqual([

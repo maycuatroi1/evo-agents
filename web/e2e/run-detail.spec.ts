@@ -1,16 +1,23 @@
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
+
+import { call } from "../src/lib/api/client";
 
 import { signOut } from "./support/auth";
 import { expect, isDeployed, type Member, test } from "./support/fixtures";
-import { newAccount, uniqueName } from "./support/hub";
+import { bearerClient, machineToken, newAccount, uniqueName } from "./support/hub";
 import { open } from "./support/plans";
 import {
   claimRun,
   COMMIT,
   dispatch,
   eventsOf,
+  HARNESS_REPO,
   leaseCredentials,
   liveWorker,
+  LONG_PLAN_RUN_PLAN,
+  PLAN_RUN_BRANCH,
+  PLAN_RUN_PLAN,
+  planRunBody,
   planRunUnderway,
   reportState,
   RUN_PLAN,
@@ -20,6 +27,7 @@ import {
   runRow,
   runToReview,
   say,
+  seedLongPlanRunPlan,
   seedPlanRunPlan,
   seedRunPlan,
   sendEvents,
@@ -449,6 +457,150 @@ test("the owner sees the credentials the run got, never a value, and nobody else
   expect(JSON.stringify(refused.body)).toContain(`only ${me.login}, who dispatched run ${run.id}`);
 });
 
+/** A link out of the hub: its address, a new tab without opener or referrer, and a name that says it opens a tab. */
+async function expectExternal(link: Locator, href: string, text: string) {
+  await expect(link).toHaveAttribute("href", href);
+  await expect(link).toHaveAttribute("target", "_blank");
+  await expect(link).toHaveAttribute("rel", "noopener noreferrer");
+  await expect(link).toHaveAccessibleName(`${text} (opens in a new tab)`);
+  await expect(link).toHaveText(text);
+}
+
+test("the repo and the commit lead to GitHub, and every address in the trace, the result and the credentials is a link", async ({
+  page,
+  member,
+}) => {
+  const me = await member([{ role: "writer", maxLevel: "internal" }]);
+  const project = me.projects[0];
+  await putSecretByApi(me, "github-org", { kind: "git", url_prefix: "https://github.com/example-org", projects: [project], value: secretValue("git") });
+  const { live, run } = await runningRun(me);
+  await leaseCredentials(live, run.id);
+  const pr = "https://github.com/example-org/api/pull/7";
+  await sendEvents(live, run.id, [
+    say(`Opened ${pr} for the review.`),
+    { kind: "tool_call", body: { toolCallId: "call-pr", title: "Bash", kind: "execute", status: "pending", rawInput: { command: "gh pr create --fill" } } },
+    {
+      kind: "tool_call_update",
+      body: { toolCallId: "call-pr", status: "failed", rawOutput: { exitCode: 1 }, content: [{ type: "content", content: { type: "text", text: `${pr}\njavascript:alert(1)` } }] },
+    },
+  ]);
+  await reportState(live, run.id, { state: "verifying" });
+  await reportState(live, run.id, {
+    state: "review",
+    commit_sha: COMMIT,
+    verify: [{ command: "curl -fsS https://ci.example.org/health", exit_code: 0, duration_ms: 900 }],
+    summary: `Opened ${pr}.`,
+  });
+
+  await open(page, runPath(project, run.id));
+  // The repo of the project, registered with its GitHub origin, and the commit on it.
+  const details = main(page).getByTestId("run-details");
+  await expectExternal(details.getByTestId("run-repo-link"), "https://github.com/example-org/api", "api");
+  const result = main(page).getByTestId("run-result");
+  await expectExternal(result.getByTestId("run-commit-sha"), `https://github.com/example-org/api/commit/${COMMIT}`, COMMIT.slice(0, 7));
+  await expectExternal(result.getByTestId("run-verify").getByRole("link"), "https://ci.example.org/health", "https://ci.example.org/health");
+  await expectExternal(result.getByTestId("run-evidence").getByRole("link", { name: /pull\/7/ }), pr, pr);
+
+  // The trace: the agent's words and the command's output link the pull request; a javascript: line stays text.
+  const trace = traceOf(page);
+  await expect(trace.getByTestId("trace-message").getByRole("link", { name: /pull\/7/ })).toHaveAttribute("href", pr);
+  const output = trace.getByTestId("trace-tool-output");
+  await expectExternal(output.getByRole("link"), pr, pr);
+  await expect(output).toContainText("javascript:alert(1)");
+  await expect(main(page).locator('a[href^="javascript:"], a[href^="data:"]')).toHaveCount(0);
+
+  // The repo the git lease answered for links to its page; the Secrets page is a link in the card's head.
+  const credentials = main(page).getByTestId("run-credentials");
+  const lease = credentials.getByTestId("run-lease-item").filter({ hasText: "github-org" });
+  await expectExternal(lease.getByTestId("run-lease-repo-link"), "https://github.com/example-org/api", "https://github.com/example-org/api");
+  await expect(credentials.getByTestId("run-credentials-secrets-link")).toHaveAttribute("href", "/secrets");
+});
+
+test("a plan run's repos and branches lead to their pages, a repo without an origin or on another forge says less", async ({ page, member, admin }) => {
+  const me = await member([{ role: "writer", maxLevel: "internal" }]);
+  const project = me.projects[0];
+  await seedPlanRunPlan(me, project);
+  const { run } = await planRunUnderway(me, project, uniqueName("links"));
+
+  await open(page, runPath(project, run.id));
+  const repos = main(page).getByTestId("run-repos");
+  const api = repos.locator("li").filter({ hasText: "api" });
+  await expectExternal(api.getByTestId("run-repo-link"), "https://github.com/example-org/api", "api");
+  await expectExternal(api.getByTestId("run-branch"), `https://github.com/example-org/api/tree/${PLAN_RUN_BRANCH}`, PLAN_RUN_BRANCH);
+  // The harness repo is not one of the project's, so the page has no origin for it: its name and branch stay text.
+  const harness = repos.locator("li").filter({ hasText: HARNESS_REPO });
+  await expect(harness.getByTestId("run-repo-name")).toHaveText(HARNESS_REPO);
+  await expect(harness.getByRole("link")).toHaveCount(0);
+  // The text of each repo is what it was: the words for screen readers live in the links' names.
+  await expect(repos.locator("li")).toHaveText([`apion ${PLAN_RUN_BRANCH}`, `${HARNESS_REPO}on main`]);
+
+  // On a forge the page does not know, the repo still leads to its page, and its branch is text.
+  await admin.registerProject(project, { repos: [{ name: "api", origin: "git@git.example.net:team/api.git", default_branch: "main", path: "api" }] });
+  await open(page, runPath(project, run.id));
+  await expectExternal(api.getByTestId("run-repo-link"), "https://git.example.net/team/api", "api");
+  await expect(api.getByTestId("run-branch")).not.toHaveAttribute("href");
+  await expect(api.getByRole("link")).toHaveCount(1);
+
+  // An origin the page cannot read as a web page (here a script) is never a link.
+  await admin.registerProject(project, { repos: [{ name: "api", origin: "javascript:alert(document.domain)", default_branch: "main", path: "api" }] });
+  await open(page, runPath(project, run.id));
+  await expect(api.getByTestId("run-repo-name")).toHaveText("api");
+  await expect(repos.getByRole("link")).toHaveCount(0);
+  await expect(main(page).locator('a[href^="javascript:"]')).toHaveCount(0);
+});
+
+test("the run page says each thing once: no hint of when a card fills or who sees it, and an empty card is one line", async ({ page, member }) => {
+  const me = await member([{ role: "writer", maxLevel: "internal" }]);
+  const { project, live, run } = await runningRun(me);
+
+  await open(page, runPath(project, run.id));
+  await expect(main(page).getByTestId("log-status")).toHaveAttribute("data-status", "live");
+  // Usage and Result, with nothing yet, are their title and a short state.
+  const usage = main(page).getByTestId("run-usage");
+  await expect(usage.getByTestId("run-usage-empty")).toHaveText("Nothing reported yet");
+  await expect(usage).toHaveText("UsageNothing reported yet");
+  const result = main(page).getByTestId("run-result");
+  await expect(result.getByTestId("run-result-empty")).toHaveText("None yet");
+  await expect(result).toHaveText("ResultNone yet");
+  // Credentials: its head links the Secrets page, with no sentence of who sees the card.
+  const credentials = main(page).getByTestId("run-credentials");
+  await expect(credentials.getByTestId("run-credentials-empty")).toHaveText("None yet.");
+  await expect(credentials.getByRole("link", { name: "Secrets" })).toHaveAttribute("href", "/secrets");
+  // The composer's bar says what the run is, nothing about who sees the box.
+  await expect(main(page).getByTestId("run-composer-hint")).toHaveText(`Headless run on ${live.worker.name}.`);
+  for (const words of ["Shows once the agent", "never a value. Only you see this", "Your secrets are on the", "Only you see this box"]) {
+    await expect(main(page)).not.toContainText(words);
+  }
+});
+
+test("a plan run's head names its plan once, with its title only when it says more than the id", async ({ page, member }) => {
+  const me = await member([{ role: "writer", maxLevel: "internal" }]);
+  const project = me.projects[0];
+  await seedPlanRunPlan(me, project);
+  const { run } = await planRunUnderway(me, project, uniqueName("head"));
+
+  await open(page, runPath(project, run.id));
+  const planLink = main(page).getByTestId("run-plan-link");
+  await expect(planLink).toHaveText(PLAN_RUN_PLAN);
+  await expect(planLink).toHaveAttribute("href", `/p/${project}/plans/${PLAN_RUN_PLAN}`);
+  await expect(planLink.locator("..")).toHaveText(`Plan ${PLAN_RUN_PLAN}: ${planRunBody().title}`);
+  await expect(main(page).getByTestId("run-plan-steps")).not.toContainText("As the hub holds the plan");
+  await expect(main(page)).not.toContainText("Every step not done yet");
+
+  // A plan whose title is its id: the head says the plan once.
+  const plain = "plain-plan";
+  const api = bearerClient(await machineToken(me));
+  await call(
+    api.PUT("/v1/projects/{project}/plans/{plan_id}", {
+      params: { path: { project, plan_id: plain } },
+      body: { body: { ...planRunBody(plain), title: plain }, area: "active" },
+    }),
+  );
+  const { run: second } = await planRunUnderway(me, project, uniqueName("head"), { dispatch: { plan_id: plain } });
+  await open(page, runPath(project, second.id));
+  await expect(main(page).getByTestId("run-plan-link").locator("..")).toHaveText(`Plan ${plain}`);
+});
+
 test("the diff page shows the diff the worker uploaded, file by file, and downloads it", async ({ page, member }) => {
   const me = await member([{ role: "writer", maxLevel: "internal" }]);
   const { project, live, run } = await runningRun(me);
@@ -588,7 +740,8 @@ test("the Trace pairs each tool call with its result, opens a failed one, folds 
   await expect(usage.getByTestId("run-usage-total")).toHaveText("9,252");
   await expect(usage.getByTestId("run-usage-cost")).toHaveText("$0.42 as reported");
   await expect(usage.getByRole("img")).toHaveAccessibleName("Cache read 97.3 percent, input 0.1, output 2.6, reasoning 0");
-  await expect(usage.getByTestId("run-usage-note")).toHaveText("Cache write 300. Cost as the runtime reported it.");
+  // The cost is said once, on its line; the note names the cache writes alone.
+  await expect(usage.getByTestId("run-usage-note")).toHaveText("Cache write 300.");
 
   // The tab is kept in the URL: the Raw log comes back on a reload, and the Trace takes the parameter away.
   await main(page).getByRole("tab", { name: "Raw log" }).click();
@@ -649,6 +802,80 @@ test("past 500 items the Trace renders only the ones in view, follows the newest
   await main(page).getByTestId("trace-latest").click();
   await expect(trace.getByTestId("trace-message").filter({ hasText: "arrived while reading" })).toBeInViewport();
   await expect(trace).toHaveAttribute("data-follow", "true");
+});
+
+test("from 1280 px the session and the side column scroll on their own, as tall as the window and level at the bottom", async ({
+  page,
+  member,
+}) => {
+  const me = await member([{ role: "writer", maxLevel: "internal" }]);
+  const project = me.projects[0];
+  await seedLongPlanRunPlan(me, project);
+  await putSecretByApi(me, "claude-oauth", { kind: "env", env_var: "CLAUDE_CODE_OAUTH_TOKEN", projects: [project], value: secretValue("oauth") });
+  await putSecretByApi(me, "github-org", { kind: "git", url_prefix: "https://github.com/example-org", projects: [project], value: secretValue("git") });
+  // A plan run of eleven steps that waits for its owner and got credentials: its side column is longer than the window.
+  const { live, run } = await planRunUnderway(me, project, uniqueName("split"), { waiting: true, dispatch: { plan_id: LONG_PLAN_RUN_PLAN } });
+  await leaseCredentials(live, run.id);
+  await sendEvents(live, run.id, Array.from({ length: 40 }, (_, index) => say(`Progress note ${index + 1}`)));
+
+  const aside = main(page).getByTestId("run-aside");
+  const session = main(page).getByTestId("run-log");
+  const bottom = async (locator: ReturnType<typeof main>) => {
+    const box = (await locator.boundingBox())!;
+    return box.y + box.height;
+  };
+  for (const size of [
+    { width: 1440, height: 900 },
+    { width: 1920, height: 1080 },
+  ]) {
+    await page.setViewportSize(size);
+    await open(page, runPath(project, run.id));
+    await expect(aside.getByTestId("run-decision")).toBeVisible();
+    await expect(aside.getByTestId("run-plan-step")).toHaveCount(11);
+    await expect(aside.getByTestId("run-lease-item")).toHaveCount(2);
+    await expect(traceOf(page).getByTestId("trace-message")).toContainText("Progress note 40");
+
+    // Scrolled to the bottom of the page, the session card ends on the window's bottom gutter, with no space under its
+    // trace: the trace reaches down to the composer.
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    const sessionBottom = await bottom(session);
+    expect(sessionBottom, `at ${size.width} px the session card ends in the window`).toBeLessThanOrEqual(size.height);
+    expect(Math.abs(size.height - sessionBottom - 24), `at ${size.width} px only the 24 px gutter is under the session card`).toBeLessThanOrEqual(1);
+    const composerTop = (await main(page).getByTestId("run-composer").boundingBox())!.y;
+    expect(Math.abs(composerTop - (await bottom(traceOf(page)))), `at ${size.width} px the trace reaches the composer`).toBeLessThanOrEqual(1);
+
+    // The side column scrolls inside itself; it is a named region that Tab reaches and the keys scroll.
+    expect(await aside.evaluate((element) => element.scrollHeight - element.clientHeight)).toBeGreaterThan(0);
+    await expect(aside).toHaveRole("region");
+    await expect(aside).toHaveAccessibleName(`About run #${run.id}`);
+    await main(page).focus();
+    for (let presses = 0; presses < 40 && !(await aside.evaluate((element) => element === document.activeElement)); presses++) {
+      await page.keyboard.press("Tab");
+    }
+    await expect(aside).toBeFocused();
+    await page.keyboard.press("End");
+    await expect.poll(() => aside.evaluate((element) => Math.ceil(element.scrollTop + element.clientHeight) >= element.scrollHeight)).toBe(true);
+    // At its end its last card, Credentials, ends level with the session card, both in the window, and the page has
+    // not moved.
+    const credentialsBottom = await bottom(aside.getByTestId("run-credentials"));
+    expect(Math.abs(credentialsBottom - (await bottom(session))), `at ${size.width} px the two regions end level`).toBeLessThanOrEqual(1);
+    expect(credentialsBottom).toBeLessThanOrEqual(size.height);
+    // They start level too: the decision at the top of the side column, beside the session card's tabs.
+    const sessionTop = (await session.boundingBox())!.y;
+    await aside.evaluate((element) => element.scrollTo({ top: 0 }));
+    expect(Math.abs((await main(page).getByTestId("run-decisions").boundingBox())!.y - sessionTop)).toBeLessThanOrEqual(1);
+  }
+
+  // Below 1280 px one column, in the order of before: the decision, then the side cards, then the session card. The
+  // side column does not scroll there, so Tab does not stop on it.
+  await page.setViewportSize({ width: 1024, height: 900 });
+  await open(page, runPath(project, run.id));
+  await expect(aside.getByTestId("run-plan-step")).toHaveCount(11);
+  const top = async (testId: string) => (await main(page).getByTestId(testId).boundingBox())!.y;
+  expect(await top("run-decisions")).toBeLessThan(await top("run-side"));
+  expect(await top("run-side")).toBeLessThan(await top("run-log"));
+  await expect(aside).not.toHaveAttribute("tabindex");
+  expect(await aside.evaluate((element) => element.scrollHeight - element.clientHeight)).toBe(0);
 });
 
 test.describe("in Vietnamese", () => {

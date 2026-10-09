@@ -103,7 +103,7 @@ export function RunComposer({ run }: { run: Pick<Run, "project" | "id"> & Partia
         />
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t p-2">
           <p id={`${ids}-hint`} className="min-w-0 flex-1 basis-48 pl-1 text-xs text-pretty text-fg-subtle" data-testid="run-composer-hint">
-            {where} {t("hint")}
+            {where}
           </p>
           {/* Always in the page, so a sent message is announced. */}
           <span aria-live="polite" className="text-xs font-medium text-success empty:hidden" data-testid="run-composer-sent">

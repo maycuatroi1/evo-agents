@@ -41,7 +41,8 @@ describe("UsageMeter", () => {
     expect(rows).toHaveTextContent("Đọc cache283.77674,9%");
     // A part that rounds to 0.0 % says it is under 0.1 %.
     expect(rows).toHaveTextContent("Suy luận109dưới 0,1%");
-    expect(within(card).getByTestId("run-usage-note")).toHaveTextContent("Ghi cache 0. Chi phí đúng như runtime báo.");
+    // The cost is said once, on its line: the note under the rows names the cache writes alone.
+    expect(within(card).getByTestId("run-usage-note")).toHaveTextContent(/^Ghi cache 0\.$/);
   });
 
   it("says when the runtime reported no cost, and prefers the run's own usage once it ended", () => {
@@ -54,12 +55,14 @@ describe("UsageMeter", () => {
     expect(within(card).getByTestId("run-usage-cost")).toHaveTextContent("Runtime không báo chi phí");
   });
 
-  it("waits for the first report, and says when none came", () => {
+  it("is one line before the first report, and when none came", () => {
     const first = renderVi(<UsageMeter run={run} events={[]} />);
-    expect(screen.getByTestId("run-usage-empty")).toHaveTextContent("Hiện khi agent xong lượt đầu tiên");
+    expect(screen.getByTestId("run-usage-empty")).toHaveTextContent(/^Chưa có số liệu$/);
+    expect(within(screen.getByTestId("run-usage")).queryByTestId("run-usage-rows")).toBeNull();
     first.unmount();
     renderVi(<UsageMeter run={{ ...run, state: "failed" } as Run} events={[]} />);
-    expect(screen.getByTestId("run-usage-empty")).toHaveTextContent("Runtime không báo mức dùng của run này.");
+    expect(screen.getByTestId("run-usage-empty")).toHaveTextContent(/^Runtime không báo số liệu$/);
+    expect(within(screen.getByTestId("run-usage")).getByRole("heading", { name: "Mức dùng" })).toBeInTheDocument();
   });
 });
 
