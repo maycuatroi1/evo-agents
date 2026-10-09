@@ -80,9 +80,8 @@ A notice needs no answer (`NOTICE_KINDS`):
 | `author_waiting` | an author run's agent ended its turn and the run waits for its owner's reply in its chat (`docs/workers.md`, "The chat of an author run"); the next one reads the run's earlier ones | the agent's last message, the plan it wrote or revises |
 
 A worker sends only the first four (`runs.WORKER_NOTICE_KINDS`); the hub alone sends `curator_brief`,
-`curator_paused` and `author_waiting`. The daemon
-sends `push_default_branch` itself for the pushes of `evo-agents worker step`; for a push or merge the
-agent makes itself, the prompt tells it to run `evo-agents worker notify`. A run of one step never pushes a default
+`curator_paused` and `author_waiting`. The daemon sends `push_default_branch` itself for the pushes of `evo-agents
+worker step`; for a push or merge the agent makes itself, the prompt tells it to run `evo-agents worker notify`. A run of one step never pushes a default
 branch and sends no notice.
 
 ## Notifications, channels and deliveries
