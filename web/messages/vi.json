@@ -98,7 +98,10 @@
       "failedAgo": "thất bại {ago}",
       "lostAgo": "mất lease {ago}",
       "failedJustNow": "vừa thất bại",
-      "lostJustNow": "vừa mất lease"
+      "lostJustNow": "vừa mất lease",
+      "newPlan": "Plan mới",
+      "newPlanIn": "Plan mới trong {project}",
+      "revise": "Nhờ agent sửa {plan}"
     },
     "plan": {
       "progress": "xong {done} trên {total}",
@@ -366,6 +369,17 @@
       "adminDescription": "Bạn quản trị hub nhưng chưa có vai trò trong dự án nào. Tự cấp cho mình ở trang Quản trị, rồi tải lại trang này.",
       "admin": "Mở trang Quản trị",
       "copyLogin": "Sao chép tên đăng nhập"
+    },
+    "authorWaiting": {
+      "title": "Đang chờ bạn trả lời",
+      "count": "{count, plural, other {# author run đang chờ bạn trả lời}}",
+      "untitled": "Author run",
+      "wherePlan": "{project}, {plan}",
+      "whereNew": "{project}, plan mới",
+      "waiting": "đã chờ {duration}",
+      "parked": "đã park <time></time>",
+      "reply": "Trả lời",
+      "replyLabel": "Trả lời trong chat của run #{id}"
     }
   },
   "project": {
@@ -1927,14 +1941,14 @@
       "submitting": "Đang dispatch…",
       "outlook": {
         "nothing": "{subject, select, plan {Chưa có gì để chạy: xem phía trên.} other {Chọn ít nhất một bước đã sẵn sàng.}}",
-        "noWorker": "Bạn chưa có worker nào cho dự án {project}. {subject, select, plan {Plan run nằm} other {Run nằm}} trong queue tới khi bạn đăng ký một worker.",
+        "noWorker": "Bạn chưa có worker nào cho dự án {project}. {subject, select, plan {Plan run nằm} author {Author run nằm} other {Run nằm}} trong queue tới khi bạn đăng ký một worker.",
         "now": "Phù hợp ngay: {workers}.",
         "later": "Hiện không worker nào của bạn rảnh; {workers} nhận được {subject, select, plan {plan run này} other {các run này}} sau. {subject, select, plan {Plan run nằm} other {Run nằm}} trong queue.",
         "none": "Chưa worker nào của bạn nhận được {subject, select, plan {plan run này} other {các run này}} ({reasons}). {subject, select, plan {Plan run nằm} other {Run nằm}} trong queue.",
-        "pinnedNow": "{name} nhận được {subject, select, plan {plan run này} other {các run này}} ngay.",
-        "pinnedBusy": "{subject, select, plan {Plan run nằm} other {Run nằm}} trong queue tới khi {name} có slot trống.",
-        "pinnedOffline": "{name} đang offline; {subject, select, plan {plan run nằm} other {run nằm}} trong queue tới khi worker quay lại.",
-        "pinnedNo": "{name} chưa nhận được {subject, select, plan {plan run này} other {các run này}} ({problem}). {subject, select, plan {Plan run nằm} other {Run nằm}} trong queue.",
+        "pinnedNow": "{name} nhận được {subject, select, plan {plan run này} author {author run này} other {các run này}} ngay.",
+        "pinnedBusy": "{subject, select, plan {Plan run nằm} author {Author run nằm} other {Run nằm}} trong queue tới khi {name} có slot trống.",
+        "pinnedOffline": "{name} đang offline; {subject, select, plan {plan run nằm} author {author run nằm} other {run nằm}} trong queue tới khi worker quay lại.",
+        "pinnedNo": "{name} chưa nhận được {subject, select, plan {plan run này} author {author run này} other {các run này}} ({problem}). {subject, select, plan {Plan run nằm} author {Author run nằm} other {Run nằm}} trong queue.",
         "free": "{name} ({count, plural, other {còn # slot trống}})",
         "busy": "{name} (hết slot)",
         "offline": "{name} (offline)",
@@ -2271,7 +2285,8 @@
           "heading": "Phiên trực tiếp của run #{id}",
           "trace": "Trace",
           "log": "Log thô",
-          "terminal": "Terminal"
+          "terminal": "Terminal",
+          "chat": "Chat"
         },
         "where": "TUI của agent trên {worker}, chuyển tiếp qua hub.",
         "connect": "Kết nối terminal",
@@ -2377,7 +2392,8 @@
         "revisionValue": "r{revision}",
         "copySession": "Sao chép mã phiên",
         "approvalReview": "Không cần duyệt: review run không đổi gì",
-        "approvalJudge": "Không cần duyệt: judge run không đổi gì, kết luận ghi lên thay đổi"
+        "approvalJudge": "Không cần duyệt: judge run không đổi gì, kết luận ghi lên thay đổi",
+        "approvalAuthor": "Không cần duyệt: agent đưa plan lên hub"
       },
       "result": {
         "title": "Kết quả",
@@ -2491,7 +2507,9 @@
         "full": "Log của run đã đầy (20.000 sự kiện), nên run không nhận thêm tin nhắn.",
         "apiMessage": "Hub báo: {message}"
       },
-      "reviewSub": "Lần review ban đêm của <curatorLink>Curator</curatorLink> cho dự án: chỉ đọc, không đổi gì. <proposalsLink>Các đề xuất của nó</proposalsLink>"
+      "reviewSub": "Lần review ban đêm của <curatorLink>Curator</curatorLink> cho dự án: chỉ đọc, không đổi gì. <proposalsLink>Các đề xuất của nó</proposalsLink>",
+      "authorPlanSub": "Plan <planLink>{plan}</planLink>: {title}. Viết từ yêu cầu của bạn trong chat với agent.",
+      "authorNewSub": "Một plan mới: {title}. Viết từ yêu cầu trong chat với agent."
     },
     "diff": {
       "metaTitle": "Diff của run #{id} thuộc {project}",
@@ -2542,6 +2560,104 @@
       "dispatchedText": "{count, plural, =1 {Run chờ trong queue tới khi có worker nhận.} other {Các run chờ trong queue tới khi có worker nhận.}}",
       "openRun": "Mở run",
       "openRuns": "Mở các run đang hoạt động"
+    },
+    "author": {
+      "kind": "Author run",
+      "newPlan": "Plan mới",
+      "revise": "Nhờ agent sửa",
+      "newPlanLine": "Plan mới",
+      "newPlanLineProject": "{project}, plan mới",
+      "toast": {
+        "dispatched": "Đã dispatch author run #{id}",
+        "newText": "Agent viết một plan mới từ yêu cầu của bạn và hỏi bạn trong chat khi cần.",
+        "reviseText": "Agent viết một revision mới của {plan} từ yêu cầu của bạn.",
+        "openChat": "Mở chat"
+      },
+      "dialog": {
+        "newTitle": "Plan mới",
+        "reviseTitle": "Nhờ agent sửa plan",
+        "newDescription": "Một agent trên worker của bạn viết plan cho <name>{project}</name> từ yêu cầu của bạn. Agent hỏi bạn trong chat của run khi cần và đưa plan lên hub; không commit, không push gì.",
+        "reviseDescription": "Một agent trên worker của bạn đọc <name>{plan}</name> như hub đang giữ và viết revision mới từ yêu cầu của bạn. Agent hỏi bạn trong chat của run khi cần; tiến độ các bước của plan giữ nguyên.",
+        "requestLabel": "Plan cần đạt được gì?",
+        "requestReviseLabel": "Cần đổi gì trong plan?",
+        "requestPlaceholder": "Kết quả bạn muốn, các ràng buộc, và những gì nằm ngoài phạm vi.",
+        "requestRevisePlaceholder": "Cần thêm, đổi hay bỏ gì, và vì sao.",
+        "requestHint": "Bằng lời của bạn, tối đa {max} byte. Agent đọc dự án trước rồi hỏi trong chat những gì còn thiếu.",
+        "bytes": "{count} trên {max} byte",
+        "requestBlank": "Hãy nói plan cần đạt được gì trước.",
+        "requestLong": "Một yêu cầu tối đa {max} byte UTF-8. Hãy rút ngắn lại.",
+        "runtimeHint": "Author run chỉ chạy trên Claude Code.",
+        "workersLoading": "Đang tải các worker của bạn",
+        "workerCannot": "(chưa nhận được ngay)",
+        "workerHint": "Run đến worker bạn chọn. Worker cần có checkout harness của dự án, {harness}, và daemon chạy được author run.",
+        "workerHintNoHarness": "Run đến worker bạn chọn; worker cần có checkout harness của dự án.",
+        "timeoutHint": "Số giờ agent làm việc. Thời gian agent chờ bạn trả lời không tính.",
+        "submit": "Chạy agent",
+        "submitting": "Đang chạy…",
+        "noHarness": "Dự án {project} được đăng ký mà không có harness, nơi giữ các plan, nên author run không có chỗ để viết. Hãy đăng ký lại từ harness bằng evo-agents hub project register.",
+        "errors": {
+          "forbidden": "Hub từ chối: viết plan cần vai writer trên dự án này, và worker phải là của bạn.",
+          "notFound": "Plan không còn trên hub, hoặc bạn không còn quyền đọc.",
+          "conflict": "Hub không xếp author run vào queue: worker chưa nhận được run như hiện tại.",
+          "invalid": "Hub không nhận author run."
+        }
+      },
+      "chat": {
+        "loading": "Đang tải chat",
+        "loadFailed": "Không tải được chat.",
+        "retry": "Thử lại",
+        "offline": "Không kết nối được hub. Đây là chat lúc {time}; trang tự thử lại.",
+        "label": "Chat của run #{id}",
+        "more": "Các tin cũ hơn bị lược: chat hiện 1.000 tin mới nhất.",
+        "request": "Yêu cầu",
+        "emptyQueued": "Run đang chờ worker. Tin của agent hiện ở đây khi agent bắt đầu.",
+        "emptyWorking": "Agent đang đọc dự án. Tin đầu tiên của agent sẽ hiện ở đây.",
+        "emptyEnded": "Chat đã kết thúc mà agent chưa nhắn gì.",
+        "readOnly": "Chỉ {login} trả lời trong chat này vì họ đã dispatch run.",
+        "status": {
+          "working": "Agent đang làm",
+          "waiting": "{you, select, yes {Đang chờ bạn} other {Đang chờ {login}}}",
+          "ended": "Chat đã kết thúc",
+          "ending": "Kết thúc sau lượt của agent"
+        },
+        "continues": "Chat này tiếp tục ở <link>run #{id}</link>.",
+        "noPlan": "Chưa có plan trên hub",
+        "plan": "Plan {plan}, revision {revision}",
+        "planNoRevision": "Plan {plan}",
+        "agent": "Agent",
+        "you": "Bạn",
+        "owner": "Người giao",
+        "asks": "Đang chờ trả lời",
+        "typing": "Agent đang làm",
+        "reply": {
+          "label": "Trả lời agent",
+          "placeholderWaiting": "Trả lời agent.",
+          "placeholderWorking": "Bổ sung điều agent cần biết. Agent đọc sau lượt hiện tại.",
+          "hintWaiting": "Agent đang chờ bạn trả lời.",
+          "hintParked": "Run đã bị park; câu trả lời của bạn chạy tiếp run trên cùng worker.",
+          "hintWorking": "Agent đang làm; tin của bạn chờ lượt kế tiếp.",
+          "send": "Gửi",
+          "sending": "Đang gửi…",
+          "sent": "Đã gửi.",
+          "blank": "Hãy gõ câu trả lời trước.",
+          "long": "Một câu trả lời tối đa {max} byte UTF-8. Hãy rút ngắn lại.",
+          "bytes": "{count} trên {max} byte",
+          "conflict": "Chat không nhận trả lời nữa: chat đã kết thúc."
+        },
+        "end": {
+          "button": "Kết thúc chat",
+          "title": "Kết thúc chat của run #{id}?",
+          "description": "Agent làm xong lượt hiện tại rồi run kết thúc ở trạng thái done. Chat không nhận trả lời nữa, và plan trên hub giữ bản agent đưa lên sau cùng.",
+          "descriptionParked": "Run kết thúc ở trạng thái done ngay. Chat không nhận trả lời nữa, và plan trên hub giữ bản agent đưa lên sau cùng.",
+          "confirm": "Kết thúc chat",
+          "pending": "Đang kết thúc…",
+          "keep": "Tiếp tục chat",
+          "conflict": "Không kết thúc được chat: run đã kết thúc, hoặc chưa bắt đầu.",
+          "toast": "Đã kết thúc chat",
+          "toastDone": "Run đã xong.",
+          "toastAfterTurn": "Run kết thúc ở trạng thái done sau lượt của agent."
+        }
+      }
     }
   },
   "insights": {
@@ -2687,7 +2803,8 @@
       "plan_finished": "Plan đã xong",
       "run_failed": "Run thất bại",
       "curator_brief": "Bản tin sáng",
-      "curator_paused": "Ca đêm tạm dừng"
+      "curator_paused": "Ca đêm tạm dừng",
+      "author_waiting": "Run soạn plan chờ bạn trả lời"
     },
     "item": {
       "unread": "Chưa đọc",

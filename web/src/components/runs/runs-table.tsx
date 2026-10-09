@@ -13,7 +13,7 @@ import { StatusBadge } from "@/components/status/status-badge";
 import { workerHref } from "@/components/workers/queries";
 import { cn } from "@/lib/utils";
 
-import { PlanRunKindBadge } from "./badges";
+import { AuthorRunKindBadge, PlanRunKindBadge } from "./badges";
 import { durationParts, runTiming } from "./model";
 import { isActiveState, type Run, runHref } from "./queries";
 
@@ -100,7 +100,12 @@ function StepCell({ run, showProject }: { run: Run; showProject: boolean }) {
   const ended = run.state === "failed" || run.state === "lost" || run.state === "cancelled";
   const plan = run.kind === "plan" || run.step_key === null;
   const repos = run.repos?.length ?? 0;
-  const where = plan
+  const authorNew = run.kind === "author" && !run.plan_id; // an author run of a new plan: no plan to link to yet
+  const where = authorNew
+    ? showProject
+      ? t("author.newPlanLineProject", { project: run.project })
+      : t("author.newPlanLine")
+    : plan
     ? showProject
       ? t("planLineProject", { project: run.project, plan: run.plan_id, repos })
       : t("planLine", { plan: run.plan_id, repos })
@@ -117,14 +122,14 @@ function StepCell({ run, showProject }: { run: Run; showProject: boolean }) {
       subTestId={failure ? "run-error" : "run-where"}
     >
       <Link
-        href={plan ? planHref(run.project, run.plan_id) : stepHref(run.project, run.plan_id, run.step_key ?? "")}
+        href={authorNew ? runHref(run.project, run.id) : plan ? planHref(run.project, run.plan_id) : stepHref(run.project, run.plan_id, run.step_key ?? "")}
         className={cn(NAME_LINK, "truncate")}
         title={title}
         data-testid={plan ? "run-plan-link" : "run-step-link"}
       >
         {title}
       </Link>
-      {plan ? <PlanRunKindBadge /> : null}
+      {run.kind === "author" ? <AuthorRunKindBadge /> : plan ? <PlanRunKindBadge /> : null}
     </CellMain>
   );
 }
@@ -152,17 +157,20 @@ function useMobileRun(variant: RunsTableVariant) {
     const plan = run.kind === "plan" || run.step_key === null;
     const failure = ended && run.error ? run.error : null;
     const worker = run.worker_id !== null && run.worker ? run.worker : run.pinned_worker_id !== null ? t("pinnedWaiting") : t("noWorkerYet");
+    const authorNew = run.kind === "author" && !run.plan_id;
     const where =
       variant === "step"
         ? worker
-        : plan
+        : authorNew
+          ? t(variant === "worker" ? "author.newPlanLineProject" : "author.newPlanLine", { project: run.project })
+          : plan
           ? t(variant === "worker" ? "planLineProject" : "planLine", { project: run.project, plan: run.plan_id, repos: run.repos?.length ?? 0 })
           : t(variant === "worker" ? "stepLineProject" : "stepLine", { project: run.project, plan: run.plan_id, step: run.step_key ?? "" });
     const detail = failure ?? where;
     return {
       title: variant === "step" ? t("mobile.runTitle", { id: run.id }) : plan ? (run.title ?? run.plan_id) : (run.title ?? t("untitled")),
       href: runHref(run.project, run.id),
-      tags: plan ? <PlanRunKindBadge /> : null,
+      tags: run.kind === "author" ? <AuthorRunKindBadge /> : plan ? <PlanRunKindBadge /> : null,
       status: <StatusBadge kind="run" status={run.state} />,
       meta: t.rich("mobile.meta", { id: run.id, detail, ref: (chunks: ReactNode) => <span className="font-mono tabular-nums">{chunks}</span> }),
       metaText: t("mobile.metaText", { id: run.id, detail }),

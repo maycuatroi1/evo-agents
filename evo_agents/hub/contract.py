@@ -3,7 +3,8 @@
 ``contract print`` prints ``{"version": 1, "commands": {...}, "openapi": {...}}``, the owner's side of the seam
 hub-cli-v1. ``commands`` is generated from the argparse definitions: for every ``evo-agents hub`` command (keyed
 ``"hub plan step"``) and every command the agent of a run uses (``evo-agents worker step|ask|notify|plan`` of a plan
-run, ``evo-agents worker finding|propose`` of a review run, keyed ``"worker step"``, AGENT_COMMANDS), its positional
+run, ``evo-agents worker finding|propose`` of a review run, ``evo-agents worker put`` of an author run, keyed
+``"worker step"``, AGENT_COMMANDS), its positional
 arguments and options, and for a command with ``--json`` the keys of what it prints, declared next to the flag with
 ``json_option``. ``openapi`` is the API's OpenAPI document,
 the one ``evo-agents hub openapi`` prints, so ``print`` needs the hub-server extra. evo-cli checks the argv it builds
@@ -38,7 +39,7 @@ EXIT_PROBLEMS = 1
 EXIT_USAGE = 2
 
 # `evo-agents worker ...` that the agent of a run runs: a plan run's, then a review run's
-AGENT_COMMANDS = ("step", "ask", "notify", "plan", "finding", "propose")
+AGENT_COMMANDS = ("step", "ask", "notify", "plan", "finding", "propose", "put")
 HUB_COMMAND = re.compile(rf"(?<![\w./-])evo-agents\s+(hub|worker\s+({'|'.join(AGENT_COMMANDS)}))\b")
 FENCE = re.compile(r"^\s*(`{3,}|~{3,})")
 PLACEHOLDER = re.compile(r"<[A-Za-z][^<>\n]*>")

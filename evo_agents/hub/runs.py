@@ -11,8 +11,10 @@ Reviewer of one night of a project's charter: it works on no plan, reads the pro
 proposals, and changes no code (``evo_agents.hub.review``). A ``judge`` run is the Curator's Judge of one change its
 Builder made: it reads the change at the head of its pull request, runs the plan's verify and the project's hidden
 checks, and says whether the change passes, without reading the Builder's transcript and without changing anything
-(``evo_agents.hub.judge``). A worker takes a kind of run only once its heartbeat says its daemon runs that kind
-(``run_kinds``): a daemon older than the review run reads every run as a step or plan run.
+(``evo_agents.hub.judge``). An ``author`` run writes an execution plan from a member's request with the
+create-exec-plan skill, on one of the member's own workers, and changes no code (``evo_agents.hub.author``). A worker
+takes a kind of run only once its heartbeat says its daemon runs that kind (``run_kinds``): a daemon older than the
+review run reads every run as a step or plan run.
 A run starts ``queued``; a worker
 claims it (``leased``), starts the agent (``running``, or ``interactive`` when a person drives the agent in a
 terminal), re-runs the agent's verify commands (``verifying``), and ends ``done``, ``failed`` or ``cancelled``, or in
@@ -25,6 +27,9 @@ same session, and the run is ``running`` again. A run that waited DECISION_WAIT_
 it go and frees the slot, and keeps the agent's session and the worktrees. An answer then queues a new plan run on the
 same worker that goes on in that session (the run it resumes is ``done``), and a run parked PARKED_DAYS is
 ``cancelled``. Neither waiting nor parked counts toward the run's timeout: ``run_seconds`` counts only CLOCK_STATES.
+An author run waits the same way after each turn of its agent, for its owner's reply in the run's chat rather than an
+answer to a decision (``evo_agents.hub.author``), is parked and resumed the same way (RESUME_KINDS), and ends ``done``
+when its owner ends the chat (the control ``finish``).
 
 TRANSITIONS names, for each move, who may do it: the ``worker`` that holds the run, the ``owner`` (the member who
 dispatched it, who is the owner of the worker), or the ``reaper``, the hub itself acting on an expired lease, a revoked
@@ -63,8 +68,9 @@ MAX_RUN_EVENTS = 20_000  # events the hub keeps for one run
 MAX_MESSAGE_BYTES = 8 * 1024  # one message from the owner to a running agent
 MAX_PROMPT_BYTES = 32 * 1024  # the prompt build_prompt or build_plan_prompt returns, as UTF-8
 
-# one step; every step of a plan not done yet; a night's review of a project; the Judge of a change of the Curator
-RUN_KINDS = ("step", "plan", "review", "judge")
+# one step; every step of a plan not done yet; a night's review of a project; the Judge of a change of the Curator; a
+# plan written from a member's request
+RUN_KINDS = ("step", "plan", "review", "judge", "author")
 PLAN_KINDS = ("step", "plan")  # the kinds of run that work on a plan; a review run has none (its plan_id is null)
 CURATOR_KINDS = ("review", "judge")  # the kinds only the night shift queues, besides the Builder's plan runs
 PLAN_RUN_AGENT = (0, 4, 0)  # the first daemon release that runs a plan run; an older one reads it as a step run
@@ -73,12 +79,13 @@ MAX_MODEL_CHARS = 200  # a run's model, one line (runs.model, as schema 0010 bou
 MAX_RUNTIME_MODELS = 200  # the models a heartbeat lists for one runtime
 MODES = ("headless", "interactive")
 APPROVALS = ("auto", "review")
-# What a heartbeat answer carries: per run, whether to cancel, take over, hand back, open the terminal or park, how
-# many inbox messages and open decisions it has; for the worker, whether to drain.
-CONTROLS = ("cancel", "takeover", "handback", "terminal_open", "park", "inbox", "decisions", "drain")
+# What a heartbeat answer carries: per run, whether to cancel, take over, hand back, open the terminal, park or end
+# an author run's chat (finish), how many inbox messages and open decisions it has; for the worker, whether to drain.
+CONTROLS = ("cancel", "takeover", "handback", "terminal_open", "park", "finish", "inbox", "decisions", "drain")
 
 DECISION_WAIT_SECONDS = 24 * 3600  # a run waiting this long for its owner's answer is parked
 PARKED_DAYS = 7  # a run parked this long is cancelled, and its open decisions expire
+RESUME_KINDS = ("plan", "author")  # the kinds of run that wait for their owner, are parked and resumed
 PLAN_TIMEOUT_CHOICES = (2, 4, 8, 24)  # hours of agent time a plan run may take; waiting and parked do not count
 
 HELD_STATES = ("leased", "running", "interactive", "verifying", "waiting")  # a worker holds the run, extends its lease
@@ -143,8 +150,9 @@ MAX_NOTICE_COMMITS = 100  # the commits a notice of a push or merge names
 # The notices a plan run's worker may send (POST /v1/worker/runs/{id}/notices); the hub sends the last two itself too.
 WORKER_NOTICE_KINDS = ("push_default_branch", "merge_default_branch", "plan_finished", "run_failed")
 # curator_brief: the morning brief of a project's Curator, which the hub alone sends at the charter's brief_at;
-# curator_paused: the circuit breaker of a project's night shift paused it, which the hub alone sends too
-NOTICE_KINDS = (*WORKER_NOTICE_KINDS, "curator_brief", "curator_paused")
+# curator_paused: the circuit breaker of a project's night shift paused it, which the hub alone sends too;
+# author_waiting: an author run waits for its owner's reply in its chat, which the hub alone sends as the run waits
+NOTICE_KINDS = (*WORKER_NOTICE_KINDS, "curator_brief", "curator_paused", "author_waiting")
 NOTIFICATION_KINDS = ("decision", "notice", "proposal")  # proposal: a tier 2 proposal of the Curator, in the Inbox
 DELIVERY_STATES = ("pending", "delivered", "failed")  # of one notification on one channel
 MAX_DELIVERY_ATTEMPTS = 5

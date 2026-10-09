@@ -25,15 +25,16 @@ design and `web/README.md` how to run and test it. The pages that read a route o
 
 | Page | What it shows | Route |
 | --- | --- | --- |
-| Home, `/` | what waits on you, what runs and what ended lately over the projects of your grants, with your workers; a decision answered in a sheet over it, a failed step rerun from it | `GET /v1/me/overview` |
+| Home, `/` | what waits on you, what runs and what ended lately over the projects of your grants, with your workers; a decision answered in a sheet over it, a failed step rerun from it; the author runs that wait for your reply in their chat | `GET /v1/me/overview` |
 | Monitor, `/monitor` | every run in flight over the projects of your grants, and a grid of live tiles that shares out the window (up to nine within it, then four columns that scroll): each tile a run's state, worker, time, plan steps and the tail of its trace, for viewing only; `?runs=project:id,...` names the tiles, ended runs included, and without it the grid follows every run in flight | `GET /v1/me/overview`, `.../runs/{id}`, `.../stream?after=` (200 events before `last_seq`), `.../events?after=` while a stream fails |
-| a run, `/p/{project}/runs/{id}` | its phases on a timeline; the Trace of its events (messages, thinking, each tool call with its argument, exit code, duration and output), the raw log and the owner's terminal as tabs; its tokens by type and the cost the agent reported; from 1280 px the session and the side column scroll on their own; a repo links to its forge page from the project's origin, and on GitHub or GitLab its branch and commit too | `.../runs/{id}`, `.../events`, `.../stream`, `GET /v1/projects/{project}` |
+| a run, `/p/{project}/runs/{id}` | its phases on a timeline; the Trace of its events (messages, thinking, each tool call with its argument, exit code, duration and output), the raw log and the owner's terminal as tabs; its tokens by type and the cost the agent reported; for an author run a Chat tab first among them (`?tab=chat`): the agent's and the owner's messages, whose turn it is, a reply box, End chat and a link to the plan it wrote or revises; from 1280 px the session and the side column scroll on their own; a repo links to its forge page from the project's origin, and on GitHub or GitLab its branch and commit too | `.../runs/{id}`, `.../events`, `.../stream`, `.../chat`, `.../messages`, `.../finish`, `GET /v1/projects/{project}` |
+| a project's plans, `/p/{project}/plans`, and a plan, `.../plans/{id}` | New plan and Revise with agent, for a writer: a dialog takes the request, the worker and the model as Run plan does, and queues an author run (Workers and runs, below) | `POST /v1/projects/{project}/author-runs` |
 | Insights, `/p/{project}/insights` | the project's runs by UTC day over 7, 30 or 90 days: outcomes, failure rate, p50 and p90 run time, tokens by type, each chart with its table | `GET /v1/projects/{project}/runs/stats` |
 | Administration, `/admin` | what needs a hub admin, each row opening its list filtered; the rows of every table on `/admin/diagnostics` | `GET /v1/admin/overview`, `GET /v1/admin/stats` |
 
 Cmd K or Ctrl K, or the top bar's search field, opens a command palette: runs, plans, workers and pages to jump to,
-and the actions the visitor's grants allow (Run plan, Dispatch a step, Rerun, Register worker), never one that
-deletes, cancels, drains or revokes. `?` opens the list of keyboard shortcuts: G then H, I, P, R or W goes to Home,
+and the actions the visitor's grants allow (Run plan, New plan, Revise with agent, Dispatch a step, Rerun, Register
+worker), never one that deletes, cancels, drains or revokes. `?` opens the list of keyboard shortcuts: G then H, I, P, R or W goes to Home,
 Inbox, Plans, Runs or Workers, D opens Dispatch for a writer, / focuses the page's search. A switch in that dialog turns
 the single keys off on the browser. Every page takes the full width beside the sidebar, less a 24 px gutter (16 px
 under 768 px). Under 768 px tables become lists whose rows open their page, filters move into
@@ -84,14 +85,14 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | knowledge graphs | `/v1/kg/{project}/config`, `.../runs`, `.../blobs/check`, `.../builds`, `.../tools/{tool}`, and the web's `.../graph`, `.../nodes`, `.../node`, `.../neighbourhood` |
 | workers | `POST /v1/workers/pairings`, `GET /v1/workers/pairings/{id}`, `POST /v1/worker/join`, `GET` and `POST /v1/workers`, `GET /v1/workers/{id}`, `POST /v1/workers/{id}/{drain,undrain,dispatch-from,revoke}` |
 | secrets | `GET /v1/secrets`, `PUT` and `DELETE /v1/secrets/{name}`, the caller's own only (`docs/credentials.md`) |
-| runs | `/v1/projects/{project}/plans/{plan_id}/ready-steps`, `GET` and `POST /v1/projects/{project}/runs`, `GET .../runs/stats`, `POST /v1/projects/{project}/plan-runs`, `.../runs/{id}`, `.../events`, `.../stream`, `.../diff`, `.../messages`, `.../credentials`, `.../tool-stats`, `.../{cancel,approve,rerun,takeover,handback}`, and `GET /v1/projects/{project}/tool-stats` |
+| runs | `/v1/projects/{project}/plans/{plan_id}/ready-steps`, `GET` and `POST /v1/projects/{project}/runs`, `GET .../runs/stats`, `POST /v1/projects/{project}/plan-runs`, `POST /v1/projects/{project}/author-runs`, `.../runs/{id}`, `.../events`, `.../stream`, `.../diff`, `.../messages`, `.../chat`, `.../credentials`, `.../tool-stats`, `.../{cancel,approve,rerun,takeover,handback,finish}`, and `GET /v1/projects/{project}/tool-stats` |
 | session digests | `GET /v1/projects/{project}/digests`, `GET` and `PUT /v1/projects/{project}/digests/{session_id}` |
 | curator | `GET /v1/projects/{project}/curator`, `.../curator/charter` (`GET`, `PUT`), `.../charter/revisions`, `POST .../curator/{pause,resume}`, `GET .../curator/nights`, `.../curator/figures`, `.../curator/findings`, `.../findings/{id}`, `.../curator/proposals`, `.../proposals/{id}`, `.../proposals/{id}/ledger`, `POST .../proposals/{id}/answer`, `GET .../curator/changes`, `GET .../curator/protection`, `POST .../curator/protection/{repo}/check` (`docs/curator.md`) |
 | decisions | `GET /v1/projects/{project}/decisions`, `.../decisions/{id}`, `POST .../decisions/{id}/answer` |
 | notifications | `GET /v1/me/notifications`, `GET /v1/me/notifications/count`, `POST /v1/me/notifications/read` |
 | telegram | `GET` and `DELETE /v1/me/telegram`, `POST /v1/me/telegram/link` (a web session only), `POST /v1/telegram/webhook` (Telegram's, with its secret header), `GET /v1/admin/telegram`, `POST /v1/admin/telegram/webhook`, `DELETE /v1/admin/users/{login}/telegram` (`docs/notifications.md`) |
 | overview | `GET /v1/me/overview`: counts, active, recent runs and open decisions over the projects you hold a grant on, and where each project's Curator stands, for the web's Home |
-| worker protocol | `/v1/worker/{claim,heartbeat}`, `/v1/worker/runs/{id}/{state,events,inbox,uploads,blobs,plan,decisions,notices,credentials,findings,proposals,judge,verdict}`, `/v1/worker/runs/{id}/steps/{key}` |
+| worker protocol | `/v1/worker/{claim,heartbeat}`, `/v1/worker/runs/{id}/{state,events,inbox,uploads,blobs,plan,chat,decisions,notices,credentials,findings,proposals,judge,verdict}` (`plan` is `GET`, and `PUT` for an author run), `/v1/worker/runs/{id}/steps/{key}` |
 
 `/mcp` speaks MCP's Streamable HTTP transport, statelessly: each POST carries one JSON-RPC message and gets one JSON
 answer. It takes a machine token, or the worker token of the agent of a run (below), never a web session, and the
@@ -310,6 +311,11 @@ null) and the notice `curator_paused` (The Curator's ledger, below); going back 
 revert proposals and the notices `curator_paused`, and keeps a schedule the breaker paused paused, as its owner's pause.
 Schema 0019 adds `curator_changes.judge_key`, the SHA-256 of the key a judge run's claim hands its daemon (The Curator's
 changes, below); going back to 0018 drops it, and a judge run in flight then takes the worker token alone again.
+Schema 0020 adds the author run (a run of kind `author`, with the member's request in `runs.request`, and a `plan_id`
+only when it revises a plan), schema 0021 `plan_revisions.run_id`, the author run that wrote a revision, and schema 0022
+the chat of an author run: its wait, park and resume, `runs.finish_requested_at` and the notice `author_waiting`.
+Going back to 0019 deletes the author runs and their notices and drops the columns; the revisions they wrote stay,
+without the run.
 
 The daemon on the member's machine is the `evo-agents worker` command group, which needs the `worker` extra
 (`uv tool install 'evo-ak[worker]'`). It is not `evo-agents hub worker`, the hub's own job worker (see Worker and
@@ -333,7 +339,21 @@ evo-agents hub run approve 41                                 # a run in review:
 evo-agents hub run cancel 41
 evo-agents hub run rerun 41                                   # the step again, after a run that ended
 evo-agents hub run credentials 41                             # the leases the run got, never their values
+evo-agents hub run author "a plan to move the hub's blobs to R2" --worker mac-mini  # an agent writes a new plan
+evo-agents hub run author "split step 3 in two" --plan rollout --worker mac-mini   # or revises one
+evo-agents hub run chat 42                                    # an author run's chat, and whose turn it is
+evo-agents hub run send 42 "keep the old route until 0.10"    # your reply in that chat
+evo-agents hub run finish 42                                  # end the chat: the run ends done
 ```
+
+`run author` queues an author run (`POST /v1/projects/{project}/author-runs`): one run, on one of your workers that
+has the project's harness checked out (`--worker`, required), whose agent writes an execution plan from REQUEST
+(at most 16 KiB of UTF-8, `-` reads it from stdin) with the create-exec-plan skill the hub holds, and puts it on the
+hub as you. `--plan ID` revises that plan instead; `--model` and `--timeout-h` (1, 2 or 4 hours of agent time, 2 by
+default) as for `run plan`; `--runtime` is claude-code, the one runtime an author run takes. You need the writer role.
+The agent asks and reports in the run's chat: `run chat` prints it, `run send` replies, and `run finish` ends it once
+the plan is as you want it (`docs/workers.md`, Author runs). The web does the same from New plan, Revise with agent and
+the run's Chat tab.
 
 Every command after `dispatch`, `plan` and `list` takes the id of a run, as `list` shows it, and finds its project as
 the plan commands do: `--project`, or `hub.project` in the harness around the current directory. `dispatch` takes
@@ -351,9 +371,9 @@ goes (`docs/workers.md`, Plan runs). It takes `--worker`, `--runtime`, `--model`
 `--timeout-h`, the hours of agent time the run may use: 2, 4, 8 or 24 (4 by default); the time it waits for your
 answer to a decision, or parked, does not count. The hub refuses a plan with no pending step, a plan with an active
 run of any kind, and a step not done that names no repo when the plan lists more than one. `list` shows each run's
-KIND, `step` or `plan`, and filters by `--state` (repeat it for several), `--plan`, `--step`, `--worker`, `--by` (the
-login that dispatched) and `--search`, a page at a time with `--limit` and `--offset`; `show` of a plan run names its
-repos, the agent time it used, and when it waited or was parked.
+KIND (`step`, `plan`, `review`, `judge` or `author`), and filters by `--state` (repeat it for several), `--plan`,
+`--step`, `--worker`, `--by` (the login that dispatched) and `--search`, a page at a time with `--limit` and
+`--offset`; `show` of a plan run names its repos, the agent time it used, and when it waited or was parked.
 
 `run logs` prints one line per event: its number, its time in UTC, its kind and what it says. With `--follow` it reads
 the run's server-sent events (`GET .../runs/{id}/stream`) until the hub sends `end` once the run is final, and stops
@@ -834,7 +854,7 @@ the variables in the platform's environment, never in a committed file. `deploy/
 
 | Variable | Used by | Meaning |
 | --- | --- | --- |
-| `EVO_HUB_VERSION` | compose | image tag, a released version such as `0.8.2` |
+| `EVO_HUB_VERSION` | compose | image tag, a released version such as `0.9.0` |
 | `EVO_HUB_DSN` | api, worker | `postgresql://` URI of the hub database (required) |
 | `EVO_HUB_ADMINS` | api | GitHub logins of hub admins, comma-separated |
 | `EVO_HUB_GITHUB_CLIENT_ID` | api | the OAuth App's client id; without it nobody can sign in |

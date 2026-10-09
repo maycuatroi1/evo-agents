@@ -5,12 +5,14 @@ import { parsePlan } from "@/lib/plans";
 
 import {
   activePlanRun,
+  authorWorker,
   dispatchOutlook,
   dispatchWorkers,
   durationParts,
   facetCount,
   filtersSearch,
   fitWorker,
+  harnessRepo,
   isCheckpoint,
   listQuery,
   modelSuggestions,
@@ -19,6 +21,7 @@ import {
   planRunScope,
   readFilters,
   readModel,
+  readRequest,
   readySelection,
   runTiming,
   runtimeAvailable,
@@ -396,5 +399,35 @@ describe("plan runs", () => {
       "waiting",
       "parked",
     ]);
+  });
+});
+
+describe("author runs", () => {
+  it("names the harness checkout as the hub does: the last part of its path", () => {
+    expect(harnessRepo({ path: "example-harness" })).toBe("example-harness");
+    expect(harnessRepo({ path: "~/github/agent-harness/" })).toBe("agent-harness");
+    expect(harnessRepo({ path: "C:\\work\\harness" })).toBe("harness");
+    expect(harnessRepo({ path: "~" })).toBeNull();
+    expect(harnessRepo(null)).toBeNull();
+  });
+
+  it("goes to the worker picked, else the first with the harness and a free slot", () => {
+    const request = { project: "demo", runtime: "claude-code" as const, repos: ["harness"] };
+    const without = worker({ id: 1, checkouts: {} });
+    const busy = worker({ id: 2, checkouts: { "demo/harness": { path: "~/h" } }, slots: 1, held_runs: 1 });
+    const free = worker({ id: 3, checkouts: { "demo/harness": { path: "~/h" } } });
+    expect(authorWorker([without, busy, free], request, null)).toBe(3);
+    expect(authorWorker([without, busy], request, null)).toBe(2);
+    expect(authorWorker([without], request, null)).toBe(1);
+    expect(authorWorker([without, free], request, 1)).toBe(1);
+    expect(authorWorker([free], request, 9)).toBe(3);
+    expect(authorWorker([], request, null)).toBeNull();
+  });
+
+  it("takes a request of up to 16 KiB of UTF-8 as typed, and nothing but blanks or more is refused", () => {
+    expect(readRequest("  Write the plan.\n")).toEqual({ request: "  Write the plan.\n", problem: null });
+    expect(readRequest(" \n\t").problem).toBe("blank");
+    expect(readRequest("é".repeat(8192)).problem).toBeNull();
+    expect(readRequest("é".repeat(8193)).problem).toBe("long");
   });
 });

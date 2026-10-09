@@ -102,6 +102,7 @@ function overview(extra: Partial<Overview> = {}): Overview {
       run(7, "failed", { dispatched_by: "hubot", finished_at: "2026-10-06T23:00:00Z" }),
     ],
     open_decisions: [decision(7, true), decision(8, false)],
+    author_waiting: [],
     projects: [
       { name: "demo", role: "writer", max_level: "internal", repos: 2, active_plans: 3, open_decisions: 2 },
       { name: "docs", role: "reader", max_level: "public", repos: 1, active_plans: 0, open_decisions: 0 },
@@ -165,6 +166,50 @@ describe("HomePage", () => {
     // The waiting plan run names whose answer it waits for; the run of the open decision is the visitor's.
     expect(within(rows[1]).getByTestId("run-state")).toHaveTextContent("Đang chờ bạn");
     expect(within(rows[2]).getByText("chưa có worker")).toBeInTheDocument();
+  });
+
+  it("lists the visitor's author runs waiting for a reply, with the agent's last message, linked to their chat", () => {
+    setup(
+      overview({
+        author_waiting: [
+          {
+            id: 21,
+            project: "demo",
+            plan_id: null,
+            plan_title: null,
+            title: "Let members write plans from the web",
+            state: "waiting",
+            worker: "mini",
+            waiting_since: "2026-10-07T01:00:00Z",
+            parked_at: null,
+            message: "Should New plan sit on the Plans page?",
+          },
+          {
+            id: 19,
+            project: "demo",
+            plan_id: "rollout",
+            plan_title: "Worker fleet rollout",
+            title: "Split step 4",
+            state: "parked",
+            worker: "mini",
+            waiting_since: null,
+            parked_at: "2026-10-06T01:00:00Z",
+            message: null,
+          },
+        ],
+      }),
+    );
+    const card = screen.getByRole("region", { name: "Đang chờ bạn trả lời" });
+    expect(within(card).getByText("2 author run đang chờ bạn trả lời")).toHaveClass("sr-only");
+    const items = within(card).getAllByTestId("author-waiting-item");
+    expect(items.map((item) => item.getAttribute("data-run-id"))).toEqual(["21", "19"]);
+    expect(within(items[0]).getByRole("link", { name: "Should New plan sit on the Plans page?" })).toHaveAttribute("href", "/p/demo/runs/21?tab=chat");
+    expect(items[0]).toHaveTextContent("demo, plan mới");
+    expect(within(items[0]).getByRole("link", { name: "Trả lời trong chat của run #21" })).toHaveAttribute("href", "/p/demo/runs/21?tab=chat");
+    // Without a message yet, the run's title stands in; a parked one says since when.
+    expect(within(items[1]).getByRole("link", { name: "Split step 4" })).toBeInTheDocument();
+    expect(items[1]).toHaveTextContent("demo, Worker fleet rollout");
+    expect(items[1]).toHaveTextContent("đã park");
   });
 
   it("hides Needs you when nothing waits for the visitor, and gives the strip to the quiet line when nothing is in flight", () => {

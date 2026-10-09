@@ -2,6 +2,8 @@
 
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  FilePen,
+  FilePlus,
   FolderKanban,
   Keyboard,
   ListChecks,
@@ -26,8 +28,9 @@ import { notify, notifyFailure } from "@/components/feedback/toast";
 import type { OverviewRun } from "@/components/home/model";
 import { useNow } from "@/components/kg/use-now";
 import { planHref } from "@/components/plans/links";
+import { AuthorRunDialog } from "@/components/runs/author-run-dialog";
 import { DispatchDialog } from "@/components/runs/dispatch-dialog";
-import { useDispatchedToast, usePlanRunToast } from "@/components/runs/hooks";
+import { useAuthorRunToast, useDispatchedToast, usePlanRunToast } from "@/components/runs/hooks";
 import { PlanRunDialog } from "@/components/runs/plan-run-dialog";
 import { controlRun, type Run, runHref, runKeys, runsQuery } from "@/components/runs/queries";
 import { HOME_NAV, HUB_NAV, PROJECT_NAV, projectHref } from "@/components/shell/nav";
@@ -60,6 +63,7 @@ import {
   overviewRuns,
   planRunOffers,
   QUERY_LIMIT,
+  reviseOffers,
   queryWords,
   rerunCandidate,
   RUN_SEARCH_LIMIT,
@@ -76,6 +80,7 @@ import {
 type PaletteDialog =
   | { kind: "dispatch"; project: string }
   | { kind: "planRun"; project: string; planId: string }
+  | { kind: "author"; project: string; planId: string | null }
   | { kind: "register" };
 
 type RerunTarget = Pick<OverviewRun, "project" | "id" | "plan_id">;
@@ -120,8 +125,9 @@ type Props = {
 
 /**
  * The kit's CommandPalette: shadcn's Command (cmdk) in a Dialog, opened with Cmd K or Ctrl K or the top bar's field.
- * Actions first (Run plan, Dispatch a step, Rerun the latest failed run, Register worker, only those the visitor's
- * grants allow), then the runs, plans and workers the query finds, then the pages to go to. It looks in the page's
+ * Actions first (Run plan, Dispatch a step, New plan, Revise with agent once something is typed, Rerun the latest
+ * failed run, Register worker, only those the visitor's grants allow), then the runs, plans and workers the query
+ * finds, then the pages to go to. It looks in the page's
  * project; Tab moves to the next project of the visitor's grants and to every project. Choosing an item opens a page
  * or the dialog that page opens, after the palette has closed; nothing in it deletes or stops anything. Esc closes it
  * and gives focus back to what held it.
@@ -135,6 +141,7 @@ export function CommandPalette({ open, onOpenChange, restoreFocus }: Props) {
   const rerun = useRerun();
   const dispatched = useDispatchedToast();
   const planRunDispatched = usePlanRunToast();
+  const authorDispatched = useAuthorRunToast();
   const openShortcuts = useOpenShortcuts();
 
   const choose = (target: Target) => {
@@ -205,6 +212,17 @@ export function CommandPalette({ open, onOpenChange, restoreFocus }: Props) {
           open={dialogOpen}
           onOpenChange={setDialogOpen}
           onDispatched={planRunDispatched}
+          onCloseAutoFocus={dialogClosed}
+        />
+      ) : null}
+      {dialog?.kind === "author" ? (
+        <AuthorRunDialog
+          key={`author-${dialog.project}-${dialog.planId ?? ""}`}
+          project={dialog.project}
+          planId={dialog.planId}
+          open={dialogOpen}
+          onOpenChange={setDialogOpen}
+          onDispatched={authorDispatched}
           onCloseAutoFocus={dialogClosed}
         />
       ) : null}
@@ -391,6 +409,24 @@ function PaletteBody({ onChoose, shortcuts }: { onChoose: (target: Target) => vo
     meta: metaOf(showProject ? offer.project : null, t("actions.stepsLeft", { count: offer.left })),
     target: { kind: "dialog", dialog: { kind: "planRun", project: offer.project, planId: offer.planId } },
   }));
+  const newPlans: Entry[] = dispatchProjects(scoped, grants).map((project) => {
+    const label = scope === null ? t("actions.newPlanIn", { project }) : t("actions.newPlan");
+    return {
+      value: `action:new-plan:${project}`,
+      icon: FilePlus,
+      label: <span className="truncate">{label}</span>,
+      text: `${label} new plan write author ${project}`,
+      target: { kind: "dialog", dialog: { kind: "author", project, planId: null } },
+    };
+  });
+  const revisions: Entry[] = reviseOffers(plansByProject, grants).map((offer) => ({
+    value: `action:revise:${offer.project}:${offer.planId}`,
+    icon: FilePen,
+    label: <span className="truncate">{t("actions.revise", { plan: offer.title })}</span>,
+    text: `${t("actions.revise", { plan: offer.title })} revise plan with agent author ${offer.planId} ${offer.project}`,
+    meta: showProject ? offer.project : undefined,
+    target: { kind: "dialog", dialog: { kind: "author", project: offer.project, planId: offer.planId } },
+  }));
   const dispatches: Entry[] = dispatchProjects(scoped, grants).map((project) => {
     const label = scope === null ? t("actions.dispatchIn", { project }) : t("actions.dispatch");
     return {
@@ -430,7 +466,14 @@ function PaletteBody({ onChoose, shortcuts }: { onChoose: (target: Target) => vo
         },
       ]
     : [];
-  const actions = [...take(runPlans, typed ? QUERY_LIMIT : IDLE_PLAN_RUNS), ...take(dispatches), ...take(reruns), ...take(registers)];
+  const actions = [
+    ...take(runPlans, typed ? QUERY_LIMIT : IDLE_PLAN_RUNS),
+    ...take(dispatches),
+    ...take(newPlans),
+    ...(typed ? take(revisions, QUERY_LIMIT) : []),
+    ...take(reruns),
+    ...take(registers),
+  ];
 
   // Runs: the hub's search of the project once something is typed; else, and across every project, the overview's.
   const runs = remote

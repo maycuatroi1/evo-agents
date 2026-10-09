@@ -1,14 +1,17 @@
 """``evo-agents hub run``: dispatch plan steps to your own workers, and follow, steer and end their runs.
 
-``dispatch`` queues one run per step named (POST /v1/projects/{p}/runs), all of them or none, and ``plan`` queues a
-plan run, one run that does every step of the plan not done yet (POST /v1/projects/{p}/plan-runs). ``list`` and
-``show`` read runs of both kinds. ``logs`` prints a run's events page by page (GET .../runs/{id}/events?after=SEQ), or
-with ``--follow`` reads the run's server-sent events (GET .../runs/{id}/stream) until the hub sends ``end``. ``send``
-leaves a message for the run's agent, and ``cancel``, ``approve``, ``takeover``, ``handback`` and ``rerun`` are the
-owner's controls. ``credentials`` lists the leases the run got of its owner's secrets and of the hub's GitHub App
-(GET .../runs/{id}/credentials, the owner only), never their values. Every command after ``dispatch``, ``plan`` and
-``list`` takes the id of a run, as ``list`` shows it. A refusal is the hub's message on stderr, such as why a worker
-whose owner set it to take runs dispatched from the web only refuses a run dispatched with a token.
+``dispatch`` queues one run per step named (POST /v1/projects/{p}/runs), all of them or none, ``plan`` queues a
+plan run, one run that does every step of the plan not done yet (POST /v1/projects/{p}/plan-runs), and ``author``
+queues an author run, a plan written from your request with the create-exec-plan skill on a worker of yours (POST
+/v1/projects/{p}/author-runs, ``evo_agents.hub.author``), or with ``--plan`` a new revision of a plan of the
+project. ``list`` and ``show`` read runs of every kind. ``logs``
+prints a run's events page by page (GET .../runs/{id}/events?after=SEQ), or with ``--follow`` reads the run's
+server-sent events (GET .../runs/{id}/stream) until the hub sends ``end``. ``send`` leaves a message for the run's
+agent, and ``cancel``, ``approve``, ``takeover``, ``handback`` and ``rerun`` are the owner's controls.
+``credentials`` lists the leases the run got of its owner's secrets and of the hub's GitHub App (GET
+.../runs/{id}/credentials, the owner only), never their values. Every command after ``dispatch``, ``plan``,
+``author`` and ``list`` takes the id of a run, as ``list`` shows it. A refusal is the hub's message on stderr, such
+as why a worker whose owner set it to take runs dispatched from the web only refuses a run dispatched with a token.
 ``docs/workers.md`` describes the protocol behind them; ``--json`` prints what the hub answered, with the keys declared
 next to the flag.
 
@@ -39,6 +42,7 @@ from datetime import UTC, datetime
 from urllib.parse import urlencode
 
 from evo_agents import __version__
+from evo_agents.hub.author import AUTHOR_RUNTIMES, AUTHOR_TIMEOUT_CHOICES, DEFAULT_TIMEOUT_H, MAX_REQUEST_BYTES
 from evo_agents.hub.cli_client import _client_command, _print_json, _project_path, _signed_in, _table, _when
 from evo_agents.hub.client import _OPENER, HubError, Unreachable, _json, _origin
 from evo_agents.hub.contract import json_option, returns_array, returns_object
@@ -114,10 +118,13 @@ RUN_KEYS = (
     "waiting_since",
     "parked_at",
     "finished_at",
+    "request",
+    "finish_requested_at",
 )
 RUN_LIST_KEYS = ("runs", "total", "counts", "limit", "offset")
 EVENTS_KEYS = ("run_id", "state", "last_seq", "events", "more")
 MESSAGE_KEYS = ("id", "run_id", "seq", "text", "sent_by", "created_at", "delivered_at")
+CHAT_KEYS = ("run_id", "state", "status", "owner", "plan_id", "plan_revision", "messages", "more")
 LEASE_KEYS = ("id", "name", "provider", "kind", "target", "worker", "issued_at", "expires_at", "revoked_at")
 RUN = returns_object(*RUN_KEYS, schema="Run")
 
@@ -163,6 +170,8 @@ def _step(run: dict) -> str:
     title = f" ({run['title']})" if run.get("title") else ""
     if run.get("kind") == "review":
         return f"review{title}"
+    if run.get("kind") == "author":
+        return f"author{title}" + (f" of plan {run['plan_id']}" if run.get("plan_id") else "")
     if run.get("kind") == "plan":
         return f"plan {run['plan_id']}{title}"
     return f"step {run['step_key']}{title} of plan {run['plan_id']}"
@@ -177,7 +186,8 @@ def _repos(run: dict) -> str:
 
 def _timeout(run: dict) -> str:
     minutes = run["timeout_min"]
-    return f"{minutes // 60} h" if run.get("kind") == "plan" and minutes % 60 == 0 else f"{minutes} min"
+    hours = run.get("kind") in ("plan", "author") and minutes % 60 == 0
+    return f"{minutes // 60} h" if hours else f"{minutes} min"
 
 
 def _model_check(args) -> str | None:
@@ -468,6 +478,32 @@ def cmd_plan(args) -> int:
 
 
 @_client_command
+def cmd_author(args) -> int:
+    text = sys.stdin.read() if args.request == "-" else args.request
+    if not text.strip():
+        return _usage_error("the request is empty: say what the plan should achieve")
+    if len(text.encode()) > MAX_REQUEST_BYTES:
+        return _usage_error(
+            f"the request is {len(text.encode())} bytes of UTF-8, over the {MAX_REQUEST_BYTES} it takes"
+        )
+    hub, credentials = _signed_in()
+    project = _project(args)
+    body = {"request": text, "worker_id": _worker_id(hub, credentials.login, args.worker)}
+    chosen = {"plan_id": args.plan, "runtime": args.runtime, "model": args.model, "timeout_h": args.timeout_h}
+    body.update({key: value for key, value in chosen.items() if value is not None})
+    run = hub.call("POST", f"{_project_path(project)}/author-runs", body)
+    if args.json:
+        _print_json(run)
+        return 0
+    print(
+        f"Queued author run #{run['id']}: {_step(run)}, on worker #{run['pinned_worker_id']} over {_repos(run)}; "
+        f"runtime {_runtime(run)}, timeout {_timeout(run)} of agent time. It reads only and pushes nothing."
+    )
+    print(f"Follow it with `evo-agents hub run logs {run['id']} --follow{_with_project(args, project)}`.")
+    return 0
+
+
+@_client_command
 def cmd_list(args) -> int:
     hub, credentials = _signed_in()
     project = _project(args)
@@ -509,7 +545,7 @@ def cmd_list(args) -> int:
 
 def _describe(run: dict) -> list[tuple[str, str]]:
     """The fields of a run that say something, as (label, text) pairs."""
-    plan_run = run["kind"] in ("plan", "review", "judge")  # a review run and a judge run have repos too, and no step
+    plan_run = run["kind"] in ("plan", "review", "judge", "author")  # these have repos too, and no step
     lines = [("state", f"{run['state']}, attempt {run['attempt']} of {run['max_attempts']}")]
     if run["kind"] == "review":
         lines.append(("kind", "review run: the Curator reads the project and proposes changes; it pushes nothing"))
@@ -522,13 +558,17 @@ def _describe(run: dict) -> list[tuple[str, str]]:
         )
         if run["title"]:
             lines.append(("title", run["title"]))
+    elif run["kind"] == "author":
+        lines.append(("kind", "author run: a plan written from your request with create-exec-plan; it pushes nothing"))
+        if run["title"]:
+            lines.append(("title", run["title"]))
     elif plan_run:
         lines.append(("kind", "plan run: every step of the plan not done yet, in one session"))
         if run["title"]:
             lines.append(("title", run["title"]))
     else:
         lines.append(("step", f"{run['step_key']}" + (f": {run['title']}" if run["title"] else "")))
-    if run["kind"] != "review":
+    if run["kind"] not in ("review", "author") or run.get("plan_id"):
         lines.append(("plan", f"{run['plan_id']} of project {run['project']}, revision {run['plan_revision']}"))
     commit = f", commit {run['commit_sha'][:12]}" if run["commit_sha"] else ""
     if plan_run:
@@ -586,6 +626,8 @@ def _describe(run: dict) -> list[tuple[str, str]]:
         lines.append(("error", run["error"]))
     if run["evidence"]:
         lines.append(("evidence", run["evidence"]))
+    if run.get("request"):
+        lines.append(("request", run["request"]))
     blobs = [f"{name} {run[f'{name}_sha256'][:12]}" for name in ("log", "diff") if run[f"{name}_sha256"]]
     if blobs:
         lines.append(("uploaded", ", ".join(blobs)))
@@ -648,10 +690,44 @@ def cmd_send(args) -> int:
     if args.json:
         _print_json(message)
         return 0
+    if message["run_id"] != args.run:
+        print(
+            f"Run #{args.run} was parked: the reply queued run #{message['run_id']}, which resumes it in its session "
+            f"on the same worker, and its agent gets message #{message['id']} (event {message['seq']})."
+        )
+        return 0
     print(
         f"Sent message #{message['id']} to run #{message['run_id']} (event {message['seq']}); "
         "its worker hands it to the agent."
     )
+    return 0
+
+
+CHAT_STATUS_WORDS = {
+    "working": "the agent works on its turn",
+    "waiting": "it waits for your reply: `evo-agents hub run send {run} TEXT`, or end it with "
+    "`evo-agents hub run finish {run}`",
+    "ended": "the chat is over",
+}
+
+
+@_client_command
+def cmd_chat(args) -> int:
+    hub, _ = _signed_in()
+    chat = hub.call("GET", _runs_path(_project(args), args.run, "chat"))
+    if args.json:
+        _print_json(chat)
+        return 0
+    if chat["more"]:
+        print("(older messages left out)")
+    for message in chat["messages"]:
+        who = "agent" if message["author"] == "agent" else message["login"] or "owner"
+        print(f"[{_when(message['at'])}] {who} (run #{message['run_id']}):")
+        print(message["text"].rstrip())
+        print()
+    plan = f"; plan {chat['plan_id']} at revision {chat['plan_revision']}" if chat["plan_id"] else ""
+    said = CHAT_STATUS_WORDS[chat["status"]].format(run=chat["run_id"])
+    print(f"{len(chat['messages'])} message(s); run #{chat['run_id']} is {chat['state']}: {said}{plan}.")
     return 0
 
 
@@ -721,6 +797,14 @@ def _handed_back(run: dict) -> str:
     return f"Asked the worker of run #{run['id']} to hand back: the agent goes on headless in the same session."
 
 
+def _finished(run: dict) -> str:
+    if run["state"] == "done":
+        return f"Ended the chat of run #{run['id']}: it is done."
+    return (
+        f"Ended the chat of run #{run['id']} ({run['state']}): its worker ends it done once the agent's turn is over."
+    )
+
+
 def _rerun(run: dict) -> str:
     return f"Queued run #{run['id']}, a rerun of run #{run['parent_run_id']}: {_step(run)}."
 
@@ -736,6 +820,10 @@ CONTROLS = {
     "rerun": (
         "queue the step of a run that ended again, with its runtime, mode, approval, timeout and worker",
         _rerun,
+    ),
+    "finish": (
+        "end the chat of an author run: it ends done, at once when parked, else once its agent's turn is over",
+        _finished,
     ),
 }
 
@@ -828,6 +916,43 @@ def register_runs(hsub) -> None:
     json_option(plan, RUN)
     plan.set_defaults(func=cmd_plan)
 
+    authored = rsub.add_parser(
+        "author",
+        help="queue an author run: a plan written from your request with the create-exec-plan skill, on a worker of "
+        "yours (needs writer)",
+    )
+    authored.add_argument(
+        "request",
+        metavar="REQUEST",
+        help=f"what the plan should achieve, at most {MAX_REQUEST_BYTES // 1024} KiB of UTF-8; - reads it from stdin",
+    )
+    with_project(authored)
+    authored.add_argument(
+        "--plan",
+        metavar="PLAN",
+        help="the plan to revise, one you can read; the agent puts it back with its revision (default: a new plan)",
+    )
+    authored.add_argument(
+        "--worker",
+        required=True,
+        help="the worker of yours to run it on, by id or name; it needs the harness checked out",
+    )
+    authored.add_argument(
+        "--runtime",
+        choices=REQUESTED_RUNTIMES,
+        help=f"default: {AUTHOR_RUNTIMES[0]}, the one runtime an author run takes; the hub refuses another",
+    )
+    authored.add_argument("--model", help="the model, as Claude Code names it (default: Claude Code's own choice)")
+    authored.add_argument(
+        "--timeout-h",
+        type=int,
+        choices=AUTHOR_TIMEOUT_CHOICES,
+        metavar="HOURS",
+        help=f"hours of agent time, one of {', '.join(map(str, AUTHOR_TIMEOUT_CHOICES))} (default {DEFAULT_TIMEOUT_H})",
+    )
+    json_option(authored, RUN)
+    authored.set_defaults(func=cmd_author)
+
     listed = rsub.add_parser("list", help="the runs of a project, newest first, with how many are in each state")
     with_project(listed)
     listed.add_argument(
@@ -880,12 +1005,24 @@ def register_runs(hsub) -> None:
     )
     logs.set_defaults(func=cmd_logs)
 
-    send = rsub.add_parser("send", help="leave a message for a run's agent, which its worker hands over (owner only)")
+    send = rsub.add_parser(
+        "send",
+        help="leave a message for a run's agent, which its worker hands over; to an author run, your reply in its "
+        "chat (owner only)",
+    )
     with_run(send)
     send.add_argument("text", metavar="TEXT", help="at most 8 KiB; - reads it from stdin")
     with_project(send)
     json_option(send, returns_object(*MESSAGE_KEYS, schema="Message"))
     send.set_defaults(func=cmd_send)
+
+    chat = rsub.add_parser(
+        "chat", help="the chat of an author run: its agent's messages and its owner's, oldest first, and whose turn"
+    )
+    with_run(chat)
+    with_project(chat)
+    json_option(chat, returns_object(*CHAT_KEYS, schema="RunChat"))
+    chat.set_defaults(func=cmd_chat)
 
     credentials = rsub.add_parser(
         "credentials",

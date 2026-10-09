@@ -22,11 +22,12 @@ import type { ApiErrorInfo } from "@/lib/api/errors";
 import { whoamiQuery } from "@/lib/queries";
 
 import { AgentTrace, type TraceContext } from "./agent-trace";
-import { PlanRunKindBadge } from "./badges";
+import { AuthorRunKindBadge, PlanRunKindBadge } from "./badges";
 import { useRunViewer } from "./hooks";
 import type { RunMove } from "./log-model";
-import { isActiveState, LIVE_REFRESH_MS, openDecisionsQuery, type Run, RUN_VIEW_PARAM, runKey, runQuery } from "./queries";
+import { CHAT_TAB, chatKey, isActiveState, LIVE_REFRESH_MS, openDecisionsQuery, type Run, RUN_VIEW_PARAM, runKey, runQuery } from "./queries";
 import { RunActions, RunNotes } from "./run-actions";
+import { RunChatPanel } from "./run-chat";
 import { RunComposer } from "./run-composer";
 import { RunCredentials } from "./run-credentials";
 import { RunDecisions } from "./run-decisions";
@@ -81,27 +82,33 @@ function useRunTerminalTab(run: Run, viewer: ReturnType<typeof useRunViewer>) {
 }
 
 /**
- * The tab the session card shows, held by the page and kept in the URL (`?view=log`, `?view=terminal`; the Trace, the
- * first tab, has none): the Terminal tab once offered when the page was opened on it (a decision's Take over from the
- * Inbox), or when a decision's Take over here asks for it. Changing tabs replaces the URL without a navigation.
+ * The tab the session card shows, held by the page and kept in the URL (`?view=log`, `?view=terminal`; the first tab,
+ * the Trace or an author run's Chat, has none): the Terminal tab once offered when the page was opened on it (a
+ * decision's Take over from the Inbox), or when a decision's Take over here asks for it. The notice author_waiting
+ * links to `?tab=chat`, the Chat, which an author run's page shows first anyway. Changing tabs replaces the URL without a
+ * navigation.
  */
-function useSessionTab(terminalOffered: boolean) {
+function useSessionTab(terminalOffered: boolean, first: SessionTab) {
   const params = useSearchParams();
-  const asked = params.get(RUN_VIEW_PARAM);
+  const asked = params.get(RUN_VIEW_PARAM) ?? (params.get("tab") === CHAT_TAB ? CHAT_TAB : null);
   const wanted: SessionTab | null = (SESSION_TABS as readonly string[]).includes(asked ?? "") ? (asked as SessionTab) : null;
-  const [tab, setTab] = useState<SessionTab>(wanted === "log" ? "log" : "trace");
+  const [tab, setTab] = useState<SessionTab>(wanted === "log" || wanted === "trace" || (wanted === "chat" && first === "chat") ? wanted : first);
   const [applied, setApplied] = useState(false);
   if (wanted === "terminal" && terminalOffered && !applied) {
     setApplied(true);
     setTab("terminal");
   }
-  const choose = useCallback((next: SessionTab) => {
-    setTab(next);
-    const url = new URL(window.location.href);
-    if (next === "trace") url.searchParams.delete(RUN_VIEW_PARAM);
-    else url.searchParams.set(RUN_VIEW_PARAM, next);
-    window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
-  }, []);
+  const choose = useCallback(
+    (next: SessionTab) => {
+      setTab(next);
+      const url = new URL(window.location.href);
+      url.searchParams.delete("tab");
+      if (next === first) url.searchParams.delete(RUN_VIEW_PARAM);
+      else url.searchParams.set(RUN_VIEW_PARAM, next);
+      window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
+    },
+    [first],
+  );
   return [tab, choose] as const;
 }
 
@@ -111,7 +118,8 @@ function RunPage({ run }: { run: Run }) {
   const viewer = useRunViewer(run.project);
   const controls = runControls(run, viewer);
   const terminal = useRunTerminalTab(run, viewer);
-  const [sessionTab, setSessionTab] = useSessionTab(terminal !== null);
+  const authoring = run.kind === "author";
+  const [sessionTab, setSessionTab] = useSessionTab(terminal !== null, authoring ? "chat" : "trace");
   const logId = useId();
   const takeOver = terminal?.open
     ? () => {
@@ -134,6 +142,11 @@ function RunPage({ run }: { run: Run }) {
   useEffect(() => {
     if (moves > 0 || ended) void queryClient.invalidateQueries({ queryKey: runKey(run.project, run.id) });
   }, [moves, ended, queryClient, run.project, run.id]);
+  // An author run's chat is in its log: an event the stream brings may be a message of it, so read the chat again.
+  const events = log.events.length;
+  useEffect(() => {
+    if (authoring && events > 0) void queryClient.invalidateQueries({ queryKey: chatKey(run.project, run.id) });
+  }, [authoring, events, queryClient, run.project, run.id]);
 
   const plan = run.kind === "plan";
   const active = isActiveState(run.state);
@@ -184,9 +197,13 @@ function RunPage({ run }: { run: Run }) {
           </>
         }
         status={<StatusBadge kind="run" status={run.state} size="lg" />}
-        tags={plan ? <PlanRunKindBadge /> : review ? <ReviewRunKindBadge /> : null}
+        tags={plan ? <PlanRunKindBadge /> : review ? <ReviewRunKindBadge /> : authoring ? <AuthorRunKindBadge /> : null}
         sub={
-          review
+          authoring
+            ? run.plan_id
+              ? t.rich("authorPlanSub", { plan: run.plan_id, title, planLink })
+              : t("authorNewSub", { title })
+            : review
             ? t.rich("reviewSub", {
                 curatorLink: (chunks) => (
                   <Link href={curatorHref(run.project)} className={SUB_LINK} data-testid="run-curator-link">
@@ -225,7 +242,7 @@ function RunPage({ run }: { run: Run }) {
       <RunNotes run={run} controls={controls} />
       <RunTimeline run={run} moves={log.moves} />
       {/* The kit's run screen. From xl, two regions that scroll on their own, side by side and as tall as each other:
-          the session (Trace, Raw log, Terminal) on the left, filling the window down to its bottom gutter, and the side
+          the session (an author run's Chat, Trace, Raw log, Terminal) on the left, filling the window down to its bottom gutter, and the side
           column (the decision a plan run waits on, Details, Usage, the plan's steps, the Result, Credentials) on the
           right. Below xl the side column moves under the timeline, the decision first, then the session: the page
           reads in that order at every width, and from md to xl the side cards sit two by two. */}
@@ -258,7 +275,8 @@ function RunPage({ run }: { run: Run }) {
             log={log}
             frozen={{ at: frozenAt, set: setFrozenAt }}
             active={active}
-            composer={controls.message ? <RunComposer run={run} /> : null}
+            composer={controls.message && !authoring ? <RunComposer run={run} /> : null}
+            chat={authoring ? (shown) => <RunChatPanel run={run} owner={controls.owner} shown={shown} fill /> : null}
             tab={sessionTab}
             onTabChange={setSessionTab}
             trace={(shown) => <AgentTrace events={log.events} status={log.status} context={traceContext} shown={shown} fill />}

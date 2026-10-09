@@ -15,6 +15,9 @@ use the indexes the runs, decisions and plans already have.
 - recent_runs: the MAX_RECENT runs that ended last, in any end state;
 - open_decisions: at most MAX_DECISIONS open decisions, the caller's own first, the oldest first, each with when its
   run parks for want of an answer (EVO_HUB_DECISION_WAIT_SECONDS after it started waiting);
+- author_waiting: at most MAX_AUTHOR_WAITING of the caller's own author runs (``evo_agents.hub.author``) that wait for
+  their reply in the chat, waiting or parked, the latest first, each with the agent's last message: those of a new
+  plan, which no plan's label covers, and those of a plan the caller sees;
 - projects: each with the caller's role and max level, its repos, its active plans the caller sees, the open
   decisions of those plans, and where its Curator stands when it has a charter (``curator.curator_overview``).
 """
@@ -45,7 +48,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import runs, tables
+from evo_agents.hub import author, runs, tables
 from evo_agents.hub.db import one_of
 from evo_agents.hub.server.curator import CuratorOverview, curator_overview
 from evo_agents.hub.server.errors import ErrorBody
@@ -60,6 +63,8 @@ DAYS = 7  # the days of done_by_day and of the *_7d counts, today in UTC the las
 MAX_ACTIVE = 20
 MAX_RECENT = 10
 MAX_DECISIONS = 20
+MAX_AUTHOR_WAITING = 20
+AUTHOR_WAITING_STATES = ("waiting", "parked")  # an author run's chat waits for its owner's reply (author.chat_status)
 RUNNING_STATES = runs.CLOCK_STATES  # an agent at work, headless or driven by a person, or its verify commands
 IN_FLIGHT = (*RUNNING_STATES, "waiting", "parked", "queued")  # in the order active_runs shows them
 ENDED_COUNTED = ("done", "failed", "lost")  # the end states counts has a number for; a cancel is the owner's own
@@ -126,6 +131,19 @@ class OverviewDecision(BaseModel):
     )
 
 
+class OverviewAuthorWait(BaseModel):
+    id: int
+    project: str
+    plan_id: str | None = Field(description="the plan the run wrote or revises; null before its first put")
+    plan_title: str | None = Field(description="that plan's title as the hub holds it now")
+    title: str | None = Field(description="the run's title, from the start of its request")
+    state: Literal[AUTHOR_WAITING_STATES]
+    worker: str | None = Field(description="the worker the run is on")
+    waiting_since: datetime | None = Field(description="when its agent's turn ended, while waiting")
+    parked_at: datetime | None = Field(description="when it was parked, for want of a reply")
+    message: str | None = Field(description="the agent's last message of the chat; null when it said nothing yet")
+
+
 class OverviewProject(BaseModel):
     name: str
     role: str = Field(description="your role on the project")
@@ -153,6 +171,12 @@ class Overview(BaseModel):
     )
     open_decisions: list[OverviewDecision] = Field(
         max_length=MAX_DECISIONS, description=f"at most {MAX_DECISIONS}: yours first, then the oldest first"
+    )
+    author_waiting: list[OverviewAuthorWait] = Field(
+        [],
+        max_length=MAX_AUTHOR_WAITING,
+        description=f"at most {MAX_AUTHOR_WAITING} of your author runs whose chat waits for your reply, the latest "
+        "first",
     )
     projects: list[OverviewProject] = Field(description="the projects you hold a grant on, by name")
 
@@ -314,6 +338,59 @@ def _open_decisions(visible, user_id: int):
     )
 
 
+def _author_waiting(visible, user_id, granted: ColumnElement[bool]):
+    """The first MAX_AUTHOR_WAITING author runs of ``user_id`` waiting for its reply, in the projects ``granted``
+    selects, of a new plan or of a visible one, the latest first, with OverviewAuthorWait's columns."""
+    runs_, projects, workers, plans, events = (
+        tables.runs,
+        tables.projects,
+        tables.workers,
+        tables.plans,
+        tables.run_events,
+    )
+    said = (
+        select(events.c.body["text"].astext)
+        .where(
+            events.c.run_id == runs_.c.id,
+            events.c.kind == "system",
+            events.c.body["chat"].astext == author.CHAT_AGENT,
+        )
+        .order_by(events.c.seq.desc())
+        .limit(1)
+        .correlate(runs_)
+        .scalar_subquery()
+    )
+    seen = select(visible.c.plan_id).where(_of_visible(visible, runs_)).exists()
+    return (
+        select(
+            runs_.c.id,
+            projects.c.name.label("project"),
+            runs_.c.plan_id,
+            plans.c.body["title"].astext.label("plan_title"),
+            runs_.c.title,
+            runs_.c.state,
+            workers.c.name.label("worker"),
+            runs_.c.waiting_since,
+            runs_.c.parked_at,
+            said.label("message"),
+        )
+        .select_from(
+            runs_.join(projects, projects.c.id == runs_.c.project_id)
+            .outerjoin(workers, workers.c.id == runs_.c.worker_id)
+            .outerjoin(plans, and_(plans.c.project_id == runs_.c.project_id, plans.c.plan_id == runs_.c.plan_id))
+        )
+        .where(
+            runs_.c.kind == "author",
+            runs_.c.dispatched_by == user_id,
+            one_of(runs_.c.state, AUTHOR_WAITING_STATES),
+            granted,
+            or_(runs_.c.plan_id.is_(None), seen),
+        )
+        .order_by(runs_.c.id.desc())
+        .limit(MAX_AUTHOR_WAITING)
+    )
+
+
 def _decision_counts(visible, user_id: int):
     """For each project, its open decisions of the visible plans, and how many of those are ``user_id``'s."""
     decisions, runs_ = tables.decisions, tables.runs
@@ -355,6 +432,7 @@ _RECENT_RUNS = _run_rows(_VISIBLE, runs.TERMINAL_STATES, _recent_order(), MAX_RE
 _OPEN_DECISIONS = _open_decisions(_VISIBLE, bindparam("user_id"))
 _DECISION_COUNTS = _decision_counts(_VISIBLE, bindparam("user_id"))
 _PROJECT_COUNTS = _project_counts(_VISIBLE, one_of(tables.projects.c.id, name="granted"))
+_AUTHOR_WAITING = _author_waiting(_VISIBLE, bindparam("user_id"), one_of(tables.runs.c.project_id, name="granted"))
 
 
 def _bound(user_id: int, pairs: list[tuple[int, str]], granted: list[int], since: datetime) -> dict:
@@ -419,6 +497,7 @@ async def overview(request: Request, user: CurrentUser) -> Overview:
         decisions = (await conn.execute(_OPEN_DECISIONS, bound)).all()
         decision_counts = (await conn.execute(_DECISION_COUNTS, bound)).all()
         project_counts = (await conn.execute(_PROJECT_COUNTS, bound)).all()
+        author_waiting = (await conn.execute(_AUTHOR_WAITING, bound)).all()
         curators = await curator_overview(conn, accesses)
 
     by_state: dict[str, int] = {}
@@ -457,5 +536,6 @@ async def overview(request: Request, user: CurrentUser) -> Overview:
         active_runs=[_run(row) for row in active],
         recent_runs=[_run(row) for row in recent],
         open_decisions=[_decision(row, wait) for row in decisions],
+        author_waiting=[OverviewAuthorWait(**row._mapping) for row in author_waiting],
         projects=projects,
     )

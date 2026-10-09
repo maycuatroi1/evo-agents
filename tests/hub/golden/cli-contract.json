@@ -1953,7 +1953,8 @@
           "digest",
           "summary",
           "actor",
-          "created_at"
+          "created_at",
+          "run_id"
         ],
         "schema": "Revision"
       }
@@ -2548,7 +2549,145 @@
           "started_at",
           "waiting_since",
           "parked_at",
-          "finished_at"
+          "finished_at",
+          "request",
+          "finish_requested_at"
+        ],
+        "schema": "Run"
+      }
+    },
+    "hub run author": {
+      "positionals": [
+        {
+          "name": "request",
+          "metavar": "REQUEST",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--plan"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--worker"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--runtime"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "any",
+            "claude-code",
+            "opencode",
+            "codex"
+          ]
+        },
+        {
+          "flags": [
+            "--model"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--timeout-h"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            1,
+            2,
+            4
+          ]
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "kind",
+          "project",
+          "plan_id",
+          "step_key",
+          "title",
+          "plan_revision",
+          "dispatched_by",
+          "dispatched_via",
+          "worker_id",
+          "worker",
+          "pinned_worker_id",
+          "requested_runtime",
+          "runtime",
+          "model",
+          "mode",
+          "approval",
+          "timeout_min",
+          "run_seconds",
+          "attempt",
+          "max_attempts",
+          "parent_run_id",
+          "resume_of_run_id",
+          "state",
+          "lease_expires_at",
+          "session_id",
+          "repo",
+          "branch",
+          "repos",
+          "commit_sha",
+          "diffstat",
+          "verify",
+          "evidence",
+          "usage",
+          "budget",
+          "error",
+          "log_sha256",
+          "diff_sha256",
+          "last_seq",
+          "cancel_requested_at",
+          "takeover_requested_at",
+          "handback_requested_at",
+          "queued_at",
+          "leased_at",
+          "started_at",
+          "waiting_since",
+          "parked_at",
+          "finished_at",
+          "request",
+          "finish_requested_at"
         ],
         "schema": "Run"
       }
@@ -2631,9 +2770,54 @@
           "started_at",
           "waiting_since",
           "parked_at",
-          "finished_at"
+          "finished_at",
+          "request",
+          "finish_requested_at"
         ],
         "schema": "Run"
+      }
+    },
+    "hub run chat": {
+      "positionals": [
+        {
+          "name": "run",
+          "metavar": "RUN",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "run_id",
+          "state",
+          "status",
+          "owner",
+          "plan_id",
+          "plan_revision",
+          "messages",
+          "more"
+        ],
+        "schema": "RunChat"
       }
     },
     "hub run credentials": {
@@ -2829,7 +3013,94 @@
           "started_at",
           "waiting_since",
           "parked_at",
-          "finished_at"
+          "finished_at",
+          "request",
+          "finish_requested_at"
+        ],
+        "schema": "Run"
+      }
+    },
+    "hub run finish": {
+      "positionals": [
+        {
+          "name": "run",
+          "metavar": "RUN",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "kind",
+          "project",
+          "plan_id",
+          "step_key",
+          "title",
+          "plan_revision",
+          "dispatched_by",
+          "dispatched_via",
+          "worker_id",
+          "worker",
+          "pinned_worker_id",
+          "requested_runtime",
+          "runtime",
+          "model",
+          "mode",
+          "approval",
+          "timeout_min",
+          "run_seconds",
+          "attempt",
+          "max_attempts",
+          "parent_run_id",
+          "resume_of_run_id",
+          "state",
+          "lease_expires_at",
+          "session_id",
+          "repo",
+          "branch",
+          "repos",
+          "commit_sha",
+          "diffstat",
+          "verify",
+          "evidence",
+          "usage",
+          "budget",
+          "error",
+          "log_sha256",
+          "diff_sha256",
+          "last_seq",
+          "cancel_requested_at",
+          "takeover_requested_at",
+          "handback_requested_at",
+          "queued_at",
+          "leased_at",
+          "started_at",
+          "waiting_since",
+          "parked_at",
+          "finished_at",
+          "request",
+          "finish_requested_at"
         ],
         "schema": "Run"
       }
@@ -2912,7 +3183,9 @@
           "started_at",
           "waiting_since",
           "parked_at",
-          "finished_at"
+          "finished_at",
+          "request",
+          "finish_requested_at"
         ],
         "schema": "Run"
       }
@@ -3240,7 +3513,9 @@
           "started_at",
           "waiting_since",
           "parked_at",
-          "finished_at"
+          "finished_at",
+          "request",
+          "finish_requested_at"
         ],
         "schema": "Run"
       }
@@ -3323,7 +3598,9 @@
           "started_at",
           "waiting_since",
           "parked_at",
-          "finished_at"
+          "finished_at",
+          "request",
+          "finish_requested_at"
         ],
         "schema": "Run"
       }
@@ -3455,7 +3732,9 @@
           "started_at",
           "waiting_since",
           "parked_at",
-          "finished_at"
+          "finished_at",
+          "request",
+          "finish_requested_at"
         ],
         "schema": "Run"
       }
@@ -3538,7 +3817,9 @@
           "started_at",
           "waiting_since",
           "parked_at",
-          "finished_at"
+          "finished_at",
+          "request",
+          "finish_requested_at"
         ],
         "schema": "Run"
       }
@@ -4276,6 +4557,54 @@
       ],
       "json": null
     },
+    "worker put": {
+      "positionals": [
+        {
+          "name": "file",
+          "metavar": "FILE",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--if-revision"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "plan_id",
+          "area",
+          "revision",
+          "digest",
+          "label",
+          "body",
+          "created_at",
+          "updated_at",
+          "updated_by",
+          "created",
+          "changed",
+          "warnings"
+        ],
+        "schema": "evo_agents__hub__server__plans__Written"
+      }
+    },
     "worker step": {
       "positionals": [
         {
@@ -4331,7 +4660,7 @@
     "openapi": "3.1.0",
     "info": {
       "title": "evo-agents hub",
-      "version": "0.8.2"
+      "version": "0.9.0"
     },
     "paths": {
       "/v1/health": {
@@ -11310,6 +11639,100 @@
           }
         }
       },
+      "/v1/projects/{project}/author-runs": {
+        "post": {
+          "tags": [
+            "runs"
+          ],
+          "summary": "Dispatch Author",
+          "description": "Queue an author run: a plan written from the caller's request, with create-exec-plan, on a worker of the\ncaller's (``evo_agents.hub.author``).",
+          "operationId": "dispatch_author_v1_projects__project__author_runs_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthorRunDispatch"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Run"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
       "/v1/projects/{project}/runs/{run_id}/cancel": {
         "post": {
           "tags": [
@@ -12017,7 +12440,7 @@
             "worker protocol"
           ],
           "summary": "Read Run Plan",
-          "description": "The plan of a plan run this worker holds, as the hub holds it now, read as the member who dispatched the run.",
+          "description": "The plan of a plan run or an author run this worker holds, as the hub holds it now, read as the member who\ndispatched the run; 404 for an author run that has written no plan yet and was dispatched on none.",
           "operationId": "read_run_plan_v1_worker_runs__run_id__plan_get",
           "parameters": [
             {
@@ -12092,6 +12515,109 @@
                   }
                 }
               }
+            }
+          }
+        },
+        "put": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Put Run Plan",
+          "description": "Put the plan an author run this worker holds wrote on the hub: in the run's project, as the member who\ndispatched the run, whose writer role is checked again now, with the checks of PUT /v1/projects/{p}/plans/{id}\n(``plans.write_plan``); the revision records the run. The run writes one plan, the one it was dispatched on or the\none its first write created (422 for another id), never replaces a plan without ``if_revision`` (409), and never\nchanges its progress (422, ``author.progress_problem``).",
+          "operationId": "put_run_plan_v1_worker_runs__run_id__plan_put",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthoredPlan"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/evo_agents__hub__server__plans__Written"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/evo_agents__hub__server__plans__Conflict"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
             }
           }
         }
@@ -12364,7 +12890,7 @@
             "runs"
           ],
           "summary": "Send Message",
-          "description": "Leave a message for the run's agent in its inbox, which the worker hands to the agent.",
+          "description": "Leave a message for the run's agent in its inbox, which the worker hands to the agent; a reply to a parked\nauthor run queues the run that resumes it, whose inbox takes the message.",
           "operationId": "send_message_v1_projects__project__runs__run_id__messages_post",
           "parameters": [
             {
@@ -13139,6 +13665,297 @@
                 }
               },
               "description": "Service Unavailable"
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/runs/{run_id}/chat": {
+        "get": {
+          "tags": [
+            "runs"
+          ],
+          "summary": "Read Chat",
+          "description": "The chat of an author run: the agent's messages and its owner's, oldest first, and whose turn it is.",
+          "operationId": "read_chat_v1_projects__project__runs__run_id__chat_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/RunChat"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/runs/{run_id}/finish": {
+        "post": {
+          "tags": [
+            "runs"
+          ],
+          "summary": "Finish",
+          "description": "End the chat of an author run one dispatched: a parked one is done at once, and the worker holding one ends it\ndone once its agent's turn is over.",
+          "operationId": "finish_v1_projects__project__runs__run_id__finish_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Run"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/worker/runs/{run_id}/chat": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Post Chat",
+          "description": "Keep the last message of a turn of the agent of an author run this worker holds as a message of its chat.",
+          "operationId": "post_chat_v1_worker_runs__run_id__chat_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatPost"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ChatPosted"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
             }
           }
         }
@@ -17884,6 +18701,122 @@
           ],
           "title": "AuthConfig"
         },
+        "AuthorRunDispatch": {
+          "properties": {
+            "request": {
+              "type": "string",
+              "maxLength": 16384,
+              "minLength": 1,
+              "title": "Request",
+              "description": "what the plan should achieve, in the member's words: at most 16384 bytes of UTF-8"
+            },
+            "worker_id": {
+              "type": "integer",
+              "maximum": 9.223372036854776e+18,
+              "minimum": 1.0,
+              "title": "Worker Id",
+              "description": "the worker of yours the run goes to; an author run is pinned"
+            },
+            "plan_id": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[a-z0-9][a-z0-9-]{0,99}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Plan Id",
+              "description": "the plan the run revises, one you can read; null: the run writes a new plan"
+            },
+            "runtime": {
+              "type": "string",
+              "enum": [
+                "any",
+                "claude-code",
+                "opencode",
+                "codex"
+              ],
+              "title": "Runtime",
+              "description": "claude-code, the one runtime an author run takes (any means it); another one is 422",
+              "default": "claude-code"
+            },
+            "model": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "pattern": "^[^\\x00-\\x1f\\x7f]+$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Model",
+              "description": "the model to use, as Claude Code names it; null: its own choice"
+            },
+            "timeout_h": {
+              "type": "integer",
+              "enum": [
+                1,
+                2,
+                4
+              ],
+              "title": "Timeout H",
+              "description": "hours of agent time the run may take",
+              "default": 2
+            }
+          },
+          "type": "object",
+          "required": [
+            "request",
+            "worker_id"
+          ],
+          "title": "AuthorRunDispatch"
+        },
+        "AuthoredPlan": {
+          "properties": {
+            "body": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Body",
+              "description": "the plan as its YAML file reads; a hub key in it is ignored"
+            },
+            "if_revision": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If Revision",
+              "description": "the revision being replaced; leave it out, or 0, to create the plan"
+            },
+            "label": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Label",
+              "description": "{level, location, integrity}; default: the project's, or the held"
+            }
+          },
+          "type": "object",
+          "required": [
+            "body"
+          ],
+          "title": "AuthoredPlan"
+        },
         "Blob": {
           "properties": {
             "sha256": {
@@ -18951,6 +19884,94 @@
             "night_budget_usd"
           ],
           "title": "CharterWrite"
+        },
+        "ChatMessage": {
+          "properties": {
+            "run_id": {
+              "type": "integer",
+              "title": "Run Id",
+              "description": "the run whose log holds it: the run read, or one it resumes or that resumes it"
+            },
+            "seq": {
+              "type": "integer",
+              "title": "Seq",
+              "description": "its event in that run's log"
+            },
+            "author": {
+              "type": "string",
+              "enum": [
+                "agent",
+                "owner"
+              ],
+              "title": "Author"
+            },
+            "login": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Login",
+              "description": "the owner's login for the owner's message; null for the agent's"
+            },
+            "text": {
+              "type": "string",
+              "title": "Text"
+            },
+            "at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "run_id",
+            "seq",
+            "author",
+            "login",
+            "text",
+            "at"
+          ],
+          "title": "ChatMessage"
+        },
+        "ChatPost": {
+          "properties": {
+            "text": {
+              "type": "string",
+              "maxLength": 16384,
+              "minLength": 1,
+              "title": "Text",
+              "description": "the agent's last message of a turn, at most 16 KiB"
+            }
+          },
+          "type": "object",
+          "required": [
+            "text"
+          ],
+          "title": "ChatPost"
+        },
+        "ChatPosted": {
+          "properties": {
+            "run_id": {
+              "type": "integer",
+              "title": "Run Id"
+            },
+            "seq": {
+              "type": "integer",
+              "title": "Seq",
+              "description": "its event in the run's log"
+            }
+          },
+          "type": "object",
+          "required": [
+            "run_id",
+            "seq"
+          ],
+          "title": "ChatPosted"
         },
         "CheckoutReport": {
           "properties": {
@@ -22691,7 +23712,8 @@
             },
             "run_id": {
               "type": "integer",
-              "title": "Run Id"
+              "title": "Run Id",
+              "description": "the run whose inbox took it: the run messaged, or the run that resumes a parked author run"
             },
             "seq": {
               "type": "integer",
@@ -23373,7 +24395,8 @@
                     "plan_finished",
                     "run_failed",
                     "curator_brief",
-                    "curator_paused"
+                    "curator_paused",
+                    "author_waiting"
                   ]
                 },
                 {
@@ -23679,6 +24702,16 @@
               "title": "Open Decisions",
               "description": "at most 20: yours first, then the oldest first"
             },
+            "author_waiting": {
+              "items": {
+                "$ref": "#/components/schemas/OverviewAuthorWait"
+              },
+              "type": "array",
+              "maxItems": 20,
+              "title": "Author Waiting",
+              "description": "at most 20 of your author runs whose chat waits for your reply, the latest first",
+              "default": []
+            },
             "projects": {
               "items": {
                 "$ref": "#/components/schemas/OverviewProject"
@@ -23698,6 +24731,126 @@
             "projects"
           ],
           "title": "Overview"
+        },
+        "OverviewAuthorWait": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "plan_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Plan Id",
+              "description": "the plan the run wrote or revises; null before its first put"
+            },
+            "plan_title": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Plan Title",
+              "description": "that plan's title as the hub holds it now"
+            },
+            "title": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Title",
+              "description": "the run's title, from the start of its request"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "waiting",
+                "parked"
+              ],
+              "title": "State"
+            },
+            "worker": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Worker",
+              "description": "the worker the run is on"
+            },
+            "waiting_since": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Waiting Since",
+              "description": "when its agent's turn ended, while waiting"
+            },
+            "parked_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Parked At",
+              "description": "when it was parked, for want of a reply"
+            },
+            "message": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Message",
+              "description": "the agent's last message of the chat; null when it said nothing yet"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "project",
+            "plan_id",
+            "plan_title",
+            "title",
+            "state",
+            "worker",
+            "waiting_since",
+            "parked_at",
+            "message"
+          ],
+          "title": "OverviewAuthorWait"
         },
         "OverviewCounts": {
           "properties": {
@@ -23933,7 +25086,8 @@
                 "step",
                 "plan",
                 "review",
-                "judge"
+                "judge",
+                "author"
               ],
               "title": "Kind"
             },
@@ -26685,6 +27839,18 @@
               "type": "string",
               "format": "date-time",
               "title": "Created At"
+            },
+            "run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id",
+              "description": "the author run that wrote the revision, as its dispatcher (actor); null for any other write"
             }
           },
           "type": "object",
@@ -26881,10 +28047,11 @@
                 "step",
                 "plan",
                 "review",
-                "judge"
+                "judge",
+                "author"
               ],
               "title": "Kind",
-              "description": "step: one step of the plan; plan: every step not done yet; review: the night's review of the project by the Curator, on no plan; judge: the Curator's Judge of a change of its plan"
+              "description": "step: one step of the plan; plan: every step not done yet; review: the night's review of the project by the Curator, on no plan; judge: the Curator's Judge of a change of its plan; author: a plan written from a member's request, on no plan when it writes a new one"
             },
             "project": {
               "type": "string",
@@ -26893,7 +28060,7 @@
             "plan_id": {
               "type": "string",
               "title": "Plan Id",
-              "description": "the plan it works on; empty for a review run, which works on none"
+              "description": "the plan it works on; empty for a review run, which works on none, and an author run of a new plan"
             },
             "step_key": {
               "anyOf": [
@@ -27370,6 +28537,31 @@
                 }
               ],
               "title": "Finished At"
+            },
+            "request": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Request",
+              "description": "the member's request of an author run; null for any other kind"
+            },
+            "finish_requested_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Finish Requested At",
+              "description": "when the owner ended the chat of an author run its worker holds; null otherwise"
             }
           },
           "type": "object",
@@ -27549,6 +28741,98 @@
           "title": "RunBudget",
           "description": "The caps of a run the night shift queued (``evo_agents.hub.curator``)."
         },
+        "RunChat": {
+          "properties": {
+            "run_id": {
+              "type": "integer",
+              "title": "Run Id",
+              "description": "the run of the chat that takes the next message: the latest that resumes it"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "queued",
+                "leased",
+                "running",
+                "interactive",
+                "verifying",
+                "waiting",
+                "review",
+                "parked",
+                "done",
+                "failed",
+                "lost",
+                "cancelled"
+              ],
+              "title": "State",
+              "description": "that run's state"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "working",
+                "waiting",
+                "ended"
+              ],
+              "title": "Status",
+              "description": "working: the agent works on its turn; waiting: it waits for your reply (waiting or parked); ended: the run ended"
+            },
+            "owner": {
+              "type": "string",
+              "title": "Owner",
+              "description": "the login of the run's owner, the one member who replies"
+            },
+            "plan_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Plan Id",
+              "description": "the plan the run wrote or revises; null before its first put"
+            },
+            "plan_revision": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Plan Revision",
+              "description": "that plan's revision the run last wrote, or was dispatched on"
+            },
+            "messages": {
+              "items": {
+                "$ref": "#/components/schemas/ChatMessage"
+              },
+              "type": "array",
+              "title": "Messages",
+              "description": "oldest first"
+            },
+            "more": {
+              "type": "boolean",
+              "title": "More",
+              "description": "older messages were left out: the chat shows its 1000 latest"
+            }
+          },
+          "type": "object",
+          "required": [
+            "run_id",
+            "state",
+            "status",
+            "owner",
+            "plan_id",
+            "plan_revision",
+            "messages",
+            "more"
+          ],
+          "title": "RunChat"
+        },
         "RunCommitted": {
           "properties": {
             "build": {
@@ -27666,6 +28950,12 @@
               "type": "boolean",
               "title": "Park",
               "description": "the run is parked (it waited too long for an answer), or done because a new run resumes it: stop the agent at the end of its turn, keep the session and the worktrees, free the slot",
+              "default": false
+            },
+            "finish": {
+              "type": "boolean",
+              "title": "Finish",
+              "description": "the owner ended the chat of this author run: once the agent's turn is over, end the run done",
               "default": false
             },
             "inbox": {
@@ -28168,6 +29458,54 @@
           "title": "RunRepo",
           "description": "A repo of a plan run, with the branch the plan names for it."
         },
+        "RunSkill": {
+          "properties": {
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "scope": {
+              "type": "string",
+              "const": "global",
+              "title": "Scope",
+              "default": "global"
+            },
+            "version": {
+              "type": "integer",
+              "title": "Version"
+            },
+            "sha256": {
+              "type": "string",
+              "title": "Sha256",
+              "description": "what the downloaded bytes must hash to"
+            },
+            "size": {
+              "type": "integer",
+              "title": "Size"
+            },
+            "url": {
+              "type": "string",
+              "title": "Url",
+              "description": "presigned GET of the bundle; a bearer credential until it expires"
+            },
+            "expires_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Expires At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "name",
+            "version",
+            "sha256",
+            "size",
+            "url",
+            "expires_at"
+          ],
+          "title": "RunSkill",
+          "description": "A skill the worker writes for the run's agent, as the hub holds it when the run is claimed: an author run's\ncreate-exec-plan, global, at its latest version."
+        },
         "RunSpec": {
           "properties": {
             "id": {
@@ -28180,7 +29518,8 @@
                 "step",
                 "plan",
                 "review",
-                "judge"
+                "judge",
+                "author"
               ],
               "title": "Kind"
             },
@@ -28391,6 +29730,14 @@
                 }
               ],
               "description": "a run of the Curator: its role and what its worker checks; null for any other run"
+            },
+            "skills": {
+              "items": {
+                "$ref": "#/components/schemas/RunSkill"
+              },
+              "type": "array",
+              "title": "Skills",
+              "description": "the skills the worker writes under .claude/skills of the run's directory for its agent: an author run's create-exec-plan; empty for any other run"
             }
           },
           "type": "object",
