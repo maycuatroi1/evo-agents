@@ -3,11 +3,14 @@
 EVO_HUB_TEST_DSN names a server and a superuser on it; without it every hub test module skips. Each test
 gets a database of its own, owned by a role of its own with a random password, so the hub runs without
 superuser rights, a re-run starts clean, nothing lands in the server's own databases, and a password that
-reaches a log line is easy to find. psycopg and SQLAlchemy are imported inside the helpers: this module loads on a
-core install too.
+reaches a log line is easy to find. Such a database is a copy of a template the pytest process migrated once
+(``make_template``, ``clone_database``): a copy takes about a quarter of the time of migrating an empty database,
+which some 900 tests did each; a test of migrating itself gets an empty one. The tests run in parallel with
+``pytest -n 4`` (pytest-xdist): each worker has a template of its own, and nothing else is shared but the server.
+psycopg and SQLAlchemy are imported inside the helpers: this module loads on a core install too.
 
-The SQL kept here is the CREATE and DROP of databases and roles, which have no SQLAlchemy construct; the catalogs
-it reads and the functions it calls are Core statements on ``admin_engine()``.
+The SQL kept here is the CREATE, ALTER and DROP of databases and roles and the REASSIGN OWNED of a copy, which have no
+SQLAlchemy construct; the catalogs it reads and the functions it calls are Core statements on ``admin_engine()``.
 """
 
 import json
@@ -125,20 +128,66 @@ def wait_ready(timeout: float = READY_TIMEOUT) -> None:
             time.sleep(0.5)
 
 
-def create_database() -> Database:
+def _new_owner(conn) -> tuple[str, str]:
+    """A login role of its own with a random password; its name is also the name of its database."""
     from psycopg import sql
-    from psycopg.conninfo import conninfo_to_dict, make_conninfo
 
     name = f"evo_hub_test_{secrets.token_hex(6)}"
     password = f"Pw{secrets.token_hex(16)}"
-    with admin() as conn:
-        conn.execute(sql.SQL("CREATE ROLE {} LOGIN PASSWORD {}").format(sql.Identifier(name), sql.Literal(password)))
-        conn.execute(sql.SQL("CREATE DATABASE {} OWNER {}").format(sql.Identifier(name), sql.Identifier(name)))
+    conn.execute(sql.SQL("CREATE ROLE {} LOGIN PASSWORD {}").format(sql.Identifier(name), sql.Literal(password)))
+    return name, password
+
+
+def _database(name: str, password: str) -> Database:
+    from psycopg.conninfo import conninfo_to_dict, make_conninfo
+
     params = conninfo_to_dict(DSN)
     host = quote(params.get("host") or "localhost", safe="")
     port = params.get("port") or "5432"
     dsn = f"postgresql://{name}:{password}@{host}:{port}/{name}"
     return Database(name, password, dsn, make_conninfo(DSN, dbname=name))
+
+
+def create_database() -> Database:
+    """An empty database, owned by a role of its own."""
+    from psycopg import sql
+
+    with admin() as conn:
+        name, password = _new_owner(conn)
+        conn.execute(sql.SQL("CREATE DATABASE {} OWNER {}").format(sql.Identifier(name), sql.Identifier(name)))
+    return _database(name, password)
+
+
+def make_template(db: Database) -> None:
+    """Make ``db``, which its role has migrated, a template for ``clone_database``: wait for its last connection to
+    end (``CREATE DATABASE ... TEMPLATE`` refuses a database anyone is connected to) and hand the database itself to
+    the superuser. Its tables stay its role's; were the database its role's too, the ``REASSIGN OWNED`` of a clone,
+    which also reaches the databases a role owns, would give this one away to the clone's role."""
+    from psycopg import sql
+
+    if left := wait_no_backends(db.name):
+        pytest.fail(f"{left} connection(s) to the template {db.name} still open after migrating it")
+    with admin() as conn:
+        conn.execute(sql.SQL("ALTER DATABASE {} OWNER TO CURRENT_USER").format(sql.Identifier(db.name)))
+
+
+def clone_database(template: Database) -> Database:
+    """A database of its own as ``template`` is, for a role of its own that owns everything in it: a copy of a
+    migrated database costs a fraction of migrating an empty one. Dropped with ``drop_database`` as any other."""
+    from psycopg import sql
+
+    with admin() as conn:
+        name, password = _new_owner(conn)
+        conn.execute(
+            sql.SQL("CREATE DATABASE {} OWNER {} TEMPLATE {}").format(
+                sql.Identifier(name), sql.Identifier(name), sql.Identifier(template.name)
+            )
+        )
+    db = _database(name, password)
+    # The copy's tables, sequences, types and functions are still the template's role's: give them to the clone's.
+    with admin(db.admin_dsn) as conn:
+        conn.execute(sql.SQL("REASSIGN OWNED BY {} TO {}").format(sql.Identifier(template.name), sql.Identifier(name)))
+    return db
 
 
 def drop_database(db: Database) -> None:

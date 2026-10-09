@@ -439,8 +439,18 @@ def test_a_run_is_claimed_verified_committed_and_pushed_with_its_events_on_the_h
     assert git("status", "--porcelain", cwd=stack.checkout) == ""
     worktree = stack.worktree(run_id)
     assert (worktree / "feature.txt").read_text(encoding="utf-8") == "hello\n"
-    detached = subprocess.run(["git", "-C", str(worktree), "symbolic-ref", "-q", "HEAD"], capture_output=True)
-    assert detached.returncode != 0, "the worktree leaves the plan's branch once the run is over"
+
+    # The daemon reports done, gives the leases back and settles the events before it lets go of the branch, the last
+    # thing a run does: the hub's state comes first, so wait for the worktree rather than read it once.
+    def detached() -> bool:
+        head = subprocess.run(["git", "-C", str(worktree), "symbolic-ref", "-q", "HEAD"], capture_output=True)
+        return head.returncode != 0
+
+    wait_until(
+        detached,
+        "the worktree to leave the plan's branch once the run is over",
+        explain=lambda: stack.daemon_output()[-6000:],
+    )
     assert not any((stack.state / "spool").iterdir()), "the spool is empty once the hub has every event"
 
     # The state directory is private.

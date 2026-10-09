@@ -195,6 +195,9 @@
         "branch": {
           "type": "string"
         },
+        "fetch": {
+          "type": "boolean"
+        },
         "assets": {
           "type": "boolean"
         },
