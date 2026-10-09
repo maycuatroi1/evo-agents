@@ -83,7 +83,6 @@ export function RunPlanSteps({ run }: { run: Run }) {
             ))}
           </ol>
         )}
-        <p className="mt-3 text-xs text-pretty text-muted-foreground">{t("hint")}</p>
       </div>
     </section>
   );

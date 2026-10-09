@@ -91,13 +91,18 @@ function CopyButton({ value, label, target }: { value: string; label: string; ta
 
 /**
  * A name in a mono chip: a worker, branch, revision, session or hash. `href` makes it a link (text colour, brand on
- * hover); `copy` adds a button that copies `value`, named by `copyLabel` ("Copy branch name") or "Copy <value>".
- * `children` is what shows when it differs from `value`, such as a short hash; `title` then carries the whole value.
+ * hover); `externalHref` makes it a link out of the hub instead (a branch or a commit on its forge), opened in a new
+ * tab without an opener or a referrer and named by `linkLabel` ("7c1e9a2 (opens in a new tab)"); only http and https
+ * addresses are taken. `copy` adds a button that copies `value`, named by `copyLabel` ("Copy branch name") or
+ * "Copy <value>". `children` is what shows when it differs from `value`, such as a short hash; `title` then carries
+ * the whole value.
  */
 export function Identifier({
   value,
   children,
   href,
+  externalHref,
+  linkLabel,
   copy = false,
   copyLabel,
   title,
@@ -108,6 +113,8 @@ export function Identifier({
   value: string;
   children?: ReactNode;
   href?: Route;
+  externalHref?: string | null;
+  linkLabel?: string;
   copy?: boolean;
   copyLabel?: string;
   title?: string;
@@ -117,7 +124,22 @@ export function Identifier({
   const t = useTranslations("identifier");
   const text = useRef<HTMLElement>(null);
   const shown = children ?? value;
-  const chip = href ? (
+  const external = externalHref && /^https?:\/\//i.test(externalHref) ? externalHref : null;
+  const chip = external ? (
+    <a
+      ref={text as RefObject<HTMLAnchorElement | null>}
+      href={external}
+      target="_blank"
+      rel="noopener noreferrer"
+      aria-label={linkLabel}
+      title={title}
+      className={cn(CHIP, "text-foreground transition-colors hover:text-brand", className)}
+      data-testid={testId}
+      {...data}
+    >
+      <span className="truncate">{shown}</span>
+    </a>
+  ) : href ? (
     <Link
       ref={text as RefObject<HTMLAnchorElement | null>}
       href={href}

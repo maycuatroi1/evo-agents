@@ -9,24 +9,54 @@ import { Identifier } from "@/components/data/identifier";
 import { useNow } from "@/components/kg/use-now";
 import { Badge } from "@/components/ui/badge";
 import { workerHref } from "@/components/workers/queries";
+import { cn } from "@/lib/utils";
+
+import { branchUrl, commitUrl, type RepoWeb } from "./forge";
+import { ExternalLink, LinkedText, useNewTabLabel, useRepoWeb } from "./links";
 
 import { runTiming } from "./model";
 import { HELD_STATES, isActiveState, type Run, runDiffHref, runHref } from "./queries";
 import { leaseSecondsLeft, readDiffstat, readVerify, type RunViewer, shortSha } from "./run-model";
 import { useDuration } from "./runs-table";
 
-/** The run's facts and its result, cards of the side column (its usage is the UsageMeter's, usage-meter.tsx). */
+/**
+ * The run's facts and its result, cards of the side column (its usage is the UsageMeter's, usage-meter.tsx). The repo,
+ * its branch and the commit link to their pages on the forge the repo's origin names (forge.ts); a repo without an
+ * origin the page can read stays text.
+ */
 
-function Card({ title, children, testId }: { title: string; children: ReactNode; testId: string }) {
+/** A card of the side column: its title, then what it holds; a card with nothing to hold yet is its title and `status`. */
+function Card({ title, children, status, testId }: { title: string; children?: ReactNode; status?: ReactNode; testId: string }) {
   const id = useId();
   return (
     <section className="flex min-w-0 flex-col rounded-md border bg-card shadow-raised" aria-labelledby={id} data-testid={testId}>
-      <h2 id={id} className="border-b px-4 py-3 text-[15px] leading-[22px] font-semibold">
-        {title}
-      </h2>
-      <div className="min-w-0 px-4 py-3">{children}</div>
+      <div className={cn("flex flex-wrap items-baseline gap-x-3 gap-y-1 px-4 py-3", children ? "border-b" : null)}>
+        <h2 id={id} className="text-[15px] leading-[22px] font-semibold">
+          {title}
+        </h2>
+        {status}
+      </div>
+      {children ? <div className="min-w-0 px-4 py-3">{children}</div> : null}
     </section>
   );
+}
+
+/** A repo's name, a link to its page on its forge when its origin gives one. */
+function RepoName({ name, web }: { name: string; web: RepoWeb | null }) {
+  return web ? (
+    <ExternalLink href={web.url} label={name} className="font-mono text-xs" testId="run-repo-link" />
+  ) : (
+    <span className="font-mono text-xs" data-testid="run-repo-name">
+      {name}
+    </span>
+  );
+}
+
+/** A branch in its chip, a link to its page on GitHub or GitLab. */
+function Branch({ name, web }: { name: string; web: RepoWeb | null }) {
+  const named = useNewTabLabel();
+  const href = branchUrl(web, name);
+  return <Identifier value={name} externalHref={href} linkLabel={href ? named(name) : undefined} testId="run-branch" />;
 }
 
 function Fact({ label, children, testId }: { label: string; children: ReactNode; testId?: string }) {
@@ -55,7 +85,7 @@ function Lease({ run }: { run: Run }) {
   const now = useNow(run.lease_expires_at !== null);
   const left = leaseSecondsLeft(run, now);
   if (!run.lease_expires_at || !(HELD_STATES as readonly string[]).includes(run.state)) {
-    return <span className="text-muted-foreground">{run.state === "queued" ? t("leaseNone") : t("leaseReleased")}</span>;
+    return <span className="text-muted-foreground">{run.state === "queued" ? t("none") : t("leaseReleased")}</span>;
   }
   if (left === null) return <When at={run.lease_expires_at} />;
   return (
@@ -73,6 +103,7 @@ export function RunDetails({ run, viewer }: { run: Run; viewer: RunViewer | null
   const now = useNow(isActiveState(run.state));
   const timing = runTiming(run, now);
   const mayOpenWorker = viewer !== null && (viewer.admin || viewer.login === run.dispatched_by);
+  const webOf = useRepoWeb(run.project);
 
   return (
     <Card title={t("title")} testId="run-details">
@@ -99,12 +130,12 @@ export function RunDetails({ run, viewer }: { run: Run; viewer: RunViewer | null
             <ul className="flex flex-col gap-1">
               {(run.repos ?? []).map((repo) => (
                 <li key={repo.repo} className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1">
-                  <span className="font-mono text-xs">{repo.repo}</span>
+                  <RepoName name={repo.repo} web={webOf(repo.repo)} />
                   {repo.branch ? (
                     <span className="inline-flex min-w-0 items-center gap-1 text-muted-foreground">
                       <GitBranch className="size-3 shrink-0" aria-hidden="true" />
                       <span className="sr-only">{t("on")} </span>
-                      <Identifier value={repo.branch} />
+                      <Branch name={repo.branch} web={webOf(repo.repo)} />
                     </span>
                   ) : null}
                 </li>
@@ -113,12 +144,12 @@ export function RunDetails({ run, viewer }: { run: Run; viewer: RunViewer | null
             </ul>
           </Fact>
         ) : (
-          <Fact label={t("repo")}>
-            <span className="font-mono text-xs">{run.repo}</span>
+          <Fact label={t("repo")} testId="run-repo">
+            {run.repo ? <RepoName name={run.repo} web={webOf(run.repo)} /> : null}
             {run.branch ? (
               <>
                 {" "}
-                <span className="text-muted-foreground">{t("on")}</span> <Identifier value={run.branch} />
+                <span className="text-muted-foreground">{t("on")}</span> <Branch name={run.branch} web={webOf(run.repo)} />
               </>
             ) : null}
           </Fact>
@@ -205,93 +236,137 @@ export function RunResult({ run }: { run: Run }) {
   const format = useFormatter();
   const verify = readVerify(run.verify);
   const diffstat = readDiffstat(run.diffstat);
+  const named = useNewTabLabel();
+  const webOf = useRepoWeb(run.project);
+  // The repo the commit is in: the run's own, or the one repo of a plan run.
+  const repo = run.repo ?? (run.repos?.length === 1 ? run.repos[0].repo : null);
+  const branch = run.branch ?? (run.repos?.length === 1 ? (run.repos[0].branch ?? null) : null);
+  const web = webOf(repo);
+  const commitHref = commitUrl(web, run.commit_sha);
+  const branchHref = branchUrl(web, branch);
   const nothing = !run.error && verify.length === 0 && !run.commit_sha && !diffstat && !run.evidence && !run.diff_sha256;
+
+  if (nothing) {
+    // Nothing to show yet, or ever: the card is its title and one word of where it stands.
+    return (
+      <Card
+        title={t("title")}
+        testId="run-result"
+        status={
+          <span className="ml-auto text-xs text-fg-subtle" data-testid="run-result-empty">
+            {isActiveState(run.state) ? t("noneYet") : t("empty")}
+          </span>
+        }
+      />
+    );
+  }
 
   return (
     <Card title={t("title")} testId="run-result">
-      {nothing ? (
-        <p className="text-sm text-pretty text-muted-foreground" data-testid="run-result-empty">
-          {isActiveState(run.state) ? t("pending") : t("empty")}
-        </p>
-      ) : (
-        <div className="flex flex-col gap-3 text-sm">
-          {run.error ? (
-            <p
-              className="flex items-start gap-2 rounded-md border border-danger/30 bg-danger-soft px-3 py-2 text-danger"
-              data-testid="run-error-text"
-            >
-              <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-              <span className="min-w-0 break-words whitespace-pre-wrap">{run.error}</span>
-            </p>
+      <div className="flex flex-col gap-3 text-sm">
+        {run.error ? (
+          <p
+            className="flex items-start gap-2 rounded-md border border-danger/30 bg-danger-soft px-3 py-2 text-danger"
+            data-testid="run-error-text"
+          >
+            <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+            <span className="min-w-0 break-words whitespace-pre-wrap">
+              <LinkedText text={run.error} />
+            </span>
+          </p>
+        ) : null}
+        <dl className="grid grid-cols-[max-content_minmax(0,1fr)] gap-x-4 gap-y-2">
+          {verify.length ? (
+            <Fact label={t("verify")} testId="run-verify">
+              <ul className="flex flex-col gap-1.5">
+                {verify.map((item, index) => {
+                  const passed = item.exitCode === 0;
+                  return (
+                    <li key={index} className="flex min-w-0 flex-col gap-0.5">
+                      <span className="flex flex-wrap items-center gap-1.5">
+                        <Badge variant={passed ? "success" : "destructive"}>
+                          {passed ? <CircleCheck aria-hidden="true" /> : <CircleX aria-hidden="true" />}
+                          {item.exitCode === null ? t("exitUnknown") : t("exit", { code: item.exitCode })}
+                        </Badge>
+                        {item.durationMs !== null ? (
+                          <span className="text-xs text-muted-foreground tabular-nums">
+                            {t("seconds", { seconds: format.number(item.durationMs / 1000, { maximumFractionDigits: 1 }) })}
+                          </span>
+                        ) : null}
+                      </span>
+                      <code className="font-mono text-xs [overflow-wrap:anywhere]">
+                        <LinkedText text={item.command} />
+                      </code>
+                    </li>
+                  );
+                })}
+              </ul>
+            </Fact>
           ) : null}
-          <dl className="grid grid-cols-[max-content_minmax(0,1fr)] gap-x-4 gap-y-2">
-            {verify.length ? (
-              <Fact label={t("verify")} testId="run-verify">
-                <ul className="flex flex-col gap-1.5">
-                  {verify.map((item, index) => {
-                    const passed = item.exitCode === 0;
-                    return (
-                      <li key={index} className="flex min-w-0 flex-col gap-0.5">
-                        <span className="flex flex-wrap items-center gap-1.5">
-                          <Badge variant={passed ? "success" : "destructive"}>
-                            {passed ? <CircleCheck aria-hidden="true" /> : <CircleX aria-hidden="true" />}
-                            {item.exitCode === null ? t("exitUnknown") : t("exit", { code: item.exitCode })}
-                          </Badge>
-                          {item.durationMs !== null ? (
-                            <span className="text-xs text-muted-foreground tabular-nums">
-                              {t("seconds", { seconds: format.number(item.durationMs / 1000, { maximumFractionDigits: 1 }) })}
-                            </span>
-                          ) : null}
-                        </span>
-                        <code className="font-mono text-xs [overflow-wrap:anywhere]">{item.command}</code>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </Fact>
-            ) : null}
-            {run.commit_sha ? (
-              <Fact label={t("commit")} testId="run-commit">
-                <Identifier value={run.commit_sha} title={run.commit_sha} copy copyLabel={t("copyCommit")}>
-                  {shortSha(run.commit_sha)}
-                </Identifier>
-                {run.branch ? <span className="text-xs text-muted-foreground"> {t("onBranch", { branch: run.branch })}</span> : null}
-              </Fact>
-            ) : null}
-            {diffstat || run.diff_sha256 ? (
-              <Fact label={t("changes")} testId="run-diffstat">
-                {diffstat ? (
-                  <span className="tabular-nums">
-                    {t("diffstat", { files: diffstat.files, insertions: format.number(diffstat.insertions), deletions: format.number(diffstat.deletions) })}
-                  </span>
-                ) : null}
-                {run.diff_sha256 ? (
-                  <Link
-                    href={runDiffHref(run.project, run.id)}
-                    className="mt-0.5 flex w-fit items-center gap-1 text-brand underline-offset-4 hover:underline"
-                    data-testid="run-diff-link"
-                  >
-                    <FileDiff className="size-3.5" aria-hidden="true" />
-                    {t("viewDiff")}
-                  </Link>
-                ) : null}
-              </Fact>
-            ) : null}
-          </dl>
-          {run.evidence ? (
-            <div className="flex flex-col gap-1">
-              <h3 className="text-sm text-muted-foreground">{t("evidence")}</h3>
-              <p
-                className="max-h-60 overflow-y-auto rounded-md bg-muted/60 px-3 py-2 text-xs break-words whitespace-pre-wrap"
-                tabIndex={0}
-                data-testid="run-evidence"
+          {run.commit_sha ? (
+            <Fact label={t("commit")} testId="run-commit">
+              <Identifier
+                value={run.commit_sha}
+                title={run.commit_sha}
+                externalHref={commitHref}
+                linkLabel={commitHref ? named(shortSha(run.commit_sha)) : undefined}
+                testId="run-commit-sha"
+                copy
+                copyLabel={t("copyCommit")}
               >
-                {run.evidence}
-              </p>
-            </div>
+                {shortSha(run.commit_sha)}
+              </Identifier>
+              {branch ? (
+                <span className="text-xs text-muted-foreground">
+                  {" "}
+                  {t.rich("onBranch", {
+                    branch,
+                    link: (chunks) =>
+                      branchHref ? (
+                        <ExternalLink href={branchHref} label={branch} className="font-mono" testId="run-commit-branch">
+                          {chunks}
+                        </ExternalLink>
+                      ) : (
+                        <span className="font-mono">{chunks}</span>
+                      ),
+                  })}
+                </span>
+              ) : null}
+            </Fact>
           ) : null}
-        </div>
-      )}
+          {diffstat || run.diff_sha256 ? (
+            <Fact label={t("changes")} testId="run-diffstat">
+              {diffstat ? (
+                <span className="tabular-nums">
+                  {t("diffstat", { files: diffstat.files, insertions: format.number(diffstat.insertions), deletions: format.number(diffstat.deletions) })}
+                </span>
+              ) : null}
+              {run.diff_sha256 ? (
+                <Link
+                  href={runDiffHref(run.project, run.id)}
+                  className="mt-0.5 flex w-fit items-center gap-1 text-brand underline-offset-4 hover:underline"
+                  data-testid="run-diff-link"
+                >
+                  <FileDiff className="size-3.5" aria-hidden="true" />
+                  {t("viewDiff")}
+                </Link>
+              ) : null}
+            </Fact>
+          ) : null}
+        </dl>
+        {run.evidence ? (
+          <div className="flex flex-col gap-1">
+            <h3 className="text-sm text-muted-foreground">{t("evidence")}</h3>
+            <p
+              className="max-h-60 overflow-y-auto rounded-md bg-muted/60 px-3 py-2 text-xs break-words whitespace-pre-wrap"
+              tabIndex={0}
+              data-testid="run-evidence"
+            >
+              <LinkedText text={run.evidence} />
+            </p>
+          </div>
+        ) : null}
+      </div>
     </Card>
   );
 }

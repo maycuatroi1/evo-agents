@@ -200,7 +200,10 @@ function RunPage({ run }: { run: Run }) {
                 ),
               })
             : plan || run.step_key === null
-            ? t.rich("planSub", { plan: run.plan_id, title, planLink })
+            ? // The plan once, as its link; its title after it only when it says more than the id.
+              run.title && run.title !== run.plan_id
+              ? t.rich("planSubTitled", { plan: run.plan_id, title: run.title, planLink })
+              : t.rich("planSub", { plan: run.plan_id, planLink })
             : t.rich("sub", {
                 plan: run.plan_id,
                 step: run.step_key,
