@@ -99,7 +99,7 @@
       "lostJustNow": "vừa mất lease",
       "newPlan": "Plan mới",
       "newPlanIn": "Plan mới trong {project}",
-      "revise": "Sửa {plan} cùng agent"
+      "revise": "Nhờ agent sửa {plan}"
     },
     "plan": {
       "progress": "xong {done} trên {total}",
@@ -2563,7 +2563,7 @@
     "author": {
       "kind": "Author run",
       "newPlan": "Plan mới",
-      "revise": "Sửa cùng agent",
+      "revise": "Nhờ agent sửa",
       "newPlanLine": "Plan mới",
       "newPlanLineProject": "{project}, plan mới",
       "toast": {
@@ -2574,7 +2574,7 @@
       },
       "dialog": {
         "newTitle": "Plan mới",
-        "reviseTitle": "Sửa cùng agent",
+        "reviseTitle": "Nhờ agent sửa plan",
         "newDescription": "Một agent trên worker của bạn viết plan cho <name>{project}</name> từ yêu cầu của bạn. Agent hỏi bạn trong chat của run khi cần và đưa plan lên hub; không commit, không push gì.",
         "reviseDescription": "Một agent trên worker của bạn đọc <name>{plan}</name> như hub đang giữ và viết revision mới từ yêu cầu của bạn. Agent hỏi bạn trong chat của run khi cần; tiến độ các bước của plan giữ nguyên.",
         "requestLabel": "Plan cần đạt được gì?",
