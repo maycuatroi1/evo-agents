@@ -545,7 +545,23 @@ function VirtualItems({
   );
 }
 
-export function AgentTrace({ events, status, context, shown = true }: { events: readonly RunEvent[]; status: LogStatus; context: TraceContext; shown?: boolean }) {
+export function AgentTrace({
+  events,
+  status,
+  context,
+  shown = true,
+  fill = false,
+}: {
+  events: readonly RunEvent[];
+  status: LogStatus;
+  context: TraceContext;
+  shown?: boolean;
+  /**
+   * From the xl breakpoint, take the height the parent gives (the run page's session card, as tall as the window
+   * allows) instead of growing with the items up to 70 % of the window.
+   */
+  fill?: boolean;
+}) {
   const t = useTranslations("runs.detail.trace");
   const tLog = useTranslations("runs.detail.log");
   const deferred = useDeferredValue(events);
@@ -599,7 +615,7 @@ export function AgentTrace({ events, status, context, shown = true }: { events: 
   const empty = items.length === 0;
 
   return (
-    <div className="relative min-w-0">
+    <div className={cn("relative min-w-0", fill && "xl:flex xl:min-h-0 xl:flex-1 xl:flex-col")}>
       <div
         ref={scrollRef}
         role="log"
@@ -609,7 +625,12 @@ export function AgentTrace({ events, status, context, shown = true }: { events: 
         aria-busy={status === "connecting" || undefined}
         tabIndex={0}
         onScroll={onScroll}
-        className="max-h-[min(70vh,44rem)] min-h-48 overflow-y-auto overscroll-contain px-4 pt-2 pb-3 focus-visible:outline-offset-[-2px]"
+        className={cn(
+          // Relative, so the typing dots' words for screen readers are clipped with the items rather than reaching
+          // past the trace and lengthening the page.
+          "relative max-h-[min(70vh,44rem)] min-h-48 overflow-y-auto overscroll-contain px-4 pt-2 pb-3 focus-visible:outline-offset-[-2px]",
+          fill && "xl:max-h-none xl:min-h-0 xl:flex-1",
+        )}
         data-testid="trace"
         data-virtual={virtual || undefined}
         data-follow={follow}

@@ -228,20 +228,29 @@ shows at 20 px or larger beside the name in Plex Sans 600, and is never recolour
 
 ## Spacing and layout
 
-- A 4 px grid (Tailwind spacing). Page padding 16 px on phones and 24 px from 768 px, content at most 1280 px wide
-  (`max-w-7xl`), 24 px between sections, 16 px inside cards, 12 by 10 px in table cells.
+- A 4 px grid (Tailwind spacing). Page padding 16 px on phones and 24 px from 768 px, 24 px between sections, 16 px
+  inside cards, 12 by 10 px in table cells.
+- Full width. On every page the content takes the whole width between the sidebar and the window's right edge, less
+  the 24 px gutter (16 px on phones); the shell (`components/shell/app-shell.tsx`) sets no cap, and
+  `e2e/layout-width.spec.ts` measures the content frame at 1920 by 1080, open and folded sidebar, on Home, the Inbox,
+  a project's Runs, a run, a plan, My memories, Workers and the administration, within 1 px. A page that would stretch
+  thin on a wide window lays itself out for the width instead of narrowing the shell: a side column of fixed width
+  beside a fluid one (a run, Home, a memory), more fields to a row from 2xl in a form (four in the Curator's charter),
+  two facts to a row from 2xl in a list of facts that has the card to itself (a plan's step), a row of figures in one
+  container that shares out the width. Long text (a plan's markdown, a memory) keeps the width of its card; a line
+  length for it is still open.
 - The shell is the kit's AppShell: the sidebar is 240 px wide (`15rem`), folds to 56 px of icons on desktop (Ctrl or
   Cmd + B, or the top bar's toggle) and becomes a sheet below 768 px; the top bar is 52 px on `surface` and sticks to
   the top.
 - z-index: header 10, sidebar rail 20, menus, sheets and tooltips 50, toasts 60 (above an open dialog).
 - The kit's sizes: controls 32 px (28 in dense toolbars, 40 in dialog footers), every control at least 44 px under
-  768 px, table rows 44 px (36 compact), a 52 px top bar, a 240 px sidebar folding to 56 px, content at most 1280 px
-  with a 24 px gutter (16 on phones).
+  768 px, table rows 44 px (36 compact), a 52 px top bar, a 240 px sidebar folding to 56 px, content the full width
+  beside the sidebar with a 24 px gutter (16 on phones).
 - Checked widths: 375, 768, 1024 and 1440 px. Under 768 px a list's table becomes a list of rows (`DataList`) and its
   filters fold into a "Filters (n)" sheet; a table that stays a table (the knowledge graph's, a skill's versions)
   hides its secondary columns. Wide tables scroll inside their own focusable region, and the page itself never
-  scrolls sideways (`e2e/shell.spec.ts`; `e2e/no-sideways-scroll.spec.ts` checks a page of each area at 375, 768 and
-  1024 px; `e2e/mobile.spec.ts` the phone layout at 375 by 812 with a phone's user agent and touch). The shell's
+  scrolls sideways (`e2e/shell.spec.ts`; `e2e/no-sideways-scroll.spec.ts` checks a page of each area at 375, 768,
+  1024 and 1440 px; `e2e/mobile.spec.ts` the phone layout at 375 by 812 with a phone's user agent and touch). The shell's
   inset is `min-w-0`: as a flex item beside the sidebar it would otherwise grow to the natural width of the widest
   table.
 - The server renders the phone layout on a guess: `lib/mobile-hint.ts` reads `Sec-CH-UA-Mobile` and the user agent
@@ -690,9 +699,18 @@ Shared pieces built on them:
   found answered after a 409, stays with its answer until the visitor leaves.
 - `components/runs`, a run's page (`/p/{project}/runs/{id}`), the kit's RunScreen: the page head, the `RunTimeline`,
   then the session card (Trace, Raw log, Terminal) on the left and, in a 23 rem side column from xl, the decision while
-  a plan run waits, Details, Usage, the plan's steps, the Result and, for the run's owner, Credentials. Below xl the
-  side column moves under the timeline, the decision first, then the side cards (two by two from md), then the
-  session card; the page reads in that order at every width (`run-side`). The head
+  a plan run waits, Details, Usage, the plan's steps, the Result and, for the run's owner, Credentials. From xl
+  (1280 px) the page is one window tall and the two are regions that scroll on their own, side by side below the
+  timeline (`run-split`): the session card fills the window down to its bottom gutter, the open tab's log, trace or
+  terminal taking what its bars and the composer leave (`fill` on `RunLogCard`, `AgentTrace` and
+  `RunTerminalPanel`), and the side column (`run-aside`) is exactly as tall, scrolling inside itself when its cards
+  are longer. It is a region named "About run #12" that Tab reaches from xl (`useMediaQuery`), its 4 px of padding
+  taken back by its margin so the cards' shadows and focus rings stay inside it and its last card ends level with
+  the session card. The split is at least 30 rem tall and its own size is contained, so a short window scrolls the
+  page past the head instead of squeezing the trace. Below xl the side column moves under the timeline, the decision
+  first, then the side cards (two by two from md), then the session card at its own height; the page reads in that
+  order at every width (`run-side`). Take over shows the Terminal tab, focuses its tab and scrolls the session card
+  into view; `?view=` picks the tab at every width. The head
   is "Run #12" for every run, a plan run saying so in its Plan run tag, over the plan (in the body font) and step as
   `brand` links with a quiet underline, so colour is not all that sets them apart from the line. The owner's controls sit in the header, each shown only when the state and the visitor's rights allow it
   (`run-model.ts`, `runControls`), in the kit's order: Take over (a dialog with `evo-agents worker attach N` and, for
@@ -771,7 +789,10 @@ Shared pieces built on them:
   badge reads Not connected, Loading terminal, Connecting, Waiting for the worker, Connected or Closed; every close of
   the hub (4401, 4403, 4408, 4409, 4426, 1011, a lost connection) says what happened and what to do, with the hub's own
   reason under it, and a sign-in older than 12 hours (whoami's `token.created_at`) asks to sign in again before
-  anything is tried. On a headless run the intro and the waiting message say that connecting takes the run over. The
+  anything is tried. From xl the screen fills the session card, and the bars around it keep their height from the hello to the
+  live terminal, so the worker gets no resize as the session starts: the sentence of where the TUI runs has a line of
+  its own, the size has its place in the foot before it is known, and the waiting message lies over the top of the
+  still blank screen. On a headless run the intro and the waiting message say that connecting takes the run over. The
   surface is the log's (`term-*` tokens, `hub-terminal` in `globals.css`): IBM Plex Mono 13 px, 16 ANSI colours drawn
   from the `term-*` tokens, a 2 px
   `ring` outline inside its edge while focused; Esc then Tab leaves it, as the footer says. The CSP allows

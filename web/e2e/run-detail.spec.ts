@@ -11,6 +11,7 @@ import {
   eventsOf,
   leaseCredentials,
   liveWorker,
+  LONG_PLAN_RUN_PLAN,
   planRunUnderway,
   reportState,
   RUN_PLAN,
@@ -20,6 +21,7 @@ import {
   runRow,
   runToReview,
   say,
+  seedLongPlanRunPlan,
   seedPlanRunPlan,
   seedRunPlan,
   sendEvents,
@@ -649,6 +651,80 @@ test("past 500 items the Trace renders only the ones in view, follows the newest
   await main(page).getByTestId("trace-latest").click();
   await expect(trace.getByTestId("trace-message").filter({ hasText: "arrived while reading" })).toBeInViewport();
   await expect(trace).toHaveAttribute("data-follow", "true");
+});
+
+test("from 1280 px the session and the side column scroll on their own, as tall as the window and level at the bottom", async ({
+  page,
+  member,
+}) => {
+  const me = await member([{ role: "writer", maxLevel: "internal" }]);
+  const project = me.projects[0];
+  await seedLongPlanRunPlan(me, project);
+  await putSecretByApi(me, "claude-oauth", { kind: "env", env_var: "CLAUDE_CODE_OAUTH_TOKEN", projects: [project], value: secretValue("oauth") });
+  await putSecretByApi(me, "github-org", { kind: "git", url_prefix: "https://github.com/example-org", projects: [project], value: secretValue("git") });
+  // A plan run of eleven steps that waits for its owner and got credentials: its side column is longer than the window.
+  const { live, run } = await planRunUnderway(me, project, uniqueName("split"), { waiting: true, dispatch: { plan_id: LONG_PLAN_RUN_PLAN } });
+  await leaseCredentials(live, run.id);
+  await sendEvents(live, run.id, Array.from({ length: 40 }, (_, index) => say(`Progress note ${index + 1}`)));
+
+  const aside = main(page).getByTestId("run-aside");
+  const session = main(page).getByTestId("run-log");
+  const bottom = async (locator: ReturnType<typeof main>) => {
+    const box = (await locator.boundingBox())!;
+    return box.y + box.height;
+  };
+  for (const size of [
+    { width: 1440, height: 900 },
+    { width: 1920, height: 1080 },
+  ]) {
+    await page.setViewportSize(size);
+    await open(page, runPath(project, run.id));
+    await expect(aside.getByTestId("run-decision")).toBeVisible();
+    await expect(aside.getByTestId("run-plan-step")).toHaveCount(11);
+    await expect(aside.getByTestId("run-lease-item")).toHaveCount(2);
+    await expect(traceOf(page).getByTestId("trace-message")).toContainText("Progress note 40");
+
+    // Scrolled to the bottom of the page, the session card ends on the window's bottom gutter, with no space under its
+    // trace: the trace reaches down to the composer.
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    const sessionBottom = await bottom(session);
+    expect(sessionBottom, `at ${size.width} px the session card ends in the window`).toBeLessThanOrEqual(size.height);
+    expect(Math.abs(size.height - sessionBottom - 24), `at ${size.width} px only the 24 px gutter is under the session card`).toBeLessThanOrEqual(1);
+    const composerTop = (await main(page).getByTestId("run-composer").boundingBox())!.y;
+    expect(Math.abs(composerTop - (await bottom(traceOf(page)))), `at ${size.width} px the trace reaches the composer`).toBeLessThanOrEqual(1);
+
+    // The side column scrolls inside itself; it is a named region that Tab reaches and the keys scroll.
+    expect(await aside.evaluate((element) => element.scrollHeight - element.clientHeight)).toBeGreaterThan(0);
+    await expect(aside).toHaveRole("region");
+    await expect(aside).toHaveAccessibleName(`About run #${run.id}`);
+    await main(page).focus();
+    for (let presses = 0; presses < 40 && !(await aside.evaluate((element) => element === document.activeElement)); presses++) {
+      await page.keyboard.press("Tab");
+    }
+    await expect(aside).toBeFocused();
+    await page.keyboard.press("End");
+    await expect.poll(() => aside.evaluate((element) => Math.ceil(element.scrollTop + element.clientHeight) >= element.scrollHeight)).toBe(true);
+    // At its end its last card, Credentials, ends level with the session card, both in the window, and the page has
+    // not moved.
+    const credentialsBottom = await bottom(aside.getByTestId("run-credentials"));
+    expect(Math.abs(credentialsBottom - (await bottom(session))), `at ${size.width} px the two regions end level`).toBeLessThanOrEqual(1);
+    expect(credentialsBottom).toBeLessThanOrEqual(size.height);
+    // They start level too: the decision at the top of the side column, beside the session card's tabs.
+    const sessionTop = (await session.boundingBox())!.y;
+    await aside.evaluate((element) => element.scrollTo({ top: 0 }));
+    expect(Math.abs((await main(page).getByTestId("run-decisions").boundingBox())!.y - sessionTop)).toBeLessThanOrEqual(1);
+  }
+
+  // Below 1280 px one column, in the order of before: the decision, then the side cards, then the session card. The
+  // side column does not scroll there, so Tab does not stop on it.
+  await page.setViewportSize({ width: 1024, height: 900 });
+  await open(page, runPath(project, run.id));
+  await expect(aside.getByTestId("run-plan-step")).toHaveCount(11);
+  const top = async (testId: string) => (await main(page).getByTestId(testId).boundingBox())!.y;
+  expect(await top("run-decisions")).toBeLessThan(await top("run-side"));
+  expect(await top("run-side")).toBeLessThan(await top("run-log"));
+  await expect(aside).not.toHaveAttribute("tabindex");
+  expect(await aside.evaluate((element) => element.scrollHeight - element.clientHeight)).toBe(0);
 });
 
 test.describe("in Vietnamese", () => {

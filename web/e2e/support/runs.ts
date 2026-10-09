@@ -334,6 +334,25 @@ export async function seedPlanRunPlan(writer: Account, project: string, id = PLA
   );
 }
 
+/** The plan run plan with eleven steps: four as in PLAN_RUN_PLAN, then seven more, each after the one before. */
+export const LONG_PLAN_RUN_PLAN = "fleet-long";
+
+/** Push LONG_PLAN_RUN_PLAN into `project` as `writer`: a plan run of it lists eleven steps on its page. */
+export async function seedLongPlanRunPlan(writer: Account, project: string): Promise<void> {
+  const body = planRunBody(LONG_PLAN_RUN_PLAN);
+  const more = Array.from({ length: 7 }, (_, index) => {
+    const key = body.steps.length + index + 1;
+    return { id: key, title: `Follow-up ${key}`, repo: REPO, what: `Do step ${key}.`, verify: "pnpm test", status: "pending", depends_on: [key - 1] };
+  });
+  const api = bearerClient(await machineToken(writer));
+  await call(
+    api.PUT("/v1/projects/{project}/plans/{plan_id}", {
+      params: { path: { project, plan_id: LONG_PLAN_RUN_PLAN } },
+      body: { body: { ...body, steps: [...body.steps, ...more] }, area: "active" },
+    }),
+  );
+}
+
 /** A worker with checkouts of both repos of the plan run, whose Claude Code lists MODELS; `terminal` as liveWorker's. */
 export function planRunWorker(account: Account, project: string, name: string, { terminal = false }: { terminal?: boolean } = {}): Promise<LiveWorker> {
   return liveWorker(account, project, name, 1, { terminal, report: { repos: [REPO, HARNESS_REPO], models: MODELS } });
