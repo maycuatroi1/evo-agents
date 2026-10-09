@@ -89,6 +89,12 @@ def add_run(conn, ids, state: str = "queued", step: str = "3", kind: str = "step
         row["parked_at"] = now
     if kind == "plan":
         row |= {"kind": "plan", "step_key": None, "repo": None, "branch": None, "repos": REPOS}
+    elif kind == "review":  # on no plan, queued by a schedule (0014)
+        row |= {"kind": "review", "plan_id": None, "plan_revision": None, "step_key": None, "repo": None}
+        row |= {"branch": None, "repos": REPOS, "dispatched_via": "schedule", "schedule_night": now.date()}
+    elif kind == "judge":  # the Judge of a change of the Curator's plan, queued by a schedule (0017)
+        row |= {"kind": "judge", "step_key": None, "repo": None, "branch": None, "repos": REPOS}
+        row |= {"dispatched_via": "schedule", "schedule_night": now.date()}
     elif kind != "step":
         row["kind"] = kind
     row |= columns
@@ -265,6 +271,18 @@ def test_the_tables_take_every_state_kind_runtime_mode_and_approval_of_the_runs_
         add_run(conn, ids, state, step=f"state-{number}")
         add_plan(conn, ids, f"plan-{number}")
         add_run(conn, ids, state, kind="plan", plan_id=f"plan-{number}")
+    schedule = new_id(
+        conn,
+        tables.schedules,
+        project_id=ids["project"],
+        kind="night_shift",
+        owner_id=ids["user"],
+        worker_id=ids["worker"],
+    )
+    for state in ("queued", *runs.TERMINAL_STATES):  # a project has one review run active at a time
+        add_run(conn, ids, state, kind="review", schedule_id=schedule)
+    for state in ("queued", *runs.TERMINAL_STATES):  # and one judge run (0017)
+        add_run(conn, ids, state, kind="judge", schedule_id=schedule)
     assert query_kinds(conn) == set(runs.RUN_KINDS)
     for runtime in ("any", *runs.RUNTIMES):
         for mode in runs.MODES:

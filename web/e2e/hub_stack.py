@@ -30,9 +30,20 @@ and each resize with ``size: <cols>x<rows>``; GET /terminal/worker/<run_id> says
 The Insights specs need runs that ended on earlier days: POST /runs/backdate {run_id, days, seconds} moves an ended run
 ``days`` whole UTC days back, every time of it alike, and with ``seconds`` makes it start that long before it ended.
 
+The Curator specs need the night's review run without waiting for the hub's worker: POST /curator/collect runs one pass
+of the job curator.collect (``evo_agents.hub.server.collect.collect``) on the stack's database, as that worker does
+every minute: in each charter's window it counts the night's figures and queues the night's review run. POST
+/curator/brief {project, at} sends that project's morning brief as the job curator.brief would at ``at``.
+
 The admin specs need tokens nobody used lately: POST /tokens/idle {token_id, days} makes a token look last used
 ``days`` days ago, its expiry TOKEN_TTL after that, as the hub would have left it; the token must not be used again,
 since a use moves both forward.
+
+The Telegram specs need the hub's bot without Telegram: the stack serves the fake Bot API of the Python tests
+(``tests.hub.fake_telegram``) on a free port, points EVO_HUB_TELEGRAM_API_URL at it, and sets the fake's token and
+webhook secret, so the channel is on. POST /telegram/start {code, chat_id, username} plays the member pressing Start in
+Telegram: it posts the update ``/start <code>`` from that private chat to the hub's webhook, with the secret header, and
+answers what the hub did with it. GET /telegram/sent lists the messages the bot sent.
 
 The hub seals secrets with an EVO_HUB_SECRETS_KEY of its own, made for each start, and has no GitHub App: a run gets
 the owner's secrets as leases, and a repo on github.com that no git secret covers is missing with that reason.
@@ -69,6 +80,10 @@ from kg_seed import KgSeeder  # noqa: E402
 
 from tests.hub import pg  # noqa: E402
 from tests.hub.fake_github import Account, FakeGitHub, Recorded  # noqa: E402
+from tests.hub.fake_telegram import SECRET as TELEGRAM_SECRET  # noqa: E402
+from tests.hub.fake_telegram import SECRET_HEADER as TELEGRAM_SECRET_HEADER  # noqa: E402
+from tests.hub.fake_telegram import TOKEN as TELEGRAM_TOKEN  # noqa: E402
+from tests.hub.fake_telegram import FakeTelegram, private_chat, text_update  # noqa: E402
 from tests.hub.s3 import fake_s3  # noqa: E402
 
 LOGIN_COOKIE = "fake_github_login"
@@ -255,6 +270,57 @@ def idle_token(dsn: str, body: dict) -> dict:
     return {"token_id": row[0], "last_used_at": row[1].isoformat(), "expires_at": row[2].isoformat()}
 
 
+def collect_curator(dsn: str) -> dict:
+    """One pass of the job curator.collect over every night_shift schedule of the stack's hub, at the database's now;
+    what it answers (how many schedules queued their review run, and so on)."""
+    import asyncio
+
+    from sqlalchemy.ext.asyncio import create_async_engine
+    from sqlalchemy.pool import NullPool
+
+    from evo_agents.hub.server.collect import collect
+
+    async def once() -> dict:
+        engine = create_async_engine(dsn.replace("postgresql://", "postgresql+psycopg://", 1), poolclass=NullPool)
+        try:
+            return await collect(engine)
+        finally:
+            await engine.dispose()
+
+    return asyncio.run(once())
+
+
+def brief_curator(dsn: str, body: dict) -> dict:
+    """The morning brief of one project, as the job curator.brief sends it at ``at`` (an ISO time with its zone): the
+    words it answers for that project's schedule. Other specs' projects are left alone, so their Inboxes stay as they
+    expect."""
+    import asyncio
+    from datetime import datetime
+
+    from sqlalchemy.ext.asyncio import create_async_engine
+    from sqlalchemy.pool import NullPool
+
+    from evo_agents.hub.server.brief import _send
+    from evo_agents.hub.server.curator import _due
+
+    at = datetime.fromisoformat(str(body["at"]))
+
+    async def once() -> dict:
+        engine = create_async_engine(dsn.replace("postgresql://", "postgresql+psycopg://", 1), poolclass=NullPool)
+        try:
+            async with engine.begin() as conn:
+                rows = [row for row in (await conn.execute(_due(at))).all() if row.project == body["project"]]
+            outcomes = []
+            for row in rows:
+                async with engine.begin() as conn:
+                    outcomes.append(await _send(conn, row))
+            return {"outcomes": outcomes}
+        finally:
+            await engine.dispose()
+
+    return asyncio.run(once())
+
+
 INPUT, OUTPUT, RESIZE = 0, 1, 2  # evo_agents.hub.terminal: the frame types
 CONNECT_FOR = 30.0  # seconds the fake worker keeps trying while no browser waits
 
@@ -364,10 +430,31 @@ class FakeTerminal:
                     pass
 
 
+def telegram_start(api_url: str, body: dict, update_id: int) -> dict:
+    """The member pressing Start in Telegram on a link: ``/start <code>`` from their private chat, to the webhook."""
+    chat, sender = private_chat(int(body["chat_id"]), body.get("username"))
+    update = text_update(update_id, chat, sender, f"/start {body['code']}")
+    request = urllib.request.Request(
+        f"{api_url}/v1/telegram/webhook",
+        data=json.dumps(update).encode(),
+        headers={"Content-Type": "application/json", TELEGRAM_SECRET_HEADER: TELEGRAM_SECRET},
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=10) as response:
+        return json.loads(response.read())
+
+
 def control_server(
-    port: int, github: BrowserGitHub, info: dict, seeder: KgSeeder, dsn: str, api_url: str
+    port: int,
+    github: BrowserGitHub,
+    info: dict,
+    seeder: KgSeeder,
+    dsn: str,
+    api_url: str,
+    telegram: FakeTelegram,
 ) -> ThreadingHTTPServer:
     terminals: dict[int, FakeTerminal] = {}
+    updates = iter(range(1, 1_000_000))
 
     class Handler(BaseHTTPRequestHandler):
         def _reply(self, status: int, payload: dict) -> None:
@@ -381,6 +468,8 @@ def control_server(
         def do_GET(self):  # the names http.server calls
             if self.path == "/health":
                 self._reply(200, info)
+            elif self.path == "/telegram/sent":
+                self._reply(200, {"sent": telegram.sent()})
             elif self.path.startswith("/terminal/worker/") and self.path.rsplit("/", 1)[1].isdigit():
                 terminal = terminals.get(int(self.path.rsplit("/", 1)[1]))
                 self._reply(200, terminal.state) if terminal else self._reply(404, {"error": "no fake terminal"})
@@ -417,6 +506,21 @@ def control_server(
                     self._reply(200, idle_token(dsn, body))
                 except LookupError as exc:
                     self._reply(404, {"error": str(exc)})
+            elif self.path == "/telegram/start":
+                try:
+                    self._reply(200, telegram_start(api_url, body, next(updates)))
+                except Exception as exc:  # the test shows what failed
+                    self._reply(500, {"error": f"{type(exc).__name__}: {exc}"})
+            elif self.path == "/curator/brief":
+                try:
+                    self._reply(200, brief_curator(dsn, body))
+                except Exception as exc:  # the test shows what failed
+                    self._reply(500, {"error": f"{type(exc).__name__}: {exc}"})
+            elif self.path == "/curator/collect":
+                try:
+                    self._reply(200, collect_curator(dsn))
+                except Exception as exc:  # the test shows what failed
+                    self._reply(500, {"error": f"{type(exc).__name__}: {exc}"})
             elif self.path in ("/kg/seed", "/kg/build"):
                 try:
                     self._reply(200, seeder.handle(self.path, body))
@@ -458,9 +562,12 @@ def main() -> int:
     resources = ExitStack()  # the fake S3, closed after the API stops
     proc = None
     control = None
+    telegram = FakeTelegram()
+    telegram_server = None
     try:
         github.__enter__()
         s3 = resources.enter_context(fake_s3())
+        telegram_server = telegram.serve()  # the hub's bot talks to this fake, never to Telegram
         env = pg.clean_env(
             PYTHONPATH=os.pathsep.join(filter(None, [str(ROOT), os.environ.get("PYTHONPATH")])),
             EVO_HUB_DSN=db.dsn,
@@ -473,6 +580,9 @@ def main() -> int:
             EVO_HUB_SESSION_SECRET="e2e-session-" + secrets.token_hex(24),
             EVO_HUB_SECRETS_KEY=secrets.token_urlsafe(32),  # seals the members' secrets (docs/credentials.md)
             EVO_HUB_PUBLIC_URL=web_origin,
+            EVO_HUB_TELEGRAM_BOT_TOKEN=TELEGRAM_TOKEN,
+            EVO_HUB_TELEGRAM_WEBHOOK_SECRET=TELEGRAM_SECRET,
+            EVO_HUB_TELEGRAM_API_URL=f"http://127.0.0.1:{telegram_server.server_address[1]}",
             **s3.env(),
         )
         command = [sys.executable, "-m", "evo_agents", "hub", "serve", "--host", "127.0.0.1", "--port", str(api_port)]
@@ -482,7 +592,7 @@ def main() -> int:
         wait_for(f"{api_url}/v1/health/live", proc, log_path)
         info = {"api": api_url, "github": github.url, "s3": s3.endpoint, "admin": admin_login, "database": db.name}
         seeder = KgSeeder(api_url, github, db.dsn, s3.config(), STATE_DIR / "kg")
-        control = control_server(stack_port, github, info, seeder, db.dsn, api_url)
+        control = control_server(stack_port, github, info, seeder, db.dsn, api_url, telegram)
         threading.Thread(target=control.serve_forever, daemon=True).start()
         print(
             f"hub_stack ready: api {api_url}, fake github {github.url}, fake s3 {s3.endpoint}, db {db.name}, "
@@ -506,6 +616,9 @@ def main() -> int:
                 proc.kill()
                 proc.wait()
         github.stop()
+        if telegram_server is not None:
+            telegram_server.shutdown()
+            telegram_server.server_close()
         resources.close()
         drop_database(admin_dsn, db)
         print(f"hub_stack stopped, dropped {db.name}", flush=True)

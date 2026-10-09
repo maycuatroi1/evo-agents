@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { Bell, CheckCheck, Inbox, MessageCircleQuestionMark, SearchX } from "lucide-react";
+import { Bell, CheckCheck, Inbox, Lightbulb, MessageCircleQuestionMark, SearchX } from "lucide-react";
 import type { Route } from "next";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
@@ -28,11 +28,14 @@ import {
   isFiltered,
   NO_FILTERS,
   notificationOfDecision,
+  notificationOfProposal,
   readInboxFilters,
   splitInbox,
   unreadIds,
 } from "./model";
 import { NotificationItem } from "./notification-item";
+import { ProposalSheet } from "./proposal-sheet";
+import { TelegramButton } from "./telegram-dialog";
 import {
   MAX_READ_IDS,
   type Notification,
@@ -84,11 +87,13 @@ function ListSection({
 }
 
 /**
- * The member's Inbox: the decisions the agents of their plan runs ask them, open ones first, then the notices (a push or
- * merge into a default branch with its repo, branch and commits, a plan finished, a run failed) and the decisions
- * already answered, expired or cancelled, newest first. Filters by kind, project and unread live in the URL; a decision
- * opens in a sheet over the list (`/inbox?decision=ID`) with its answer form, a screen of its own on a phone (the kit's
- * MobileDecision), and closes back to the list where it was. The list and the bell are read every 10 seconds.
+ * The member's Inbox: the decisions the agents of their plan runs ask them and the tier 2 proposals of their projects'
+ * Curator, open ones first, then the notices (a push or merge into a default branch with its repo, branch and commits, a
+ * plan finished, a run failed) and the decisions and proposals already answered, expired or cancelled, newest first. A
+ * proposal opens in a sheet of its own (`/inbox?proposal=ID`) with its evidence and, for an admin, its answers. Filters
+ * by kind, project and unread live in the URL; a decision opens in a sheet over the list (`/inbox?decision=ID`) with
+ * its answer form, a screen of its own on a phone (the kit's MobileDecision), and closes back to the list where it was.
+ * The list and the bell are read every 10 seconds.
  */
 export function InboxPage({ initialError }: { initialError: ApiErrorInfo | null }) {
   const t = useTranslations("inbox");
@@ -103,6 +108,8 @@ export function InboxPage({ initialError }: { initialError: ApiErrorInfo | null 
   const list: NotificationList | null = state.status === "success" ? state.data : null;
   const selected = filters.decision;
   const selectedNotification = selected !== null && list ? notificationOfDecision(list.notifications, selected) : null;
+  const selectedProposal = filters.proposal;
+  const proposalNotification = selectedProposal !== null && list ? notificationOfProposal(list.notifications, selectedProposal) : null;
 
   const read = (target: { ids: number[] } | { all: true }, marker: number | "all") => {
     setReading(marker);
@@ -114,19 +121,22 @@ export function InboxPage({ initialError }: { initialError: ApiErrorInfo | null 
     });
   };
 
-  // Opening a decision reads its notification, as answering it would; once per notification and visit.
+  // Opening a decision or a proposal reads its notification, as answering it would; once per notification and visit.
   const marked = useRef(new Set<number>());
   const { mutate: markOne } = markRead;
-  const openUnread = selectedNotification && selectedNotification.read_at === null ? selectedNotification.id : null;
+  const opened = selectedNotification ?? proposalNotification;
+  const openUnread = opened && opened.read_at === null ? opened.id : null;
   useEffect(() => {
     if (openUnread === null || marked.current.has(openUnread)) return;
     marked.current.add(openUnread);
     markOne({ ids: [openUnread] });
   }, [openUnread, markOne]);
 
-  const openDecision = (id: number) => push({ ...filters, decision: id });
+  const openDecision = (id: number) => push({ ...filters, decision: id, proposal: null });
   // Closing pushes the list's URL, so Back opens the decision again, as Back from it closed it.
   const closeDecision = () => push({ ...filters, decision: null });
+  const openProposal = (id: number) => push({ ...filters, proposal: id, decision: null });
+  const closeProposal = () => push({ ...filters, proposal: null });
   const setFilters = (next: InboxFilters) => replace(next);
 
   const counts = count.data;
@@ -152,26 +162,35 @@ export function InboxPage({ initialError }: { initialError: ApiErrorInfo | null 
                   {t("openCount", { count: counts.open_decisions })}
                 </Badge>
               ) : null}
+              {(counts.open_proposals ?? 0) > 0 ? (
+                <Badge variant="warning" data-testid="inbox-open-proposals" data-count={counts.open_proposals}>
+                  <Lightbulb aria-hidden="true" />
+                  {t("openProposals", { count: counts.open_proposals })}
+                </Badge>
+              ) : null}
             </>
           ) : null
         }
         actions={
-          <Button
-            type="button"
-            variant="outline"
-            className="aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
-            aria-disabled={nothingToRead || reading !== null || undefined}
-            busy={reading === "all"}
-            onClick={() => {
-              if (nothingToRead || reading !== null) return;
-              if (filtered) read({ ids: pageUnread }, "all");
-              else read({ all: true }, "all");
-            }}
-            data-testid="inbox-mark-all"
-          >
-            <CheckCheck aria-hidden="true" />
-            {filtered ? t("markShown") : t("markAll")}
-          </Button>
+          <>
+            <TelegramButton />
+            <Button
+              type="button"
+              variant="outline"
+              className="aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
+              aria-disabled={nothingToRead || reading !== null || undefined}
+              busy={reading === "all"}
+              onClick={() => {
+                if (nothingToRead || reading !== null) return;
+                if (filtered) read({ ids: pageUnread }, "all");
+                else read({ all: true }, "all");
+              }}
+              data-testid="inbox-mark-all"
+            >
+              <CheckCheck aria-hidden="true" />
+              {filtered ? t("markShown") : t("markAll")}
+            </Button>
+          </>
         }
       />
       <div className="flex flex-col gap-6">
@@ -197,9 +216,12 @@ export function InboxPage({ initialError }: { initialError: ApiErrorInfo | null 
                 { value: null, label: t("filters.allKinds") },
                 { value: "decision", label: t("filters.decisions"), icon: MessageCircleQuestionMark },
                 { value: "notice", label: t("filters.notices"), icon: Bell },
+                { value: "proposal", label: t("filters.proposals"), icon: Lightbulb },
               ]}
               selected={filters.kind}
-              onSelect={(value) => setFilters({ ...filters, kind: value === "decision" || value === "notice" ? value : null, page: 1 })}
+              onSelect={(value) =>
+                setFilters({ ...filters, kind: value === "decision" || value === "notice" || value === "proposal" ? value : null, page: 1 })
+              }
               countLabel={(n) => t("count", { count: n })}
               testId="inbox-facet-kind"
             />
@@ -224,11 +246,14 @@ export function InboxPage({ initialError }: { initialError: ApiErrorInfo | null 
                 filters={filters}
                 stale={stale}
                 selected={selected}
+                selectedProposal={selectedProposal}
                 reading={reading}
-                decisionHref={(id) => href({ ...filters, decision: id })}
+                decisionHref={(id) => href({ ...filters, decision: id, proposal: null })}
+                proposalHref={(id) => href({ ...filters, proposal: id, decision: null })}
                 onOpenDecision={openDecision}
+                onOpenProposal={openProposal}
                 onRead={(id) => read({ ids: [id] }, id)}
-                onClear={() => setFilters({ ...NO_FILTERS, decision: filters.decision })}
+                onClear={() => setFilters({ ...NO_FILTERS, decision: filters.decision, proposal: filters.proposal })}
                 onPage={(next) => setFilters({ ...filters, page: next })}
               />
             )}
@@ -241,6 +266,11 @@ export function InboxPage({ initialError }: { initialError: ApiErrorInfo | null 
         screen
         returnFocus={(id) => document.querySelector<HTMLElement>(`[data-decision-link="${id}"]`)}
       />
+      <ProposalSheet
+        target={selectedProposal !== null ? { id: selectedProposal, project: proposalNotification?.project ?? null } : null}
+        onClose={closeProposal}
+        returnFocus={(id) => document.querySelector<HTMLElement>(`[data-proposal-link="${id}"]`)}
+      />
     </>
   );
 }
@@ -250,9 +280,12 @@ function InboxList({
   filters,
   stale,
   selected,
+  selectedProposal,
   reading,
   decisionHref,
+  proposalHref,
   onOpenDecision,
+  onOpenProposal,
   onRead,
   onClear,
   onPage,
@@ -261,9 +294,12 @@ function InboxList({
   filters: InboxFilters;
   stale: boolean;
   selected: number | null;
+  selectedProposal: number | null;
   reading: number | "all" | null;
   decisionHref: (id: number) => Route;
+  proposalHref: (id: number) => Route;
   onOpenDecision: (id: number) => void;
+  onOpenProposal: (id: number) => void;
   onRead: (id: number) => void;
   onClear: () => void;
   onPage: (page: number) => void;
@@ -275,9 +311,19 @@ function InboxList({
     <NotificationItem
       key={notification.id}
       notification={notification}
-      href={notification.decision_id !== null ? decisionHref(notification.decision_id) : null}
-      selected={notification.kind === "decision" && notification.decision_id === selected}
+      href={
+        notification.kind === "proposal" && notification.proposal_id != null
+          ? proposalHref(notification.proposal_id)
+          : notification.decision_id !== null
+            ? decisionHref(notification.decision_id)
+            : null
+      }
+      selected={
+        (notification.kind === "decision" && notification.decision_id === selected) ||
+        (notification.kind === "proposal" && notification.proposal_id === selectedProposal)
+      }
       onOpenDecision={onOpenDecision}
+      onOpenProposal={onOpenProposal}
       onRead={onRead}
       reading={reading === notification.id || reading === "all"}
     />

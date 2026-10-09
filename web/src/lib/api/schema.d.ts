@@ -1726,6 +1726,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project}/runs/{run_id}/tool-stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Run Tool Stats
+         * @description What the tool calls of run ``run_id`` came to, per tool.
+         */
+        get: operations["run_tool_stats_v1_projects__project__runs__run_id__tool_stats_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/tool-stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Project Tool Stats
+         * @description The tool figures of the runs of the plans the caller may read that ended in the last ``days`` days, per tool and
+         *     runtime.
+         */
+        get: operations["project_tool_stats_v1_projects__project__tool_stats_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{project}/decisions": {
         parameters: {
             query?: never;
@@ -1813,7 +1854,7 @@ export interface paths {
         };
         /**
          * List Notifications
-         * @description The caller's notifications, open decisions first, then newest first.
+         * @description The caller's notifications, open decisions and proposals first, then newest first.
          */
         get: operations["list_notifications_v1_me_notifications_get"];
         put?: never;
@@ -1899,6 +1940,578 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/curator/charter": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Charter
+         * @description The project's charter, at its newest revision or at ``revision``.
+         */
+        get: operations["show_charter_v1_projects__project__curator_charter_get"];
+        /**
+         * Write Charter
+         * @description Write a new revision of the project's charter; the admins of the project alone may.
+         */
+        put: operations["write_charter_v1_projects__project__curator_charter_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/curator/charter/revisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Charter Revisions
+         * @description Every revision of the project's charter, newest first; empty without one.
+         */
+        get: operations["charter_revisions_v1_projects__project__curator_charter_revisions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/curator": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Status
+         * @description The charter, the schedules and the night of the project's night shift.
+         */
+        get: operations["status_v1_projects__project__curator_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/curator/nights": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Nights
+         * @description The latest nights of the project's night shift, each with its runs, their cost and its review run.
+         */
+        get: operations["nights_v1_projects__project__curator_nights_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/curator/pause": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pause
+         * @description Pause every schedule of the project, and cancel the runs they queued that are still queued.
+         */
+        post: operations["pause_v1_projects__project__curator_pause_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/curator/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resume
+         * @description Let every schedule of the project run again.
+         */
+        post: operations["resume_v1_projects__project__curator_resume_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/curator/findings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Findings
+         * @description The findings of the project's review runs the caller may read, newest first.
+         */
+        get: operations["list_findings_v1_projects__project__curator_findings_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/curator/findings/{finding_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Show Finding */
+        get: operations["show_finding_v1_projects__project__curator_findings__finding_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/curator/proposals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Proposals
+         * @description The proposals of the project's review runs the caller may read, newest first.
+         */
+        get: operations["list_proposals_v1_projects__project__curator_proposals_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/curator/proposals/{proposal_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Show Proposal */
+        get: operations["show_proposal_v1_projects__project__curator_proposals__proposal_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/curator/proposals/{proposal_id}/answer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Answer Proposal
+         * @description Accept, reject or defer a proposal; the admins of the project alone may.
+         */
+        post: operations["answer_proposal_v1_projects__project__curator_proposals__proposal_id__answer_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/curator/figures": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Figures
+         * @description The figures curator.collect counted for a night of the project: the latest, or ``night``'s.
+         */
+        get: operations["show_figures_v1_projects__project__curator_figures_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/findings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record Finding
+         * @description Record a finding of the review run this worker holds, with evidence the hub finds.
+         */
+        post: operations["record_finding_v1_worker_runs__run_id__findings_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/proposals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record Proposal
+         * @description Record a proposal of the review run this worker holds: the hub resolves its evidence, checks its draft plan,
+         *     computes its tier and drops it when it repeats a proposal rejected lately.
+         */
+        post: operations["record_proposal_v1_worker_runs__run_id__proposals_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/curator/changes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Changes
+         * @description The project's Curator changes, newest first, with the plans the caller may read.
+         */
+        get: operations["list_changes_v1_projects__project__curator_changes_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/curator/protection": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Protection
+         * @description The project's repos, and whether the hub checked that a ruleset keeps the Curator off each default branch.
+         */
+        get: operations["protection_v1_projects__project__curator_protection_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/curator/protection/{repo}/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check Protection
+         * @description Check now, with the Curator's App, whether a ruleset keeps the Curator off the repo's default branch; the
+         *     project's admins alone may.
+         */
+        post: operations["check_protection_v1_projects__project__curator_protection__repo__check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/judge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Judge Inputs
+         * @description What the judge run this worker holds reads: its change, its proposal, the plan's verify commands, the
+         *     charter's protected paths and the project's hidden checks; with the run's own key.
+         */
+        get: operations["judge_inputs_v1_worker_runs__run_id__judge_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/verdict": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record Verdict
+         * @description The verdict of the judge run this worker holds, with the run's own key: the hub passes the change only as
+         *     ``judge.final_verdict`` says, and the paths the diff touches give its proposal its tier again.
+         */
+        post: operations["record_verdict_v1_worker_runs__run_id__verdict_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/curator/proposals/{proposal_id}/ledger": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Ledger
+         * @description The ledger of a proposal: what happened to it, line by line, oldest first.
+         */
+        get: operations["show_ledger_v1_projects__project__curator_proposals__proposal_id__ledger_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/digests/{session_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Digest
+         * @description The digest of session ``session_id``, when the caller may read it.
+         */
+        get: operations["show_digest_v1_projects__project__digests__session_id__get"];
+        /**
+         * Put Digest
+         * @description Write the digest of session ``session_id``, replacing the one this member pushed before.
+         */
+        put: operations["put_digest_v1_projects__project__digests__session_id__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/digests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Digests
+         * @description The digests of the project the caller may read, the latest pushed first.
+         */
+        get: operations["list_digests_v1_projects__project__digests_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/telegram": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show
+         * @description Whether the hub has a bot, and whether a chat of the caller's is linked to it.
+         */
+        get: operations["show_v1_me_telegram_get"];
+        put?: never;
+        post?: never;
+        /**
+         * Unlink
+         * @description Unlink the caller's Telegram chat: the channel and the deliveries waiting for it go.
+         */
+        delete: operations["unlink_v1_me_telegram_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/telegram/link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Make Link
+         * @description A one-time link that links the Telegram chat it is opened in to the caller, for 10 minutes; from a web session
+         *     only, which the chat then lives no longer than. It replaces the caller's links not used yet.
+         */
+        post: operations["make_link_v1_me_telegram_link_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/telegram/webhook": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Webhook
+         * @description Telegram's updates for the hub's bot, with the secret token setWebhook was given in the header
+         *     X-Telegram-Bot-Api-Secret-Token.
+         */
+        post: operations["webhook_v1_telegram_webhook_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/telegram": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Webhook
+         * @description The hub's bot and where Telegram sends its updates.
+         */
+        get: operations["show_webhook_v1_admin_telegram_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/telegram/webhook": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Set Webhook
+         * @description Point the bot's webhook at this hub (EVO_HUB_PUBLIC_URL + /v1/telegram/webhook) with the secret token.
+         */
+        post: operations["set_webhook_v1_admin_telegram_webhook_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/users/{login}/telegram": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Unlink Member
+         * @description Unlink a member's Telegram chat, whatever its session: the channel and the deliveries waiting for it go.
+         */
+        delete: operations["unlink_member_v1_admin_users__login__telegram_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2156,6 +2769,43 @@ export interface components {
             /** Sha256 */
             sha256: string[];
         };
+        /**
+         * BriefSummary
+         * @description The project's last morning brief (``evo_agents.hub.server.brief``).
+         */
+        BriefSummary: {
+            /** Id */
+            id: number;
+            /**
+             * Day
+             * Format: date
+             * @description the local day it was sent on, in the charter's time zone
+             */
+            day: string;
+            /**
+             * Night
+             * Format: date
+             * @description the night it reports on
+             */
+            night: string;
+            /**
+             * Sent At
+             * Format: date-time
+             */
+            sent_at: string;
+            /**
+             * To
+             * @description the member it went to: the owner of the night shift's schedule
+             */
+            to: string;
+            /**
+             * Notification Id
+             * @description the notification of kind notice (curator_brief) that carried it
+             */
+            notification_id: number | null;
+            /** Title */
+            title: string;
+        };
         /** Build */
         Build: {
             /** Id */
@@ -2253,6 +2903,314 @@ export interface components {
             expires_at: string;
         };
         /**
+         * Change
+         * @description What an accepted proposal of tier 0 or 1 became, and where it stands.
+         */
+        Change: {
+            /** Id */
+            id: number;
+            /** Project */
+            project: string;
+            /** Proposal Id */
+            proposal_id: number;
+            /**
+             * Plan Id
+             * @description the Curator's plan on the hub; null when the draft could not become one
+             */
+            plan_id: string | null;
+            /** Repo */
+            repo: string | null;
+            /**
+             * Branch
+             * @description curator/..., the one branch its runs push
+             */
+            branch: string | null;
+            /** Forge */
+            forge: ("github" | "gitlab") | null;
+            /**
+             * Tier
+             * @description its proposal's tier; 3 once a sign of score hacking showed
+             */
+            tier: number;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "planned" | "pr_pending" | "judge_pending" | "judging" | "judged" | "merged" | "open" | "closed";
+            /**
+             * Reason
+             * @description why it stays as it is, such as why its pull request stays open
+             */
+            reason: string | null;
+            /** Builder Run Id */
+            builder_run_id: number | null;
+            /** Judge Run Id */
+            judge_run_id: number | null;
+            /** Pr Number */
+            pr_number: number | null;
+            /** Pr Url */
+            pr_url: string | null;
+            /** Base Branch */
+            base_branch: string | null;
+            /**
+             * Head Sha
+             * @description the commit the Judge judges, and the hub merges
+             */
+            head_sha: string | null;
+            /**
+             * Passed
+             * @description the Judge's verdict; null before it
+             */
+            passed: boolean | null;
+            /**
+             * Verdict
+             * @description the verdict: the Judge's reasons, the checks run, the signs found
+             */
+            verdict: {
+                [key: string]: unknown;
+            } | null;
+            /** Merged At */
+            merged_at: string | null;
+            /** Merge Sha */
+            merge_sha: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** ChangeList */
+        ChangeList: {
+            /** Project */
+            project: string;
+            /**
+             * Changes
+             * @description newest first
+             */
+            changes: components["schemas"]["Change"][];
+        };
+        /** Charter */
+        Charter: {
+            /**
+             * Goals
+             * @description the product's goals, highest first
+             */
+            goals?: components["schemas"]["Goal"][];
+            window: components["schemas"]["Window"];
+            /**
+             * Worker
+             * @description the worker on duty, by name: one of the writer's own
+             */
+            worker: string;
+            /**
+             * Night Budget Usd
+             * @description the most a night may cost
+             */
+            night_budget_usd: number;
+            /**
+             * Run Budget Usd
+             * @description the most one run may cost; null: what the night has
+             */
+            run_budget_usd?: number | null;
+            /**
+             * Run Max Turns
+             * @description turns of the agent in one run
+             * @default 300
+             */
+            run_max_turns: number;
+            /**
+             * Run Minutes
+             * @description agent time one run may use
+             * @default 120
+             */
+            run_minutes: number;
+            /**
+             * Max Runs Per Night
+             * @default 6
+             */
+            max_runs_per_night: number;
+            /**
+             * Night Plans
+             * @description the plans the night shift may run, in the order it takes them
+             */
+            night_plans?: string[];
+            /**
+             * Max Decisions Per Day
+             * @default 5
+             */
+            max_decisions_per_day: number;
+            /**
+             * Brief At
+             * @description HH:MM, 24 hours, in the window's zone
+             * @default 07:00
+             */
+            brief_at: string;
+            /**
+             * Auto Merge
+             * @description the tiers the hub may merge by itself
+             */
+            auto_merge?: 0[];
+            /**
+             * Protected Paths
+             * @description globs no change of the Curator may touch below tier 3
+             */
+            protected_paths?: string[];
+            circuit_breaker?: components["schemas"]["CircuitBreaker"];
+            /**
+             * Outcome Days
+             * @description the days after a merge over which the hub counts a change's figures again, and then keeps it or proposes its revert
+             * @default 7
+             */
+            outcome_days: number;
+            review?: components["schemas"]["ReviewSettings"];
+            reviewer?: components["schemas"]["Role"];
+            builder?: components["schemas"]["Role"];
+            judge?: components["schemas"]["Judge"];
+            /**
+             * Git Secret
+             * @description the owner's git secret the Curator's runs use for origins not on GitHub (GitLab, where it should hold the Developer role); null: none, so no Builder runs there
+             */
+            git_secret?: string | null;
+            /**
+             * Env Secrets
+             * @description the owner's env secrets the Curator's runs get, by name; they get no other
+             */
+            env_secrets?: string[];
+            /** Project */
+            project: string;
+            /** Revision */
+            revision: number;
+            /**
+             * Updated By
+             * @description who wrote this revision
+             */
+            updated_by: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * Worker Id
+             * @description the worker on duty
+             */
+            worker_id: number;
+            /**
+             * Schedule Owner
+             * @description the member the night shift dispatches its runs as: the worker's owner
+             */
+            schedule_owner: string;
+        };
+        /** CharterRevision */
+        CharterRevision: {
+            /** Revision */
+            revision: number;
+            /** Updated By */
+            updated_by: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Worker */
+            worker: string;
+            /** Worker Id */
+            worker_id: number;
+        };
+        /** CharterWrite */
+        CharterWrite: {
+            /**
+             * Goals
+             * @description the product's goals, highest first
+             */
+            goals?: components["schemas"]["Goal"][];
+            window: components["schemas"]["Window"];
+            /**
+             * Worker
+             * @description the worker on duty, by name: one of the writer's own
+             */
+            worker: string;
+            /**
+             * Night Budget Usd
+             * @description the most a night may cost
+             */
+            night_budget_usd: number;
+            /**
+             * Run Budget Usd
+             * @description the most one run may cost; null: what the night has
+             */
+            run_budget_usd?: number | null;
+            /**
+             * Run Max Turns
+             * @description turns of the agent in one run
+             * @default 300
+             */
+            run_max_turns: number;
+            /**
+             * Run Minutes
+             * @description agent time one run may use
+             * @default 120
+             */
+            run_minutes: number;
+            /**
+             * Max Runs Per Night
+             * @default 6
+             */
+            max_runs_per_night: number;
+            /**
+             * Night Plans
+             * @description the plans the night shift may run, in the order it takes them
+             */
+            night_plans?: string[];
+            /**
+             * Max Decisions Per Day
+             * @default 5
+             */
+            max_decisions_per_day: number;
+            /**
+             * Brief At
+             * @description HH:MM, 24 hours, in the window's zone
+             * @default 07:00
+             */
+            brief_at: string;
+            /**
+             * Auto Merge
+             * @description the tiers the hub may merge by itself
+             */
+            auto_merge?: 0[];
+            /**
+             * Protected Paths
+             * @description globs no change of the Curator may touch below tier 3
+             */
+            protected_paths?: string[];
+            circuit_breaker?: components["schemas"]["CircuitBreaker"];
+            /**
+             * Outcome Days
+             * @description the days after a merge over which the hub counts a change's figures again, and then keeps it or proposes its revert
+             * @default 7
+             */
+            outcome_days: number;
+            review?: components["schemas"]["ReviewSettings"];
+            reviewer?: components["schemas"]["Role"];
+            builder?: components["schemas"]["Role"];
+            judge?: components["schemas"]["Judge"];
+            /**
+             * Git Secret
+             * @description the owner's git secret the Curator's runs use for origins not on GitHub (GitLab, where it should hold the Developer role); null: none, so no Builder runs there
+             */
+            git_secret?: string | null;
+            /**
+             * Env Secrets
+             * @description the owner's env secrets the Curator's runs get, by name; they get no other
+             */
+            env_secrets?: string[];
+        };
+        /**
          * CheckoutReport
          * @description One checkout of a project's repo on the machine, which the daemon makes worktrees from.
          */
@@ -2264,6 +3222,15 @@ export interface components {
              * @description checked out there
              */
             branch?: string | null;
+        };
+        /** CircuitBreaker */
+        CircuitBreaker: {
+            /**
+             * Max Failed In A Row
+             * @description jobs of a night in a row that failed or were reverted before the hub pauses the night shift
+             * @default 2
+             */
+            max_failed_in_a_row: number;
         };
         /** Claim */
         Claim: {
@@ -2279,12 +3246,52 @@ export interface components {
              */
             wait_s: number;
         };
+        /**
+         * ClaimedBudget
+         * @description A run's caps as its worker gets them, with what it spent already when it goes on from a parked run.
+         */
+        ClaimedBudget: {
+            /**
+             * Max Usd
+             * @description the most it may cost; Claude Code stops there
+             */
+            max_usd?: number | null;
+            /**
+             * Max Turns
+             * @description the most turns its agent may take
+             */
+            max_turns?: number | null;
+            /**
+             * Max Seconds
+             * @description the agent time it may use; a Codex run stops there
+             */
+            max_seconds?: number | null;
+            /**
+             * Spent Usd
+             * @description what the agent session it goes on in cost so far
+             * @default 0
+             */
+            spent_usd: number;
+            /**
+             * Spent Seconds
+             * @description the agent time it used so far
+             * @default 0
+             */
+            spent_seconds: number;
+        };
         /** Clearance */
         Clearance: {
             /** Level */
             level: string;
             /** Location */
             location?: string | null;
+        };
+        /** CommandCount */
+        CommandCount: {
+            /** Command */
+            command: string;
+            /** N */
+            n: number;
         };
         /** CommitRequest */
         CommitRequest: {
@@ -2385,6 +3392,110 @@ export interface components {
              * @default X-Evo-CSRF
              */
             header: string;
+        };
+        /**
+         * CuratorOverview
+         * @description Where a project's Curator stands, for Home: GET /v1/me/overview names it for each project with a charter.
+         */
+        CuratorOverview: {
+            /**
+             * State
+             * @description as GET /v1/projects/{p}/curator says it
+             * @enum {string}
+             */
+            state: "running" | "on_duty" | "idle" | "paused";
+            /**
+             * In Window
+             * @description the charter's window is open now
+             */
+            in_window: boolean;
+            /**
+             * Active Run Id
+             * @description the run of the night shift queued or held now, if any
+             */
+            active_run_id: number | null;
+            /**
+             * Open Proposals
+             * @description the project's proposals that wait for an answer, that you may read
+             */
+            open_proposals: number;
+        };
+        /**
+         * CuratorSpec
+         * @description What the worker of a run of the Curator (``evo_agents.hub.server.changes``) is told: the run's role, the
+         *     charter's protected paths its watchdog compares the worktrees with, and for a Builder or a Judge the change, its
+         *     branch, its forge and its pull request; for a Judge the commit to judge.
+         */
+        CuratorSpec: {
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "reviewer" | "builder" | "judge";
+            /**
+             * Protected Paths
+             * @description globs of the charter, repo:glob for one repo
+             */
+            protected_paths?: string[];
+            /** Change Id */
+            change_id?: number | null;
+            /**
+             * Branch
+             * @description curator/..., the one branch a Builder pushes
+             */
+            branch?: string | null;
+            /**
+             * Forge
+             * @description gitlab: the push opens the merge request
+             */
+            forge?: ("github" | "gitlab") | null;
+            /**
+             * Base Branch
+             * @description the default branch the pull request goes into, when known
+             */
+            base_branch?: string | null;
+            /**
+             * Head Sha
+             * @description a Judge's commit to judge; null: the branch's tip
+             */
+            head_sha?: string | null;
+            /** Pr Url */
+            pr_url?: string | null;
+            /**
+             * Judge Key
+             * @description a judge run's own key, for GET .../judge and POST .../verdict (X-Evo-Judge-Key); the daemon keeps it in memory alone, never in a file, an environment or a log line
+             */
+            judge_key?: string | null;
+        };
+        /** CuratorStatus */
+        CuratorStatus: {
+            /** Project */
+            project: string;
+            charter: components["schemas"]["Charter"] | null;
+            /**
+             * Paused
+             * @description every schedule of the project is paused
+             */
+            paused: boolean;
+            /** Schedules */
+            schedules: components["schemas"]["Schedule"][];
+            /** @description null without a charter */
+            night: components["schemas"]["Night"] | null;
+            /** @description the project's latest review run, of any night; null before the first */
+            last_review_run?: components["schemas"]["ReviewRunSummary"] | null;
+            /**
+             * State
+             * @description paused; running while a run of the night shift is queued or held; on_duty in the window with none; idle outside it; null without a charter
+             */
+            state?: ("running" | "on_duty" | "idle" | "paused") | null;
+            /**
+             * Open Proposals
+             * @description the project's proposals that wait for an answer, that you may read
+             * @default 0
+             */
+            open_proposals: number;
+            /** @description the project's last morning brief; null before the first */
+            last_brief?: components["schemas"]["BriefSummary"] | null;
         };
         /** DayCount */
         DayCount: {
@@ -2558,6 +3669,96 @@ export interface components {
             /** Deletions */
             deletions: number;
         };
+        /** DigestList */
+        DigestList: {
+            /**
+             * Digests
+             * @description the latest pushed first
+             */
+            digests: components["schemas"]["DigestSummary"][];
+            /**
+             * Total
+             * @description digests the caller may read that match the filters
+             */
+            total: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+        };
+        /** DigestRecord */
+        DigestRecord: {
+            /** Session Id */
+            session_id: string;
+            /**
+             * Login
+             * @description the member who pushed it
+             */
+            login: string;
+            /** Cwd */
+            cwd: string;
+            /** Messages */
+            messages: number;
+            /** Model */
+            model: string | null;
+            /** Started At */
+            started_at: string | null;
+            /** Ended At */
+            ended_at: string | null;
+            /** Label */
+            label: {
+                [key: string]: unknown;
+            };
+            /**
+             * Created At
+             * Format: date-time
+             * @description its first push
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description its latest push
+             */
+            updated_at: string;
+            digest: components["schemas"]["SessionDigest"];
+        };
+        /** DigestSummary */
+        DigestSummary: {
+            /** Session Id */
+            session_id: string;
+            /**
+             * Login
+             * @description the member who pushed it
+             */
+            login: string;
+            /** Cwd */
+            cwd: string;
+            /** Messages */
+            messages: number;
+            /** Model */
+            model: string | null;
+            /** Started At */
+            started_at: string | null;
+            /** Ended At */
+            ended_at: string | null;
+            /** Label */
+            label: {
+                [key: string]: unknown;
+            };
+            /**
+             * Created At
+             * Format: date-time
+             * @description its first push
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description its latest push
+             */
+            updated_at: string;
+        };
         /** Dispatch */
         Dispatch: {
             /** Plan Id */
@@ -2625,6 +3826,21 @@ export interface components {
                 [key: string]: unknown;
             }[] | null;
         };
+        /** ErrorText */
+        ErrorText: {
+            /** Gen Ai.Tool.Name */
+            "gen_ai.tool.name": string;
+            /**
+             * Text
+             * @description the tool's result, cut
+             */
+            text: string;
+            /**
+             * N
+             * @description how many results said exactly this
+             */
+            n: number;
+        };
         /** EventBatch */
         EventBatch: {
             /** Events */
@@ -2685,6 +3901,62 @@ export interface components {
             /** Source */
             source: string | null;
         };
+        /**
+         * EvidenceIn
+         * @description One piece of evidence, as ``review.parse_evidence`` reads it from the command line.
+         */
+        EvidenceIn: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "session" | "run" | "code";
+            /**
+             * Session Id
+             * @description session: the digest's session
+             */
+            session_id?: string | null;
+            /**
+             * Field
+             * @description session: the list of the digest
+             */
+            field?: ("user_turns" | "commands" | "repeated_commands" | "errors" | "files_edited" | "tools" | "bash") | null;
+            /**
+             * Index
+             * @description session: the entry of that list, from 0
+             */
+            index?: number | null;
+            /**
+             * Run Id
+             * @description run: the run
+             */
+            run_id?: number | null;
+            /**
+             * Seq
+             * @description run: the seq of its event
+             */
+            seq?: number | null;
+            /**
+             * Repo
+             * @description code: a repo of the project
+             */
+            repo?: string | null;
+            /**
+             * Path
+             * @description code: within the repo
+             */
+            path?: string | null;
+            /**
+             * Line
+             * @description code: the line
+             */
+            line?: number | null;
+            /**
+             * Commit
+             * @description code: the commit the worktree was at
+             */
+            commit?: string | null;
+        };
         /** FailedBuildCounts */
         FailedBuildCounts: {
             /**
@@ -2699,6 +3971,78 @@ export interface components {
              * @description the projects with such a build, latest failure first
              */
             projects: components["schemas"]["ProjectFailedBuilds"][];
+        };
+        /** Finding */
+        Finding: {
+            /** Id */
+            id: number;
+            /** Project */
+            project: string;
+            /**
+             * Run Id
+             * @description the review run that recorded it
+             */
+            run_id: number;
+            /** Lens */
+            lens: string;
+            /**
+             * Severity
+             * @enum {string}
+             */
+            severity: "low" | "medium" | "high";
+            /** Title */
+            title: string;
+            /** Body */
+            body: string | null;
+            /**
+             * Evidence
+             * @description each piece as the hub resolved it, with how (resolved)
+             */
+            evidence: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** FindingIn */
+        FindingIn: {
+            /**
+             * Lens
+             * @enum {string}
+             */
+            lens: "tool_errors" | "environment" | "corrections" | "failed_runs" | "tech_debt" | "code_health" | "docs_drift" | "skills_memory" | "cost" | "security" | "product_goals";
+            /**
+             * Severity
+             * @default medium
+             * @enum {string}
+             */
+            severity: "low" | "medium" | "high";
+            /** Title */
+            title: string;
+            /**
+             * Body
+             * @description markdown, 16 KiB
+             */
+            body?: string | null;
+            /** Evidence */
+            evidence: components["schemas"]["EvidenceIn"][];
+        };
+        /** FindingList */
+        FindingList: {
+            /**
+             * Findings
+             * @description newest first
+             */
+            findings: components["schemas"]["Finding"][];
+            /** Total */
+            total: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
         };
         /** Found */
         Found: {
@@ -2767,6 +4111,13 @@ export interface components {
              * @description leases of the run this worker gave back now; 0 when none was out any more
              */
             revoked: number;
+        };
+        /** Goal */
+        Goal: {
+            /** Id */
+            id: string;
+            /** What */
+            what: string;
         };
         /** Grant */
         Grant: {
@@ -2975,6 +4326,23 @@ export interface components {
             runs?: number[];
             /** Agent Version */
             agent_version?: string | null;
+            /**
+             * Run Kinds
+             * @description the kinds of run the daemon runs; one that says none takes no review run. A kind this hub does not know is left out
+             */
+            run_kinds?: string[] | null;
+        };
+        /** HiddenResult */
+        HiddenResult: {
+            /**
+             * Index
+             * @description the check's place in the charter, from 1
+             */
+            index: number;
+            /** Exit Code */
+            exit_code: number;
+            /** Duration Ms */
+            duration_ms?: number | null;
         };
         /** Inbox */
         Inbox: {
@@ -3041,6 +4409,64 @@ export interface components {
              * @description the pairing code, XXXX-XXXX
              */
             code: string;
+        };
+        /** Judge */
+        Judge: {
+            /**
+             * Runtime
+             * @default claude-code
+             * @enum {string}
+             */
+            runtime: "claude-code" | "opencode" | "codex";
+            /**
+             * Model
+             * @description as the runtime names it; null: the runtime's own choice
+             */
+            model?: string | null;
+            /**
+             * Hidden Checks
+             * @description commands the Judge runs that no Builder sees; shown to the project's admins alone, null to anyone else, and null in a write keeps those of the newest revision
+             */
+            hidden_checks?: string[] | null;
+        };
+        /**
+         * JudgeInputs
+         * @description What a judge run reads: the change, the proposal, the plan's verify commands, the charter's protected paths,
+         *     and the project's hidden checks, which no other run reads.
+         */
+        JudgeInputs: {
+            /** Change Id */
+            change_id: number;
+            /** Repo */
+            repo: string;
+            /** Branch */
+            branch: string;
+            /** Base Branch */
+            base_branch: string | null;
+            /**
+             * Head Sha
+             * @description the commit to judge; null on GitLab: the branch's tip
+             */
+            head_sha: string | null;
+            /**
+             * Proposal
+             * @description id, title, kind, tier, summary, paths
+             */
+            proposal: {
+                [key: string]: unknown;
+            };
+            /**
+             * Verify
+             * @description the verify of each step of the plan, as the Builder had them
+             */
+            verify: string[];
+            /** Protected Paths */
+            protected_paths: string[];
+            /**
+             * Hidden Checks
+             * @description commands run in the worktree; never logged, never shown
+             */
+            hidden_checks: string[];
         };
         /** KgConfig */
         KgConfig: {
@@ -3125,6 +4551,113 @@ export interface components {
              * @enum {string}
              */
             integrity: "T" | "U";
+        };
+        /** Ledger */
+        Ledger: {
+            /** Project */
+            project: string;
+            /** Proposal Id */
+            proposal_id: number;
+            /**
+             * Lines
+             * @description oldest first
+             */
+            lines: components["schemas"]["LedgerLine"][];
+            /**
+             * Outcome Due At
+             * @description when the hub counts the figures of its merged change again; null before the merge and once its outcome is in
+             */
+            outcome_due_at: string | null;
+        };
+        /**
+         * LedgerLine
+         * @description One line of a proposal's ledger, as the hub added it.
+         */
+        LedgerLine: {
+            /** Id */
+            id: number;
+            /** Proposal Id */
+            proposal_id: number;
+            /**
+             * Change Id
+             * @description the change it became, once it became one
+             */
+            change_id: number | null;
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "proposed" | "dropped" | "accepted" | "rejected" | "deferred" | "planned" | "built" | "build_failed" | "pull_opened" | "judged" | "merged" | "left_open" | "closed" | "outcome";
+            /**
+             * Actor
+             * @description curator: the hub's own code; agent: an agent of a run of the Curator; user: a member
+             * @enum {string}
+             */
+            actor: "curator" | "agent" | "user";
+            /**
+             * Actor Login
+             * @description the member, for a line of a user the hub knows
+             */
+            actor_login: string | null;
+            /**
+             * Run Id
+             * @description the run of the agent: the review run, the Builder or the Judge
+             */
+            run_id: number | null;
+            /**
+             * What
+             * @description what happened, in words
+             */
+            what: string;
+            /**
+             * Commit Sha
+             * @description the commit it is about: the head built, judged or merged
+             */
+            commit_sha: string | null;
+            /**
+             * Before Sha
+             * @description the default branch before the change
+             */
+            before_sha: string | null;
+            /**
+             * After Sha
+             * @description the default branch after it: the merge commit
+             */
+            after_sha: string | null;
+            /**
+             * Figures
+             * @description proposed: the figures that set it off; outcome: those figures before and after the merge
+             */
+            figures: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Verdict
+             * @description judged: whether it passed, the agent's verdict, the failures
+             */
+            verdict: {
+                [key: string]: unknown;
+            } | null;
+            /** Pr Url */
+            pr_url: string | null;
+            /** Pr Number */
+            pr_number: number | null;
+            /** Merged At */
+            merged_at: string | null;
+            /**
+             * Outcome
+             * @description outcome: keep, revert or unclear
+             */
+            outcome: ("keep" | "revert" | "unclear") | null;
+            /** Details */
+            details: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
         };
         /** Live */
         Live: {
@@ -3334,6 +4867,16 @@ export interface components {
             /** Reason */
             reason: string;
         };
+        /** ModelCount */
+        ModelCount: {
+            /** Model */
+            model: string;
+            /**
+             * Messages
+             * @description messages of the model that name it
+             */
+            messages: number;
+        };
         /** Neighbourhood */
         Neighbourhood: {
             graph: components["schemas"]["GraphRef"];
@@ -3362,6 +4905,155 @@ export interface components {
             left_out: number;
             /** Truncated */
             truncated: boolean;
+        };
+        /** Night */
+        Night: {
+            /**
+             * Night
+             * Format: date
+             * @description the local date the window opened on: the night now, or the last one
+             */
+            night: string;
+            /** In Window */
+            in_window: boolean;
+            /**
+             * Local Time
+             * @description HH:MM now, in the charter's time zone
+             */
+            local_time: string;
+            /**
+             * Runs
+             * @description the runs the night shift queued that night
+             */
+            runs: number;
+            /** Max Runs */
+            max_runs: number;
+            /**
+             * Cost Usd
+             * @description what they cost, from their usage, each agent session once
+             */
+            cost_usd: number;
+            /** Budget Usd */
+            budget_usd: number;
+            /**
+             * Active Run Id
+             * @description the run of the schedule queued or held now, if any
+             */
+            active_run_id: number | null;
+        };
+        /** NightFiguresView */
+        NightFiguresView: {
+            /** Project */
+            project: string;
+            /**
+             * Night
+             * Format: date
+             */
+            night: string;
+            /**
+             * Since
+             * Format: date-time
+             */
+            since: string;
+            /**
+             * Until
+             * Format: date-time
+             */
+            until: string;
+            /**
+             * Run Id
+             * @description the review run queued on them, if any
+             */
+            run_id: number | null;
+            /**
+             * Figures
+             * @description the figures, as curator.collect counted them
+             */
+            figures: {
+                [key: string]: unknown;
+            };
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** NightList */
+        NightList: {
+            /** Project */
+            project: string;
+            /**
+             * Nights
+             * @description the latest night first
+             */
+            nights: components["schemas"]["NightSummary"][];
+            /**
+             * Budget Usd
+             * @description the night's budget of the newest charter; null without one
+             */
+            budget_usd: number | null;
+            /**
+             * Max Runs
+             * @description the night's runs of the newest charter; null without one
+             */
+            max_runs: number | null;
+        };
+        /** NightReview */
+        NightReview: {
+            /** Id */
+            id: number;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "queued" | "leased" | "running" | "interactive" | "verifying" | "waiting" | "review" | "parked" | "done" | "failed" | "lost" | "cancelled";
+            /** Findings */
+            findings: number;
+            /** Proposals */
+            proposals: number;
+        };
+        /**
+         * NightSummary
+         * @description One night of a project's night shift: what it queued, how those runs ended, what they cost, and its review.
+         */
+        NightSummary: {
+            /**
+             * Night
+             * Format: date
+             * @description the local date its window opened on
+             */
+            night: string;
+            /**
+             * Runs
+             * @description the runs the night shift queued that night, its review run included
+             */
+            runs: number;
+            /** Done */
+            done: number;
+            /**
+             * Failed
+             * @description failed or lost
+             */
+            failed: number;
+            /** Cancelled */
+            cancelled: number;
+            /**
+             * Active
+             * @description not ended yet
+             */
+            active: number;
+            /**
+             * Cost Usd
+             * @description what they cost, from their usage, each agent session once
+             */
+            cost_usd: number;
+            /** @description the night's review run, if one was queued */
+            review_run: components["schemas"]["NightReview"] | null;
+            /**
+             * Figures
+             * @description curator.collect counted the night's figures
+             */
+            figures: boolean;
         };
         /** NodeDetail */
         NodeDetail: {
@@ -3437,12 +5129,12 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "decision" | "notice";
+            kind: "decision" | "notice" | "proposal";
             /**
              * Notice Kind
              * @description a notice's kind; null for a decision
              */
-            notice_kind: ("push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed") | null;
+            notice_kind: ("push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused") | null;
             /** Project */
             project: string | null;
             /** Run Id */
@@ -3454,6 +5146,16 @@ export interface components {
              * @description the state of the decision now, for a notification of kind decision
              */
             decision_state: ("open" | "answered" | "expired" | "cancelled") | null;
+            /**
+             * Proposal Id
+             * @description the proposal, for a notification of kind proposal
+             */
+            proposal_id?: number | null;
+            /**
+             * Proposal State
+             * @description the state of the proposal now, for a notification of kind proposal
+             */
+            proposal_state?: ("open" | "accepted" | "rejected" | "deferred" | "dropped") | null;
             /** Title */
             title: string;
             /** Body */
@@ -3490,12 +5192,18 @@ export interface components {
              * @description decisions that still wait for the member's answer, read or not
              */
             open_decisions: number;
+            /**
+             * Open Proposals
+             * @description proposals in the member's Inbox that wait for an answer, read or not
+             * @default 0
+             */
+            open_proposals: number;
         };
         /** NotificationList */
         NotificationList: {
             /**
              * Notifications
-             * @description open decisions first, then newest first
+             * @description open decisions and proposals first, then newest first
              */
             notifications: components["schemas"]["Notification"][];
             /**
@@ -3667,6 +5375,8 @@ export interface components {
              * @description open decisions of the plans you can see, yours or not
              */
             open_decisions: number;
+            /** @description where the project's Curator stands; null while the project has no charter */
+            curator?: components["schemas"]["CuratorOverview"] | null;
         };
         /** OverviewRun */
         OverviewRun: {
@@ -3676,7 +5386,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "step" | "plan";
+            kind: "step" | "plan" | "review" | "judge";
             /** Project */
             project: string;
             /** Plan Id */
@@ -3857,6 +5567,13 @@ export interface components {
              * @description the worker the pairing made, once a machine joined with it
              */
             worker_id: number | null;
+        };
+        /** PathIn */
+        PathIn: {
+            /** Repo */
+            repo: string;
+            /** Path */
+            path: string;
         };
         /** Plan */
         Plan: {
@@ -4097,6 +5814,18 @@ export interface components {
             /** Message */
             message: string;
         };
+        /** ProgramCount */
+        ProgramCount: {
+            /**
+             * Program
+             * @description the program a Bash call ran, with its subcommand: git push, python -m pytest
+             */
+            program: string;
+            /** Calls */
+            calls: number;
+            /** Errors */
+            errors: number;
+        };
         /** Project */
         Project: {
             /** Name */
@@ -4194,6 +5923,286 @@ export interface components {
              * @description builds whose artifact was dropped: they keep their content hash and counts
              */
             builds: number;
+        };
+        /** ProjectToolStats */
+        ProjectToolStats: {
+            /** Project */
+            project: string;
+            /** Days */
+            days: number;
+            /**
+             * First Day
+             * Format: date
+             */
+            first_day: string;
+            /**
+             * Last Day
+             * Format: date
+             */
+            last_day: string;
+            /**
+             * Runs
+             * @description runs that ended in those days, with tool calls or without
+             */
+            runs: number;
+            /**
+             * Tools
+             * @description per tool and runtime, the most called first
+             */
+            tools: components["schemas"]["RuntimeToolStat"][];
+        };
+        /** Proposal */
+        Proposal: {
+            /** Id */
+            id: number;
+            /** Project */
+            project: string;
+            /**
+             * Run Id
+             * @description the review run that proposed it
+             */
+            run_id: number;
+            /** Lens */
+            lens: string;
+            /** Kind */
+            kind: string;
+            /** Title */
+            title: string;
+            /**
+             * Tier
+             * @description as the hub's tier rules computed it
+             */
+            tier: number;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "open" | "accepted" | "rejected" | "deferred" | "dropped";
+            /**
+             * Evidence Count
+             * @description the pieces of evidence it rests on, its findings' included
+             */
+            evidence_count: number;
+            /**
+             * Duplicate Of
+             * @description the rejected proposal a dropped one repeats
+             */
+            duplicate_of: number | null;
+            /** Answered By */
+            answered_by: string | null;
+            /** Answered At */
+            answered_at: string | null;
+            /** Deferred Until */
+            deferred_until: string | null;
+            /**
+             * Inbox At
+             * @description when it became an Inbox item of the owner; tier 2 only, and a revert the hub proposes
+             */
+            inbox_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Revert Of
+             * @description the proposal whose merged change it reverts: the hub proposed it once its figures got worse
+             */
+            revert_of?: number | null;
+            /** Summary */
+            summary: string | null;
+            /** Paths */
+            paths: components["schemas"]["RepoPath"][];
+            /**
+             * Impacted
+             * @description what the paths reach in the knowledge graph; null without one
+             */
+            impacted: components["schemas"]["RepoPath"][] | null;
+            /**
+             * Tier Reasons
+             * @description why it has its tier, rule by rule
+             */
+            tier_reasons: string[];
+            /** Finding Ids */
+            finding_ids: number[];
+            /**
+             * Evidence
+             * @description its own evidence, as the hub resolved it
+             */
+            evidence: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Plan
+             * @description the draft plan
+             */
+            plan: {
+                [key: string]: unknown;
+            };
+            /**
+             * Note
+             * @description the owner's note with the answer
+             */
+            note: string | null;
+        };
+        /** ProposalAnswer */
+        ProposalAnswer: {
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "accept" | "reject" | "defer";
+            /** Note */
+            note?: string | null;
+            /**
+             * Defer Days
+             * @description with defer; 7 by default
+             */
+            defer_days?: number | null;
+        };
+        /**
+         * ProposalCounts
+         * @description How many proposals each value of a filter would list, the other filters applied: every state, tier and lens
+         *     named, with 0 where none is.
+         */
+        ProposalCounts: {
+            /** State */
+            state: {
+                [key: string]: number;
+            };
+            /**
+             * Tier
+             * @description by tier, "0" to "3"
+             */
+            tier: {
+                [key: string]: number;
+            };
+            /** Lens */
+            lens: {
+                [key: string]: number;
+            };
+        };
+        /** ProposalIn */
+        ProposalIn: {
+            /**
+             * Lens
+             * @enum {string}
+             */
+            lens: "tool_errors" | "environment" | "corrections" | "failed_runs" | "tech_debt" | "code_health" | "docs_drift" | "skills_memory" | "cost" | "security" | "product_goals";
+            /**
+             * Kind
+             * @description the kind of change, which gives its first tier
+             * @enum {string}
+             */
+            kind: "docs" | "memory" | "test_add" | "fix" | "refactor" | "lint" | "skill" | "cli" | "release_prep" | "revert" | "feature" | "api_change" | "schema_change" | "global_config" | "dependency_major" | "operation" | "test_loosen" | "verify_change" | "ci_change" | "credentials" | "curator_rules";
+            /** Title */
+            title: string;
+            /**
+             * Summary
+             * @description markdown, 16 KiB
+             */
+            summary?: string | null;
+            /**
+             * Paths
+             * @description what it would edit
+             */
+            paths?: components["schemas"]["PathIn"][];
+            /**
+             * Finding Ids
+             * @description findings of the project it rests on
+             */
+            finding_ids?: number[];
+            /** Evidence */
+            evidence?: components["schemas"]["EvidenceIn"][];
+            /**
+             * Plan
+             * @description the draft plan: plan.schema.json, in outcome steps
+             */
+            plan: {
+                [key: string]: unknown;
+            };
+        };
+        /** ProposalList */
+        ProposalList: {
+            /**
+             * Proposals
+             * @description newest first
+             */
+            proposals: components["schemas"]["ProposalSummary"][];
+            /** Total */
+            total: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** @description for the list's filters: what each of their values holds */
+            counts?: components["schemas"]["ProposalCounts"] | null;
+        };
+        /** ProposalSummary */
+        ProposalSummary: {
+            /** Id */
+            id: number;
+            /** Project */
+            project: string;
+            /**
+             * Run Id
+             * @description the review run that proposed it
+             */
+            run_id: number;
+            /** Lens */
+            lens: string;
+            /** Kind */
+            kind: string;
+            /** Title */
+            title: string;
+            /**
+             * Tier
+             * @description as the hub's tier rules computed it
+             */
+            tier: number;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "open" | "accepted" | "rejected" | "deferred" | "dropped";
+            /**
+             * Evidence Count
+             * @description the pieces of evidence it rests on, its findings' included
+             */
+            evidence_count: number;
+            /**
+             * Duplicate Of
+             * @description the rejected proposal a dropped one repeats
+             */
+            duplicate_of: number | null;
+            /** Answered By */
+            answered_by: string | null;
+            /** Answered At */
+            answered_at: string | null;
+            /** Deferred Until */
+            deferred_until: string | null;
+            /**
+             * Inbox At
+             * @description when it became an Inbox item of the owner; tier 2 only, and a revert the hub proposes
+             */
+            inbox_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Revert Of
+             * @description the proposal whose merged change it reverts: the hub proposed it once its figures got worse
+             */
+            revert_of?: number | null;
+        };
+        /** Protection */
+        Protection: {
+            /** Project */
+            project: string;
+            /** Repos */
+            repos: components["schemas"]["RepoCheck"][];
         };
         /** PruneRequest */
         PruneRequest: {
@@ -4396,10 +6405,117 @@ export interface components {
              */
             path?: string | null;
         };
+        /**
+         * RepoCheck
+         * @description A repo of the project and the last check of its ruleset.
+         */
+        RepoCheck: {
+            /** Repo */
+            repo: string;
+            /** Origin */
+            origin: string | null;
+            /**
+             * Forge
+             * @description null without an origin the Curator could push to
+             */
+            forge: ("github" | "gitlab") | null;
+            /**
+             * Github Repo
+             * @description owner/name on GitHub; null elsewhere
+             */
+            github_repo: string | null;
+            /**
+             * Protected
+             * @description a ruleset keeps the Curator's App off its default branch; null: never checked
+             */
+            protected: boolean | null;
+            /** Default Branch */
+            default_branch: string | null;
+            /** Reason */
+            reason: string | null;
+            /**
+             * Rulesets
+             * @description each {id, enforcement, can_bypass}
+             */
+            rulesets?: {
+                [key: string]: unknown;
+            }[];
+            /** Checked At */
+            checked_at: string | null;
+            /**
+             * Checked By
+             * @description who asked; null for the hub's own check again
+             */
+            checked_by: string | null;
+        };
+        /** RepoPath */
+        RepoPath: {
+            /** Repo */
+            repo: string;
+            /** Path */
+            path: string;
+        };
         /** Results */
         Results: {
             /** Items */
             items: components["schemas"]["Found"][];
+        };
+        /**
+         * ReviewRunSummary
+         * @description The last review run of a project: the run, the night it reviewed, and what it wrote.
+         */
+        ReviewRunSummary: {
+            /** Id */
+            id: number;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "queued" | "leased" | "running" | "interactive" | "verifying" | "waiting" | "review" | "parked" | "done" | "failed" | "lost" | "cancelled";
+            /**
+             * Night
+             * Format: date
+             */
+            night: string;
+            /**
+             * Lenses
+             * @description the lenses of its night
+             */
+            lenses: string[];
+            /** Findings */
+            findings: number;
+            /** Proposals */
+            proposals: number;
+            /**
+             * Queued At
+             * Format: date-time
+             */
+            queued_at: string;
+            /** Finished At */
+            finished_at: string | null;
+        };
+        /**
+         * ReviewSettings
+         * @description How the night's review run of the Curator looks (``evo_agents.hub.review``).
+         */
+        ReviewSettings: {
+            /**
+             * Lenses
+             * @description lenses a night looks through, in turn
+             * @default 3
+             */
+            lenses: number;
+            /**
+             * Days
+             * @description the days of sessions and runs it counts
+             * @default 7
+             */
+            days: number;
+            /**
+             * Budget Usd
+             * @description the most the review run may cost; null: as any run
+             */
+            budget_usd?: number | null;
         };
         /** Revision */
         Revision: {
@@ -4497,19 +6613,39 @@ export interface components {
              */
             next_before: number | null;
         };
+        /**
+         * Role
+         * @description The runtime and model one role of the Curator runs on.
+         */
+        Role: {
+            /**
+             * Runtime
+             * @default claude-code
+             * @enum {string}
+             */
+            runtime: "claude-code" | "opencode" | "codex";
+            /**
+             * Model
+             * @description as the runtime names it; null: the runtime's own choice
+             */
+            model?: string | null;
+        };
         /** Run */
         Run: {
             /** Id */
             id: number;
             /**
              * Kind
-             * @description step: one step of the plan; plan: every step not done yet
+             * @description step: one step of the plan; plan: every step not done yet; review: the night's review of the project by the Curator, on no plan; judge: the Curator's Judge of a change of its plan
              * @enum {string}
              */
-            kind: "step" | "plan";
+            kind: "step" | "plan" | "review" | "judge";
             /** Project */
             project: string;
-            /** Plan Id */
+            /**
+             * Plan Id
+             * @description the plan it works on; empty for a review run, which works on none
+             */
             plan_id: string;
             /**
              * Step Key
@@ -4523,9 +6659,9 @@ export interface components {
             title: string | null;
             /**
              * Plan Revision
-             * @description the plan revision the run was dispatched from
+             * @description the plan revision the run was dispatched from; null for a review run
              */
-            plan_revision: number;
+            plan_revision: number | null;
             /**
              * Dispatched By
              * @description the login of the member who dispatched it, its owner
@@ -4533,9 +6669,9 @@ export interface components {
             dispatched_by: string;
             /**
              * Dispatched Via
-             * @description the credential it was dispatched with: web, a web session; machine, a token (the command line, an agent); null for a run dispatched before 0.5.0
+             * @description the credential it was dispatched with: web, a web session; machine, a token (the command line, an agent); schedule, the night shift of the project's charter, for its owner; null for a run dispatched before 0.5.0
              */
-            dispatched_via: ("machine" | "web") | null;
+            dispatched_via: ("machine" | "web" | "schedule") | null;
             /**
              * Worker Id
              * @description the worker that claimed it
@@ -4630,6 +6766,8 @@ export interface components {
             usage: {
                 [key: string]: unknown;
             } | null;
+            /** @description the caps of a run the night shift queued; null for any other */
+            budget?: components["schemas"]["RunBudget"] | null;
             /** Error */
             error: string | null;
             /**
@@ -4710,6 +6848,27 @@ export interface components {
             log_sha256: string | null;
             /** Diff Sha256 */
             diff_sha256: string | null;
+        };
+        /**
+         * RunBudget
+         * @description The caps of a run the night shift queued (``evo_agents.hub.curator``).
+         */
+        RunBudget: {
+            /**
+             * Max Usd
+             * @description the most it may cost; Claude Code stops there
+             */
+            max_usd?: number | null;
+            /**
+             * Max Turns
+             * @description the most turns its agent may take
+             */
+            max_turns?: number | null;
+            /**
+             * Max Seconds
+             * @description the agent time it may use; a Codex run stops there
+             */
+            max_seconds?: number | null;
         };
         /** RunCommitted */
         RunCommitted: {
@@ -5072,10 +7231,13 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "step" | "plan";
+            kind: "step" | "plan" | "review" | "judge";
             /** Project */
             project: string;
-            /** Plan Id */
+            /**
+             * Plan Id
+             * @description empty for a review run
+             */
             plan_id: string;
             /**
              * Step Key
@@ -5086,9 +7248,9 @@ export interface components {
             title: string | null;
             /**
              * Plan Revision
-             * @description the plan revision the run was dispatched from
+             * @description the plan revision the run was dispatched from; null for a review run
              */
-            plan_revision: number;
+            plan_revision: number | null;
             /** Attempt */
             attempt: number;
             /** Max Attempts */
@@ -5136,7 +7298,7 @@ export interface components {
             branch: string | null;
             /**
              * Repos
-             * @description a plan run's repos, each with a checkout on this worker
+             * @description a plan run's or a review run's repos, each with a checkout on this worker
              */
             repos: components["schemas"]["RunRepo"][] | null;
             /**
@@ -5148,6 +7310,10 @@ export interface components {
             prompt: string;
             /** @description a plan run's plan at the hub's current revision, for .evo-run/plan.yaml; null for a run of one step */
             plan: components["schemas"]["PlanCopy"] | null;
+            /** @description the caps of a run the night shift queued; null otherwise */
+            budget?: components["schemas"]["ClaimedBudget"] | null;
+            /** @description a run of the Curator: its role and what its worker checks; null for any other run */
+            curator?: components["schemas"]["CuratorSpec"] | null;
         };
         /** RunState */
         RunState: {
@@ -5200,6 +7366,25 @@ export interface components {
             /** @description the whole span: its counts and tokens are by_day's added up, its percentiles over every run */
             total: components["schemas"]["RunFigures"];
         };
+        /** RunToolStats */
+        RunToolStats: {
+            /** Run Id */
+            run_id: number;
+            /** Runtime */
+            runtime: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "queued" | "leased" | "running" | "interactive" | "verifying" | "waiting" | "review" | "parked" | "done" | "failed" | "lost" | "cancelled";
+            /** Finished At */
+            finished_at: string | null;
+            /**
+             * Tools
+             * @description the most called first; empty for a run that has not ended
+             */
+            tools: components["schemas"]["ToolStat"][];
+        };
         /** RunUploadRequest */
         RunUploadRequest: {
             /**
@@ -5243,6 +7428,64 @@ export interface components {
              * @description the models the runtime lists on the machine, for a dispatch to suggest; null when it lists none
              */
             models?: string[] | null;
+        };
+        /** RuntimeToolStat */
+        RuntimeToolStat: {
+            /**
+             * Gen Ai.Tool.Name
+             * @description the tool, as the module of tool_stats names it
+             */
+            "gen_ai.tool.name": string;
+            /** Calls */
+            calls: number;
+            /**
+             * Errors
+             * @description calls an update of which said failed
+             */
+            errors: number;
+            /**
+             * Duration Ms
+             * @description from each call to its result, added up; calls that never ended count none
+             */
+            duration_ms: number;
+            /** Runtime */
+            runtime: string;
+            /**
+             * Runs
+             * @description runs that called the tool
+             */
+            runs: number;
+        };
+        /** Schedule */
+        Schedule: {
+            /** Id */
+            id: number;
+            /**
+             * Kind
+             * @constant
+             */
+            kind: "night_shift";
+            /**
+             * Owner
+             * @description the member its runs are dispatched as
+             */
+            owner: string;
+            /** Worker Id */
+            worker_id: number;
+            /** Worker */
+            worker: string;
+            /** Paused At */
+            paused_at: string | null;
+            /**
+             * Paused By
+             * @description the member who paused it; null when the hub did, or while it runs
+             */
+            paused_by: string | null;
+            /**
+             * Pause Reason
+             * @description why the hub paused it, its circuit breaker; null when a member did, or while it runs
+             */
+            pause_reason?: string | null;
         };
         /**
          * Secret
@@ -5392,6 +7635,70 @@ export interface components {
              * @description false when a secret of this name was replaced
              */
             created: boolean;
+        };
+        /**
+         * SessionDigest
+         * @description The digest of one session, as ``evo_agents.hub.digest.build`` makes it.
+         */
+        SessionDigest: {
+            /**
+             * Cwd
+             * @description the session's working directory
+             */
+            cwd: string;
+            /**
+             * Messages
+             * @description of the person and the model
+             */
+            messages: number;
+            /** Started At */
+            started_at?: string | null;
+            /** Ended At */
+            ended_at?: string | null;
+            /**
+             * Model
+             * @description the model most messages name
+             */
+            model?: string | null;
+            /** Models */
+            models?: components["schemas"]["ModelCount"][];
+            usage?: components["schemas"]["TokenUsage"];
+            /** Tools */
+            tools?: components["schemas"]["ToolCount"][];
+            /** Bash */
+            bash?: components["schemas"]["ProgramCount"][];
+            /** User Turns */
+            user_turns?: string[];
+            /** Commands */
+            commands?: string[];
+            /** Repeated Commands */
+            repeated_commands?: components["schemas"]["CommandCount"][];
+            /** Errors */
+            errors?: components["schemas"]["ErrorText"][];
+            /**
+             * Files Read
+             * @default 0
+             */
+            files_read: number;
+            /** Files Edited */
+            files_edited?: string[];
+        };
+        /** Sign */
+        Sign: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "assert_removed" | "test_removed" | "skip_added" | "threshold_changed" | "verify_changed" | "ci_changed" | "lint_config_changed" | "lint_suppressed" | "eq_overridden" | "exit_in_test" | "protected_path" | "diff_unreadable" | "expected_changed" | "golden_changed" | "assert_caught";
+            /** Path */
+            path: string;
+            /** Line */
+            line?: number | null;
+            /**
+             * Text
+             * @default
+             */
+            text: string;
         };
         /** SignedIn */
         SignedIn: {
@@ -5687,6 +7994,96 @@ export interface components {
             /** Pending Bytes */
             pending_bytes: number;
         };
+        /** TelegramLink */
+        TelegramLink: {
+            /**
+             * Url
+             * @description https://t.me/<bot>?start=<code>: open it in Telegram and press Start
+             */
+            url: string;
+            /** Bot */
+            bot: string;
+            /**
+             * Expires At
+             * Format: date-time
+             * @description 10 minutes after it was made; it links one chat, once
+             */
+            expires_at: string;
+        };
+        /** TelegramStatus */
+        TelegramStatus: {
+            /**
+             * Configured
+             * @description the hub has a bot: its admin set the EVO_HUB_TELEGRAM_* variables
+             */
+            configured: boolean;
+            /**
+             * Linked
+             * @description a chat of the member's is linked
+             */
+            linked: boolean;
+            /**
+             * Enabled
+             * @description the hub sends to it; false once Telegram refused it, as when the bot is blocked
+             */
+            enabled: boolean;
+            /**
+             * Username
+             * @description the Telegram username of the linked account, when it has one
+             */
+            username: string | null;
+            /** Linked At */
+            linked_at: string | null;
+            /**
+             * Disabled Reason
+             * @description why the hub stopped sending to the chat
+             */
+            disabled_reason: string | null;
+            /**
+             * Bot
+             * @description the bot's username, once the hub asked Telegram for it
+             */
+            bot: string | null;
+        };
+        /** TelegramUnlinked */
+        TelegramUnlinked: {
+            /** Login */
+            login: string;
+            /**
+             * Unlinked
+             * @description a chat was linked to the member, and is not any more
+             */
+            unlinked: boolean;
+        };
+        /** TelegramWebhook */
+        TelegramWebhook: {
+            /**
+             * Configured
+             * @description the EVO_HUB_TELEGRAM_* variables are set
+             */
+            configured: boolean;
+            /**
+             * Bot
+             * @description the bot's username
+             */
+            bot: string | null;
+            /**
+             * Expected Url
+             * @description where the webhook should point: the hub's public URL
+             */
+            expected_url: string | null;
+            /**
+             * Url
+             * @description where Telegram sends updates now; empty when no webhook is set
+             */
+            url: string | null;
+            /** Pending Update Count */
+            pending_update_count: number | null;
+            /** Last Error Date */
+            last_error_date: string | null;
+            /** Last Error Message */
+            last_error_message: string | null;
+        };
         /** TokenCounts */
         TokenCounts: {
             /**
@@ -5773,6 +8170,29 @@ export interface components {
             /** Current */
             current: boolean;
         };
+        /** TokenUsage */
+        TokenUsage: {
+            /**
+             * Input Tokens
+             * @default 0
+             */
+            input_tokens: number;
+            /**
+             * Output Tokens
+             * @default 0
+             */
+            output_tokens: number;
+            /**
+             * Cache Creation Input Tokens
+             * @default 0
+             */
+            cache_creation_input_tokens: number;
+            /**
+             * Cache Read Input Tokens
+             * @default 0
+             */
+            cache_read_input_tokens: number;
+        };
         /** ToolCall */
         ToolCall: {
             /** Arguments */
@@ -5784,6 +8204,21 @@ export interface components {
              * @default claude-code@anthropic
              */
             sink: string;
+        };
+        /** ToolCount */
+        ToolCount: {
+            /**
+             * Gen Ai.Tool.Name
+             * @description the tool, as the runtime names it
+             */
+            "gen_ai.tool.name": string;
+            /** Calls */
+            calls: number;
+            /**
+             * Errors
+             * @description calls whose result was an error
+             */
+            errors: number;
         };
         /** ToolResult */
         ToolResult: {
@@ -5797,6 +8232,26 @@ export interface components {
             } | null;
             /** Iserror */
             isError?: boolean | null;
+        };
+        /** ToolStat */
+        ToolStat: {
+            /**
+             * Gen Ai.Tool.Name
+             * @description the tool, as the module of tool_stats names it
+             */
+            "gen_ai.tool.name": string;
+            /** Calls */
+            calls: number;
+            /**
+             * Errors
+             * @description calls an update of which said failed
+             */
+            errors: number;
+            /**
+             * Duration Ms
+             * @description from each call to its result, added up; calls that never ended count none
+             */
+            duration_ms: number;
         };
         /** UploadItem */
         UploadItem: {
@@ -5909,6 +8364,34 @@ export interface components {
             /** Context */
             ctx?: Record<string, never>;
         };
+        /** VerdictIn */
+        VerdictIn: {
+            /**
+             * Verdict
+             * @description the Judge agent's; null when it gave none
+             */
+            verdict: ("pass" | "fail") | null;
+            /** Reasons */
+            reasons?: string | null;
+            /**
+             * Head Sha
+             * @description the commit the worktree was at
+             */
+            head_sha: string;
+            /** Base Sha */
+            base_sha?: string | null;
+            /** Verify */
+            verify?: components["schemas"]["VerifyResult"][];
+            /** Hidden */
+            hidden?: components["schemas"]["HiddenResult"][];
+            /** Signs */
+            signs?: components["schemas"]["Sign"][];
+            /**
+             * Paths
+             * @description every path the diff judged touches; they give the proposal its tier again, which only raises it
+             */
+            paths?: string[];
+        };
         /** VerifyResult */
         VerifyResult: {
             /** Command */
@@ -5943,6 +8426,19 @@ export interface components {
              */
             published_at: string;
         };
+        /** WebhookAnswer */
+        WebhookAnswer: {
+            /**
+             * Ok
+             * @default true
+             */
+            ok: boolean;
+            /**
+             * Outcome
+             * @description what the hub did with the update
+             */
+            outcome: string;
+        };
         /** WhoAmI */
         WhoAmI: {
             /** Login */
@@ -5952,6 +8448,24 @@ export interface components {
             token: components["schemas"]["TokenInfo"];
             /** Grants */
             grants: components["schemas"]["GrantInfo"][];
+        };
+        /** Window */
+        Window: {
+            /**
+             * Start
+             * @description HH:MM, 24 hours, in the window's zone
+             */
+            start: string;
+            /**
+             * End
+             * @description when it is not after start, the window runs past midnight
+             */
+            end: string;
+            /**
+             * Timezone
+             * @description an IANA time zone, such as Asia/Ho_Chi_Minh
+             */
+            timezone: string;
         };
         /** Worker */
         Worker: {
@@ -12099,6 +14613,134 @@ export interface operations {
             };
         };
     };
+    run_tool_stats_v1_projects__project__runs__run_id__tool_stats_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunToolStats"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    project_tool_stats_v1_projects__project__tool_stats_get: {
+        parameters: {
+            query?: {
+                /** @description the last days in UTC to count, today included */
+                days?: number;
+                /** @description the runs of this plan */
+                plan_id?: string | null;
+                /** @description the runs of this runtime */
+                runtime?: ("claude-code" | "opencode" | "codex") | null;
+            };
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectToolStats"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_decisions_v1_projects__project__decisions_get: {
         parameters: {
             query?: {
@@ -12375,7 +15017,7 @@ export interface operations {
             query?: {
                 /** @description only the notifications not read yet */
                 unread?: boolean;
-                kind?: ("decision" | "notice") | null;
+                kind?: ("decision" | "notice" | "proposal") | null;
                 /** @description only this project's */
                 project?: string | null;
                 limit?: number;
@@ -12583,6 +15225,1933 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    show_charter_v1_projects__project__curator_charter_get: {
+        parameters: {
+            query?: {
+                /** @description an older revision */
+                revision?: number | null;
+            };
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Charter"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    write_charter_v1_projects__project__curator_charter_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CharterWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Charter"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    charter_revisions_v1_projects__project__curator_charter_revisions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CharterRevision"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    status_v1_projects__project__curator_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CuratorStatus"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    nights_v1_projects__project__curator_nights_get: {
+        parameters: {
+            query?: {
+                /** @description the latest nights */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NightList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    pause_v1_projects__project__curator_pause_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CuratorStatus"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resume_v1_projects__project__curator_resume_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CuratorStatus"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_findings_v1_projects__project__curator_findings_get: {
+        parameters: {
+            query?: {
+                /** @description of this review run */
+                run_id?: number | null;
+                lens?: ("tool_errors" | "environment" | "corrections" | "failed_runs" | "tech_debt" | "code_health" | "docs_drift" | "skills_memory" | "cost" | "security" | "product_goals") | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FindingList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    show_finding_v1_projects__project__curator_findings__finding_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                finding_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Finding"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_proposals_v1_projects__project__curator_proposals_get: {
+        parameters: {
+            query?: {
+                /** @description any of these; repeat it */
+                state?: ("open" | "accepted" | "rejected" | "deferred" | "dropped")[];
+                /** @description any of these tiers; repeat it */
+                tier?: number[];
+                lens?: ("tool_errors" | "environment" | "corrections" | "failed_runs" | "tech_debt" | "code_health" | "docs_drift" | "skills_memory" | "cost" | "security" | "product_goals") | null;
+                /** @description of this review run */
+                run_id?: number | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProposalList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    show_proposal_v1_projects__project__curator_proposals__proposal_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                proposal_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Proposal"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    answer_proposal_v1_projects__project__curator_proposals__proposal_id__answer_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                proposal_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProposalAnswer"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Proposal"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    show_figures_v1_projects__project__curator_figures_get: {
+        parameters: {
+            query?: {
+                /** @description the night, the local date its window opened; the latest */
+                night?: string | null;
+            };
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NightFiguresView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    record_finding_v1_worker_runs__run_id__findings_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FindingIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Finding"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    record_proposal_v1_worker_runs__run_id__proposals_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProposalIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Proposal"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_changes_v1_projects__project__curator_changes_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChangeList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    protection_v1_projects__project__curator_protection_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Protection"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    check_protection_v1_projects__project__curator_protection__repo__check_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                repo: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RepoCheck"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    judge_inputs_v1_worker_runs__run_id__judge_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description the judge run's own key, which its claim handed the daemon; the worker token alone is refused */
+                "X-Evo-Judge-Key"?: string | null;
+            };
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JudgeInputs"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    record_verdict_v1_worker_runs__run_id__verdict_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description the judge run's own key, which its claim handed the daemon; the worker token alone is refused */
+                "X-Evo-Judge-Key"?: string | null;
+            };
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VerdictIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Change"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    show_ledger_v1_projects__project__curator_proposals__proposal_id__ledger_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                proposal_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Ledger"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    show_digest_v1_projects__project__digests__session_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                /** @description the id Claude Code gives the session, as its transcript names it */
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DigestRecord"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_digest_v1_projects__project__digests__session_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the id Claude Code gives the session, as its transcript names it */
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SessionDigest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DigestSummary"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_digests_v1_projects__project__digests_get: {
+        parameters: {
+            query?: {
+                /** @description pushed at or after this time */
+                since?: string | null;
+                /** @description pushed by this member */
+                login?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DigestList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    show_v1_me_telegram_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramStatus"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    unlink_v1_me_telegram_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramStatus"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    make_link_v1_me_telegram_link_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramLink"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    webhook_v1_telegram_webhook_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookAnswer"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    show_webhook_v1_admin_telegram_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramWebhook"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    set_webhook_v1_admin_telegram_webhook_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramWebhook"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    unlink_member_v1_admin_users__login__telegram_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                login: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramUnlinked"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

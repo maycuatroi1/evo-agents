@@ -12,6 +12,10 @@ the hub numbers in the run's log, and then records in the plan what the move mea
 
 A plan run has no step of its own: its worker reports each step (POST /v1/worker/runs/{id}/steps/{key}, which writes
 it through ``write_step``), and the hub keeps each report as a ``system`` event of the run with a ``step_report`` key.
+A review run has no plan: its moves write none, and its end hands the owner the tier 2 proposals the day's Inbox has
+room for, and the notice ``run_failed`` when it failed (``proposals.review_ended``). A judge run writes no step either:
+its end moves its change of the Curator on, and a failure sends the notice ``run_failed`` (``changes.judge_ended``);
+and a plan run of a plan the Curator made moves its change on as it ends (``changes.builder_ended``).
 Its moves write no step, except that a plan run that ends ``failed`` or ``cancelled`` sets back to ``pending``, with
 the same notes, the steps that it, or an earlier attempt or run it went on from, reported and that are still
 ``in_progress``. A plan run that ends ``done`` writes nothing.
@@ -47,6 +51,7 @@ PARKED_FOR is cancelled and its open decisions expire. A revoked worker also fai
 queued, since no other worker may claim them, and cancels the runs parked on it, since only it has their session; an
 expired lease does not, since the worker may come back. ``prune_run_events`` (hub.prune_run_events, daily)
 deletes the events of runs that ended more than EVO_HUB_RUN_LOG_DAYS ago, and the sealed GitHub tokens past their end.
+A move to an end state writes the run's tool figures (``tool_stats.record``), which stay after its events go.
 
 A run that leaves the held states (it ends, waits in review, or is parked) gives back its credentials: ``move_run``
 marks its leases revoked in the same transaction (``credentials.end_leases``), and the GitHub tokens among them are
@@ -63,7 +68,7 @@ from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 from fastapi import HTTPException
-from sqlalchemy import Integer, case, cast, delete, extract, func, insert, null, or_, select, update
+from sqlalchemy import Integer, case, cast, delete, exists, extract, func, insert, null, or_, select, update
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
@@ -224,6 +229,10 @@ async def move_run(
     if seq is None:
         raise runs.TransitionRefused(f"run {run_id} is no longer {old}: it moved meanwhile")
     await _insert_event(conn, run_id, seq, "state", {"from": old, "to": new, "actor": actor, "reason": reason})
+    if new in runs.TERMINAL_STATES:
+        from evo_agents.hub.server import tool_stats  # it reads runs through the routes that import this module
+
+        await tool_stats.record(conn, run_id)
     if new in runs.TERMINAL_STATES and decisions is not None:
         d = tables.decisions
         await conn.execute(update(d).values(state=decisions).where(d.c.run_id == run_id, d.c.state == "open"))
@@ -244,7 +253,7 @@ class RunStep:
 
     run_id: int
     project: str
-    plan_id: str
+    plan_id: str | None  # None for a review run, which works on no plan
     step_key: str | None  # None for a plan run, whose writes name the step they are for
     dispatcher_id: int
     dispatcher: str
@@ -478,9 +487,22 @@ async def record_move(
     """Record in the plan what moving run ``run_id`` from ``old`` to ``new`` means for its step, or for the steps a
     plan run left in progress."""
     found = await run_step(conn, run_id)
+    if found.kind == "review":
+        from evo_agents.hub.server import proposals  # it reads runs through the routes that import this module
+
+        await proposals.review_ended(conn, found, old, new, reason=reason)
+        return None
+    if found.kind == "judge":
+        from evo_agents.hub.server import changes  # it reads runs through the routes that import this module
+
+        await changes.judge_ended(conn, found, old, new, reason=reason)
+        return None
     if found.kind == "plan":
         revision = await release_plan_steps(conn, found, new, reason=reason, token_id=token_id)
         await notify_plan_run_end(conn, found, old, new, reason=reason)
+        from evo_agents.hub.server import changes  # it reads runs through the routes that import this module
+
+        await changes.builder_ended(conn, found, old, new, reason=reason)
         return revision
     updates_for = step_updates(found, old, new, reason)
     if updates_for is None:
@@ -609,7 +631,8 @@ async def notify_plan_run_end(conn: AsyncConnection, found: RunStep, old: str, n
 def _next_attempt(run_id: int):
     """The next attempt of run ``run_id``: the same step, ``parent_run_id`` pointing back, the attempt one higher and
     the runtime the dispatch asked for. It keeps the dispatch's credential, so a worker that takes runs dispatched
-    from the web only takes the retry of one too, and never the retry of a run dispatched with a token."""
+    from the web only takes the retry of one too, and never the retry of a run dispatched with a token; and the
+    schedule, night and caps of a run the night shift queued."""
     r = tables.runs
     copied = (
         "kind",
@@ -630,6 +653,9 @@ def _next_attempt(run_id: int):
         "branch",
         "repos",
         "model",
+        "schedule_id",
+        "schedule_night",
+        "budget",
     )
     source = select(
         *(r.c[name] for name in copied),
@@ -875,18 +901,23 @@ async def recover_runs(
 
 
 async def prune_run_events(engine: AsyncEngine, days: int) -> dict:
-    """Delete the events of runs that ended more than ``days`` days ago, and drop the sealed values of the GitHub
-    tokens leased to runs that are past their end (``credentials.drop_expired``)."""
-    from evo_agents.hub.server import credentials
+    """Delete the events of runs that ended more than ``days`` days ago, once their tool figures are written from them
+    (``tool_stats.record``, for a run that ended before the hub wrote them at the end), and drop the sealed values of
+    the GitHub tokens leased to runs that are past their end (``credentials.drop_expired``)."""
+    from evo_agents.hub.server import credentials, tool_stats
 
     r, e = tables.runs, tables.run_events
-    prune = delete(e).where(
-        e.c.run_id == r.c.id,
-        r.c.finished_at.is_not(None),
-        r.c.finished_at < func.now() - timedelta(days=days),
-    )
+    old = [r.c.finished_at.is_not(None), r.c.finished_at < func.now() - timedelta(days=days)]
+    logged = select(r.c.id).where(*old, exists().where(e.c.run_id == r.c.id)).order_by(r.c.id)
+    prune = delete(e).where(e.c.run_id == r.c.id, *old)
     async with engine.begin() as conn:
+        counted = (await conn.execute(logged)).scalars().all()
+        for run_id in counted:
+            await tool_stats.record(conn, run_id)
         deleted = (await conn.execute(prune)).rowcount
         dropped = await credentials.drop_expired(conn)
-    log.info("run events pruned", extra={"deleted": deleted, "days": days, "tokens_dropped": dropped})
+    log.info(
+        "run events pruned",
+        extra={"deleted": deleted, "runs": len(counted), "days": days, "tokens_dropped": dropped},
+    )
     return {"deleted": deleted, "days": days, "tokens_dropped": dropped}

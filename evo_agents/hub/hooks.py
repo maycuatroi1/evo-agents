@@ -11,12 +11,20 @@ SessionStart (startup, resume, clear) does in one process what three commands do
 It prints one line for the session as ``additionalContext``: the hub, the project, the memories pulled, what the export
 did and the skills to sync. Stop does ``hub memory push`` for the directory, so another machine sees a new memory at its
 next session. Stop runs after every turn, so it asks the hub only when a memory file differs from what the last sync
-left in memory-state.json (``MemorySync.pending``): a turn that wrote no memory sends no request.
+left in memory-state.json (``MemorySync.pending``): a turn that wrote no memory sends no memory.
+
+Stop also sends the hub the digest of the session (``evo_agents.hub.digest``) once its transcript holds 6 messages,
+and again after each turn that changed it: built from the transcript Claude Code names in the hook's input, redacted on
+this machine (``evo_agents.hub.redact``, with this machine's hub token among the values replaced), and put to the
+project the session's directory belongs to, as memory push decides it (``MemorySync.project_of``, asked once per
+session). A directory of no project sends no digest. A digest the hub did not take waits in digest-state.json, and the
+next Stop that reaches the hub pushes it, with up to DIGEST_BACKLOG digests of other sessions that waited; a digest the
+hub refused is tried again after REFUSAL_COOLDOWN.
 
 The agent of a run on an evo-agents worker has EVO_RUN_ID in its environment (``evo_agents.worker.run``). There
 SessionStart exports no plan copy, since the worker commits what the run leaves in its worktree and a run's commits hold
-only its own work, Stop pushes no memory, since nobody watches the unattended session, and the line of SessionStart
-says both and why.
+only its own work, Stop pushes no memory, since nobody watches the unattended session, and no digest, since the run's
+trace is on the hub already; the line of SessionStart says so and why.
 
 A hook never fails the session and never holds it long:
 
@@ -27,13 +35,13 @@ A hook never fails the session and never holds it long:
   platform has it), keeping what it finished: files are written atomically and memory-state.json records what was
   synced, so the next run does the rest. Claude Code's own hook timeout (hooks.json) is the last guard;
 - a hub that did not answer is not asked again by Stop for COOLDOWN seconds (when it failed is kept in
-  ~/.evo/hub/hook-state.json): the memory files wait on this machine and a later Stop pushes them;
+  ~/.evo/hub/hook-state.json): the memory files and the digests wait on this machine and a later Stop pushes them;
 - one memory sync runs at a time per machine: a hook waits LOCK_WAIT seconds for another, then leaves its work to the
   next run.
 
 Stop prints nothing when all went well. A conflict, which a person has to merge, is a ``systemMessage`` for the person;
-any other failure is one line on stderr, which Claude Code shows in its transcript view, so a hub that is down does not
-interrupt every turn. Standard library and PyYAML only, like the rest of the client.
+any other failure is one line on stderr, the first one met, which Claude Code shows in its transcript view, so a hub
+that is down does not interrupt every turn. Standard library and PyYAML only, like the rest of the client.
 """
 
 from __future__ import annotations
@@ -47,7 +55,9 @@ import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
+from urllib.parse import quote
 
+from evo_agents.hub import digest
 from evo_agents.hub.client import (
     FILE_MODE,
     Hub,
@@ -70,6 +80,8 @@ MAX_LINE = 600  # characters of the line a hook prints
 LOGIN_HINT = "`evo-agents hub login --url URL` signs in"
 PULLED = ("pulled", "updated", "restored")  # what a pull wrote here
 RUN_VARIABLE = "EVO_RUN_ID"  # set by the worker daemon for the agent of a run
+DIGEST_BACKLOG = 3  # digests of other sessions one Stop pushes at most, after its own
+REFUSAL_COOLDOWN = 600.0  # seconds before a digest the hub refused is tried again
 
 
 class OutOfTime(BaseException):
@@ -131,7 +143,8 @@ def run_note(run_id: int) -> str:
     """What SessionStart says in a worker run, and why."""
     return (
         f"run #{run_id} on an evo-agents worker: no plan copy exported (the worker commits what the run leaves, and a "
-        "run's commits hold only its own work) and no memory pushed at Stop (nobody reviews this unattended session)"
+        "run's commits hold only its own work) and no memory pushed at Stop (nobody reviews this unattended session), "
+        "nor a session digest (the run's trace is on the hub)"
     )
 
 
@@ -359,17 +372,19 @@ def session_start(payload: dict, line: Line) -> None:
 
 @dataclass
 class Outcome:
-    """What Stop says: ``loud`` for the person (systemMessage), ``quiet`` for the transcript view (stderr)."""
+    """What Stop says: ``loud`` for the person (systemMessage), ``quiet`` for the transcript view (stderr), the first
+    of each that was met."""
 
     loud: str | None = None
     quiet: str | None = None
 
+    def say(self, quiet: str) -> None:
+        self.quiet = self.quiet or quiet
+
 
 def stop(payload: dict, outcome: Outcome) -> None:
-    """The Stop hook's work: push the memory files of the session's directory that changed; nothing in a worker run,
-    whose SessionStart line says so."""
-    from evo_agents.hub.memory import MemorySync
-
+    """The Stop hook's work: push the memory files of the session's directory that changed, then the session's digest;
+    nothing in a worker run, whose SessionStart line says so."""
     if worker_run() is not None:
         return
     try:
@@ -381,18 +396,25 @@ def stop(payload: dict, outcome: Outcome) -> None:
         return
     hub = Hub(credentials.url, credentials.token, timeout=REQUEST_TIMEOUT)
     where = session_dir(payload)
-    sync = MemorySync(hub, credentials.login, lock_timeout=LOCK_WAIT)
+    state = HookState(hub_dir())
+    _push_memories(hub, credentials.login, where, state, outcome)
+    _push_digests(hub, credentials.login, payload, where, state, outcome)
+
+
+def _push_memories(hub: Hub, login: str, where: Path, state: HookState, outcome: Outcome) -> None:
+    from evo_agents.hub.memory import MemorySync
+
+    sync = MemorySync(hub, login, lock_timeout=LOCK_WAIT)
     try:
         if not sync.pending(where):
             return
     except HubError as exc:  # memory-state.json cannot be read
-        outcome.quiet = f"evo-hub: memories not pushed: {exc}"
+        outcome.say(f"evo-hub: memories not pushed: {exc}")
         return
-    state = HookState(hub_dir())
     since = state.down_since(hub.url, _now())
     if since is not None:
         at = time.strftime("%H:%M", time.localtime(since))
-        outcome.quiet = (
+        outcome.say(
             f"evo-hub: {hub.url} did not answer at {at}, so memories were not pushed; they stay here for a later Stop"
         )
         return
@@ -400,10 +422,10 @@ def stop(payload: dict, outcome: Outcome) -> None:
         report = sync.push(where)
     except Unreachable as exc:
         state.mark_down(hub.url, _now())
-        outcome.quiet = f"evo-hub: memories not pushed, the hub did not answer ({exc}); they stay here for a later Stop"
+        outcome.say(f"evo-hub: memories not pushed, the hub did not answer ({exc}); they stay here for a later Stop")
         return
     except HubError as exc:
-        outcome.quiet = f"evo-hub: memories not pushed: {exc}"
+        outcome.say(f"evo-hub: memories not pushed: {exc}")
         return
     state.mark_up(hub.url)
     if report.conflicts:
@@ -412,10 +434,86 @@ def stop(payload: dict, outcome: Outcome) -> None:
             "under the name and this machine's next to it as a .conflict- copy, to merge and delete"
         )
     if report.errors:
-        outcome.quiet = (
+        outcome.say(
             f"evo-hub: {_plural(len(report.errors), 'memory problem')} in the push (`evo-agents hub memory push` "
             "names them)"
         )
+
+
+def _absolute(value) -> str | None:
+    return value if isinstance(value, str) and value and os.path.isabs(value) else None
+
+
+def _push_digests(hub: Hub, login: str, payload: dict, where: Path, state: HookState, outcome: Outcome) -> None:
+    """Push the digest of this session when it changed, then, if the hub took it, the digests that waited."""
+    session_id, transcript = payload.get("session_id"), _absolute(payload.get("transcript_path"))
+    if not isinstance(session_id, str) or not digest.SESSION_ID.fullmatch(session_id) or transcript is None:
+        return
+    digests = digest.DigestState(hub_dir(), hub.url)
+    cwd = _absolute(payload.get("cwd")) or str(where)
+    if not _push_digest(hub, login, digests, state, outcome, session_id, Path(transcript), cwd, where):
+        return
+    for other, entry in digests.waiting(session_id, DIGEST_BACKLOG):
+        given = Path(entry["transcript"])
+        at = Path(entry["dir"]) if _absolute(entry.get("dir")) else where
+        if not _push_digest(hub, login, digests, state, outcome, other, given, entry.get("cwd") or str(at), at):
+            return
+
+
+def _push_digest(
+    hub: Hub,
+    login: str,
+    digests: digest.DigestState,
+    state: HookState,
+    outcome: Outcome,
+    session_id: str,
+    transcript: Path,
+    cwd: str,
+    where: Path,
+) -> bool:
+    """Push the digest of session ``session_id`` unless the hub has it already; False when the hub did not answer or
+    refused this machine's token, so nothing more is sent in this Stop."""
+    from evo_agents.hub.memory import MemorySync
+    from evo_agents.hub.redact import redact_data
+
+    entry = digests.get(session_id) or {}
+    built = digest.build(transcript, cwd)
+    if built is None or entry.get("sha256") == digest.fingerprint(built):
+        if entry.get("pending"):  # nothing new to send: the transcript is gone, or the hub has this one
+            digests.put(session_id, {**entry, "pending": False})
+        return True
+    held = {key: entry[key] for key in ("project", "resolved", "sha256", "refused_at") if key in entry}
+    record = {**held, "transcript": str(transcript), "cwd": cwd, "dir": str(where), "pending": True}
+    now = _now()
+    if state.down_since(hub.url, now) is not None:
+        digests.put(session_id, record)
+        return False
+    refused_at = record.get("refused_at")
+    if isinstance(refused_at, (int, float)) and 0 <= now - refused_at < REFUSAL_COOLDOWN:
+        digests.put(session_id, record)
+        return True
+    try:
+        if not record.get("resolved"):
+            record["project"] = MemorySync(hub, login, lock_timeout=LOCK_WAIT).project_of(where)
+            record["resolved"] = True
+        if record["project"] is None:  # a directory of no project: its digest stays on this machine
+            digests.put(session_id, {**record, "pending": False})
+            return True
+        path = f"/v1/projects/{quote(record['project'], safe='')}/digests/{session_id}"
+        hub.call("PUT", path, redact_data(built, [hub.token]))
+    except Unreachable as exc:
+        state.mark_down(hub.url, _now())
+        digests.put(session_id, record)
+        outcome.say(f"evo-hub: session digest not pushed, the hub did not answer ({exc}); a later Stop pushes it")
+        return False
+    except HubError as exc:
+        digests.put(session_id, {**record, "refused_at": now})
+        outcome.say(f"evo-hub: session digest not pushed: {exc}")
+        return exc.status != 401
+    state.mark_up(hub.url)
+    record.pop("refused_at", None)
+    digests.put(session_id, {**record, "sha256": digest.fingerprint(built), "pending": False})
+    return True
 
 
 # Commands
@@ -470,5 +568,7 @@ def register_hooks(hsub) -> None:
         "sync, and print one line for the session",
     ).set_defaults(func=cmd_hook_session_start)
     ksub.add_parser(
-        "stop", help="push the memory files of the session's directory that changed since the last sync"
+        "stop",
+        help="push the memory files of the session's directory that changed since the last sync, and the session's "
+        "digest",
     ).set_defaults(func=cmd_hook_stop)

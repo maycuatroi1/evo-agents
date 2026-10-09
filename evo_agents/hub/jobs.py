@@ -35,6 +35,12 @@ PRUNE_KG_ARTIFACTS = "hub.prune_kg_artifacts"  # hourly: artifacts of graphs old
 RECOVER_RUNS = "hub.recover_runs"  # every minute: runs whose lease ran out become lost and are queued again
 PRUNE_RUN_EVENTS = "hub.prune_run_events"  # daily: events of runs that ended more than EVO_HUB_RUN_LOG_DAYS ago
 DELIVER_NOTIFICATIONS = "hub.deliver_notifications"  # every minute: notifications due on their channels, retried
+FIRE_SCHEDULES = "hub.fire_schedules"  # every minute: the night shift of each charter queues its next run
+PRUNE_DIGESTS = "hub.prune_digests"  # daily: session digests not pushed again for 90 days
+CURATOR_COLLECT = "curator.collect"  # every minute: each charter's night figures and its review run, in its window
+CURATOR_BRIEF = "curator.brief"  # every minute: the morning brief of each charter, at its brief_at
+CURATOR_CHANGES = "curator.changes"  # every minute: the Curator's pull requests opened, judged, merged or left open
+CURATOR_OUTCOMES = "curator.outcomes"  # every 10 minutes: the figures of merged changes counted again, outcome_days on
 
 
 def kg_lock(project: str) -> str:

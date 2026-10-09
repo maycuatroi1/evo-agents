@@ -7,7 +7,12 @@ environment as ``env_var``; kind ``git`` answers git's credential requests for o
 ``username`` and the value as password. A secret is bound to projects (and, optionally, to workers); a run of one of
 those projects, on one of those workers, gets a lease of it. The hub also leases tokens it makes itself: provider
 ``github-app`` is an installation token of the hub's GitHub App, for the run's repos on github.com only, that lives an
-hour and is revoked when the run ends.
+hour and is revoked when the run ends; a review run's and a judge run's read only (``github_permissions``). A run of
+the Curator (a review run, a judge run, or a plan run of a plan the Curator made, ``evo_agents.hub.judge``) gets its
+token from a second App, the Curator's own (EVO_HUB_CURATOR_APP_ID and EVO_HUB_CURATOR_APP_PRIVATE_KEY), which the
+rulesets of the repos keep off their default branches, and never from the first: without the Curator's App it gets
+none. On other forges it gets the one git secret the charter names (``git_secret``) and the env secrets the charter
+lists (``env_secrets``), none of the owner's others.
 
 Origins are compared in one form: ``normalize_origin`` turns ``git@host:path``, ``ssh://git@host/path`` and
 ``https://host/path.git`` into ``https://host/path``, so a secret whose url_prefix is https also covers a repo whose
@@ -15,7 +20,8 @@ origin is SSH, which the daemon rewrites to https for the run's git only.
 
 A worker's ``dispatch_from`` says who may hand it runs: ``any`` credential of its owner, or a ``web`` session only, so
 a machine token that leaked cannot put work onto it. A run's ``dispatched_via`` is the credential it was dispatched
-with (``dispatch_credential``); a worker set to ``web`` claims only runs whose dispatched_via is ``web``.
+with (``dispatch_credential``), or ``schedule`` for a run the night shift queued; a worker set to ``web`` claims only
+runs whose dispatched_via is ``web``.
 """
 
 from __future__ import annotations
@@ -35,6 +41,16 @@ DENIED_ENV_PREFIXES = ("EVO_", "GIT_", "LD_", "DYLD_", "PYTHON")
 
 GITHUB_HOST = "github.com"
 GITHUB_PERMISSIONS = {"contents": "write", "metadata": "read"}  # all an installation token of a run may do
+GITHUB_READ_PERMISSIONS = {"contents": "read", "metadata": "read"}  # all the token of a review run may do: read
+READ_ONLY_KINDS = ("review", "judge")  # the kinds of run whose GitHub token reads only (runs.RUN_KINDS)
+
+
+def github_permissions(run_kind: str) -> dict[str, str]:
+    """What the GitHub token of a run of ``run_kind`` may do: read only for a review run and a judge run, which push
+    nothing."""
+    return dict(GITHUB_READ_PERMISSIONS if run_kind in READ_ONLY_KINDS else GITHUB_PERMISSIONS)
+
+
 GITHUB_TOKEN_REFRESH_SECONDS = 600  # the daemon asks again for a GitHub token with less than this left
 
 MAX_SECRET_BYTES = 16384  # one secret's value, as UTF-8
@@ -47,9 +63,10 @@ _SCP_ORIGIN = re.compile(r"^(?:[^@/\s]+@)?([^:/\s]+):(?!//)(.+)$")
 
 # Who may hand a worker its runs (workers.dispatch_from): runs dispatched with any credential of its owner, or only
 # those dispatched from a web session. And the credential a run was dispatched with (runs.dispatched_via): a web
-# session, or a token (a machine token, or the worker token of a run's agent on /mcp).
+# session, a token (a machine token, or the worker token of a run's agent on /mcp), or none, the night shift of a
+# project's charter acting for its owner (schema 0012, evo_agents.hub.curator).
 DISPATCH_FROM = ("any", "web")
-DISPATCHED_VIA = ("machine", "web")
+DISPATCHED_VIA = ("machine", "web", "schedule")
 
 
 def dispatch_credential(credential_kind: str) -> str:

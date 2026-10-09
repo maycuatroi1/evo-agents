@@ -203,6 +203,18 @@ def insert_token(db: pg.Database, login: str, kind: str = "machine") -> str:
     return token
 
 
+def web_session(db: pg.Database, login: str) -> tuple[str, int]:
+    """A live web session of ``login`` written straight into the database: its cookie value and its id."""
+    from sqlalchemy import select
+
+    from evo_agents.hub import tables
+    from evo_agents.hub.server.security import WEB, hash_token
+
+    token = insert_token(db, login, kind=WEB)
+    found = sql(db, select(tables.tokens.c.id).where(tables.tokens.c.token_hash == hash_token(token)))
+    return token, found[0][0]
+
+
 def table_dump(db: pg.Database) -> str:
     """Every row of every hub table as JSON text, to search for a value that must not be stored."""
     from sqlalchemy import Text, cast, column, func, select, table

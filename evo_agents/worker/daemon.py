@@ -21,6 +21,8 @@
   of runs that ended more than 7 days ago are removed.
 - Each run takes its leases from the hub after the claim and gives them back when it ends here (``credentials``),
   also when the daemon stops.
+- After each heartbeat, each run of the Curator the hub still holds for this worker is watched (``run.Run.watch``):
+  a file of the charter's protected paths changed in its worktrees, or its time or cost cap passed, stops it.
 - A previous daemon that died with an agent started (``runs/<run>/agent.json``, ``orphans``) left it running. The
   first heartbeat that gets an answer also names those runs, and before any claim the daemon stops the process group
   of each one's agent, SIGTERM then SIGKILL. The run's worktree and its evo-run branch are removed when the hub no
@@ -261,6 +263,7 @@ class Daemon:
             "free_slots": min(self.free_slots, 8),
             "runs": held + asked,
             "agent_version": __version__,
+            "run_kinds": list(runs.RUN_KINDS),  # every kind run_class has a class for
         }
         try:
             answer = await self.hub.heartbeat(body)
@@ -309,6 +312,8 @@ class Daemon:
                     run.request_handback()
                 if control.get("terminal_open"):
                     run.open_terminal()
+                if run.curator is not None:  # the watchdog of the Curator's runs, after each heartbeat
+                    run._spawn(run.watch())
         return True
 
     # Claims
@@ -505,7 +510,7 @@ class Daemon:
     async def _remove_worktree(self, record: dict) -> None:
         """Remove a run's worktree and its evo-run branch; for a plan run, each repo's, then the run's directory. A
         plan run whose worktrees a resumed run took over names none of them any more."""
-        if record.get("kind") == "plan":
+        if record.get("kind") in ("plan", "review", "judge"):
             for item in record.get("repos") or []:
                 if isinstance(item, dict):
                     await self._remove_one(item)

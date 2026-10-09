@@ -54,6 +54,18 @@ RUN_TABLES = frozenset({"workers", "worker_projects", "worker_pairings", "runs",
 NOTIFICATION_TABLES = frozenset({"decisions", "notifications", "notification_channels", "notification_deliveries"})
 # Tables of migration 0011: the secrets members keep, where they are bound, and the leases runs get of them
 CREDENTIAL_TABLES = frozenset({"secrets", "secret_bindings", "credential_leases"})
+# Tables of migration 0012: the charters of projects at every revision, and the schedules they make
+CURATOR_TABLES = frozenset({"charters", "schedules"})
+# Tables of migration 0013: the digests of Claude Code sessions, and the tool figures of runs
+DIGEST_TABLES = frozenset({"session_digests", "run_tool_stats"})
+# Tables of migration 0014: the night's figures of a project, and what its review run finds and proposes
+REVIEW_TABLES = frozenset({"curator_figures", "findings", "proposals"})
+# Tables of migration 0015: the Curator's morning briefs, and the codes that link a Telegram chat
+BRIEF_TABLES = frozenset({"curator_briefs", "telegram_links"})
+# migration 0017: the Curator's changes, and the repos whose ruleset the hub checked
+CHANGE_TABLES = frozenset({"curator_changes", "curator_repo_checks"})
+# migration 0018: the Curator's ledger
+LEDGER_TABLES = frozenset({"curator_ledger"})
 HUB_ENV = ("EVO_HUB_",)  # variables a test environment must not inherit from the shell running pytest
 AWAY = "_away"  # suffix of the copy a database waits in while set_reachable keeps it from its clients
 END_EVERY = 0.05  # seconds between two rounds of ending the connections to a database being copied

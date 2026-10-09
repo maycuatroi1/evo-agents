@@ -60,6 +60,11 @@ function useCrumbs(): Crumb[] {
         });
         // A run's diff is the one page below an item that names itself in the trail.
         if (section.segment === "runs" && parts[4] === "diff" && !parts[5]) crumbs.push({ label: t("runDiff") });
+        // The Curator's pages name themselves (Proposals, Charter), and a proposal is #id below Proposals.
+        if (section.segment === "curator" && (parts[3] === "proposals" || parts[3] === "charter")) {
+          crumbs[2].label = t(parts[3] === "proposals" ? "curatorProposals" : "curatorCharter");
+          if (parts[4]) crumbs.push({ label: itemLabel(parts[4]) });
+        }
       }
     }
     return crumbs;
