@@ -63,6 +63,10 @@ drops it when Playwright stops. Ports default to 3324 (web), 18324 (API) and 183
 `E2E_WEB_PORT`, `E2E_API_PORT` and `E2E_STACK_PORT` to run two checkouts at once, and set
 `E2E_REUSE_SERVERS=1` to reuse servers that are already up. The API log is `e2e/.stack/hub-serve.log`.
 
+CI runs the specs in four shards (`pnpm exec playwright test --shard=<i>/4`), each with a Postgres, a stack and a
+production build of its own; a failed shard uploads its report as `playwright-report-<i>`. A pull request that
+touches neither `web/` nor the Python package skips them, and one that touches only `web/` skips the Python tests.
+
 `E2E_SCREENSHOT_DIR=<dir>` turns on `e2e/screenshots.spec.ts`, `e2e/memories-skills-screenshots.spec.ts`,
 `e2e/kg-screenshots.spec.ts`, `e2e/runs-screenshots.spec.ts` and `e2e/insights-screenshots.spec.ts`, which write review
 screenshots of the shell, the memories, skills, knowledge graph, runs and Insights pages (a run's page and its diff, the
