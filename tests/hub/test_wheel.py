@@ -55,6 +55,7 @@ def build_isolation() -> list[str]:
     return ["--no-build-isolation"] if int(version("setuptools").split(".")[0]) >= 77 else []
 
 
+@pytest.mark.empty_db
 def test_the_wheel_ships_the_migrations_and_migrates_from_its_own_venv(hub_db, tmp_path):
     source = tmp_path / "source"  # a copy, so the build leaves no build/ or egg-info in the checkout
     source.mkdir()

@@ -192,6 +192,7 @@ async def with_queue(db, func):
 # The schema
 
 
+@pytest.mark.empty_db
 def test_hub_migrate_creates_the_procrastinate_tables_and_a_second_run_changes_nothing(hub_db):
     env = pg.clean_env(EVO_HUB_DSN=hub_db.dsn)
     first = pg.cli(["hub", "migrate"], env=env)

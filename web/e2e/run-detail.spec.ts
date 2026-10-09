@@ -117,6 +117,9 @@ test("the runs list leads to the run, whose log shows a new line within 2 second
   // The Trace is the first tab: the agent's words, the tool call with its command, the moves and the verify line.
   const trace = traceOf(page);
   await expect(main(page).getByTestId("run-tab-trace")).toHaveAttribute("aria-selected", "true");
+  // The tab bar scrolls sideways only: nothing in it reaches below it, so no vertical scrollbar shows beside the tabs.
+  const tabList = main(page).getByRole("tablist", { name: "Session view" });
+  expect(await tabList.evaluate((list) => list.scrollHeight - list.clientHeight)).toBe(0);
   await expect(trace).toHaveAttribute("role", "log");
   await expect(trace).toHaveAttribute("aria-live", "polite");
   await expect(main(page).getByTestId("log-status")).toHaveAttribute("data-status", "live");
