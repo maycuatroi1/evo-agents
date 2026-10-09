@@ -8,7 +8,8 @@
   seconds at a time, and runs each run it gets (``run.Run``) next to the others.
 - The answer's ``takeover`` and ``handback`` hand a run's agent to a person in tmux and back (``interactive``), and
   ``terminal_open`` connects the worker's end of the run's web terminal. For a plan run, ``inbox`` also wakes a run
-  that waits for its owner's answer, and ``park`` lets go of a run the hub parked, its session and worktrees kept.
+  that waits for its owner's answer, and ``park`` lets go of a run the hub parked, its session and worktrees kept;
+  the same goes for an author run waiting for its owner's reply, and ``finish`` ends one whose chat the owner ended.
 - A call the hub does not answer is sent again with a backoff from 1 to 60 seconds; runs go on meanwhile.
 - SIGTERM or SIGINT: no new claim; the runs held go on until they end or reach their timeout, then the daemon exits
   0. A second signal stops the agents now and fails their runs.
@@ -310,6 +311,8 @@ class Daemon:
                     run.request_takeover()
                 if control.get("handback"):
                     run.request_handback()
+                if control.get("finish"):
+                    run.request_finish()
                 if control.get("terminal_open"):
                     run.open_terminal()
                 if run.curator is not None:  # the watchdog of the Curator's runs, after each heartbeat

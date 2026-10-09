@@ -7,7 +7,12 @@ pushes nothing, even what the agent committed; the agent has create-exec-plan as
 .claude/skills of its directory, without any sync of skills on the machine; a claim without that skill, or a bundle
 other than the one the hub recorded, fails the run before the agent starts; the agent runs in EVO_RUN_KIND author; the
 daemon says it runs author runs; Claude Code's question tools are off for an author run; the commands of a plan run's
-and of a review run's agent refuse inside one."""
+and of a review run's agent refuse inside one.
+
+And those step 3 names: the last message of each turn of the agent goes to the run's chat, and the run then waits for
+its owner's reply, which starts the next turn in the same session; a run its owner ended the chat of ends done once the
+turn is over, without waiting; a parked author run keeps its directory, worktrees and skills, and the reply resumes it
+in them and in its session."""
 
 from __future__ import annotations
 
@@ -22,6 +27,7 @@ from tests.worker.test_plan_runs import (
     WAIT,
     git,
     machine,  # noqa: F401 (a fixture)
+    wait_for,
     with_daemon,
 )
 
@@ -37,6 +43,13 @@ def skill_bundle(tmp_path: Path, text: str = SKILL_TEXT) -> bytes:
     (directory / "references").mkdir()
     (directory / "references" / "author.md").write_text("Questions go in the chat.\n", encoding="utf-8")
     return skills.pack(directory).data
+
+
+async def ended_by_owner(hub, run_id: int) -> str:
+    """Wait until the author run waits for its owner's reply, end its chat as its owner, and wait for its end."""
+    assert await hub.wait_state(run_id, "waiting", "done", "failed", timeout=WAIT) == "waiting", hub.texts(run_id)
+    hub.finish(run_id)
+    return await hub.wait_state(run_id, "done", "failed", timeout=WAIT)
 
 
 def test_an_author_run_reads_detached_worktrees_with_the_hubs_skill_and_pushes_nothing(machine):  # noqa: F811
@@ -60,8 +73,8 @@ def test_an_author_run_reads_detached_worktrees_with_the_hubs_skill_and_pushes_n
     async def body(hub, daemon):
         ticket = hub.add_skill(author.AUTHOR_SKILL, 3, skill_bundle(machine.tmp))
         run_id = hub.queue_author_run(["alpha", "beta", "gamma"], [ticket], prompt="Write the plan of a wait helper.")
-        assert await hub.wait_state(run_id, "done", "failed", timeout=WAIT) == "done", hub.texts(run_id)
-        assert hub.moves(run_id) == ["leased", "running", "verifying", "done"]
+        assert await ended_by_owner(hub, run_id) == "done", hub.texts(run_id)
+        assert hub.moves(run_id) == ["leased", "running", "waiting", "running", "verifying", "done"]
         assert hub.runs[run_id]["summary"] == "Wrote plan wait-helper."
         assert "author" in hub.last_heartbeat["run_kinds"]
 
@@ -193,7 +206,7 @@ def test_an_author_runs_agent_puts_its_plan_reads_it_back_and_revises_it_with_it
     async def body(hub, daemon):
         ticket = hub.add_skill(author.AUTHOR_SKILL, 3, skill_bundle(machine.tmp))
         run_id = hub.queue_author_run(["alpha"], [ticket])
-        assert await hub.wait_state(run_id, "done", "failed", timeout=WAIT) == "done", hub.texts(run_id)
+        assert await ended_by_owner(hub, run_id) == "done", hub.texts(run_id)
         first, created, refused, read, revision = [e for e in machine.commands() if e["run"] == run_id]
         assert first["exit"] == 1 and f"author run {run_id} has put no plan on the hub yet" in first["stderr"]
         assert created["exit"] == 0, created
@@ -238,7 +251,7 @@ def test_an_author_run_of_a_plan_puts_that_plan_only_and_put_refuses_outside_an_
         hub.put_plan(yaml.safe_load(PLAN_YAML))
         ticket = hub.add_skill(author.AUTHOR_SKILL, 3, skill_bundle(machine.tmp))
         run_id = hub.queue_author_run(["alpha"], [ticket], plan_id="wait-helper")
-        assert await hub.wait_state(run_id, "done", "failed", timeout=WAIT) == "done", hub.texts(run_id)
+        assert await ended_by_owner(hub, run_id) == "done", hub.texts(run_id)
         (other,) = [e for e in machine.commands() if e["run"] == run_id]
         assert other["exit"] == 1 and f"author run {run_id} writes plan wait-helper" in other["stderr"]
         assert hub.plans["wait-helper"]["revision"] == 1 and "other-plan" not in hub.plans
@@ -250,3 +263,132 @@ def test_an_author_run_of_a_plan_puts_that_plan_only_and_put_refuses_outside_an_
         assert [item["run_id"] for item in hub.plan_puts] == [run_id]
 
     with_daemon(machine, body)
+
+
+# The chat (step 3)
+
+
+def test_an_author_run_posts_each_turn_to_its_chat_and_the_reply_starts_the_next_turn_in_its_session(
+    machine,  # noqa: F811
+):
+    machine.scenarios(
+        {
+            "author": [{"say": "Which repos should the wait helper cover?"}],
+            "author/2": [
+                {"result": {"summary": "Wrote plan wait-helper for alpha."}},
+                {"say": "Put plan wait-helper at revision 1. I decided the order of the steps myself."},
+            ],
+        }
+    )
+
+    async def body(hub, daemon):
+        ticket = hub.add_skill(author.AUTHOR_SKILL, 3, skill_bundle(machine.tmp))
+        run_id = hub.queue_author_run(["alpha"], [ticket])
+        assert await hub.wait_state(run_id, "waiting", "done", "failed", timeout=WAIT) == "waiting", hub.texts(run_id)
+        assert hub.runs[run_id]["chat"] == ["Which repos should the wait helper cover?"]
+        waits = "the run waits for its owner's reply in the chat"
+        await wait_for(lambda: any(waits in text for text in hub.texts(run_id)), "the note that the run waits")
+        assert len(machine.starts()) == 1, "no turn starts before the reply"
+
+        assert hub.reply(run_id, "Only alpha, please.") == run_id
+        await wait_for(lambda: len(hub.runs[run_id].get("chat", [])) == 2, "the second message of the agent")
+        assert await ended_by_owner(hub, run_id) == "done", hub.texts(run_id)
+        assert hub.runs[run_id]["chat"][1].startswith("Put plan wait-helper at revision 1.")
+        assert hub.moves(run_id) == [
+            "leased",
+            "running",
+            "waiting",
+            "running",
+            "waiting",
+            "running",
+            "verifying",
+            "done",
+        ]
+        assert hub.runs[run_id]["summary"] == "Wrote plan wait-helper for alpha."
+        assert all(message["delivered"] for message in hub.inbox[run_id])
+
+        first, second = machine.starts()
+        assert second["resume"] == first["session"], "the reply goes on in the agent's session"
+        assert second["prompt"].startswith(author.REPLY_PROMPT) and second["prompt"].endswith("Only alpha, please.")
+
+    with_daemon(machine, body)
+
+
+def test_an_author_run_whose_owner_ended_the_chat_during_a_turn_ends_done_without_waiting_for_a_reply(
+    machine,  # noqa: F811
+):
+    go_on = machine.tmp / "go-on"
+    machine.scenarios({"author": [{"wait_for": str(go_on)}, {"say": "Put plan wait-helper."}]})
+
+    async def body(hub, daemon):
+        ticket = hub.add_skill(author.AUTHOR_SKILL, 3, skill_bundle(machine.tmp))
+        run_id = hub.queue_author_run(["alpha"], [ticket])
+        assert await hub.wait_state(run_id, "running", "failed", timeout=WAIT) == "running", hub.texts(run_id)
+        hub.finish(run_id)
+        await wait_for(lambda: daemon.runs[run_id].finish_asked.is_set(), "the heartbeat to say finish")
+        go_on.write_text("go", encoding="utf-8")
+        assert await hub.wait_state(run_id, "done", "failed", timeout=WAIT) == "done", hub.texts(run_id)
+        assert hub.moves(run_id) == ["leased", "running", "verifying", "done"]
+        assert hub.runs[run_id]["chat"] == ["Put plan wait-helper."], "the last message still reaches the chat"
+        assert hub.runs[run_id]["summary"] == "Put plan wait-helper.", "without a result, the last message"
+        assert any("the owner ended the chat: the run ends done" in text for text in hub.texts(run_id))
+
+    with_daemon(machine, body)
+
+
+def test_a_parked_author_run_keeps_its_directory_and_the_reply_resumes_it_there_in_its_session(machine):  # noqa: F811
+    machine.scenarios(
+        {
+            "author": [
+                {"write": {".evo-run/draft.yaml": "id: wait-helper\n"}},
+                {"say": "Should the helper poll or subscribe?"},
+            ],
+            "author/resume": [
+                {"sh": "pwd -P; echo $EVO_RUN_ID; cat .evo-run/draft.yaml; ls .claude/skills"},
+                {"say": "Polling it is: plan wait-helper is on the hub."},
+            ],
+        }
+    )
+    found = {}
+
+    async def body(hub, daemon):
+        ticket = hub.add_skill(author.AUTHOR_SKILL, 3, skill_bundle(machine.tmp))
+        parked = hub.queue_author_run(["alpha", "beta"], [ticket])
+        assert await hub.wait_state(parked, "waiting", "done", "failed", timeout=WAIT) == "waiting", hub.texts(parked)
+        hub.park(parked)  # nobody replied within a day
+        await wait_for(lambda: parked not in daemon.runs, "the parked run to free its slot")
+        record = machine.home.load_run(parked)
+        assert record["state"] == "parked" and record["session_id"] and record["parked_at"]
+        assert any("The hub parked the run" in text for text in hub.texts(parked))
+        assert (machine.directory(parked) / ".claude" / "skills" / author.AUTHOR_SKILL / "SKILL.md").exists()
+
+        resumed = hub.reply(parked, "Poll every second.")  # the reply to a parked run queues the run that resumes it
+        assert resumed != parked and hub.runs[resumed]["spec"]["resume_of_run_id"] == parked
+        assert await ended_by_owner(hub, resumed) == "done", hub.texts(resumed)
+        found.update(parked=parked, resumed=resumed, hub=hub, session=record["session_id"])
+
+    with_daemon(machine, body)
+    parked, resumed, hub = found["parked"], found["resumed"], found["hub"]
+    directory = machine.directory(parked)
+    first, again = machine.starts()
+    assert first["session"] == found["session"] and again["resume"] == found["session"], "the same session"
+    assert again["run"] == resumed and Path(again["cwd"]) == directory, "the same directory and worktrees"
+    assert again["prompt"].startswith(author.RESUME_PROMPT.format(id=resumed))
+    assert again["prompt"].endswith("Poll every second.")
+    (looked,) = [entry for entry in machine.commands() if entry["run"] == resumed]
+    assert looked["stdout"].splitlines() == [
+        str(directory.resolve()),
+        str(resumed),
+        "id: wait-helper",
+        "create-exec-plan",
+    ]
+    assert hub.runs[parked]["chat"] == ["Should the helper poll or subscribe?"]
+    assert hub.runs[resumed]["chat"] == ["Polling it is: plan wait-helper is on the hub."]
+    assert hub.moves(resumed) == ["leased", "running", "waiting", "running", "verifying", "done"]
+    assert hub.runs[parked]["state"] == "done" and hub.runs[parked]["resumed_by"] == resumed
+    old, new = machine.home.load_run(parked), machine.home.load_run(resumed)
+    assert old["resumed_by"] == resumed and old["dir"] is None and old["repos"] == [], "the cleanup leaves them alone"
+    assert new["dir"] == str(directory) and [item["repo"] for item in new["repos"]] == ["alpha", "beta"]
+    texts = hub.texts(resumed)
+    assert any(f"Goes on from parked run #{parked}" in text for text in texts)
+    assert not any("Skills from the hub" in text for text in texts), "the parked run's skills stay; none is fetched"

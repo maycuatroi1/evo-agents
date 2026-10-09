@@ -25,10 +25,12 @@ waits: ``RunStreams`` wakes it when EVENTS_CHANNEL is notified with its run's id
 connection (``listen``), and it looks again every STREAM_POLL_SECONDS besides.
 
 The owner sends the run's agent a message (POST .../runs/{id}/messages, at most MAX_MESSAGE_BYTES of UTF-8) while the
-run is queued or held, from a web session when the run is on a worker set to take runs dispatched from the web only
-(``runs.web_only_steering``: a token gets 403 then): it waits in run_inbox, the log gets a ``user_message`` event, and
-the heartbeat counts it until the worker takes it with POST /v1/worker/runs/{id}/inbox, which also acknowledges the
-ones handed to the agent.
+run is queued or held (an author run also while parked: the message is its owner's reply in the chat, and the hub
+queues the run that resumes it on the same worker, whose inbox takes it, as an answer to a parked plan run's decision
+does; and not once the owner ended its chat), from a web session when the run is on a worker set to take runs
+dispatched from the web only (``runs.web_only_steering``: a token gets 403 then): it waits in run_inbox, the log gets
+a ``user_message`` event, and the heartbeat counts it until the worker takes it with POST
+/v1/worker/runs/{id}/inbox, which also acknowledges the ones handed to the agent.
 The owner's answer to a decision of the run comes the same way (``decisions``), as a message that names the decision
 (``decision_id``); acknowledging it records when the answer reached the agent (``decisions.delivered_at``).
 
@@ -199,7 +201,9 @@ class MessageIn(BaseModel):
 
 class Message(BaseModel):
     id: int
-    run_id: int
+    run_id: int = Field(
+        description="the run whose inbox took it: the run messaged, or the run that resumes a parked author run"
+    )
     seq: int = Field(description="its user_message event in the run's log")
     text: str
     sent_by: str
@@ -582,6 +586,13 @@ async def stream(
 # The owner's messages
 
 
+async def _chat_ended(conn: AsyncConnection, run_id: int) -> bool:
+    """Whether the owner ended the chat of author run ``run_id``, which its worker holds still."""
+    r = tables.runs
+    query = select(r.c.finish_requested_at.is_not(None)).where(r.c.id == run_id)
+    return bool((await conn.execute(query)).scalar_one())
+
+
 async def write_user_message(conn: AsyncConnection, run_id: int, body: dict) -> int:
     """Write the ``user_message`` event of a message of the owner into the log of run ``run_id``, whose row the
     caller holds locked, and wake its streams; its seq."""
@@ -598,33 +609,54 @@ async def write_user_message(conn: AsyncConnection, run_id: int, body: dict) -> 
     responses={**REFUSALS, 413: {"model": ErrorBody}},
 )
 async def send_message(request: Request, project: ProjectName, run_id: RunId, body: MessageIn, user: CurrentUser):
-    """Leave a message for the run's agent in its inbox, which the worker hands to the agent."""
+    """Leave a message for the run's agent in its inbox, which the worker hands to the agent; a reply to a parked
+    author run queues the run that resumes it, whose inbox takes the message."""
     async with request.app.state.engine.begin() as conn:
         access, row = await _owned_run(conn, user, project, run_id, "send a message to")
-        state, plan_id, key = row[2], row[3], row[4]
-        if state not in runs.MESSAGE_STATES:
+        state, plan_id, key, kind = row[2], row[3], row[4], row[11]
+        resumes = kind == "author" and state == "parked"
+        if state not in runs.MESSAGE_STATES and not resumes:
+            if kind == "author":
+                raise HTTPException(
+                    409, f"run {run_id} is {state}: its chat is over; dispatch a new author run to go on"
+                )
             raise HTTPException(
                 409, f"run {run_id} is {state}: a message goes to a run that is queued or held by its worker"
+            )
+        if kind == "author" and await _chat_ended(conn, run_id):
+            raise HTTPException(
+                409, f"run {run_id}: you ended its chat, and the run ends done once its worker hears of it"
             )
         await web_only_steering(conn, user, run_id, "send its agent a message", "send it from the web", "sent")
         _, last_seq = await _progress(conn, run_id)
         if last_seq >= runs.MAX_RUN_EVENTS:
             message = RUN_FULL.format(id=run_id, count=last_seq, limit=runs.MAX_RUN_EVENTS)
             return error_response(request, 413, message, detail=[{"limit": "events_per_run"}])
+        inbox_run = run_id
+        if resumes:
+            from evo_agents.hub.server.decisions import resume_parked  # it reads runs through this module
+
+            inbox_run = await resume_parked(conn, user, run_id, f"as {user.login} replied in its chat")
         inbox = tables.run_inbox
         left = (
             insert(inbox)
-            .values(run_id=run_id, sent_by=user.user_id, body=body.text)
+            .values(run_id=inbox_run, sent_by=user.user_id, body=body.text)
             .returning(inbox.c.id, inbox.c.created_at)
         )
         message_id, created_at = (await conn.execute(left)).one()
-        seq = await write_user_message(conn, run_id, {"text": body.text, "from": user.login, "message_id": message_id})
+        event = {"text": body.text, "from": user.login, "message_id": message_id}
+        seq = await write_user_message(conn, inbox_run, event)
         target = f"{_run_target(project, plan_id, key, run_id)} message:{message_id}"
+        if inbox_run != run_id:
+            target += f" resumed as run:{inbox_run}"
         await _audit_run(conn, user, access, audit.RUN_MESSAGE, target)
-    log.info("run message sent", extra={"run_id": run_id, "message_id": message_id, "login": user.login})
+    log.info(
+        "run message sent",
+        extra={"run_id": run_id, "inbox_run": inbox_run, "message_id": message_id, "login": user.login},
+    )
     return Message(
         id=message_id,
-        run_id=run_id,
+        run_id=inbox_run,
         seq=seq,
         text=body.text,
         sent_by=user.login,

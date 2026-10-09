@@ -2686,7 +2686,8 @@
       "plan_finished": "Plan đã xong",
       "run_failed": "Run thất bại",
       "curator_brief": "Bản tin sáng",
-      "curator_paused": "Ca đêm tạm dừng"
+      "curator_paused": "Ca đêm tạm dừng",
+      "author_waiting": "Run soạn plan chờ bạn trả lời"
     },
     "item": {
       "unread": "Chưa đọc",

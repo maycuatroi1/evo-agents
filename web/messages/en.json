@@ -2686,7 +2686,8 @@
       "plan_finished": "Plan finished",
       "run_failed": "Run failed",
       "curator_brief": "Morning brief",
-      "curator_paused": "Night shift paused"
+      "curator_paused": "Night shift paused",
+      "author_waiting": "An author run waits for your reply"
     },
     "item": {
       "unread": "Unread",

@@ -189,6 +189,10 @@ class WorkerHub:
         """An author run's plan put on the hub: ``body`` holds ``body`` and, to replace the plan, ``if_revision``."""
         return await self.call("PUT", f"/v1/worker/runs/{int(run_id)}/plan", body)
 
+    async def chat(self, run_id: int, text: str) -> dict:
+        """The last message of a turn of an author run's agent, kept as a message of the run's chat."""
+        return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/chat", {"text": text})
+
     async def step(self, run_id: int, key: str, body: dict) -> dict:
         return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/steps/{quote(str(key), safe='')}", body)
 
