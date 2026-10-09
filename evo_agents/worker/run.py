@@ -1459,7 +1459,7 @@ class Run:
             )
         else:
             self.note(
-                f"{self.branch} on origin is at {commit_sha[:12]} already: nothing to push.",
+                f"{self.branch} on origin has {commit_sha[:12]} already: nothing to push.",
                 commit_sha=commit_sha,
             )
         self.record.update({"commit_sha": commit_sha, "pushed": True})
@@ -2010,7 +2010,7 @@ class PlanRun(Run):
                 if pushed.default:
                     await self._notice(name, pushed)
             else:
-                self.note(f"{workspace.branch} of {name} on origin is at {pushed.head[:12]} already: nothing to push.")
+                self.note(f"{workspace.branch} of {name} on origin has {pushed.head[:12]} already: nothing to push.")
         return total
 
     async def _push_for_agent(self, name: str, title: str | None) -> dict:
