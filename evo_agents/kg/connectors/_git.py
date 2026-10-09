@@ -3,9 +3,12 @@ the ref, independent of whatever is half-edited in the working tree."""
 
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 from pathlib import Path
+
+FETCH_TIMEOUT = 120.0
 
 
 class GitError(RuntimeError):
@@ -26,6 +29,24 @@ def is_repo(path: Path) -> bool:
         return True
     except (GitError, FileNotFoundError, NotADirectoryError):
         return False
+
+
+def fetch(repo: Path, remote: str, branch: str, timeout: float = FETCH_TIMEOUT) -> None:
+    """Update ``<remote>/<branch>`` from the remote, never prompting for credentials."""
+    refspec = f"+refs/heads/{branch}:refs/remotes/{remote}/{branch}"
+    env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(repo), "fetch", "--quiet", "--no-tags", remote, refspec],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            env=env,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise GitError(f"git fetch {remote} {branch} timed out after {timeout:g}s in {repo}") from exc
+    if result.returncode != 0:
+        raise GitError(f"git fetch {remote} {branch} failed in {repo}: {result.stderr.strip()}")
 
 
 def resolve(repo: Path, ref: str) -> str:

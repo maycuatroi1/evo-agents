@@ -211,6 +211,7 @@ def db(hub_db):
         yield conn, ids | seed_credentials(conn, ids, ids["held"])
 
 
+@pytest.mark.empty_db
 def test_0011_goes_up_with_workers_and_runs_down_to_the_schema_of_0010_and_up_again(hub_db):
     move_to(hub_db, "0010")
     at_0010 = query(hub_db, SNAPSHOT)

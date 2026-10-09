@@ -149,6 +149,7 @@ def get(url: str, timeout: float = 2.0):
         return response.status, json.loads(response.read())
 
 
+@pytest.mark.empty_db
 def test_serve_logs_json_without_the_dsn_password(hub_db, tmp_path):
     port = pg.free_port()
     env = pg.clean_env(EVO_HUB_DSN=hub_db.dsn, EVO_HUB_DATA_DIR=str(tmp_path / "cache"))

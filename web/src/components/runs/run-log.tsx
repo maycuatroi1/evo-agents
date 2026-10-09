@@ -517,7 +517,8 @@ export function RunLogCard({
           {tTabs("heading", { id: runId })}
         </h2>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b px-4">
-          <TabsList aria-label={tTabs("label")} className="w-auto max-w-full overflow-x-auto border-b-0">
+          {/* The bar's border is the line here: the list reaches 1 px into it, so the underline covers it. */}
+          <TabsList aria-label={tTabs("label")} className="-mb-px w-auto max-w-full self-end shadow-none">
             {chat ? (
               <TabsTrigger value="chat" className="h-12" data-testid="run-tab-chat">
                 <MessageCircle aria-hidden="true" />

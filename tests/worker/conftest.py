@@ -8,7 +8,7 @@ import os
 import pytest
 
 from evo_agents.worker.logs import QUIET
-from tests.hub.conftest import github, hub_db, pg_server, s3  # noqa: F401
+from tests.hub.conftest import github, hub_db, hub_template, pg_server, s3  # noqa: F401
 
 
 @pytest.fixture(autouse=True)
