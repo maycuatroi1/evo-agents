@@ -9,9 +9,13 @@
   A hub that does not answer is asked again with the backoff, TAKE_TRIES times in all; one that refuses, an older hub
   without the route among them, leaves the run to the machine's own credentials, as before 0.5.0.
 - Each repo whose origin no lease covers gets a ``system`` event, "no leased credential for {origin}: {reason}; git
-  uses this machine's own", so a laptop whose owner set no secret runs as it always did.
+  uses this machine's own", so a laptop whose owner set no secret runs as it always did. A repo the hub names in
+  ``missing`` is one of them even when a lease's url_prefix covers its origin: ``github-app:<owner>`` is for
+  ``https://github.com/<owner>``, but GitHub made its token for the repos the hub leased it for alone, and git handed
+  that token for another repo of the owner gets 403.
 - ``git_config`` is what the run's git (``gitops.git``, ``fetch``, ``push``) and its agent get as ``GIT_CONFIG_*``
-  entries, for each origin of the run's checkouts that a git lease covers, keyed by its https URL (``https_url``):
+  entries, for each origin of the run's checkouts that a git lease covers, those of the repos in ``missing`` left out,
+  keyed by its https URL (``https_url``):
   ``credential.<url>.helper`` empty, which empties the list of helpers for that URL and so drops the machine's own
   (osxkeychain, ``gh auth git-credential``, a store), then this run's helper (``!evo-agents worker git-credential --run
   N``, by absolute path), ``credential.<url>.useHttpPath`` true, so the helper learns which repo git asks for, and for
@@ -28,7 +32,10 @@
   values in its script.
 - ``with_renewal`` runs a push of the daemon; when it fails to authenticate (``gitops.GitAuthError``) on an origin a
   lease of the run covers, ``renew`` gives the run's leases back and takes them again, which makes new GitHub tokens
-  even when the ones held had time left, and the push runs once more. A second failure is the run's failure.
+  even when the ones held had time left, and the push runs once more. A second failure is the run's failure. A push
+  of a repo in ``missing`` that fails to authenticate with the machine's own credentials takes the leases again the
+  same way, since its project may list it by now, and runs once more only when a lease covers the repo then;
+  otherwise the failure names the hub's reason ("the hub leased no credential for {repo}: {reason}").
 - ``release`` gives the leases back (``DELETE`` on the same route) when the run ends, is parked or the daemon stops,
   closes the socket and forgets the values, in the redaction too.
 
@@ -391,18 +398,7 @@ class RunCredentials:
                 self.note(f"The hub leased this run no credentials ({exc}): git uses this machine's own.")
                 return
         self._keep(answer)
-        self._hand_over(origins)
-        if self.leases:
-            try:
-                await self._open()
-            except OSError as exc:
-                log.error("the run's credential socket did not open", extra={"run_id": self.run_id, "error": str(exc)})
-                self.note(
-                    f"The run's credential socket did not open ({type(exc).__name__}: {exc}): git uses this machine's "
-                    "own credentials."
-                )
-                self.agent_vars = {k: v for k, v in self.agent_vars.items() if not k.startswith("GIT_CONFIG_")}
-                self.git_vars = {}
+        await self._serve_leases()
         self._note_missing(origins)
         log.info(
             "credentials taken",
@@ -430,8 +426,38 @@ class RunCredentials:
         missing = answer.get("missing") if isinstance(answer, dict) else None
         self.missing = [item for item in missing or [] if isinstance(item, dict)]
 
+    @property
+    def unleased(self) -> dict[str, str]:
+        """The repos the hub leased nothing for, each with its reason. A lease whose url_prefix covers one of them
+        does not answer for it: a GitHub token is ``github-app:<owner>`` for the whole owner, but GitHub made it for
+        the repos the hub leased it for alone."""
+        found: dict[str, str] = {}
+        for item in self.missing:
+            repo = str(item.get("repo") or "")
+            if repo:
+                found.setdefault(repo, str(item.get("reason") or "the hub gave no reason"))
+        return found
+
+    async def _serve_leases(self) -> None:
+        """Hand the leases held to the run's git and agent (``_hand_over``) and answer for them on the run's socket,
+        opened when it is not yet; a socket that does not open leaves git to the machine's own credentials."""
+        self._hand_over(self.origins)
+        if not self.leases or self._server is not None:
+            return
+        try:
+            await self._open()
+        except OSError as exc:
+            log.error("the run's credential socket did not open", extra={"run_id": self.run_id, "error": str(exc)})
+            self.note(
+                f"The run's credential socket did not open ({type(exc).__name__}: {exc}): git uses this machine's "
+                "own credentials."
+            )
+            self.agent_vars = {k: v for k, v in self.agent_vars.items() if not k.startswith("GIT_CONFIG_")}
+            self.git_vars = {}
+
     def _hand_over(self, origins: Mapping[str, Sequence[str]]) -> None:
-        """What the run's agent and git get: the env leases, and the git configuration of the leased origins."""
+        """What the run's agent and git get: the env leases, and the git configuration of the leased origins, those of
+        the repos the hub leased nothing for left out (``unleased``)."""
         env: dict[str, str] = {}
         for lease in self.leases:
             if lease.kind != "env" or not lease.env_var:
@@ -442,7 +468,8 @@ class RunCredentials:
                 continue
             if lease.env_var not in env:
                 env[lease.env_var] = lease.value
-        urls = [url for found in origins.values() for url in found]
+        unleased = self.unleased
+        urls = [url for repo, found in origins.items() if repo not in unleased for url in found]
         config = config_env(self.base_env, git_config(urls, self.leases, helper_command(self.run_id)))
         self.agent_vars = {**env, **config}
         self.git_vars = {**config, HOME_VARIABLE: str(self.home.root)} if config else {}
@@ -550,7 +577,10 @@ class RunCredentials:
             log.info("credentials asked for again", extra={"run_id": self.run_id, "leases": len(self.leases)})
 
     def covers(self, repo: str) -> bool:
-        """Whether a git lease of the run covers the origin of ``repo``'s checkout."""
+        """Whether a git lease of the run covers the origin of ``repo``'s checkout, a repo the hub leased nothing for
+        never (``unleased``)."""
+        if repo in self.unleased:
+            return False
         return any(covering(self.leases, url) is not None for url in self.origins.get(repo) or ())
 
     async def renew(self) -> bool:
@@ -568,26 +598,43 @@ class RunCredentials:
                 log.warning("the run's leases were not taken again", extra={"run_id": self.run_id, "error": str(exc)})
                 return False
             self._keep(answer)
+            await self._serve_leases()
             log.info("credentials taken again", extra={"run_id": self.run_id, "leases": len(self.leases)})
             return True
 
     async def with_renewal(self, repo: str, push: Callable[[], Awaitable[T]]) -> T:
         """``push()``, a push of the daemon to ``repo``'s origin; when the origin refuses its credential and a lease of
-        the run covers it, the leases are taken again once (``renew``) and ``push()`` runs once more. Its second
+        the run covers it, the leases are taken again once (``renew``) and ``push()`` runs once more. A repo the hub
+        leased nothing for (``unleased``) is asked for again the same way, since its project may list it by now, and
+        pushed once more only when a lease covers it then; otherwise its failure names the hub's reason. The second
         failure, like any other, goes to the caller."""
         from evo_agents.worker.gitops import GitAuthError
 
         try:
             return await push()
         except GitAuthError as exc:
-            if not self.covers(repo):
+            leased = self.covers(repo)
+            reason = self.unleased.get(repo)
+            if not leased and reason is None:
                 raise
-            self.note(
-                f"The push of {repo} failed to authenticate ({exc}): the run gives its leases back, takes them again "
-                "and pushes once more.",
-                repo=repo,
-            )
-            if not await self.renew():
+            if leased:
+                self.note(
+                    f"The push of {repo} failed to authenticate ({exc}): the run gives its leases back, takes them "
+                    "again and pushes once more.",
+                    repo=repo,
+                )
+            else:
+                self.note(
+                    f"The push of {repo} failed to authenticate with this machine's credentials ({exc}), and the hub "
+                    f"leased none for it ({reason}): the run asks the hub again and pushes once more if a lease "
+                    "covers it now.",
+                    repo=repo,
+                )
+            renewed = await self.renew()
+            if not leased and not (renewed and self.covers(repo)):
+                reason = self.unleased.get(repo, reason)
+                raise GitAuthError(f"{exc}; the hub leased no credential for {repo}: {reason}") from None
+            if not renewed:
                 raise
         return await push()
 
