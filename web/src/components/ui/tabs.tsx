@@ -6,7 +6,9 @@ import { Tabs as TabsPrimitive } from "radix-ui"
 
 /**
  * Radix tabs in the hub's line style: a row of tabs over a border, the selected one marked by an underline in
- * `primary` and a heavier weight, so its state is not told by colour alone. Arrow keys move between tabs.
+ * `primary` and a heavier weight, so its state is not told by colour alone. Arrow keys move between tabs. The list
+ * scrolls sideways, which makes it clip vertically too, so its line is an inset shadow the underline paints over and no
+ * tab reaches below the list: a tab pulled 1 px down overflowed it and showed a vertical scrollbar.
  */
 function Tabs({
   className,
@@ -28,7 +30,7 @@ function TabsList({
   return (
     <TabsPrimitive.List
       data-slot="tabs-list"
-      className={cn("flex w-full items-end gap-1 overflow-x-auto border-b", className)}
+      className={cn("flex w-full items-end gap-1 overflow-x-auto shadow-[inset_0_-1px_0_var(--color-border)]", className)}
       {...props}
     />
   )
@@ -42,7 +44,7 @@ function TabsTrigger({
     <TabsPrimitive.Trigger
       data-slot="tabs-trigger"
       className={cn(
-        "-mb-px inline-flex h-10 shrink-0 max-md:h-11 cursor-pointer items-center gap-1.5 border-b-2 border-transparent px-3 text-sm whitespace-nowrap text-muted-foreground transition-colors outline-none",
+        "inline-flex h-10 shrink-0 max-md:h-11 cursor-pointer items-center gap-1.5 border-b-2 border-transparent px-3 text-sm whitespace-nowrap text-muted-foreground transition-colors outline-none",
         "hover:text-foreground focus-visible:rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
         "disabled:pointer-events-none disabled:opacity-50 data-[state=active]:border-brand data-[state=active]:font-medium data-[state=active]:text-foreground",
         "[&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
