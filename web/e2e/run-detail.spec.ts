@@ -787,8 +787,17 @@ test("past 500 items the Trace renders only the ones in view, follows the newest
   const trace = traceOf(page);
   await expect(trace).toHaveAttribute("data-virtual", "true", { timeout: 15_000 });
   expect(await trace.getByTestId("trace-item").count()).toBeLessThan(120);
+  // Under reduced motion, as the tests run, nothing that declares no transition gets one: the list's height and its
+  // rows' places reach layout at once, so the end the trace scrolls to is the one the measured rows make.
+  expect(await trace.locator("ol").first().evaluate((list) => getComputedStyle(list).transitionProperty)).toBe("none");
   await trace.scrollIntoViewIfNeeded();
   await expect(trace.getByTestId("trace-tool-arg").filter({ hasText: "src/file-520.ts" })).toBeInViewport();
+  // The rows rendered sit one under the other, each where the one before it ends, as in the plain list.
+  const largestGap = () =>
+    trace.getByTestId("trace-item").evaluateAll((rows) =>
+      Math.max(...rows.slice(1).map((row, index) => Math.abs(row.getBoundingClientRect().top - rows[index].getBoundingClientRect().bottom))),
+    );
+  await expect.poll(largestGap).toBeLessThanOrEqual(1);
 
   await sendEvents(live, run.id, [say("the newest item")]);
   await expect(trace.getByTestId("trace-message").filter({ hasText: "the newest item" })).toBeInViewport({ timeout: 2_000 });

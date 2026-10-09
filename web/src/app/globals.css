@@ -308,7 +308,10 @@
     outline: 2px solid var(--ring);
     outline-offset: 2px;
   }
-  /* Reduced motion: every animation and transition ends at once, and the live dot stays solid. */
+  /* Reduced motion: every animation and transition ends at once, and the live dot stays solid. Only what declares a
+     transition (the `transition-*` utilities, which win over this layer) keeps one: the duration below would otherwise
+     give every other element a transition of `all`, its initial property, and a style change such as a list's height
+     would reach layout only at the next frame, after the code that measures it. */
   @media (prefers-reduced-motion: reduce) {
     *,
     *::before,
@@ -316,6 +319,7 @@
       animation-duration: 0.01ms !important;
       animation-iteration-count: 1 !important;
       scroll-behavior: auto !important;
+      transition-property: none;
       transition-duration: 0.01ms !important;
     }
     .animate-live-ping,

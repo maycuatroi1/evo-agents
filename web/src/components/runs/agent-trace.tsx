@@ -513,7 +513,12 @@ function Typing() {
 
 type Virtual = ReturnType<typeof useVirtualizer<HTMLDivElement, HTMLLIElement>>;
 
-const LINE = "relative before:absolute before:top-[38px] before:-bottom-0.5 before:left-[13.5px] before:w-px before:bg-border last:before:hidden";
+/**
+ * The rail from an item's icon down to the next one. It says nothing of the item's position, which each list sets: in
+ * flow and `relative` in the plain list, `absolute` in the virtual one; a `relative` here would win over that
+ * `absolute` in `cn` and put every virtual row back in flow, below the ones rendered before it.
+ */
+const LINE = "before:absolute before:top-[38px] before:-bottom-0.5 before:left-[13.5px] before:w-px before:bg-border last:before:hidden";
 const SYSTEM_LINE = "before:top-[24px]";
 
 function lineClass(item: TraceItem) {
@@ -668,7 +673,7 @@ export function AgentTrace({
         ) : (
           <ol className="flex flex-col">
             {items.map((item) => (
-              <li key={item.key} className={lineClass(item)} data-testid="trace-item" data-type={item.type} data-seq={item.seq}>
+              <li key={item.key} className={cn("relative", lineClass(item))} data-testid="trace-item" data-type={item.type} data-seq={item.seq}>
                 {render(item)}
               </li>
             ))}
