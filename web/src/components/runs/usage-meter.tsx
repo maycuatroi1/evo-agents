@@ -14,6 +14,7 @@ import { type Cost, runUsage, shares, totalTokens, USAGE_PARTS, type UsagePart }
  * shows) and a row per part with its share; cache writes are said under it. The cost is the one the runtime reported,
  * or "not reported": the page never prices tokens itself. While the run goes on, the figures add up its usage reports
  * so far (usage-model.ts says how each runtime reports); once the worker reported the run's end, they are the run's.
+ * Before the first report, or when none came, the card is its title and one line of where it stands.
  */
 
 const SWATCH: Record<UsagePart, string> = {
@@ -55,76 +56,78 @@ export function UsageMeter({ run, events }: { run: Pick<Run, "usage" | "state" |
   const percent = (part: UsagePart) =>
     figures && share && figures[part] > 0 && share[part] < 0.1 ? t("tiny") : format.number(share?.[part] ?? 0, { maximumFractionDigits: 1 });
 
+  const reportedAny = figures !== null && share !== null;
+
   return (
     <section className="flex min-w-0 flex-col rounded-md border bg-card shadow-raised" aria-labelledby={id} data-testid="run-usage" data-source={usage?.source ?? "none"}>
-      <div className="flex items-center gap-2 border-b px-4 py-3">
+      <div className={cn("flex items-center gap-2 px-4 py-3", reportedAny && "border-b")}>
         <h2 id={id} className="text-[15px] leading-[22px] font-semibold">
           {t("title")}
         </h2>
-        <span className="ml-auto truncate text-xs text-fg-subtle">
-          {usage?.source === "events" && active ? t("soFar") : run.runtime !== "any" ? tRuntime(run.runtime) : null}
-        </span>
-      </div>
-      <div className="flex min-w-0 flex-col gap-3 px-4 py-3">
-        {!figures || !share ? (
-          <p className="text-sm text-pretty text-muted-foreground" data-testid="run-usage-empty">
-            {active ? t("none") : t("noneEnded")}
-          </p>
+        {reportedAny ? (
+          <span className="ml-auto truncate text-xs text-fg-subtle">
+            {usage?.source === "events" && active ? t("soFar") : run.runtime !== "any" ? tRuntime(run.runtime) : null}
+          </span>
         ) : (
-          <>
-            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-              <b className="text-xl leading-[26px] font-semibold tabular-nums" data-testid="run-usage-total">
-                {format.number(total)}
-              </b>
-              <span className="text-sm text-muted-foreground">{total === 1 ? t("token") : t("tokens")}</span>
-              <span className="ml-auto text-sm tabular-nums" data-testid="run-usage-cost">
-                {figures.cost ? (
-                  <>
-                    <span className="text-foreground">{costText(figures.cost)}</span>{" "}
-                    <span className="text-fg-subtle">{t("asReported")}</span>
-                  </>
-                ) : (
-                  <span className="text-fg-subtle">{t("costNotReported")}</span>
-                )}
-              </span>
-            </div>
-            <div
-              role="img"
-              aria-label={t("bar", {
-                cacheRead: percent("cacheRead"),
-                input: percent("input"),
-                output: percent("output"),
-                reasoning: percent("reasoning"),
-              })}
-              className="flex h-2 gap-0.5 overflow-hidden rounded-full bg-muted"
-              data-testid="run-usage-bar"
-            >
-              {USAGE_PARTS.map((part) =>
-                figures[part] > 0 ? (
-                  <span key={part} className={cn("block h-full min-w-[3px]", SWATCH[part])} style={{ width: `${share[part]}%` }} data-part={part} />
-                ) : null,
-              )}
-            </div>
-            <dl className="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-x-4 gap-y-1.5 text-[13px] leading-[18px]" data-testid="run-usage-rows">
-              {USAGE_PARTS.map((part) => (
-                <div key={part} className="contents" data-part={part}>
-                  <dt className="flex min-w-0 items-center gap-2 text-muted-foreground">
-                    <i aria-hidden="true" className={cn("size-2 shrink-0 rounded-[2px]", SWATCH[part])} />
-                    {t(`parts.${part}`)}
-                  </dt>
-                  <dd className="text-right text-foreground tabular-nums">{format.number(figures[part])}</dd>
-                  <dd className="min-w-11 text-right text-fg-subtle tabular-nums">
-                    {t("share", { value: percent(part) })}
-                  </dd>
-                </div>
-              ))}
-            </dl>
-            <p className="text-xs text-pretty text-fg-subtle" data-testid="run-usage-note">
-              {t("cacheWrite", { count: format.number(figures.cacheWrite) })} {figures.cost ? t("costNote") : t("noCostNote")}
-            </p>
-          </>
+          <span className="ml-auto truncate text-xs text-fg-subtle" data-testid="run-usage-empty">
+            {active ? t("noneYet") : t("noneEnded")}
+          </span>
         )}
       </div>
+      {figures && share ? (
+        <div className="flex min-w-0 flex-col gap-3 px-4 py-3">
+          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+            <b className="text-xl leading-[26px] font-semibold tabular-nums" data-testid="run-usage-total">
+              {format.number(total)}
+            </b>
+            <span className="text-sm text-muted-foreground">{total === 1 ? t("token") : t("tokens")}</span>
+            <span className="ml-auto text-sm tabular-nums" data-testid="run-usage-cost">
+              {figures.cost ? (
+                <>
+                  <span className="text-foreground">{costText(figures.cost)}</span>{" "}
+                  <span className="text-fg-subtle">{t("asReported")}</span>
+                </>
+              ) : (
+                <span className="text-fg-subtle">{t("costNotReported")}</span>
+              )}
+            </span>
+          </div>
+          <div
+            role="img"
+            aria-label={t("bar", {
+              cacheRead: percent("cacheRead"),
+              input: percent("input"),
+              output: percent("output"),
+              reasoning: percent("reasoning"),
+            })}
+            className="flex h-2 gap-0.5 overflow-hidden rounded-full bg-muted"
+            data-testid="run-usage-bar"
+          >
+            {USAGE_PARTS.map((part) =>
+              figures[part] > 0 ? (
+                <span key={part} className={cn("block h-full min-w-[3px]", SWATCH[part])} style={{ width: `${share[part]}%` }} data-part={part} />
+              ) : null,
+            )}
+          </div>
+          <dl className="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-x-4 gap-y-1.5 text-[13px] leading-[18px]" data-testid="run-usage-rows">
+            {USAGE_PARTS.map((part) => (
+              <div key={part} className="contents" data-part={part}>
+                <dt className="flex min-w-0 items-center gap-2 text-muted-foreground">
+                  <i aria-hidden="true" className={cn("size-2 shrink-0 rounded-[2px]", SWATCH[part])} />
+                  {t(`parts.${part}`)}
+                </dt>
+                <dd className="text-right text-foreground tabular-nums">{format.number(figures[part])}</dd>
+                <dd className="min-w-11 text-right text-fg-subtle tabular-nums">
+                  {t("share", { value: percent(part) })}
+                </dd>
+              </div>
+            ))}
+          </dl>
+          <p className="text-xs text-pretty text-fg-subtle" data-testid="run-usage-note">
+            {t("cacheWrite", { count: format.number(figures.cacheWrite) })}
+          </p>
+        </div>
+      ) : null}
     </section>
   );
 }

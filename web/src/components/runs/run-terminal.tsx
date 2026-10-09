@@ -65,6 +65,7 @@ export function RunTerminalPanel({
   open,
   active,
   sessionCreatedAt,
+  fill = false,
 }: {
   run: Pick<Run, "id" | "project" | "state" | "mode" | "worker">;
   /** The run's state lets a terminal open now. */
@@ -73,6 +74,8 @@ export function RunTerminalPanel({
   active: boolean;
   /** When the visitor's web session was created (whoami), for the 12-hour limit. */
   sessionCreatedAt: string | null;
+  /** From the xl breakpoint, the screen takes the height the parent gives (the run page's session card). */
+  fill?: boolean;
 }) {
   const t = useTranslations("runs.detail.terminal");
   const tState = useStatusText("run");
@@ -180,8 +183,20 @@ export function RunTerminalPanel({
     );
   }
 
+  // Filling the card from xl, the screen takes the height the bars leave, so the bars keep their height from the hello
+  // to the live terminal, and the worker gets no resize as the session starts: the sentence of where the TUI runs has a
+  // line of its own (the status and the action, whatever their words, share the first), the size has its place in the
+  // foot before it is known, and the message shown while the worker's end connects lies over the top of the still
+  // blank screen instead of above it.
+  const overlay = fill && shown === "waiting";
+
   return (
-    <div className="flex min-w-0 flex-col" data-testid="terminal-panel" data-status={shown} data-close-code={end?.code}>
+    <div
+      className={cn("flex min-w-0 flex-col", fill && "xl:min-h-0 xl:flex-1")}
+      data-testid="terminal-panel"
+      data-status={shown}
+      data-close-code={end?.code}
+    >
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b px-4 py-3">
         <span role="status" className="inline-flex">
           <Badge variant={failed ? "destructive" : look.variant} data-testid="terminal-status" data-status={shown}>
@@ -189,60 +204,67 @@ export function RunTerminalPanel({
             {t(`status.${shown}`, { worker })}
           </Badge>
         </span>
-        <p className="min-w-0 flex-1 basis-48 text-sm text-muted-foreground">{t("where", { worker })}</p>
-        {action}
+        <p className={cn("min-w-0 flex-1 basis-48 text-sm text-muted-foreground", fill && "xl:order-last xl:basis-full")}>{t("where", { worker })}</p>
+        <div className={cn("contents", fill && "xl:ml-auto xl:flex")}>{action}</div>
       </div>
-      {message ? (
-        <div
-          role={message.tone === "error" ? "alert" : "status"}
-          className={cn(
-            "flex items-start gap-2.5 border-b px-4 py-2.5 text-sm",
-            message.tone === "error" ? "bg-card text-danger" : "bg-accent text-accent-foreground",
-          )}
-          data-testid="terminal-message"
-          data-kind={end?.kind}
-        >
-          {message.tone === "error" ? (
-            <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+      <div className={cn("relative flex flex-col", fill && "xl:min-h-0 xl:flex-1")}>
+        {message ? (
+          <div
+            role={message.tone === "error" ? "alert" : "status"}
+            className={cn(
+              "flex items-start gap-2.5 border-b px-4 py-2.5 text-sm",
+              message.tone === "error" ? "bg-card text-danger" : "bg-accent text-accent-foreground",
+              overlay && "xl:absolute xl:inset-x-0 xl:top-0 xl:z-[1]",
+            )}
+            data-testid="terminal-message"
+            data-kind={end?.kind}
+          >
+            {message.tone === "error" ? (
+              <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+            ) : (
+              <Hourglass className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+            )}
+            <div className="flex min-w-0 flex-col gap-0.5">
+              <p className="text-pretty">{message.text}</p>
+              {message.detail ? <p className="text-xs break-words opacity-90">{message.detail}</p> : null}
+            </div>
+          </div>
+        ) : null}
+        <div className={cn("h-[min(60vh,32rem)] min-h-64 bg-term-bg", fill && "xl:h-auto xl:min-h-0 xl:flex-1")}>
+          {showScreen ? (
+            <div className={cn("h-full", shown === "closed" && "opacity-70")} data-testid="terminal-view">
+              <TerminalView
+                key={session}
+                handle={handle}
+                label={t("label", { id: run.id, worker })}
+                describedBy={`${ids}-hint`}
+                paused={!active}
+                onReady={onReady}
+                onData={onData}
+                onBinary={onBinary}
+                onResize={resize}
+                onError={onError}
+              />
+            </div>
           ) : (
-            <Hourglass className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+            <div className="flex h-full flex-col gap-3 overflow-y-auto px-4 py-3 font-mono text-[12.5px] leading-[1.6] text-term-muted" data-testid="terminal-intro">
+              <p className="text-term-fg">
+                {takeover ? t("intro.headless", { id: run.id, worker }) : t("intro.interactive", { worker })}
+              </p>
+              <p>{t("intro.limits")}</p>
+            </div>
           )}
-          <div className="flex min-w-0 flex-col gap-0.5">
-            <p className="text-pretty">{message.text}</p>
-            {message.detail ? <p className="text-xs break-words opacity-90">{message.detail}</p> : null}
-          </div>
         </div>
-      ) : null}
-      <div className="h-[min(60vh,32rem)] min-h-64 bg-term-bg">
-        {showScreen ? (
-          <div className={cn("h-full", shown === "closed" && "opacity-70")} data-testid="terminal-view">
-            <TerminalView
-              key={session}
-              handle={handle}
-              label={t("label", { id: run.id, worker })}
-              describedBy={`${ids}-hint`}
-              paused={!active}
-              onReady={onReady}
-              onData={onData}
-              onBinary={onBinary}
-              onResize={resize}
-              onError={onError}
-            />
-          </div>
-        ) : (
-          <div className="flex h-full flex-col gap-3 overflow-y-auto px-4 py-3 font-mono text-[12.5px] leading-[1.6] text-term-muted" data-testid="terminal-intro">
-            <p className="text-term-fg">
-              {takeover ? t("intro.headless", { id: run.id, worker }) : t("intro.interactive", { worker })}
-            </p>
-            <p>{t("intro.limits")}</p>
-          </div>
-        )}
       </div>
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 px-4 py-2 text-xs text-muted-foreground">
         <span id={`${ids}-hint`}>{t("hint", { worker })}</span>
         {size && shown !== "closed" ? (
-          <span className="font-mono tabular-nums" aria-label={t("sizeLabel", size)} data-testid="terminal-size">
+          <span className={cn("font-mono tabular-nums", fill && "xl:min-w-[9ch] xl:text-right")} aria-label={t("sizeLabel", size)} data-testid="terminal-size">
             {t("size", size)}
+          </span>
+        ) : fill ? (
+          <span className="hidden min-w-[9ch] font-mono xl:invisible xl:inline-block" aria-hidden="true">
+            {t("size", { cols: 0, rows: 0 })}
           </span>
         ) : null}
       </div>

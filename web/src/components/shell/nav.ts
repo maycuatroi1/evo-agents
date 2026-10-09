@@ -9,6 +9,7 @@ import {
   ListChecks,
   LockKeyhole,
   type LucideIcon,
+  MonitorPlay,
   MoonStar,
   Network,
   Server,
@@ -18,7 +19,7 @@ import {
 import type { Route } from "next";
 
 /**
- * The sidebar's links, in the kit's AppShell order: Home and Inbox; the current project's areas; the hub-wide areas
+ * The sidebar's links, in the kit's AppShell order: Home, Inbox and Monitor; the current project's areas; the hub-wide areas
  * (workers, secrets, memories, skills, administration). A step that adds a project area adds one entry to PROJECT_NAV,
  * a hub-wide area one entry to HUB_NAV, and one label under `nav` in messages/vi.json and messages/en.json. Icons follow
  * the Iconography table of web/DESIGN.md.
@@ -26,6 +27,7 @@ import type { Route } from "next";
 export type NavLabel =
   | "home"
   | "inbox"
+  | "monitor"
   | "overview"
   | "plans"
   | "runs"
@@ -42,9 +44,10 @@ export type NavLabel =
 
 /**
  * A number at the end of a nav item, in its tone: the decisions waiting for the visitor's answer (attention), the
- * project's active runs (running). Hidden while it is zero or unknown.
+ * project's active runs (running), the runs at work in every project of the visitor's grants (running). Hidden while
+ * it is zero or unknown.
  */
-export type NavCount = "openDecisions" | "activeRuns";
+export type NavCount = "openDecisions" | "activeRuns" | "runningRuns";
 
 export type ProjectNavItem = {
   label: NavLabel;
@@ -62,10 +65,11 @@ export type HubNavItem = {
   count?: NavCount;
 };
 
-/** The first group, without a label: where the visitor starts, and what waits for them. */
+/** The first group, without a label: where the visitor starts, what waits for them, and the runs they watch live. */
 export const HOME_NAV: readonly HubNavItem[] = [
   { label: "home", icon: LayoutDashboard, href: "/" },
   { label: "inbox", icon: Inbox, href: "/inbox", count: "openDecisions" },
+  { label: "monitor", icon: MonitorPlay, href: "/monitor", count: "runningRuns" },
 ];
 
 export const PROJECT_NAV: readonly ProjectNavItem[] = [

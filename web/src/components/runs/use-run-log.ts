@@ -22,6 +22,9 @@ import { isTerminalState, type RunEvent, runEvents, type RunState, runStreamPath
  * run's `last_seq` for 10 seconds, as behind a proxy that buffers it), the page reads `events?after=` every 1.5 seconds
  * instead and tries the stream again every 30 seconds; a stream that was behind is not tried again. Events arriving
  * together are added to the log in one render.
+ *
+ * A page that shows only the latest of a run (the Monitor's tiles) starts after a seq of its choosing (`startAfter`),
+ * for the stream's first connection and the reads of events alike, and keeps only the latest events (`keep`).
  */
 
 export type LogStatus = "connecting" | "live" | "reconnecting" | "polling" | "ended" | "failed";
@@ -64,6 +67,10 @@ type Options = {
   /** The run's last_seq as its query last read it. */
   knownLastSeq: number;
   describe: DescribeMove;
+  /** The seq of the last event not to read: the log reads from the next one. 0, the run's first event, by default. */
+  startAfter?: number;
+  /** Keep only the latest `keep` events, their lines and moves; every one by default. */
+  keep?: number;
   /** For tests: what opens the stream. */
   openSource?: (url: string) => EventSource;
 };
@@ -91,7 +98,12 @@ function parseEnd(data: string): { state: RunState | null; last_seq: number | nu
 
 const defaultSource = (url: string) => new EventSource(url);
 
-export function useRunLog({ project, runId, knownLastSeq, describe, openSource = defaultSource }: Options): RunLog {
+/** The latest `keep` of `list`, or all of it without a limit. */
+function latest<T>(list: T[], keep: number | undefined): T[] {
+  return keep !== undefined && keep > 0 && list.length > keep ? list.slice(list.length - keep) : list;
+}
+
+export function useRunLog({ project, runId, knownLastSeq, describe, startAfter = 0, keep, openSource = defaultSource }: Options): RunLog {
   const [lines, setLines] = useState<LogLine[]>([]);
   const [events, setEvents] = useState<RunEvent[]>([]);
   const [moves, setMoves] = useState<RunMove[]>([]);
@@ -106,15 +118,19 @@ export function useRunLog({ project, runId, knownLastSeq, describe, openSource =
   const describeRef = useRef(describe);
   const knownRef = useRef(knownLastSeq);
   const sourceRef = useRef(openSource);
+  const keepRef = useRef(keep);
+  // Read once, when the log starts: a later value would not move a stream already open.
+  const startRef = useRef(startAfter);
   useEffect(() => {
     describeRef.current = describe;
     knownRef.current = knownLastSeq;
     sourceRef.current = openSource;
+    keepRef.current = keep;
   });
 
   useEffect(() => {
     let disposed = false;
-    let lastSeq = 0;
+    let lastSeq = Math.max(0, startRef.current);
     let source: EventSource | null = null;
     let streamUsable = true;
     let errorsSinceOpen = 0;
@@ -136,9 +152,10 @@ export function useRunLog({ project, runId, knownLastSeq, describe, openSource =
       const describeMove = describeRef.current;
       const added = batch.map((event) => toLogLine(event, describeMove));
       const moved = batch.map(moveOf).filter((move): move is RunMove => move !== null);
-      setLines((previous) => previous.concat(added));
-      setEvents((previous) => previous.concat(batch));
-      if (moved.length) setMoves((previous) => previous.concat(moved));
+      const limit = keepRef.current;
+      setLines((previous) => latest(previous.concat(added), limit));
+      setEvents((previous) => latest(previous.concat(batch), limit));
+      if (moved.length) setMoves((previous) => latest(previous.concat(moved), limit));
       setShownSeq(lastSeq);
       setUpdatedAt(Date.now());
     };

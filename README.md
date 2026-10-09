@@ -125,8 +125,8 @@ Hooks:
   off.
 
 The plugin needs [uv](https://docs.astral.sh/uv/) on `PATH` and pins the release it runs: the server
-starts with `uvx --from evo-ak==0.8.1 evo-agents`, which downloads and caches that version on first start. The hooks
-run `uvx --offline --from evo-ak==0.8.1 evo-agents`, so they never wait on the network; they stay silent when `uvx`
+starts with `uvx --from evo-ak==0.8.2 evo-agents`, which downloads and caches that version on first start. The hooks
+run `uvx --offline --from evo-ak==0.8.2 evo-agents`, so they never wait on the network; they stay silent when `uvx`
 is missing or until the server has cached the package.
 
 ### The team hub
@@ -225,9 +225,15 @@ follows the evo-agents hub UI kit, in light and dark ([web/DESIGN.md](web/DESIGN
 - Home shows what waits on you, what runs, what ended lately and your workers, over every project you hold a grant
   on, in one request (`GET /v1/me/overview`). You answer a decision in a sheet over it and rerun a failed step from
   it.
+- Every page takes the full width beside the sidebar.
 - A run's page draws its phases on a timeline and reads its events as a Trace: the agent's messages, its thinking,
   and each tool call with its argument, exit code, duration and output. The raw log and the owner's terminal are
-  tabs beside it, and a usage card adds up the run's tokens by type with the cost the agent reported.
+  tabs beside it, and a usage card adds up the run's tokens by type with the cost the agent reported. From 1280 px
+  the session and the side column of cards scroll on their own. A repo links to its page on its forge, and on GitHub
+  or GitLab its branch and commit do too.
+- Monitor (`/monitor`) lists every run in flight over your projects and watches the ones you pick in a grid of live
+  tiles that shares out the window: each tile a run's state, worker, time, plan steps and the tail of its trace, for
+  viewing only. The tiles are in the URL (`?runs=project:id,...`), so a link opens the same grid.
 - Insights charts a project's runs by day over 7, 30 or 90 days: outcomes, failure rate, run time and tokens
   (`GET /v1/projects/{project}/runs/stats`), each chart with its table.
 - Administration lists what needs a hub admin (`GET /v1/admin/overview`): tokens expiring or unused, failed graph

@@ -28,9 +28,13 @@ export function AppShell({ sidebarOpen, children }: { sidebarOpen: boolean; chil
               widen it, and <main> with it, past the screen. Tables scroll in their own region instead. */}
           <SidebarInset className="min-w-0">
             <SiteHeader />
-            {/* The kit's content column: at most 1280 px, a 24 px gutter (16 px on phones). */}
+            {/* The content column: the whole width between the sidebar and the window's right edge, less a 24 px
+                gutter (16 px on phones), on every page. No cap: a page that would stretch thin on a wide screen lays
+                itself out for the width (more columns, a side column), rather than the shell narrowing them all. */}
             <main id="main" tabIndex={-1} className="flex-1 p-4 outline-none md:p-6">
-              <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">{children}</div>
+              <div className="flex w-full flex-col gap-6" data-testid="content-frame">
+                {children}
+              </div>
             </main>
           </SidebarInset>
         </CommandPaletteProvider>
