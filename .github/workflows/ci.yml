@@ -74,7 +74,7 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       # uv installs into the interpreter setup-python put on PATH, which keeps its pip for tests/hub/test_wheel.py.
-      - uses: astral-sh/setup-uv@v10
+      - uses: astral-sh/setup-uv@v10.2.0 # setup-uv tags releases only, no major tag
         with:
           enable-cache: true
           cache-dependency-glob: pyproject.toml
@@ -125,7 +125,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - uses: astral-sh/setup-uv@v10
+      - uses: astral-sh/setup-uv@v10.2.0 # setup-uv tags releases only, no major tag
         with:
           enable-cache: true
           cache-dependency-glob: pyproject.toml
@@ -182,7 +182,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - uses: astral-sh/setup-uv@v10
+      - uses: astral-sh/setup-uv@v10.2.0 # setup-uv tags releases only, no major tag
         with:
           enable-cache: true
           cache-dependency-glob: pyproject.toml
