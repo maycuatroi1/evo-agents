@@ -35,9 +35,11 @@
     "secrets": "Secrets",
     "runDiff": "Diff",
     "inbox": "Inbox",
+    "monitor": "Monitor",
     "counts": {
       "openDecisions": "{count, plural, one {# decision or proposal waits for your answer} other {# decisions and proposals wait for your answer}}",
-      "activeRuns": "{count, plural, one {# active run} other {# active runs}}"
+      "activeRuns": "{count, plural, one {# active run} other {# active runs}}",
+      "runningRuns": "{count, plural, one {# run at work} other {# runs at work}}"
     },
     "fleet": {
       "onlineBusy": "<b>{online, plural, one {# worker online} other {# workers online}}</b>, {busy} busy",
@@ -324,7 +326,8 @@
       "waitingFor": "Waiting for {owner}",
       "noWorker": "no worker yet",
       "ran": "running for {duration}",
-      "queuedAgo": "queued <time></time>"
+      "queuedAgo": "queued <time></time>",
+      "monitor": "Watch on Monitor"
     },
     "recent": {
       "title": "Recent",
@@ -1756,6 +1759,7 @@
     "title": "Runs",
     "metaTitle": "Runs of {project}",
     "dispatchButton": "Dispatch",
+    "monitorButton": "Monitor",
     "count": "{count, plural, one {# run} other {# runs}}",
     "caption": "Runs of project {project}",
     "pagerLabel": "runs",
@@ -3414,6 +3418,56 @@
         "worker": "on {worker}"
       },
       "outcomeDaysValue": "{count, plural, one {# day after a merge} other {# days after a merge}}"
+    }
+  },
+  "monitor": {
+    "title": "Monitor",
+    "following": "Following every run in flight: a run that starts joins the grid.",
+    "chosen": "{count, plural, =0 {No run on the grid.} one {Watching # run you chose.} other {Watching # runs you chose.}}",
+    "followAll": "Follow every run in flight",
+    "list": {
+      "title": "In flight",
+      "count": "{count, plural, one {# run in flight} other {# runs in flight}}",
+      "show": "Show the runs in flight",
+      "hide": "Hide the runs in flight",
+      "watch": "Watch run #{id}",
+      "empty": "No run is in flight.",
+      "full": "The grid holds {max} runs at most. Close a tile to watch another."
+    },
+    "grid": {
+      "label": "Runs you watch",
+      "emptyTitle": "No run on the grid",
+      "emptyText": "Pick runs in the list to watch them here, or follow every run in flight.",
+      "hidden": "{count, plural, one {# run of the link is not shown: it does not exist or you cannot read it.} other {# runs of the link are not shown: they do not exist or you cannot read them.}}",
+      "capped": "The grid shows the first {max} runs of the link."
+    },
+    "empty": {
+      "title": "No run is in flight",
+      "description": "Monitor shows each run that is queued, at work or waiting for a decision as a live tile beside the others. A run shows here as soon as it is dispatched."
+    },
+    "tile": {
+      "label": "Run #{id}",
+      "open": "Open run #{id}",
+      "close": "Stop watching run #{id}",
+      "queued": "queued <time></time>",
+      "elapsed": "{duration} so far",
+      "ran": "ran {duration}",
+      "ended": "ended <time></time>",
+      "noWorker": "no worker yet",
+      "waitingYou": "Waiting for you",
+      "waitingFor": "Waiting for {owner}",
+      "steps": "{done} of {total} steps done",
+      "trace": "Trace of run #{id}",
+      "earlier": "Earlier events are on the run's page.",
+      "waiting": "Waiting for the first event…",
+      "quiet": "Nothing in the trace yet.",
+      "noTrace": "Nothing in the trace.",
+      "unavailable": "Couldn't read the trace.",
+      "error": "Couldn't read run #{id}.",
+      "retry": "Try again",
+      "retrying": "Trying again",
+      "latest": "Jump to the latest",
+      "now": "Run #{id} is now {state}."
     }
   }
 }

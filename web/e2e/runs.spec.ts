@@ -39,6 +39,8 @@ test("the sidebar leads to Runs, which offers a writer to dispatch the first run
   await expect(main(page).getByRole("heading", { level: 1, name: "Runs" })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Current location" })).toContainText("Runs");
   await expect(page.getByTestId("nav-runs")).toHaveAttribute("aria-current", "page");
+  // The Monitor, every run in flight of every project, is one click away.
+  await expect(main(page).getByRole("link", { name: "Monitor" })).toHaveAttribute("href", "/monitor");
   const empty = main(page).getByTestId("state-empty");
   await expect(empty).toContainText("No run yet");
   await empty.getByTestId("runs-empty-dispatch").click();
