@@ -5457,10 +5457,63 @@ export interface components {
              */
             open_decisions: components["schemas"]["OverviewDecision"][];
             /**
+             * Author Waiting
+             * @description at most 20 of your author runs whose chat waits for your reply, the latest first
+             * @default []
+             */
+            author_waiting: components["schemas"]["OverviewAuthorWait"][];
+            /**
              * Projects
              * @description the projects you hold a grant on, by name
              */
             projects: components["schemas"]["OverviewProject"][];
+        };
+        /** OverviewAuthorWait */
+        OverviewAuthorWait: {
+            /** Id */
+            id: number;
+            /** Project */
+            project: string;
+            /**
+             * Plan Id
+             * @description the plan the run wrote or revises; null before its first put
+             */
+            plan_id: string | null;
+            /**
+             * Plan Title
+             * @description that plan's title as the hub holds it now
+             */
+            plan_title: string | null;
+            /**
+             * Title
+             * @description the run's title, from the start of its request
+             */
+            title: string | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "waiting" | "parked";
+            /**
+             * Worker
+             * @description the worker the run is on
+             */
+            worker: string | null;
+            /**
+             * Waiting Since
+             * @description when its agent's turn ended, while waiting
+             */
+            waiting_since: string | null;
+            /**
+             * Parked At
+             * @description when it was parked, for want of a reply
+             */
+            parked_at: string | null;
+            /**
+             * Message
+             * @description the agent's last message of the chat; null when it said nothing yet
+             */
+            message: string | null;
         };
         /** OverviewCounts */
         OverviewCounts: {
