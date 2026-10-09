@@ -61,6 +61,10 @@ globs match) and records other files by path only. It skips the paths its `exclu
 default list: build output, lock files, virtualenvs and agent folders such as `.claude/` and `.agents/`.
 `allow:` takes globs that bring paths from that default list back, for example
 `allow: [".claude/CLAUDE.md"]`; `exclude:` still wins over `allow:`. Only the git connector reads `allow:`.
+`fetch: true` on a git source whose `ref:` is `origin/<branch>` fetches that branch from `origin` (with a
+timeout) before each run, so the graph follows the remote without anyone fetching the clone. A failed
+fetch keeps the run ok: it logs a warning and reads the ref as the clone has it. Without the key nothing
+is fetched.
 
 A markdown file whose frontmatter `id:` matches an identifier pattern is where that code is defined;
 a copy says `derived_from:` in its frontmatter, and `kg status` lists codes defined in more than one place.

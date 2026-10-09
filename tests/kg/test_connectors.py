@@ -5,8 +5,11 @@ from pathlib import Path
 import pytest
 
 from evo_agents.harness import Harness
+from evo_agents.kg.connectors import _git
+from evo_agents.kg.project import load_project_at
 from evo_agents.kg.protocol.conformance import run_conformance
 from evo_agents.kg.protocol.runner import ConnectorContext, ConnectorRun
+from evo_agents.kg.sync import sync_project
 
 GOLDEN = Path(__file__).parent / "golden"
 DATE = "2026-10-01T09:00:00+07:00"
@@ -128,6 +131,90 @@ def test_missing_repo_is_a_config_error_not_an_empty_listing(tmp_path):
     kinds = [m["type"] for m in msgs]
     assert "listing" not in kinds
     assert msgs[-1]["status"] == "error"
+
+
+def clone_behind(tmp_path) -> tuple[Path, Path]:
+    """(upstream, clone) where upstream has one commit, docs/new.md, the clone has not fetched."""
+    upstream = make_repo(tmp_path / "upstream")
+    clone = tmp_path / "clone"
+    subprocess.run(["git", "clone", "-q", str(upstream), str(clone)], check=True, capture_output=True)
+    (upstream / "docs/new.md").write_text("# New\n")
+    sh(upstream, "add", "-A")
+    sh(upstream, "commit", "-q", "-m", "new")
+    return upstream, clone
+
+
+def test_git_fetch_reads_the_remote_branch(tmp_path, monkeypatch):
+    upstream, clone = clone_behind(tmp_path)
+    calls = []
+    real = _git.fetch
+    monkeypatch.setattr(
+        _git,
+        "fetch",
+        lambda repo, remote, branch, **kw: (calls.append((remote, branch)), real(repo, remote, branch, **kw)),
+    )
+    msgs = run_git(clone, ref="origin/main", fetch=True)
+    assert calls == [("origin", "main")]
+    assert "docs/new.md" in items_by_path(msgs)
+    assert msgs[-1]["status"] == "ok"
+    state = next(m for m in msgs if m["type"] == "state")
+    assert state["cursor"]["commit"] == sh(upstream, "rev-parse", "HEAD").strip()
+
+
+def test_git_without_fetch_reads_the_ref_as_the_clone_has_it(tmp_path, monkeypatch):
+    _, clone = clone_behind(tmp_path)
+    monkeypatch.setattr(_git, "fetch", lambda *a, **kw: pytest.fail("fetched without fetch: true"))
+    msgs = run_git(clone, ref="origin/main")
+    assert "docs/new.md" not in items_by_path(msgs)
+    assert msgs[-1]["status"] == "ok"
+
+
+def test_git_fetch_failure_is_a_warning_and_the_run_stays_ok(tmp_path):
+    _, clone = clone_behind(tmp_path)
+    sh(clone, "remote", "set-url", "origin", str(tmp_path / "gone"))
+    msgs = run_git(clone, ref="origin/main", fetch=True)
+    warnings = [m for m in msgs if m["type"] == "log" and m["level"] == "warning"]
+    assert len(warnings) == 1 and "fetch failed" in warnings[0]["message"]
+    assert "docs/guide.md" in items_by_path(msgs) and "docs/new.md" not in items_by_path(msgs)
+    assert msgs[-1]["status"] == "ok"
+
+
+def test_git_fetch_ignores_a_ref_that_is_not_an_origin_branch(tmp_path, monkeypatch):
+    _, clone = clone_behind(tmp_path)
+    monkeypatch.setattr(_git, "fetch", lambda *a, **kw: pytest.fail("fetched for a local ref"))
+    msgs = run_git(clone, ref="HEAD", fetch=True)
+    assert any(m["type"] == "log" and "ignored" in m["message"] for m in msgs)
+    assert msgs[-1]["status"] == "ok"
+
+
+def test_sync_reports_the_fetch_warning_on_an_ok_run(tmp_path, kg_env):
+    _, clone = clone_behind(tmp_path)
+    sh(clone, "remote", "set-url", "origin", str(tmp_path / "gone"))
+    root = tmp_path / "fetch-harness"
+    root.mkdir()
+    (root / "harness.yaml").write_text("name: proj\nrepos: []\nknowledge_file: knowledge.yaml\n")
+    (root / "knowledge.yaml").write_text(
+        f"""
+version: 1
+project: proj
+policy:
+  levels: [internal]
+  sinks:
+    - id: test-session
+      kind: agent-session
+      clearance: {{level: internal}}
+sources:
+  - id: app
+    connector: git
+    path: "{clone}"
+    ref: origin/main
+    fetch: true
+    label: {{level: internal, integrity: U}}
+"""
+    )
+    (result,) = sync_project(load_project_at(root, kg_env))
+    assert result.ok
+    assert len(result.warnings) == 1 and "fetch failed" in result.warnings[0]
 
 
 @pytest.fixture
