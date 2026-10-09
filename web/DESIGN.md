@@ -188,7 +188,10 @@ One container for a row of numbers, never four separate cards.
 
 - Streamed agent text appends as it arrives; finished text never animates in.
 - Under `prefers-reduced-motion: reduce` every animation and transition ends at once and `animate-live-ping` is off,
-  so the dot stays solid. Playwright runs with reduced motion, so menus and sheets are settled before axe looks.
+  so the dot stays solid. Playwright runs with reduced motion, so menus and sheets are settled before axe looks. Only
+  what declares a transition (a `transition-*` utility) gets one: an element without gets `transition-property: none`,
+  so a style change such as a virtual list's height or a row's place reaches layout at once, where the code that
+  measures it reads it, instead of at the next frame.
 
 ## Iconography
 
