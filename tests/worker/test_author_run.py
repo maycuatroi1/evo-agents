@@ -162,3 +162,91 @@ def test_the_author_skill_ticket_round_trips_through_the_bundle_checks(tmp_path)
     skills.write_tree(contents, target)
     assert skills.tree_digest(target) == contents.tree
     assert [entry.path for entry in contents.files] == ["SKILL.md", "references/author.md"]
+
+
+PLAN_YAML = """id: wait-helper
+title: A wait helper
+goal: Tests wait for a condition instead of sleeping.
+steps:
+  - id: 1
+    title: Add the helper
+    status: pending
+"""
+
+
+def test_an_author_runs_agent_puts_its_plan_reads_it_back_and_revises_it_with_its_revision(machine):  # noqa: F811
+    revised = PLAN_YAML.replace("A wait helper", "A wait helper, revised")
+    machine.scenarios(
+        {
+            "author": [
+                {"cli": ["plan"]},
+                {"write": {".evo-run/plan.yaml": PLAN_YAML, ".evo-run/revised.yaml": revised}},
+                {"cli": ["put", ".evo-run/plan.yaml"]},
+                {"cli": ["put", ".evo-run/revised.yaml"]},
+                {"cli": ["plan", "--json"]},
+                {"cli": ["put", ".evo-run/revised.yaml", "--if-revision", "1"]},
+                {"result": {"summary": "Wrote plan wait-helper."}},
+            ]
+        }
+    )
+
+    async def body(hub, daemon):
+        ticket = hub.add_skill(author.AUTHOR_SKILL, 3, skill_bundle(machine.tmp))
+        run_id = hub.queue_author_run(["alpha"], [ticket])
+        assert await hub.wait_state(run_id, "done", "failed", timeout=WAIT) == "done", hub.texts(run_id)
+        first, created, refused, read, revision = [e for e in machine.commands() if e["run"] == run_id]
+        assert first["exit"] == 1 and f"author run {run_id} has put no plan on the hub yet" in first["stderr"]
+        assert created["exit"] == 0, created
+        assert "Created plan wait-helper of project demo on the hub at revision 1." in created["stdout"]
+        assert "Pass --if-revision 1 to put it again." in created["stdout"]
+        assert refused["exit"] == 1 and "pass if_revision" in refused["stderr"], "never replaced without a revision"
+        assert read["exit"] == 0 and '"revision": 1' in read["stdout"] and '"plan_id": "wait-helper"' in read["stdout"]
+        assert (
+            revision["exit"] == 0
+            and "Revised plan wait-helper of project demo on the hub: revision 2." in (revision["stdout"])
+        )
+        assert [(item["status"], item.get("if_revision")) for item in hub.plan_puts] == [
+            (200, None),
+            (409, None),
+            (200, 1),
+        ]
+        assert hub.plans["wait-helper"]["body"]["title"] == "A wait helper, revised"
+        assert hub.plan_puts[0]["body"]["steps"][0]["id"] == 1
+
+    with_daemon(machine, body)
+
+
+def test_an_author_run_of_a_plan_puts_that_plan_only_and_put_refuses_outside_an_author_run(machine):  # noqa: F811
+    machine.scenarios(
+        {
+            "author": [
+                {"write": {".evo-run/other.yaml": PLAN_YAML.replace("wait-helper", "other-plan")}},
+                {"cli": ["put", ".evo-run/other.yaml", "--if-revision", "1"]},
+                {"result": {"summary": "Revised nothing."}},
+            ],
+            "review": [
+                {"write": {".evo-run/plan.yaml": PLAN_YAML}},
+                {"cli": ["put", ".evo-run/plan.yaml"]},
+                {"result": {"summary": "Reviewed."}},
+            ],
+        }
+    )
+
+    async def body(hub, daemon):
+        import yaml
+
+        hub.put_plan(yaml.safe_load(PLAN_YAML))
+        ticket = hub.add_skill(author.AUTHOR_SKILL, 3, skill_bundle(machine.tmp))
+        run_id = hub.queue_author_run(["alpha"], [ticket], plan_id="wait-helper")
+        assert await hub.wait_state(run_id, "done", "failed", timeout=WAIT) == "done", hub.texts(run_id)
+        (other,) = [e for e in machine.commands() if e["run"] == run_id]
+        assert other["exit"] == 1 and f"author run {run_id} writes plan wait-helper" in other["stderr"]
+        assert hub.plans["wait-helper"]["revision"] == 1 and "other-plan" not in hub.plans
+
+        review_id = hub.queue_review_run(["alpha"])
+        assert await hub.wait_state(review_id, "done", "failed", timeout=WAIT) == "done", hub.texts(review_id)
+        (put,) = [e for e in machine.commands() if e["run"] == review_id]
+        assert put["exit"] == 1 and "only the agent of an author run" in put["stderr"], put
+        assert [item["run_id"] for item in hub.plan_puts] == [run_id]
+
+    with_daemon(machine, body)

@@ -40,7 +40,9 @@ run author runs, gets 409. It is audited (run.dispatch_author) without its reque
 with a checkout of the harness and a daemon that says it runs author runs, and hands it a presigned GET of the latest
 version of the global skill create-exec-plan (``RunSpec.skills``); without that skill, or a blob store, the run fails
 at the claim, saying so. The author runs of a new plan are listed and read as a review run is, through the project's
-default label; one is never rerun (409).
+default label; one is never rerun (409). With ``plan_id`` it revises that plan, one the caller can read (404
+otherwise), recorded with its revision. Its agent puts the plan with PUT /v1/worker/runs/{id}/plan
+(``put_run_plan``), as the dispatcher, through ``plans.write_plan``; the run then points to the plan it wrote.
 
 GET /v1/projects/{p}/runs (reader) lists the project's runs newest first, filtered by state, plan, step, worker,
 dispatcher and text, a page at a time, with how many runs each state has under the other filters; GET .../runs/{id}
@@ -115,7 +117,7 @@ import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, time, timedelta
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 import psycopg
 from fastapi import APIRouter, Header, HTTPException, Path, Query, Request
@@ -147,6 +149,7 @@ from sqlalchemy.dialects.postgresql import ARRAY, DOUBLE_PRECISION, JSONB
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from evo_agents.harness import plan_body
 from evo_agents.hub import author, curator, runs, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.blobs import MAX_GET_TTL
@@ -256,6 +259,11 @@ class AuthorRunDispatch(BaseModel):
         "of UTF-8",
     )
     worker_id: int = Field(ge=1, le=MAX_ID, description="the worker of yours the run goes to; an author run is pinned")
+    plan_id: str | None = Field(
+        None,
+        pattern=plan_routes.PLAN_ID,
+        description="the plan the run revises, one you can read; null: the run writes a new plan",
+    )
     runtime: Literal[REQUESTED_RUNTIMES] = Field(
         "claude-code",
         description="claude-code, the one runtime an author run takes (any means it); another one is 422",
@@ -709,7 +717,12 @@ async def _activity(conn: AsyncConnection, project_id: int, plan_id: str) -> Act
     query = (
         select(r.c.kind, r.c.step_key, r.c.id, r.c.state, u.c.login)
         .join_from(r, u, u.c.id == r.c.dispatched_by)
-        .where(r.c.project_id == project_id, r.c.plan_id == plan_id, r.c.state.in_(runs.ACTIVE_STATES))
+        .where(
+            r.c.project_id == project_id,
+            r.c.plan_id == plan_id,
+            r.c.state.in_(runs.ACTIVE_STATES),
+            r.c.kind != "author",  # an author run writes what the plan says, never a step's progress
+        )
         .order_by(r.c.id)
     )
     activity = Activity(steps={}, plan_run=None)
@@ -1617,12 +1630,19 @@ async def dispatch_author(request: Request, project: ProjectName, body: AuthorRu
         pinned = await _pinnable(conn, user, access, body.worker_id)
         repos = await _author_repos(conn, access, pinned)
         _fits(pinned, access, "author", [repos[0]["repo"]], runtime)
+        revision = None
+        if body.plan_id is not None:
+            held = await plan_routes._visible(conn, access, body.plan_id, None)
+            from evo_agents.hub.server.changes import refuse_manual_dispatch  # it queues runs through this module
+
+            await refuse_manual_dispatch(conn, access.project_id, body.plan_id)
+            revision = held.revision
         values = {
             "kind": "author",
             "project_id": access.project_id,
-            "plan_id": None,
+            "plan_id": body.plan_id,
             "title": author.author_title(body.request),
-            "plan_revision": None,
+            "plan_revision": revision,
             "dispatched_by": user.user_id,
             "dispatched_via": dispatch_credential(user.kind),
             "pinned_worker_id": pinned.id,
@@ -1648,7 +1668,13 @@ async def dispatch_author(request: Request, project: ProjectName, body: AuthorRu
         view = await run_view(conn, run_id)
     log.info(
         "author run dispatched",
-        extra={"project": project, "run_id": run_id, "worker_id": pinned.id, "repos": len(repos)},
+        extra={
+            "project": project,
+            "run_id": run_id,
+            "worker_id": pinned.id,
+            "repos": len(repos),
+            "plan_id": body.plan_id,
+        },
     )
     return view
 
@@ -2205,7 +2231,10 @@ async def _run_spec(conn: AsyncConnection, run_id: int) -> RunSpec:
         skill = await author_skill(conn)
         repos = [repo.model_dump() for repo in view.repos or []]
         version = skill.version if skill is not None else 0
-        prompt = author.build_author_prompt(view.project, view.dispatched_by, view.request or "", repos, version)
+        target = (view.plan_id, view.plan_revision) if view.plan_id else None
+        prompt = author.build_author_prompt(
+            view.project, view.dispatched_by, view.request or "", repos, version, plan=target
+        )
         title = view.title
     elif view.kind == "judge":
         from evo_agents.hub.server.changes import judge_prompt  # it queues runs through this module
@@ -2544,10 +2573,12 @@ def _check_verdict(run_id: int, kind: str, approval: str, body: StateReport) -> 
 StepKey = Annotated[str, Path(min_length=1, max_length=STEP_KEY_CHARS, description="the step's id, or its order")]
 
 
-async def _held_plan_run(conn: AsyncConnection, user: Principal, run_id: int, *, lock: bool = False):
-    """(worker name, row) of a plan run the worker of ``user`` holds, its row locked with ``lock``: state, worker_id,
-    kind, project_id, the project's name, plan_id, dispatched_by, the dispatcher's login and repos. 404 for any other
-    run, a run of one step included."""
+async def _held_plan_run(
+    conn: AsyncConnection, user: Principal, run_id: int, *, lock: bool = False, kinds: tuple[str, ...] = ("plan",)
+):
+    """(worker name, row) of a run of ``kinds`` (a plan run) the worker of ``user`` holds, its row locked with
+    ``lock``: state, worker_id, kind, project_id, the project's name, plan_id, dispatched_by, the dispatcher's login
+    and repos. 404 for any other run, a run of one step included."""
     worker_id, _, name, *_ = await _worker_of(conn, user)
     r, p, u = tables.runs, tables.projects, tables.users
     query = (
@@ -2571,7 +2602,7 @@ async def _held_plan_run(conn: AsyncConnection, user: Principal, run_id: int, *,
     row = (await conn.execute(query)).one_or_none()
     if row is None or row.worker_id != worker_id or row.state not in runs.HELD_STATES:
         raise HTTPException(404, NOT_HELD.format(id=run_id))
-    if row.kind != "plan":
+    if row.kind not in kinds:
         what = {"review": "a review run", "judge": "a judge run", "author": "an author run"}.get(
             row.kind, "a run of one step"
         )
@@ -2593,12 +2624,113 @@ async def _dispatcher_access(conn: AsyncConnection, row, user: Principal) -> Pro
 
 @worker_router.get("/runs/{run_id}/plan", response_model=plan_routes.Plan, responses=REFUSALS)
 async def read_run_plan(request: Request, run_id: RunId, user: CurrentUser):
-    """The plan of a plan run this worker holds, as the hub holds it now, read as the member who dispatched the run."""
+    """The plan of a plan run or an author run this worker holds, as the hub holds it now, read as the member who
+    dispatched the run; 404 for an author run that has written no plan yet and was dispatched on none."""
     async with request.app.state.engine.begin() as conn:
-        _, row = await _held_plan_run(conn, user, run_id)
+        _, row = await _held_plan_run(conn, user, run_id, kinds=("plan", "author"))
+        if row.plan_id is None:
+            raise HTTPException(
+                404,
+                f"author run {run_id} writes a new plan and has put none on the hub yet: put it with "
+                f"`{author.PUT_COMMAND} FILE`",
+            )
         access = await _dispatcher_access(conn, row, user)
         held = await plan_routes._visible(conn, access, row[5], None)
     return held.view(row[4])
+
+
+class AuthoredPlan(BaseModel):
+    body: dict[str, Any] = Field(description="the plan as its YAML file reads; a hub key in it is ignored")
+    if_revision: int | None = Field(
+        None, ge=0, description="the revision being replaced; leave it out, or 0, to create the plan"
+    )
+    label: dict | None = Field(None, description="{level, location, integrity}; default: the project's, or the held")
+
+
+@worker_router.put("/runs/{run_id}/plan", response_model=plan_routes.Written, responses=plan_routes.REFUSALS)
+async def put_run_plan(request: Request, run_id: RunId, payload: AuthoredPlan, user: CurrentUser):
+    """Put the plan an author run this worker holds wrote on the hub: in the run's project, as the member who
+    dispatched the run, whose writer role is checked again now, with the checks of PUT /v1/projects/{p}/plans/{id}
+    (``plans.write_plan``); the revision records the run. The run writes one plan, the one it was dispatched on or the
+    one its first write created (422 for another id), never replaces a plan without ``if_revision`` (409), and never
+    changes its progress (422, ``author.progress_problem``)."""
+    body = plan_body(payload.body)
+    plan_id = body.get("id")
+    try:
+        if not isinstance(plan_id, str) or not re.fullmatch(plan_routes.PLAN_ID, plan_id):
+            raise plan_routes.PlanError(
+                422,
+                f"the plan's id is {plan_id!r}: a plan has an id of lowercase letters, digits and -, at most 100 "
+                "characters, and is stored under it; nothing was written",
+            )
+        plan_routes._schema_checked(body, plan_id)
+        async with request.app.state.engine.begin() as conn:
+            _, row = await _held_plan_run(conn, user, run_id, lock=True, kinds=("author",))
+            project = row.name
+            if row.plan_id is not None and row.plan_id != plan_id:
+                raise plan_routes.PlanError(
+                    422,
+                    f"author run {run_id} writes plan {row.plan_id}, not {plan_id}: a plan keeps its id, and an author "
+                    "run writes one plan; nothing was written",
+                )
+            if row.plan_id is None and payload.if_revision:
+                raise plan_routes.PlanError(
+                    422,
+                    f"author run {run_id} writes a new plan, so it replaces none: leave out --if-revision and give "
+                    f"the plan an id no plan of project {project} has; nothing was written",
+                )
+            try:
+                access = await _dispatcher_access(conn, row, user)
+            except HTTPException as exc:
+                if exc.status_code != 404:
+                    raise
+                raise HTTPException(
+                    403, f"{row.login}, who dispatched run {run_id}, no longer has a grant on project {project}"
+                ) from None
+            if not has_role(access.role, "writer"):
+                raise HTTPException(
+                    403,
+                    f"{row.login}, who dispatched run {run_id}, no longer has the writer role on project {project}, "
+                    "which putting a plan on the hub needs; nothing was written",
+                )
+
+            def unchanged_progress(held) -> None:
+                problem = author.progress_problem(None if held is None else held.body, body)
+                if problem:
+                    raise plan_routes.PlanError(422, f"plan {plan_id}: {problem}; nothing was written")
+
+            actor = Principal(row.dispatched_by, row.login, False, user.token_id, MACHINE, "")
+            written = await plan_routes.write_plan(
+                conn,
+                access,
+                actor,
+                body,
+                if_revision=payload.if_revision,
+                label=payload.label,
+                run_id=run_id,
+                guard=unchanged_progress,
+            )
+            if written.changed:
+                r = tables.runs
+                await conn.execute(
+                    update(r).where(r.c.id == run_id).values(plan_id=plan_id, plan_revision=written.revision)
+                )
+                verb = "Created" if written.created else "Revised"
+                await write_event(
+                    conn,
+                    run_id,
+                    {
+                        "text": f"{verb} plan {plan_id}: revision {written.revision}",
+                        "plan_written": {"plan_id": plan_id, "revision": written.revision, "created": written.created},
+                    },
+                )
+    except plan_routes.PlanError as exc:
+        return plan_routes._refusal(request, exc)
+    log.info(
+        "author run plan put",
+        extra={"run_id": run_id, "plan_id": plan_id, "revision": written.revision, "changed": written.changed},
+    )
+    return written
 
 
 def _check_step_report(run_id: int, key: str, body: StepReport) -> None:

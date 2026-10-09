@@ -331,6 +331,26 @@ Code's AskUserQuestion turned off; the run commits and pushes nothing, its GitHu
 refuse inside it, and it is never rerun (409). An author run of a new plan is listed and read through the project's
 default label, as a review run is.
 
+The agent puts the plan on the hub with `evo-agents worker put FILE [--if-revision REVISION]`, which refuses outside
+an author run and calls `PUT /v1/worker/runs/{id}/plan`. The hub stores the plan in the run's project as the member
+who dispatched the run, through the write of `PUT /v1/projects/{p}/plans/{id}` (`plans.write_plan`): 422 for a body
+that does not match plan.schema.json, 413 over the size the hub keeps, the label the project's hub sink must clear,
+and the warnings of the semantic checks in the answer. The dispatcher's writer role is checked again at each write:
+403 once it is lost, or the grant is gone. Without `--if-revision` a plan the hub holds is never replaced (409
+`revision_conflict`, with the plan as held). Each revision records the run (`run_id` of the revisions, which
+`evo-agents hub plan history` shows as `owner (author run #N)`), and the run points to the plan it wrote at its
+latest revision (`plan_id` and `plan_revision` of the run, and a system event per revision).
+
+An author run writes one plan. `evo-agents hub run author REQUEST --plan ID` (`plan_id` of the dispatch) aims it at a
+plan the dispatcher can read, recorded with its revision; the prompt then tells the agent to read the plan with
+`evo-agents worker plan --json` (`GET /v1/worker/runs/{id}/plan`, the plan as the hub holds it now, with its
+revision) and to put its version with `--if-revision`, 409 when the plan changed in between. A run of a new plan
+writes the id its first write creates, and gives `--if-revision` only from then on (422 before). A write with another
+id is 422, and so is one that changes the progress the hub holds (`author.progress_problem`): the status, done_at and
+evidence of a step, by its id, and the status and merged_at of a repo, by its name, including a step or repo with
+progress left out and progress on a new one. An author run on a plan is not a run of its steps: it holds back no
+dispatch of them, nor a plan run.
+
 ## Decisions and notices
 
 A plan run's agent stops for its owner only on a decision of one of the categories `docs/notifications.md` lists
@@ -570,7 +590,8 @@ For the worker, with an `evw_` token and the version header:
 | `POST /v1/worker/claim` | waits up to 25 s for a run |
 | `POST /v1/worker/heartbeat` | reports the machine, extends leases, returns control |
 | `POST /v1/worker/runs/{id}/state` | reports a move |
-| `GET /v1/worker/runs/{id}/plan` | reads the plan of a plan run it holds, as the hub holds it now |
+| `GET /v1/worker/runs/{id}/plan` | reads the plan of a plan run or an author run it holds, as the hub holds it now |
+| `PUT /v1/worker/runs/{id}/plan` | puts the plan an author run it holds wrote, as the run's dispatcher (Author runs) |
 | `POST /v1/worker/runs/{id}/steps/{key}` | reports a step of a plan run it holds |
 | `POST /v1/worker/runs/{id}/decisions` | asks the plan run's owner a decision; answers its id |
 | `POST /v1/worker/runs/{id}/notices` | sends the plan run's owner a notice, such as a push to a default branch |

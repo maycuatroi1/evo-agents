@@ -55,7 +55,7 @@ PLAN_KEYS = (
     "updated_by",
 )
 WRITTEN_KEYS = (*PLAN_KEYS, "created", "changed", "warnings")
-REVISION_KEYS = ("revision", "area", "digest", "summary", "actor", "created_at")
+REVISION_KEYS = ("revision", "area", "digest", "summary", "actor", "created_at", "run_id")
 SUMMARY_KEYS = (
     "plan_id",
     "area",
@@ -321,6 +321,12 @@ def cmd_show(args) -> int:
     return 0
 
 
+def _by(revision: dict) -> str:
+    """Who wrote a revision: the member, and the author run that wrote it as them."""
+    run_id = revision.get("run_id")
+    return revision["actor"] + (f" (author run #{run_id})" if run_id else "")
+
+
 @_client_command
 def cmd_history(args) -> int:
     hub, _ = _signed_in()
@@ -329,7 +335,7 @@ def cmd_history(args) -> int:
     if args.json:
         _print_json(revisions)
         return 0
-    rows = [(r["revision"], r["area"], _when(r["created_at"]), r["actor"], r["summary"]) for r in revisions]
+    rows = [(r["revision"], r["area"], _when(r["created_at"]), _by(r), r["summary"]) for r in revisions]
     _table(("REV", "AREA", "WHEN (UTC)", "BY", "SUMMARY"), rows)
     return 0
 

@@ -45,6 +45,7 @@ class FakeHub:
         self.step_reports: list[dict] = []
         self.findings: list[dict] = []  # what the agent of a review run recorded, with the run's id
         self.proposals: list[dict] = []
+        self.plan_puts: list[dict] = []  # what the agent of an author run put, with the run's id and the status
         self.verdicts: list[dict] = []  # what the judge runs posted, with the run's id
         self.judge_inputs: dict[int, dict] = {}  # run id -> what GET .../judge answers it
         self.judge_reads: list[int] = []  # the judge runs that read their inputs, in order
@@ -84,6 +85,7 @@ class FakeHub:
                 post("/v1/worker/runs/{id}/inbox", self._inbox),
                 post("/v1/worker/runs/{id}/uploads", self._uploads),
                 get("/v1/worker/runs/{id}/plan", self._plan),
+                web.put("/v1/worker/runs/{id}/plan", self._put_plan),
                 post("/v1/worker/runs/{id}/steps/{key}", self._step),
                 post("/v1/worker/runs/{id}/decisions", self._decision),
                 post("/v1/worker/runs/{id}/notices", self._notice),
@@ -273,13 +275,19 @@ class FakeHub:
         }
 
     def queue_author_run(
-        self, repos: list[str], skills: list[dict], prompt: str = "Write the plan.", runtime: str = "claude-code"
+        self,
+        repos: list[str],
+        skills: list[dict],
+        prompt: str = "Write the plan.",
+        runtime: str = "claude-code",
+        plan_id: str = "",
     ) -> int:
-        """An author run over ``repos`` (the harness first) with the skill tickets ``skills``, as the hub hands it."""
+        """An author run over ``repos`` (the harness first) with the skill tickets ``skills``, as the hub hands it; of
+        plan ``plan_id`` when it revises one."""
         return self.queue_run(
             kind="author",
             project=self.project,
-            plan_id="",
+            plan_id=plan_id,
             step_key=None,
             title="Plan from: a wait helper",
             plan_revision=None,
@@ -488,12 +496,44 @@ class FakeHub:
         return web.json_response({"uploads": []})
 
     async def _plan(self, request: web.Request) -> web.Response:
-        _, run = self._held_plan_run(request)
+        run_id, run = self._run(request)
+        if run["state"] in runs.HELD_STATES and run["spec"]["kind"] == "author":
+            if not run["spec"]["plan_id"]:
+                raise _refusal(404, f"author run {run_id} has put no plan on the hub yet")
+        else:
+            _, run = self._held_plan_run(request)
         plan_id = run["spec"]["plan_id"]
         held = self.plans[plan_id]
         return web.json_response(
             {"project": self.project, "plan_id": plan_id, "revision": held["revision"], "body": held["body"]}
         )
+
+    async def _put_plan(self, request: web.Request) -> web.Response:
+        """As the hub's PUT .../plan of an author run: one plan per run, never replaced without its revision."""
+        run_id, run = self._run(request)
+        if run["state"] not in runs.HELD_STATES or run["spec"]["kind"] != "author":
+            raise _refusal(404, f"run {run_id} is not held by this worker, or not an author run")
+        payload = await request.json()
+        body, given = payload["body"], payload.get("if_revision")
+        plan_id, target = body.get("id"), run["spec"]["plan_id"]
+
+        def answered(status: int, answer: dict) -> web.Response:
+            self.plan_puts.append({"run_id": run_id, "status": status, **payload})
+            return web.json_response(answer, status=status)
+
+        if target and plan_id != target:
+            return answered(422, {"error": "invalid", "message": f"author run {run_id} writes plan {target}"})
+        held = self.plans.get(plan_id)
+        if held is not None and given != held["revision"]:
+            message = f"plan {plan_id} is on the hub at revision {held['revision']}: pass if_revision"
+            return answered(409, {"error": "revision_conflict", "message": message})
+        if held is None and given:
+            return answered(409, {"error": "revision_conflict", "message": f"plan {plan_id} is not on the hub"})
+        self.put_plan(body)
+        run["spec"]["plan_id"] = plan_id
+        revision = self.plans[plan_id]["revision"]
+        answer = {"project": self.project, "plan_id": plan_id, "revision": revision, "body": body}
+        return answered(200, {**answer, "created": held is None, "changed": True, "warnings": []})
 
     async def _step(self, request: web.Request) -> web.Response:
         run_id, run = self._held_plan_run(request)

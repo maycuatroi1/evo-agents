@@ -17,6 +17,9 @@
   and a proposal with their evidence (``evo_agents.hub.review.parse_evidence``); the hub computes a proposal's tier.
   Code evidence must be a line of a file in the run's worktree of its repo, and goes with the commit the worktree is at.
   They refuse to run outside a review run of this worker.
+- ``put FILE [--if-revision N]``: the command of an author run's agent, which puts the plan it wrote on the hub, in the
+  run's project, as the member who dispatched the run (``evo_agents.hub.author``); ``plan`` reads it back, with its
+  revision, once the run has one. It refuses to run outside an author run of this worker.
 - ``git-credential --run N get|store|erase``: git's credential helper for run N, which the run's git configuration
   names; ``get`` answers from the run's leases through its socket, ``store`` and ``erase`` do nothing.
   ``env --run N``: the variables run N's leases add to its agent's environment, as export lines, for the script of an
@@ -504,10 +507,10 @@ def _agent_run(command: str, kinds: tuple[str, ...] = ("plan",)) -> _AgentRun:
         )
     kind = record.get("kind") or "step"
     if kind not in kinds:
-        if kinds == ("review",):
+        if kinds in (("review",), ("author",)):
             raise WorkerStateError(
-                f"run {run_id} is {'an' if kind[:1] in 'aeiou' else 'a'} {kind} run: only the agent of a review run "
-                f"uses `evo-agents worker {command}`"
+                f"run {run_id} is {'an' if kind[:1] in 'aeiou' else 'a'} {kind} run: only the agent of "
+                f"{'an' if kinds[0][:1] in 'aeiou' else 'a'} {kinds[0]} run uses `evo-agents worker {command}`"
             )
         if kind == "review":
             raise WorkerStateError(
@@ -795,7 +798,7 @@ def cmd_notify(args) -> int:
 
 @_worker_command
 def cmd_plan(args) -> int:
-    agent = _agent_run("plan")
+    agent = _agent_run("plan", ("plan", "author"))
 
     async def work(hub) -> dict:
         return await hub.plan(agent.run_id)
@@ -950,6 +953,47 @@ def cmd_propose(args) -> int:
     print(f"Proposal #{answer.get('id')} recorded: tier {answer.get('tier')}, {answer.get('state')}.")
     for reason in answer.get("tier_reasons") or []:
         print(f"  {reason}")
+    return 0
+
+
+# The command of an author run's agent
+
+
+@_worker_command
+def cmd_put(args) -> int:
+    import yaml
+
+    from evo_agents.hub.plans import MAX_PLAN_BYTES
+
+    agent = _agent_run("put", ("author",))
+    text = _read_text(args.file, "plan", 4 * MAX_PLAN_BYTES) or ""
+    try:
+        plan = yaml.safe_load(text)
+    except yaml.YAMLError as exc:
+        raise WorkerStateError(f"{args.file} is neither YAML nor JSON: {exc}") from None
+    if not isinstance(plan, dict):
+        raise WorkerStateError(f"{args.file} holds no plan: a plan is a mapping with id, goal and steps")
+    request: dict = {"body": json.loads(json.dumps(plan, default=str))}  # dates as text, as the hub keeps JSON
+    if args.if_revision is not None:
+        request["if_revision"] = args.if_revision
+
+    async def work(hub) -> dict:
+        return await hub.put_plan(agent.run_id, request)
+
+    answer = _with_hub(agent, work)
+    if args.json:
+        print(json.dumps(answer, ensure_ascii=False, indent=2))
+        return 0
+    plan_text = f"plan {answer.get('plan_id')} of project {answer.get('project')}"
+    if answer.get("created"):
+        print(f"Created {plan_text} on the hub at revision {answer.get('revision')}.")
+    elif answer.get("changed"):
+        print(f"Revised {plan_text} on the hub: revision {answer.get('revision')}.")
+    else:
+        print(f"The hub already holds this as {plan_text}, revision {answer.get('revision')}; nothing changed.")
+    for warning in answer.get("warnings") or []:
+        print(f"warning: {warning.get('path') or '<root>'}: {warning.get('message')}")
+    print(f"Pass --if-revision {answer.get('revision')} to put it again.")
     return 0
 
 
@@ -1121,9 +1165,28 @@ def register(sub) -> None:
     propose.add_argument("--summary-file", help="markdown: the problem, the change, what waiting costs (- for stdin)")
     propose.set_defaults(func=cmd_propose)
 
-    plan = wsub.add_parser("plan", help="inside a plan run: print the run's plan as the hub holds it now")
+    plan = wsub.add_parser(
+        "plan", help="inside a plan run or an author run: print the run's plan as the hub holds it now"
+    )
     from evo_agents.hub.contract import json_option, returns_object
-    from evo_agents.hub.plan_cli import PLAN_KEYS
+    from evo_agents.hub.plan_cli import PLAN_KEYS, WRITTEN
 
     json_option(plan, returns_object(*PLAN_KEYS, schema="Plan"), help="the hub's answer as JSON")  # seam hub-cli-v1
     plan.set_defaults(func=cmd_plan)
+
+    # The agent of an author run runs this; outside one it refuses.
+    put = wsub.add_parser(
+        "put",
+        help="inside an author run: put the plan you wrote on the hub, as the member who asked for it; replacing it "
+        "needs --if-revision",
+    )
+    put.add_argument("file", metavar="FILE", help="the plan, YAML or JSON, as plan.schema.json has it (- for stdin)")
+    put.add_argument(
+        "--if-revision",
+        type=int,
+        metavar="REVISION",
+        help="the revision on the hub this replaces, as `evo-agents worker plan --json` read it; leave it out to "
+        "create the plan",
+    )
+    json_option(put, WRITTEN, help="the hub's answer as JSON")  # seam hub-cli-v1
+    put.set_defaults(func=cmd_put)

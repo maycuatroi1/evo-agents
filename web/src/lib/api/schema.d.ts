@@ -1555,10 +1555,19 @@ export interface paths {
         };
         /**
          * Read Run Plan
-         * @description The plan of a plan run this worker holds, as the hub holds it now, read as the member who dispatched the run.
+         * @description The plan of a plan run or an author run this worker holds, as the hub holds it now, read as the member who
+         *     dispatched the run; 404 for an author run that has written no plan yet and was dispatched on none.
          */
         get: operations["read_run_plan_v1_worker_runs__run_id__plan_get"];
-        put?: never;
+        /**
+         * Put Run Plan
+         * @description Put the plan an author run this worker holds wrote on the hub: in the run's project, as the member who
+         *     dispatched the run, whose writer role is checked again now, with the checks of PUT /v1/projects/{p}/plans/{id}
+         *     (``plans.write_plan``); the revision records the run. The run writes one plan, the one it was dispatched on or the
+         *     one its first write created (422 for another id), never replaces a plan without ``if_revision`` (409), and never
+         *     changes its progress (422, ``author.progress_problem``).
+         */
+        put: operations["put_run_plan_v1_worker_runs__run_id__plan_put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -2789,6 +2798,11 @@ export interface components {
              */
             worker_id: number;
             /**
+             * Plan Id
+             * @description the plan the run revises, one you can read; null: the run writes a new plan
+             */
+            plan_id?: string | null;
+            /**
              * Runtime
              * @description claude-code, the one runtime an author run takes (any means it); another one is 422
              * @default claude-code
@@ -2807,6 +2821,28 @@ export interface components {
              * @enum {integer}
              */
             timeout_h: 1 | 2 | 4;
+        };
+        /** AuthoredPlan */
+        AuthoredPlan: {
+            /**
+             * Body
+             * @description the plan as its YAML file reads; a hub key in it is ignored
+             */
+            body: {
+                [key: string]: unknown;
+            };
+            /**
+             * If Revision
+             * @description the revision being replaced; leave it out, or 0, to create the plan
+             */
+            if_revision?: number | null;
+            /**
+             * Label
+             * @description {level, location, integrity}; default: the project's, or the held
+             */
+            label?: {
+                [key: string]: unknown;
+            } | null;
         };
         /** Blob */
         Blob: {
@@ -6590,6 +6626,11 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /**
+             * Run Id
+             * @description the author run that wrote the revision, as its dispatcher (actor); null for any other write
+             */
+            run_id?: number | null;
         };
         /** RevisionBody */
         RevisionBody: {
@@ -6611,6 +6652,11 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /**
+             * Run Id
+             * @description the author run that wrote the revision, as its dispatcher (actor); null for any other write
+             */
+            run_id?: number | null;
             /** Label */
             label: {
                 [key: string]: unknown;
@@ -14124,6 +14170,86 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_run_plan_v1_worker_runs__run_id__plan_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AuthoredPlan"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["evo_agents__hub__server__plans__Written"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["evo_agents__hub__server__plans__Conflict"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
         };
