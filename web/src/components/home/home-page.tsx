@@ -22,6 +22,7 @@ import { cn } from "@/lib/utils";
 import { Fleet } from "./fleet-card";
 import { HomeMetrics } from "./home-metrics";
 import { homeRefreshInterval, type Overview, type OverviewDecision } from "./model";
+import { AuthorWaiting } from "./author-waiting";
 import { LazyDecisionSheet, NeedsYou } from "./needs-you";
 import { Projects } from "./projects-card";
 import { InFlight, Recent } from "./run-lists";
@@ -101,6 +102,7 @@ function MissionControl({ overview, viewer }: { overview: Overview; viewer: stri
       <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_300px] xl:grid-cols-[minmax(0,1fr)_340px]">
         <div className="flex min-w-0 flex-col gap-5">
           <NeedsYou overview={overview} onAnswer={answer} />
+          <AuthorWaiting overview={overview} />
           <InFlight overview={overview} viewer={viewer} />
           <Recent overview={overview} viewer={viewer} />
         </div>

@@ -392,3 +392,58 @@ export const openDecisionsQuery = (api: ApiSource, project: string, runId: numbe
         }),
       ),
   });
+
+// Author runs: a plan written from a member's request on a worker of theirs, and the chat with its agent
+// (docs/workers.md, Author runs).
+
+export type AuthorRunRequest = Schemas["AuthorRunDispatch"];
+export type AuthorTimeout = AuthorRunRequest["timeout_h"];
+export type RunChat = Schemas["RunChat"];
+export type ChatMessage = Schemas["ChatMessage"];
+export type ChatStatus = RunChat["status"];
+
+/** `author.AUTHOR_RUNTIMES`: the one runtime an author run takes. */
+export const AUTHOR_RUNTIME = "claude-code" as const satisfies RequestedRuntime;
+/** `author.AUTHOR_TIMEOUT_CHOICES`: hours of agent time an author run may take; 2 by default. */
+export const AUTHOR_TIMEOUT_CHOICES = [1, 2, 4] as const satisfies readonly AuthorTimeout[];
+export const DEFAULT_AUTHOR_TIMEOUT: AuthorTimeout = 2;
+/** `author.MAX_REQUEST_BYTES`: the member's request is at most 16 KiB of UTF-8. */
+export const MAX_REQUEST_BYTES = 16 * 1024;
+/** While the agent works or waits, the chat is asked again this often; the run's stream also reloads it on each event. */
+export const CHAT_REFRESH_MS = 3_000;
+
+/**
+ * Queue an author run on a worker of the caller's (an author run is always pinned): a new plan, or a revision of
+ * `plan_id`, with the session's CSRF header.
+ */
+export async function dispatchAuthorRun(api: ApiClient, project: string, body: AuthorRunRequest): Promise<Run> {
+  const headers = await csrfHeaders(api);
+  return call(api.POST("/v1/projects/{project}/author-runs", { params: { path: { project } }, body, headers }));
+}
+
+/** Below the run's own key, so whatever reloads the run (a move the log tells, a control) reloads its chat too. */
+export function chatKey(project: string, id: number) {
+  return [...runKey(project, id), "chat"] as const;
+}
+
+/** The chat of an author run, over the runs that resume it: asked again every 3 seconds until it ended. */
+export const chatQuery = (api: ApiSource, project: string, id: number) =>
+  queryOptions({
+    queryKey: chatKey(project, id),
+    queryFn: ({ signal }) =>
+      call(api().GET("/v1/projects/{project}/runs/{run_id}/chat", { params: { path: { project, run_id: id } }, signal })),
+    refetchInterval: (query) => (query.state.data?.status === "ended" ? false : CHAT_REFRESH_MS),
+  });
+
+/** The owner's end of the chat of an author run: done at once when parked, after the agent's turn when held. */
+export async function finishChat(api: ApiClient, project: string, id: number): Promise<Run> {
+  const headers = await csrfHeaders(api);
+  return call(api.POST("/v1/projects/{project}/runs/{run_id}/finish", { params: { path: { project, run_id: id } }, headers }));
+}
+
+/** The parameter value of a run's page that shows its chat first, as the notice author_waiting links to it. */
+export const CHAT_TAB = "chat";
+
+export function runChatHref(project: string, id: number): Route {
+  return `${runHref(project, id)}?tab=${CHAT_TAB}` as Route;
+}

@@ -96,7 +96,18 @@ export function planRunOffers(plans: readonly { project: string; plans: readonly
   );
 }
 
-/** The projects of a scope where the visitor may dispatch a step. */
+/** A plan Revise with agent may start an author run on: active, in a project where the visitor writes. */
+export type ReviseOffer = { project: string; planId: string; title: string };
+
+export function reviseOffers(plans: readonly { project: string; plans: readonly PlanSummary[] }[], grants: readonly Grant[]): ReviseOffer[] {
+  return plans.flatMap(({ project, plans: list }) =>
+    canWrite(roleIn(grants, project))
+      ? list.filter((plan) => plan.area === "active").map((plan) => ({ project, planId: plan.plan_id, title: plan.title ?? plan.plan_id }))
+      : [],
+  );
+}
+
+/** The projects of a scope where the visitor may dispatch a step (and write a plan with New plan). */
 export function dispatchProjects(projects: readonly string[], grants: readonly Grant[]): string[] {
   return projects.filter((project) => canWrite(roleIn(grants, project)));
 }

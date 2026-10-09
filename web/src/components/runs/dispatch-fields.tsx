@@ -18,9 +18,9 @@ import { MAX_MODEL_CHARS, type RequestedRuntime } from "./queries";
 /**
  * The parts the Dispatch and Run plan dialogs share: fieldsets of bordered choices, the runtime's reach among the
  * visitor's workers, the worker picker, the model field and the footer's outlook. `subject` says what is dispatched:
- * runs of steps, or one plan run.
+ * runs of steps, one plan run, or one author run (New plan and Revise with agent, whose dialog picks its worker itself).
  */
-export type DispatchSubject = "runs" | "plan";
+export type DispatchSubject = "runs" | "plan" | "author";
 export type Target = "auto" | "pin";
 
 export function Section({ legend, hint, children, testId }: { legend: string; hint?: ReactNode; children: ReactNode; testId?: string }) {

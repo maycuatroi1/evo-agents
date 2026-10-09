@@ -14,6 +14,7 @@ export type Overview = Schemas["Overview"];
 export type OverviewRun = Schemas["OverviewRun"];
 export type OverviewDecision = Schemas["OverviewDecision"];
 export type OverviewProject = Schemas["OverviewProject"];
+export type OverviewAuthorWait = Schemas["OverviewAuthorWait"];
 
 /** While a run is in flight or a decision is open, Home asks every 5 seconds; otherwise every 30. */
 export const HOME_LIVE_MS = 5_000;
@@ -26,13 +27,17 @@ export function isRunningState(state: string): boolean {
   return (RUNNING_STATES as readonly string[]).includes(state);
 }
 
-/** Whether anything is in flight or waits on a person: a run queued, held, waiting or parked, or an open decision. */
-export function hasWork(overview: Pick<Overview, "active_runs" | "open_decisions" | "counts"> | undefined): boolean {
+/**
+ * Whether anything is in flight or waits on a person: a run queued, held, waiting or parked, an open decision, or an
+ * author run whose chat waits for the visitor's reply.
+ */
+export function hasWork(overview: Pick<Overview, "active_runs" | "open_decisions" | "counts"> & Partial<Pick<Overview, "author_waiting">> | undefined): boolean {
   if (!overview) return false;
   const { counts } = overview;
   return (
     overview.active_runs.length > 0 ||
     overview.open_decisions.length > 0 ||
+    (overview.author_waiting?.length ?? 0) > 0 ||
     counts.running > 0 ||
     counts.queued > 0 ||
     counts.waiting_on_you > 0

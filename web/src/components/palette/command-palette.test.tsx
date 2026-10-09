@@ -127,6 +127,7 @@ function overview(grants: Grant[]): Overview {
     active_runs: [run(13, "running")],
     recent_runs: [run(8, "failed", { step_key: "3", title: "Worker daemon", finished_at: "2026-10-07T00:50:00Z" })],
     open_decisions: [],
+    author_waiting: [],
     projects: grants.map((grant) => ({ name: grant.project, role: grant.role, max_level: grant.max_level, repos: 1, active_plans: 1, open_decisions: 0 })),
   };
 }
@@ -238,7 +239,7 @@ describe("CommandPalette", () => {
   it("lists a writer's actions, then the runs, plans, workers and pages of the page's project", async () => {
     const user = setup();
     const palette = await openPalette(user);
-    await waitFor(() => expect(items(palette, "actions")).toEqual(["action:plan-run:demo:fleet", "action:dispatch:demo", "action:rerun:demo:8", "action:register"]));
+    await waitFor(() => expect(items(palette, "actions")).toEqual(["action:plan-run:demo:fleet", "action:dispatch:demo", "action:new-plan:demo", "action:rerun:demo:8", "action:register"]));
     expect(within(palette).getByRole("option", { name: /Chạy plan Plan runs on the web/ })).toHaveTextContent("còn 3 bước");
     expect(within(palette).getByRole("option", { name: /Chạy lại #8/ })).toHaveTextContent("thất bại");
     expect(items(palette, "runs")).toEqual(["run:demo:13", "run:demo:8"]);
@@ -256,7 +257,7 @@ describe("CommandPalette", () => {
     api.hold["/v1/projects/demo/plans"] = new Promise<void>((resolve) => (release = resolve));
     const user = setup();
     const palette = await openPalette(user);
-    await waitFor(() => expect(items(palette, "actions")).toEqual(["action:dispatch:demo", "action:rerun:demo:8", "action:register"]));
+    await waitFor(() => expect(items(palette, "actions")).toEqual(["action:dispatch:demo", "action:new-plan:demo", "action:rerun:demo:8", "action:register"]));
     const options = () => within(palette).getAllByRole("option");
     await waitFor(() => expect(options()[0]).toHaveAttribute("aria-selected", "true"));
     // The plans arrive: Run plan comes first, above Dispatch, and is the one selected.
@@ -349,6 +350,24 @@ describe("CommandPalette", () => {
     await user.keyboard("{Escape}");
     await waitFor(() => expect(screen.queryByTestId("dispatch-dialog")).toBeNull());
     await waitFor(() => expect(screen.getByTestId("palette-trigger")).toHaveFocus());
+  });
+
+  it("opens the author run dialog with New plan, and with Revise with agent once the plan is typed", async () => {
+    const user = setup();
+    const palette = await openPalette(user);
+    await user.type(within(palette).getByRole("combobox"), "revise");
+    await waitFor(() => expect(items(palette, "actions")).toEqual(["action:revise:demo:fleet"]));
+    await user.keyboard("{Enter}");
+    const dialog = await screen.findByTestId("author-run-dialog", {}, { timeout: 5_000 });
+    expect(dialog).toHaveAttribute("data-mode", "revise");
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByTestId("author-run-dialog")).toBeNull());
+
+    const again = await openPalette(user);
+    await user.type(within(again).getByRole("combobox"), "new plan");
+    await waitFor(() => expect(items(again, "actions")).toEqual(["action:new-plan:demo"]));
+    await user.keyboard("{Enter}");
+    expect(await screen.findByTestId("author-run-dialog", {}, { timeout: 5_000 })).toHaveAttribute("data-mode", "new");
   });
 
   it("shows the keys that do an item's work from the page", async () => {
