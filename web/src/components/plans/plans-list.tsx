@@ -13,6 +13,7 @@ import { Identifier, NAME_LINK } from "@/components/data/identifier";
 import { SearchField } from "@/components/data/search-field";
 import { useCanDispatch, usePlanRunToast } from "@/components/runs/hooks";
 import { activePlanRun, planRunPhase } from "@/components/runs/model";
+import { NewPlanButton } from "@/components/runs/author-run";
 import { RunPlanButton } from "@/components/runs/plan-run";
 import { type Run, runHref, runsSummaryQuery } from "@/components/runs/queries";
 import { PageHeader } from "@/components/shell/page-header";
@@ -248,7 +249,11 @@ function Plans({ project, plans }: { project: string; plans: PlanSummary[] }) {
   const onDispatched = usePlanRunToast();
   const needle = query.toLocaleLowerCase("vi");
   if (plans.length === 0) {
-    return <EmptyState icon={ClipboardList} title={t("emptyTitle")} description={t("emptyDescription")} />;
+    return (
+      <EmptyState icon={ClipboardList} title={t("emptyTitle")} description={t("emptyDescription")}>
+        <NewPlanButton project={project} testId="new-plan-empty" />
+      </EmptyState>
+    );
   }
   const byArea = (area: PlanArea) => plans.filter((plan) => plan.area === area);
   const shown = plans.filter((plan) => matches(plan, needle));
@@ -321,6 +326,7 @@ export function PlansList({ project, initialError }: { project: string; initialE
     <>
       <PageHeader
         title={t("list.title")}
+        actions={<NewPlanButton project={project} variant={counts && counts.active + counts.completed === 0 ? "outline" : "default"} />}
         tags={
           counts ? (
             <>

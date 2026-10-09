@@ -8,7 +8,9 @@ the plan and the revision, never its content, all in one transaction.
 
 - PUT creates a plan, or replaces it when ``if_revision`` is the revision the hub holds; anything else is a 409
   ``revision_conflict`` whose ``current`` is the plan as the hub holds it. A body equal to the one held (same digest
-  and label) changes nothing and answers 200, so pushing the same files again is idempotent.
+  and label) changes nothing and answers 200, so pushing the same files again is idempotent. An author run's agent
+  writes through the same code (``write_plan``) with PUT /v1/worker/runs/{id}/plan, as the run's dispatcher, and the
+  revision records the run (``run_id``, which the revisions show).
 - PATCH sets keys of one item of a section, by index or (for steps) by step id, as ``evo harness step`` does, and
   needs ``if_revision`` too. A client that gets the 409 reads the plan again and retries on the new revision.
 - POST .../complete moves the plan to the completed area, only when every step is done.
@@ -24,6 +26,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import PurePosixPath
@@ -126,7 +129,7 @@ class Written(Plan):
     warnings: list[Problem] = Field(description="what plan_semantics found; the plan was stored anyway")
 
 
-class Revision(BaseModel):
+class RevisionFields(BaseModel):
     revision: int
     area: Literal[AREAS]
     digest: str
@@ -135,7 +138,15 @@ class Revision(BaseModel):
     created_at: datetime
 
 
-class RevisionBody(Revision):
+class Revision(RevisionFields):
+    run_id: int | None = Field(
+        None, description="the author run that wrote the revision, as its dispatcher (actor); null for any other write"
+    )
+
+
+# One revision with its body keeps the keys of 0.8.0, which consumers of `hub plan show --revision` pin exactly (seam
+# hub-cli-v1); the author run that wrote a revision is in the history (Revision.run_id).
+class RevisionBody(RevisionFields):
     label: dict
     body: dict
 
@@ -371,6 +382,7 @@ async def _revisions(
             revisions.c.summary,
             users.c.login.label("actor"),
             revisions.c.created_at,
+            revisions.c.run_id,
             revisions.c.body,
         )
         .join_from(revisions, users, users.c.id == revisions.c.actor_id)
@@ -529,13 +541,25 @@ def _stale(access: ProjectAccess, held: Held, given: int | None) -> PlanError:
 
 
 async def _store(
-    conn, access, user, held: Held | None, *, area, label, body, summary, action, made_by_curator: bool = False
+    conn,
+    access,
+    user,
+    held: Held | None,
+    *,
+    area,
+    label,
+    body,
+    summary,
+    action,
+    made_by_curator: bool = False,
+    run_id: int | None = None,
 ) -> Held | None:
     """Write the next revision of a plan (the first when ``held`` is None); None when another request created the
     plan first. The stored body is read back and must carry the digest of the body given. A write of a plan the
     Curator made that names another repo or branch, or changes more than the progress of its steps, and a new plan
     with an id of the Curator's that the hub does not make from a proposal (``made_by_curator``), are a 409
-    (``changes.plan_write_refusal``)."""
+    (``changes.plan_write_refusal``). ``run_id`` is the run that writes it, an author run's, recorded on the
+    revision."""
     from evo_agents.hub.server.changes import plan_write_refusal  # it reads plans through this module
 
     refusal = await plan_write_refusal(
@@ -601,6 +625,7 @@ async def _store(
             digest=digest,
             summary=summary,
             actor_id=user.user_id,
+            run_id=run_id,
         )
     )
     target = f"{access.name}/{body['id']}@{revision}"
@@ -634,65 +659,95 @@ async def put(request: Request, project: ProjectName, plan_id: PlanId, payload: 
         async with request.app.state.engine.begin() as conn:
             access = await project_access(conn, user, project)
             _writer(access)
-            given_label = access.push_label(payload.label)
-            for _ in range(2):  # a create that loses a race with another create reads the winner's plan
-                held = await _held(conn, access, plan_id, lock=True)
-                if held is None:
-                    if payload.if_revision:
-                        raise PlanError(
-                            409,
-                            f"plan {plan_id} is not on the hub, so there is no revision {payload.if_revision} to "
-                            "replace: leave out if_revision to create it",
-                            code=REVISION_CONFLICT,
-                        )
-                    area = payload.area or "active"
-                    warnings = await _warnings(conn, access, body, area)
-                    stored = await _store(
-                        conn,
-                        access,
-                        user,
-                        None,
-                        area=area,
-                        label=given_label,
-                        body=body,
-                        summary=summarize(None, body),
-                        action=PLAN_CREATE,
-                    )
-                    if stored is None:
-                        continue
-                    _logged(project, stored, "created", user)
-                    return _written(access, stored, created=True, changed=True, warnings=warnings)
-                if not access.visible(held.label, _sink(access, None)):
-                    raise PlanError(409, f"plan {plan_id} already exists in project {project}")
-                if payload.area and payload.area != held.area:
-                    raise PlanError(
-                        422,
-                        f"plan {plan_id} is {held.area} on the hub, and a put does not move it: "
-                        f"`evo-agents hub plan complete` does, and its copy belongs in plans/{held.area}/",
-                    )
-                label = given_label if payload.label is not None else access.push_label(held.label)
-                warnings = await _warnings(conn, access, body, held.area)
-                if plan_digest(body) == held.digest and label == held.label:
-                    _logged(project, held, "unchanged", user)
-                    return _written(access, held, created=False, changed=False, warnings=warnings)
-                if payload.if_revision != held.revision:
-                    raise _stale(access, held, payload.if_revision)
-                stored = await _store(
-                    conn,
-                    access,
-                    user,
-                    held,
-                    area=held.area,
-                    label=label,
-                    body=body,
-                    summary=summarize(held.body, body) if body != held.body else "changed the label",
-                    action=PLAN_PUT,
-                )
-                _logged(project, stored, "replaced", user)
-                return _written(access, stored, created=False, changed=True, warnings=warnings)
-            raise PlanError(409, f"plan {plan_id} was created and changed while this request ran; try again")
+            return await write_plan(
+                conn, access, user, body, area=payload.area, if_revision=payload.if_revision, label=payload.label
+            )
     except PlanError as exc:
         return _refusal(request, exc)
+
+
+async def write_plan(
+    conn,
+    access: ProjectAccess,
+    user,
+    body: dict,
+    *,
+    area: str | None = None,
+    if_revision: int | None = None,
+    label: dict | None = None,
+    run_id: int | None = None,
+    guard: Callable[[Held | None], None] | None = None,
+) -> Written:
+    """PUT's write, in the caller's transaction, for a ``user`` whose writer role the caller checked and a ``body``
+    that passed ``_schema_checked``: create plan ``body["id"]``, or replace the revision ``if_revision`` names. Raises
+    PlanError (409 ``revision_conflict``, 409, 413, 422) and HTTPException (403 or 422 for a label the push refuses).
+    ``guard`` sees the plan as held (None before it exists), its row locked, before anything is written, and raises
+    PlanError to refuse the write; ``run_id`` is the run that writes it, recorded on the revision. An author run's
+    write (``evo_agents.hub.server.runs``) goes through here as the member who dispatched the run."""
+    plan_id, project = body["id"], access.name
+    given_label = access.push_label(label)
+    for _ in range(2):  # a create that loses a race with another create reads the winner's plan
+        held = await _held(conn, access, plan_id, lock=True)
+        if held is None:
+            if if_revision:
+                raise PlanError(
+                    409,
+                    f"plan {plan_id} is not on the hub, so there is no revision {if_revision} to "
+                    "replace: leave out if_revision to create it",
+                    code=REVISION_CONFLICT,
+                )
+            if guard is not None:
+                guard(None)
+            new_area = area or "active"
+            warnings = await _warnings(conn, access, body, new_area)
+            stored = await _store(
+                conn,
+                access,
+                user,
+                None,
+                area=new_area,
+                label=given_label,
+                body=body,
+                summary=summarize(None, body),
+                action=PLAN_CREATE,
+                run_id=run_id,
+            )
+            if stored is None:
+                continue
+            _logged(project, stored, "created", user)
+            return _written(access, stored, created=True, changed=True, warnings=warnings)
+        if not access.visible(held.label, _sink(access, None)):
+            raise PlanError(409, f"plan {plan_id} already exists in project {project}")
+        if area and area != held.area:
+            raise PlanError(
+                422,
+                f"plan {plan_id} is {held.area} on the hub, and a put does not move it: "
+                f"`evo-agents hub plan complete` does, and its copy belongs in plans/{held.area}/",
+            )
+        new_label = given_label if label is not None else access.push_label(held.label)
+        warnings = await _warnings(conn, access, body, held.area)
+        if plan_digest(body) == held.digest and new_label == held.label:
+            _logged(project, held, "unchanged", user)
+            return _written(access, held, created=False, changed=False, warnings=warnings)
+        if if_revision != held.revision:
+            raise _stale(access, held, if_revision)
+        if guard is not None:
+            guard(held)
+        stored = await _store(
+            conn,
+            access,
+            user,
+            held,
+            area=held.area,
+            label=new_label,
+            body=body,
+            summary=summarize(held.body, body) if body != held.body else "changed the label",
+            action=PLAN_PUT,
+            run_id=run_id,
+        )
+        _logged(project, stored, "replaced", user)
+        return _written(access, stored, created=False, changed=True, warnings=warnings)
+    raise PlanError(409, f"plan {plan_id} was created and changed while this request ran; try again")
 
 
 @router.patch("/{plan_id}", response_model=Written, responses=REFUSALS)

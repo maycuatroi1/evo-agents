@@ -176,8 +176,12 @@ def test_the_commands_of_a_plan_runs_agent_are_in_the_contract():
         "worker notify",
         "worker plan",
         "worker propose",
+        "worker put",
         "worker step",
     ]
+    put = printed["worker put"]
+    assert [p["name"] for p in put["positionals"]] == ["file"]
+    assert [o["flags"] for o in put["options"] if o["flags"] != ["--json"]] == [["--if-revision"]]
     step = printed["worker step"]
     assert [(p["name"], p.get("choices")) for p in step["positionals"]] == [
         ("key", None),
@@ -235,8 +239,16 @@ def test_assert_json_keys_follows_kind_and_variants():
     assert_json_keys("hub plan list", [])
     with pytest.raises(AssertionError):
         assert_json_keys("hub kg push", {"ok": True})
-    body = {"revision": 1, "area": "active", "digest": "d", "summary": "s", "actor": "a", "created_at": "t"}
+    body = {
+        "revision": 1,
+        "area": "active",
+        "digest": "d",
+        "summary": "s",
+        "actor": "a",
+        "created_at": "t",
+    }
     assert_json_keys("hub plan show", {**body, "label": "l", "body": {}}, "--revision")
+    assert_json_keys("hub plan history", [{**body, "run_id": 1}])
 
 
 # Commands in markdown

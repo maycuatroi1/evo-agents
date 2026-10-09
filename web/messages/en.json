@@ -98,7 +98,10 @@
       "failedAgo": "failed {ago}",
       "lostAgo": "lost {ago}",
       "failedJustNow": "failed just now",
-      "lostJustNow": "lost just now"
+      "lostJustNow": "lost just now",
+      "newPlan": "New plan",
+      "newPlanIn": "New plan in {project}",
+      "revise": "Revise {plan} with agent"
     },
     "plan": {
       "progress": "{done} of {total} done",
@@ -366,6 +369,17 @@
       "adminDescription": "You administer the hub but hold no role on a project. Grant yourself one in Administration, then reload this page.",
       "admin": "Open Administration",
       "copyLogin": "Copy your login"
+    },
+    "authorWaiting": {
+      "title": "Waiting for your reply",
+      "count": "{count, plural, one {# author run waits for your reply} other {# author runs wait for your reply}}",
+      "untitled": "Author run",
+      "wherePlan": "{project}, {plan}",
+      "whereNew": "{project}, new plan",
+      "waiting": "waiting {duration}",
+      "parked": "parked <time></time>",
+      "reply": "Reply",
+      "replyLabel": "Reply in the chat of run #{id}"
     }
   },
   "project": {
@@ -1927,14 +1941,14 @@
       "submitting": "Dispatching…",
       "outlook": {
         "nothing": "{subject, select, plan {Nothing to run yet: see above.} other {Pick at least one ready step.}}",
-        "noWorker": "You have no worker for project {project}. {subject, select, plan {The plan run waits} other {The runs wait}} in the queue until you register one.",
+        "noWorker": "You have no worker for project {project}. {subject, select, plan {The plan run waits} author {The author run waits} other {The runs wait}} in the queue until you register one.",
         "now": "Matching now: {workers}.",
         "later": "No worker of yours is free now; {workers} can take {subject, select, plan {it later} other {them later}}. {subject, select, plan {The plan run waits} other {The runs wait}} in the queue.",
         "none": "None of your workers can take {subject, select, plan {it as they are} other {them as they are}} ({reasons}). {subject, select, plan {The plan run waits} other {The runs wait}} in the queue.",
-        "pinnedNow": "{name} can take {subject, select, plan {it now} other {them now}}.",
-        "pinnedBusy": "{subject, select, plan {The plan run waits} other {The runs wait}} in the queue until {name} has a free slot.",
-        "pinnedOffline": "{name} is offline; {subject, select, plan {the plan run waits} other {the runs wait}} in the queue until it comes back.",
-        "pinnedNo": "{name} cannot take {subject, select, plan {it as it is} other {them as it is}} ({problem}). {subject, select, plan {The plan run waits} other {The runs wait}} in the queue.",
+        "pinnedNow": "{name} can take {subject, select, plan {it now} author {it now} other {them now}}.",
+        "pinnedBusy": "{subject, select, plan {The plan run waits} author {The author run waits} other {The runs wait}} in the queue until {name} has a free slot.",
+        "pinnedOffline": "{name} is offline; {subject, select, plan {the plan run waits} author {the author run waits} other {the runs wait}} in the queue until it comes back.",
+        "pinnedNo": "{name} cannot take {subject, select, plan {it as it is} author {it as it is} other {them as it is}} ({problem}). {subject, select, plan {The plan run waits} author {The author run waits} other {The runs wait}} in the queue.",
         "free": "{name} ({count, plural, one {# free slot} other {# free slots}})",
         "busy": "{name} (every slot in use)",
         "offline": "{name} (offline)",
@@ -2271,7 +2285,8 @@
           "heading": "Live session of run #{id}",
           "trace": "Trace",
           "log": "Raw log",
-          "terminal": "Terminal"
+          "terminal": "Terminal",
+          "chat": "Chat"
         },
         "where": "The agent's TUI on {worker}, relayed through the hub.",
         "connect": "Connect terminal",
@@ -2377,7 +2392,8 @@
         "revisionValue": "r{revision}",
         "copySession": "Copy the session id",
         "approvalReview": "No approval: a review run changes nothing",
-        "approvalJudge": "No approval: a judge run changes nothing, and its verdict goes on the change"
+        "approvalJudge": "No approval: a judge run changes nothing, and its verdict goes on the change",
+        "approvalAuthor": "No approval: the agent puts the plan on the hub"
       },
       "result": {
         "title": "Result",
@@ -2491,7 +2507,9 @@
         "full": "The run's log is full (20,000 events), so it takes no more messages.",
         "apiMessage": "The hub says: {message}"
       },
-      "reviewSub": "The night's review of the project by the <curatorLink>Curator</curatorLink>: it reads and changes nothing. <proposalsLink>Its proposals</proposalsLink>"
+      "reviewSub": "The night's review of the project by the <curatorLink>Curator</curatorLink>: it reads and changes nothing. <proposalsLink>Its proposals</proposalsLink>",
+      "authorPlanSub": "Plan <planLink>{plan}</planLink>: {title}. Written from your request in a chat with the agent.",
+      "authorNewSub": "A new plan: {title}. Written from the request in a chat with the agent."
     },
     "diff": {
       "metaTitle": "Diff of run #{id} of {project}",
@@ -2542,6 +2560,104 @@
       "dispatchedText": "{count, plural, one {It waits in the queue for a worker.} other {They wait in the queue for a worker.}}",
       "openRun": "Open run",
       "openRuns": "Open active runs"
+    },
+    "author": {
+      "kind": "Author run",
+      "newPlan": "New plan",
+      "revise": "Revise with agent",
+      "newPlanLine": "New plan",
+      "newPlanLineProject": "{project}, new plan",
+      "toast": {
+        "dispatched": "Author run #{id} dispatched",
+        "newText": "Its agent writes a new plan from your request and asks you in the chat when it needs to.",
+        "reviseText": "Its agent writes a new revision of {plan} from your request.",
+        "openChat": "Open chat"
+      },
+      "dialog": {
+        "newTitle": "New plan",
+        "reviseTitle": "Revise with agent",
+        "newDescription": "An agent on one of your workers writes a plan for <name>{project}</name> from your request. It asks you in the run's chat when it needs to and puts the plan on the hub; it commits and pushes nothing.",
+        "reviseDescription": "An agent on one of your workers reads <name>{plan}</name> as the hub holds it and writes a new revision from your request. It asks you in the run's chat when it needs to; the progress of the plan's steps stays as it is.",
+        "requestLabel": "What should the plan achieve?",
+        "requestReviseLabel": "What should change in the plan?",
+        "requestPlaceholder": "The outcome you want, the constraints, and what is out of scope.",
+        "requestRevisePlaceholder": "What to add, change or drop, and why.",
+        "requestHint": "In your own words, at most {max} bytes. The agent reads the project first and asks in the chat for what it still needs.",
+        "bytes": "{count} of {max} bytes",
+        "requestBlank": "Say what the plan should achieve first.",
+        "requestLong": "A request is at most {max} bytes of UTF-8. Shorten it.",
+        "runtimeHint": "An author run runs on Claude Code alone.",
+        "workersLoading": "Loading your workers",
+        "workerCannot": "(cannot take it now)",
+        "workerHint": "The run goes to the worker you pick. It needs a checkout of the project's harness, {harness}, and a daemon that runs author runs.",
+        "workerHintNoHarness": "The run goes to the worker you pick, which needs a checkout of the project's harness.",
+        "timeoutHint": "Hours of agent time. The time the agent waits for your reply does not count.",
+        "submit": "Start agent",
+        "submitting": "Starting…",
+        "noHarness": "Project {project} was registered without its harness, where plans live, so an author run has nowhere to write. Register it again from its harness with evo-agents hub project register.",
+        "errors": {
+          "forbidden": "The hub refused: writing a plan needs the writer role on this project, and the worker must be one of yours.",
+          "notFound": "The plan is no longer on the hub, or you can no longer read it.",
+          "conflict": "The hub did not queue the author run: the worker cannot take it as it is.",
+          "invalid": "The hub did not accept the author run."
+        }
+      },
+      "chat": {
+        "loading": "Loading the chat",
+        "loadFailed": "The chat could not be loaded.",
+        "retry": "Try again",
+        "offline": "Can't reach the hub. This is the chat as read at {time}; the page tries again by itself.",
+        "label": "Chat of run #{id}",
+        "more": "Older messages are left out: the chat shows its 1,000 latest.",
+        "request": "Request",
+        "emptyQueued": "The run waits for its worker. The agent's messages show here once it starts.",
+        "emptyWorking": "The agent is reading the project. Its first message shows here.",
+        "emptyEnded": "The chat ended without a message from the agent.",
+        "readOnly": "Only {login} replies in this chat: they dispatched the run.",
+        "status": {
+          "working": "Agent is working",
+          "waiting": "{you, select, yes {Waiting for you} other {Waiting for {login}}}",
+          "ended": "Chat ended",
+          "ending": "Ending after the agent's turn"
+        },
+        "continues": "This chat goes on in <link>run #{id}</link>.",
+        "noPlan": "No plan on the hub yet",
+        "plan": "Plan {plan}, revision {revision}",
+        "planNoRevision": "Plan {plan}",
+        "agent": "Agent",
+        "you": "You",
+        "owner": "Owner",
+        "asks": "Waiting for a reply",
+        "typing": "The agent is working",
+        "reply": {
+          "label": "Reply to the agent",
+          "placeholderWaiting": "Reply to the agent.",
+          "placeholderWorking": "Add to what the agent knows. It reads this after its turn.",
+          "hintWaiting": "The agent waits for your reply.",
+          "hintParked": "The run was parked; your reply resumes it on the same worker.",
+          "hintWorking": "The agent is working; your message waits for its next turn.",
+          "send": "Send",
+          "sending": "Sending…",
+          "sent": "Sent.",
+          "blank": "Type a reply first.",
+          "long": "A reply is at most {max} bytes of UTF-8. Shorten it.",
+          "bytes": "{count} of {max} bytes",
+          "conflict": "The chat no longer takes replies: it ended."
+        },
+        "end": {
+          "button": "End chat",
+          "title": "End the chat of run #{id}?",
+          "description": "The agent finishes its turn, then the run ends done. The chat takes no more replies, and the plan stays on the hub as the agent last put it.",
+          "descriptionParked": "The run ends done now. The chat takes no more replies, and the plan stays on the hub as the agent last put it.",
+          "confirm": "End chat",
+          "pending": "Ending…",
+          "keep": "Keep chatting",
+          "conflict": "The chat could not be ended: the run ended, or has not started yet.",
+          "toast": "Chat ended",
+          "toastDone": "The run is done.",
+          "toastAfterTurn": "The run ends done after the agent's turn."
+        }
+      }
     }
   },
   "insights": {
@@ -2687,7 +2803,8 @@
       "plan_finished": "Plan finished",
       "run_failed": "Run failed",
       "curator_brief": "Morning brief",
-      "curator_paused": "Night shift paused"
+      "curator_paused": "Night shift paused",
+      "author_waiting": "An author run waits for your reply"
     },
     "item": {
       "unread": "Unread",

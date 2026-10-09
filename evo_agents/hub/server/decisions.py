@@ -415,13 +415,15 @@ def _overriding_system_value(element, compiler, **kw):
 
 
 def _resume_run(new_id: int, parked_id: int):
-    """The run that resumes parked plan run ``parked_id``, with id ``new_id``: pinned to its worker, in its session,
-    with the agent time it used and the credential it was dispatched with, at the plan's current revision (the one it
-    was dispatched from when the plan is gone); a run the night shift queued keeps its schedule, night and caps."""
+    """The run that resumes parked run ``parked_id`` (a plan run or an author run, ``runs.RESUME_KINDS``), with id
+    ``new_id``, of its kind: pinned to its worker, in its session, with the agent time it used and the credential it
+    was dispatched with, at the plan's current revision (the one it was dispatched from when the plan is gone; none for
+    an author run that has put no plan); a run the night shift queued keeps its schedule, night and caps, and an author
+    run its request."""
     r, pl = tables.runs, tables.plans
     source = _OverridingSystemValue(
         literal(new_id, BigInteger).label("id"),
-        literal("plan").label("kind"),
+        r.c.kind,
         r.c.project_id,
         r.c.plan_id,
         r.c.title,
@@ -443,6 +445,7 @@ def _resume_run(new_id: int, parked_id: int):
         r.c.schedule_id,
         r.c.schedule_night,
         r.c.budget,
+        r.c.request,
     )
     source = source.select_from(
         r.outerjoin(pl, (pl.c.project_id == r.c.project_id) & (pl.c.plan_id == r.c.plan_id))
@@ -467,8 +470,15 @@ def _answer_target(project: str, plan_id: str, key: str | None, decision_id: int
 
 
 async def _resume(conn: AsyncConnection, user: Principal, parked_id: int, decision_id: int) -> int:
-    """Queue the run that resumes parked run ``parked_id``, in the caller's transaction under the plan's lock, and end
-    the parked one done; the new run's id. The parked run's decisions still open go to the new run."""
+    """Queue the run that resumes parked run ``parked_id``, in the caller's transaction under the plan's lock, as
+    ``user`` answered decision ``decision_id``; the new run's id (``resume_parked``)."""
+    return await resume_parked(conn, user, parked_id, f"as {user.login} answered decision #{decision_id}")
+
+
+async def resume_parked(conn: AsyncConnection, user: Principal, parked_id: int, why: str) -> int:
+    """Queue the run that resumes parked run ``parked_id``, whose row the caller holds locked (for a plan run, under
+    the plan's lock), and end the parked one done; the new run's id. ``why`` ends the new run's first event, such as
+    "as owner answered decision #3". The parked run's decisions still open go to the new run."""
     reserved = select(func.nextval(func.pg_get_serial_sequence("runs", "id")))
     new_id = (await conn.execute(reserved)).scalar_one()
     # The parked run leaves the active states first: a plan has one active plan run at a time.
@@ -485,7 +495,7 @@ async def _resume(conn: AsyncConnection, user: Principal, parked_id: int, decisi
     await conn.execute(_resume_run(new_id, parked_id))
     d = tables.decisions
     await conn.execute(update(d).values(run_id=new_id).where(d.c.run_id == parked_id, d.c.state == "open"))
-    shown = f"resumes run #{parked_id} in its session, as {user.login} answered decision #{decision_id}"
+    shown = f"resumes run #{parked_id} in its session, {why}"
     await write_event(conn, new_id, {"text": shown, "resume_of_run_id": parked_id})
     await notify_queued(conn, new_id)
     return new_id

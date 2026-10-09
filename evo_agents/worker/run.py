@@ -51,6 +51,22 @@ waiting for review in them (``figures``) into ``.evo-run/worktree-figures.json``
 proposals with ``evo-agents worker finding|propose``, and the run ends done with the agent's summary: nothing is
 committed or pushed (``gitops.check_push`` refuses a review run), and the run's GitHub token reads only.
 
+An author run (kind ``author``, ``AuthorRun``, ``evo_agents.hub.author``) writes an execution plan from its owner's
+request: before anything else the worker downloads the skills its claim names (create-exec-plan, as the hub holds it in
+the global scope) through their presigned GETs, checks each one's size, SHA-256 and contents, and fails the run when one
+is missing or wrong; then makes a worktree of each of its repos it has a checkout of (the project's harness first,
+which it needs; the others it leaves out, saying so), detached at the commit origin's default branch has, as a review
+run does, and writes the skills under ``.claude/skills`` of the run's directory, the agent's working directory, so
+nobody syncs skills on this machine. The agent works in EVO_RUN_KIND ``author`` on Claude Code alone, with Claude
+Code's question tools turned off (``author.QUESTION_TOOLS``), and talks with its owner in the run's chat: after each
+turn the worker posts the agent's last message to the chat (POST /v1/worker/runs/{id}/chat) and reports ``waiting``,
+keeping the run, its slot and lease, the time it waits not counted toward its timeout, until the owner's reply comes
+through the inbox and starts the next turn in the same session (``author.REPLY_PROMPT``). A run the hub parks (no reply
+within a day) keeps its session, worktrees and skills for the run that resumes it, as a plan run does, which goes on
+in them with the reply (``author.RESUME_PROMPT``). Once the owner ends the chat (the heartbeat's ``finish``) the run
+ends done with its summary after the agent's turn: nothing is committed or pushed (``gitops.check_push`` refuses an
+author run), and the run's GitHub token reads only.
+
 A judge run (kind ``judge``, ``JudgeRun``) is the Curator's Judge of one change: its worktree is detached at the commit
 it judges (the pull request's head, else the tip of the change's branch on origin), made and read with no hook of the
 checkout; the worker reads the diff from the merge base with origin's default branch before any code of the change
@@ -119,7 +135,8 @@ from typing import TYPE_CHECKING
 
 import yaml
 
-from evo_agents.hub import curator, judge, runs, tiers
+from evo_agents.hub import author, curator, judge, runs, skill_sync, skills, tiers
+from evo_agents.hub.client import HubError
 from evo_agents.hub.credentials import normalize_origin
 from evo_agents.worker import credentials, figures, gitops, interactive, orphans, untrusted
 from evo_agents.worker.adapter import AgentEvent, AgentFinished, Outcome, RunContext
@@ -369,6 +386,7 @@ class Run:
         self.terminal_failed: str | None = None  # why a terminal UI did not open; later takeovers are refused
         self._inbox_waits = False
         self.inbox_arrived = asyncio.Event()  # the heartbeat counted messages of the owner in the inbox
+        self.finish_asked = asyncio.Event()  # the owner ended the chat of an author run: end it done after the turn
         self.open_decisions = 0  # the run's decisions still open, as the last heartbeat counted them
         self.answered: set[int] = set()  # the decisions whose answers the agent was handed
         self._delivered_upto = 0  # the inbox's messages up to this id were handed to the agent
@@ -513,6 +531,9 @@ class Run:
 
     def _park_requested(self) -> bool:
         return False
+
+    def request_finish(self) -> None:
+        """The heartbeat says the owner ended the chat of an author run; no other run has one."""
 
     def inbox_waits(self) -> None:
         """The heartbeat counts messages of the owner in the inbox: hand them to the agent, and wake a run that waits
@@ -1702,7 +1723,8 @@ class PlanRun(Run):
         its record no longer names them, so the cleanup of that run leaves them alone."""
         home = self.daemon.home
         record = home.load_run(old_id)
-        directory = Path(record["dir"]) if record and record.get("kind") == "plan" and record.get("dir") else None
+        resumable = record is not None and record.get("kind") in runs.RESUME_KINDS
+        directory = Path(record["dir"]) if resumable and record.get("dir") else None
         if directory is None or not directory.is_dir():
             self.note(
                 f"The worktrees of parked run #{old_id} are not on this worker any more: the run makes new ones from "
@@ -1792,7 +1814,11 @@ class PlanRun(Run):
             messages = await self._after_turn()
             if not messages:
                 return
-            prompt = runs.clip(ANSWER_PROMPT + "\n\n" + self._take(messages), runs.MAX_PROMPT_BYTES)
+            prompt = runs.clip(self._reply_prompt() + "\n\n" + self._take(messages), runs.MAX_PROMPT_BYTES)
+
+    def _reply_prompt(self) -> str:
+        """What the agent's next turn starts with, before the owner's messages that start it."""
+        return ANSWER_PROMPT
 
     async def _unread(self) -> list[dict]:
         """The inbox's messages the agent has not had yet; none when the hub does not answer."""
@@ -1854,7 +1880,8 @@ class PlanRun(Run):
     async def _wait_for_answer(self) -> list[dict]:
         """Wait for the owner's messages, the answer to a decision among them, without the agent: the worker keeps the
         run and the heartbeat its lease. Stopped on a cancel or when the hub lets go of the run, Parked when it parks
-        it. The time spent here moves the run's deadline back."""
+        it, and nothing once the owner ended the chat of an author run. The time spent here moves the run's deadline
+        back."""
         started = self.loop.time()
         try:
             while True:
@@ -1862,6 +1889,8 @@ class PlanRun(Run):
                     raise Stopped(self.stop_reason)
                 if self.park_asked.is_set():
                     raise Parked()
+                if self.finish_asked.is_set():
+                    return []
                 self.inbox_arrived.clear()
                 messages = await self._unread()
                 if messages:
@@ -1869,7 +1898,9 @@ class PlanRun(Run):
                     which = f" answering decision {', '.join(f'#{item}' for item in answers)}" if answers else ""
                     self.note(f"The owner wrote{which}: the agent goes on in session {self.session_id or '(new)'}.")
                     return messages
-                await _first_of((self.inbox_arrived, self._stop, self.park_asked), self.daemon.heartbeat_s)
+                await _first_of(
+                    (self.inbox_arrived, self._stop, self.park_asked, self.finish_asked), self.daemon.heartbeat_s
+                )
         finally:
             self.deadline += self.loop.time() - started
 
@@ -2498,8 +2529,234 @@ class JudgeRun(ReviewRun):
 WORKTREE_FIGURES = "worktree-figures.json"  # in .evo-run/ of a review run's directory
 
 
+class AuthorRun(ReviewRun):
+    """An author run (kind ``author``, see the module's docstring): the skills its claim names downloaded and checked,
+    a worktree of each of its repos this worker has a checkout of, detached at origin's default branch, the skills
+    written for the agent in the run's directory, the agent writing a plan from its owner's request and talking with
+    the owner in the run's chat, waiting for the owner's reply after each turn (parked when it waits too long, and
+    resumed in the same session and directory), and nothing committed or pushed at its end, once the owner ended the
+    chat."""
+
+    def __init__(self, daemon: Daemon, spec: dict):
+        super().__init__(daemon, spec)
+        self.title = spec.get("title") or f"author run of {spec.get('project')}"
+        self.left_out: list[str] = []  # repos of the run this worker has no checkout of
+        self.last_said: str | None = None  # the agent's last message in the chat
+
+    # Control: an author run parks as a plan run does, and its owner ends its chat
+
+    def request_park(self) -> None:
+        PlanRun.request_park(self)
+
+    def _park_requested(self) -> bool:
+        return self.park_asked.is_set()
+
+    def request_finish(self) -> None:
+        """The heartbeat says the owner ended the chat: the run ends done once the agent's turn is over."""
+        if self.ended or self.finish_asked.is_set():
+            return
+        log.info("finish asked", extra={"run_id": self.id, "phase": self.phase})
+        self.finish_asked.set()
+        self.note("The owner ended the chat: the run ends done once the agent's turn is over.")
+
+    async def _steps(self) -> None:
+        spec = self.spec
+        repos = [entry for entry in spec.get("repos") or [] if isinstance(entry, dict)]
+        names = ", ".join(str(entry.get("repo")) for entry in repos) or "no repo"
+        resumes = f", going on from parked run #{self.resume_of}" if self.resume_of else ""
+        self.note(
+            f"Run #{self.id} claimed by worker {self.daemon.config.name}: an author run of project {self.project} over "
+            f"{names}, {self.runtime}, timeout {self.timeout_s // 60} min of agent time{resumes}. It reads only: "
+            "nothing is committed or pushed."
+        )
+        if self.runtime not in author.AUTHOR_RUNTIMES:
+            raise RunFailed(f"an author run runs on {', '.join(author.AUTHOR_RUNTIMES)} only, not {self.runtime}")
+        cls = self.daemon.adapters.get(self.runtime)
+        if cls is None:
+            raise RunFailed(f"this worker has no adapter for {self.runtime}")
+        if self.mode == "interactive":
+            raise RunFailed("an author run runs headless only")
+        if not repos:
+            raise RunFailed("the author run names no repo, not even the project's harness")
+        if self.resume_of is not None:  # the parked run's directory, worktrees and skills, when they are still here
+            self._adopt(self.resume_of)
+        bundles = await self._fetch_skills() if self.directory is None else []
+        held = self._held_repos(repos)
+        await self._take_credentials(entry.get("repo") for entry in held)
+        self._check()
+        if self.directory is None:
+            await self._prepare_review(held)
+            self._check()
+            self._write_skills(bundles)
+        else:
+            self.worktree = self.directory
+            (self.directory / runs.RESULT_DIR).mkdir(mode=0o700, exist_ok=True)
+            self._save_workspaces()
+        prompt, session_id = await self._first_turn()
+        await self._plan_turns(cls, prompt, session_id)
+        self.summary = self._read_summary() or (_cut(self.last_said, MAX_SUMMARY_CHARS) if self.last_said else None)
+        await self._ensure_running()
+        await self._report("verifying")
+        self._check()
+        await self._end("done", summary=self.summary, usage=self.outcome.usage if self.outcome else None)
+
+    # The chat
+
+    async def _first_turn(self) -> tuple[str, str | None]:
+        """The prompt and session of the agent's first turn: the run's prompt in a new session, or, for a run that
+        resumes a parked one, the owner's reply in that run's session."""
+        if self.resume_of is None:
+            return self._prompt(), None
+        messages = await self._unread()
+        said = self._take(messages) if messages else ""
+        if self.session_id is None:  # the parked run never told its session: start again, with the reply
+            self.note("The parked run left no session to go on with: the agent starts a new one.")
+            return runs.clip(self._prompt() + ("\n\n" + said if said else ""), runs.MAX_PROMPT_BYTES), None
+        prompt = author.RESUME_PROMPT.format(id=self.id) + ("\n\n" + said if said else "")
+        return runs.clip(prompt, runs.MAX_PROMPT_BYTES), self.session_id
+
+    def _reply_prompt(self) -> str:
+        return author.REPLY_PROMPT
+
+    async def _post_chat(self) -> None:
+        """Post the agent's last message of the turn to the run's chat, trying a few times; a message the hub does
+        not take is noted, and the run goes on."""
+        text = author.chat_text(self.outcome.summary if self.outcome else None)
+        if text is None:
+            self.note("The agent's turn ended without a message for the chat.")
+            return
+        self.last_said = text
+        backoff = Backoff()
+        for _ in range(HARD_STOP_TRIES + 1):
+            try:
+                await self.daemon.hub.chat(self.id, text)
+                return
+            except Unreachable:
+                await _wait_or(self.daemon.hard_stop, backoff.next())
+            except HubProblem as exc:
+                self.note(f"The hub did not take the agent's message for the chat: {exc}")
+                return
+        self.note("The hub did not answer: the agent's message did not reach the chat.")
+
+    async def _after_turn(self) -> list[dict]:
+        """After each turn of the agent: its last message to the chat, then what starts its next turn: the owner's
+        messages it has not had, at once; else, unless the owner ended the chat, the reply the run waits for. None
+        when the run ends."""
+        await self._post_chat()
+        unread = await self._unread()
+        if unread:
+            self.note(f"{len(unread)} message(s) of the owner came while the agent worked: a new turn takes them.")
+            return unread
+        if self.finish_asked.is_set():
+            self.note("The agent's turn ended, and the owner ended the chat: the run ends done.")
+            return []
+        await self._ensure_running()
+        try:
+            await self._report("waiting", only_from=("running",))
+        except ReportRefused as exc:
+            if exc.status != 409:
+                raise
+            self.note(f"The agent's turn ended, and the hub takes no wait for a reply ({exc}): the run ends done.")
+            return []
+        if self.state != "waiting":
+            return []
+        self.note(
+            "The agent's turn ended: the run waits for its owner's reply in the chat, and the time it waits does not "
+            "count toward its timeout."
+        )
+        messages = await self._wait_for_answer()
+        if not messages:
+            self.note("The owner ended the chat: the run ends done.")
+        return messages
+
+    def _held_repos(self, repos: list[dict]) -> list[dict]:
+        """The repos of the run this worker has a checkout of; RunFailed without one of the first, the harness."""
+        harness = repos[0].get("repo")
+        if not isinstance(harness, str) or self.daemon.checkout_for(self.project, harness) is None:
+            raise RunFailed(
+                f"this worker has no checkout of {self.project}/{harness}, the project's harness, which an author run "
+                "reads the project's plans in: clone it where the harness registry places it, then dispatch again"
+            )
+        held = []
+        for entry in repos:
+            name = entry.get("repo")
+            if isinstance(name, str) and self.daemon.checkout_for(self.project, name) is not None:
+                held.append(entry)
+            else:
+                self.left_out.append(str(name))
+        if self.left_out:
+            self.note(f"No checkout of {', '.join(self.left_out)} on this worker: the agent works without them.")
+        return held
+
+    async def _fetch_skills(self) -> list[tuple[dict, skills.Contents]]:
+        """Each skill the claim names, downloaded through its presigned GET and checked (size, SHA-256, contents) as
+        ``hub skills sync`` checks it; RunFailed when one is wrong or author.AUTHOR_SKILL is not among them."""
+        wanted = author.AUTHOR_SKILL
+        items = [item for item in self.spec.get("skills") or [] if isinstance(item, dict)]
+        if not any(str(item.get("name") or "").lower() == wanted.lower() for item in items):
+            raise RunFailed(
+                f"the claim handed this author run no skill {wanted}: the hub holds none in the global scope, or is "
+                "older than this worker; publish it with `evo-agents hub skills publish`, then dispatch again"
+            )
+        found = []
+        for item in items:
+            name, version = str(item.get("name") or ""), item.get("version")
+            problem = skills.name_problem(name)
+            if problem:
+                raise RunFailed(f"the claim names a skill this worker cannot write: {problem}")
+            try:
+                size = int(item["size"])
+                data = await asyncio.to_thread(skill_sync.get_bundle, str(item["url"]), size)
+            except (KeyError, TypeError, ValueError):
+                raise RunFailed(f"the claim names skill {name} without its bundle's URL and size") from None
+            except HubError as exc:
+                raise RunFailed(f"the bundle of skill {name} (version {version}) did not download: {exc}") from None
+            if len(data) != size or hashlib.sha256(data).hexdigest() != item.get("sha256"):
+                raise RunFailed(
+                    f"the bundle of skill {name} (version {version}) is not the one the hub recorded: another size or "
+                    "SHA-256; nothing was written"
+                )
+            try:
+                contents = skills.read_bundle(data, name)
+            except skills.BundleError as exc:
+                raise RunFailed(f"the bundle of skill {name} (version {version}) is not a skill: {exc}") from None
+            found.append((item, contents))
+        self.note(
+            "Skills from the hub for the agent: "
+            + ", ".join(f"{item.get('name')} version {item.get('version')}" for item, _ in found)
+            + "."
+        )
+        return found
+
+    def _write_skills(self, bundles: list[tuple[dict, skills.Contents]]) -> None:
+        """Write each skill under author.SKILLS_DIR of the run's directory, where the agent's runtime finds it."""
+        base = self.directory.joinpath(*author.SKILLS_DIR.split("/"))
+        try:
+            base.mkdir(mode=0o700, parents=True, exist_ok=True)
+            for item, contents in bundles:
+                target = base / str(item["name"])
+                target.mkdir(mode=0o700)
+                skills.write_tree(contents, target)
+        except (OSError, skills.BundleError) as exc:
+            raise RunFailed(f"cannot write the skills under {base}: {exc}") from None
+        written = ", ".join(f"{author.SKILLS_DIR}/{item['name']}" for item, _ in bundles)
+        self.note(f"Wrote {written} in {self.directory}.")
+
+    def _prompt(self) -> str:
+        """The run's prompt, with where each repo's worktree is when a folder is not named as its repo, and the repos
+        this worker has no checkout of."""
+        prompt = self.spec.get("prompt") or ""
+        moved = [f"- {name}: {ws.worktree.name}/" for name, ws in self.workspaces.items() if ws.worktree.name != name]
+        extra = []
+        if moved:
+            extra += ["", "Worktree folders that are not named as their repo:", *moved]
+        if self.left_out:
+            extra += ["", f"Repos of the project this worker has no checkout of: {', '.join(self.left_out)}."]
+        return runs.clip(prompt + "\n".join(extra) + ("\n" if extra else ""), runs.MAX_PROMPT_BYTES)
+
+
 def run_class(spec: dict) -> type[Run]:
     """The class of the run ``spec`` claims: PlanRun for kind plan, ReviewRun for kind review, JudgeRun for kind
-    judge, Run otherwise."""
+    judge, AuthorRun for kind author, Run otherwise."""
     kind = spec.get("kind")
-    return {"plan": PlanRun, "review": ReviewRun, "judge": JudgeRun}.get(kind, Run)
+    return {"plan": PlanRun, "review": ReviewRun, "judge": JudgeRun, "author": AuthorRun}.get(kind, Run)

@@ -268,7 +268,11 @@ plan_revisions = Table(
     Column("summary", Text, nullable=False, server_default=""),
     Column("actor_id", BigInteger, nullable=False),
     _stamp("created_at"),
+    Column("run_id", BigInteger),  # the author run that wrote the revision, NULL for any other write (0021)
     ForeignKeyConstraint(["actor_id"], ["users.id"], ondelete="RESTRICT", name="plan_revisions_actor_id_fkey"),
+    ForeignKeyConstraint(  # runs name a revision of their plan too: created after both tables
+        ["run_id"], ["runs.id"], ondelete="SET NULL", name="plan_revisions_run_id_fkey", use_alter=True
+    ),
     ForeignKeyConstraint(
         ["project_id", "plan_id"],
         ["plans.project_id", "plans.plan_id"],
@@ -582,7 +586,9 @@ runs = Table(
     metadata,
     _id(),
     Column("project_id", BigInteger, nullable=False),
-    Column("plan_id", Text),  # NULL for a review run, which works on no plan (0014)
+    Column(
+        "plan_id", Text
+    ),  # NULL for a review run, which works on no plan (0014), and an author run of a new one (0020)
     Column("step_key", Text),
     Column("title", Text),
     Column("plan_revision", Integer),
@@ -631,6 +637,8 @@ runs = Table(
     Column("schedule_id", BigInteger),
     Column("schedule_night", Date),
     Column("budget", JSONB),
+    Column("request", Text),  # the member's request of an author run, NULL for any other kind (0020)
+    _when("finish_requested_at"),  # the owner ended the chat of an author run a worker holds (0022)
     ForeignKeyConstraint(["dispatched_by"], ["users.id"], ondelete="RESTRICT", name="runs_dispatched_by_fkey"),
     ForeignKeyConstraint(["parent_run_id"], ["runs.id"], ondelete="RESTRICT", name="runs_parent_run_id_fkey"),
     ForeignKeyConstraint(["pinned_worker_id"], ["workers.id"], ondelete="RESTRICT", name="runs_pinned_worker_id_fkey"),

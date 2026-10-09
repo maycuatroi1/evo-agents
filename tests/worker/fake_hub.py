@@ -3,6 +3,9 @@
 rules of the real hub that those tests lean on (the transition table with the worker as actor, a waiting report only
 with a decision open or an answer not taken, a step done only with verify results that all exited 0).
 
+It serves the bundles of skills too, as the blob store does through a presigned GET (``/blobs/<sha256>``, no worker
+token), for the author runs it queues with ``skills``.
+
 The test drives the rest: it queues runs, answers decisions (an answer to a parked run queues the run that resumes it,
 pinned, with ``resume_of_run_id`` and the session, as ``decisions._resume`` does), parks a waiting run as the reaper
 would, sets what a run's ask for credentials gets (``leases``, nothing by default), and reads what the worker sent.
@@ -12,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import hashlib
 import itertools
 import json
 import secrets
@@ -41,6 +45,7 @@ class FakeHub:
         self.step_reports: list[dict] = []
         self.findings: list[dict] = []  # what the agent of a review run recorded, with the run's id
         self.proposals: list[dict] = []
+        self.plan_puts: list[dict] = []  # what the agent of an author run put, with the run's id and the status
         self.verdicts: list[dict] = []  # what the judge runs posted, with the run's id
         self.judge_inputs: dict[int, dict] = {}  # run id -> what GET .../judge answers it
         self.judge_reads: list[int] = []  # the judge runs that read their inputs, in order
@@ -50,6 +55,8 @@ class FakeHub:
         self.leases: dict[int, dict] = {}  # run id -> the {leases, missing} its ask for credentials gets
         self.credential_calls: list[tuple[str, int]] = []  # ("ask" or "give back", run id), in order
         self.heartbeats = 0
+        self.blobs: dict[str, bytes] = {}  # sha256 -> the bytes /blobs/<sha256> answers, a skill's bundle
+        self.blob_reads: list[str] = []
         self._ids = itertools.count(101)
         self._messages = itertools.count(1)
         self._decision_ids = itertools.count(1)
@@ -58,6 +65,13 @@ class FakeHub:
         self.url = ""
 
     # The server
+
+    async def _blob(self, request: web.Request) -> web.StreamResponse:
+        sha = request.match_info["sha"]
+        self.blob_reads.append(sha)
+        if sha not in self.blobs:
+            return web.Response(status=404)
+        return web.Response(body=self.blobs[sha], content_type="application/gzip")
 
     async def start(self) -> str:
         app = web.Application(middlewares=[self._auth])
@@ -69,8 +83,10 @@ class FakeHub:
                 post("/v1/worker/runs/{id}/state", self._state),
                 post("/v1/worker/runs/{id}/events", self._events),
                 post("/v1/worker/runs/{id}/inbox", self._inbox),
+                post("/v1/worker/runs/{id}/chat", self._chat),
                 post("/v1/worker/runs/{id}/uploads", self._uploads),
                 get("/v1/worker/runs/{id}/plan", self._plan),
+                web.put("/v1/worker/runs/{id}/plan", self._put_plan),
                 post("/v1/worker/runs/{id}/steps/{key}", self._step),
                 post("/v1/worker/runs/{id}/decisions", self._decision),
                 post("/v1/worker/runs/{id}/notices", self._notice),
@@ -80,6 +96,7 @@ class FakeHub:
                 post("/v1/worker/runs/{id}/verdict", self._verdict),
                 post("/v1/worker/runs/{id}/credentials", self._credentials),
                 web.delete("/v1/worker/runs/{id}/credentials", self._give_back),
+                get("/blobs/{sha}", self._blob),
             ]
         )
         self._runner = web.AppRunner(app, access_log=None)
@@ -96,6 +113,8 @@ class FakeHub:
 
     @web.middleware
     async def _auth(self, request: web.Request, handler):
+        if request.path.startswith("/blobs/"):  # a presigned GET: the URL is the credential
+            return await handler(request)
         if request.headers.get(runs.PROTOCOL_HEADER) != runs.PROTOCOL_VERSION:
             return _error(426, "upgrade_required", "the worker protocol header is missing")
         if request.headers.get("Authorization") != f"Bearer {TOKEN}":
@@ -241,6 +260,60 @@ class FakeHub:
         self.judge_keys[run_id] = key
         return run_id
 
+    def add_skill(self, name: str, version: int, bundle: bytes, *, sha256: str | None = None) -> dict:
+        """A skill's bundle served at /blobs/<sha256>, and the ticket an author run's claim hands for it; ``sha256``
+        names another digest in the ticket than the bundle's, as a hub that recorded another bundle would."""
+        digest = hashlib.sha256(bundle).hexdigest()
+        self.blobs[digest] = bundle
+        return {
+            "name": name,
+            "scope": "global",
+            "version": version,
+            "sha256": sha256 or digest,
+            "size": len(bundle),
+            "url": f"{self.url}/blobs/{digest}?X-Amz-Signature=fake",
+            "expires_at": (datetime.now(UTC) + timedelta(minutes=15)).isoformat(),
+        }
+
+    def queue_author_run(
+        self,
+        repos: list[str],
+        skills: list[dict],
+        prompt: str = "Write the plan.",
+        runtime: str = "claude-code",
+        plan_id: str = "",
+        *,
+        resume_of: int | None = None,
+        session_id: str | None = None,
+    ) -> int:
+        """An author run over ``repos`` (the harness first) with the skill tickets ``skills``, as the hub hands it; of
+        plan ``plan_id`` when it revises one; going on from parked author run ``resume_of`` in ``session_id``."""
+        return self.queue_run(
+            kind="author",
+            project=self.project,
+            plan_id=plan_id,
+            step_key=None,
+            title="Plan from: a wait helper",
+            plan_revision=None,
+            attempt=1,
+            max_attempts=3,
+            parent_run_id=None,
+            resume_of_run_id=resume_of,
+            session_id=session_id,
+            runtime=runtime,
+            model=None,
+            mode="headless",
+            approval="auto",
+            timeout_min=120,
+            repo=None,
+            branch=None,
+            repos=[{"repo": name, "branch": None} for name in repos],
+            lease_expires_at=_now(),
+            prompt=prompt,
+            plan=None,
+            skills=skills,
+        )
+
     def answer(self, decision_id: int, option: str) -> int:
         """Answer a decision as its run's owner; the run whose inbox took the answer."""
         decision = self.decisions[decision_id]
@@ -265,6 +338,36 @@ class FakeHub:
             {"id": next(self._messages), "text": text, "decision_id": decision_id, "delivered": False}
         )
         return run_id
+
+    def reply(self, run_id: int, text: str) -> int:
+        """The owner's reply in the chat of an author run, as POST .../messages leaves it; the run whose inbox took
+        it: for a parked run, the run that resumes it, queued on the same terms."""
+        run = self.runs[run_id]
+        assert run["spec"]["kind"] == "author", run["spec"]["kind"]
+        if run["state"] == "parked":
+            spec = run["spec"]
+            new_id = self.queue_author_run(
+                [item["repo"] for item in spec["repos"]],
+                spec.get("skills") or [],
+                prompt=spec["prompt"],
+                plan_id=spec["plan_id"],
+                resume_of=run_id,
+                session_id=run.get("session_id"),
+            )
+            self._move(run_id, "done")
+            run["resumed_by"] = new_id
+            run_id = new_id
+        assert self.runs[run_id]["state"] in runs.MESSAGE_STATES, self.runs[run_id]["state"]
+        self.inbox[run_id].append({"id": next(self._messages), "text": text, "decision_id": None, "delivered": False})
+        return run_id
+
+    def finish(self, run_id: int) -> None:
+        """The owner ends the chat of an author run: a parked one is done at once, a held one ends at the worker."""
+        run = self.runs[run_id]
+        if run["state"] == "parked":
+            self._move(run_id, "done")
+        else:
+            run["finish"] = True
 
     def park(self, run_id: int) -> None:
         """What the reaper does to a run that waited too long for its owner."""
@@ -356,6 +459,7 @@ class FakeHub:
                         "state": run["state"],
                         "lease_expires_at": lease,
                         "cancel": bool(run.get("cancel")),
+                        "finish": bool(run.get("finish")),
                         "inbox": waiting,
                         "decisions": open_count,
                     }
@@ -379,7 +483,9 @@ class FakeHub:
             runs.check_transition(state, new, "worker")
         except runs.TransitionRefused as exc:
             return _error(409, "conflict", f"run {run_id}: {exc}")
-        if new == "waiting":
+        if new == "waiting" and run["spec"]["kind"] == "author" and run.get("finish"):
+            return _error(409, "conflict", f"run {run_id}: its owner ended the chat")
+        if new == "waiting" and run["spec"]["kind"] != "author":
             open_ = any(d["run_id"] == run_id and d["state"] == "open" for d in self.decisions.values())
             answer = any(m.get("decision_id") and not m["delivered"] for m in self.inbox[run_id])
             if not (open_ or answer):
@@ -422,17 +528,57 @@ class FakeHub:
         ]
         return web.json_response({"messages": waiting})
 
+    async def _chat(self, request: web.Request) -> web.Response:
+        run_id, run = self._run(request)
+        if run["state"] not in runs.HELD_STATES or run["spec"]["kind"] != "author":
+            raise _refusal(404, f"run {run_id} is not held by this worker, or not an author run")
+        body = await request.json()
+        run.setdefault("chat", []).append(body["text"])
+        return web.json_response({"run_id": run_id, "seq": len(run["events"]) + 1}, status=201)
+
     async def _uploads(self, request: web.Request) -> web.Response:
         self._run(request)
         return web.json_response({"uploads": []})
 
     async def _plan(self, request: web.Request) -> web.Response:
-        _, run = self._held_plan_run(request)
+        run_id, run = self._run(request)
+        if run["state"] in runs.HELD_STATES and run["spec"]["kind"] == "author":
+            if not run["spec"]["plan_id"]:
+                raise _refusal(404, f"author run {run_id} has put no plan on the hub yet")
+        else:
+            _, run = self._held_plan_run(request)
         plan_id = run["spec"]["plan_id"]
         held = self.plans[plan_id]
         return web.json_response(
             {"project": self.project, "plan_id": plan_id, "revision": held["revision"], "body": held["body"]}
         )
+
+    async def _put_plan(self, request: web.Request) -> web.Response:
+        """As the hub's PUT .../plan of an author run: one plan per run, never replaced without its revision."""
+        run_id, run = self._run(request)
+        if run["state"] not in runs.HELD_STATES or run["spec"]["kind"] != "author":
+            raise _refusal(404, f"run {run_id} is not held by this worker, or not an author run")
+        payload = await request.json()
+        body, given = payload["body"], payload.get("if_revision")
+        plan_id, target = body.get("id"), run["spec"]["plan_id"]
+
+        def answered(status: int, answer: dict) -> web.Response:
+            self.plan_puts.append({"run_id": run_id, "status": status, **payload})
+            return web.json_response(answer, status=status)
+
+        if target and plan_id != target:
+            return answered(422, {"error": "invalid", "message": f"author run {run_id} writes plan {target}"})
+        held = self.plans.get(plan_id)
+        if held is not None and given != held["revision"]:
+            message = f"plan {plan_id} is on the hub at revision {held['revision']}: pass if_revision"
+            return answered(409, {"error": "revision_conflict", "message": message})
+        if held is None and given:
+            return answered(409, {"error": "revision_conflict", "message": f"plan {plan_id} is not on the hub"})
+        self.put_plan(body)
+        run["spec"]["plan_id"] = plan_id
+        revision = self.plans[plan_id]["revision"]
+        answer = {"project": self.project, "plan_id": plan_id, "revision": revision, "body": body}
+        return answered(200, {**answer, "created": held is None, "changed": True, "warnings": []})
 
     async def _step(self, request: web.Request) -> web.Response:
         run_id, run = self._held_plan_run(request)

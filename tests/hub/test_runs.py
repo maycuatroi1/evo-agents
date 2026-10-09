@@ -574,6 +574,7 @@ def test_a_heartbeat_records_the_machine_extends_the_lease_and_carries_the_cance
         "handback": False,
         "terminal_open": False,
         "park": False,
+        "finish": False,
         "inbox": 0,
         "decisions": 0,
     }
@@ -817,6 +818,7 @@ def test_an_expired_lease_loses_the_run_and_the_third_attempt_fails_back_to_pend
         "handback": False,
         "terminal_open": False,
         "park": False,
+        "finish": False,
         "inbox": 0,
         "decisions": 0,
     }

@@ -71,6 +71,7 @@ const QUIET: Overview = {
   active_runs: [],
   recent_runs: [],
   open_decisions: [],
+  author_waiting: [],
   projects: [],
 };
 

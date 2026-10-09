@@ -43,6 +43,7 @@ WORKER_DISPATCH_FROM = "worker.dispatch_from"
 # run:<id>" for a plan run), never a prompt or evidence.
 RUN_DISPATCH = "run.dispatch"  # a member queued a run of a ready step
 RUN_DISPATCH_PLAN = "run.dispatch_plan"  # a member queued a plan run: "<project>/<plan> run:<id>", no step
+RUN_DISPATCH_AUTHOR = "run.dispatch_author"  # a member queued an author run: "<project>/author run:<id>", no request
 RUN_STEP_REPORT = "run.step_report"  # a plan run's worker wrote a step, as the dispatcher: "... run:<id> status=<s>"
 RUN_CANCEL = "run.cancel"  # the owner cancelled a run, or asked its worker to stop it
 RUN_APPROVE = "run.approve"  # the owner approved a run in review, and the step is done
@@ -50,6 +51,7 @@ RUN_RERUN = "run.rerun"  # the owner queued the step again after a run that ende
 RUN_MESSAGE = "run.message"  # the owner sent the run's agent a message; the target names the message, not its text
 RUN_TAKEOVER = "run.takeover"  # the owner asked to drive the run's agent in a terminal
 RUN_HANDBACK = "run.handback"  # the owner asked to let the run's agent go on headless
+RUN_FINISH = "run.finish"  # the owner ended the chat of an author run: "<project>/author run:<id>"
 # Decisions and notifications; a target names the decision or the notifications by id, and an answer's option, never
 # the question, the answer's text or a notification's title.
 DECISION_ANSWER = "decision.answer"  # the owner answered: "<project>/<plan>[#<step>] decision:<id> run:<id> option=<k>"
