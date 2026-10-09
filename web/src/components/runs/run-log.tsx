@@ -579,7 +579,7 @@ export function RunLogCard({
           ) : null}
         </div>
         {chat ? (
-          <TabsContent value="chat" forceMount className="gap-0 data-[state=inactive]:hidden">
+          <TabsContent value="chat" forceMount className={cn("gap-0 data-[state=inactive]:hidden", panelFill)}>
             {chat(tab === "chat")}
           </TabsContent>
         ) : null}

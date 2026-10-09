@@ -242,7 +242,7 @@ function RunPage({ run }: { run: Run }) {
       <RunNotes run={run} controls={controls} />
       <RunTimeline run={run} moves={log.moves} />
       {/* The kit's run screen. From xl, two regions that scroll on their own, side by side and as tall as each other:
-          the session (Trace, Raw log, Terminal) on the left, filling the window down to its bottom gutter, and the side
+          the session (an author run's Chat, Trace, Raw log, Terminal) on the left, filling the window down to its bottom gutter, and the side
           column (the decision a plan run waits on, Details, Usage, the plan's steps, the Result, Credentials) on the
           right. Below xl the side column moves under the timeline, the decision first, then the session: the page
           reads in that order at every width, and from md to xl the side cards sit two by two. */}
@@ -276,7 +276,7 @@ function RunPage({ run }: { run: Run }) {
             frozen={{ at: frozenAt, set: setFrozenAt }}
             active={active}
             composer={controls.message && !authoring ? <RunComposer run={run} /> : null}
-            chat={authoring ? (shown) => <RunChatPanel run={run} owner={controls.owner} shown={shown} /> : null}
+            chat={authoring ? (shown) => <RunChatPanel run={run} owner={controls.owner} shown={shown} fill /> : null}
             tab={sessionTab}
             onTabChange={setSessionTab}
             trace={(shown) => <AgentTrace events={log.events} status={log.status} context={traceContext} shown={shown} fill />}

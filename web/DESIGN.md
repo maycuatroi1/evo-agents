@@ -650,7 +650,9 @@ Shared pieces built on them:
   SafeMarkdown on `card`) and the owner's (a neutral mark, plain text on `surface-selected` inside a `brand/20` edge,
   aligned to the end), each with its author and time, the agent's last one tagged Waiting for a reply while it waits;
   the typing dots while the agent works; then the owner's reply, the kit's Composer, which posts to the run that takes
-  the chat's next message. Anyone else reads, told who replies. The chat is read every 3 seconds until it ended and on
+  the chat's next message. From xl the Chat fills the session card as its peers do (`fill` on `RunChatPanel`): the
+  messages take what the head and the reply box leave and scroll on their own, beside the side column; below xl they
+  keep their own height. Anyone else reads, told who replies. The chat is read every 3 seconds until it ended and on
   each event of the run's stream; loading is a skeleton in `role="status"`, an empty chat says what it waits for, a
   failed first read is an alert with Try again, and a read that fails later keeps the chat on screen under a
   `danger-soft` line saying when it was read. The general composer is left out (the replies live in the chat) and an
@@ -730,11 +732,11 @@ Shared pieces built on them:
   your decision" and a link to the Inbox), read every 5 seconds while the run is active; a decision answered there, or
   found answered after a 409, stays with its answer until the visitor leaves.
 - `components/runs`, a run's page (`/p/{project}/runs/{id}`), the kit's RunScreen: the page head, the `RunTimeline`,
-  then the session card (Trace, Raw log, Terminal) on the left and, in a 23 rem side column from xl, the decision while
+  then the session card (an author run's Chat, Trace, Raw log, Terminal) on the left and, in a 23 rem side column from xl, the decision while
   a plan run waits, Details, Usage, the plan's steps, the Result and, for the run's owner, Credentials. From xl
   (1280 px) the page is one window tall and the two are regions that scroll on their own, side by side below the
   timeline (`run-split`): the session card fills the window down to its bottom gutter, the open tab's log, trace or
-  terminal taking what its bars and the composer leave (`fill` on `RunLogCard`, `AgentTrace` and
+  terminal taking what its bars and the composer leave (`fill` on `RunLogCard`, `AgentTrace`, `RunChatPanel` and
   `RunTerminalPanel`), and the side column (`run-aside`) is exactly as tall, scrolling inside itself when its cards
   are longer. It is a region named "About run #12" that Tab reaches from xl (`useMediaQuery`), its 4 px of padding
   taken back by its margin so the cards' shadows and focus rings stay inside it and its last card ends level with
