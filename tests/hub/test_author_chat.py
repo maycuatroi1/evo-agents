@@ -432,3 +432,28 @@ def test_a_restricted_projects_author_notice_on_telegram_holds_its_name_the_kind
         assert message["reply_markup"] == {"inline_keyboard": [[{"text": "Open on the hub", "url": url}]]}
         # the web, on the hub itself, shows the agent's message
         assert notices(client, hub["owner"])[0]["body"] == QUESTION
+
+
+def test_home_lists_the_owners_author_runs_waiting_for_a_reply_with_the_agents_last_message(
+    client, hub, hub_db, tmp_path
+):
+    worker, run_id = running(client, hub, tmp_path)
+
+    def waiting(headers) -> list[dict]:
+        response = client.get("/v1/me/overview", headers=headers)
+        assert response.status_code == 200, response.text
+        return response.json()["author_waiting"]
+
+    assert waiting(hub["owner"]) == [], "an author run whose agent works waits for nobody"
+    asked(client, worker, run_id)
+    (shown,) = waiting(hub["owner"])
+    assert (shown["id"], shown["project"], shown["state"], shown["plan_id"]) == (run_id, PROJECT, "waiting", None)
+    assert (shown["message"], shown["worker"]) == (QUESTION, "mac-mini")
+    assert shown["waiting_since"] is not None and shown["parked_at"] is None
+    assert waiting(hub["other"]) == [], "only its owner replies, so it waits for nobody else"
+    park(hub_db, run_id)
+    assert recover(client) == {**NOTHING_RECOVERED, "parked": 1}
+    (parked,) = waiting(hub["owner"])
+    assert (parked["id"], parked["state"]) == (run_id, "parked") and parked["parked_at"] is not None
+    new_id = sent(client, hub["owner"], run_id)["run_id"]
+    assert waiting(hub["owner"]) == [], f"the reply set it going again in run {new_id}"
