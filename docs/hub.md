@@ -781,8 +781,8 @@ query builder changes:
 - the migrations 0001 to 0011, which have run as they are and are the record of how those databases were built;
 - the `LISTEN` of `evo_agents/hub/server/listen.py`, which keeps a psycopg connection of its own in autocommit,
   because SQLAlchemy has no construct for `LISTEN`;
-- `CREATE` and `DROP` of a test's database and role in `tests/hub/pg.py`, run by the superuser outside any hub
-  database, where SQLAlchemy has no construct either.
+- `CREATE`, `ALTER` and `DROP` of a test's database and role in `tests/hub/pg.py`, and the `REASSIGN OWNED` that gives
+  a copy of the migrated template to its own role, run by the superuser, where SQLAlchemy has no construct either.
 
 When the test reports a finding, write the statement with Core on `tables.py`: a table the hub does not own (a
 `pg_*` catalog, `procrastinate_jobs`) is described where it is read with a lightweight `sqlalchemy.table()`. A test
