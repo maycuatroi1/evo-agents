@@ -1626,7 +1626,8 @@ export interface paths {
         put?: never;
         /**
          * Send Message
-         * @description Leave a message for the run's agent in its inbox, which the worker hands to the agent.
+         * @description Leave a message for the run's agent in its inbox, which the worker hands to the agent; a reply to a parked
+         *     author run queues the run that resumes it, whose inbox takes the message.
          */
         post: operations["send_message_v1_projects__project__runs__run_id__messages_post"];
         delete?: never;
@@ -1750,6 +1751,67 @@ export interface paths {
          * @description Commit the uploads of a run's log and diff, and record them on the run.
          */
         post: operations["commit_run_blobs_v1_worker_runs__run_id__blobs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/runs/{run_id}/chat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Chat
+         * @description The chat of an author run: the agent's messages and its owner's, oldest first, and whose turn it is.
+         */
+        get: operations["read_chat_v1_projects__project__runs__run_id__chat_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/runs/{run_id}/finish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Finish
+         * @description End the chat of an author run one dispatched: a parked one is done at once, and the worker holding one ends it
+         *     done once its agent's turn is over.
+         */
+        post: operations["finish_v1_projects__project__runs__run_id__finish_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/chat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Chat
+         * @description Keep the last message of a turn of the agent of an author run this worker holds as a message of its chat.
+         */
+        post: operations["post_chat_v1_worker_runs__run_id__chat_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3298,6 +3360,54 @@ export interface components {
              * @description the owner's env secrets the Curator's runs get, by name; they get no other
              */
             env_secrets?: string[];
+        };
+        /** ChatMessage */
+        ChatMessage: {
+            /**
+             * Run Id
+             * @description the run whose log holds it: the run read, or one it resumes or that resumes it
+             */
+            run_id: number;
+            /**
+             * Seq
+             * @description its event in that run's log
+             */
+            seq: number;
+            /**
+             * Author
+             * @enum {string}
+             */
+            author: "agent" | "owner";
+            /**
+             * Login
+             * @description the owner's login for the owner's message; null for the agent's
+             */
+            login: string | null;
+            /** Text */
+            text: string;
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+        };
+        /** ChatPost */
+        ChatPost: {
+            /**
+             * Text
+             * @description the agent's last message of a turn, at most 16 KiB
+             */
+            text: string;
+        };
+        /** ChatPosted */
+        ChatPosted: {
+            /** Run Id */
+            run_id: number;
+            /**
+             * Seq
+             * @description its event in the run's log
+             */
+            seq: number;
         };
         /**
          * CheckoutReport
@@ -4903,7 +5013,10 @@ export interface components {
         Message: {
             /** Id */
             id: number;
-            /** Run Id */
+            /**
+             * Run Id
+             * @description the run whose inbox took it: the run messaged, or the run that resumes a parked author run
+             */
             run_id: number;
             /**
              * Seq
@@ -5223,7 +5336,7 @@ export interface components {
              * Notice Kind
              * @description a notice's kind; null for a decision
              */
-            notice_kind: ("push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused") | null;
+            notice_kind: ("push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting") | null;
             /** Project */
             project: string | null;
             /** Run Id */
@@ -6922,6 +7035,11 @@ export interface components {
              * @description the member's request of an author run; null for any other kind
              */
             request?: string | null;
+            /**
+             * Finish Requested At
+             * @description when the owner ended the chat of an author run its worker holds; null otherwise
+             */
+            finish_requested_at?: string | null;
         };
         /** RunBlobCommit */
         RunBlobCommit: {
@@ -6973,6 +7091,51 @@ export interface components {
              * @description the agent time it may use; a Codex run stops there
              */
             max_seconds?: number | null;
+        };
+        /** RunChat */
+        RunChat: {
+            /**
+             * Run Id
+             * @description the run of the chat that takes the next message: the latest that resumes it
+             */
+            run_id: number;
+            /**
+             * State
+             * @description that run's state
+             * @enum {string}
+             */
+            state: "queued" | "leased" | "running" | "interactive" | "verifying" | "waiting" | "review" | "parked" | "done" | "failed" | "lost" | "cancelled";
+            /**
+             * Status
+             * @description working: the agent works on its turn; waiting: it waits for your reply (waiting or parked); ended: the run ended
+             * @enum {string}
+             */
+            status: "working" | "waiting" | "ended";
+            /**
+             * Owner
+             * @description the login of the run's owner, the one member who replies
+             */
+            owner: string;
+            /**
+             * Plan Id
+             * @description the plan the run wrote or revises; null before its first put
+             */
+            plan_id: string | null;
+            /**
+             * Plan Revision
+             * @description that plan's revision the run last wrote, or was dispatched on
+             */
+            plan_revision: number | null;
+            /**
+             * Messages
+             * @description oldest first
+             */
+            messages: components["schemas"]["ChatMessage"][];
+            /**
+             * More
+             * @description older messages were left out: the chat shows its 1000 latest
+             */
+            more: boolean;
         };
         /** RunCommitted */
         RunCommitted: {
@@ -7037,6 +7200,12 @@ export interface components {
              * @default false
              */
             park: boolean;
+            /**
+             * Finish
+             * @description the owner ended the chat of this author run: once the agent's turn is over, end the run done
+             * @default false
+             */
+            finish: boolean;
             /**
              * Inbox
              * @description messages from the owner waiting for the agent: POST .../runs/{id}/inbox
@@ -14898,6 +15067,206 @@ export interface operations {
             };
             /** @description Service Unavailable */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    read_chat_v1_projects__project__runs__run_id__chat_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunChat"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    finish_v1_projects__project__runs__run_id__finish_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Run"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_chat_v1_worker_runs__run_id__chat_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChatPost"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatPosted"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

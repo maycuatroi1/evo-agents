@@ -42,7 +42,10 @@ version of the global skill create-exec-plan (``RunSpec.skills``); without that 
 at the claim, saying so. The author runs of a new plan are listed and read as a review run is, through the project's
 default label; one is never rerun (409). With ``plan_id`` it revises that plan, one the caller can read (404
 otherwise), recorded with its revision. Its agent puts the plan with PUT /v1/worker/runs/{id}/plan
-(``put_run_plan``), as the dispatcher, through ``plans.write_plan``; the run then points to the plan it wrote.
+(``put_run_plan``), as the dispatcher, through ``plans.write_plan``; the run then points to the plan it wrote. Its
+chat, waiting, parking and end are ``author_chat``'s: it reports ``waiting`` after each turn of its agent without a
+decision of its own (409 once its owner ended the chat), which sends its owner the notice ``author_waiting``, and the
+heartbeat says ``finish`` once the owner ended the chat.
 
 GET /v1/projects/{p}/runs (reader) lists the project's runs newest first, filtered by state, plan, step, worker,
 dispatcher and text, a page at a time, with how many runs each state has under the other filters; GET .../runs/{id}
@@ -373,6 +376,9 @@ class Run(BaseModel):
     parked_at: datetime | None = Field(description="when the run was parked, for want of an answer")
     finished_at: datetime | None
     request: str | None = Field(None, description="the member's request of an author run; null for any other kind")
+    finish_requested_at: datetime | None = Field(
+        None, description="when the owner ended the chat of an author run its worker holds; null otherwise"
+    )
 
 
 class ClaimRequest(BaseModel):
@@ -555,6 +561,10 @@ class RunControl(BaseModel):
         description="the run is parked (it waited too long for an answer), or done because a new run resumes it: stop "
         "the agent at the end of its turn, keep the session and the worktrees, free the slot",
     )
+    finish: bool = Field(
+        False,
+        description="the owner ended the chat of this author run: once the agent's turn is over, end the run done",
+    )
     inbox: int = Field(0, description="messages from the owner waiting for the agent: POST .../runs/{id}/inbox")
     decisions: int = Field(0, description="decisions of the run still open, waiting for the owner's answer")
 
@@ -683,6 +693,7 @@ def _run_select():
             r.c.parked_at,
             r.c.finished_at,
             r.c.request,
+            r.c.finish_requested_at,
         )
         .join_from(r, p, p.c.id == r.c.project_id)
         .join(u, u.c.id == r.c.dispatched_by)
@@ -2342,7 +2353,8 @@ async def claim(request: Request, user: CurrentUser, body: ClaimRequest | None =
 
 def _extend(worker_id: int, run_ids: list[int], lease: timedelta):
     """Extend the leases of the runs of ``run_ids`` the worker holds and settle their agent time; per run, its id,
-    state, whether a cancel was asked, the new lease, and whether a takeover and a handback were asked."""
+    state, whether a cancel was asked, the new lease, whether a takeover and a handback were asked, and whether the
+    owner ended the chat of an author run."""
     r = tables.runs
     return (
         update(r)
@@ -2355,6 +2367,7 @@ def _extend(worker_id: int, run_ids: list[int], lease: timedelta):
             r.c.lease_expires_at,
             r.c.takeover_requested_at.is_not(None),
             r.c.handback_requested_at.is_not(None),
+            r.c.finish_requested_at.is_not(None),
         )
     )
 
@@ -2414,7 +2427,7 @@ async def heartbeat(request: Request, body: HeartbeatRequest, user: CurrentUser)
     controls = []
     for run_id in reported:
         if run_id in extended:
-            state, cancel, lease, takeover, handback = extended[run_id]
+            state, cancel, lease, takeover, handback, finish = extended[run_id]
             controls.append(
                 RunControl(
                     id=run_id,
@@ -2424,6 +2437,7 @@ async def heartbeat(request: Request, body: HeartbeatRequest, user: CurrentUser)
                     cancel=cancel,
                     takeover=takeover,
                     handback=handback,
+                    finish=finish,
                     terminal_open=terminals.waiting(run_id),
                     inbox=waiting.get(run_id, 0),
                     decisions=open_decisions.get(run_id, 0),
@@ -2476,14 +2490,14 @@ async def report_state(request: Request, run_id: RunId, body: StateReport, user:
         worker_id, _, name, *_ = await _worker_of(conn, user)
         r = tables.runs
         reported_run = (
-            select(r.c.state, r.c.approval, r.c.worker_id, r.c.cancel_requested_at, r.c.kind)
+            select(r.c.state, r.c.approval, r.c.worker_id, r.c.cancel_requested_at, r.c.kind, r.c.finish_requested_at)
             .where(r.c.id == run_id)
             .with_for_update()
         )
         row = (await conn.execute(reported_run)).one_or_none()
         if row is None or row.worker_id != worker_id:
             raise HTTPException(404, NOT_HELD.format(id=run_id))
-        state, approval, _, cancel_requested_at, kind = row
+        state, approval, _, cancel_requested_at, kind, finish_requested_at = row
         columns = _reported_columns(body)
         if state == body.state:  # a resend, or news without a move: kept, and nothing moves
             news = {name: value for name, value in columns.items() if name in SAME_COLUMNS}
@@ -2499,7 +2513,12 @@ async def report_state(request: Request, run_id: RunId, body: StateReport, user:
         except runs.TransitionRefused as exc:
             raise HTTPException(409, f"run {run_id}: {exc}") from None
         _check_verdict(run_id, kind, approval, body)
-        if body.state == "waiting" and not (await conn.execute(_waits_for(run_id))).scalar_one():
+        if body.state == "waiting" and kind == "author" and finish_requested_at is not None:
+            raise HTTPException(
+                409,
+                f"run {run_id}: its owner ended the chat, so the author run waits for no reply: end it done",
+            )
+        if body.state == "waiting" and kind != "author" and not (await conn.execute(_waits_for(run_id))).scalar_one():
             raise HTTPException(
                 409,
                 f"run {run_id} has no open decision and no answer waiting for the agent: a run waits only for the "
@@ -2534,6 +2553,10 @@ async def report_state(request: Request, run_id: RunId, body: StateReport, user:
             columns=columns,
             token_id=user.token_id,
         )
+        if body.state == "waiting" and kind == "author":
+            from evo_agents.hub.server import author_chat  # it reads runs through this module
+
+            await author_chat.notify_waiting(conn, run_id)
         view = await run_view(conn, run_id)
     log.info("run moved", extra={"run_id": run_id, "from": state, "to": body.state, "worker_id": worker_id})
     if body.state not in runs.HELD_STATES:  # the move gave back the run's leases: revoke its GitHub tokens now

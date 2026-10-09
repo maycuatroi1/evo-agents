@@ -34,6 +34,7 @@ export const NOTICE_KINDS = [
   "run_failed",
   "curator_brief",
   "curator_paused",
+  "author_waiting",
 ] as const satisfies readonly NoticeKind[];
 export const DECISION_STATES = ["open", "answered", "expired", "cancelled"] as const satisfies readonly DecisionState[];
 export const DECISION_CATEGORIES = [

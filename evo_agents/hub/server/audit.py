@@ -51,6 +51,7 @@ RUN_RERUN = "run.rerun"  # the owner queued the step again after a run that ende
 RUN_MESSAGE = "run.message"  # the owner sent the run's agent a message; the target names the message, not its text
 RUN_TAKEOVER = "run.takeover"  # the owner asked to drive the run's agent in a terminal
 RUN_HANDBACK = "run.handback"  # the owner asked to let the run's agent go on headless
+RUN_FINISH = "run.finish"  # the owner ended the chat of an author run: "<project>/author run:<id>"
 # Decisions and notifications; a target names the decision or the notifications by id, and an answer's option, never
 # the question, the answer's text or a notification's title.
 DECISION_ANSWER = "decision.answer"  # the owner answered: "<project>/<plan>[#<step>] decision:<id> run:<id> option=<k>"

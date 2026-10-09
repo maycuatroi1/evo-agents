@@ -68,6 +68,7 @@ NOTICE_WORDS = {  # as the web's Inbox names them
     "run_failed": "Run failed",
     "curator_brief": "Morning brief",
     "curator_paused": "Night shift paused",
+    "author_waiting": "An author run waits for your reply",
 }
 ANSWER_WORDS = {"accept": "Accept", "reject": "Reject", "defer": "Defer 7 days"}
 

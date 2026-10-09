@@ -83,6 +83,7 @@ class FakeHub:
                 post("/v1/worker/runs/{id}/state", self._state),
                 post("/v1/worker/runs/{id}/events", self._events),
                 post("/v1/worker/runs/{id}/inbox", self._inbox),
+                post("/v1/worker/runs/{id}/chat", self._chat),
                 post("/v1/worker/runs/{id}/uploads", self._uploads),
                 get("/v1/worker/runs/{id}/plan", self._plan),
                 web.put("/v1/worker/runs/{id}/plan", self._put_plan),
@@ -281,9 +282,12 @@ class FakeHub:
         prompt: str = "Write the plan.",
         runtime: str = "claude-code",
         plan_id: str = "",
+        *,
+        resume_of: int | None = None,
+        session_id: str | None = None,
     ) -> int:
         """An author run over ``repos`` (the harness first) with the skill tickets ``skills``, as the hub hands it; of
-        plan ``plan_id`` when it revises one."""
+        plan ``plan_id`` when it revises one; going on from parked author run ``resume_of`` in ``session_id``."""
         return self.queue_run(
             kind="author",
             project=self.project,
@@ -294,8 +298,8 @@ class FakeHub:
             attempt=1,
             max_attempts=3,
             parent_run_id=None,
-            resume_of_run_id=None,
-            session_id=None,
+            resume_of_run_id=resume_of,
+            session_id=session_id,
             runtime=runtime,
             model=None,
             mode="headless",
@@ -334,6 +338,36 @@ class FakeHub:
             {"id": next(self._messages), "text": text, "decision_id": decision_id, "delivered": False}
         )
         return run_id
+
+    def reply(self, run_id: int, text: str) -> int:
+        """The owner's reply in the chat of an author run, as POST .../messages leaves it; the run whose inbox took
+        it: for a parked run, the run that resumes it, queued on the same terms."""
+        run = self.runs[run_id]
+        assert run["spec"]["kind"] == "author", run["spec"]["kind"]
+        if run["state"] == "parked":
+            spec = run["spec"]
+            new_id = self.queue_author_run(
+                [item["repo"] for item in spec["repos"]],
+                spec.get("skills") or [],
+                prompt=spec["prompt"],
+                plan_id=spec["plan_id"],
+                resume_of=run_id,
+                session_id=run.get("session_id"),
+            )
+            self._move(run_id, "done")
+            run["resumed_by"] = new_id
+            run_id = new_id
+        assert self.runs[run_id]["state"] in runs.MESSAGE_STATES, self.runs[run_id]["state"]
+        self.inbox[run_id].append({"id": next(self._messages), "text": text, "decision_id": None, "delivered": False})
+        return run_id
+
+    def finish(self, run_id: int) -> None:
+        """The owner ends the chat of an author run: a parked one is done at once, a held one ends at the worker."""
+        run = self.runs[run_id]
+        if run["state"] == "parked":
+            self._move(run_id, "done")
+        else:
+            run["finish"] = True
 
     def park(self, run_id: int) -> None:
         """What the reaper does to a run that waited too long for its owner."""
@@ -425,6 +459,7 @@ class FakeHub:
                         "state": run["state"],
                         "lease_expires_at": lease,
                         "cancel": bool(run.get("cancel")),
+                        "finish": bool(run.get("finish")),
                         "inbox": waiting,
                         "decisions": open_count,
                     }
@@ -448,7 +483,9 @@ class FakeHub:
             runs.check_transition(state, new, "worker")
         except runs.TransitionRefused as exc:
             return _error(409, "conflict", f"run {run_id}: {exc}")
-        if new == "waiting":
+        if new == "waiting" and run["spec"]["kind"] == "author" and run.get("finish"):
+            return _error(409, "conflict", f"run {run_id}: its owner ended the chat")
+        if new == "waiting" and run["spec"]["kind"] != "author":
             open_ = any(d["run_id"] == run_id and d["state"] == "open" for d in self.decisions.values())
             answer = any(m.get("decision_id") and not m["delivered"] for m in self.inbox[run_id])
             if not (open_ or answer):
@@ -490,6 +527,14 @@ class FakeHub:
             if not m["delivered"]
         ]
         return web.json_response({"messages": waiting})
+
+    async def _chat(self, request: web.Request) -> web.Response:
+        run_id, run = self._run(request)
+        if run["state"] not in runs.HELD_STATES or run["spec"]["kind"] != "author":
+            raise _refusal(404, f"run {run_id} is not held by this worker, or not an author run")
+        body = await request.json()
+        run.setdefault("chat", []).append(body["text"])
+        return web.json_response({"run_id": run_id, "seq": len(run["events"]) + 1}, status=201)
 
     async def _uploads(self, request: web.Request) -> web.Response:
         self._run(request)

@@ -119,10 +119,12 @@ RUN_KEYS = (
     "parked_at",
     "finished_at",
     "request",
+    "finish_requested_at",
 )
 RUN_LIST_KEYS = ("runs", "total", "counts", "limit", "offset")
 EVENTS_KEYS = ("run_id", "state", "last_seq", "events", "more")
 MESSAGE_KEYS = ("id", "run_id", "seq", "text", "sent_by", "created_at", "delivered_at")
+CHAT_KEYS = ("run_id", "state", "status", "owner", "plan_id", "plan_revision", "messages", "more")
 LEASE_KEYS = ("id", "name", "provider", "kind", "target", "worker", "issued_at", "expires_at", "revoked_at")
 RUN = returns_object(*RUN_KEYS, schema="Run")
 
@@ -688,10 +690,44 @@ def cmd_send(args) -> int:
     if args.json:
         _print_json(message)
         return 0
+    if message["run_id"] != args.run:
+        print(
+            f"Run #{args.run} was parked: the reply queued run #{message['run_id']}, which resumes it in its session "
+            f"on the same worker, and its agent gets message #{message['id']} (event {message['seq']})."
+        )
+        return 0
     print(
         f"Sent message #{message['id']} to run #{message['run_id']} (event {message['seq']}); "
         "its worker hands it to the agent."
     )
+    return 0
+
+
+CHAT_STATUS_WORDS = {
+    "working": "the agent works on its turn",
+    "waiting": "it waits for your reply: `evo-agents hub run send {run} TEXT`, or end it with "
+    "`evo-agents hub run finish {run}`",
+    "ended": "the chat is over",
+}
+
+
+@_client_command
+def cmd_chat(args) -> int:
+    hub, _ = _signed_in()
+    chat = hub.call("GET", _runs_path(_project(args), args.run, "chat"))
+    if args.json:
+        _print_json(chat)
+        return 0
+    if chat["more"]:
+        print("(older messages left out)")
+    for message in chat["messages"]:
+        who = "agent" if message["author"] == "agent" else message["login"] or "owner"
+        print(f"[{_when(message['at'])}] {who} (run #{message['run_id']}):")
+        print(message["text"].rstrip())
+        print()
+    plan = f"; plan {chat['plan_id']} at revision {chat['plan_revision']}" if chat["plan_id"] else ""
+    said = CHAT_STATUS_WORDS[chat["status"]].format(run=chat["run_id"])
+    print(f"{len(chat['messages'])} message(s); run #{chat['run_id']} is {chat['state']}: {said}{plan}.")
     return 0
 
 
@@ -761,6 +797,14 @@ def _handed_back(run: dict) -> str:
     return f"Asked the worker of run #{run['id']} to hand back: the agent goes on headless in the same session."
 
 
+def _finished(run: dict) -> str:
+    if run["state"] == "done":
+        return f"Ended the chat of run #{run['id']}: it is done."
+    return (
+        f"Ended the chat of run #{run['id']} ({run['state']}): its worker ends it done once the agent's turn is over."
+    )
+
+
 def _rerun(run: dict) -> str:
     return f"Queued run #{run['id']}, a rerun of run #{run['parent_run_id']}: {_step(run)}."
 
@@ -776,6 +820,10 @@ CONTROLS = {
     "rerun": (
         "queue the step of a run that ended again, with its runtime, mode, approval, timeout and worker",
         _rerun,
+    ),
+    "finish": (
+        "end the chat of an author run: it ends done, at once when parked, else once its agent's turn is over",
+        _finished,
     ),
 }
 
@@ -957,12 +1005,24 @@ def register_runs(hsub) -> None:
     )
     logs.set_defaults(func=cmd_logs)
 
-    send = rsub.add_parser("send", help="leave a message for a run's agent, which its worker hands over (owner only)")
+    send = rsub.add_parser(
+        "send",
+        help="leave a message for a run's agent, which its worker hands over; to an author run, your reply in its "
+        "chat (owner only)",
+    )
     with_run(send)
     send.add_argument("text", metavar="TEXT", help="at most 8 KiB; - reads it from stdin")
     with_project(send)
     json_option(send, returns_object(*MESSAGE_KEYS, schema="Message"))
     send.set_defaults(func=cmd_send)
+
+    chat = rsub.add_parser(
+        "chat", help="the chat of an author run: its agent's messages and its owner's, oldest first, and whose turn"
+    )
+    with_run(chat)
+    with_project(chat)
+    json_option(chat, returns_object(*CHAT_KEYS, schema="RunChat"))
+    chat.set_defaults(func=cmd_chat)
 
     credentials = rsub.add_parser(
         "credentials",

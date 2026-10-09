@@ -46,7 +46,8 @@ cancelled when its cancel was asked for, and is not tried again. Of the runs who
 asked for is cancelled, the last attempt fails, and any other run is lost, with its next attempt queued for the same
 step (``parent_run_id`` pointing back, the attempt one higher, the runtime the dispatch asked for) and the channel
 RUNS_CHANNEL notified with the new run's id. A run ``waiting`` for DECISION_WAIT is ``parked`` (cancelled instead
-when its cancel was asked for): the worker's next heartbeat says park, and the slot is free. A run ``parked`` for
+when its cancel was asked for): the worker's next heartbeat says park, and the slot is free; an author run waiting
+for its owner's reply in its chat is parked the same way. A run ``parked`` for
 PARKED_FOR is cancelled and its open decisions expire. A revoked worker also fails the runs pinned to it, held or
 queued, since no other worker may claim them, and cancels the runs parked on it, since only it has their session; an
 expired lease does not, since the worker may come back. ``prune_run_events`` (hub.prune_run_events, daily)
@@ -785,14 +786,17 @@ async def park_waiting(engine: AsyncEngine, batch: int, wait: timedelta, ended: 
     for run_id in waited:
         async with engine.begin() as conn:
             lock = (
-                select(r.c.cancel_requested_at.is_not(None).label("cancel"))
+                select(r.c.cancel_requested_at.is_not(None).label("cancel"), r.c.kind)
                 .where(r.c.id == run_id, *waited_long)
                 .with_for_update(skip_locked=True)
             )
             row = (await conn.execute(lock)).one_or_none()
             if row is None:  # answered, ended or taken by another pass meanwhile
                 continue
-            reason = f"nobody answered its decision within {hours}"
+            if row.kind == "author":  # it waits for a reply in its chat, not for an answer to a decision
+                reason = f"nobody replied in its chat within {hours}"
+            else:
+                reason = f"nobody answered its decision within {hours}"
             new = "cancelled" if row.cancel else "parked"
             await move_run(conn, run_id, "waiting", new, "reaper", reason=reason)
             ended[new] += 1

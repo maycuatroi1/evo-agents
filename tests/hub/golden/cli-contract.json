@@ -2551,7 +2551,8 @@
           "waiting_since",
           "parked_at",
           "finished_at",
-          "request"
+          "request",
+          "finish_requested_at"
         ],
         "schema": "Run"
       }
@@ -2686,7 +2687,8 @@
           "waiting_since",
           "parked_at",
           "finished_at",
-          "request"
+          "request",
+          "finish_requested_at"
         ],
         "schema": "Run"
       }
@@ -2770,9 +2772,53 @@
           "waiting_since",
           "parked_at",
           "finished_at",
-          "request"
+          "request",
+          "finish_requested_at"
         ],
         "schema": "Run"
+      }
+    },
+    "hub run chat": {
+      "positionals": [
+        {
+          "name": "run",
+          "metavar": "RUN",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "run_id",
+          "state",
+          "status",
+          "owner",
+          "plan_id",
+          "plan_revision",
+          "messages",
+          "more"
+        ],
+        "schema": "RunChat"
       }
     },
     "hub run credentials": {
@@ -2969,7 +3015,93 @@
           "waiting_since",
           "parked_at",
           "finished_at",
-          "request"
+          "request",
+          "finish_requested_at"
+        ],
+        "schema": "Run"
+      }
+    },
+    "hub run finish": {
+      "positionals": [
+        {
+          "name": "run",
+          "metavar": "RUN",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "kind",
+          "project",
+          "plan_id",
+          "step_key",
+          "title",
+          "plan_revision",
+          "dispatched_by",
+          "dispatched_via",
+          "worker_id",
+          "worker",
+          "pinned_worker_id",
+          "requested_runtime",
+          "runtime",
+          "model",
+          "mode",
+          "approval",
+          "timeout_min",
+          "run_seconds",
+          "attempt",
+          "max_attempts",
+          "parent_run_id",
+          "resume_of_run_id",
+          "state",
+          "lease_expires_at",
+          "session_id",
+          "repo",
+          "branch",
+          "repos",
+          "commit_sha",
+          "diffstat",
+          "verify",
+          "evidence",
+          "usage",
+          "budget",
+          "error",
+          "log_sha256",
+          "diff_sha256",
+          "last_seq",
+          "cancel_requested_at",
+          "takeover_requested_at",
+          "handback_requested_at",
+          "queued_at",
+          "leased_at",
+          "started_at",
+          "waiting_since",
+          "parked_at",
+          "finished_at",
+          "request",
+          "finish_requested_at"
         ],
         "schema": "Run"
       }
@@ -3053,7 +3185,8 @@
           "waiting_since",
           "parked_at",
           "finished_at",
-          "request"
+          "request",
+          "finish_requested_at"
         ],
         "schema": "Run"
       }
@@ -3382,7 +3515,8 @@
           "waiting_since",
           "parked_at",
           "finished_at",
-          "request"
+          "request",
+          "finish_requested_at"
         ],
         "schema": "Run"
       }
@@ -3466,7 +3600,8 @@
           "waiting_since",
           "parked_at",
           "finished_at",
-          "request"
+          "request",
+          "finish_requested_at"
         ],
         "schema": "Run"
       }
@@ -3599,7 +3734,8 @@
           "waiting_since",
           "parked_at",
           "finished_at",
-          "request"
+          "request",
+          "finish_requested_at"
         ],
         "schema": "Run"
       }
@@ -3683,7 +3819,8 @@
           "waiting_since",
           "parked_at",
           "finished_at",
-          "request"
+          "request",
+          "finish_requested_at"
         ],
         "schema": "Run"
       }
@@ -12754,7 +12891,7 @@
             "runs"
           ],
           "summary": "Send Message",
-          "description": "Leave a message for the run's agent in its inbox, which the worker hands to the agent.",
+          "description": "Leave a message for the run's agent in its inbox, which the worker hands to the agent; a reply to a parked\nauthor run queues the run that resumes it, whose inbox takes the message.",
           "operationId": "send_message_v1_projects__project__runs__run_id__messages_post",
           "parameters": [
             {
@@ -13529,6 +13666,297 @@
                 }
               },
               "description": "Service Unavailable"
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/runs/{run_id}/chat": {
+        "get": {
+          "tags": [
+            "runs"
+          ],
+          "summary": "Read Chat",
+          "description": "The chat of an author run: the agent's messages and its owner's, oldest first, and whose turn it is.",
+          "operationId": "read_chat_v1_projects__project__runs__run_id__chat_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/RunChat"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/runs/{run_id}/finish": {
+        "post": {
+          "tags": [
+            "runs"
+          ],
+          "summary": "Finish",
+          "description": "End the chat of an author run one dispatched: a parked one is done at once, and the worker holding one ends it\ndone once its agent's turn is over.",
+          "operationId": "finish_v1_projects__project__runs__run_id__finish_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Run"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/worker/runs/{run_id}/chat": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Post Chat",
+          "description": "Keep the last message of a turn of the agent of an author run this worker holds as a message of its chat.",
+          "operationId": "post_chat_v1_worker_runs__run_id__chat_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatPost"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ChatPosted"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
             }
           }
         }
@@ -19458,6 +19886,94 @@
           ],
           "title": "CharterWrite"
         },
+        "ChatMessage": {
+          "properties": {
+            "run_id": {
+              "type": "integer",
+              "title": "Run Id",
+              "description": "the run whose log holds it: the run read, or one it resumes or that resumes it"
+            },
+            "seq": {
+              "type": "integer",
+              "title": "Seq",
+              "description": "its event in that run's log"
+            },
+            "author": {
+              "type": "string",
+              "enum": [
+                "agent",
+                "owner"
+              ],
+              "title": "Author"
+            },
+            "login": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Login",
+              "description": "the owner's login for the owner's message; null for the agent's"
+            },
+            "text": {
+              "type": "string",
+              "title": "Text"
+            },
+            "at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "run_id",
+            "seq",
+            "author",
+            "login",
+            "text",
+            "at"
+          ],
+          "title": "ChatMessage"
+        },
+        "ChatPost": {
+          "properties": {
+            "text": {
+              "type": "string",
+              "maxLength": 16384,
+              "minLength": 1,
+              "title": "Text",
+              "description": "the agent's last message of a turn, at most 16 KiB"
+            }
+          },
+          "type": "object",
+          "required": [
+            "text"
+          ],
+          "title": "ChatPost"
+        },
+        "ChatPosted": {
+          "properties": {
+            "run_id": {
+              "type": "integer",
+              "title": "Run Id"
+            },
+            "seq": {
+              "type": "integer",
+              "title": "Seq",
+              "description": "its event in the run's log"
+            }
+          },
+          "type": "object",
+          "required": [
+            "run_id",
+            "seq"
+          ],
+          "title": "ChatPosted"
+        },
         "CheckoutReport": {
           "properties": {
             "path": {
@@ -23197,7 +23713,8 @@
             },
             "run_id": {
               "type": "integer",
-              "title": "Run Id"
+              "title": "Run Id",
+              "description": "the run whose inbox took it: the run messaged, or the run that resumes a parked author run"
             },
             "seq": {
               "type": "integer",
@@ -23879,7 +24396,8 @@
                     "plan_finished",
                     "run_failed",
                     "curator_brief",
-                    "curator_paused"
+                    "curator_paused",
+                    "author_waiting"
                   ]
                 },
                 {
@@ -27914,6 +28432,19 @@
               ],
               "title": "Request",
               "description": "the member's request of an author run; null for any other kind"
+            },
+            "finish_requested_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Finish Requested At",
+              "description": "when the owner ended the chat of an author run its worker holds; null otherwise"
             }
           },
           "type": "object",
@@ -28093,6 +28624,98 @@
           "title": "RunBudget",
           "description": "The caps of a run the night shift queued (``evo_agents.hub.curator``)."
         },
+        "RunChat": {
+          "properties": {
+            "run_id": {
+              "type": "integer",
+              "title": "Run Id",
+              "description": "the run of the chat that takes the next message: the latest that resumes it"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "queued",
+                "leased",
+                "running",
+                "interactive",
+                "verifying",
+                "waiting",
+                "review",
+                "parked",
+                "done",
+                "failed",
+                "lost",
+                "cancelled"
+              ],
+              "title": "State",
+              "description": "that run's state"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "working",
+                "waiting",
+                "ended"
+              ],
+              "title": "Status",
+              "description": "working: the agent works on its turn; waiting: it waits for your reply (waiting or parked); ended: the run ended"
+            },
+            "owner": {
+              "type": "string",
+              "title": "Owner",
+              "description": "the login of the run's owner, the one member who replies"
+            },
+            "plan_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Plan Id",
+              "description": "the plan the run wrote or revises; null before its first put"
+            },
+            "plan_revision": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Plan Revision",
+              "description": "that plan's revision the run last wrote, or was dispatched on"
+            },
+            "messages": {
+              "items": {
+                "$ref": "#/components/schemas/ChatMessage"
+              },
+              "type": "array",
+              "title": "Messages",
+              "description": "oldest first"
+            },
+            "more": {
+              "type": "boolean",
+              "title": "More",
+              "description": "older messages were left out: the chat shows its 1000 latest"
+            }
+          },
+          "type": "object",
+          "required": [
+            "run_id",
+            "state",
+            "status",
+            "owner",
+            "plan_id",
+            "plan_revision",
+            "messages",
+            "more"
+          ],
+          "title": "RunChat"
+        },
         "RunCommitted": {
           "properties": {
             "build": {
@@ -28210,6 +28833,12 @@
               "type": "boolean",
               "title": "Park",
               "description": "the run is parked (it waited too long for an answer), or done because a new run resumes it: stop the agent at the end of its turn, keep the session and the worktrees, free the slot",
+              "default": false
+            },
+            "finish": {
+              "type": "boolean",
+              "title": "Finish",
+              "description": "the owner ended the chat of this author run: once the agent's turn is over, end the run done",
               "default": false
             },
             "inbox": {

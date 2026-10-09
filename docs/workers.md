@@ -351,6 +351,35 @@ evidence of a step, by its id, and the status and merged_at of a repo, by its na
 progress left out and progress on a new one. An author run on a plan is not a run of its steps: it holds back no
 dispatch of them, nor a plan run.
 
+### The chat of an author run
+
+The agent talks with the member who dispatched the run in the run's chat, never through a question tool. After each
+turn the worker posts the agent's last message to the chat (`POST /v1/worker/runs/{id}/chat`, at most 16 KiB of UTF-8;
+the hub keeps it as a `system` event of its own whose body holds `"chat": "agent"`) and reports `waiting`, which an
+author run may without a decision of its own. The run waits as a plan run waits for an answer: the worker keeps it,
+its slot and its lease, the time it waits does not count toward its timeout, and the hub sends the owner the notice
+`author_waiting` (`docs/notifications.md`). The owner replies with `POST .../runs/{id}/messages` or `evo-agents hub
+run send RUN TEXT`; the reply goes through the inbox to the agent's next turn in the same session. A run that waited a
+day (`EVO_HUB_DECISION_WAIT_SECONDS`) is `parked` with the reason `nobody replied in its chat within 24 hours`: the
+worker lets it go and keeps its directory, worktrees, skills and session. A reply to a parked author run queues the run
+that resumes it, an author run pinned to the same worker with `resume_of_run_id`, the session, request, repos, model,
+timeout and agent time of the parked one, which ends `done` (`resumed as #N`); the message goes to the new run's
+inbox and its answer names that run (`run_id`). A run parked 7 days is cancelled, and a message to it is 409.
+
+The run waits after every turn, the plan on the hub or not, so the member can ask for changes in the same chat; it
+ends when the member ends the chat: `POST .../runs/{id}/finish` or `evo-agents hub run finish RUN` (owner only;
+audited `run.finish`). A parked run is then `done` at once (`OWNER ended the chat`); for a held one the hub sets
+`finish_requested_at`, the next heartbeat says `finish`, and the worker ends the run `done` once the agent's turn is
+over, with the agent's summary (or its last message). A message or a wait after the end is 409. A queued author run
+has no chat to end (409: cancel it), and a run of another kind has none at all (409).
+
+`GET .../runs/{id}/chat` (`evo-agents hub run chat RUN`), for the readers of the run, returns the chat over the run and
+the runs it resumes or that resume it: each message's run, seq, author (`agent` or `owner`), the owner's login, text
+and time, oldest first (the latest 1,000, `more` when there are older ones), and the run that takes the next message
+with its state, whose turn it is (`status`: `working`, `waiting` for a reply, waiting or parked, or `ended`), and the
+plan it wrote or revises. A run of another kind has no chat (404). The chat lives as long as the run's log
+(`EVO_HUB_RUN_LOG_DAYS` after the run ends).
+
 ## Decisions and notices
 
 A plan run's agent stops for its owner only on a decision of one of the categories `docs/notifications.md` lists
@@ -595,6 +624,7 @@ For the worker, with an `evw_` token and the version header:
 | `POST /v1/worker/runs/{id}/steps/{key}` | reports a step of a plan run it holds |
 | `POST /v1/worker/runs/{id}/decisions` | asks the plan run's owner a decision; answers its id |
 | `POST /v1/worker/runs/{id}/notices` | sends the plan run's owner a notice, such as a push to a default branch |
+| `POST /v1/worker/runs/{id}/chat` | posts the last message of a turn of the agent of an author run it holds to the run's chat |
 | `POST /v1/worker/runs/{id}/events` | sends a batch of events |
 | `POST /v1/worker/runs/{id}/inbox` | acknowledges messages handed to the agent, takes the waiting ones |
 | `POST /v1/worker/runs/{id}/uploads`, `/blobs` | uploads the run's log and diff, records them on the run |
@@ -621,7 +651,9 @@ For members, with a web session or a machine token. `{p}` is a project, and run 
 | `GET .../runs/{id}/events?after=SEQ` | reader | events after a number |
 | `GET .../runs/{id}/stream` | reader | the same as server-sent events, with a ping every 15 s, resumed by `Last-Event-ID` |
 | `GET .../runs/{id}/diff` | reader | a presigned URL of the run's diff |
-| `POST .../runs/{id}/messages` | owner | a message for the agent, at most 8 KiB |
+| `POST .../runs/{id}/messages` | owner | a message for the agent, at most 8 KiB; a reply in an author run's chat |
+| `GET .../runs/{id}/chat` | reader | the chat of an author run, and whose turn it is |
+| `POST .../runs/{id}/finish` | owner | end the chat of an author run: it ends done |
 | `POST .../runs/{id}/takeover`, `/handback` | owner | switch between headless and interactive |
 | `POST .../runs/{id}/cancel`, `/approve`, `/rerun` | owner | stop, approve a run in review, run the step again |
 | websocket `/v1/projects/{p}/runs/{id}/terminal` | owner, on a worker of theirs | the browser's end of the terminal |
@@ -719,7 +751,8 @@ MCP tool `run_tool_stats` answers both, with `run_id` for one run.
 ### Messages
 
 `POST .../runs/{id}/messages` with `{"text": "..."}` (at most 8 KiB of UTF-8, not blank) leaves a message for the
-run's agent, while the run is queued or held (409 otherwise: no agent would read it). The run's log gets a
+run's agent, while the run is queued or held (409 otherwise: no agent would read it); a message to a parked author
+run is the owner's reply in its chat, and resumes it (Author runs). The run's log gets a
 `user_message` event `{"text", "from", "message_id"}` and the answer is the message with its `seq`. Only the owner
 sends messages (403 for another member), and a message counts against the run's 20,000 events (413).
 
