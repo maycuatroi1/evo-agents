@@ -14,6 +14,9 @@
 - ``run_setting``: the model and the reasoning effort of a run, from the run as the claim answered it (``model``,
   ``effort``), else from ``EVO_WORKER_<RUNTIME>_MODEL`` and ``EVO_WORKER_<RUNTIME>_EFFORT`` in the daemon's
   environment, else the runtime's own default.
+- The time cap of a run the night shift queued: ``QueueAdapter`` interrupts the agent once it has used what is left of
+  the budget's ``max_seconds``, and its outcome says the run stopped at its time cap (``cap`` ``time``). Codex reports
+  no cost, so this is the cap that stops a Codex run.
 - The bodies of the events, in the shapes of the Agent Client Protocol's ``session/update`` (``docs/workers.md``).
 
 Standard library only.
@@ -37,6 +40,7 @@ from collections.abc import Iterable, Mapping
 from importlib import metadata
 from pathlib import Path
 
+from evo_agents.hub import curator
 from evo_agents.worker.adapter import (  # noqa: F401 (AgentFinished: the adapters raise it from here)
     Adapter,
     AgentEvent,
@@ -337,11 +341,14 @@ class QueueAdapter(Adapter):
         self._queue: asyncio.Queue = asyncio.Queue()
         self._task: asyncio.Task | None = None
         self._watchdog: asyncio.Task | None = None
+        self._time_cap: asyncio.Task | None = None
         self._lock = asyncio.Lock()  # between send and the decision that the agent takes no more input
         self.pid_file: Path | None = None
         self.interrupted = False
         self.stopping = False
         self.finished = False
+        self.capped: str | None = None  # the cap of the run's budget that stopped the agent
+        self.budget = curator.budget_of(context.run)
         self.outcome = Outcome(False, f"{self.runtime} did not start")
 
     # For subclasses
@@ -384,10 +391,28 @@ class QueueAdapter(Adapter):
             self._cleanup()
             raise
         self._task = asyncio.create_task(self._main())
+        left = None if self.budget is None else curator.seconds_left(self.budget, self.context.spent_seconds)
+        if left is not None:
+            self._time_cap = asyncio.create_task(self._stop_at_time_cap(left))
+
+    async def _stop_at_time_cap(self, seconds: float) -> None:
+        await asyncio.sleep(seconds)
+        if self.finished:
+            return
+        log.info("the agent used the run's agent time; interrupting it", extra={"runtime": self.runtime})
+        self.capped = "time"
+        await self.interrupt()
+
+    def time_cap_error(self) -> str:
+        minutes = (self.budget or {}).get("max_seconds") or 0
+        return f"{self.runtime} stopped at the run's time cap of {minutes / 60:g} minutes of agent time"
 
     async def _main(self) -> None:
         try:
             await self._drive()
+            if self.capped == "time":
+                usage, summary = self.outcome.usage, self.outcome.summary
+                self.outcome = Outcome(False, self.time_cap_error(), usage, summary, cap="time")
         except asyncio.CancelledError:
             self.outcome = Outcome(False, f"{self.runtime} was stopped", self.outcome.usage, self.outcome.summary)
             raise
@@ -409,6 +434,8 @@ class QueueAdapter(Adapter):
                 self._cleanup()
                 if self._watchdog is not None:
                     self._watchdog.cancel()
+                if self._time_cap is not None:
+                    self._time_cap.cancel()
                 self._queue.put_nowait(None)
 
     async def events(self):

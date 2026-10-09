@@ -108,6 +108,7 @@ describe("AppSidebar", () => {
       "nav-plans",
       "nav-runs",
       "nav-insights",
+      "nav-curator",
       "nav-memories",
       "nav-skills",
       "nav-kg",
@@ -129,7 +130,7 @@ describe("AppSidebar", () => {
     setup();
     await waitFor(() => expect(screen.getByTestId("nav-inbox-count")).toHaveTextContent("2"));
     expect(screen.getByTestId("nav-inbox-count").className).toContain("bg-attention-soft");
-    expect(screen.getByTestId("nav-inbox")).toHaveAccessibleName("Inbox, 2 quyết định chờ bạn trả lời");
+    expect(screen.getByTestId("nav-inbox")).toHaveAccessibleName("Inbox, 2 quyết định hoặc đề xuất chờ bạn trả lời");
     await waitFor(() => expect(screen.getByTestId("nav-runs-count")).toHaveTextContent("3"));
     expect(screen.getByTestId("nav-runs-count").className).toContain("bg-running-soft");
     expect(screen.getByTestId("nav-runs")).toHaveAccessibleName("Run, 3 run đang hoạt động");

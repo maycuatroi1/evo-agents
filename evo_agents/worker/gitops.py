@@ -13,7 +13,9 @@ credential it does not take, fails with ``GitAuthError``, so the run can take it
 ``push`` refuses a repo's default branch (``PushRefused``), except in a plan run whose plan names that very branch for
 the repo: there the push goes ahead, never forced, and the answer says it was a default branch with the commits it
 added, for the notice ``push_default_branch`` the caller sends the run's owner (``push_notice``). A run of one step
-never pushes a default branch.
+never pushes a default branch. A Builder of the Curator (kind ``curator``) pushes a branch ``curator/...`` alone, and a
+default branch never, whatever its plan names; a review run and a judge run push nothing. ``push`` sends the push
+options it is given (``--push-option``), with which a push to GitLab opens a merge request.
 
 A commit of a run (``commit_run``) holds only the run's own work. It leaves out, at any depth, the paths under
 RUN_COMMIT_EXCLUDES (what hooks of the owner's runtime write in a session's directory, such as the learned skills of
@@ -247,6 +249,50 @@ async def add_worktree(cwd: Path, path: Path, branch: str, start: str, *, reset:
     await git(cwd, "worktree", "add", "--no-track", "-B" if reset else "-b", branch, str(path), start)
 
 
+async def add_detached_worktree(cwd: Path, path: Path, start: str, *, env: Mapping[str, str] | None = None) -> None:
+    """A worktree at ``path`` with HEAD detached at ``start``, on no branch: a review run's, which commits nothing."""
+    await git(cwd, "worktree", "add", "--detach", str(path), start, env=env)
+
+
+def without_hooks(base: Mapping[str, str] | None = None) -> dict[str, str]:
+    """``base`` (this process's environment when None) with git's configuration that runs no hook and no fsmonitor of
+    the repository, whatever its own configuration says: for the git commands of a judge run in the checkout and
+    worktree of the change it judges (its diff also takes no textconv or external diff, ``diff_text``)."""
+    env = dict(os.environ if base is None else base)
+    try:
+        start = max(0, int(env.get("GIT_CONFIG_COUNT") or 0))
+    except ValueError:
+        start = 0
+    entries = (("core.hooksPath", os.devnull), ("core.fsmonitor", "false"))
+    for offset, (key, value) in enumerate(entries):
+        env[f"GIT_CONFIG_KEY_{start + offset}"] = key
+        env[f"GIT_CONFIG_VALUE_{start + offset}"] = value
+    env["GIT_CONFIG_COUNT"] = str(start + len(entries))
+    return env
+
+
+async def git_dir(cwd: Path, *, env: Mapping[str, str] | None = None) -> str | None:
+    """The absolute git directory of the work tree at ``cwd``, found there and never above it; None without one."""
+    found = {**(env if env is not None else os.environ), "GIT_CEILING_DIRECTORIES": str(Path(cwd).parent)}
+    code, out, _ = await git(cwd, "rev-parse", "--absolute-git-dir", check=False, env=found)
+    return out.strip() if code == 0 and out.strip() else None
+
+
+async def restore(cwd: Path, head: str, *, expected_git_dir: str, env: Mapping[str, str] | None = None) -> None:
+    """Put the work tree at ``cwd`` back at commit ``head``, detached: every tracked file as ``head`` has it, every
+    untracked one removed, those a .gitignore or info/exclude hides included (``clean -x``), so nothing a command
+    left reaches the next one or the Judge's agent; what a command installs in the work tree (a virtualenv,
+    node_modules) goes too, and each command that needs it installs it again. Between two commands of the code a judge
+    run judges, which may have removed the work tree's link to its repository or pointed it elsewhere: GitError then,
+    before git touches anything, since its git directory is no longer ``expected_git_dir``."""
+    local = {**(env if env is not None else os.environ), "GIT_CEILING_DIRECTORIES": str(Path(cwd).parent)}
+    found = await git_dir(cwd, env=local)
+    if found is None or Path(found).resolve() != Path(expected_git_dir).resolve():
+        raise GitError(f"{cwd} is no longer the worktree it was made as: its git directory is {found or 'gone'}")
+    await git(cwd, "checkout", "--quiet", "--force", "--detach", head, env=local)
+    await git(cwd, "clean", "-ffdxq", env=local)
+
+
 async def current_branch(cwd: Path) -> str | None:
     """The branch checked out at ``cwd``; None when HEAD is detached."""
     code, out, _ = await git(cwd, "symbolic-ref", "--quiet", "--short", "HEAD", check=False)
@@ -335,7 +381,19 @@ async def diff(cwd: Path, base: str, head: str = "HEAD", prefix: str | None = No
 def check_push(branch: str, protected: Collection[str], *, kind: str, plan_branch: str | None) -> bool:
     """Whether a push to ``branch`` goes to a default branch of the repo (one of ``protected``): False when it does
     not; True when it does and the run may push it, a plan run (``kind`` plan) whose plan names exactly that branch for
-    the repo (``plan_branch``); PushRefused otherwise, so a run of one step never pushes a default branch."""
+    the repo (``plan_branch``); PushRefused otherwise, so a run of one step never pushes a default branch. A review run
+    and a judge run push nothing at all, and a Builder of the Curator (``kind`` curator) only a branch ``curator/...``
+    that is no default branch."""
+    if kind in ("review", "judge"):
+        raise PushRefused(f"a {kind} run reads and pushes nothing")
+    if kind == "curator":
+        from evo_agents.hub.judge import is_curator_branch
+
+        if branch in protected or branch in PROTECTED:
+            raise PushRefused(f"{branch} is a default branch: a run of the Curator never pushes it")
+        if not is_curator_branch(branch):
+            raise PushRefused(f"{branch} is not a branch of the Curator: a run of the Curator pushes curator/... alone")
+        return False
     if branch not in protected:
         return False
     if kind == "plan" and plan_branch is not None and branch == plan_branch:
@@ -377,6 +435,7 @@ async def push(
     kind: str = "step",
     plan_branch: str | None = None,
     env: Mapping[str, str] | None = None,
+    options: Collection[str] = (),
 ) -> Pushed:
     """Push HEAD to ``branch`` of the remote, with git in ``env``: a fast-forward or nothing, never forced. A default
     branch of the repo (one of ``protected``) only as ``check_push`` allows, PushRefused before anything is sent
@@ -389,8 +448,17 @@ async def push(
     if before == head:
         return Pushed(branch, head, default, False)
     commits = tuple(await new_commits(cwd, before, remote))
+    sent = [f"--push-option={option}" for option in options]
     await git(
-        cwd, "push", "--quiet", "--porcelain", remote, f"HEAD:refs/heads/{branch}", timeout=NETWORK_TIMEOUT, env=env
+        cwd,
+        "push",
+        "--quiet",
+        "--porcelain",
+        *sent,
+        remote,
+        f"HEAD:refs/heads/{branch}",
+        timeout=NETWORK_TIMEOUT,
+        env=env,
     )
     return Pushed(branch, head, default, True, commits)
 
@@ -415,6 +483,47 @@ def push_notice(run_id: int, repo: str, pushed: Pushed) -> dict:
         "branch": pushed.branch,
         "commits": list(pushed.commits),
     }
+
+
+async def changed_paths(cwd: Path, base: str) -> list[str]:
+    """Every path the work tree at ``cwd`` changed since ``base``: committed, staged, changed and untracked, both
+    sides of a rename, the result directory left out; sorted."""
+    _, committed, _ = await git(cwd, "diff", "--name-only", "--no-renames", "-z", base, "HEAD", check=False)
+    _, status, _ = await git(cwd, "status", "--porcelain=v1", "-z", "--untracked-files=all", "--no-renames")
+    found = {path for path in committed.split("\0") if path}
+    for entry in status.split("\0"):
+        if len(entry) > 3:
+            found.add(entry[3:])
+    return sorted(path for path in found if not path.startswith(f"{RESULT_DIR}/"))
+
+
+async def merge_base(cwd: Path, first: str, second: str) -> str | None:
+    code, out, _ = await git(cwd, "merge-base", first, second, check=False)
+    return out.strip() if code == 0 and out.strip() else None
+
+
+DIFF_TEXT_LIMIT = 8 * 1024 * 1024  # the most of a judged diff read; a longer one is not judged in part
+
+
+async def diff_text(
+    cwd: Path, base: str, head: str, limit: int | None = None, *, env: Mapping[str, str] | None = None
+) -> tuple[str, bool]:
+    """(the text diff from ``base`` to ``head`` as ``git diff`` writes it, binary files named and no textconv of the
+    repository applied, at most ``limit`` characters; whether it was longer and so was cut)."""
+    limit = DIFF_TEXT_LIMIT if limit is None else limit
+    _, out, _ = await git(
+        cwd,
+        "diff",
+        "--no-color",
+        "--no-ext-diff",
+        "--no-textconv",
+        "--find-renames",
+        base,
+        head,
+        timeout=TIMEOUT,
+        env=env,
+    )
+    return out[:limit], len(out) > limit
 
 
 async def detach(cwd: Path) -> None:

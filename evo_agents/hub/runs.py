@@ -6,7 +6,14 @@ protocol built on them, and ``docs/notifications.md`` how decisions and notices 
 
 A run is of one of RUN_KINDS. A ``step`` run is one attempt at one plan step on one worker. A ``plan`` run is one
 long session on one worker that does every step of a plan that is not done yet, in the order ``depends_on`` allows,
-and reports each step as it goes (``build_plan_prompt`` tells its agent how). A run starts ``queued``; a worker
+and reports each step as it goes (``build_plan_prompt`` tells its agent how). A ``review`` run is the Curator's
+Reviewer of one night of a project's charter: it works on no plan, reads the project and writes findings and
+proposals, and changes no code (``evo_agents.hub.review``). A ``judge`` run is the Curator's Judge of one change its
+Builder made: it reads the change at the head of its pull request, runs the plan's verify and the project's hidden
+checks, and says whether the change passes, without reading the Builder's transcript and without changing anything
+(``evo_agents.hub.judge``). A worker takes a kind of run only once its heartbeat says its daemon runs that kind
+(``run_kinds``): a daemon older than the review run reads every run as a step or plan run.
+A run starts ``queued``; a worker
 claims it (``leased``), starts the agent (``running``, or ``interactive`` when a person drives the agent in a
 terminal), re-runs the agent's verify commands (``verifying``), and ends ``done``, ``failed`` or ``cancelled``, or in
 ``review`` until the owner approves it. A run whose worker stops extending its lease is ``lost``, and the hub queues a
@@ -56,7 +63,10 @@ MAX_RUN_EVENTS = 20_000  # events the hub keeps for one run
 MAX_MESSAGE_BYTES = 8 * 1024  # one message from the owner to a running agent
 MAX_PROMPT_BYTES = 32 * 1024  # the prompt build_prompt or build_plan_prompt returns, as UTF-8
 
-RUN_KINDS = ("step", "plan")  # a run of one step, or of every step of a plan not done yet, in one session
+# one step; every step of a plan not done yet; a night's review of a project; the Judge of a change of the Curator
+RUN_KINDS = ("step", "plan", "review", "judge")
+PLAN_KINDS = ("step", "plan")  # the kinds of run that work on a plan; a review run has none (its plan_id is null)
+CURATOR_KINDS = ("review", "judge")  # the kinds only the night shift queues, besides the Builder's plan runs
 PLAN_RUN_AGENT = (0, 4, 0)  # the first daemon release that runs a plan run; an older one reads it as a step run
 RUNTIMES = ("claude-code", "opencode", "codex")
 MAX_MODEL_CHARS = 200  # a run's model, one line (runs.model, as schema 0010 bounds it), and each model a runtime lists
@@ -130,8 +140,12 @@ MAX_QUESTION_CHARS = 2000  # the question of a decision
 MAX_ANSWER_BYTES = 4 * 1024  # the owner's own text in an answer, which goes to the agent in an inbox message
 MAX_NOTICE_BODY_BYTES = 16 * 1024  # the body of a notice, and of any notification
 MAX_NOTICE_COMMITS = 100  # the commits a notice of a push or merge names
-NOTICE_KINDS = ("push_default_branch", "merge_default_branch", "plan_finished", "run_failed")
-NOTIFICATION_KINDS = ("decision", "notice")
+# The notices a plan run's worker may send (POST /v1/worker/runs/{id}/notices); the hub sends the last two itself too.
+WORKER_NOTICE_KINDS = ("push_default_branch", "merge_default_branch", "plan_finished", "run_failed")
+# curator_brief: the morning brief of a project's Curator, which the hub alone sends at the charter's brief_at;
+# curator_paused: the circuit breaker of a project's night shift paused it, which the hub alone sends too
+NOTICE_KINDS = (*WORKER_NOTICE_KINDS, "curator_brief", "curator_paused")
+NOTIFICATION_KINDS = ("decision", "notice", "proposal")  # proposal: a tier 2 proposal of the Curator, in the Inbox
 DELIVERY_STATES = ("pending", "delivered", "failed")  # of one notification on one channel
 MAX_DELIVERY_ATTEMPTS = 5
 

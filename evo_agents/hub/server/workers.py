@@ -901,4 +901,6 @@ async def end_worker(
 async def revoke_leased_tokens(app_state, worker_id: int) -> None:
     """Once ``end_worker`` committed: revoke at GitHub the tokens the worker's leases held. GitHub failing leaves them
     to the reaper's next pass."""
-    await credentials.revoke_tokens(app_state.engine, app_state.sealer, app_state.github_app, worker_id=worker_id)
+    await credentials.revoke_tokens(
+        app_state.engine, app_state.sealer, credentials.revoker(app_state), worker_id=worker_id
+    )

@@ -13,6 +13,10 @@
   verify commands run again, the repo committed and pushed), ask the run's owner a decision, send the owner a notice,
   and print the plan as the hub holds it now. They read the run from EVO_RUN_ID, EVO_WORKER_HOME and the run's record
   there, call the hub with the worker's token, and refuse to run outside a plan run of this worker.
+- ``finding`` and ``propose``: the commands of a review run's agent (the Curator's Reviewer), which record a finding
+  and a proposal with their evidence (``evo_agents.hub.review.parse_evidence``); the hub computes a proposal's tier.
+  Code evidence must be a line of a file in the run's worktree of its repo, and goes with the commit the worktree is at.
+  They refuse to run outside a review run of this worker.
 - ``git-credential --run N get|store|erase``: git's credential helper for run N, which the run's git configuration
   names; ``get`` answers from the run's leases through its socket, ``store`` and ``erase`` do nothing.
   ``env --run N``: the variables run N's leases add to its agent's environment, as export lines, for the script of an
@@ -480,13 +484,13 @@ class _AgentRun:
     record: dict
 
 
-def _agent_run(command: str) -> _AgentRun:
-    """The plan run of EVO_RUN_ID on this worker; WorkerStateError outside one."""
+def _agent_run(command: str, kinds: tuple[str, ...] = ("plan",)) -> _AgentRun:
+    """The run of EVO_RUN_ID on this worker, of one of ``kinds``; WorkerStateError outside one."""
     raw = (os.environ.get(RUN_VARIABLE) or "").strip()
     if not raw.isdigit() or int(raw) < 1:
         raise WorkerStateError(
-            f"`evo-agents worker {command}` works only inside a plan run of this worker: {RUN_VARIABLE} is not set. "
-            "The worker sets it, with EVO_RUN_KIND and EVO_WORKER_HOME, for the agent of each run."
+            f"`evo-agents worker {command}` works only inside a {kinds[0]} run of this worker: {RUN_VARIABLE} is not "
+            "set. The worker sets it, with EVO_RUN_KIND and EVO_WORKER_HOME, for the agent of each run."
         )
     run_id = int(raw)
     home = WorkerHome()
@@ -498,7 +502,22 @@ def _agent_run(command: str) -> _AgentRun:
             f"run {run_id} is not running on this worker (its state is under {home.root}): "
             f"`evo-agents worker {command}` works only inside it"
         )
-    if record.get("kind") != "plan":
+    kind = record.get("kind") or "step"
+    if kind not in kinds:
+        if kinds == ("review",):
+            raise WorkerStateError(
+                f"run {run_id} is a {kind} run: only the agent of a review run uses `evo-agents worker {command}`"
+            )
+        if kind == "review":
+            raise WorkerStateError(
+                f"run {run_id} is a review run, which reads only: it records what it finds with `evo-agents worker "
+                f"finding` and `evo-agents worker propose`, not `evo-agents worker {command}`"
+            )
+        if kind == "judge":
+            raise WorkerStateError(
+                f"run {run_id} is a judge run, which reads and judges only: its verdict is the JSON object that ends "
+                f"the agent's last message, not `evo-agents worker {command}`"
+            )
         raise WorkerStateError(
             f"run {run_id} is a run of one step: only the agent of a plan run uses `evo-agents worker {command}`; a "
             f"run of one step writes {runs.RESULT_FILE} instead"
@@ -641,16 +660,37 @@ def cmd_step(args) -> int:
                     "run's branch"
                 )
             plan_branch = gitops.plan_branches(body).get(name) if "repos" in body else workspace.plan_branch
-            try:
-                pushed = await gitops.push(
-                    path, workspace.branch, protected=workspace.protected, kind="plan", plan_branch=plan_branch
+            curator = agent.record.get("curator") if isinstance(agent.record.get("curator"), dict) else None
+            if curator is not None and curator.get("role") == "builder":
+                # A Builder of the Curator holds no credential: the daemon pushes the run's branch for it.
+                from evo_agents.worker import credentials
+
+                answer = await asyncio.to_thread(credentials.ask_push, agent.home, agent.run_id, name, title)
+                if answer.get("error") or not isinstance(answer.get("head"), str):
+                    why = answer.get("error") or "the daemon did not say what it pushed"
+                    raise WorkerStateError(f"{name}: {why}; step {args.key} is not reported done")
+                pushed = gitops.Pushed(
+                    str(answer.get("branch") or workspace.branch),
+                    answer["head"],
+                    bool(answer.get("default")),
+                    bool(answer.get("changed")),
+                    tuple(answer.get("commits") or ()),
                 )
-            except gitops.PushRefused as exc:
-                raise WorkerStateError(f"{name}: {exc}; step {args.key} is not reported done") from None
-            except gitops.GitError as exc:
-                raise WorkerStateError(
-                    f"git push of {name} to {workspace.branch} failed: {exc}; step {args.key} is not reported done"
-                ) from None
+            else:
+                try:
+                    pushed = await gitops.push(
+                        path,
+                        workspace.branch,
+                        protected=workspace.protected,
+                        kind="plan",
+                        plan_branch=plan_branch,
+                    )
+                except gitops.PushRefused as exc:
+                    raise WorkerStateError(f"{name}: {exc}; step {args.key} is not reported done") from None
+                except gitops.GitError as exc:
+                    raise WorkerStateError(
+                        f"git push of {name} to {workspace.branch} failed: {exc}; step {args.key} is not reported done"
+                    ) from None
             if pushed.default and pushed.changed:
                 from evo_agents.worker.hubapi import HubProblem
 
@@ -765,6 +805,145 @@ def cmd_plan(args) -> int:
         "the hub holds it now."
     )
     print(yaml.safe_dump(view.get("body") or {}, allow_unicode=True, sort_keys=False, width=120), end="")
+    return 0
+
+
+# The commands of a review run's agent
+
+
+def _read_text(source: str, what: str, limit: int) -> str | None:
+    """The text of file ``source`` (``-``: stdin), at most ``limit`` bytes of UTF-8; None when it holds only blanks."""
+    try:
+        text = sys.stdin.read() if source == "-" else Path(source).read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        raise WorkerStateError(f"cannot read {source}: {exc}") from None
+    if len(text.encode()) > limit:
+        raise WorkerStateError(f"the {what} is at most {limit} bytes of UTF-8")
+    return text if text.strip() else None
+
+
+def _evidence(texts: list[str]) -> list[dict]:
+    from evo_agents.hub.review import EvidenceProblem, parse_evidence
+
+    found = []
+    for text in texts:
+        try:
+            found.append(parse_evidence(text))
+        except EvidenceProblem as exc:
+            raise WorkerStateError(str(exc)) from None
+    return found
+
+
+async def _attest(evidence: list[dict], workspaces: dict) -> None:
+    """Check each piece of code evidence against the run's worktree of its repo: the file is there, with the line;
+    and add the commit the worktree is at. The hub checks the rest."""
+    from evo_agents.worker import gitops
+
+    for item in evidence:
+        if item["kind"] != "code":
+            continue
+        workspace = workspaces.get(item["repo"])
+        if workspace is None:
+            raise WorkerStateError(
+                f"code:{item['repo']}:{item['path']}: run works in {', '.join(workspaces) or 'no repo'}, not in "
+                f"{item['repo']}"
+            )
+        path = workspace.worktree / item["path"]
+        if not path.resolve().is_relative_to(workspace.worktree.resolve()) or not path.is_file():
+            raise WorkerStateError(
+                f"code:{item['repo']}:{item['path']}: no such file in the worktree of {item['repo']}"
+            )
+        if item.get("line") is not None:
+            with open(path, "rb") as handle:
+                lines = sum(1 for _ in handle)
+            if item["line"] > lines:
+                raise WorkerStateError(f"code:{item['repo']}:{item['path']}:{item['line']}: the file has {lines} lines")
+        head = await gitops.rev(workspace.worktree, "HEAD")
+        if head:
+            item["commit"] = head
+
+
+@_worker_command
+def cmd_finding(args) -> int:
+    from evo_agents.hub.review import MAX_BODY_BYTES
+
+    agent = _agent_run("finding", ("review",))
+    body: dict = {"lens": args.lens, "severity": args.severity, "title": " ".join(args.title.split())}
+    if args.body_file:
+        text = _read_text(args.body_file, "body", MAX_BODY_BYTES)
+        if text is not None:
+            body["body"] = text
+    body["evidence"] = _evidence(args.evidence)
+    workspaces = _workspaces(agent)
+
+    async def work(hub) -> dict:
+        await _attest(body["evidence"], workspaces)
+        return await hub.finding(agent.run_id, body)
+
+    answer = _with_hub(agent, work)
+    print(f"Finding #{answer.get('id')} recorded ({args.lens}, {args.severity}): {body['title']}")
+    return 0
+
+
+def _plan_file(source: str) -> dict:
+    import yaml
+
+    from evo_agents.hub.review import MAX_DRAFT_BYTES
+
+    text = _read_text(source, "draft plan", MAX_DRAFT_BYTES) or ""
+    try:
+        plan = yaml.safe_load(text)
+    except yaml.YAMLError as exc:
+        raise WorkerStateError(f"{source} is neither YAML nor JSON: {exc}") from None
+    if not isinstance(plan, dict):
+        raise WorkerStateError(f"{source} holds no plan: a draft plan is a mapping with id, goal and steps")
+    return json.loads(json.dumps(plan, default=str))  # dates as text, as the hub keeps JSON
+
+
+@_worker_command
+def cmd_propose(args) -> int:
+    from evo_agents.hub.review import MAX_BODY_BYTES
+    from evo_agents.hub.tiers import split_target
+
+    agent = _agent_run("propose", ("review",))
+    paths = []
+    for text in args.path or []:
+        found = split_target(text)
+        if found is None:
+            raise WorkerStateError(f"--path takes REPO:PATH, a path within a repo, not {text!r}")
+        paths.append({"repo": found[0], "path": found[1]})
+    evidence = _evidence(args.evidence or [])
+    if not evidence and not args.finding:
+        raise WorkerStateError("a proposal rests on --finding ID, --evidence SPEC, or both: give at least one")
+    body: dict = {
+        "lens": args.lens,
+        "kind": args.kind,
+        "title": " ".join(args.title.split()),
+        "paths": paths,
+        "finding_ids": list(dict.fromkeys(args.finding or [])),
+        "evidence": evidence,
+        "plan": _plan_file(args.plan_file),
+    }
+    if args.summary_file:
+        text = _read_text(args.summary_file, "summary", MAX_BODY_BYTES)
+        if text is not None:
+            body["summary"] = text
+    workspaces = _workspaces(agent)
+
+    async def work(hub) -> dict:
+        await _attest(body["evidence"], workspaces)
+        return await hub.proposal(agent.run_id, body)
+
+    answer = _with_hub(agent, work)
+    if answer.get("state") == "dropped":
+        print(
+            f"Proposal #{answer.get('id')} was dropped: it repeats proposal #{answer.get('duplicate_of')}, which the "
+            "owner rejected lately, and its evidence is not twice as large."
+        )
+        return 0
+    print(f"Proposal #{answer.get('id')} recorded: tier {answer.get('tier')}, {answer.get('state')}.")
+    for reason in answer.get("tier_reasons") or []:
+        print(f"  {reason}")
     return 0
 
 
@@ -902,6 +1081,39 @@ def register(sub) -> None:
     notify.add_argument("--branch", help="the branch pushed or merged into")
     notify.add_argument("--commit", action="append", metavar="SHA", help="a commit pushed or merged; repeat it")
     notify.set_defaults(func=cmd_notify)
+
+    from evo_agents.hub.review import LENSES, SEVERITIES
+    from evo_agents.hub.tiers import CHANGE_KINDS
+
+    # The agent of a review run runs these; outside one they refuse.
+    finding = wsub.add_parser("finding", help="inside a review run: record a finding with its evidence; prints its id")
+    finding.add_argument("--lens", required=True, choices=list(LENSES), help="the lens it was found through")
+    finding.add_argument("--title", required=True, help="what was found, in one line")
+    finding.add_argument(
+        "--evidence",
+        action="append",
+        required=True,
+        metavar="SPEC",
+        help="session:ID[:FIELD:INDEX], run:ID:SEQ or code:REPO:PATH[:LINE]; repeat it",
+    )
+    finding.add_argument("--severity", choices=SEVERITIES, default="medium", help="low, medium (default) or high")
+    finding.add_argument("--body-file", help="markdown that explains it, at most 16 KiB (- for stdin)")
+    finding.set_defaults(func=cmd_finding)
+
+    propose = wsub.add_parser(
+        "propose", help="inside a review run: propose a change with its draft plan; prints its id, tier and state"
+    )
+    propose.add_argument("--lens", required=True, choices=list(LENSES), help="the lens it comes from")
+    propose.add_argument("--kind", required=True, choices=list(CHANGE_KINDS), help="the kind of change")
+    propose.add_argument("--title", required=True, help="the change, in one line")
+    propose.add_argument("--plan-file", required=True, help="the draft plan, YAML or JSON, in outcome steps")
+    propose.add_argument("--path", action="append", metavar="REPO:PATH", help="a file it would edit; repeat it")
+    propose.add_argument("--finding", action="append", type=int, metavar="ID", help="a finding it rests on; repeat it")
+    propose.add_argument(
+        "--evidence", action="append", metavar="SPEC", help="evidence of its own, as finding takes it; repeat it"
+    )
+    propose.add_argument("--summary-file", help="markdown: the problem, the change, what waiting costs (- for stdin)")
+    propose.set_defaults(func=cmd_propose)
 
     plan = wsub.add_parser("plan", help="inside a plan run: print the run's plan as the hub holds it now")
     from evo_agents.hub.contract import json_option, returns_object

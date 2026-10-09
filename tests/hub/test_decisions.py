@@ -342,7 +342,7 @@ def test_only_the_runs_owner_answers_and_a_decision_is_answered_once(client, hub
     assert not [row for row in targets if "SQLite" in row[0] or "backup" in row[0]]
     # answering reads the decision's notification
     unread = client.get("/v1/me/notifications/count", headers=hub["owner"]).json()
-    assert unread == {"unread": 0, "open_decisions": 0}
+    assert unread == {"unread": 0, "open_decisions": 0, "open_proposals": 0}
 
 
 def test_the_answer_goes_to_the_inbox_the_heartbeat_counts_it_and_the_run_goes_on(client, hub, hub_db):

@@ -27,6 +27,23 @@ Jobs (names in ``evo_agents.hub.jobs``):
   channel's class, tried again with a backoff and failed after 5 tries (``evo_agents.hub.server.notifications``).
 - ``hub.prune_run_events``, daily: the events of runs that ended more than EVO_HUB_RUN_LOG_DAYS ago, and the sealed
   values of the GitHub tokens leased to runs that are past their end.
+- ``hub.fire_schedules``, every minute: each schedule of a project's charter that is not paused queues its next run
+  inside its window and within its night's budget, the night's review run first, and cancels its queued runs outside
+  it; its circuit breaker pauses a project's night shift once the charter's max_failed_in_a_row jobs of a night in a
+  row failed or were reverted (``evo_agents.hub.server.curator``, ``evo_agents.hub.server.outcomes``).
+- ``curator.collect``, every minute: in each charter's window, the night's figures of the project, counted once
+  without any model, and its review run; and the deferred proposals whose time has passed open again
+  (``evo_agents.hub.server.collect``).
+- ``hub.prune_digests``, daily: the session digests not pushed again for 90 days
+  (``evo_agents.hub.server.digests``).
+- ``curator.brief``, every minute: at each charter's brief_at, in its time zone, the morning brief of the night to the
+  owner of the project's schedule, once a day (``evo_agents.hub.server.brief``).
+- ``curator.changes``, every minute: the Curator's changes move on: their pull requests opened, the Judge's check runs
+  written, the tier 0 ones merged when everything allows it, the others left open for their owner and read again
+  hourly for a merge or a close by hand; and the rulesets checked again once a day (``evo_agents.hub.server.changes``).
+- ``curator.outcomes``, every 10 minutes: the figures of each change of the Curator merged the charter's outcome_days
+  ago counted again, its outcome (keep, revert or unclear) in its proposal's ledger, and a revert proposed when they
+  got worse (``evo_agents.hub.server.outcomes``).
 
 procrastinate allows one App per process; ``queue`` is that App here. ``run`` gives it a connector of its own for
 the time it runs, and the jobs reach the hub's tables, the blob store, the sealing key and the GitHub App through
@@ -88,6 +105,7 @@ class HubContext:
     sealer: Sealer | None = None  # None without EVO_HUB_SECRETS_KEY
     github_app: GitHubApp | None = None  # None without EVO_HUB_GITHUB_APP_*: no GitHub token to revoke
     engine: AsyncEngine | None = None  # on ``pool``; made on it when not given
+    curator_app: GitHubApp | None = None  # None without EVO_HUB_CURATOR_APP_*: no ruleset checked
 
     def __post_init__(self):
         if self.engine is None:  # an engine keeps no connection of its own (NullPool): nothing to dispose of
@@ -161,7 +179,8 @@ async def recover_runs(context: JobContext, timestamp: int | None = None) -> dic
         found.engine,
         decision_wait=timedelta(seconds=found.config.decision_wait_seconds),
         sealer=found.sealer,
-        github_app=found.github_app,
+        # a token is revoked with itself: either App's client does
+        github_app=found.github_app or getattr(found, "curator_app", None),
     )
 
 
@@ -174,6 +193,47 @@ async def deliver_notifications(context: JobContext, timestamp: int | None = Non
     return await deliver(found.engine, config=found.config)
 
 
+@queue.periodic(cron="* * * * *")
+@queue.task(name=jobs.FIRE_SCHEDULES, pass_context=True, queueing_lock=jobs.FIRE_SCHEDULES)
+async def fire_schedules(context: JobContext, timestamp: int | None = None) -> dict:
+    from evo_agents.hub.server.curator import fire_schedules as fire
+
+    return await fire(hub(context).engine)
+
+
+@queue.periodic(cron="* * * * *")
+@queue.task(name=jobs.CURATOR_COLLECT, pass_context=True, queueing_lock=jobs.CURATOR_COLLECT)
+async def curator_collect(context: JobContext, timestamp: int | None = None) -> dict:
+    from evo_agents.hub.server.collect import collect
+
+    return await collect(hub(context).engine)
+
+
+@queue.periodic(cron="* * * * *")
+@queue.task(name=jobs.CURATOR_BRIEF, pass_context=True, queueing_lock=jobs.CURATOR_BRIEF)
+async def curator_brief(context: JobContext, timestamp: int | None = None) -> dict:
+    from evo_agents.hub.server.brief import send_briefs
+
+    return await send_briefs(hub(context).engine)
+
+
+@queue.periodic(cron="* * * * *")
+@queue.task(name=jobs.CURATOR_CHANGES, pass_context=True, queueing_lock=jobs.CURATOR_CHANGES)
+async def curator_changes(context: JobContext, timestamp: int | None = None) -> dict:
+    from evo_agents.hub.server.changes import advance
+
+    found = hub(context)
+    return await advance(found.engine, found.github_app, getattr(found, "curator_app", None))
+
+
+@queue.periodic(cron="*/10 * * * *")
+@queue.task(name=jobs.CURATOR_OUTCOMES, pass_context=True, queueing_lock=jobs.CURATOR_OUTCOMES)
+async def curator_outcomes(context: JobContext, timestamp: int | None = None) -> dict:
+    from evo_agents.hub.server.outcomes import measure_outcomes
+
+    return await measure_outcomes(hub(context).engine)
+
+
 @queue.periodic(cron="13 4 * * *")
 @queue.task(name=jobs.PRUNE_RUN_EVENTS, pass_context=True, queueing_lock=jobs.PRUNE_RUN_EVENTS)
 async def prune_run_events(context: JobContext, timestamp: int | None = None) -> dict:
@@ -181,6 +241,14 @@ async def prune_run_events(context: JobContext, timestamp: int | None = None) ->
 
     found = hub(context)
     return await prune(found.engine, found.config.run_log_days)
+
+
+@queue.periodic(cron="23 4 * * *")
+@queue.task(name=jobs.PRUNE_DIGESTS, pass_context=True, queueing_lock=jobs.PRUNE_DIGESTS)
+async def prune_digests(context: JobContext, timestamp: int | None = None) -> dict:
+    from evo_agents.hub.server.digests import prune_digests as prune
+
+    return await prune(hub(context).engine)
 
 
 @queue.periodic(cron="43 3 * * *")
@@ -241,10 +309,17 @@ async def run(config: HubConfig, concurrency: int = 1) -> int:
     from evo_agents.hub.server.sealing import Sealer
 
     github_app = GitHubApp.from_config(config)  # a private key that does not open stops the start
-    store = BlobStore.from_config(config)
-    if store is None:
+    try:
+        curator_app = GitHubApp.from_config(config, curator=True)
+    except Exception:
         if github_app is not None:
             await github_app.aclose()
+        raise
+    store = BlobStore.from_config(config)
+    if store is None:
+        for opened in (github_app, curator_app):
+            if opened is not None:
+                await opened.aclose()
         raise ValueError("the worker needs the blob store: " + ", ".join(config.blob_store_missing()))
     name = f"{socket.gethostname()}-{os.getpid()}"
     target = redact_dsn(config.dsn)
@@ -282,6 +357,7 @@ async def run(config: HubConfig, concurrency: int = 1) -> int:
                     Sealer.from_config(config),
                     github_app,
                     engine,
+                    curator_app,
                 )
                 log.info("worker ready", extra={"schema": ",".join(result.after), "applied": list(result.applied)})
                 signalled = await work(
@@ -296,8 +372,9 @@ async def run(config: HubConfig, concurrency: int = 1) -> int:
                 await queue.close_async()
     finally:
         store.close()
-        if github_app is not None:
-            await github_app.aclose()
+        for opened in (github_app, curator_app):
+            if opened is not None:
+                await opened.aclose()
     if not signalled:
         log.error("worker stopped without being asked to; see the lines above", extra={"db": target})
         return 1

@@ -597,6 +597,51 @@ def test_a_parked_run_keeps_its_worktrees_and_the_run_that_resumes_it_goes_on_in
     assert any(f"Goes on from parked run #{parked}" in text for text in hub.texts(resumed))
 
 
+BUDGET = {"max_usd": 0.5, "max_turns": 40, "max_seconds": 1800, "spent_usd": 0.0, "spent_seconds": 0}
+
+
+# The budget of a run the night shift queued
+
+
+def test_a_plan_run_hands_each_agent_what_its_session_spent_and_its_log_names_the_budget_cap(machine):
+    machine.scenarios(
+        {
+            f"plan:{PLAN}": [
+                {"cli": ["step", "1", "in_progress"]},
+                {"usage": {"total_cost_usd": 0.3, "input_tokens": 12}},
+                ask(),
+            ],
+            f"plan:{PLAN}/2": [
+                {"usage": {"total_cost_usd": 0.5}},
+                {
+                    "fail": "claude-code stopped at the run's cost cap of $0.50: the session cost $0.50",
+                    "cap": "cost",
+                },
+            ],
+        }
+    )
+    found = {}
+
+    async def run_it(hub, daemon):
+        run_id = hub.queue_plan_run(PLAN, run_repos(plan_body()), budget=BUDGET)
+        assert await hub.wait_state(run_id, "waiting", "done", "failed") == "waiting", hub.texts(run_id)
+        hub.answer(1, "no")
+        assert await hub.wait_state(run_id, "done", "failed") == "failed", hub.texts(run_id)
+        found.update(run=run_id, hub=hub)
+
+    with_daemon(machine, run_it)
+    run_id, hub = found["run"], found["hub"]
+    first, second = machine.starts()
+    assert first["budget"] == BUDGET and (first["spent_usd"], first["spent_seconds"]) == (0.0, 0.0)
+    assert second["spent_usd"] == 0.3, "the session's running total after the first turn"
+    assert 0 < second["spent_seconds"] < 60, "the agent time of the first turn, not the wait for the answer"
+    notes = [event["body"] for event in hub.runs[run_id]["events"] if event["kind"] == "system"]
+    assert notes[-1] == {
+        "text": "Run failed: claude-code stopped at the run's cost cap of $0.50: the session cost $0.50",
+        "cap": "cost",
+    }
+
+
 @pytest.mark.parametrize(
     "argv",
     [

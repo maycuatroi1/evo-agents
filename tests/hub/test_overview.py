@@ -271,6 +271,7 @@ def test_a_plan_labelled_customer_is_hidden_from_a_grant_that_reaches_internal(c
         "repos": 5,
         "active_plans": 2,
         "open_decisions": 2,
+        "curator": None,  # the project has no charter
     }
     # a reader whose grant reaches customer sees vault, and its decision is not theirs to answer
     shown = overview(client, members[INSIDER])

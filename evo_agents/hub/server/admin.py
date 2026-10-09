@@ -352,7 +352,7 @@ async def _revoke_taken(request: Request, run_ids: list[int]) -> None:
 
     state = request.app.state
     for run_id in run_ids:
-        await credentials.revoke_tokens(state.engine, state.sealer, state.github_app, run_id=run_id)
+        await credentials.revoke_tokens(state.engine, state.sealer, credentials.revoker(state), run_id=run_id)
 
 
 @router.delete("/projects/{project}/grants/{login}", status_code=204, response_class=Response, responses=MISSING)

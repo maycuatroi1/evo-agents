@@ -71,6 +71,12 @@ class Backoff:
         self.failures = 0
 
 
+def _judge_key(key: str | None) -> dict:
+    from evo_agents.hub.judge import JUDGE_KEY_HEADER
+
+    return {JUDGE_KEY_HEADER: key} if key else {}
+
+
 def _retry_after(value: str | None) -> float | None:
     try:
         return max(0.0, float(value)) if value else None
@@ -97,14 +103,14 @@ class WorkerHub:
             headers["Content-Type"] = "application/json"
         return headers
 
-    async def call(self, method: str, path: str, body=None, *, timeout: float = TIMEOUT):
+    async def call(self, method: str, path: str, body=None, *, timeout: float = TIMEOUT, headers: dict | None = None):
         data = None if body is None else json.dumps(body, ensure_ascii=False, separators=(",", ":")).encode()
         try:
             async with self.session.request(
                 method,
                 self.url + path,
                 data=data,
-                headers=self._headers(body is not None),
+                headers={**self._headers(body is not None), **(headers or {})},
                 allow_redirects=False,
                 timeout=aiohttp.ClientTimeout(total=timeout),
             ) as response:
@@ -187,6 +193,24 @@ class WorkerHub:
 
     async def notice(self, run_id: int, body: dict) -> dict:
         return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/notices", body)
+
+    # A review run: its findings and proposals
+
+    async def finding(self, run_id: int, body: dict) -> dict:
+        return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/findings", body)
+
+    async def proposal(self, run_id: int, body: dict) -> dict:
+        return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/proposals", body)
+
+    # A judge run: what it reads, and its verdict, each with the run's own key, which its claim handed the daemon. The
+    # answer of judge_inputs holds the project's hidden checks, which no caller writes to a file, an event or a log
+    # line.
+
+    async def judge_inputs(self, run_id: int, key: str | None) -> dict:
+        return await self.call("GET", f"/v1/worker/runs/{int(run_id)}/judge", headers=_judge_key(key))
+
+    async def verdict(self, run_id: int, body: dict, key: str | None) -> dict:
+        return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/verdict", body, headers=_judge_key(key))
 
     async def uploads(self, run_id: int, items: list[dict]) -> dict:
         return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/uploads", {"items": items})

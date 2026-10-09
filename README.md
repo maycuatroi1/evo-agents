@@ -121,8 +121,8 @@ Hooks:
   off.
 
 The plugin needs [uv](https://docs.astral.sh/uv/) on `PATH` and pins the release it runs: the server
-starts with `uvx --from evo-ak==0.7.0 evo-agents`, which downloads and caches that version on first start. The hooks
-run `uvx --offline --from evo-ak==0.7.0 evo-agents`, so they never wait on the network; they stay silent when `uvx`
+starts with `uvx --from evo-ak==0.8.0 evo-agents`, which downloads and caches that version on first start. The hooks
+run `uvx --offline --from evo-ak==0.8.0 evo-agents`, so they never wait on the network; they stay silent when `uvx`
 is missing or until the server has cached the package.
 
 ### The team hub
@@ -134,7 +134,8 @@ claude plugin install evo-hub@evo-agents
 
 The `evo-hub` plugin registers the MCP server `evo-hub` (`evo-agents hub mcp`, which carries the session to the
 hub's `/mcp`), a `using-agent-hub` skill, and two hooks. Its tools are the seven `kg_*` tools and `memory_search`,
-`memory_get`, `memory_write`, `plan_list`, `plan_show`, `plan_step`, `skill_list` and `hub_projects`. In a harness
+`memory_get`, `memory_write`, `plan_list`, `plan_show`, `plan_step`, `skill_list`, `hub_projects` and
+`run_tool_stats`. In a harness
 whose `harness.yaml` names `hub.project`, plans live on the hub and the files under `plans/` are read-only copies:
 mark a step with `plan_step`, `evo-agents hub plan step` or `evo harness step`, never by editing the YAML.
 
@@ -146,6 +147,10 @@ Hooks (`evo-agents hub hook session-start|stop`, same pins and `|| true` as evo-
 - Stop pushes the memory files that changed since the last sync, so the next session on another machine has them.
   A turn that wrote no memory sends nothing; when the hub does not answer, the files wait and a later Stop pushes
   them (state in `~/.evo/hub/memory-state.json`).
+- Stop also pushes the digest of a session of 6 messages or more to the project of its directory: calls and errors
+  per tool and per Bash program, what the person wrote, model and tokens, with every string that looks like a secret
+  replaced on the machine first. A digest the hub did not take waits for a later Stop (`~/.evo/hub/digest-state.json`);
+  the session of a worker run pushes none.
 
 Both exit 0 whatever happens, give up after a few seconds, print at most one line without tokens or memory text, and
 send nothing when the machine is not signed in.
@@ -226,6 +231,26 @@ follows the evo-agents hub UI kit, in light and dark ([web/DESIGN.md](web/DESIGN
 - Cmd K or Ctrl K opens a command palette that jumps to runs, plans and workers and offers the actions your grants
   allow. `?` lists the keyboard shortcuts: G then H, I, P, R or W to move, D to dispatch, / to search.
 - Under 768 px tables become lists, filters move into a sheet, and a decision is a screen of its own.
+- Each project's Curator page shows the night shift, its proposals with their evidence, and the charter.
+
+### The Curator
+
+The Curator is a project's night shift on the hub. Inside the hours its charter sets, the hub queues runs on one
+member's worker without anybody pressing Run: a review run that reads the project's sessions, runs and code and
+proposes changes with evidence, a Builder that makes an accepted change on a branch `curator/...`, and a Judge that
+checks the pull request without reading the Builder's transcript. The hub computes each change's tier, merges only
+tier 0 and only when the charter, CI, the Judge and the repo's ruleset all allow it, and sends the owner a morning
+brief on the web and Telegram:
+
+```sh
+evo-agents hub curator charter set charter.yaml --project demo   # an admin of the project
+evo-agents hub curator status --project demo
+evo-agents hub curator proposal list --state open --project demo
+evo-agents hub curator pause --project demo
+```
+
+[docs/curator.md](docs/curator.md) describes the charter, the night shift and its caps, the tiers, the three roles,
+the Curator's own GitHub App and the ruleset it needs, and Telegram.
 
 ### Running steps on your machine
 
@@ -268,7 +293,7 @@ web/          the hub's web interface (Next.js, its own image)
 deploy/hub/   the hub's Dockerfile and compose files
 docs/         hub.md: running and using the hub; workers.md: workers, runs, plan runs and the daemon;
               notifications.md: decisions, notices and notifications; credentials.md: secrets and the leases of
-              worker runs
+              worker runs; curator.md: the Curator, a project's night shift
 ```
 
 ## License
