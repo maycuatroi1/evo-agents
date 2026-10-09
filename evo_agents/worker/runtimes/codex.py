@@ -14,6 +14,8 @@ the CLI prints is parsed here.
   other.
 - Whether the turn completed comes from ``turn/completed`` and its status (``completed``, ``interrupted``,
   ``failed``), never from an exit code.
+- Codex reports tokens, never a cost, so a run the night shift queued stops at its time cap: ``QueueAdapter``
+  interrupts the turn once the agent used the budget's ``max_seconds``, and the outcome names the cap ``time``.
 - The thread's model is the run's ``model``, else ``EVO_WORKER_CODEX_MODEL``, else codex's own choice. For the
   heartbeat, ``models`` reads the owner's codex home (``$CODEX_HOME``, ``~/.codex`` by default): the ``model`` of
   ``config.toml`` and of each of its profiles, then the models codex offers in its picker, from the cache it keeps

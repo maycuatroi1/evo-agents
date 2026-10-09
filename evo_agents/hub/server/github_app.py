@@ -4,8 +4,9 @@ Each call to the App's routes carries a JWT the hub signs with the App's private
 RS256): issued 60 seconds back, for a hub clock ahead of GitHub's, and ending 9 minutes from now, under the 10 minutes
 GitHub allows. With it the hub finds the App's installation that covers a repo (GET /repos/{owner}/{repo}/installation),
 kept 10 minutes per owner/repo, and asks that installation for a token (POST /app/installations/{id}/access_tokens)
-naming the run's repos of that installation and the permissions ``GITHUB_PERMISSIONS``, nothing more: GitHub makes a
-token that lives an hour and opens those repos alone. A token is revoked with itself (DELETE /installation/token).
+naming the run's repos of that installation and the permissions ``GITHUB_PERMISSIONS``, nothing more (a review run's
+``GITHUB_READ_PERMISSIONS``, which only read): GitHub makes a token that lives an hour and opens those repos alone.
+A token is revoked with itself (DELETE /installation/token).
 
 The calls go through ``GitHubClient`` of ``evo_agents.hub.server.github``: a timeout each, no redirect followed, one log
 line with the method, the path and the status, GitHub failing or not answering as ``GitHubUnavailable``. GitHub
@@ -44,7 +45,7 @@ from cryptography.exceptions import UnsupportedAlgorithm
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
 
-from evo_agents.hub.config import GITHUB_APP_VARIABLES, LOGIN, ConfigError, HubConfig
+from evo_agents.hub.config import CURATOR_APP_VARIABLES, GITHUB_APP_VARIABLES, LOGIN, ConfigError, HubConfig
 from evo_agents.hub.credentials import GITHUB_PERMISSIONS
 from evo_agents.hub.server.github import API_HEADERS, GitHubClient, GitHubRefused, GitHubUnavailable
 
@@ -126,9 +127,9 @@ def _timestamp(value) -> datetime | None:
     return moment if moment.tzinfo else None
 
 
-def _private_key(pem: str) -> rsa.RSAPrivateKey:
-    """The App's RSA key from its PEM; ``ConfigError`` naming the variable, never the key, when it does not open."""
-    name = GITHUB_APP_VARIABLES[1]
+def _private_key(pem: str, name: str = GITHUB_APP_VARIABLES[1]) -> rsa.RSAPrivateKey:
+    """The App's RSA key from its PEM; ``ConfigError`` naming the variable ``name``, never the key, when it does not
+    open."""
     try:
         key = serialization.load_pem_private_key(pem.encode(), password=None)
     except (ValueError, TypeError, UnsupportedAlgorithm):  # TypeError: a key that wants a password
@@ -139,7 +140,8 @@ def _private_key(pem: str) -> rsa.RSAPrivateKey:
 
 
 class GitHubApp(GitHubClient):
-    """The hub's GitHub App, signing as EVO_HUB_GITHUB_APP_ID with EVO_HUB_GITHUB_APP_PRIVATE_KEY.
+    """The hub's GitHub App, signing as EVO_HUB_GITHUB_APP_ID with EVO_HUB_GITHUB_APP_PRIVATE_KEY; with ``curator``,
+    the Curator's own App, evo-agents-curator, as EVO_HUB_CURATOR_APP_ID with EVO_HUB_CURATOR_APP_PRIVATE_KEY.
 
     ``clock`` (monotonic seconds) times the installation cache and ``now`` (epoch seconds) dates the JWT; tests move
     them."""
@@ -151,25 +153,38 @@ class GitHubApp(GitHubClient):
         *,
         clock: Callable[[], float] = time.monotonic,
         now: Callable[[], float] = time.time,
+        curator: bool = False,
     ):
-        missing = config.github_app_missing()
+        self.curator = curator
+        self.variables = CURATOR_APP_VARIABLES if curator else GITHUB_APP_VARIABLES
+        missing = config.curator_app_missing() if curator else config.github_app_missing()
         if missing:
-            raise ValueError(f"the GitHub App is not configured: {', '.join(missing)} not set")
-        self._key = _private_key(config.github_app_private_key)  # before the HTTP client, which would need closing
-        app_id = config.github_app_id
+            which = "the Curator's GitHub App" if curator else "the GitHub App"
+            raise ValueError(f"{which} is not configured: {', '.join(missing)} not set")
+        pem = config.curator_app_private_key if curator else config.github_app_private_key
+        self._key = _private_key(pem, self.variables[1])  # before the HTTP client, which would need closing
+        app_id = config.curator_app_id if curator else config.github_app_id
         self._issuer: int | str = int(app_id) if app_id.isdigit() else app_id  # an App ID as a number, a client ID
         self._clock, self._now = clock, now
         self._installations: dict[tuple[str, str], tuple[float, Installation]] = {}
         self._pushers: dict[tuple[str, int | None, str, str], float] = {}  # (login, id, owner, repo) -> kept until
         super().__init__(config, transport)
 
+    @property
+    def app_id(self) -> int | None:
+        """The App's numeric ID, None when it was configured by its client ID."""
+        return self._issuer if isinstance(self._issuer, int) else None
+
     @classmethod
-    def from_config(cls, config: HubConfig, transport: httpx.AsyncBaseTransport | None = None) -> GitHubApp | None:
-        """The hub's App, or None when EVO_HUB_GITHUB_APP_ID and EVO_HUB_GITHUB_APP_PRIVATE_KEY are not set."""
-        return None if config.github_app_missing() else cls(config, transport)
+    def from_config(
+        cls, config: HubConfig, transport: httpx.AsyncBaseTransport | None = None, *, curator: bool = False
+    ) -> GitHubApp | None:
+        """The hub's App (the Curator's with ``curator``), or None when its two variables are not set."""
+        missing = config.curator_app_missing() if curator else config.github_app_missing()
+        return None if missing else cls(config, transport, curator=curator)
 
     def __repr__(self) -> str:
-        return f"GitHubApp(issuer={self._issuer!r})"
+        return f"GitHubApp(issuer={self._issuer!r}{', curator' if self.curator else ''})"
 
     def app_jwt(self) -> str:
         """A JWT of the App for GitHub's /app routes: RS256, from 60 seconds ago to 9 minutes from now."""
@@ -182,10 +197,9 @@ class GitHubApp(GitHubClient):
     def _app_headers(self) -> dict:
         return {**API_HEADERS, "Authorization": f"Bearer {self.app_jwt()}"}
 
-    @staticmethod
-    def _refused_app(response: httpx.Response, doing: str) -> None:
+    def _refused_app(self, response: httpx.Response, doing: str) -> None:
         if response.status_code == 401:
-            id_name, key_name = GITHUB_APP_VARIABLES
+            id_name, key_name = self.variables
             raise GitHubUnavailable(
                 f"GitHub refused the hub's GitHub App while {doing}: {id_name} and {key_name} must be the App's ID "
                 "and one of its private keys; an admin must fix the hub's configuration"
@@ -222,14 +236,18 @@ class GitHubApp(GitHubClient):
         self._installations[key] = (self._clock() + INSTALLATION_CACHE_SECONDS, found)
         return found
 
-    async def create_token(self, installation: Installation, repos: Iterable[str]) -> InstallationToken:
-        """A token of ``installation`` for ``repos`` (names of its account's repos) alone, with GITHUB_PERMISSIONS.
+    async def create_token(
+        self, installation: Installation, repos: Iterable[str], permissions: dict[str, str] | None = None
+    ) -> InstallationToken:
+        """A token of ``installation`` for ``repos`` (names of its account's repos) alone, with ``permissions``
+        (GITHUB_PERMISSIONS by default; ``GITHUB_READ_PERMISSIONS`` for a review run).
 
         GitHub refusing it raises ``GitHubRefused``, and the installations kept for its repos are dropped, so the next
         ask finds them again."""
         names = tuple(sorted(dict.fromkeys(repos)))
         if not names:
             raise ValueError("a token is asked for at least one repo")
+        permissions = dict(permissions or GITHUB_PERMISSIONS)
         account = installation.account
         full = ", ".join(f"{account}/{name}" for name in names)
         doing = f"asking the GitHub App for a token for {full}"
@@ -238,7 +256,7 @@ class GitHubApp(GitHubClient):
             f"{self.config.github_api_url}/app/installations/{installation.id}/access_tokens",
             doing,
             headers=self._app_headers(),
-            json={"repositories": list(names), "permissions": dict(GITHUB_PERMISSIONS)},
+            json={"repositories": list(names), "permissions": permissions},
         )
         status = response.status_code
         self._refused_app(response, doing)
@@ -251,7 +269,7 @@ class GitHubApp(GitHubClient):
         if status == 422:
             raise GitHubRefused(
                 f"GitHub refused a token for {full}: the App's installation on {account} does not cover each of them "
-                f"with {PERMISSIONS_TEXT}"
+                f"with {', '.join(f'{name}: {level}' for name, level in permissions.items())}"
             )
         if status != 201:
             raise GitHubUnavailable(f"GitHub answered {status} while {doing}")
@@ -260,8 +278,9 @@ class GitHubApp(GitHubClient):
         if not (isinstance(token, str) and token) or expires_at is None:
             raise GitHubUnavailable(f"GitHub answered without a usable token and expires_at while {doing}")
         granted = data.get("permissions")
-        permissions = dict(granted) if isinstance(granted, dict) else dict(GITHUB_PERMISSIONS)
-        return InstallationToken(installation, names, permissions, expires_at, token)
+        return InstallationToken(
+            installation, names, dict(granted) if isinstance(granted, dict) else permissions, expires_at, token
+        )
 
     async def revoke(self, token: str) -> bool:
         """Revoke an installation token with itself (DELETE /installation/token). True when GitHub revoked it, False
@@ -311,13 +330,18 @@ class GitHubApp(GitHubClient):
         return None
 
     async def _token_for_pushers(
-        self, installation: Installation, members: list[tuple[str, str]], pusher: Pusher, missing: dict[str, str]
+        self,
+        installation: Installation,
+        members: list[tuple[str, str]],
+        pusher: Pusher,
+        missing: dict[str, str],
+        permissions: dict[str, str] | None = None,
     ) -> InstallationToken | None:
         """A token of ``installation`` for those of ``members`` (owner, repo) ``pusher`` may push to, or None when it
         may push to none; the reason of each other one goes into ``missing``. The token made for all of them answers
         the question for the repos not kept yet, and is revoked and made again without the ones refused.
         ``GitHubRefused`` and ``GitHubUnavailable`` go to the caller, with any token made here revoked."""
-        token = await self.create_token(installation, [repo for _, repo in members])
+        token = await self.create_token(installation, [repo for _, repo in members], permissions)
         allowed = []
         try:
             for owner, repo in members:
@@ -334,7 +358,7 @@ class GitHubApp(GitHubClient):
         await self._revoke_quietly(token)
         if not allowed:
             return None
-        return await self.create_token(installation, [repo for _, repo in allowed])
+        return await self.create_token(installation, [repo for _, repo in allowed], permissions)
 
     async def _revoke_quietly(self, token: InstallationToken) -> None:
         """Revoke a token made for a repo its pusher may not push to; GitHub failing leaves it to expire unused."""
@@ -343,10 +367,12 @@ class GitHubApp(GitHubClient):
         except GitHubUnavailable as exc:
             log.warning("a GitHub token made and not handed out is left to expire", extra={"why": str(exc)})
 
-    async def tokens(self, repos: Iterable[tuple[str, str]], pusher: Pusher) -> AppTokens:
+    async def tokens(
+        self, repos: Iterable[tuple[str, str]], pusher: Pusher, permissions: dict[str, str] | None = None
+    ) -> AppTokens:
         """A token for each installation that covers some of ``repos`` ((owner, repo) on github.com), naming those
-        repos alone, and only those ``pusher`` may push to (``push_refusal``); the reason each repo left without one
-        has none.
+        repos alone, and only those ``pusher`` may push to (``push_refusal``), with ``permissions`` (GITHUB_PERMISSIONS
+        by default); the reason each repo left without one has none.
 
         It never raises for GitHub: a refusal is the reason of the repos it concerns, and GitHub failing or not
         answering is the reason of that repo and of every one not asked yet, which are not asked."""
@@ -374,7 +400,7 @@ class GitHubApp(GitHubClient):
             reason = outage
             if reason is None:
                 try:
-                    token = await self._token_for_pushers(installation, members, pusher, missing)
+                    token = await self._token_for_pushers(installation, members, pusher, missing, permissions)
                     if token is not None:
                         made.append(token)
                     continue

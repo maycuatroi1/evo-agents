@@ -4,8 +4,10 @@ The guard reads every module under evo_agents/hub and tests/hub and reports, by 
 
 - a string constant, or the static text of an f-string, holding uppercase SQL keywords in the shape a statement
   gives them (``SELECT ... FROM``, ``WHERE``, ``RETURNING``, ``INSERT INTO``, ``SAVEPOINT x`` and the like); a
-  docstring is not code and is left alone, and a lone word such as ``"DELETE"`` (an HTTP method) or
-  ``ondelete="CASCADE"`` is not SQL;
+  docstring is not code and is left alone, and a lone word such as ``"DELETE"`` (an HTTP method) is not SQL. The
+  value of an ``ondelete=`` or ``onupdate=`` argument is a referential action SQLAlchemy names a foreign key's with,
+  not a statement: when it is one of REFERENTIAL_ACTIONS (``ondelete="SET NULL"`` included) it is left alone, and
+  any other value there is read like every other string;
 - an import or use of ``psycopg.sql`` or of SQLAlchemy's ``text``, and any ``exec_driver_sql``;
 - a call of ``driver(``, the bridge to the raw psycopg connection of a transaction (``evo_agents.hub.db``), and any
   other reach for that connection (``get_raw_connection``, ``driver_connection``) outside ``evo_agents.hub.db``.
@@ -62,6 +64,11 @@ SQL = re.compile(
 )
 # Placeholder for each value an f-string interpolates, so its static text still reads as one statement.
 HOLE = "x"
+# The arguments of ForeignKey and ForeignKeyConstraint that name a referential action, and the actions they take. The
+# guard leaves such a value alone only as the constant value of one of these arguments: "SET NULL" anywhere else is
+# still read as SQL.
+REFERENTIAL_ARGUMENTS = frozenset({"ondelete", "onupdate"})
+REFERENTIAL_ACTIONS = frozenset({"CASCADE", "SET NULL", "SET DEFAULT", "RESTRICT", "NO ACTION"})
 
 MIGRATIONS_RUN = (
     "0001_initial.py",
@@ -132,6 +139,17 @@ class _Scanner(ast.NodeVisitor):
     def visit_Expr(self, node: ast.Expr) -> None:
         if isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
             return  # a docstring, or another bare string: not code
+        self.generic_visit(node)
+
+    def visit_keyword(self, node: ast.keyword) -> None:
+        value = node.value
+        if (
+            node.arg in REFERENTIAL_ARGUMENTS
+            and isinstance(value, ast.Constant)
+            and isinstance(value.value, str)
+            and value.value in REFERENTIAL_ACTIONS
+        ):
+            return  # ondelete="SET NULL": a foreign key's referential action, not a statement
         self.generic_visit(node)
 
     def visit_Constant(self, node: ast.Constant) -> None:
@@ -251,6 +269,15 @@ def test_the_places_allowed_for_good_exist():
         "raw = await driver(conn)",
         "raw = await db.driver(conn)",
         "raw = (await conn.get_raw_connection()).driver_connection",
+        # A referential action is left alone only as the value of ondelete= or onupdate=.
+        'action = "SET NULL"',
+        'conn.execute("SET NULL")',
+        'ACTIONS = {"notification_id": "SET NULL"}',
+        'fk = ForeignKey("users.id", on_delete="SET NULL")',
+        'fk = ForeignKey("users.id", ondelete="SET NULL; DELETE FROM users")',
+        'fk = ForeignKey("users.id", ondelete=f"SET NULL WHERE {x}")',
+        'conn.execute("UPDATE runs SET state = %s", ondelete="CASCADE")',
+        'fk = ForeignKey("SELECT id FROM users", ondelete="SET NULL")',
     ],
 )
 def test_the_guard_reports_sql_in_each_shape(source):
@@ -264,6 +291,10 @@ def test_the_guard_reports_sql_in_each_shape(source):
         'def f():\n    """Locks the row with SELECT ... FOR UPDATE, then UPDATE runs SET state."""',
         'response = client.request("DELETE", "/v1/runs/1")',
         'fk = ForeignKey("users.id", ondelete="CASCADE")',
+        'fk = ForeignKey("users.id", ondelete="SET NULL")',
+        'ForeignKeyConstraint(["notification_id"], ["notifications.id"], ondelete="SET NULL", name="x_fkey")',
+        'sa.ForeignKeyConstraint(["a"], ["b.id"], ondelete="SET DEFAULT", onupdate="NO ACTION")',
+        'fk = ForeignKey("users.id", ondelete="RESTRICT", onupdate="SET NULL")',
         'log.info("run deleted", extra={"state": "DELETE"})',
         'message = "the run is queued; select a worker from the list"',
         "stmt = select(runs.c.id).where(runs.c.state == 'queued').with_for_update(skip_locked=True)",

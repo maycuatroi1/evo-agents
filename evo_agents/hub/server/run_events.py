@@ -6,10 +6,11 @@ POST /v1/worker/runs/{id}/events takes a batch of at most MAX_BATCH_EVENTS event
 from the worker that claimed the run, while it holds the run and after (its spool may be sent once the run ended).
 Each event carries the worker's own ``seq``, 1 for the run's first and one more for each next. ``runs.events_acked``
 is the highest of those stored with none missing below, answered as ``ack_seq``: an event at or below it is a resend
-and is skipped, and one after a gap is not stored, so the daemon sends again from ``ack_seq + 1``. The hub numbers
-what it stores itself (``run_events.seq``, which ``runs.event_seq`` counts): the worker's events and its own
-(``state`` on each move, ``user_message`` for each message), under the run's row lock, so a reader never sees a
-number before the ones below it. A body whose JSON is over MAX_EVENT_BODY_BYTES is cut (``runs.fit_event_body``) and
+and is skipped, and one after a gap is not stored, so the daemon sends again from ``ack_seq + 1``. Events stored after
+the run ended write its tool figures again (``tool_stats.record``). The hub numbers what it stores itself
+(``run_events.seq``, which ``runs.event_seq`` counts): the worker's events and its own (``state`` on each move,
+``user_message`` for each message), under the run's row lock, so a reader never sees a number before the ones below
+it. A body whose JSON is over MAX_EVENT_BODY_BYTES is cut (``runs.fit_event_body``) and
 the event marked truncated. A run keeps at most MAX_RUN_EVENTS events of the worker and the owner: a batch that would
 pass it stores nothing and gets 413 with the ack in its detail; the hub's state events are written past it.
 
@@ -56,7 +57,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import runs, tables
 from evo_agents.hub.blobs import GET_TTL
-from evo_agents.hub.server import audit
+from evo_agents.hub.server import audit, tool_stats
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.blobs import Mismatch, UploadItem, Uploads, blob_store, commit_uploads, issue_uploads
@@ -348,7 +349,7 @@ def _fresh(events: list[EventIn], acked: int) -> list[EventIn]:
 async def post_events(request: Request, run_id: RunId, body: EventBatch, user: CurrentUser):
     """Store the events of the batch that follow the ones stored, and say up to where the worker's spool may go."""
     async with request.app.state.engine.begin() as conn:
-        _, _, last_seq, acked, _ = await _claimed(conn, user, run_id)
+        _, state, last_seq, acked, _ = await _claimed(conn, user, run_id)
         fresh = _fresh(body.events, acked)
         if not fresh:
             return EventsAck(ack_seq=acked, stored=0)
@@ -375,6 +376,8 @@ async def post_events(request: Request, run_id: RunId, body: EventBatch, user: C
         await conn.execute(insert(e).values(at=stored_at), rows)
         count = update(r).values(event_seq=r.c.event_seq + len(fresh), events_acked=r.c.events_acked + len(fresh))
         await conn.execute(count.where(r.c.id == run_id))
+        if state in runs.TERMINAL_STATES:  # the spool's last events, after the end: the figures take them in
+            await tool_stats.record(conn, run_id)
         await notify_events(conn, run_id)
     cut = sum(1 for row in rows if row["truncated"])
     log.debug("run events stored", extra={"run_id": run_id, "stored": len(fresh), "truncated": cut})

@@ -111,7 +111,7 @@ def test_constants():
 
 def test_who_may_dispatch_to_a_worker_and_the_credential_a_dispatch_is_recorded_with():
     assert credentials.DISPATCH_FROM == ("any", "web")
-    assert credentials.DISPATCHED_VIA == ("machine", "web")
+    assert credentials.DISPATCHED_VIA == ("machine", "web", "schedule")  # schedule: the night shift (schema 0012)
     # a web session, a machine token and the worker token of a run's agent on /mcp
     kinds = ("web", "machine", "worker")
     assert [credentials.dispatch_credential(kind) for kind in kinds] == ["web", "machine", "machine"]

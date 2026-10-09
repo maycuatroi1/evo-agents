@@ -80,6 +80,7 @@ PUBLIC_PATHS = frozenset(
         "/v1/auth/web/login",
         "/v1/auth/web/callback",
         "/v1/worker/join",  # a pairing code is the credential
+        "/v1/telegram/webhook",  # the secret token Telegram sends is the credential (evo_agents.hub.server.telegram)
     }
 )
 # Websockets under /v1 whose routes check their own credential; every other one is closed before the app sees it.
@@ -144,6 +145,7 @@ class RunScope:
     project: str
     role: str  # the owner's role on the project when the request came, at most writer
     max_level: str  # the owner's grant's, when the request came
+    kind: str = "step"  # the run's kind: a judge run's agent reads the code graph alone (``mcp.JUDGE_TOOLS``)
 
 
 @dataclass(frozen=True)

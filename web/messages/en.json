@@ -36,7 +36,7 @@
     "runDiff": "Diff",
     "inbox": "Inbox",
     "counts": {
-      "openDecisions": "{count, plural, one {# decision waits for your answer} other {# decisions wait for your answer}}",
+      "openDecisions": "{count, plural, one {# decision or proposal waits for your answer} other {# decisions and proposals wait for your answer}}",
       "activeRuns": "{count, plural, one {# active run} other {# active runs}}"
     },
     "fleet": {
@@ -45,7 +45,10 @@
       "offline": "<b>No workers online</b>, {registered} registered",
       "none": "No workers yet",
       "error": "Couldn't read your workers"
-    }
+    },
+    "curator": "Curator",
+    "curatorProposals": "Proposals",
+    "curatorCharter": "Charter"
   },
   "projectSwitcher": {
     "label": "Projects",
@@ -143,7 +146,8 @@
       "goRuns": "Runs",
       "goWorkers": "Workers",
       "dispatch": "Dispatch a step",
-      "send": "Send an answer or a message"
+      "send": "Send an answer or a message",
+      "goCurator": "Curator"
     },
     "where": {
       "project": "Of the project you are in",
@@ -163,7 +167,7 @@
     },
     "needProject": {
       "title": "Open a project first",
-      "text": "Plans and runs belong to a project. Pick one in the sidebar."
+      "text": "Plans, runs and the Curator belong to a project. Pick one in the sidebar."
     }
   },
   "userMenu": {
@@ -240,7 +244,21 @@
       "expired": "Expired",
       "cancelled": "Cancelled"
     },
-    "other": "Other status: {status}"
+    "other": "Other status: {status}",
+    "proposal": {
+      "open": "Open",
+      "deferred": "Deferred",
+      "accepted": "Accepted",
+      "rejected": "Rejected",
+      "dropped": "Dropped"
+    },
+    "curator": {
+      "running": "Running",
+      "on_duty": "On duty",
+      "idle": "Idle",
+      "paused": "Paused",
+      "off": "Not set up"
+    }
   },
   "identifier": {
     "copy": "Copy {value}",
@@ -335,7 +353,9 @@
     "projects": {
       "title": "Projects",
       "count": "{count, plural, one {# project} other {# projects}}",
-      "open": "Open project {name}"
+      "open": "Open project {name}",
+      "curator": "Curator: {state}",
+      "proposals": "{count, plural, one {# proposal waits} other {# proposals wait}}"
     },
     "empty": {
       "title": "No project has been granted to you yet",
@@ -2353,7 +2373,9 @@
         "waited": "Waiting",
         "revision": "Plan revision",
         "revisionValue": "r{revision}",
-        "copySession": "Copy the session id"
+        "copySession": "Copy the session id",
+        "approvalReview": "No approval: a review run changes nothing",
+        "approvalJudge": "No approval: a judge run changes nothing, and its verdict goes on the change"
       },
       "result": {
         "title": "Result",
@@ -2467,7 +2489,8 @@
         "conflict": "The run moved meanwhile. The page shows its state now; check it and try again.",
         "full": "The run's log is full (20,000 events), so it takes no more messages.",
         "apiMessage": "The hub says: {message}"
-      }
+      },
+      "reviewSub": "The night's review of the project by the <curatorLink>Curator</curatorLink>: it reads and changes nothing. <proposalsLink>Its proposals</proposalsLink>"
     },
     "diff": {
       "metaTitle": "Diff of run #{id} of {project}",
@@ -2609,7 +2632,7 @@
     "markedAll": "{count, plural, =0 {Nothing was left to mark as read} one {# notification marked as read} other {# notifications marked as read}}",
     "count": "{count, plural, one {# notification} other {# notifications}}",
     "waitingTitle": "Waiting for your answer",
-    "restTitle": "Notices and past decisions",
+    "restTitle": "Notices and past decisions and proposals",
     "allTitle": "Notifications",
     "pagerLabel": "notifications",
     "summary": {
@@ -2626,11 +2649,12 @@
       "decisions": "Decisions",
       "notices": "Notices",
       "project": "Project",
-      "allProjects": "All projects"
+      "allProjects": "All projects",
+      "proposals": "Proposals"
     },
     "empty": {
       "title": "Your inbox is empty",
-      "description": "When the agent of a plan run you dispatched asks you a decision, or pushes or merges into a default branch, it shows up here and on the bell in the top bar."
+      "description": "When the agent of a plan run you dispatched asks you a decision, or pushes or merges into a default branch, or the Curator of your project proposes a change that needs a yes, it shows up here and on the bell in the top bar."
     },
     "noResults": {
       "title": "No notification matches",
@@ -2638,13 +2662,14 @@
       "clear": "Clear the filters"
     },
     "bell": {
-      "label": "Inbox: {unread, plural, =0 {no unread notification} one {# unread notification} other {# unread notifications}}{decisions, plural, =0 {} one {, # decision waits for your answer} other {, # decisions wait for your answer}}",
+      "label": "Inbox: {unread, plural, =0 {no unread notification} one {# unread notification} other {# unread notifications}}{decisions, plural, =0 {} one {, # decision waits for your answer} other {, # decisions wait for your answer}}{proposals, plural, =0 {} one {, # proposal waits for an answer} other {, # proposals wait for an answer}}",
       "labelUnknown": "Inbox",
       "arrived": "{count, plural, one {# new notification in your inbox.} other {# new notifications in your inbox.}}"
     },
     "kind": {
       "decision": "Decision",
-      "notice": "Notice"
+      "notice": "Notice",
+      "proposal": "Proposal"
     },
     "category": {
       "deploy": "Deploy",
@@ -2659,7 +2684,9 @@
       "push_default_branch": "Pushed to a default branch",
       "merge_default_branch": "Merged into a default branch",
       "plan_finished": "Plan finished",
-      "run_failed": "Run failed"
+      "run_failed": "Run failed",
+      "curator_brief": "Morning brief",
+      "curator_paused": "Night shift paused"
     },
     "item": {
       "unread": "Unread",
@@ -2677,7 +2704,10 @@
       "commits": "{count, plural, one {# commit} other {# commits}}",
       "commitFull": "commit {sha}",
       "moreCommits": "and {count} more",
-      "fewerCommits": "Show fewer"
+      "fewerCommits": "Show fewer",
+      "answerProposalLabel": "Answer proposal #{id}",
+      "viewProposalLabel": "View proposal #{id}",
+      "openProposal": "Open proposal #{id}"
     },
     "sheet": {
       "title": "Decision #{id}",
@@ -2752,7 +2782,55 @@
       "readGone": "These notifications changed meanwhile. The list was read again."
     },
     "markedOne": "Notification marked as read",
-    "markFailed": "Couldn't mark as read"
+    "markFailed": "Couldn't mark as read",
+    "openProposals": "{count, plural, one {# proposal waits for an answer} other {# proposals wait for an answer}}",
+    "proposal": {
+      "title": "Proposal #{id}",
+      "titleUnknown": "Proposal",
+      "close": "Close",
+      "notFoundTitle": "Proposal #{id} was not found",
+      "notFoundDescription": "It belongs to a project you cannot read, its label is beyond your grant, or the link is wrong.",
+      "where": "Project {project}, proposed by <runLink>review run #{run}</runLink>",
+      "openPage": "Open the full page"
+    },
+    "telegram": {
+      "button": "Telegram",
+      "title": "Telegram",
+      "description": "Decisions, proposals and notices also come to a private chat with the hub's bot, where their buttons answer them.",
+      "loadFailed": "Couldn't read your Telegram link from the hub.",
+      "retry": "Try again",
+      "close": "Close",
+      "unconfigured": "Telegram is not set up on this hub. A hub admin sets the bot's token and the webhook's secret in its environment.",
+      "unlinked": "No chat is linked. Make a link, open it in Telegram and press Start; it links that chat to you. It works once, for 10 minutes.",
+      "expired": "The link expired before Telegram used it. Make a new one.",
+      "make": "Make a link",
+      "makeAgain": "Make a new link",
+      "making": "Making the link",
+      "steps": {
+        "open": "Open the link in Telegram, in your private chat with @{bot}.",
+        "start": "Press Start. This dialog notices the link on its own."
+      },
+      "copy": "Copy the link",
+      "open": "Open in Telegram",
+      "newTab": "(opens in a new tab)",
+      "waiting": "Waiting for Telegram. The link works once, until {time}.",
+      "linkedAs": "Linked to @{username}",
+      "linkedChat": "A chat is linked",
+      "linkedSince": "Since {when}, for as long as the web session that linked it lasts. Send /stop to the bot to unlink from Telegram.",
+      "off": "The hub stopped sending to this chat, for the reason below. Make a new link to turn it on again.",
+      "unlink": "Unlink",
+      "confirm": {
+        "title": "Unlink this chat?",
+        "text": "Messages waiting for it are dropped. The Inbox keeps every notification.",
+        "keep": "Keep it linked",
+        "unlink": "Unlink",
+        "unlinking": "Unlinking"
+      },
+      "linkedToast": "Telegram linked",
+      "linkedToastText": "Decisions, proposals and notices now reach your chat too.",
+      "unlinkedToast": "Telegram unlinked",
+      "unlinkedToastText": "Nothing more goes to the chat until you link it again."
+    }
   },
   "toast": {
     "region": "Notifications",
@@ -2789,5 +2867,552 @@
     },
     "retry": "Retry now",
     "resume": "Resume"
+  },
+  "curator": {
+    "metaTitle": "Curator of {project}",
+    "metaProposals": "Proposals of {project}",
+    "metaProposal": "Proposal #{id} of {project}",
+    "metaCharter": "Charter of {project}",
+    "title": "Curator",
+    "reviewRun": "Review run",
+    "lensWord": "Lens:",
+    "tabs": {
+      "label": "Curator pages",
+      "overview": "Overview",
+      "proposals": "Proposals",
+      "charter": "Charter",
+      "waiting": "{count, plural, one {# proposal waits for an answer} other {# proposals wait for an answer}}"
+    },
+    "sub": {
+      "duty": "Night shift on <worker></worker> as {owner}, {start} to {end} {timezone}",
+      "paused": "Paused by {login} <ago></ago>",
+      "pausedByHub": "Paused by the circuit breaker <ago></ago>"
+    },
+    "pause": "Pause",
+    "pausing": "Pausing",
+    "resume": "Resume",
+    "resuming": "Resuming",
+    "paused": {
+      "title": "Night shift paused",
+      "text": "No run is queued until it is resumed. The runs it queued that no worker took were cancelled."
+    },
+    "resumed": {
+      "title": "Night shift resumed",
+      "text": "It queues runs again in its window."
+    },
+    "resumeFailed": "Couldn't resume the night shift",
+    "confirmPause": {
+      "title": "Pause the night shift?",
+      "text": "Every schedule of {project} stops at once, and the runs it queued that no worker took yet are cancelled. Runs already under way finish.",
+      "confirm": "Pause night shift",
+      "cancel": "Keep it running"
+    },
+    "errors": {
+      "forbidden": {
+        "pause": "Only an admin of the project, or the owner of its schedule, pauses or resumes the night shift.",
+        "charter": "Only an admin of the project writes its charter.",
+        "answer": "Only an admin of the project answers its proposals."
+      },
+      "notFound": "The project or the proposal is gone, or you can no longer read it.",
+      "conflict": {
+        "pause": "The project has no schedule yet: write its charter first.",
+        "charter": "The hub refused the charter as it stands.",
+        "answer": "The proposal was answered meanwhile; it shows as the hub holds it now."
+      },
+      "apiMessage": "The hub said: {message}"
+    },
+    "empty": {
+      "title": "No charter yet",
+      "description": "A charter tells the Curator when to work, on which worker, within what budget, and what it may change. Each night it reviews the project and proposes changes, each with its evidence.",
+      "admin": "Write the charter",
+      "reader": "An admin of the project writes it, here or with <command></command>."
+    },
+    "metrics": {
+      "label": "The night shift now",
+      "tonight": "tonight",
+      "lastNight": "the night of {night}",
+      "runsTonight": "Runs tonight",
+      "runsLast": "Runs last night",
+      "runsMeta": "of {max} a night",
+      "runsMetaLast": "of {max}, {which}",
+      "runsActive": "Run #{id} in flight",
+      "cost": "Cost of the night",
+      "costMeta": "{share}% of {budget}",
+      "waiting": "Waiting for an answer",
+      "waitingMeta": "Proposals of every night",
+      "waitingNone": "Nothing waits",
+      "review": "Last review",
+      "reviewExtra": "{count, plural, one {proposal written} other {proposals written}}",
+      "reviewMeta": "#{id}, {findings, plural, one {# finding} other {# findings}}, {night}",
+      "reviewNone": "No review run yet"
+    },
+    "schedule": {
+      "title": "Schedule",
+      "charter": "Charter, revision {revision}",
+      "window": "Window",
+      "windowValue": "{start} to {end}, {timezone}",
+      "now": "Local time now",
+      "inWindow": "inside the window",
+      "outWindow": "outside the window",
+      "worker": "Worker on duty",
+      "owner": "Runs as",
+      "caps": "Each night",
+      "capsValue": "up to {budget} and {runs, plural, one {# run} other {# runs}}",
+      "brief": "Morning brief",
+      "briefValue": "at {at}",
+      "lastBrief": "Last brief",
+      "lastBriefValue": "night of {night}, to {to}",
+      "readBrief": "Read it in the Inbox",
+      "paused": "Paused",
+      "pausedBy": "by {login},",
+      "pausedByHub": "by the circuit breaker,",
+      "pauseReason": "Why"
+    },
+    "lastReview": {
+      "title": "Last review run",
+      "none": "The first review run is queued when the next window opens, on the worker on duty.",
+      "run": "Run",
+      "openRun": "Open review run #{id}",
+      "night": "Night",
+      "lenses": "Lenses",
+      "wrote": "Wrote",
+      "wroteValue": "{findings, plural, one {# finding} other {# findings}} and {proposals, plural, one {# proposal} other {# proposals}}",
+      "ended": "Ended",
+      "notEnded": "Not yet",
+      "proposalsLink": "{count, plural, =0 {No proposals} one {Its proposal} other {Its # proposals}}"
+    },
+    "nights": {
+      "title": "Nights",
+      "caption": "Nights of the night shift of {project}",
+      "empty": "No night yet: the first one starts at {start} {timezone}.",
+      "emptyNoCharter": "No night yet.",
+      "columns": {
+        "night": "Night",
+        "runs": "Runs",
+        "cost": "Cost",
+        "review": "Review run",
+        "proposals": "Proposals"
+      },
+      "costOf": "of a budget of {budget}",
+      "noReview": "No review run",
+      "openRun": "Open review run #{id}",
+      "proposalsOf": "{count, plural, one {# proposal} other {# proposals}} of review run #{id}",
+      "outcome": {
+        "active": "{active, plural, one {# run} other {# runs}} in flight, {done} done",
+        "failed": "{failed, plural, one {# run} other {# runs}} failed or lost, {done} done",
+        "done": "{done, plural, one {# run} other {# runs}} done",
+        "empty": "Nothing queued"
+      },
+      "mobileMeta": "{runs, plural, one {# run} other {# runs}}, {cost}, {proposals, plural, one {# proposal} other {# proposals}}"
+    },
+    "proposals": {
+      "caption": "Proposals of {project}",
+      "count": "{count, plural, one {# proposal} other {# proposals}}",
+      "listSummary": {
+        "all": "{count, plural, one {# proposal} other {# proposals}}",
+        "filtered": "{count, plural, one {# proposal matches} other {# proposals match}}"
+      },
+      "facets": {
+        "state": "State",
+        "all": "All",
+        "tier": "Tier",
+        "allTiers": "All tiers",
+        "lens": "Lens",
+        "allLenses": "All lenses",
+        "run": "Review run"
+      },
+      "tierValue": "Tier {tier}",
+      "lensOption": "{lens} ({count})",
+      "runFilter": "Review run #{id}",
+      "clearRun": "Show the proposals of every review run, not only #{id}",
+      "columns": {
+        "id": "#",
+        "proposal": "Proposal",
+        "tier": "Tier",
+        "evidence": "Evidence",
+        "state": "State",
+        "created": "Proposed"
+      },
+      "sub": "{kind}, seen through {lens}",
+      "evidenceCount": "{count, plural, one {# piece of evidence} other {# pieces of evidence}}",
+      "mobileMeta": "#{id}, tier {tier}, {kind}, {lens}",
+      "pagerLabel": "Pages of proposals",
+      "empty": {
+        "title": "No proposal yet",
+        "description": "Each night the review run reads the project's runs, sessions and code, and proposes changes with the evidence behind them. They show here, with what each would change and why."
+      },
+      "noResults": {
+        "title": "No proposal matches these filters"
+      }
+    },
+    "tier": {
+      "tag": "Tier {tier}",
+      "meaning": {
+        "0": "The hub may merge it by itself when the charter allows it, once CI and the Judge pass.",
+        "1": "It goes through the night shift as a pull request that a person merges.",
+        "2": "It needs a person's yes before anything is built: it comes to the Inbox.",
+        "3": "It touches what only a person changes: protected paths, CI, tests loosened, credentials."
+      }
+    },
+    "lenses": {
+      "tool_errors": "Tool errors",
+      "environment": "Environment",
+      "corrections": "Corrections",
+      "failed_runs": "Failed runs",
+      "tech_debt": "Tech debt",
+      "code_health": "Code health",
+      "docs_drift": "Docs drift",
+      "skills_memory": "Skills and memory",
+      "cost": "Cost",
+      "security": "Security",
+      "product_goals": "Product goals"
+    },
+    "kinds": {
+      "docs": "Docs",
+      "memory": "Memory",
+      "test_add": "New tests",
+      "fix": "Fix",
+      "refactor": "Refactor",
+      "lint": "Lint rule",
+      "skill": "Skill",
+      "cli": "Command",
+      "release_prep": "Release prep",
+      "feature": "Feature",
+      "api_change": "API change",
+      "schema_change": "Schema change",
+      "global_config": "Global config",
+      "dependency_major": "Major dependency",
+      "operation": "Operation",
+      "test_loosen": "Loosened test",
+      "verify_change": "Verify change",
+      "ci_change": "CI change",
+      "credentials": "Credentials",
+      "curator_rules": "Curator rules",
+      "revert": "Revert"
+    },
+    "proposal": {
+      "notFoundTitle": "Proposal #{id} not found",
+      "notFoundDescription": "The project has no such proposal, or its label is beyond what your grant reaches.",
+      "sub": "Proposal #{id} of <runLink>review run #{run}</runLink>, <ago></ago>",
+      "readOnly": "Only an admin of the project answers a proposal. You can read it and its evidence.",
+      "droppedNote": "The hub dropped this proposal: it repeats one rejected in the last 30 days, and its evidence did not double.",
+      "summary": "Summary",
+      "noSummary": "The review run wrote no summary.",
+      "evidence": "Evidence ({count})",
+      "ownEvidence": "Its own evidence",
+      "draft": "Draft plan",
+      "why": "Why tier {tier}",
+      "touches": "{count, plural, =0 {What it would change} one {The path it would change} other {The # paths it would change}}",
+      "noPaths": "It names no path.",
+      "impacted": "What those reach in the knowledge graph",
+      "noGraph": "The project has no knowledge graph, so only the paths themselves count.",
+      "nothingImpacted": "Nothing beyond the paths themselves.",
+      "answerTitle": "Answer",
+      "waitingYou": "Waiting for your answer: accept, defer or reject it above.",
+      "waitingAdmin": "Waiting for an admin of the project.",
+      "answeredBy": "{state, select, accepted {Accepted by} rejected {Rejected by} deferred {Deferred by} other {Answered by}} <who>{login}</who> <ago></ago>",
+      "deferredUntil": "It opens again <at></at>.",
+      "acceptedNext": "An accepted proposal becomes a plan of the Curator in a later step of the night shift.",
+      "dropped": "Dropped as a repeat of <link>proposal #{id}</link>.",
+      "droppedPlain": "Dropped as a repeat of a rejected proposal.",
+      "inbox": "In the owner's Inbox since <ago></ago>.",
+      "revertOf": "The hub proposes this revert: the figures of <link>proposal #{id}</link> got worse after it merged."
+    },
+    "ledger": {
+      "title": "Ledger",
+      "caption": "What happened to this proposal, line by line, oldest first. The hub only adds lines; none is ever changed or deleted.",
+      "empty": "No line yet.",
+      "unreadable": "The ledger could not be read.",
+      "retry": "Try again",
+      "lines": "Lines of the ledger of proposal #{id}",
+      "by": "By",
+      "actor": {
+        "curator": "Curator",
+        "agent": "Agent",
+        "user": "Member"
+      },
+      "action": {
+        "proposed": "Proposed",
+        "dropped": "Dropped",
+        "accepted": "Accepted",
+        "rejected": "Rejected",
+        "deferred": "Deferred",
+        "planned": "Planned",
+        "built": "Built",
+        "build_failed": "Build failed",
+        "pull_opened": "Pull request opened",
+        "judged": "Judged",
+        "merged": "Merged",
+        "left_open": "Left open",
+        "closed": "Closed",
+        "outcome": "Outcome"
+      },
+      "outcome": {
+        "keep": "Keep",
+        "revert": "Revert",
+        "unclear": "Unclear"
+      },
+      "openRun": "Open run #{id}",
+      "commit": "Commit",
+      "branch": "Default branch",
+      "then": "then",
+      "copyCommit": "Copy commit {sha}",
+      "passed": "Passed",
+      "failed": "Failed",
+      "pull": "Pull request #{number}",
+      "pullPlain": "Pull request",
+      "newTab": "(opens in a new tab)",
+      "trigger": "Figures that set it off",
+      "triggerNone": "It names no figure the hub counts again.",
+      "activity": "{count, plural, one {# session or run counted} other {# sessions and runs counted}}",
+      "figuresOf": "Figures of ledger line {id}",
+      "figure": "Figure",
+      "count": "Count",
+      "before": "Before",
+      "after": "After",
+      "rateBefore": "Per session or run, before",
+      "rateAfter": "Per session or run, after",
+      "change": "Change",
+      "changes": {
+        "better": "Better",
+        "same": "Held",
+        "worse": "Worse"
+      },
+      "counted": "Sessions and runs counted: {before} before the merge, {after} after",
+      "revertProposed": "The hub proposed reverting it: <link>proposal #{id}</link>.",
+      "outcomeDue": "The hub counts its figures again from <at></at>."
+    },
+    "finding": {
+      "title": "{count, plural, one {The finding it rests on} other {The # findings it rests on}}",
+      "unreadable": "Finding #{id} cannot be read with your grant.",
+      "severity": {
+        "low": "Low",
+        "medium": "Medium",
+        "high": "High"
+      }
+    },
+    "evidence": {
+      "none": "No evidence of its own.",
+      "run": "Run #{run}, event {seq}",
+      "session": "Session",
+      "entry": "{field}, entry {index}",
+      "showEntry": "Show the entry",
+      "hideEntry": "Hide the entry",
+      "loadingDigest": "Loading the session's digest",
+      "digestBy": "Pushed by {login}, {messages} messages in {cwd}, <ago></ago>",
+      "digestGone": "The digest is gone (the hub keeps digests 90 days) or beyond your grant.",
+      "digestFailed": "Couldn't read the digest.",
+      "entryMissing": "The digest no longer has this entry.",
+      "opensElsewhere": "(opens the forge in a new tab)",
+      "resolved": {
+        "digest": "Found in the session's digest",
+        "run_event": "Found in the run's log",
+        "repo": "A file of the project's repo",
+        "graph": "A file of the project's knowledge graph"
+      }
+    },
+    "draft": {
+      "view": "Show the draft as",
+      "rendered": "Plan",
+      "raw": "JSON",
+      "goal": "Goal",
+      "steps": "{count, plural, one {# step} other {# steps}}",
+      "untitled": "Untitled step",
+      "acceptance": "Done when",
+      "verify": "Verify"
+    },
+    "answer": {
+      "button": {
+        "accept": "Accept",
+        "defer": "Defer",
+        "reject": "Reject"
+      },
+      "buttonLabel": {
+        "accept": "Accept proposal #{id}",
+        "defer": "Defer proposal #{id}",
+        "reject": "Reject proposal #{id}"
+      },
+      "title": {
+        "accept": "Accept proposal #{id}?",
+        "defer": "Defer proposal #{id}?",
+        "reject": "Reject proposal #{id}?"
+      },
+      "text": {
+        "accept": "The hub records your yes. A later step of the night shift turns an accepted proposal into a plan of the Curator.",
+        "defer": "It leaves the list of what waits and opens again after the days you give.",
+        "reject": "A proposal like it is dropped for 30 days, unless its evidence doubles."
+      },
+      "days": "Days",
+      "daysHint": "From 1 to 90.",
+      "note": "Note",
+      "notePlaceholder": "One line for the record (optional)",
+      "noteHint": "Optional, one line, kept with the answer.",
+      "errors": {
+        "days": "Give a whole number of days from 1 to 90.",
+        "noteLine": "The note is one line.",
+        "noteLong": "The note is at most 2,000 characters."
+      },
+      "cancel": "Cancel",
+      "send": {
+        "accept": "Accept",
+        "defer": "Defer",
+        "reject": "Reject"
+      },
+      "sending": {
+        "accept": "Accepting",
+        "defer": "Deferring",
+        "reject": "Rejecting"
+      },
+      "done": {
+        "accept": "Proposal #{id} accepted",
+        "defer": "Proposal #{id} deferred",
+        "reject": "Proposal #{id} rejected"
+      },
+      "doneText": {
+        "accept": "It becomes a plan in a later step of the night shift.",
+        "defer": "It opens again in {days, plural, one {# day} other {# days}}.",
+        "reject": "A proposal like it is dropped for 30 days."
+      },
+      "openProposal": "Open proposal"
+    },
+    "charter": {
+      "formLabel": "Charter of the night shift",
+      "edit": "Edit charter",
+      "create": "Write the charter",
+      "save": "Save charter",
+      "saving": "Saving",
+      "cancel": "Cancel",
+      "saved": {
+        "title": "Charter saved as revision {revision}",
+        "text": "The night shift follows it from its next run."
+      },
+      "unchanged": {
+        "title": "Charter unchanged",
+        "text": "It is the same as the newest revision, so no revision was written."
+      },
+      "problems": "{count, plural, one {One field needs a fix before the charter is saved.} other {# fields need a fix before the charter is saved.}}",
+      "readOnly": "Only an admin of the project changes the charter. Every revision is kept.",
+      "noneAdmin": "The project has no charter yet. Write one to start the night shift.",
+      "noneReader": "The project has no charter yet. An admin of the project writes it.",
+      "oldRevision": "Revision {revision}, written by {login}. The night shift follows the newest revision.",
+      "showNewest": "Show the newest",
+      "noGoals": "No goal yet. The Curator weighs its proposals against the goals, the first one highest.",
+      "addGoal": "Add a goal",
+      "removeGoal": "Remove goal {n}",
+      "noWorkerOption": "No worker of yours can take it",
+      "windowValue": "{start} to {end}, {timezone}",
+      "runBudgetNone": "What the night has left",
+      "reviewBudgetNone": "As any run of the night",
+      "minutes": "{minutes} min",
+      "days": "{days, plural, one {# day} other {# days}}",
+      "circuitValue": "Stops after {count, plural, one {# failed run} other {# failed runs in a row}}",
+      "nightPlansNone": "None: the night shift reviews, and runs no plan",
+      "autoMergeOn": "Tier {tiers}, once CI and the Judge pass",
+      "autoMergeOff": "None: every pull request waits for a person",
+      "protectedNone": "None",
+      "hiddenForAdmins": "Shown to the project's admins only",
+      "hiddenNone": "None",
+      "modelDefault": "the runtime's own model",
+      "roleValue": "{runtime}, {model}",
+      "groups": {
+        "goals": "Goals",
+        "window": "Window and worker",
+        "budget": "Budget and caps",
+        "scope": "What it may do",
+        "review": "Review",
+        "roles": "Roles"
+      },
+      "groupHints": {
+        "goals": "The product's goals, highest first.",
+        "window": "When the night shift works, on whose worker, and when the morning brief comes.",
+        "budget": "What a night and each run may cost and take. The hub stops queueing at the first cap reached.",
+        "scope": "The plans it runs, how many decisions a day it may ask, what it may merge and what it never touches.",
+        "review": "The nightly review run: how many lenses it looks through and how far back it counts.",
+        "roles": "The runtime and model of the Reviewer, the Builder and the Judge."
+      },
+      "roles": {
+        "reviewer": "Reviewer",
+        "builder": "Builder",
+        "judge": "Judge"
+      },
+      "fields": {
+        "goalId": "Goal {n}, id",
+        "goalWhat": "Goal {n}, what it is",
+        "window": "Window",
+        "windowStart": "Window opens",
+        "windowEnd": "Window closes",
+        "timezone": "Time zone",
+        "briefAt": "Morning brief at",
+        "worker": "Worker on duty",
+        "owner": "Runs as",
+        "nightBudget": "Night budget, USD",
+        "runBudget": "Run budget, USD",
+        "maxRunsPerNight": "Runs a night",
+        "runMaxTurns": "Turns a run",
+        "runMinutes": "Minutes a run",
+        "maxFailedInARow": "Failed runs in a row before it stops",
+        "nightPlans": "Plans of the night",
+        "maxDecisionsPerDay": "Decisions a day",
+        "autoMerge": "Let the hub merge tier 0 pull requests",
+        "autoMergeShort": "Merges by itself",
+        "protectedPaths": "Protected paths",
+        "reviewLenses": "Lenses a night",
+        "reviewDays": "Days counted",
+        "reviewBudget": "Review budget, USD",
+        "runtime": "Runtime",
+        "model": "Model",
+        "hiddenChecks": "The Judge's hidden checks",
+        "outcomeDays": "Days before its figures are counted again"
+      },
+      "hints": {
+        "windowEnd": "Before the start, the window runs past midnight.",
+        "timezone": "An IANA name, such as Asia/Ho_Chi_Minh.",
+        "briefAt": "The owner's morning summary, in the window's time zone.",
+        "worker": "One of your own workers that serves this project and takes runs from the hub; the night shift runs as its owner.",
+        "noWorker": "None of your workers can take the night shift's runs. <link>Register one</link> for this project.",
+        "usd": "More than 0, at most {max}.",
+        "runBudget": "Empty: a run may use what the night has left.",
+        "range": "From {min} to {max}.",
+        "circuit": "From 1 to 10 failed runs in a row.",
+        "nightPlans": "One plan id a line, in the order the night takes them.",
+        "nightPlansKnown": "One plan id a line, in the order the night takes them. Active plans: {plans}.",
+        "decisions": "Tier 2 proposals that reach the Inbox each day, from 0 to 100.",
+        "autoMerge": "Only tier 0 may merge by itself; tier 1 waits for a plan of its own.",
+        "protectedPaths": "One glob a line, such as .github/workflows/**. A change that touches one is tier 3.",
+        "reviewBudget": "Empty: as any run of the night.",
+        "model": "Empty: the runtime's own choice.",
+        "hiddenChecks": "One command a line. The Judge runs them; no Builder sees them.",
+        "outcomeDays": "After a merge, the hub counts the figures that set the proposal off again over this many days, from 1 to 90, and proposes a revert when they got worse."
+      },
+      "placeholders": {
+        "model": "the runtime's default"
+      },
+      "errors": {
+        "required": "Fill this in.",
+        "time": "Give a time as HH:MM, 24 hours.",
+        "timezone": "Give an IANA time zone, such as Asia/Tokyo.",
+        "sameTime": "The window opens and closes at the same time: give it a length.",
+        "worker": "A worker's name: letters, digits, dot, dash and underscore.",
+        "money": "More than 0 and at most {max} US dollars.",
+        "overNight": "It is over the night's budget: a run never gets more than the night has.",
+        "whole": "A whole number from {min} to {max}.",
+        "goalId": "Goal {line}: an id of lowercase letters, digits and dashes.",
+        "goalWhat": "Goal {line}: say what it is, in at most {max} characters.",
+        "goalRepeated": "The goal id {id} is used twice.",
+        "tooMany": "At most {max}.",
+        "planId": "Line {line} is not a plan id.",
+        "lineTooLong": "Line {line} is over {max} characters.",
+        "control": "Line {line} holds a control character.",
+        "model": "One line of at most {max} characters."
+      },
+      "revisions": {
+        "title": "Revisions",
+        "count": "{count, plural, one {# revision} other {# revisions}}",
+        "loading": "Reading the revisions",
+        "number": "Revision {revision}",
+        "worker": "on {worker}"
+      },
+      "outcomeDaysValue": "{count, plural, one {# day after a merge} other {# days after a merge}}"
+    }
   }
 }

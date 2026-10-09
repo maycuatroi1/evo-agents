@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import json
 import logging
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Annotated, Literal
 
@@ -416,7 +417,7 @@ def _overriding_system_value(element, compiler, **kw):
 def _resume_run(new_id: int, parked_id: int):
     """The run that resumes parked plan run ``parked_id``, with id ``new_id``: pinned to its worker, in its session,
     with the agent time it used and the credential it was dispatched with, at the plan's current revision (the one it
-    was dispatched from when the plan is gone)."""
+    was dispatched from when the plan is gone); a run the night shift queued keeps its schedule, night and caps."""
     r, pl = tables.runs, tables.plans
     source = _OverridingSystemValue(
         literal(new_id, BigInteger).label("id"),
@@ -439,6 +440,9 @@ def _resume_run(new_id: int, parked_id: int):
         r.c.id.label("resume_of_run_id"),
         r.c.run_seconds,
         r.c.session_id,
+        r.c.schedule_id,
+        r.c.schedule_night,
+        r.c.budget,
     )
     source = source.select_from(
         r.outerjoin(pl, (pl.c.project_id == r.c.project_id) & (pl.c.plan_id == r.c.plan_id))
@@ -487,6 +491,94 @@ async def _resume(conn: AsyncConnection, user: Principal, parked_id: int, decisi
     return new_id
 
 
+@dataclass(frozen=True)
+class Answered:
+    """A decision just answered: as the routes show it, its run, and the run whose inbox took the answer."""
+
+    decision: Decision
+    run_id: int
+    inbox_run: int
+
+
+async def answer_decision(
+    conn: AsyncConnection, user: Principal, project: str, decision_id: int, body: AnswerIn, *, via: str | None = None
+) -> Answered:
+    """Answer decision ``decision_id`` of ``project`` as ``user``, in the caller's transaction: the checks, the answer,
+    its notification read, the inbox message, a parked run resumed and the audit row, as the module's docstring says.
+    The answer route and the Telegram channel (``via="telegram"``, which the audit row names) both answer through it;
+    it raises the HTTPException the route answers with."""
+    access = await readable_decision(conn, user, project, decision_id, None)
+    d, r, u = tables.decisions, tables.runs, tables.users
+    query = (
+        select(d.c.plan_id, d.c.step_key, r.c.dispatched_by, u.c.login)
+        .select_from(d.join(r, r.c.id == d.c.run_id).join(u, u.c.id == r.c.dispatched_by))
+        .where(d.c.id == decision_id, d.c.project_id == access.project_id)
+    )
+    found = (await conn.execute(query)).one()
+    plan_id, key, owner_id, owner = found.plan_id, found.step_key, found.dispatched_by, found.login
+    if owner_id != user.user_id:
+        raise HTTPException(403, f"only {owner}, who dispatched its run, may answer decision {decision_id}")
+    _dispatcher(access)
+    # Answers of the plan's decisions, and its dispatches, one at a time: the run a decision belongs to stays put
+    # until the transaction ends. The run's row before the decision's, as every move of a run takes them.
+    await _lock_plan(conn, access.project_id, plan_id)
+    run_id = (await conn.execute(select(d.c.run_id).where(d.c.id == decision_id))).scalar_one()
+    run_state = (await conn.execute(select(r.c.state).where(r.c.id == run_id).with_for_update())).scalar_one()
+    locked = select(d.c.state, d.c.category, d.c.question, d.c.options).where(d.c.id == decision_id)
+    state, category, question, options = (await conn.execute(locked.with_for_update())).one()
+    if state != "open":
+        raise HTTPException(409, f"decision {decision_id} is {state}, not open: it takes no answer any more")
+    chosen = None
+    if body.option is not None:
+        chosen = next((option for option in options if option["key"] == body.option), None)
+        if chosen is None:
+            keys = ", ".join(option["key"] for option in options)
+            raise HTTPException(422, f"decision {decision_id} has no option {body.option!r}; its options are {keys}")
+    if run_state != "parked" and run_state not in runs.MESSAGE_STATES:
+        raise HTTPException(409, f"run {run_id} of decision {decision_id} is {run_state}: no agent can take an answer")
+    await web_only_steering(conn, user, run_id, "answer its decisions", "answer on the web", "answered")
+    await conn.execute(
+        update(d)
+        .values(
+            state="answered",
+            answer_option=body.option,
+            answer_text=body.text,
+            answered_by=user.user_id,
+            answered_at=func.now(),
+        )
+        .where(d.c.id == decision_id)
+    )
+    n = tables.notifications
+    await conn.execute(
+        update(n)
+        .values(read_at=func.now())
+        .where(n.c.decision_id == decision_id, n.c.user_id == user.user_id, n.c.read_at.is_(None))
+    )
+    inbox_run = await _resume(conn, user, run_id, decision_id) if run_state == "parked" else run_id
+    text = answer_message(decision_id, category, question, chosen, body.text)
+    i = tables.run_inbox
+    left = (
+        insert(i).values(run_id=inbox_run, sent_by=user.user_id, body=text, decision_id=decision_id).returning(i.c.id)
+    )
+    message_id = (await conn.execute(left)).scalar_one()
+    event = {"text": text, "from": user.login, "message_id": message_id, "decision_id": decision_id}
+    await write_user_message(conn, inbox_run, event)
+    target = _answer_target(project, plan_id, key, decision_id, run_id, body.option)
+    if inbox_run != run_id:
+        target += f" resumed as run:{inbox_run}"
+    if via is not None:
+        target += f" via={via}"
+    await audit.record(
+        conn,
+        actor_id=user.user_id,
+        token_id=user.token_id,
+        action=audit.DECISION_ANSWER,
+        target=target,
+        project_id=access.project_id,
+    )
+    return Answered(await decision_view(conn, decision_id), run_id, inbox_run)
+
+
 @router.post(
     "/{project}/decisions/{decision_id}/answer",
     response_model=Decision,
@@ -498,82 +590,14 @@ async def answer(
     """Answer a decision of a run one dispatched: the answer goes to the agent through the run's inbox, and a parked
     run is resumed on its worker in its session."""
     async with request.app.state.engine.begin() as conn:
-        access = await readable_decision(conn, user, project, decision_id, None)
-        d, r, u = tables.decisions, tables.runs, tables.users
-        query = (
-            select(d.c.plan_id, d.c.step_key, r.c.dispatched_by, u.c.login)
-            .select_from(d.join(r, r.c.id == d.c.run_id).join(u, u.c.id == r.c.dispatched_by))
-            .where(d.c.id == decision_id, d.c.project_id == access.project_id)
-        )
-        found = (await conn.execute(query)).one()
-        plan_id, key, owner_id, owner = found.plan_id, found.step_key, found.dispatched_by, found.login
-        if owner_id != user.user_id:
-            raise HTTPException(403, f"only {owner}, who dispatched its run, may answer decision {decision_id}")
-        _dispatcher(access)
-        # Answers of the plan's decisions, and its dispatches, one at a time: the run a decision belongs to stays put
-        # until the transaction ends. The run's row before the decision's, as every move of a run takes them.
-        await _lock_plan(conn, access.project_id, plan_id)
-        run_id = (await conn.execute(select(d.c.run_id).where(d.c.id == decision_id))).scalar_one()
-        run_state = (await conn.execute(select(r.c.state).where(r.c.id == run_id).with_for_update())).scalar_one()
-        locked = select(d.c.state, d.c.category, d.c.question, d.c.options).where(d.c.id == decision_id)
-        state, category, question, options = (await conn.execute(locked.with_for_update())).one()
-        if state != "open":
-            raise HTTPException(409, f"decision {decision_id} is {state}, not open: it takes no answer any more")
-        chosen = None
-        if body.option is not None:
-            chosen = next((option for option in options if option["key"] == body.option), None)
-            if chosen is None:
-                keys = ", ".join(option["key"] for option in options)
-                raise HTTPException(
-                    422, f"decision {decision_id} has no option {body.option!r}; its options are {keys}"
-                )
-        if run_state != "parked" and run_state not in runs.MESSAGE_STATES:
-            raise HTTPException(
-                409, f"run {run_id} of decision {decision_id} is {run_state}: no agent can take an answer"
-            )
-        await web_only_steering(conn, user, run_id, "answer its decisions", "answer on the web", "answered")
-        await conn.execute(
-            update(d)
-            .values(
-                state="answered",
-                answer_option=body.option,
-                answer_text=body.text,
-                answered_by=user.user_id,
-                answered_at=func.now(),
-            )
-            .where(d.c.id == decision_id)
-        )
-        n = tables.notifications
-        await conn.execute(
-            update(n)
-            .values(read_at=func.now())
-            .where(n.c.decision_id == decision_id, n.c.user_id == user.user_id, n.c.read_at.is_(None))
-        )
-        inbox_run = await _resume(conn, user, run_id, decision_id) if run_state == "parked" else run_id
-        text = answer_message(decision_id, category, question, chosen, body.text)
-        i = tables.run_inbox
-        left = (
-            insert(i)
-            .values(run_id=inbox_run, sent_by=user.user_id, body=text, decision_id=decision_id)
-            .returning(i.c.id)
-        )
-        message_id = (await conn.execute(left)).scalar_one()
-        event = {"text": text, "from": user.login, "message_id": message_id, "decision_id": decision_id}
-        await write_user_message(conn, inbox_run, event)
-        target = _answer_target(project, plan_id, key, decision_id, run_id, body.option)
-        if inbox_run != run_id:
-            target += f" resumed as run:{inbox_run}"
-        await audit.record(
-            conn,
-            actor_id=user.user_id,
-            token_id=user.token_id,
-            action=audit.DECISION_ANSWER,
-            target=target,
-            project_id=access.project_id,
-        )
-        view = await decision_view(conn, decision_id)
+        answered = await answer_decision(conn, user, project, decision_id, body)
     log.info(
         "decision answered",
-        extra={"decision_id": decision_id, "run_id": run_id, "inbox_run": inbox_run, "login": user.login},
+        extra={
+            "decision_id": decision_id,
+            "run_id": answered.run_id,
+            "inbox_run": answered.inbox_run,
+            "login": user.login,
+        },
     )
-    return view
+    return answered.decision

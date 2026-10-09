@@ -228,7 +228,7 @@ export function runControls(run: ControlRun, viewer: RunViewer | null): RunContr
     takeover: (TAKEOVER_STATES as readonly string[]).includes(state) ? (run.takeover_requested_at ? "asked" : "offer") : "none",
     handback: (HANDBACK_STATES as readonly string[]).includes(state) ? (run.handback_requested_at ? "asked" : "offer") : "none",
     approve: writer && state === "review",
-    rerun: writer && terminal && run.kind !== "plan",
+    rerun: writer && terminal && run.kind !== "plan" && run.kind !== "review", // a review run only the night shift queues
     message: (MESSAGE_STATES as readonly string[]).includes(state) && !(held && run.cancel_requested_at),
   };
 }

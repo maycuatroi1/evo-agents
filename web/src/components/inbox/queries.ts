@@ -26,12 +26,14 @@ export type DecisionOption = Schemas["DecisionOption"];
 export type AnswerRequest = Schemas["AnswerIn"];
 
 /** `runs.NOTIFICATION_KINDS`, `runs.NOTICE_KINDS`, `runs.DECISION_STATES` and `runs.DECISION_CATEGORIES`, in order. */
-export const NOTIFICATION_KINDS = ["decision", "notice"] as const satisfies readonly NotificationKind[];
+export const NOTIFICATION_KINDS = ["decision", "notice", "proposal"] as const satisfies readonly NotificationKind[];
 export const NOTICE_KINDS = [
   "push_default_branch",
   "merge_default_branch",
   "plan_finished",
   "run_failed",
+  "curator_brief",
+  "curator_paused",
 ] as const satisfies readonly NoticeKind[];
 export const DECISION_STATES = ["open", "answered", "expired", "cancelled"] as const satisfies readonly DecisionState[];
 export const DECISION_CATEGORIES = [
