@@ -44,6 +44,9 @@ from evo_agents.hub import migrate as hub_migrate
 from evo_agents.hub import tables as hub_tables
 from evo_agents.hub.migrate import LOCK_KEY, MigrationError, alembic_config, head_revision, migrate, revisions
 
+# Every test here migrates a database of its own from nothing, not the copy of the migrated template.
+pytestmark = pytest.mark.empty_db
+
 TABLES = {
     "users",
     "tokens",

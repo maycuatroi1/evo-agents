@@ -193,6 +193,7 @@ def db(hub_db):
         yield conn, seed_runs(conn)
 
 
+@pytest.mark.empty_db
 def test_0009_goes_up_with_rows_down_to_the_schema_of_0008_and_up_again(hub_db):
     move_to(hub_db, "0008")
     at_0008 = query(hub_db, SNAPSHOT)
@@ -900,6 +901,7 @@ def test_a_timeout_of_a_day_is_for_plan_runs_only(db):
         conn.execute(update(tables.runs).values(timeout_s=DAY).where(tables.runs.c.id == ids["run"]))
 
 
+@pytest.mark.empty_db
 def test_0010_goes_up_with_runs_down_to_the_schema_of_0009_and_up_again(hub_db):
     move_to(hub_db, "0009")
     at_0009 = query(hub_db, SNAPSHOT)
