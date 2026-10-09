@@ -246,6 +246,66 @@ test("a reader is offered neither New plan nor Revise with agent, and reads a wr
   await axeBoth(page, "a writer's chat as a reader reads it");
 });
 
+test("the Chat is a tab of the session region beside the side column from 1280 px, and above it below", async ({ page, member }) => {
+  test.setTimeout(120_000);
+  await ensureAuthorSkill();
+  const me = await member([{ role: "writer", maxLevel: "internal" }]);
+  const project = me.projects[0];
+  const live = await authorWorker(me, project, uniqueName("split"));
+  const run = await dispatchAuthor(me, project, live.worker.id, REQUEST);
+  await startAuthor(live, run.id);
+  await agentAsks(live, run.id, QUESTION);
+
+  const split = main(page).getByTestId("run-split");
+  const session = split.getByTestId("run-log");
+  const aside = split.getByRole("region", { name: `About run #${run.id}` });
+  const chat = session.getByTestId("run-chat");
+  for (const size of [
+    { width: 375, height: 812 },
+    { width: 1024, height: 900 },
+    { width: 1280, height: 900 },
+    { width: 1440, height: 900 },
+  ]) {
+    await page.setViewportSize(size);
+    // The notice's link: ?tab=chat opens the Chat, the first tab of an author run, among the session's tabs.
+    await open(page, `${runPath(project, run.id)}?tab=chat`);
+    await expect(chat.getByTestId("run-chat-agent")).toBeVisible();
+    await expect(session.getByRole("tab", { name: "Chat" })).toHaveAttribute("aria-selected", "true");
+    await expect(session.getByRole("tab").first()).toHaveAttribute("data-testid", "run-tab-chat");
+    await expect(session.getByTestId("run-tab-trace")).toBeVisible();
+    await expect(session.getByTestId("run-tab-log")).toBeVisible();
+    await expect(aside).toBeVisible();
+    await expect(aside.getByTestId("run-side")).toBeVisible();
+    await expect(aside.getByTestId("run-chat")).toHaveCount(0);
+
+    const sessionBox = (await session.boundingBox())!;
+    const asideBox = (await aside.boundingBox())!;
+    if (size.width >= 1280) {
+      // Two regions side by side, level at the top; the session fills the window down to its 24 px gutter, and the
+      // Chat fills the session card, as the Trace does: no space under it.
+      expect(asideBox.x, `at ${size.width} px the side column is right of the session`).toBeGreaterThanOrEqual(sessionBox.x + sessionBox.width);
+      // The side column's 4 px of padding keep its cards' focus outlines inside it: its first card starts level.
+      const sideTop = (await aside.getByTestId("run-side").boundingBox())!.y;
+      expect(Math.abs(sideTop - sessionBox.y), `at ${size.width} px the two regions start level`).toBeLessThanOrEqual(1);
+      await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+      const sessionBottom = (await session.boundingBox())!;
+      expect(Math.abs(size.height - (sessionBottom.y + sessionBottom.height) - 24), `at ${size.width} px the session ends on the gutter`).toBeLessThanOrEqual(1);
+      const chatBox = (await chat.boundingBox())!;
+      expect(
+        Math.abs(sessionBottom.y + sessionBottom.height - (chatBox.y + chatBox.height)),
+        `at ${size.width} px the Chat fills the session card`,
+      ).toBeLessThanOrEqual(2);
+      await expect(aside).toHaveAttribute("tabindex", "0");
+    } else {
+      // One column: the side column first, the session under it.
+      expect(asideBox.y + asideBox.height, `at ${size.width} px the side column is above the session`).toBeLessThanOrEqual(sessionBox.y);
+    }
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    expect.soft(overflow, `the author run's page at ${size.width} px scrolls sideways`).toBeLessThanOrEqual(0);
+    if (size.width === 1024 || size.width === 1440) await axeBoth(page, `the Chat in the session region at ${size.width} px`);
+  }
+});
+
 test("the author pages fit from 375 to 1440 px without scrolling sideways, and a step run's page keeps its tabs", async ({ page, member }) => {
   test.setTimeout(120_000);
   await ensureAuthorSkill();

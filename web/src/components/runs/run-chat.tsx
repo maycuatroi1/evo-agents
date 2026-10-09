@@ -51,9 +51,11 @@ const STATUS_LOOK: Record<ChatStatus, string> = {
  * the owner's replies in order, over the run and the runs that resume it (`GET .../chat`, asked again every 3 seconds
  * until it ended, and whenever the run's stream brings an event); whose turn it is (the agent works, it waits for you,
  * the chat ended); the plan the run wrote or revises; the owner's reply box, which posts to the run that takes the
- * next message; and End chat, which ends the run done once the agent's turn is over.
+ * next message; and End chat, which ends the run done once the agent's turn is over. With `fill`, from xl the panel
+ * fills the session card, as the Trace, Raw log and Terminal do: the messages take what the head and the reply box
+ * leave, and scroll on their own; below xl, and without it, they keep their own height.
  */
-export function RunChatPanel({ run, owner, shown }: { run: Run; owner: boolean; shown: boolean }) {
+export function RunChatPanel({ run, owner, shown, fill = false }: { run: Run; owner: boolean; shown: boolean; fill?: boolean }) {
   const t = useTranslations("runs.author.chat");
   const format = useFormatter();
   const chat = useQuery(chatQuery(browserApi, run.project, run.id));
@@ -92,7 +94,12 @@ export function RunChatPanel({ run, owner, shown }: { run: Run; owner: boolean; 
   const data = chat.data!;
   const stale = chat.isError; // a read failed after one worked: what shows is the chat as last read
   return (
-    <div className="flex min-w-0 flex-col" data-testid="run-chat" data-status={data.status} data-run-id={data.run_id}>
+    <div
+      className={cn("flex min-w-0 flex-col", fill && "xl:min-h-0 xl:flex-1")}
+      data-testid="run-chat"
+      data-status={data.status}
+      data-run-id={data.run_id}
+    >
       <ChatHead run={run} chat={data} owner={owner} />
       {stale ? (
         <p className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b bg-danger-soft px-4 py-2 text-xs text-danger" role="status" data-testid="run-chat-offline">
@@ -113,7 +120,10 @@ export function RunChatPanel({ run, owner, shown }: { run: Run; owner: boolean; 
         aria-relevant="additions"
         aria-label={t("label", { id: run.id })}
         tabIndex={0}
-        className="flex max-h-[min(65vh,40rem)] min-h-64 flex-col gap-4 overflow-y-auto overscroll-contain px-4 py-4 focus-visible:outline-offset-[-2px]"
+        className={cn(
+          "flex max-h-[min(65vh,40rem)] min-h-64 flex-col gap-4 overflow-y-auto overscroll-contain px-4 py-4 focus-visible:outline-offset-[-2px]",
+          fill && "xl:max-h-none xl:min-h-0 xl:flex-1",
+        )}
         data-testid="run-chat-messages"
       >
         {data.more ? <p className="text-center text-xs text-fg-subtle">{t("more")}</p> : null}
