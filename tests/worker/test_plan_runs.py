@@ -444,6 +444,76 @@ def test_default_branch_rules_of_gitops_push(machine):
     assert machine.origin_rev("alpha", "refs/heads/main") == git("rev-parse", "HEAD", cwd=machine.checkouts["alpha"])
 
 
+def move_origin(machine: Machine, name: str, file: str) -> str:
+    """A commit another member pushes to main of ``name``'s origin, which no checkout of the machine has fetched."""
+    other = machine.tmp / "other" / name
+    if not other.exists():
+        git("clone", "--quiet", str(machine.origins[name]), str(other))
+    git("pull", "--quiet", "--ff-only", cwd=other)
+    (other / file).write_text(f"{file}\n", encoding="utf-8")
+    git("add", file, cwd=other)
+    git("commit", "--quiet", "-m", f"another member adds {file}", cwd=other)
+    git("push", "--quiet", "origin", "main", cwd=other)
+    return git("rev-parse", "HEAD", cwd=other)
+
+
+def test_gitops_push_leaves_a_branch_the_remote_moved_past_alone(machine):
+    """A worktree that is only behind its branch on the remote has nothing to push, though this repository has not
+    fetched the remote's tip; a worktree with a commit of its own that the remote lacks is still refused."""
+    path = machine.checkouts["alpha"]
+    tip = move_origin(machine, "alpha", "theirs.txt")
+    lacks = subprocess.run(["git", "-C", str(path), "cat-file", "-e", f"{tip}^{{commit}}"], capture_output=True)
+    assert lacks.returncode != 0, "the checkout has not fetched the remote's tip"
+
+    async def go():
+        behind = await gitops.push(path, "main", protected=("main",), kind="plan", plan_branch="main")
+        assert not behind.changed and behind.commits == ()
+        assert behind.head == machine.seeds["alpha"], "the worktree's HEAD, which main on the remote has"
+        assert machine.origin_rev("alpha", "refs/heads/main") == tip, "main on the remote did not move"
+        (path / "mine.txt").write_text("mine\n", encoding="utf-8")
+        git("add", "mine.txt", cwd=path)
+        git("commit", "--quiet", "-m", "mine", cwd=path)
+        with pytest.raises(gitops.GitError) as diverged:
+            await gitops.push(path, "main", protected=("main",), kind="plan", plan_branch="main")
+        assert "git push failed" in str(diverged.value)
+
+    asyncio.run(go())
+    assert machine.origin_rev("alpha", "refs/heads/main") == tip, "a push that is no fast-forward is never forced"
+
+
+def test_a_plan_run_ends_done_when_a_default_branch_it_did_not_touch_moved_on_the_remote(machine):
+    """Run #16 of evo-agents: the plan names main of a repo the agent never committed to, another member pushes main
+    meanwhile, and the push at the end of the run finds nothing to send instead of failing the run."""
+    gate, go = machine.tmp / "gate", machine.tmp / "go"
+    machine.scenarios(
+        {
+            f"plan:{PLAN}": [
+                {"touch": str(gate)},
+                {"wait_for": str(go)},
+                {"write": {"beta/b.txt": "b\n"}},
+                {"result": {"summary": "Wrote b.txt; alpha untouched."}},
+            ]
+        }
+    )
+    found = {}
+
+    async def run_it(hub: FakeHub, daemon: Daemon):
+        run_id = hub.queue_plan_run(PLAN, run_repos(plan_body(alpha="main")))
+        await wait_for(gate.exists, "the agent to start")
+        found["tip"] = move_origin(machine, "alpha", "theirs.txt")
+        go.touch()
+        assert await hub.wait_state(run_id, "done", "failed") == "done", (hub.runs[run_id], hub.texts(run_id))
+        found.update(run=run_id, hub=hub)
+
+    with_daemon(machine, run_it, plan=plan_body(alpha="main"))
+    run_id, hub = found["run"], found["hub"]
+    assert machine.origin_rev("alpha", "refs/heads/main") == found["tip"], "main stays where the other member left it"
+    assert "b.txt" in machine.origin("beta", "ls-tree", "-r", "--name-only", "feat/beta").split()
+    assert not hub.notices, "nothing was pushed to a default branch"
+    seed = machine.seeds["alpha"][:12]
+    assert f"main of alpha on origin has {seed} already: nothing to push." in hub.texts(run_id)
+
+
 def test_a_decision_asked_then_answered_through_the_inbox_takes_the_run_from_waiting_to_running(machine):
     context = machine.tmp / "context.md"
     context.write_text("## Why\n\nStaging is shared with the other team.\n", encoding="utf-8")
