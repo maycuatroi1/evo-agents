@@ -76,6 +76,7 @@ DEFAULT_EXCLUDE = [
     ".venv/*",
     "*/.venv/*",
     "venv/*",
+    "*/venv/*",
     "__pycache__/*",
     "*/__pycache__/*",
     "*.min.js",
@@ -83,14 +84,21 @@ DEFAULT_EXCLUDE = [
     "package-lock.json",
     "*/package-lock.json",
     "yarn.lock",
+    "*/yarn.lock",
     "pnpm-lock.yaml",
     "*/pnpm-lock.yaml",
     "uv.lock",
+    "*/uv.lock",
     "poetry.lock",
+    "*/poetry.lock",
     ".claude/*",
+    "*/.claude/*",
     ".agents/*",
+    "*/.agents/*",
+    # Root only: a nested state/ is ordinary code, such as a front end's src/state/.
     "state/*",
     ".playwright-mcp/*",
+    "*/.playwright-mcp/*",
 ]
 
 
