@@ -83,9 +83,9 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends tmux
       - run: ruff check .
       - run: ruff format --check .
-      - run: pytest -q --ignore=tests/worker
+      - run: pytest -q -n 4 --ignore=tests/worker
       - name: The worker daemon against a hub (tests/worker)
-        run: pytest -q tests/worker
+        run: pytest -q -n 4 tests/worker
 
   # Service containers run on Linux only. macOS installs the core package without the hub-server and worker extras,
   # and with EVO_HUB_TEST_DSN unset the hub tests skip, and so do the worker tests that need a hub or the worker's SDKs.
