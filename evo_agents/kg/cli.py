@@ -34,6 +34,8 @@ def _print_runs(results) -> None:
             print("           review, then run: evo-agents kg sync --accept-removals --source " + r.source)
         for issue in r.issues[:8]:
             print(f"     {issue}")
+        for warning in r.warnings[:8]:
+            print(f"     warning: {warning}")
         if r.exception:
             print(f"     connector raised {r.exception}")
         for line in r.stderr_tail[-5:]:
