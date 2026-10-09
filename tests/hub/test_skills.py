@@ -269,7 +269,7 @@ def _with(pair: tuple) -> tuple:
         (tarball(skill="someone-else"), "names the skill 'someone-else', not 'evil'"),
         (tarball(entry("SKILL.md/x"), skill=None), "no SKILL.md"),
         (b"not gzip at all", "not a gzip-compressed tar"),
-        (gzip.compress(b"\x01" * 2048), "not a gzip-compressed tar"),
+        (gzip.compress(b"\x01" * 2048, mtime=0), "not a gzip-compressed tar"),
         (tarball(entry("x.md"))[:-40], "not a gzip-compressed tar"),
         (b"\0" * (MAX_BUNDLE + 1), "over 10 MiB"),
     ],

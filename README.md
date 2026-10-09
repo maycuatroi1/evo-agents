@@ -61,6 +61,10 @@ globs match) and records other files by path only. It skips the paths its `exclu
 default list: build output, lock files, virtualenvs and agent folders such as `.claude/` and `.agents/`.
 `allow:` takes globs that bring paths from that default list back, for example
 `allow: [".claude/CLAUDE.md"]`; `exclude:` still wins over `allow:`. Only the git connector reads `allow:`.
+`fetch: true` on a git source whose `ref:` is `origin/<branch>` fetches that branch from `origin` (with a
+timeout) before each run, so the graph follows the remote without anyone fetching the clone. A failed
+fetch keeps the run ok: it logs a warning and reads the ref as the clone has it. Without the key nothing
+is fetched.
 
 A markdown file whose frontmatter `id:` matches an identifier pattern is where that code is defined;
 a copy says `derived_from:` in its frontmatter, and `kg status` lists codes defined in more than one place.
@@ -121,8 +125,8 @@ Hooks:
   off.
 
 The plugin needs [uv](https://docs.astral.sh/uv/) on `PATH` and pins the release it runs: the server
-starts with `uvx --from evo-ak==0.8.0 evo-agents`, which downloads and caches that version on first start. The hooks
-run `uvx --offline --from evo-ak==0.8.0 evo-agents`, so they never wait on the network; they stay silent when `uvx`
+starts with `uvx --from evo-ak==0.8.1 evo-agents`, which downloads and caches that version on first start. The hooks
+run `uvx --offline --from evo-ak==0.8.1 evo-agents`, so they never wait on the network; they stay silent when `uvx`
 is missing or until the server has cached the package.
 
 ### The team hub
