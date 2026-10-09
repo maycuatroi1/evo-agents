@@ -2064,10 +2064,12 @@
       "title": "Run",
       "untitled": "Bước chưa có tên",
       "sub": "Plan <planLink>{plan}</planLink>, <stepLink>bước {step}: {title}</stepLink>",
-      "planSub": "Plan <planLink>{plan}</planLink>: {title}. Mọi bước chưa xong, trong một phiên.",
+      "planSub": "Plan <planLink>{plan}</planLink>",
+      "planSubTitled": "Plan <planLink>{plan}</planLink>: {title}",
       "notFoundTitle": "Không tìm thấy run #{id}",
       "notFoundDescription": "Run này không có trong dự án, hoặc thuộc một plan bạn không được đọc.",
       "aside": "Thông tin run #{id}",
+      "newTab": "{label} (mở trong tab mới)",
       "timeline": {
         "section": "Dòng thời gian của run",
         "label": "Các pha của run #{id}",
@@ -2173,18 +2175,15 @@
         "tiny": "dưới 0,1",
         "bar": "Đọc cache {cacheRead} phần trăm, input {input}, output {output}, suy luận {reasoning}",
         "cacheWrite": "Ghi cache {count}.",
-        "costNote": "Chi phí đúng như runtime báo.",
-        "noCostNote": "Runtime không báo chi phí.",
-        "none": "Hiện khi agent xong lượt đầu tiên và runtime báo mức đã dùng.",
-        "noneEnded": "Runtime không báo mức dùng của run này."
+        "noneYet": "Chưa có số liệu",
+        "noneEnded": "Runtime không báo số liệu"
       },
       "planSteps": {
         "title": "Các bước của plan",
         "count": "Xong {done}/{total} ({percent}%)",
         "failed": "Không tải được plan.",
         "none": "Plan không có bước nào.",
-        "untitled": "Bước chưa có tên",
-        "hint": "Theo plan hub đang giữ lúc này; run ghi từng bước khi làm."
+        "untitled": "Bước chưa có tên"
       },
       "decision": {
         "waiting": "Đang chờ{since, select, none {} other { từ {since}}} {login} trả lời một quyết định.",
@@ -2319,7 +2318,6 @@
         "placeholder": "Nhắn cho agent. Agent đọc tin nhắn ở lượt kế tiếp.",
         "send": "Gửi",
         "sending": "Đang gửi…",
-        "hint": "Chỉ bạn thấy ô này vì bạn đã dispatch run.",
         "sent": "Đã gửi. Tin nhắn nằm trong inbox của run chờ lượt kế tiếp của agent.",
         "blank": "Hãy gõ tin nhắn trước.",
         "long": "Một tin nhắn tối đa {max} byte UTF-8. Hãy rút ngắn lại.",
@@ -2351,7 +2349,6 @@
         "lease": "Lease",
         "leaseLeft": "hết hạn sau {minutes} phút {seconds} giây",
         "leaseExpired": "đã hết hạn; hub xếp lại hoặc kết thúc run trong vòng một phút",
-        "leaseNone": "chưa có cho tới khi worker nhận run",
         "leaseReleased": "đã trả",
         "attempt": "Lần chạy",
         "attemptValue": "{attempt} trên {max}",
@@ -2380,14 +2377,14 @@
       },
       "result": {
         "title": "Kết quả",
-        "pending": "Hiện khi agent làm xong và worker đã chạy lại các lệnh verify.",
-        "empty": "Run kết thúc mà không có kết quả.",
+        "noneYet": "Chưa có",
+        "empty": "Không có",
         "verify": "Verify",
         "exit": "mã thoát {code}",
         "exitUnknown": "không rõ mã thoát",
         "seconds": "{seconds} giây",
         "commit": "Commit",
-        "onBranch": "trên {branch}",
+        "onBranch": "trên <link>{branch}</link>",
         "changes": "Thay đổi",
         "diffstat": "{files, plural, other {# file}}, +{insertions} -{deletions}",
         "viewDiff": "Xem diff",
@@ -2396,10 +2393,9 @@
       },
       "credentials": {
         "title": "Credential",
-        "description": "Những gì run nhận từ hub, không bao giờ có value. Chỉ bạn thấy mục này.",
         "loading": "Đang tải credential",
         "failed": "Không đọc được credential của run này.",
-        "emptyActive": "Chưa có: worker xin chúng ngay sau khi nhận run.",
+        "emptyActive": "Chưa có.",
         "empty": "Run này không nhận credential nào từ hub.",
         "provider": {
           "secret": "Secret của bạn",
@@ -2418,7 +2414,7 @@
         "noEnd": "không hết hạn",
         "revoked": "Thu hồi",
         "notRevoked": "chưa",
-        "manage": "Secret của bạn nằm ở trang <link>Secret</link>."
+        "secrets": "Secret"
       },
       "actions": {
         "diff": "Xem diff",
