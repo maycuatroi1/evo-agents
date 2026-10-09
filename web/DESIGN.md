@@ -200,6 +200,8 @@ states and the phone top bar. Icons sit before their label and inherit its colou
 | --- | --- |
 | Dispatch | `Send` |
 | Run plan | `Play` |
+| New plan; Revise with agent, an author run | `FilePlus`; `FilePen` |
+| The chat of an author run | `MessageCircle` |
 | Rerun | `RotateCcw` |
 | Take over, terminal | `Terminal` |
 | Diff | `FileDiff` |
@@ -616,6 +618,32 @@ Shared pieces built on them:
   plan run holds a plan, Run this step on its steps is locked and names the run. A plan run's page is titled Plan run,
   carries a Plan run badge, lists the plan's steps with their status (the one in progress `aria-current="step"`), its
   repos and branches, its model and the agent time used, and the open decisions it waits on (below); it offers no Rerun.
+- `components/runs`, author runs (`author-run.tsx`, `author-run-dialog.tsx`, `run-chat.tsx`; docs/workers.md, Author
+  runs): New plan sits in the head of a project's Plans page (the primary button there, and in the empty state, where
+  the head's turns `outline`), Revise with agent (`outline`) beside Run plan in a plan's head, both only for a writer,
+  and the command palette offers New plan for each project the visitor writes in and Revise with agent for an active
+  plan once something is typed. Both open one dialog, Run plan's in shape: the request as a 16 px textarea on phones
+  (several lines, at most 16 KiB of UTF-8, its byte count shown from 75 % of that), the runtime said rather than offered
+  (Claude Code, the one an author run takes), the model field, the worker as a select of the visitor's own (an author
+  run is always pinned; the one with a checkout of the project's harness and a free slot is picked first, one that
+  cannot take it now says so), and 1, 2 or 4 hours; the footer is the Outlook for the worker picked, a project
+  registered without its harness says why in an `attention` box, and the hub's refusal stays in the dialog. The toast
+  links to the run's chat. An author run's page carries the Author run tag (`FilePen`), says under its title whether it
+  writes a new plan or which plan it revises, and opens on a Chat tab, first in the session card (`?tab=chat` is where
+  the notice author_waiting links): a head with whose turn it is as a pill (Agent is working with the live dot in
+  `running`, Waiting for you in `attention`, Chat ended neutral), the plan and revision it wrote as a `brand` link, End
+  chat (`outline`, confirmed in `ConfirmAction`) for the owner, and the run the chat goes on in once a parked run was
+  resumed; then a `role="log"` region (polite) with the request, the agent's messages (a 28 px round `running` mark,
+  SafeMarkdown on `card`) and the owner's (a neutral mark, plain text on `surface-selected` inside a `brand/20` edge,
+  aligned to the end), each with its author and time, the agent's last one tagged Waiting for a reply while it waits;
+  the typing dots while the agent works; then the owner's reply, the kit's Composer, which posts to the run that takes
+  the chat's next message. Anyone else reads, told who replies. The chat is read every 3 seconds until it ended and on
+  each event of the run's stream; loading is a skeleton in `role="status"`, an empty chat says what it waits for, a
+  failed first read is an alert with Try again, and a read that fails later keeps the chat on screen under a
+  `danger-soft` line saying when it was read. The general composer is left out (the replies live in the chat) and an
+  author run offers no Rerun. Home's Waiting for your reply (`home/author-waiting.tsx`, after Needs you) lists the
+  visitor's author runs whose chat waits for them (`author_waiting` of the overview), the agent's last message as the
+  row's link and Reply (`outline`) to the chat.
 - `components/inbox`, notifications and decisions (docs/notifications.md): a bell in the top bar (`inbox-bell.tsx`) links
   to the Inbox with the number of unread notifications (99+ past 99) in an `attention` pill raised beside the glyph, never
   over it, read from `GET /v1/me/notifications/count` every 10 seconds; its accessible name says that number and the decisions waiting for the visitor's answer, and a polite live

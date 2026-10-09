@@ -82,7 +82,7 @@ test("Dispatch a step and Run plan open the dialogs of the project", async ({ pa
   // Actions come first; Dispatch a step opens the dispatch dialog with the plan's ready steps.
   let palette = await openWithKeyboard(page);
   const actions = palette.getByTestId("palette-group-actions");
-  await expect(actions.getByRole("option")).toHaveText([/^Run plan Worker fleet rollout/, /^Dispatch a step/, /^Register worker/]);
+  await expect(actions.getByRole("option")).toHaveText([/^Run plan Worker fleet rollout/, /^Dispatch a step/, /^New plan/, /^Register worker/]);
   await expect(option(palette, `action:plan-run:${project}:${RUN_PLAN}`)).toContainText("4 steps left");
   await page.keyboard.type("dispatch");
   await expect(actions.getByRole("option")).toHaveText([/^Dispatch a step/]);

@@ -159,7 +159,7 @@ describe("AuthorRunDialog", () => {
     const dispatched = vi.fn();
     api.answer = answer(() => json({ error: "conflict", message: "worker lab-ws-01 runs no author run: upgrade its daemon" }, 409));
     renderVi(<Harness planId="rollout" onDispatched={dispatched} />);
-    const dialog = screen.getByRole("dialog", { name: "Sửa cùng agent" });
+    const dialog = screen.getByRole("dialog", { name: "Nhờ agent sửa plan" });
     await waitFor(() => expect(within(dialog).getByText("Worker fleet rollout")).toBeInTheDocument());
     await user.type(within(dialog).getByTestId("author-run-request"), "Split step 4.");
     await waitFor(() => expect(within(dialog).getByTestId("author-run-submit")).toBeEnabled());
