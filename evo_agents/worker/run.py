@@ -146,7 +146,7 @@ from typing import TYPE_CHECKING
 
 import yaml
 
-from evo_agents.hub import author, curator, judge, runs, skill_sync, skills, tiers
+from evo_agents.hub import author, curator, judge, runs, skill_sync, skills
 from evo_agents.hub.client import HubError
 from evo_agents.hub.credentials import normalize_origin
 from evo_agents.worker import credentials, figures, gitops, interactive, orphans, preflight, untrusted
@@ -163,12 +163,35 @@ from evo_agents.worker.runner.common import (
     Stopped,
     cut,
     first_of,
-    json_size,
     now,
     push_cause,
     wait_or,
 )
 from evo_agents.worker.runner.sender import Sender
+from evo_agents.worker.runner.transitions import (
+    MAX_ERROR_CHARS,
+    MAX_SUMMARY_CHARS,
+    answer_note,
+    bare_report,
+    cap_passed,
+    end_fields,
+    failure_ending,
+    final_state,
+    handed,
+    protected_hit,
+    report_body,
+    result_commands,
+    run_record,
+    running_from,
+    start_refs,
+    stop_ending,
+    summary_of,
+    unread,
+    verify_failure,
+    waits_for_owner,
+    why_stopped,
+    working_branch,
+)
 from evo_agents.worker.spool import Spool, encode_event
 
 if TYPE_CHECKING:
@@ -180,11 +203,6 @@ API_KEY = "ANTHROPIC_API_KEY"  # left out of the agent of a run of the Curator o
 RUN_BRANCH = "evo-run/{id}"
 RUN_REPO_BRANCH = "evo-run/{id}/{folder}"  # a plan run's worktree of a repo whose branch is checked out elsewhere
 RESULT_MAX_BYTES = 1024 * 1024
-MAX_VERIFY = 50
-MAX_COMMAND_CHARS = 2000
-MAX_ERROR_CHARS = 2000
-MAX_SUMMARY_CHARS = 8000
-MAX_USAGE_BYTES = 64 * 1024
 OUTPUT_TAIL = 8 * 1024  # bytes of a verify command's output kept in its event
 NOTE_GROUP_LOOKS = 20  # events after its start at which an adapter is asked again for its agent's process group
 MAX_LEFT_OUT_NAMED = 20  # files a note of what a commit left out names in its text
@@ -194,7 +212,6 @@ DIFF_LIMIT = 8 * 1024 * 1024  # the run-diff blob
 STOP_GRACE = 30.0  # seconds an interrupted agent has to end its events
 TERMINAL_POLL = 1.0  # seconds between looks at the tmux session while a person drives the agent
 TERMINAL_LOG_GRACE = 5.0  # seconds the log of the terminal has, once its session is closed, to read the last records
-CAP_CAUSES = {"cost": "cost_cap", "turns": "turn_cap", "time": "time_cap"}  # the failure_cause of a cap that stopped it
 # What the agent is told when a person hands its session back.
 HANDBACK_PROMPT = (
     "The owner of this run drove this session in a terminal and has handed it back to you. Go on with the task of "
@@ -283,21 +300,7 @@ class Run:
         self.spool = Spool(home.spool_dir, self.id, daemon.budget)
         self.sender = Sender(daemon, self.spool)
         self.credentials = RunCredentials(self.id, home, daemon.env, self.note, guarded=self.curator is not None)
-        self.record = {
-            "id": self.id,
-            "kind": spec.get("kind") or "step",
-            "project": self.project,
-            "plan_id": spec.get("plan_id"),
-            "step_key": spec.get("step_key"),
-            "repo": self.repo,
-            "branch": self.branch,
-            "runtime": self.runtime,
-            "claimed_at": now().isoformat(),
-            "finished_at": None,
-            "state": self.state,
-        }
-        if self.curator is not None:  # what `evo-agents worker step` pushes with: a branch of the Curator alone
-            self.record["curator"] = {key: self.curator.get(key) for key in ("role", "branch", "forge", "change_id")}
+        self.record = run_record(spec, now().isoformat(), self.curator)
         home.save_run(self.record)
 
     # Events
@@ -478,12 +481,8 @@ class Run:
 
     def _handed(self, messages: list[dict]) -> None:
         """Note that these messages of the inbox went to the agent: the decisions they answer are answered."""
-        for message in messages:
-            message_id, decision_id = message.get("id"), message.get("decision_id")
-            if isinstance(message_id, int):
-                self._delivered_upto = max(self._delivered_upto, message_id)
-            if isinstance(decision_id, int):
-                self.answered.add(decision_id)
+        self._delivered_upto, answers = handed(messages, self._delivered_upto)
+        self.answered |= answers
         self.record["answered"] = sorted(self.answered)
 
     async def _ack_inbox(self, ack: int) -> None:
@@ -504,10 +503,7 @@ class Run:
     async def _report(self, state: str, *, only_from: tuple[str, ...] | None = None, **fields) -> dict:
         """Report a move, sending it again until the hub answers. ``only_from``: send it only while the run is in one
         of these states, which a report queued behind another may no longer be."""
-        body = {"state": state}
-        for key, value in fields.items():
-            if value is not None:
-                body[key] = value
+        body = report_body(state, fields)
         async with self._report_lock:
             if only_from is not None and self.state not in only_from:
                 return {}
@@ -536,7 +532,7 @@ class Run:
                             "report refused; sending it without its details",
                             extra={"run_id": self.id, "error": str(exc)},
                         )
-                        body = {key: body[key] for key in ("state", "error") if key in body}
+                        body = bare_report(body)
                         stripped = True
                         continue
                     raise ReportRefused(f"the hub refused the report of {state}: {exc}", exc.status) from None
@@ -562,12 +558,7 @@ class Run:
         """Send every event, then the report that ends the run."""
         if not await self.sender.drained():
             log.warning("ending the run with events unsent", extra={"run_id": self.id, "why": self.sender.gave_up})
-        if fields.get("error"):
-            fields["error"] = cut(str(fields["error"]), MAX_ERROR_CHARS)
-        if fields.get("usage") is not None and json_size(fields["usage"]) > MAX_USAGE_BYTES:
-            fields["usage"] = None
-        if self.adapter is not None and fields.get("session_id") is None:
-            fields["session_id"] = self.adapter.session_id
+        fields = end_fields(fields, self.adapter.session_id if self.adapter is not None else None)
         await self._report(state, **fields)
         self.ended = True
         log.info("run ended", extra={"run_id": self.id, "state": state, "error": fields.get("error")})
@@ -624,38 +615,25 @@ class Run:
         try:
             await self._steps()
         except RunFailed as exc:
-            cap = exc.fields.get("cap")
-            cause = exc.fields.get("cause") or CAP_CAUSES.get(cap)
-            self.note(f"Run failed: {exc.error}", **({"cap": cap} if cap else {}))
-            await self._end(
-                "failed",
-                error=exc.error,
-                verify=exc.fields.get("verify"),
-                usage=exc.fields.get("usage"),
-                failure_cause=cause,
-            )
+            ending = failure_ending(exc)
+            self.note(ending.note, **ending.extra)
+            await self._end(ending.state, **ending.fields)
         except Stopped as exc:
             await self._stopped(exc.reason)
 
     async def _stopped(self, reason: str) -> None:
         await self._interrupt_agent()
-        if reason == "gone":
-            return
-        if reason == "cancel":
-            self.note("Cancelled by the owner.")
-            await self._end("cancelled")
-        elif reason == "timeout":
-            error = f"it ran past its timeout of {self.timeout_s // 60} minutes"
-            self.note(f"Run failed: {error}.")
-            await self._end("failed", error=error, verify=self.verify or None, failure_cause="timeout")
-        elif reason == "watchdog":
-            error = f"the watchdog of the Curator's runs stopped it: {self.watchdog_reason}"
-            self.note(f"Run failed: {error}.", watchdog=self.watchdog_reason)
-            await self._end("failed", error=error)
-        else:
-            error = f"the worker {self.daemon.config.name} was stopped while the run was {self.state}"
-            self.note(f"Run failed: {error}.")
-            await self._end("failed", error=error, failure_cause="worker_stopped")
+        ending = stop_ending(
+            reason,
+            timeout_s=self.timeout_s,
+            state=self.state,
+            worker=self.daemon.config.name,
+            watchdog=self.watchdog_reason,
+            verify=self.verify,
+        )
+        if ending is not None:
+            self.note(ending.note, **ending.extra)
+            await self._end(ending.state, **ending.fields)
 
     async def _steps(self) -> None:
         spec = self.spec
@@ -691,20 +669,14 @@ class Run:
         await self._report("verifying")
         self._check()
         self.verify = await self._run_verify(commands)
-        bad = next((item for item in self.verify if item["exit_code"] != 0), None)
-        if bad is not None:
-            raise RunFailed(
-                f"verify command `{cut(bad['command'], 200)}` exited {bad['exit_code']}; nothing was pushed, the "
-                f"work stays in {self.worktree}",
-                verify=self.verify,
-                usage=self.outcome.usage if self.outcome else None,
-                cause="missing_tool" if bad["exit_code"] == 127 else "verify_failed",
-            )
+        failure = verify_failure(self.verify, self.worktree)
+        if failure is not None:
+            error, cause = failure
+            raise RunFailed(error, verify=self.verify, usage=self.outcome.usage if self.outcome else None, cause=cause)
         self._check()
         commit_sha, diffstat = await self._commit_and_push()
-        final = "done" if self.approval == "auto" else "review"
         await self._end(
-            final,
+            final_state(self.approval),
             commit_sha=commit_sha,
             diffstat=diffstat,
             verify=self.verify,
@@ -731,7 +703,7 @@ class Run:
                     "give the repo a branch of its own in the plan"
                 )
             start = None
-            for ref in (f"refs/remotes/origin/{branch}", f"refs/heads/{branch}", "refs/remotes/origin/HEAD", "HEAD"):
+            for ref in start_refs(branch):
                 base = await gitops.rev(checkout, ref)
                 if base is not None:
                     start = ref
@@ -743,11 +715,9 @@ class Run:
                 raise RunFailed(f"{path} exists already; remove it and run the step again")
             in_use = await gitops.branches_in_worktrees(checkout)
             local = await gitops.rev(checkout, f"refs/heads/{branch}")
-            if branch not in in_use and (local is None or await gitops.is_ancestor(checkout, local, base)):
-                local_branch = branch
-            else:
-                local_branch = RUN_BRANCH.format(id=self.id)
-                why = "is checked out in another worktree" if branch in in_use else "has commits here that it lacks"
+            fits = branch not in in_use and (local is None or await gitops.is_ancestor(checkout, local, base))
+            local_branch, why = working_branch(branch, fits, in_use, RUN_BRANCH.format(id=self.id))
+            if why is not None:
                 self.note(f"{branch} {why}; the run works on {local_branch} and pushes it to {branch}.")
             try:
                 await gitops.add_worktree(checkout, path, local_branch, base, reset=True)
@@ -1006,7 +976,7 @@ class Run:
         else:
             self.note(f"{self.runtime} started in {self.worktree}.")
         self._note_environment(cls, context)
-        self._spawn(self._report_running((self.state,) if self.state in ("interactive", "waiting") else ("leased",)))
+        self._spawn(self._report_running(running_from(self.state)))
         if self.takeover_asked or self._park_requested():  # asked while the agent was starting
             self._spawn(self._stop_at_boundary(adapter))
         try:
@@ -1192,7 +1162,7 @@ class Run:
         if pump_task not in done:
             if self.stop_reason is None:
                 self.stop_reason = "timeout"
-            self.note(f"Stopping the agent: {self._why(self.stop_reason)}.")
+            self.note(f"Stopping the agent: {why_stopped(self.stop_reason)}.")
             await self._interrupt_agent()
             with contextlib.suppress(asyncio.TimeoutError):
                 await asyncio.wait_for(asyncio.shield(pump_task), STOP_GRACE)
@@ -1207,16 +1177,6 @@ class Run:
             return Outcome(False, f"{self.runtime} did not end within {STOP_GRACE:g}s of being stopped")
         except Exception as exc:
             return Outcome(False, f"{self.runtime} failed: {type(exc).__name__}: {exc}")
-
-    @staticmethod
-    def _why(reason: str) -> str:
-        return {
-            "cancel": "the owner cancelled the run",
-            "timeout": "the run reached its timeout",
-            "gone": "the hub no longer holds the run for this worker",
-            "shutdown": "the worker is stopping",
-            "watchdog": "the watchdog of the Curator's runs stopped it",
-        }.get(reason, reason)
 
     # The watchdog of a run of the Curator
 
@@ -1242,15 +1202,11 @@ class Run:
             except gitops.GitError as exc:
                 log.warning("the watchdog could not read a worktree", extra={"run_id": self.id, "error": str(exc)})
                 continue
-            hit = next(((path, glob) for path in paths for glob in protected if tiers.matches(glob, repo, path)), None)
-            if hit is not None:
-                why = f"{repo}:{hit[0]} is protected by the charter ({hit[1]})"
+            why = protected_hit(repo, paths, protected)
+            if why is not None:
                 break
-        cap_seconds, cap_usd = self.budget.get("max_seconds"), self.budget.get("max_usd")
-        if why is None and cap_seconds is not None and self.spent_before + self.agent_seconds() > cap_seconds:
-            why = f"the run used more than its time cap of {int(cap_seconds) // 60} minutes of agent time"
-        if why is None and cap_usd is not None and max(self.cost_seen, self.spent_usd) > cap_usd:
-            why = f"the run cost more than its cost cap of {curator.money(cap_usd)}"
+        if why is None:
+            why = cap_passed(self.budget, self.spent_before + self.agent_seconds(), max(self.cost_seen, self.spent_usd))
         if why is None or self.ended or self.stop_reason is not None:
             return None
         self.watchdog_reason = why
@@ -1278,19 +1234,8 @@ class Run:
             data = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError) as exc:
             raise RunFailed(f"{runs.RESULT_FILE} is not JSON: {exc}") from None
-        commands = data.get("verify_commands") if isinstance(data, dict) else None
-        if not isinstance(commands, list) or not commands:
-            raise RunFailed(f"{runs.RESULT_FILE} lists no verify_commands, so the worker cannot check the step")
-        if len(commands) > MAX_VERIFY:
-            raise RunFailed(f"{runs.RESULT_FILE} lists {len(commands)} verify commands; at most {MAX_VERIFY} are run")
-        for command in commands:
-            if not isinstance(command, str) or not command.strip() or len(command) > MAX_COMMAND_CHARS:
-                raise RunFailed(
-                    f"each verify command in {runs.RESULT_FILE} is a shell command of 1 to {MAX_COMMAND_CHARS} "
-                    "characters"
-                )
-        summary = data.get("summary")
-        self.summary = cut(summary.strip(), MAX_SUMMARY_CHARS) if isinstance(summary, str) and summary.strip() else None
+        commands = result_commands(data)
+        self.summary = summary_of(data)
         return commands
 
     async def _run_verify(self, commands: list[str]) -> list[dict]:
@@ -1643,7 +1588,7 @@ class PlanRun(Run):
                 self.targets[name] = remote_head or hub_default or "main"
                 self.record.setdefault("curator", {})["targets"] = dict(self.targets)
             start = base = None
-            for ref in (f"refs/remotes/origin/{branch}", f"refs/heads/{branch}", "refs/remotes/origin/HEAD", "HEAD"):
+            for ref in start_refs(branch):
                 base = await gitops.rev(checkout, ref)
                 if base is not None:
                     start = ref
@@ -1654,11 +1599,9 @@ class PlanRun(Run):
                 raise RunFailed(f"{path} exists already; remove it and run the plan again")
             in_use = await gitops.branches_in_worktrees(checkout)
             local = await gitops.rev(checkout, f"refs/heads/{branch}")
-            if branch not in in_use and (local is None or await gitops.is_ancestor(checkout, local, base)):
-                local_branch = branch
-            else:
-                local_branch = RUN_REPO_BRANCH.format(id=self.id, folder=folder)
-                why = "is checked out in another worktree" if branch in in_use else "has commits here that it lacks"
+            fits = branch not in in_use and (local is None or await gitops.is_ancestor(checkout, local, base))
+            local_branch, why = working_branch(branch, fits, in_use, RUN_REPO_BRANCH.format(id=self.id, folder=folder))
+            if why is not None:
                 self.note(f"{branch} of {name} {why}; the run works on {local_branch} and pushes it to {branch}.")
             try:
                 await gitops.add_worktree(checkout, path, local_branch, base, reset=True)
@@ -1795,11 +1738,7 @@ class PlanRun(Run):
         except HubProblem as exc:
             log.warning("the inbox was not read", extra={"run_id": self.id, "error": str(exc)})
             return []
-        return [
-            message
-            for message in messages
-            if isinstance(message, dict) and isinstance(message.get("id"), int) and message["id"] > self._delivered_upto
-        ]
+        return unread(messages, self._delivered_upto)
 
     def _take(self, messages: list[dict]) -> str:
         """The text of these messages for the agent's next prompt; they are acknowledged once it starts."""
@@ -1826,7 +1765,7 @@ class PlanRun(Run):
             self.note(f"{len(unread)} message(s) of the owner came while the agent worked: a new turn takes them.")
             return unread
         asked = self.open_asked()
-        if not asked and self.open_decisions <= 0:
+        if not waits_for_owner(asked, self.open_decisions):
             return []
         await self._ensure_running()
         try:
@@ -1862,9 +1801,7 @@ class PlanRun(Run):
                 self.inbox_arrived.clear()
                 messages = await self._unread()
                 if messages:
-                    answers = sorted(m["decision_id"] for m in messages if isinstance(m.get("decision_id"), int))
-                    which = f" answering decision {', '.join(f'#{item}' for item in answers)}" if answers else ""
-                    self.note(f"The owner wrote{which}: the agent goes on in session {self.session_id or '(new)'}.")
+                    self.note(answer_note(messages, self.session_id))
                     return messages
                 await first_of(
                     (self.inbox_arrived, self._stop, self.park_asked, self.finish_asked), self.daemon.heartbeat_s
@@ -1901,8 +1838,7 @@ class PlanRun(Run):
         except (OSError, ValueError) as exc:
             self.note(f"{runs.RESULT_FILE} was not read ({exc}): the run ends without its summary.")
             return None
-        summary = data.get("summary") if isinstance(data, dict) else None
-        return cut(summary.strip(), MAX_SUMMARY_CHARS) if isinstance(summary, str) and summary.strip() else None
+        return summary_of(data)
 
     async def _named_branches(self) -> dict[str, str | None]:
         """repo -> the branch the plan names for it as the hub holds it now, so a default branch is pushed only while
