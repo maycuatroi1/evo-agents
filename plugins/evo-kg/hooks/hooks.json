@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "command -v uvx >/dev/null 2>&1 && uvx --offline --from evo-ak==0.10.0 evo-agents kg hook session-start || true",
+            "command": "command -v uvx >/dev/null 2>&1 && uvx --offline --from evo-ak==0.11.0 evo-agents kg hook session-start || true",
             "timeout": 10
           }
         ]
@@ -18,7 +18,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "command -v uvx >/dev/null 2>&1 && uvx --offline --from evo-ak==0.10.0 evo-agents kg hook post-tool || true",
+            "command": "command -v uvx >/dev/null 2>&1 && uvx --offline --from evo-ak==0.11.0 evo-agents kg hook post-tool || true",
             "timeout": 10
           }
         ]
@@ -30,7 +30,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "command -v uvx >/dev/null 2>&1 && uvx --offline --from evo-ak==0.10.0 evo-agents kg hook pre-search || true",
+            "command": "command -v uvx >/dev/null 2>&1 && uvx --offline --from evo-ak==0.11.0 evo-agents kg hook pre-search || true",
             "timeout": 5
           }
         ]
@@ -41,13 +41,13 @@
           {
             "type": "command",
             "if": "Bash(rg *)",
-            "command": "command -v uvx >/dev/null 2>&1 && uvx --offline --from evo-ak==0.10.0 evo-agents kg hook pre-search --only rg || true",
+            "command": "command -v uvx >/dev/null 2>&1 && uvx --offline --from evo-ak==0.11.0 evo-agents kg hook pre-search --only rg || true",
             "timeout": 5
           },
           {
             "type": "command",
             "if": "Bash(grep *)",
-            "command": "command -v uvx >/dev/null 2>&1 && uvx --offline --from evo-ak==0.10.0 evo-agents kg hook pre-search --only grep || true",
+            "command": "command -v uvx >/dev/null 2>&1 && uvx --offline --from evo-ak==0.11.0 evo-agents kg hook pre-search --only grep || true",
             "timeout": 5
           }
         ]
