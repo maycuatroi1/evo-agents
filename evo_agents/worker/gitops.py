@@ -19,9 +19,15 @@ sends the push options it is given (``--push-option``), with which a push to Git
 
 A commit of a run (``commit_run``) holds only the run's own work. It leaves out, at any depth, the paths under
 RUN_COMMIT_EXCLUDES (what hooks of the owner's runtime write in a session's directory, such as the learned skills of
-``.claude/skills/.learned/``, and the worker's own ``.evo-run/``), and every copy of a hub plan as the hub wrote it
-(``evo_agents.hub.mirror.hub_copy``): an export wrote it, not the agent, while a copy the agent edited stays in. Those
-paths are put back in the index as HEAD has them, whoever staged them, and named in the answer.
+``.claude/skills/.learned/`` and the CLI suggestions of ``.claude/cli-suggestions/_pending/``, and the worker's own
+``.evo-run/``), and every copy of a hub plan as the hub wrote it (``evo_agents.hub.mirror.hub_copy``): an export wrote
+it, not the agent, while a copy the agent edited stays in. Those paths are put back in the index as HEAD has them,
+whoever staged them, and named in the answer.
+
+``changed_paths``, what the watchdog of a run of the Curator compares with the charter's protected paths, leaves out
+the same paths while they are not committed: no commit of the run holds them, so a hook that writes there in the
+middle of a run (a Stop hook fires at each ``result``, and a run with a command in the background has several) does
+not stop it. A commit that holds one, which only the agent's own ``git commit`` makes, still counts.
 """
 
 from __future__ import annotations
@@ -41,9 +47,15 @@ NETWORK_TIMEOUT = 600.0  # fetch and push
 MAX_MESSAGE = 2000
 PROTECTED = ("main", "master")  # never pushed, whatever the remote's default branch is
 EXCLUDE_RESULT = f":(exclude){RESULT_DIR}"  # the agent's result file stays out of every commit
-# Directories no commit of a run holds, at any depth: learned skills a Stop hook of the owner's Claude Code writes in
-# the session's directory, and the worker's own files beside the agent's work.
-RUN_COMMIT_EXCLUDES = (".claude/skills/.learned/", f"{RESULT_DIR}/")
+# Directories no commit of a run holds, at any depth: learned skills and CLI suggestions a Stop hook of the owner's
+# Claude Code writes in the session's directory (continuous-learning, under .claude/; a copy of the learned skills
+# under .agents/ was found beside them in worktrees of a worker), and the worker's own files beside the agent's work.
+RUN_COMMIT_EXCLUDES = (
+    ".claude/skills/.learned/",
+    ".claude/cli-suggestions/_pending/",
+    ".agents/skills/.learned/",
+    f"{RESULT_DIR}/",
+)
 PATHS_PER_CALL = 200  # paths in one `git reset`, well within any argv limit
 # What git prints when the remote did not take its credential, or it had none to send (GitHub, GitLab, any http).
 AUTH_FAILURE = re.compile(
@@ -503,12 +515,13 @@ def push_notice(run_id: int, repo: str, pushed: Pushed) -> dict:
 
 async def changed_paths(cwd: Path, base: str) -> list[str]:
     """Every path the work tree at ``cwd`` changed since ``base``: committed, staged, changed and untracked, both
-    sides of a rename, the result directory left out; sorted."""
+    sides of a rename, the result directory left out, and a path under RUN_COMMIT_EXCLUDES too unless a commit since
+    ``base`` holds it (see the module's docstring); sorted."""
     _, committed, _ = await git(cwd, "diff", "--name-only", "--no-renames", "-z", base, "HEAD", check=False)
     _, status, _ = await git(cwd, "status", "--porcelain=v1", "-z", "--untracked-files=all", "--no-renames")
     found = {path for path in committed.split("\0") if path}
     for entry in status.split("\0"):
-        if len(entry) > 3:
+        if len(entry) > 3 and not excluded(entry[3:]):
             found.add(entry[3:])
     return sorted(path for path in found if not path.startswith(f"{RESULT_DIR}/"))
 

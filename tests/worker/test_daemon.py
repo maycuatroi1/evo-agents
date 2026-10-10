@@ -752,6 +752,7 @@ def test_hook_files_and_untouched_plan_copies_stay_out_of_the_runs_commit(make_s
     assert edited != copy
     learned = ".claude/skills/.learned/auto-skill/SKILL.md"
     nested = "docs/.claude/skills/.learned/nested.md"
+    suggestion = ".claude/cli-suggestions/_pending/test-db-setup.md"
     stack.scenarios(
         {
             "2": [
@@ -760,6 +761,7 @@ def test_hook_files_and_untouched_plan_copies_stay_out_of_the_runs_commit(make_s
                         "feature.txt": "hello\n",
                         learned: "---\nname: auto-skill\n---\nlearned in the session\n",
                         nested: "learned below the root\n",
+                        suggestion: "a CLI suggestion of the session\n",
                         f"plans/active/{PLAN}.yaml": copy,
                         "plans/active/edited.yaml": edited,
                     }
@@ -782,10 +784,10 @@ def test_hook_files_and_untouched_plan_copies_stay_out_of_the_runs_commit(make_s
         event["body"] for event in stack.events(run_id) if event["kind"] == "system" and "left_out" in event["body"]
     ]
     assert len(notes) == 1, notes
-    assert notes[0]["left_out"] == sorted([learned, nested, f"plans/active/{PLAN}.yaml"])
+    assert notes[0]["left_out"] == sorted([learned, nested, suggestion, f"plans/active/{PLAN}.yaml"])
     assert notes[0]["text"].startswith("Left out of the commit, as what a hook or a plan export wrote")
     status = git("status", "--porcelain", "--untracked-files=all", cwd=stack.worktree(run_id)).splitlines()
-    untracked = (learned, nested, f"plans/active/{PLAN}.yaml", ".evo-run/result.json")
+    untracked = (learned, nested, suggestion, f"plans/active/{PLAN}.yaml", ".evo-run/result.json")
     assert sorted(status) == sorted(f"?? {path}" for path in untracked), "what was left out stays, untracked"
     finished_cleanly(stack, proc)
 
