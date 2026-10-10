@@ -71,7 +71,10 @@ names its schedule and night and carries its caps (`budget`, see [Runs of the ni
   agent can read and change anything its owner can, and it runs on the owner's runtime accounts and quotas. In a run
   of one step the daemon refuses to push the default branch or a detached HEAD and never merges. In a plan run the
   agent may push, and merge into, the branch the plan names for a repo, the repo's default branch included, never
-  forced, and each such push or merge sends the owner a notice.
+  forced, and each such push or merge sends the owner a notice. When the remote moved that default branch on, the
+  worker rebases the run's own unpushed commits on top of it, or pushes them to `evo-run/<run>` and fails the run
+  (see [A default branch the remote moved on](#a-default-branch-the-remote-moved-on)); it never force-pushes and never
+  rewrites a commit the remote has.
 - **A worker token (`evw_...`) works only on `/v1/worker/*`**, and machine tokens and web sessions get 403 there. The
   hub shows the token once, when the machine joins or registers, and keeps only its SHA-256. With it a worker reads
   nothing beyond the runs it holds. Outside `/v1` it also opens the hub's `/mcp` for the agent of a run the worker
@@ -977,7 +980,9 @@ projects; `worker.log` (0600) the daemon's JSON log lines, rotated at 10 MiB wit
 pairing codes and presigned signatures masked; `service.log` what the daemon printed under launchd before its log
 was open; `daemon.pid`, locked while a daemon runs, so a second one refuses to start; `spool/` the events not
 acknowledged yet; `runs/<id>/` what the daemon knows of each run and its whole event log (and, for a plan run, the
-decisions its agent asked, `decisions.jsonl`; until the run ends on this machine, `agent.json`: the pid and the
+decisions its agent asked, `decisions.jsonl`, the commits `evo-agents worker step` pushed to a default branch,
+`pushes.jsonl`, and the side branch it pushed instead, `push_conflict.json`; until the run ends on this machine,
+`agent.json`: the pid and the
 process group of the agent the run started last, and when its leader started as `ps` prints it; and, while the run
 holds leases, `cred.sock` (0600), the socket the daemon hands them through, to its own uid only); `worktrees/` the
 runs' worktrees, and each plan run's directory. No lease value is ever written under it.
@@ -1085,7 +1090,8 @@ hands it no run.
    in the worktree, and are named in a `system` event of the run (`left_out`); a copy the agent edited is its work
    and is committed. The daemon then refuses to push a detached HEAD, a branch the agent switched to, or a default
    branch; and pushes `HEAD` to the plan's branch on origin, never forced and never merged. A push the remote refuses
-   (not a fast-forward, say) fails the run; one it refuses for its credential, on an origin a lease covers, is tried
+   (not a fast-forward, say: failure_cause `push_conflict`) fails the run; one it refuses for its credential, on an
+   origin a lease covers, is tried
    once more after the daemon took the run's leases again (see [docs/credentials.md](credentials.md)).
 5. Once every event of the run is acknowledged, it reports `done` (approval `auto`) or `review`, with the commit,
    the diffstat, the verify results, the agent's summary and its usage. It then uploads the run's log and diff
@@ -1115,7 +1121,10 @@ hands it no run.
      leaving out what a run's commit leaves out (see [A run on the machine](#a-run-on-the-machine)), refuses a
      detached HEAD or a branch the agent switched to, pushes R's branch to the plan's branch on origin
      (never forced; a branch at HEAD already is left alone), and reports the step with the commit and the verify
-     results. Without `--repo` the step's repo is the one the plan gives it. `in_progress` and `pending` only report.
+     results. On a default branch the remote moved on, it first rebases the run's commits on top of the remote's tip
+     and runs the verify commands again there; when that cannot be done it pushes them to `evo-run/<run>`, reports
+     nothing, and the run fails (see [A default branch the remote moved on](#a-default-branch-the-remote-moved-on)).
+     Without `--repo` the step's repo is the one the plan gives it. `in_progress` and `pending` only report.
    - `evo-agents worker ask` posts the decision, notes its id in `runs/<run>/decisions.jsonl`, prints the id, and
      tells the agent to go on with work that does not depend on the answer and then end its turn.
    - `evo-agents worker notify` sends a notice; `evo-agents worker plan` prints the plan as the hub holds it now.
@@ -1138,10 +1147,47 @@ hands it no run.
    `run #N: <plan title>`, leaving out and naming what a run's commit leaves out, and pushes the plan's branch when
    origin lacks its commits; it runs no verify command, since `evo-agents worker step` ran each step's. A push into a
    default branch happens only while the plan, as the hub holds it at that moment, names that branch for the repo, and
-   sends the notice `push_default_branch` with its commits, as `evo-agents worker step` does for its own pushes. The
+   sends the notice `push_default_branch` with its commits, as `evo-agents worker step` does for its own pushes; a
+   default branch the remote moved on gets the run's commits rebased on top of it, or the run fails with them on
+   `evo-run/<run>` (see [A default branch the remote moved on](#a-default-branch-the-remote-moved-on)). The
    run ends `done` with the summary and the diffstat of every repo; the log and the diffs of every repo (each under
    `a/<repo>/`) are uploaded as one `run-log` and one `run-diff`, and each worktree on the plan's branch leaves it. A
    failed run pushes nothing at its end; what the steps pushed stays.
+
+### A default branch the remote moved on
+
+A plan run that pushes a repo's default branch, because the plan names it for the repo, may find that someone pushed
+that branch while the run worked. What the worker does depends on what the run's worktree holds (`gitops.push` with a
+`gitops.Replay`, for each push of `evo-agents worker step` and for the push at the end of the run):
+
+- **Only behind.** The remote's branch has the worktree's HEAD in its history: there is nothing to push, and the push
+  is left alone.
+- **Commits of its own.** The worktree has commits the remote's branch lacks, and the remote has commits the worktree
+  lacks. The worker rebases those commits of the run, and only those, on top of the remote's tip: with `git rebase`
+  in a worktree of its own (`<run directory>/.evo-run/replay-<repo>`, without the repository's hooks, removed after),
+  so a conflict leaves the run's worktree as it was; a commit whose change the remote has already is dropped. The
+  run's worktree then moves to the result (`git reset --keep`, which keeps changes the remote's commits do not touch),
+  the verify commands of the steps done whose commits were rebased run again there (for `evo-agents worker step`,
+  the step it reports), and the result is pushed as a fast-forward. A remote that moved on again before the push lands
+  gets the same, three times in all (`REPLAY_TRIES`). The step's report names the rebased commit, which the default
+  branch has, and the notice `push_default_branch` says the remote had moved the branch on.
+- **Not rebased.** When a commit does not apply (the error names the paths in conflict), the commits hold a merge,
+  the worktree has changes the remote's commits touch, the verify run again exits other than 0, or the remote keeps
+  moving, the worktree goes back to its HEAD as it was, and the worker pushes that HEAD to the side branch
+  `evo-run/<run>` (`evo-run/31` for run #31), never forced. The default branch is not touched. The owner gets the
+  notice `run_failed` naming the side branch, with the commits the default branch lacks, and the run ends `failed`
+  with failure_cause `push_conflict`: at once for the push at the end, and once the agent's turn ends for
+  `evo-agents worker step`, which reports nothing, tells the agent to end its turn, leaves `runs/<run>/push_conflict.json`
+  for the daemon, and refuses every later `done` of the run. Steps reported before keep their evidence, whose commits
+  are on the default branch, and on the side branch too.
+
+The worker never force-pushes, and never rewrites a commit the remote has: it rebases only commits the remote's branch
+lacks. Each commit `evo-agents worker step` pushed to a default branch is noted in `runs/<run>/pushes.jsonl` (a run
+that resumes a parked one takes the parked run's notes over); a later rebase that would put back one of them, which
+the remote no longer has because someone took it out, goes to the side branch instead, since putting it back is the
+owner's call. A step done was pushed before it was reported, so the push at the end of the run has no step's verify to
+run again. A branch the plan names that is not a default branch is pushed as before: a push that is no fast-forward is
+refused, and the run fails with `push_conflict`.
 
 ### Runs of the night shift
 
@@ -1380,7 +1426,7 @@ The causes a failed run's report gives (`failure_cause`, `runs.FAILURE_CAUSES`):
 | `origin` | the project lists no origin for a repo it needs (preflight) |
 | `credentials` | git cannot read or push to a repo with what the run holds (preflight), or the remote refused the fetch or the push for its credential |
 | `missing_tool` | a program a verify command or a hidden check calls is not on PATH (preflight), or a verify command exited 127 |
-| `push_conflict` | the remote branch moved on and the run's own commits could not go on top of it |
+| `push_conflict` | the remote branch moved on and the run's own commits could not go on top of it: on a default branch the plan names, they did not rebase or their verify failed after the rebase, and are on `evo-run/<run>`; on another branch, the remote refused the push |
 | `verify_failed` | a verify command the daemon ran again exited other than 0 |
 | `timeout` | it ran past its timeout |
 | `cost_cap`, `turn_cap`, `time_cap` | the agent stopped at that cap of the run's budget |
