@@ -379,7 +379,9 @@ run of any kind, and a step not done that names no repo when the plan lists more
 origin for: no credential is leased for it, and the worker's preflight would fail the run anyway. `list` shows each run's
 KIND (`step`, `plan`, `review`, `judge` or `author`), and filters by `--state` (repeat it for several), `--plan`,
 `--step`, `--worker`, `--by` (the login that dispatched) and `--search`, a page at a time with `--limit` and
-`--offset`; `show` of a plan run names its repos, the agent time it used, and when it waited or was parked.
+`--offset`; `show` of a plan run names its repos, the agent time it used, and when it waited or was parked. `show` of
+a queued attempt whose run before it was lost on a worker that is not steady yet has a `waits for` line naming that
+worker and when it becomes steady (`steady_wait`; `docs/workers.md`, Run states).
 
 A run that failed has `failure_cause` (in `GET .../runs`, `GET .../runs/{id}`, `run list --json` and `run show --json`,
 and a `cause` line of `run show`): the cause its worker reported with the failure, one of `origin`, `credentials` and
