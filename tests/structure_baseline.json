@@ -10,7 +10,7 @@
     "evo_agents/hub/tables.py": 1285,
     "evo_agents/worker/cli.py": 1255,
     "evo_agents/worker/interactive.py": 1378,
-    "evo_agents/worker/run.py": 2942
+    "evo_agents/worker/run.py": 2777
   },
   "functions": {
     "evo_agents/harness/__init__.py::knowledge_semantics": {"complexity": 17},
