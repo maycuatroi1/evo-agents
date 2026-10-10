@@ -82,10 +82,11 @@ def _tls_files(directory: Path) -> tuple[Path, Path, Path]:
 class GitHttp:
     """``git http-backend`` for the bare repositories under ``root``, for ``username`` with ``password`` alone."""
 
-    def __init__(self, root: Path, username: str, password: str):
+    def __init__(self, root: Path, username: str, password: str, *, anonymous_reads: bool = False):
         self.root = Path(root)
         self.username = username
         self.password = password
+        self.anonymous_reads = anonymous_reads  # a fetch needs no user, as a public repository; a push still does
         self.requests: list[tuple[str, str, str | None, int]] = []
         self.url = ""  # https://127.0.0.1:PORT
         self.ca_file: Path | None = None  # the CA git must trust to reach it
@@ -178,7 +179,8 @@ class _Handler(BaseHTTPRequestHandler):
         owner: GitHttp = self.server.owner
         path, _, query = self.path.partition("?")
         user = owner.user_of(self.headers.get("Authorization"))
-        if user is None:
+        anonymous = owner.anonymous_reads and "git-upload-pack" in f"{path}?{query}"
+        if user is None and not anonymous:
             owner.requests.append((self.command, path, None, 401))
             self._body()
             body = b"authentication required\n"
@@ -201,9 +203,10 @@ class _Handler(BaseHTTPRequestHandler):
             "QUERY_STRING": query,
             "CONTENT_TYPE": self.headers.get("Content-Type", ""),
             "CONTENT_LENGTH": str(len(data)),
-            "REMOTE_USER": user,
             "REMOTE_ADDR": "127.0.0.1",
         }
+        if user is not None:  # without one, http-backend refuses a push with 403
+            env["REMOTE_USER"] = user
         if self.headers.get("Content-Encoding"):
             env["HTTP_CONTENT_ENCODING"] = self.headers["Content-Encoding"]
         if self.headers.get("Git-Protocol"):

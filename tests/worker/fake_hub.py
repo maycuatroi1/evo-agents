@@ -197,6 +197,7 @@ class FakeHub:
             lease_expires_at=_now(),
             prompt=runs.build_prompt(held["body"], step, {"repo": repo, "branch": branch}),
             plan=None,
+            verify=runs.verify_of(step),
         )
 
     def queue_review_run(self, repos: list[str], prompt: str = "Review the project.", **extra) -> int:
@@ -472,7 +473,7 @@ class FakeHub:
         run_id, run = self._run(request)
         body = await request.json()
         state, new = run["state"], body["state"]
-        for name in ("session_id", "summary", "diffstat", "usage", "error", "commit_sha", "verify"):
+        for name in ("session_id", "summary", "diffstat", "usage", "error", "commit_sha", "verify", "failure_cause"):
             if body.get(name) is not None:
                 run[name] = body[name]
         if state == new:
