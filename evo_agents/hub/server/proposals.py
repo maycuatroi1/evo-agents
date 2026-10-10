@@ -69,7 +69,9 @@ from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.notifications import notify, run_link
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.run_state import RunStep, write_event
-from evo_agents.hub.server.runs import LINE, MAX_ID, NOT_HELD, OBJECT_NAME, RunId, _worker_of, visible_plans
+from evo_agents.hub.server.runs.models import LINE, MAX_ID, NOT_HELD, OBJECT_NAME, RunId
+from evo_agents.hub.server.runs.service.claims import worker_of
+from evo_agents.hub.server.runs.service.views import visible_plans
 from evo_agents.hub.server.security import MACHINE, CurrentUser, Principal
 from evo_agents.schema import errors, validate
 
@@ -288,7 +290,7 @@ class _ReviewRun:
 
 async def _held_review_run(conn: AsyncConnection, user: Principal, run_id: int) -> _ReviewRun:
     """The review run ``run_id`` the worker of ``user`` holds, its row locked; 404 for any other run."""
-    worker_id = (await _worker_of(conn, user))[0]
+    worker_id = (await worker_of(conn, user))[0]
     r, p, u = tables.runs, tables.projects, tables.users
     query = (
         select(r.c.state, r.c.worker_id, r.c.kind, r.c.project_id, p.c.name, r.c.dispatched_by, u.c.login)

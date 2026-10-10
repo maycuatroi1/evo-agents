@@ -12,10 +12,11 @@ This page describes version 1 of the worker protocol. `evo_agents/hub/runs.py` h
 kinds and states and who may change them, a worker's status, the event kinds, which steps are ready, the prompts a
 run gives its agent, and the decisions and notices of a plan run. It needs only the standard library, so the api and
 the daemon share it. Schema 0009 holds the tables, and 0010 adds plan runs, decisions and notifications, and `evo_agents/hub/server/workers.py` the routes that register and stop workers (pairings, join,
-direct registration, list, drain, undrain, revoke). `evo_agents/hub/server/runs.py` holds the queue: ready steps,
-dispatch, claim, heartbeat, state reports, the list of runs, and the owner's cancel, approve, rerun, takeover and
-handback; `evo_agents/hub/server/run_state.py` moves runs, records each move in the plan, and holds the reaper and the
-pruning of events; `evo_agents/hub/server/run_events.py` holds a run's events, their stream, the owner's messages and
+direct registration, list, drain, undrain, revoke). The package `evo_agents/hub/server/runs` holds the queue: ready
+steps, dispatch, claim, heartbeat, state reports, the list of runs, and the owner's cancel, approve, rerun, takeover
+and handback, as routes over a service over models (docs/structure.md); `evo_agents/hub/server/run_state.py` moves
+runs, records each move in the plan, and holds the reaper and the pruning of events;
+`evo_agents/hub/server/run_events.py` holds a run's events, their stream, the owner's messages and
 the log and diff the worker uploads; `evo_agents/hub/server/terminal.py` relays the web terminal, whose frames and
 close codes `evo_agents/hub/terminal.py` holds for the api and the daemon alike. `evo_agents/worker` is the daemon,
 `evo-agents worker` (see [The daemon](#the-daemon)), with an adapter for each of the three runtimes in

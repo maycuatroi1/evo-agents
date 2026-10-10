@@ -122,6 +122,21 @@ machine token with `X-Evo-Run` gets 400. The agent then acts as the run's owner,
 
 Once the run leaves those states, its id opens nothing, and revoking the worker ends its token.
 
+### Paging a list
+
+Five lists answer a bare JSON array and page only when asked: `GET /v1/projects`, `/v1/projects/{project}/plans`,
+`/v1/skills`, `/v1/workers` and `/v1/admin/users`. They take `limit` (1 to 1,000) and `offset` (0 to 1,000,000),
+each optional. Without either the answer is the whole list, as before, so the command line, `hub plan export` and the
+web read what they always read. With them it is that slice of the list in the list's own order, and the body stays an
+array. Either way the `X-Total-Count` header holds the length of the whole list, so a client asks again with
+`offset` moved on until `offset` plus what it got reaches that count; an `offset` past the end answers `[]` with the
+count. A value out of range is a 422.
+
+The count is of what the caller may see. The label rule filters plans after the database query, so a page of plans
+is cut from the plans it lets through, and a member whose grant stops at `public` counts only those. The lists that
+carry their own `total` in the body (runs, decisions, notifications, Curator proposals and findings, digests) page as
+they did.
+
 ### OpenAPI
 
 The api serves its OpenAPI document at `/v1/openapi.json`. `evo-agents hub openapi -o openapi.json` writes the same

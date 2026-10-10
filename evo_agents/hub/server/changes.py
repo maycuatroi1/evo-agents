@@ -81,19 +81,10 @@ from evo_agents.hub.server.github import GitHubRefused, GitHubUnavailable
 from evo_agents.hub.server.github_app import GitHubApp
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.run_state import RunStep, notify_queued, write_event
-from evo_agents.hub.server.runs import (
-    LINE,
-    NOT_HELD,
-    OBJECT_NAME,
-    Pinned,
-    RunId,
-    VerifyResult,
-    _activity,
-    _insert_run,
-    _lock_plan,
-    _unfit,
-    _worker_of,
-)
+from evo_agents.hub.server.runs.models import LINE, NOT_HELD, OBJECT_NAME, RunId, VerifyResult
+from evo_agents.hub.server.runs.service.claims import worker_of
+from evo_agents.hub.server.runs.service.dispatch import Pinned, insert_run, unfit
+from evo_agents.hub.server.runs.service.views import lock_plan, plan_activity
 from evo_agents.hub.server.security import CurrentUser, Principal
 
 log = logging.getLogger(__name__)
@@ -653,8 +644,8 @@ async def queue_builder(conn: AsyncConnection, due, gate) -> int | None:
         ):
             skipped.append(f"{change.plan_id}: the charter names no git secret of the owner for {change.repo}")
             continue
-        await _lock_plan(conn, due.project_id, change.plan_id)
-        activity = await _activity(conn, due.project_id, change.plan_id)
+        await lock_plan(conn, due.project_id, change.plan_id)
+        activity = await plan_activity(conn, due.project_id, change.plan_id)
         judging = (
             await conn.execute(
                 select(
@@ -675,7 +666,7 @@ async def queue_builder(conn: AsyncConnection, due, gate) -> int | None:
             skipped.append(f"{change.plan_id}: no ready step")
             continue
         repos = [{"repo": change.repo, "branch": change.branch}]
-        problems = _unfit(worker, due.project, "plan", [change.repo], runtime)
+        problems = unfit(worker, due.project, "plan", [change.repo], runtime)
         if problems:
             skipped.append(f"{change.plan_id}: {'; '.join(problems)}")
             continue
@@ -691,7 +682,7 @@ async def queue_builder(conn: AsyncConnection, due, gate) -> int | None:
             repos=repos,
         )
         try:
-            run_id = await _insert_run(conn, values)
+            run_id = await insert_run(conn, values)
         except IntegrityError:  # another run of the plan got in first
             skipped.append(f"{change.plan_id}: has an active run")
             continue
@@ -738,8 +729,8 @@ async def queue_judge(conn: AsyncConnection, due, gate) -> int | None:
     if held is None:
         await _set(conn, waiting.id, state="open", reason="its plan is no longer on the hub")
         return None
-    await _lock_plan(conn, due.project_id, waiting.plan_id)
-    activity = await _activity(conn, due.project_id, waiting.plan_id)
+    await lock_plan(conn, due.project_id, waiting.plan_id)
+    activity = await plan_activity(conn, due.project_id, waiting.plan_id)
     if activity.plan_run is not None or activity.steps:
         return None  # a Builder of the change still runs: never both at once
     usable = {name for name in runs.RUNTIMES if _available(worker, name)}
@@ -747,7 +738,7 @@ async def queue_judge(conn: AsyncConnection, due, gate) -> int | None:
     runtime, model, why = judge.judge_runtime(
         charter.get("judge") or {}, charter.get("builder") or {}, codex_allowed=cleared, worker_runtimes=usable
     )
-    problems = _unfit(worker, due.project, "judge", [waiting.repo], runtime)
+    problems = unfit(worker, due.project, "judge", [waiting.repo], runtime)
     if problems:
         log.info("no judge run yet", extra={"project": due.project, "why": "; ".join(problems)})
         return None
@@ -764,7 +755,7 @@ async def queue_judge(conn: AsyncConnection, due, gate) -> int | None:
     )
     values["max_attempts"] = 1  # a judge run that ends without a verdict is tried again by the change, not the reaper
     try:
-        run_id = await _insert_run(conn, values)
+        run_id = await insert_run(conn, values)
     except IntegrityError:  # another judge run of the project is active
         return None
     await _set(conn, waiting.id, state="judging", judge_run_id=run_id, reason=None)
@@ -790,7 +781,7 @@ async def queue_judge(conn: AsyncConnection, due, gate) -> int | None:
 
 
 def _available(worker: Pinned, name: str) -> bool:
-    from evo_agents.hub.server.runs import available
+    from evo_agents.hub.server.runs.models import available
 
     return available(worker.runtimes.get(name))
 
@@ -892,7 +883,7 @@ async def _held_judge(conn: AsyncConnection, user: Principal, run_id: int, key: 
     """(run row, change row) of the judge run ``run_id`` the worker of ``user`` holds, whose change waits for its
     verdict, asked with the key the run's claim handed its daemon; 404 for any other run, 409 for a change that waits
     for no verdict of it, 403 without the key."""
-    worker_id = (await _worker_of(conn, user))[0]
+    worker_id = (await worker_of(conn, user))[0]
     r = tables.runs
     row = (
         await conn.execute(
@@ -1104,7 +1095,7 @@ async def list_changes(request: Request, project: ProjectName, user: CurrentUser
             .limit(MAX_LIST)
         )
         rows = (await conn.execute(query)).all()
-        from evo_agents.hub.server.runs import visible_plans
+        from evo_agents.hub.server.runs.service.views import visible_plans
 
         readable = set(await visible_plans(conn, access, None))
     through = plan_routes._sink(access, None)

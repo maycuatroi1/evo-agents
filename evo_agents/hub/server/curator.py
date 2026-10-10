@@ -86,15 +86,9 @@ from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.run_state import move_run, notify_queued, write_event
-from evo_agents.hub.server.runs import (
-    ModelName,
-    Pinned,
-    _activity,
-    _insert_run,
-    _lock_plan,
-    _plan_run_repos,
-    _unfit,
-)
+from evo_agents.hub.server.runs.models import ModelName
+from evo_agents.hub.server.runs.service.dispatch import Pinned, insert_run, plan_run_repos, unfit
+from evo_agents.hub.server.runs.service.views import lock_plan, plan_activity
 from evo_agents.hub.server.security import MACHINE, CurrentUser, Principal
 from evo_agents.hub.server.workers import WORKER_NAME
 
@@ -1199,8 +1193,8 @@ async def _next_plan(conn: AsyncConnection, access: ProjectAccess, charter: dict
         if held is None or not access.visible(held.label, plan_routes._sink(access, None)):
             skipped.append(f"{plan_id}: not on the hub")
             continue
-        await _lock_plan(conn, access.project_id, plan_id)
-        activity = await _activity(conn, access.project_id, plan_id)
+        await lock_plan(conn, access.project_id, plan_id)
+        activity = await plan_activity(conn, access.project_id, plan_id)
         if activity.plan_run is not None or activity.steps:
             skipped.append(f"{plan_id}: has an active run")
             continue
@@ -1208,11 +1202,11 @@ async def _next_plan(conn: AsyncConnection, access: ProjectAccess, charter: dict
             skipped.append(f"{plan_id}: no ready step")
             continue
         try:
-            repos = _plan_run_repos(held)
+            repos = plan_run_repos(held)
         except HTTPException as exc:
             skipped.append(f"{plan_id}: {exc.detail}")
             continue
-        problems = _unfit(worker, access.name, "plan", [entry["repo"] for entry in repos], runtime)
+        problems = unfit(worker, access.name, "plan", [entry["repo"] for entry in repos], runtime)
         if problems:
             skipped.append(f"{plan_id}: {'; '.join(problems)}")
             continue
@@ -1259,7 +1253,7 @@ async def _queue(conn: AsyncConnection, due, night: date, worker: Pinned, plan, 
         "schedule_night": night,
         "budget": budget,
     }
-    run_id = await _insert_run(conn, values)
+    run_id = await insert_run(conn, values)
     caps = (
         f"cost cap {curator.money(budget['max_usd'])}, {budget['max_turns']} turns, "
         f"{budget['max_seconds'] // 60} minutes of agent time"

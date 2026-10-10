@@ -9571,7 +9571,12 @@ export interface operations {
     };
     users_v1_admin_users_get: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description at most this many items; without it, all of them */
+                limit?: number | null;
+                /** @description skip this many items first */
+                offset?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -9581,6 +9586,8 @@ export interface operations {
             /** @description Successful Response */
             200: {
                 headers: {
+                    /** @description the length of the whole list, whatever limit and offset cut from it */
+                    "X-Total-Count"?: number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -9603,6 +9610,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -9876,7 +9892,12 @@ export interface operations {
     };
     list_projects_v1_projects_get: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description at most this many items; without it, all of them */
+                limit?: number | null;
+                /** @description skip this many items first */
+                offset?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -9886,6 +9907,8 @@ export interface operations {
             /** @description Successful Response */
             200: {
                 headers: {
+                    /** @description the length of the whole list, whatever limit and offset cut from it */
+                    "X-Total-Count"?: number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -9899,6 +9922,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -10165,6 +10197,10 @@ export interface operations {
         parameters: {
             query?: {
                 area?: ("active" | "completed") | null;
+                /** @description at most this many items; without it, all of them */
+                limit?: number | null;
+                /** @description skip this many items first */
+                offset?: number;
             };
             header?: {
                 "X-Evo-Sink"?: string | null;
@@ -10179,6 +10215,8 @@ export interface operations {
             /** @description Successful Response */
             200: {
                 headers: {
+                    /** @description the length of the whole list, whatever limit and offset cut from it */
+                    "X-Total-Count"?: number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -11142,6 +11180,10 @@ export interface operations {
                 scope?: ("global" | "project") | null;
                 /** @description only this project's skills */
                 project?: string | null;
+                /** @description at most this many items; without it, all of them */
+                limit?: number | null;
+                /** @description skip this many items first */
+                offset?: number;
             };
             header?: never;
             path?: never;
@@ -11152,6 +11194,8 @@ export interface operations {
             /** @description Successful Response */
             200: {
                 headers: {
+                    /** @description the length of the whole list, whatever limit and offset cut from it */
+                    "X-Total-Count"?: number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -12882,6 +12926,10 @@ export interface operations {
             query?: {
                 /** @description also list revoked workers */
                 revoked?: boolean;
+                /** @description at most this many items; without it, all of them */
+                limit?: number | null;
+                /** @description skip this many items first */
+                offset?: number;
             };
             header?: never;
             path?: never;
@@ -12892,6 +12940,8 @@ export interface operations {
             /** @description Successful Response */
             200: {
                 headers: {
+                    /** @description the length of the whole list, whatever limit and offset cut from it */
+                    "X-Total-Count"?: number;
                     [name: string]: unknown;
                 };
                 content: {
