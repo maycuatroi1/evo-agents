@@ -254,7 +254,10 @@ Credentials card.
   {reason}; git uses this machine's own", and git falls back to the machine's credentials, as before 0.5.0. A
   laptop whose owner set no secret runs as it always did. That holds even when a lease's `url_prefix` covers the
   origin: `github-app:<owner>` is for `https://github.com/<owner>`, but GitHub made its token for the repos the hub
-  leased it for alone, so handed for another repo of the owner, one the project does not list say, it gets 403.
+  leased it for alone, so handed for another repo of the owner, one the project does not list say, it gets 403. The
+  run's preflight then asks the remote with what the run holds, before anything is fetched: a repo in `missing`
+  without an origin fails the run with the cause `origin`, and one git cannot read, or push to when the run pushes it,
+  with `credentials` (`docs/workers.md`, "Preflight and failure causes").
 
 With a `CLAUDE_CODE_OAUTH_TOKEN` lease the Claude Code adapter drops the daemon's `ANTHROPIC_API_KEY` from the agent's
 environment, unless a lease sets the key too (the API key comes first in Claude Code's order of authentication), and

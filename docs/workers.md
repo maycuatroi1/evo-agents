@@ -555,9 +555,9 @@ and counts the runs a worker holds against its slots itself. `agent_version` is 
 the worker registered with. `run_kinds`, optional, lists the kinds of run the daemon runs; the hub keeps those it
 knows, and a heartbeat without it says the daemon runs none of the kinds that need it (a review run).
 
-The hub records the heartbeat, and when the worker's heartbeats became steady (`steady_since`, set to now by the first
+The hub records the heartbeat and when the worker's heartbeats became steady (`steady_since`, set to now by the first
 heartbeat and by one that comes more than 30 seconds after the one before), extends the lease of each run named that
-the worker still holds by 300 seconds (the same `EVO_HUB_RUN_LEASE_SECONDS`), and answers with control:
+the worker still holds by 300 seconds (the same `EVO_HUB_RUN_LEASE_SECONDS`), steady or not, and answers with control:
 
 ```json
 {
@@ -1174,9 +1174,12 @@ that branch while the run worked. What the worker does depends on what the run's
 - **Not rebased.** When a commit does not apply (the error names the paths in conflict), the commits hold a merge,
   the worktree has changes the remote's commits touch, the verify run again exits other than 0, or the remote keeps
   moving, the worktree goes back to its HEAD as it was, and the worker pushes that HEAD to the side branch
-  `evo-run/<run>` (`evo-run/31` for run #31), never forced. The default branch is not touched. The owner gets the
-  notice `run_failed` naming the side branch, with the commits the default branch lacks, and the run ends `failed`
-  with failure_cause `push_conflict`: at once for the push at the end, and once the agent's turn ends for
+  `evo-run/<run>` (`evo-run/31` for run #31), never forced. A verify run again that changed a file the remote's
+  commits brought before it failed keeps the worktree at the rebased commit, since `reset --keep` will not overwrite
+  that change; the side branch still gets HEAD as it was, and the error says where the worktree stays. The default
+  branch is not touched. The owner gets the notice `run_failed` naming the side branch, with the commits the default
+  branch lacks, and the run ends `failed` with failure_cause `push_conflict`: at once for the push at the end, and
+  once the agent's turn ends for
   `evo-agents worker step`, which reports nothing, tells the agent to end its turn, leaves `runs/<run>/push_conflict.json`
   for the daemon, and refuses every later `done` of the run. Steps reported before keep their evidence, whose commits
   are on the default branch, and on the side branch too.
