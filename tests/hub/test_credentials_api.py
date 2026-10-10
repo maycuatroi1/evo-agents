@@ -37,7 +37,7 @@ from evo_agents.hub.server.sealing import KEY_BYTES, Sealed, Sealer, lease_aad
 from tests.hub.fake_github import Account
 from tests.hub.live import ADMIN, bearer, sql, table_dump
 from tests.hub.test_plans import registration as plans_registration
-from tests.hub.test_runs import PROJECT, PROTOCOL, add_worker, claim, expire, moved, report, state_of
+from tests.hub.test_runs import PROJECT, PROTOCOL, add_worker, claim, expire, moved, report, state_of, steady
 from tests.hub.test_web_auth import cookie, csrf_for, web_sign_in
 
 PLAN = "credentials-smoke"
@@ -613,6 +613,7 @@ def test_the_reaper_revokes_the_token_of_a_run_whose_lease_ran_out_and_what_gith
     assert audit_rows(hub_db, "credential.revoke") == [(target, None, PROJECT, False)]
 
     # GitHub failing when the run ends leaves the token sealed for the reaper's next pass
+    steady(hub_db, worker)  # the worker that lost the run takes its next attempt once steady
     retry = claim(client, worker)  # the next attempt of the lost run, pinned to the same worker
     assert retry["attempt"] == 2
     failed = retry["id"]

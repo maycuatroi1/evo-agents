@@ -683,7 +683,8 @@ async def end_held(
 ) -> str:
     """End a held run whose worker will not extend its lease again, as the reaper, in the caller's transaction:
     cancelled when its cancel was asked for, failed when it is pinned to that worker (``pinned_here``) or on its last
-    attempt, and otherwise lost with the next attempt queued. Returns the state it ended in."""
+    attempt, and otherwise lost with the next attempt queued, which the worker that lost the run claims only once it
+    is steady (``evo_agents.hub.server.runs._steady``). Returns the state it ended in."""
     if cancel:
         await move_run(conn, run_id, state, "cancelled", "reaper", reason=reason)
         return "cancelled"

@@ -928,7 +928,7 @@ def test_an_orphan_agent_of_a_run_the_hub_still_holds_is_stopped_and_its_lease_r
         time.sleep(0.5)
         return False
 
-    stack.scenarios({})  # the next attempt, which this daemon may claim, ends at once
+    stack.scenarios({})  # the next attempt ends at once should this daemon claim it once the worker is steady
     wait_until(lost, "the run's lease to run out: no heartbeat after the first names it", explain=stack.daemon_output)
     finished_cleanly(stack, proc)
 

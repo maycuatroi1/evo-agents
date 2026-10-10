@@ -315,7 +315,9 @@ Schema 0020 adds the author run (a run of kind `author`, with the member's reque
 only when it revises a plan), schema 0021 `plan_revisions.run_id`, the author run that wrote a revision, and schema 0022
 the chat of an author run: its wait, park and resume, `runs.finish_requested_at` and the notice `author_waiting`.
 Going back to 0019 deletes the author runs and their notices and drops the columns; the revisions they wrote stay,
-without the run.
+without the run. Schema 0023 adds `workers.steady_since`, the first heartbeat of a worker's current run of heartbeats,
+none more than 30 seconds late, which holds the next attempt of a run lost on a worker back from it until it has been
+steady for 120 seconds (`docs/workers.md`, Run states); going back to 0022 drops it.
 
 The daemon on the member's machine is the `evo-agents worker` command group, which needs the `worker` extra
 (`uv tool install 'evo-ak[worker]'`). It is not `evo-agents hub worker`, the hub's own job worker (see Worker and

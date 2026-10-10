@@ -159,6 +159,19 @@ pinned to it, since no other worker may claim either. Each of these moves writes
 `reaper`. Cancelling a held run sets `cancel_requested_at`; the next heartbeat tells the worker, which stops the agent
 and reports `cancelled`.
 
+The next attempt of a lost run goes back to the worker that lost it only once that worker is steady: its heartbeats
+have come for 120 seconds (`runs.STEADY_SECONDS`), none more than 30 seconds after the one before
+(`runs.STEADY_GAP_SECONDS`). A laptop that slept, or woke for a moment in the night (macOS's DarkWake), lost its run
+because it was not running; handed the next attempt the moment it beats again, it would lose that one the same way,
+and the last attempt would fail. So the hub keeps `workers.steady_since`, the first heartbeat of the worker's current
+run of heartbeats: each heartbeat keeps it, and one that comes more than 30 seconds after the one before, or the first
+one, sets it to now. A claim of that worker passes over the next attempt of a run it lost until `steady_since` is 120
+seconds old and its last heartbeat at most 30 seconds old. Any other worker that may take the attempt takes it at once;
+an attempt pinned to that worker waits for it. Attempts still count: a run is tried at most 3 times
+(`runs.MAX_ATTEMPTS`), the first included. While an attempt waits, the run shows `steady_wait`: the worker, and
+`steady_at`, when it becomes steady if its heartbeats keep coming (null while it sends none). The run page says so
+above its timeline, and `evo-agents hub run show` in its `waits for` line.
+
 The reaper also ends a held run that ran past its timeout. From 0.4.0 only the time a run spends `leased`, `running`,
 `interactive` or `verifying` counts: the hub adds it up in `run_seconds` at each move and heartbeat, from `counted_at`
 (or, before the first count, from when the agent started, or from the claim), so waiting for a decision and being
@@ -501,7 +514,9 @@ for a Judge the commit to judge and the run's own key (`judge_key`); null for an
 claim waiting: a newer claim ends the older one, which answers no run. A claim whose worker hung up, as a daemon that
 stops drops the claim it waits on, takes no run: it ends before it looks at the queue again, and when the worker hangs
 up while the claim leases a run, the lease is rolled back before it commits, so the run stays queued for the next
-claim instead of waiting out a lease nobody holds.
+claim instead of waiting out a lease nobody holds. While the worker is not steady, the claim passes over the next
+attempt of a run lost on it (see [Run states](#run-states)); a claim waiting when the worker becomes steady takes it
+at its next look, within 5 seconds.
 
 ### Heartbeat
 
@@ -534,8 +549,9 @@ and counts the runs a worker holds against its slots itself. `agent_version` is 
 the worker registered with. `run_kinds`, optional, lists the kinds of run the daemon runs; the hub keeps those it
 knows, and a heartbeat without it says the daemon runs none of the kinds that need it (a review run).
 
-The hub records the heartbeat, extends the lease of each run named that the worker still holds by 300 seconds (the
-same `EVO_HUB_RUN_LEASE_SECONDS`), and answers with control:
+The hub records the heartbeat, and when the worker's heartbeats became steady (`steady_since`, set to now by the first
+heartbeat and by one that comes more than 30 seconds after the one before), extends the lease of each run named that
+the worker still holds by 300 seconds (the same `EVO_HUB_RUN_LEASE_SECONDS`), and answers with control:
 
 ```json
 {
@@ -723,7 +739,8 @@ or a run number such as `#12`; and `limit` (1 to 200, 50 by default) and `offset
 filters, every state present: what the summary cards and the state facet show, so picking a state does not change
 the counts beside it. `GET .../runs/{id}` shows one run. A run carries the step's `title`, `last_seq` (its latest
 event, 0 before the first), `log_sha256` and `diff_sha256`, and the owner's open asks (`cancel_requested_at`,
-`takeover_requested_at`, `handback_requested_at`).
+`takeover_requested_at`, `handback_requested_at`). A queued attempt whose run before it was lost on a worker that is
+not steady has `steady_wait`, `{worker_id, worker, steady_at}`, and null otherwise (see [Run states](#run-states)).
 
 `GET /v1/projects/{p}/runs/stats` counts, for the web's charts, the runs of the same plans that ended on each of the
 last `days` UTC days, today included (7 to 90, 30 by default; 422 outside). Each day of `by_day`, oldest first, and
