@@ -140,7 +140,7 @@ import logging
 import os
 import signal
 from collections.abc import Collection
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -154,6 +154,21 @@ from evo_agents.worker.adapter import AgentEvent, AgentFinished, Outcome, RunCon
 from evo_agents.worker.checkouts import default_branch_of
 from evo_agents.worker.credentials import RunCredentials
 from evo_agents.worker.hubapi import Backoff, HubProblem, Outdated, Refused, Unreachable
+from evo_agents.worker.runner.common import (
+    HARD_STOP_TRIES,
+    Parked,
+    ReportRefused,
+    RunFailed,
+    RunGone,
+    Stopped,
+    cut,
+    first_of,
+    json_size,
+    now,
+    push_cause,
+    wait_or,
+)
+from evo_agents.worker.runner.sender import Sender
 from evo_agents.worker.spool import Spool, encode_event
 
 if TYPE_CHECKING:
@@ -177,8 +192,6 @@ MAX_LEFT_OUT_LISTED = 200  # and lists in its body
 LOG_LIMIT = 64 * 1024 * 1024  # the run-log blob
 DIFF_LIMIT = 8 * 1024 * 1024  # the run-diff blob
 STOP_GRACE = 30.0  # seconds an interrupted agent has to end its events
-HARD_STOP_TRIES = 3  # tries of a report once the daemon is stopping now
-FLUSH_DEBOUNCE = 0.2  # seconds of events gathered into one batch
 TERMINAL_POLL = 1.0  # seconds between looks at the tmux session while a person drives the agent
 TERMINAL_LOG_GRACE = 5.0  # seconds the log of the terminal has, once its session is closed, to read the last records
 CAP_CAUSES = {"cost": "cost_cap", "turns": "turn_cap", "time": "time_cap"}  # the failure_cause of a cap that stopped it
@@ -200,182 +213,6 @@ RESUME_PROMPT = (
     "the same worktrees; EVO_RUN_ID names the new run, and the commands of `evo-agents worker` use it. Go on with the "
     "plan from where you stopped: read the plan as the hub holds it now with `evo-agents worker plan` first."
 )
-
-
-class RunGone(Exception):
-    """The hub no longer takes reports of this run from this worker: lost, cancelled, taken by another attempt."""
-
-
-class ReportRefused(RunGone):
-    """The hub refused a report with a 4xx other than 401 and 403; ``status`` says which."""
-
-    def __init__(self, message: str, status: int | None):
-        super().__init__(message)
-        self.status = status
-
-
-class Parked(Exception):
-    """The hub parked the plan run, or a new run resumes it: the agent's turn is over, and its session and worktrees
-    stay for the run that resumes it."""
-
-
-class RunFailed(Exception):
-    """The run fails with ``error``; ``fields`` go with the report: ``verify``, ``usage``, ``cap`` (the cap of the
-    budget that stopped the agent) and ``cause`` (``runs.FAILURE_CAUSES``, the report's failure_cause)."""
-
-    def __init__(self, error: str, **fields):
-        super().__init__(error)
-        self.error = error
-        self.fields = fields
-
-
-class Stopped(Exception):
-    """The run was asked to stop: ``reason`` is cancel, timeout, gone or shutdown."""
-
-    def __init__(self, reason: str):
-        super().__init__(reason)
-        self.reason = reason
-
-
-def _now() -> datetime:
-    return datetime.now(UTC)
-
-
-def _cut(text: str, limit: int) -> str:
-    return text if len(text) <= limit else text[: limit - 3] + "..."
-
-
-def _push_cause(exc: Exception) -> str | None:
-    """The failure_cause of a push git failed: credentials when the remote refused its credential, push_conflict when
-    it refused a push that is no fast-forward (the branch moved on), else none."""
-    if isinstance(exc, gitops.GitAuthError):
-        return "credentials"
-    return "push_conflict" if gitops.rejected(exc) else None
-
-
-def _json_size(value) -> int:
-    return len(json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode())
-
-
-async def _wait_or(event: asyncio.Event, seconds: float) -> bool:
-    """Wait ``seconds``, or less when ``event`` is set; whether it is."""
-    with contextlib.suppress(asyncio.TimeoutError):
-        await asyncio.wait_for(event.wait(), max(0.0, seconds))
-    return event.is_set()
-
-
-async def _first_of(events: Collection[asyncio.Event], seconds: float) -> None:
-    """Wait ``seconds``, or less when one of ``events`` is set."""
-    waits = {asyncio.create_task(event.wait()) for event in events}
-    try:
-        await asyncio.wait(waits, timeout=max(0.0, seconds), return_when=asyncio.FIRST_COMPLETED)
-    finally:
-        for task in waits:
-            task.cancel()
-
-
-class Sender:
-    """Sends a spool's events to the hub in batches, from ``ack_seq + 1``, until it is closed and empty. A failed
-    call is tried again with the backoff; a hub that will not take the run's events (404, the run's 20,000) ends
-    the sending and drops what is left."""
-
-    def __init__(self, daemon: Daemon, spool: Spool):
-        self.daemon = daemon
-        self.spool = spool
-        self.wake = asyncio.Event()
-        self.closed = False
-        self.gave_up: str | None = None
-        self._failures_logged = 0
-
-    def poke(self) -> None:
-        self.wake.set()
-
-    def close(self) -> None:
-        self.closed = True
-        self.wake.set()
-
-    @property
-    def settled(self) -> bool:
-        """Every event is acknowledged, or the sending gave up."""
-        return self.gave_up is not None or not self.spool.pending
-
-    async def run(self) -> None:
-        try:
-            await self._send()
-        except asyncio.CancelledError:
-            raise
-        except Exception as exc:  # a broken spool must not leave the run waiting for its events forever
-            log.exception("sending events failed", extra={"run_id": self.spool.run_id})
-            self.gave_up = f"{type(exc).__name__}: {exc}"
-
-    async def _send(self) -> None:
-        backoff = Backoff()
-        run_id = self.spool.run_id
-        while True:
-            self.wake.clear()
-            if not self.spool.pending:
-                if self.closed:
-                    return
-                await self.wake.wait()
-                if not self.closed:
-                    await asyncio.sleep(FLUSH_DEBOUNCE)
-                continue
-            batch = self.spool.batch()
-            try:
-                answer = await self.daemon.hub.events(run_id, batch)
-            except Unreachable as exc:
-                delay = exc.retry_after if exc.retry_after is not None else backoff.next()
-                if self._failures_logged < 3 or backoff.failures % 10 == 0:
-                    log.warning(
-                        "events not sent; they wait in the spool",
-                        extra={
-                            "run_id": run_id,
-                            "pending": self.spool.pending,
-                            "retry_in_s": round(delay, 1),
-                            "error": str(exc),
-                        },
-                    )
-                self._failures_logged += 1
-                if self.daemon.hard_stop.is_set() and backoff.failures > HARD_STOP_TRIES:
-                    self.gave_up = "the daemon stopped"
-                    return
-                await _wait_or(self.daemon.hard_stop, delay)
-                continue
-            except Refused as exc:
-                if isinstance(exc, Outdated) or exc.status in (401, 403):
-                    self.daemon.fatal(exc)
-                self.gave_up = str(exc)
-                log.warning(
-                    "the hub does not take this run's events; dropping them",
-                    extra={"run_id": run_id, "status": exc.status, "dropped": self.spool.pending, "error": str(exc)},
-                )
-                self.spool.drop_all()
-                return
-            if self._failures_logged:
-                log.info("events sent again after the hub answered", extra={"run_id": run_id})
-                self._failures_logged = 0
-            backoff.reset()
-            ack = answer.get("ack_seq") if isinstance(answer, dict) else None
-            if not isinstance(ack, int):
-                self.gave_up = "the hub answered events without ack_seq"
-                self.spool.drop_all()
-                return
-            if ack < batch[0]["seq"] - 1:
-                # The hub misses events before this spool's first: they are gone, and nothing after a gap is stored.
-                self.gave_up = (
-                    f"the hub lacks events {ack + 1} to {batch[0]['seq'] - 1}, which this worker no longer has"
-                )
-                log.error("event gap", extra={"run_id": run_id, "ack_seq": ack, "first": batch[0]["seq"]})
-                self.spool.drop_all()
-                return
-            self.spool.acknowledge(ack)
-
-    async def drained(self) -> bool:
-        """Wait until every event is acknowledged or the sending gave up; whether everything was sent."""
-        self.poke()
-        while not self.settled:
-            await asyncio.sleep(0.05)
-        return self.gave_up is None
 
 
 class Run:
@@ -455,7 +292,7 @@ class Run:
             "repo": self.repo,
             "branch": self.branch,
             "runtime": self.runtime,
-            "claimed_at": _now().isoformat(),
+            "claimed_at": now().isoformat(),
             "finished_at": None,
             "state": self.state,
         }
@@ -467,7 +304,7 @@ class Run:
 
     def event(self, kind: str, body: dict, at: datetime | None = None) -> None:
         """Spool an event of the run and write it to its log, every lease value masked."""
-        at = at or _now()
+        at = at or now()
         if kind == "usage_update":  # the session's running cost, for the watchdog of a run of the Curator
             cost = body.get("cost") if isinstance(body.get("cost"), dict) else {}
             amount = cost.get("amount")
@@ -657,7 +494,7 @@ class Run:
                 await self.daemon.hub.inbox(self.id, ack=ack)
                 return
             except Unreachable:
-                await _wait_or(self.daemon.hard_stop, backoff.next())
+                await wait_or(self.daemon.hard_stop, backoff.next())
             except HubProblem as exc:
                 log.warning("inbox not acknowledged", extra={"run_id": self.id, "error": str(exc)})
                 return
@@ -687,7 +524,7 @@ class Run:
                         "report not sent; trying again",
                         extra={"run_id": self.id, "state": state, "retry_in_s": round(delay, 1), "error": str(exc)},
                     )
-                    await _wait_or(self.daemon.hard_stop, delay)
+                    await wait_or(self.daemon.hard_stop, delay)
                     continue
                 except Refused as exc:
                     if isinstance(exc, Outdated) or exc.status in (401, 403):
@@ -726,8 +563,8 @@ class Run:
         if not await self.sender.drained():
             log.warning("ending the run with events unsent", extra={"run_id": self.id, "why": self.sender.gave_up})
         if fields.get("error"):
-            fields["error"] = _cut(str(fields["error"]), MAX_ERROR_CHARS)
-        if fields.get("usage") is not None and _json_size(fields["usage"]) > MAX_USAGE_BYTES:
+            fields["error"] = cut(str(fields["error"]), MAX_ERROR_CHARS)
+        if fields.get("usage") is not None and json_size(fields["usage"]) > MAX_USAGE_BYTES:
             fields["usage"] = None
         if self.adapter is not None and fields.get("session_id") is None:
             fields["session_id"] = self.adapter.session_id
@@ -777,7 +614,7 @@ class Run:
             # abandoned run rather than an orphan whose worktree the next one would remove.
             with contextlib.suppress(OSError):
                 self.daemon.home.remove_agent(self.id)
-            self.record["finished_at"] = _now().isoformat()
+            self.record["finished_at"] = now().isoformat()
             self.record["state"] = self.state
             with contextlib.suppress(OSError):
                 self.daemon.home.save_run(self.record)
@@ -857,7 +694,7 @@ class Run:
         bad = next((item for item in self.verify if item["exit_code"] != 0), None)
         if bad is not None:
             raise RunFailed(
-                f"verify command `{_cut(bad['command'], 200)}` exited {bad['exit_code']}; nothing was pushed, the "
+                f"verify command `{cut(bad['command'], 200)}` exited {bad['exit_code']}; nothing was pushed, the "
                 f"work stays in {self.worktree}",
                 verify=self.verify,
                 usage=self.outcome.usage if self.outcome else None,
@@ -998,7 +835,7 @@ class Run:
         if problems:
             for problem in problems:
                 self.note(f"Preflight: {problem.message}.", cause=problem.cause)
-            raise RunFailed(_cut(preflight.summary(problems), MAX_ERROR_CHARS), cause=problems[0].cause)
+            raise RunFailed(cut(preflight.summary(problems), MAX_ERROR_CHARS), cause=problems[0].cause)
         checked = [f"{len(names)} repo(s)"]
         if verify or hidden:
             checked.append(f"the programs of {len(verify) + len(hidden or [])} command(s)")
@@ -1211,7 +1048,7 @@ class Run:
                 await tui.close()
             with contextlib.suppress(Exception):
                 await tmux.kill(name)
-            reason = _cut(f"{type(exc).__name__}: {exc}", 300)
+            reason = cut(f"{type(exc).__name__}: {exc}", 300)
             log.warning("the terminal UI did not open", extra={"run_id": self.id, "error": reason})
             self.terminal_failed = reason
             if self.mode == "interactive" and not self.agent_started:
@@ -1453,9 +1290,7 @@ class Run:
                     "characters"
                 )
         summary = data.get("summary")
-        self.summary = (
-            _cut(summary.strip(), MAX_SUMMARY_CHARS) if isinstance(summary, str) and summary.strip() else None
-        )
+        self.summary = cut(summary.strip(), MAX_SUMMARY_CHARS) if isinstance(summary, str) and summary.strip() else None
         return commands
 
     async def _run_verify(self, commands: list[str]) -> list[dict]:
@@ -1470,7 +1305,7 @@ class Run:
             self.event(
                 "system",
                 {
-                    "text": f"verify: `{_cut(command, 200)}` exited {code} after {duration_ms} ms",
+                    "text": f"verify: `{cut(command, 200)}` exited {code} after {duration_ms} ms",
                     "command": command,
                     "exit_code": code,
                     "duration_ms": duration_ms,
@@ -1573,7 +1408,7 @@ class Run:
             raise RunFailed(str(exc), verify=self.verify) from None
         except gitops.GitError as exc:
             raise RunFailed(
-                f"git push to {self.branch} on origin failed: {exc}", verify=self.verify, cause=_push_cause(exc)
+                f"git push to {self.branch} on origin failed: {exc}", verify=self.verify, cause=push_cause(exc)
             ) from None
         if pushed.changed:
             self.note(
@@ -2031,7 +1866,7 @@ class PlanRun(Run):
                     which = f" answering decision {', '.join(f'#{item}' for item in answers)}" if answers else ""
                     self.note(f"The owner wrote{which}: the agent goes on in session {self.session_id or '(new)'}.")
                     return messages
-                await _first_of(
+                await first_of(
                     (self.inbox_arrived, self._stop, self.park_asked, self.finish_asked), self.daemon.heartbeat_s
                 )
         finally:
@@ -2043,7 +1878,7 @@ class PlanRun(Run):
         await self._interrupt_agent()
         self.parked = True
         self.state = "parked"
-        self.record.update({"state": "parked", "parked_at": _now().isoformat(), "session_id": self.session_id})
+        self.record.update({"state": "parked", "parked_at": now().isoformat(), "session_id": self.session_id})
         self.note(
             f"The hub parked the run: the agent's turn is over, and its session {self.session_id or '(none)'} and the "
             f"worktrees in {self.directory} stay on this worker for the run that resumes it."
@@ -2067,7 +1902,7 @@ class PlanRun(Run):
             self.note(f"{runs.RESULT_FILE} was not read ({exc}): the run ends without its summary.")
             return None
         summary = data.get("summary") if isinstance(data, dict) else None
-        return _cut(summary.strip(), MAX_SUMMARY_CHARS) if isinstance(summary, str) and summary.strip() else None
+        return cut(summary.strip(), MAX_SUMMARY_CHARS) if isinstance(summary, str) and summary.strip() else None
 
     async def _named_branches(self) -> dict[str, str | None]:
         """repo -> the branch the plan names for it as the hub holds it now, so a default branch is pushed only while
@@ -2143,7 +1978,7 @@ class PlanRun(Run):
                 raise RunFailed(f"{name}: {exc}", cause="push_conflict") from None
             except gitops.GitError as exc:
                 raise RunFailed(
-                    f"git push of {name} to {workspace.branch} on origin failed: {exc}", cause=_push_cause(exc)
+                    f"git push of {name} to {workspace.branch} on origin failed: {exc}", cause=push_cause(exc)
                 ) from None
             stat = await gitops.diffstat(path, workspace.base)
             for key in total:
@@ -2261,7 +2096,7 @@ class PlanRun(Run):
                 self.note(f"Notified the owner of {what}.")
                 return
             except Unreachable:
-                await _wait_or(self.daemon.hard_stop, backoff.next())
+                await wait_or(self.daemon.hard_stop, backoff.next())
             except HubProblem as exc:
                 log.warning("notice not sent", extra={"run_id": self.id, "error": str(exc)})
                 break
@@ -2468,12 +2303,12 @@ class JudgeRun(ReviewRun):
         self._check()
         workspace = self.workspaces[name]
         # The diff is read before any code of the change runs, with no textconv of the repository.
-        diff, cut = await gitops.diff_text(
+        diff, too_long = await gitops.diff_text(
             workspace.worktree, self.merge_base, self.head, env=gitops.without_hooks(self.daemon.env)
         )
         files = judge.parse_diff(diff)
         signs = judge.hack_signs(files, repo=name, protected=protected, verify_commands=verify_commands)
-        if cut:  # first, so the cap on signs never drops it
+        if too_long:  # first, so the cap on signs never drops it
             cut_sign = {
                 "kind": "diff_unreadable",
                 "path": "(the diff)",
@@ -2517,7 +2352,7 @@ class JudgeRun(ReviewRun):
         await self._report("verifying")
         self._check()
         usage = self.outcome.usage if self.outcome else None
-        await self._end("done", summary=_cut(self.summary, MAX_SUMMARY_CHARS), usage=usage)
+        await self._end("done", summary=cut(self.summary, MAX_SUMMARY_CHARS), usage=usage)
 
     def run_path(self) -> str | None:
         """The PATH the change's verify commands and hidden checks run with: the one of the environment they get
@@ -2661,7 +2496,7 @@ class JudgeRun(ReviewRun):
             self.event(
                 "system",
                 {
-                    "text": f"verify: `{_cut(command, 200)}` exited {code} after {duration_ms} ms",
+                    "text": f"verify: `{cut(command, 200)}` exited {code} after {duration_ms} ms",
                     "command": command,
                     "exit_code": code,
                     "duration_ms": duration_ms,
@@ -2774,7 +2609,7 @@ class AuthorRun(ReviewRun):
             self._save_workspaces()
         prompt, session_id = await self._first_turn()
         await self._plan_turns(cls, prompt, session_id)
-        self.summary = self._read_summary() or (_cut(self.last_said, MAX_SUMMARY_CHARS) if self.last_said else None)
+        self.summary = self._read_summary() or (cut(self.last_said, MAX_SUMMARY_CHARS) if self.last_said else None)
         await self._ensure_running()
         await self._report("verifying")
         self._check()
@@ -2812,7 +2647,7 @@ class AuthorRun(ReviewRun):
                 await self.daemon.hub.chat(self.id, text)
                 return
             except Unreachable:
-                await _wait_or(self.daemon.hard_stop, backoff.next())
+                await wait_or(self.daemon.hard_stop, backoff.next())
             except HubProblem as exc:
                 self.note(f"The hub did not take the agent's message for the chat: {exc}")
                 return
