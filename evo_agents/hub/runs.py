@@ -67,6 +67,26 @@ MAX_ATTEMPTS = 3  # runs of one dispatch, the first included; the last one's exp
 # that woke for a moment).
 STEADY_SECONDS = 120
 STEADY_GAP_SECONDS = 30
+# Why a run failed, as its worker says with the report of the state failed (failure_cause, an optional field of the
+# worker protocol version 1, which an older daemon leaves out); the hub keeps it with the run. These are the causes
+# this release's worker sends; the hub takes any name of FAILURE_CAUSE, so a newer worker's causes reach it too, and
+# ``evo_agents.hub.review.run_cause`` guesses one from the error of a run that has none.
+FAILURE_CAUSES = (
+    "origin",  # preflight: the project lists no origin for a repo the run needs
+    "credentials",  # preflight, or a fetch or push git refused: no credential reads, or pushes, a repo of the run
+    "missing_tool",  # preflight: a program a verify command, or a hidden check of a judge run, calls is not on PATH
+    "push_conflict",  # the remote branch moved on, and the run's own commits could not go on top of it
+    "verify_failed",  # a verify command the worker ran again exited other than 0
+    "timeout",  # the run ran past its timeout
+    "cost_cap",  # the agent stopped at the run's cost cap
+    "turn_cap",  # at its turns cap
+    "time_cap",  # at its time cap
+    "checkout",  # the checkout, the fetch or a worktree of the run went wrong
+    "runtime",  # the worker has no adapter for the runtime, or cannot start the agent as the run asks
+    "worker_stopped",  # the daemon was stopped, or failed, while the run was held
+)
+PREFLIGHT_CAUSES = ("origin", "credentials", "missing_tool")  # what a run checks before its agent starts
+FAILURE_CAUSE = r"^[a-z][a-z0-9_]{0,31}$"  # a cause a worker may send, known to this hub or not
 
 MAX_BATCH_EVENTS = 500  # events in one POST of a run's events
 MAX_BATCH_BYTES = 1024 * 1024  # body of that POST
@@ -400,6 +420,23 @@ def unready_reason(body: dict, step) -> str | None:
 def ready_steps(body: dict) -> list[dict]:
     """The steps of the plan ``body`` that are ready to run, in plan order (see the module's docstring)."""
     return [step for step in _steps(body) if unready_reason(body, step) is None]
+
+
+def verify_of(step) -> list[str]:
+    """The verify of ``step`` as a list of commands: its verify, one shell command line as plan.schema.json has it, or
+    none when it has none."""
+    verify = step.get("verify") if isinstance(step, dict) else None
+    return [verify.strip()] if isinstance(verify, str) and verify.strip() else []
+
+
+def open_verify(body: dict) -> list[str]:
+    """The verify commands of every step of the plan ``body`` not done yet, in plan order: what a plan run's worker
+    checks before its agent starts."""
+    found: list[str] = []
+    for step in _steps(body):
+        if isinstance(step, dict) and step.get("status") != "done":
+            found += [command for command in verify_of(step) if command not in found]
+    return found
 
 
 # The prompt

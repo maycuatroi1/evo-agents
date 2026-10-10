@@ -123,6 +123,7 @@ RUN_KEYS = (
     "request",
     "finish_requested_at",
     "steady_wait",
+    "failure_cause",
 )
 RUN_LIST_KEYS = ("runs", "total", "counts", "limit", "offset")
 EVENTS_KEYS = ("run_id", "state", "last_seq", "events", "more")
@@ -629,6 +630,8 @@ def _describe(run: dict) -> list[tuple[str, str]]:
         lines.append(("usage", _clip(json.dumps(run["usage"], ensure_ascii=False, separators=(",", ":")), RAW_CHARS)))
     if run["error"]:
         lines.append(("error", run["error"]))
+    if run.get("failure_cause"):
+        lines.append(("cause", run["failure_cause"]))
     if run["evidence"]:
         lines.append(("evidence", run["evidence"]))
     if run.get("request"):

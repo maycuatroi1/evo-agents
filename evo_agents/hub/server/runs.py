@@ -5,8 +5,10 @@ worker's side of the queue (claim, heartbeat, state) and the owner's cancel, app
 
 GET /v1/projects/{p}/plans/{plan}/ready-steps (reader) lists every step of the plan, ready or not, with why it is not
 (``runs.unready_reason``, or the active run it has). POST /v1/projects/{p}/runs (writer) queues one run per step
-named: every step must be ready and without an active run (409 otherwise, and nothing is queued), and a worker named
-must be one of the caller's own (403 for any other id, a hub admin's included), live and serving the project (409).
+named: every step must be ready and without an active run (409 otherwise, and nothing is queued), its repo one the
+project lists an origin for (409 naming it: no credential is leased for a repo without one, and the worker's preflight
+would fail the run; a rerun and a plan run are refused the same way), and a worker named must be one of the caller's
+own (403 for any other id, a hub admin's included), live and serving the project (409).
 Each run is notified on RUNS_CHANNEL and audited (run.dispatch), and keeps the step's title. ``model`` is optional,
 one line of at most ``runs.MAX_MODEL_CHARS``, as the runtime names it; without one the runtime chooses as it would.
 Each run keeps the credential it was dispatched with in dispatched_via (``credentials.dispatch_credential``): web for a
@@ -89,7 +91,10 @@ POST /v1/worker/runs/{id}/state reports a move of a run the worker holds (404 ot
 ``runs.TRANSITIONS`` with the worker as actor (409 otherwise): ``done`` only for approval auto with every verify
 command exited 0, ``review`` only for approval review. A plan run ends ``done`` without verify results, since each of
 its steps was verified when it was reported, and never in review. Reporting the state the run is in already changes
-nothing but the session id, commit, diffstat, verify results and usage given, so a resend is safe. A plan run reports
+nothing but the session id, commit, diffstat, verify results and usage given, so a resend is safe. A ``failed``
+report keeps its ``failure_cause`` (``runs.FAILURE_CAUSES``, an optional field of protocol version 1) as the run's,
+which Run shows; a run of one step claimed carries its step's ``verify``, whose programs the worker's preflight looks
+for before the agent starts. A plan run reports
 ``waiting`` when its agent's turn ended with a decision open, which needs a decision of the run that is open or whose
 answer the worker has not taken yet (409 otherwise: waiting does not count toward the timeout), and ``running`` once
 the answer reached the agent. A move out of the held states gives back the run's leases (``credentials``), and their
@@ -400,6 +405,13 @@ class Run(BaseModel):
         description="a queued attempt after a run lost on a worker that is not steady yet: that worker takes it only "
         "once it is; another worker may take it now unless it is pinned to that one. Null otherwise",
     )
+    failure_cause: str | None = Field(
+        None,
+        description="why the run failed, as its worker reported it: origin, credentials or missing_tool when its "
+        "preflight stopped it before the agent started, else push_conflict, verify_failed, timeout and the others of "
+        "runs.FAILURE_CAUSES; null for a run that did not fail, one an older daemon or the hub ended, and every run "
+        "from before schema 0024",
+    )
 
 
 class ClaimRequest(BaseModel):
@@ -488,6 +500,12 @@ class RunSpec(BaseModel):
         default_factory=list,
         description=f"the skills the worker writes under {author.SKILLS_DIR} of the run's directory for its agent: an "
         "author run's create-exec-plan; empty for any other run",
+    )
+    verify: list[str] | None = Field(
+        None,
+        description="the verify of the step of a run of one step, as the plan it was dispatched from has it: the "
+        "worker's preflight checks that each program it calls is on PATH before the agent starts; null for any other "
+        "kind, whose worker reads the verify elsewhere (a plan run's plan, a judge run's inputs)",
     )
 
 
@@ -620,6 +638,12 @@ class StateReport(BaseModel):
     verify: list[VerifyResult] | None = Field(None, max_length=50, description="each verify command the daemon ran")
     usage: dict | None = None
     error: str | None = Field(None, min_length=1, max_length=2000)
+    failure_cause: str | None = Field(
+        None,
+        pattern=runs.FAILURE_CAUSE,
+        description="with failed: why, one of runs.FAILURE_CAUSES (a newer worker's own names are kept too); kept with "
+        "the run as its failure_cause, and ignored with any other state",
+    )
     summary: str | None = Field(None, max_length=8000, description="the agent's summary, for the evidence")
 
     @model_validator(mode="after")
@@ -747,6 +771,7 @@ def _run_select():
             r.c.finished_at,
             r.c.request,
             r.c.finish_requested_at,
+            r.c.failure_cause,
             lost_on.c.id.label("steady_wait_worker_id"),
             lost_on.c.name.label("steady_wait_worker"),
             case((_beating(lost_on), lost_on.c.steady_since + STEADY), else_=None).label("steady_wait_at"),
@@ -1411,6 +1436,24 @@ def _short(value) -> str | None:
     return value if isinstance(value, str) and value.strip() else None
 
 
+async def _refuse_without_origin(conn: AsyncConnection, access: ProjectAccess, repos: list[str], what: str) -> None:
+    """409 when the project lists no origin for one of ``repos`` (no repo of that name, or one without its origin): no
+    credential is leased for such a repo, and the worker's preflight would fail the run before its agent starts."""
+    pr = tables.project_repos
+    listed = await conn.execute(
+        select(pr.c.name, pr.c.origin).where(pr.c.project_id == access.project_id, pr.c.name.in_(repos))
+    )
+    origins = {name: origin for name, origin in listed}
+    unlisted = [name for name in dict.fromkeys(repos) if not origins.get(name)]
+    if unlisted:
+        names = ", ".join(unlisted)
+        raise HTTPException(
+            409,
+            f"{what} needs {names}, for which project {access.name} lists no origin: add the repo with its origin to "
+            "the harness and run `evo-agents hub project register` again; nothing was dispatched",
+        )
+
+
 async def _insert_run(conn: AsyncConnection, values: dict) -> int:
     """Insert a run with the column ``values`` in a savepoint and return its id. When the database refuses the row,
     the savepoint is rolled back and the IntegrityError, with the psycopg error that says why in ``orig``, goes on to
@@ -1455,6 +1498,7 @@ async def _queue_run(
             422, f"step {key} names no repo and the plan does not list exactly one: give the step a repo"
         )
     _fits(pinned, access, "step", [name], runtime)
+    await _refuse_without_origin(conn, access, [name], f"step {key} of plan {held.plan_id}")
     values = {
         "project_id": access.project_id,
         "plan_id": held.plan_id,
@@ -1625,6 +1669,7 @@ async def dispatch_plan(request: Request, project: ProjectName, body: PlanRunDis
             )
         repos = _plan_run_repos(held)
         _fits(pinned, access, "plan", [entry["repo"] for entry in repos], body.runtime)
+        await _refuse_without_origin(conn, access, [entry["repo"] for entry in repos], f"plan {held.plan_id}")
         values = {
             "kind": "plan",
             "project_id": access.project_id,
@@ -2304,7 +2349,7 @@ async def _run_spec(conn: AsyncConnection, run_id: int) -> RunSpec:
     )
     body = (await conn.execute(dispatched)).scalar_one_or_none()
     plan = body if body is not None else {"id": view.plan_id, "steps": []}
-    copy = None
+    copy, verify = None, None
     if view.kind == "review":
         from evo_agents.hub.server.collect import review_prompt  # it queues runs through this module
 
@@ -2339,6 +2384,7 @@ async def _run_spec(conn: AsyncConnection, run_id: int) -> RunSpec:
             step = {"id": view.step_key}
         prompt = runs.build_prompt(plan, step, {"repo": view.repo, "branch": view.branch})
         title = _text_or_none(step.get("title"))
+        verify = runs.verify_of(step)
     return RunSpec(
         id=view.id,
         kind=view.kind,
@@ -2365,6 +2411,7 @@ async def _run_spec(conn: AsyncConnection, run_id: int) -> RunSpec:
         plan=copy,
         budget=await _claimed_budget(conn, view),
         curator=await _curator_spec(conn, project_id, view),
+        verify=verify,
     )
 
 
@@ -2600,6 +2647,8 @@ async def report_state(request: Request, run_id: RunId, body: StateReport, user:
         error = body.error
         if body.state == "failed" and error is None:
             error = f"worker {name} reported that the run failed"
+        if body.state == "failed" and body.failure_cause is not None:
+            columns["failure_cause"] = body.failure_cause
         if body.state in ("done", "review"):
             found = await run_step(conn, run_id)
             found = replace(

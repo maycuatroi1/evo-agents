@@ -71,7 +71,7 @@ def plan_body() -> dict:
                 "title": "Queue",
                 "repo": "evo-agents",
                 "what": "the queue",
-                "verify": "pytest",
+                "verify": "test -f feature.txt",  # a program on any worker's PATH: the preflight checks it
                 "status": "pending",
                 "depends_on": [1],
             },
@@ -1139,6 +1139,118 @@ def test_the_run_list_shows_each_member_the_runs_of_the_plans_its_label_lets_it_
     assert [run["id"] for run in listed(hub["owner"], q="feat/queue")["runs"]] == [last, first]
     assert listed(hub["owner"], q=OWNER)["total"] == 3 and listed(hub["owner"], q="nobody")["total"] == 0
     assert [run["id"] for run in listed(hub["owner"], state="queued", plan_id="vault")["runs"]] == [hidden]
+
+
+# Preflight and failure causes
+
+
+def without_origin(client, hub, *repos: str) -> None:
+    """Register the project again, its repos ``repos`` without their origin."""
+    body = registration()
+    body["repos"] = [{**repo, "origin": None} if repo["name"] in repos else repo for repo in body["repos"]]
+    assert client.put(f"/v1/projects/{PROJECT}", json=body, headers=hub["admin"]).status_code == 200
+
+
+def notices(db, run_id: int) -> list[tuple]:
+    n = tables.notifications
+    query = select(n.c.user_id, n.c.notice_kind, n.c.title, n.c.body, n.c.details).where(n.c.run_id == run_id)
+    return sql(db, query.order_by(n.c.id))
+
+
+def test_dispatch_and_rerun_of_a_step_whose_repo_has_no_origin_are_409_naming_the_repo(client, hub, hub_db):
+    worker = add_worker(client, hub["owner"], "mac-mini")
+    old = dispatched(client, hub["owner"], [2], worker_id=worker["id"])[0]
+    assert control(client, hub["owner"], old["id"], "cancel").status_code == 200
+    without_origin(client, hub, "evo-agents")
+    refused = dispatch(client, hub["owner"], [2])
+    assert refused.status_code == 409, refused.text
+    message = refused.json()["message"]
+    assert "step 2 of plan rollout needs evo-agents" in message and f"project {PROJECT} lists no origin" in message
+    assert message.endswith("nothing was dispatched")
+    again = control(client, hub["owner"], old["id"], "rerun")
+    assert again.status_code == 409 and "lists no origin" in again.json()["message"]
+    assert count_runs(hub_db) == [(1,)]
+    # a repo the project does not list at all is refused the same way
+    body = registration()
+    body["repos"] = [repo for repo in body["repos"] if repo["name"] != "evo-agents"]
+    assert client.put(f"/v1/projects/{PROJECT}", json=body, headers=hub["admin"]).status_code == 200
+    assert "needs evo-agents, for which" in dispatch(client, hub["owner"], [2]).json()["message"]
+    assert count_runs(hub_db) == [(1,)]
+
+
+def test_the_claim_of_a_step_run_names_the_verify_its_preflight_checks(client, hub):
+    worker = add_worker(client, hub["owner"], "mac-mini", slots=3)
+    run = dispatched(client, hub["owner"], [2], worker_id=worker["id"])[0]
+    spec = claim(client, worker)
+    assert spec["id"] == run["id"] and spec["verify"] == ["test -f feature.txt"]
+    held = plan(client, hub["owner"])
+    body = held["body"]
+    body["steps"][3]["verify"] = "  ruff check . && pytest -q\n"
+    pushed = client.put(
+        f"/v1/projects/{PROJECT}/plans/{PLAN}",
+        json={"body": body, "if_revision": held["revision"]},
+        headers=hub["owner"],
+    )
+    assert pushed.status_code == 200, pushed.text
+    dispatched(client, hub["owner"], [4], worker_id=worker["id"])
+    assert claim(client, worker)["verify"] == ["ruff check . && pytest -q"]
+    dispatched(client, hub["owner"], [5], worker_id=worker["id"])
+    assert claim(client, worker)["verify"] == []  # a step without verify: nothing to check
+
+
+def test_a_failed_report_keeps_its_cause_which_the_run_and_its_list_show(client, hub, hub_db):
+    worker = add_worker(client, hub["owner"], "mac-mini", slots=3)
+    first, second, third = (dispatched(client, hub["owner"], [key])[0]["id"] for key in (2, 4, 5))
+    for _ in range(3):
+        claim(client, worker)
+    error = "verify command `pnpm test` calls pnpm, which is not on this worker's PATH"
+    failed = report(client, worker, first, "failed", error=error, failure_cause="missing_tool")
+    assert failed.status_code == 200, failed.text
+    assert (failed.json()["state"], failed.json()["failure_cause"]) == ("failed", "missing_tool")
+    # a daemon that sends no cause still ends its run; a cause that is no name is refused
+    assert report(client, worker, second, "failed", error="the agent gave up").json()["failure_cause"] is None
+    bad = report(client, worker, third, "failed", error="x", failure_cause="Not A Cause")
+    assert bad.status_code == 422, bad.text
+    # a newer worker's own cause is kept; with a move that is not failed, a cause is ignored
+    assert moved(client, worker, third, "running")["failure_cause"] is None
+    assert report(client, worker, third, "failed", error="x", failure_cause="disk_full").json()["failure_cause"] == (
+        "disk_full"
+    )
+    shown = client.get(f"/v1/projects/{PROJECT}/runs/{first}", headers=hub["reader"]).json()
+    assert (shown["failure_cause"], shown["error"]) == ("missing_tool", error)
+    listed = client.get(f"/v1/projects/{PROJECT}/runs", headers=hub["reader"]).json()["runs"]
+    assert {run["id"]: run["failure_cause"] for run in listed} == {
+        first: "missing_tool",
+        second: None,
+        third: "disk_full",
+    }
+    assert of_run(hub_db, first, "failure_cause") == [("missing_tool",)]
+    assert step(client, hub["owner"], 2)["status"] == "pending"
+
+
+def test_a_step_run_its_preflight_failed_sends_its_owner_run_failed_with_the_cause(client, hub, hub_db):
+    worker = add_worker(client, hub["owner"], "mac-mini", slots=2)
+    stopped, worked = (dispatched(client, hub["owner"], [key])[0]["id"] for key in (2, 4))
+    claim(client, worker)
+    claim(client, worker)
+    error = "no credential reads evo-agents (https://git.example.org/evo/evo-agents.git): git could not read Username"
+    assert report(client, worker, stopped, "failed", error=error, failure_cause="credentials").status_code == 200
+    ((user_id, kind, title, body, details),) = notices(hub_db, stopped)
+    owner_id = sql(hub_db, select(tables.users.c.id).where(tables.users.c.login == OWNER))[0][0]
+    assert (user_id, kind, body) == (owner_id, "run_failed", error)
+    assert title == f"Run #{stopped} of step 2 of {PLAN} failed (credentials)"
+    assert details == {
+        "run_kind": "step",
+        "plan_id": PLAN,
+        "step_key": "2",
+        "failure_cause": "credentials",
+        "error": error,
+    }
+    # a failure of the work itself is the run page's to show, as before
+    moved(client, worker, worked, "running", "verifying")
+    error = "verify command `pytest` exited 1; nothing was pushed"
+    assert report(client, worker, worked, "failed", error=error, failure_cause="verify_failed").status_code == 200
+    assert notices(hub_db, worked) == []
 
 
 # Dispatch from the web only

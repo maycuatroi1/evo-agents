@@ -640,6 +640,7 @@ runs = Table(
     Column("budget", JSONB),
     Column("request", Text),  # the member's request of an author run, NULL for any other kind (0020)
     _when("finish_requested_at"),  # the owner ended the chat of an author run a worker holds (0022)
+    Column("failure_cause", Text),  # why the run failed, as its worker reported it (0024)
     ForeignKeyConstraint(["dispatched_by"], ["users.id"], ondelete="RESTRICT", name="runs_dispatched_by_fkey"),
     ForeignKeyConstraint(["parent_run_id"], ["runs.id"], ondelete="RESTRICT", name="runs_parent_run_id_fkey"),
     ForeignKeyConstraint(["pinned_worker_id"], ["workers.id"], ondelete="RESTRICT", name="runs_pinned_worker_id_fkey"),
