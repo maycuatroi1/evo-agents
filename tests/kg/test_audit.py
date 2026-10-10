@@ -258,4 +258,5 @@ def test_audit_write_failure_warns_and_never_fails_the_run(fake_project, capsys)
     err = capsys.readouterr().err
     assert err.count("warning: could not append to the audit log") == 2
 
+
 # Trial change for the CI path filter of structure-guardrails; this branch is never merged.
