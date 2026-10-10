@@ -26,11 +26,17 @@ The comparison with main reads `origin/main`: run `git fetch origin` first, or i
 | `kg-not-hub-or-worker` | `evo_agents.kg` imports neither `evo_agents.hub` nor `evo_agents.worker` | its CLI: `kg.cli`, `kg.cli_graph`, `kg.schedule` |
 | `hub-server-from-hub-server` | outside `evo_agents.hub.server`, `evo_agents.hub` does not import it | `hub serve` and `hub openapi` (the app), `kg_prune` (audit), `hub worker` (ten job modules) |
 | `packages-acyclic` | `cli`, `worker`, `hub`, `kg`, `harness` and `schema` import each other without cycles | the kg CLI, the MCP proxy's worker home, the CLI contract, the harness loader's use of kg (8) |
+| `hub-runs-layers` | in `evo_agents.hub.server.runs`, `routes` imports `service` and `models`, `service` imports `models`, never the reverse; every module of the package is in one of the three | none |
 
 Packages import downward: `cli`, then `worker`, `hub`, `kg`, `harness`, `schema`. import-linter reads imports inside
 functions too, so a lazy import does not get around a contract. To fix a broken one, move the shared code down into
 a package both may import (a type into `evo_agents.kg` or `evo_agents.schema`, the run protocol into
 `evo_agents.hub.runs`), or have the upper package pass it down as an argument. Each contract prints its own advice.
+
+Inside `evo_agents.hub.server.runs`, the run API, layers go one way too. A route handler passes the request's parts
+to a public function of `service`, which checks, queries and moves runs with SQLAlchemy Core on
+`evo_agents.hub.tables` and returns the models of `models`. Other modules import `service` and `models`, never
+`routes`.
 
 Each contract's `ignore_imports` only shrinks: the test fails a change that adds an entry main does not have. When
 you remove the import an entry names, remove the entry too (import-linter fails on an entry that matches nothing).

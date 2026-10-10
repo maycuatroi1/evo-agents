@@ -24,7 +24,13 @@ from tests.structure import (
     Measures,
 )
 
-CONTRACTS = {"worker-not-hub-server", "kg-not-hub-or-worker", "hub-server-from-hub-server", "packages-acyclic"}
+CONTRACTS = {
+    "worker-not-hub-server",
+    "kg-not-hub-or-worker",
+    "hub-server-from-hub-server",
+    "packages-acyclic",
+    "hub-runs-layers",
+}
 
 
 @pytest.fixture(scope="module")

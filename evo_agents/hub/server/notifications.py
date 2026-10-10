@@ -73,7 +73,8 @@ from evo_agents.hub.server import audit
 from evo_agents.hub.server.admin import PROJECT_NAME
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.run_state import write_event
-from evo_agents.hub.server.runs import LINE, MAX_ID, OBJECT_NAME, REFUSALS, RunId, _held_plan_run
+from evo_agents.hub.server.runs.models import LINE, MAX_ID, OBJECT_NAME, REFUSALS, RunId
+from evo_agents.hub.server.runs.service.plan_runs import held_plan_run
 from evo_agents.hub.server.security import WEB as WEB_SESSION
 from evo_agents.hub.server.security import CurrentUser
 
@@ -563,7 +564,7 @@ def _notifications(rows) -> list[Notification]:
 async def send_notice(request: Request, run_id: RunId, body: NoticeIn, user: CurrentUser) -> Notification:
     """Notify the owner of a plan run this worker holds: a push or merge into a default branch, say."""
     async with request.app.state.engine.begin() as conn:
-        _, row = await _held_plan_run(conn, user, run_id, lock=True)
+        _, row = await held_plan_run(conn, user, run_id, lock=True)
         _, _, _, project_id, project, plan_id, dispatcher_id, _, repos = row
         names = [entry.get("repo") for entry in repos or [] if isinstance(entry, dict)]
         if body.repo is not None and body.repo not in names:

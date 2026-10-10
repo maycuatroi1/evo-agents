@@ -4,9 +4,8 @@
     "evo_agents/hub/judge.py": 1251,
     "evo_agents/hub/memory.py": 1135,
     "evo_agents/hub/run_cli.py": 1063,
-    "evo_agents/hub/server/changes.py": 1804,
-    "evo_agents/hub/server/curator.py": 1381,
-    "evo_agents/hub/server/runs.py": 2988,
+    "evo_agents/hub/server/changes.py": 1795,
+    "evo_agents/hub/server/curator.py": 1375,
     "evo_agents/hub/tables.py": 1285,
     "evo_agents/worker/cli.py": 1255,
     "evo_agents/worker/interactive.py": 1378
@@ -29,7 +28,6 @@
     "evo_agents/hub/server/collect.py::_session_figures": {"complexity": 19},
     "evo_agents/hub/server/kg.py::push_run": {"statements": 59},
     "evo_agents/hub/server/run_state.py::write_step": {"complexity": 16},
-    "evo_agents/hub/server/runs.py::report_state": {"complexity": 16, "statements": 52},
     "evo_agents/kg/build.py::run_pipeline": {"complexity": 56, "statements": 171},
     "evo_agents/kg/connectors/git.py::run": {"statements": 56},
     "evo_agents/kg/extract/python.py::extract": {"complexity": 21},
@@ -129,44 +127,15 @@
       "evo_agents.hub.plan_cli._plan_id",
       "evo_agents.hub.plan_cli._project"
     ],
-    "evo_agents/hub/server/author_chat.py": [
-      "evo_agents.hub.server.runs._asked",
-      "evo_agents.hub.server.runs._audit_run",
-      "evo_agents.hub.server.runs._held_plan_run",
-      "evo_agents.hub.server.runs._owned_run"
-    ],
     "evo_agents/hub/server/brief.py": [
       "evo_agents.hub.server.curator._due",
       "evo_agents.hub.server.curator._owner_access"
     ],
-    "evo_agents/hub/server/changes.py": [
-      "evo_agents.hub.server.runs._activity",
-      "evo_agents.hub.server.runs._insert_run",
-      "evo_agents.hub.server.runs._lock_plan",
-      "evo_agents.hub.server.runs._unfit",
-      "evo_agents.hub.server.runs._worker_of"
-    ],
     "evo_agents/hub/server/collect.py": [
-      "evo_agents.hub.server.curator._due",
-      "evo_agents.hub.server.runs._insert_run",
-      "evo_agents.hub.server.runs._unfit"
+      "evo_agents.hub.server.curator._due"
     ],
     "evo_agents/hub/server/credentials.py": [
-      "evo_agents.hub.server.changes._store_check",
-      "evo_agents.hub.server.runs._run_target",
-      "evo_agents.hub.server.runs._worker_of"
-    ],
-    "evo_agents/hub/server/curator.py": [
-      "evo_agents.hub.server.runs._activity",
-      "evo_agents.hub.server.runs._insert_run",
-      "evo_agents.hub.server.runs._lock_plan",
-      "evo_agents.hub.server.runs._plan_run_repos",
-      "evo_agents.hub.server.runs._unfit"
-    ],
-    "evo_agents/hub/server/decisions.py": [
-      "evo_agents.hub.server.runs._dispatcher",
-      "evo_agents.hub.server.runs._held_plan_run",
-      "evo_agents.hub.server.runs._lock_plan"
+      "evo_agents.hub.server.changes._store_check"
     ],
     "evo_agents/hub/server/ledger.py": [
       "evo_agents.hub.server.proposals._readable_proposal",
@@ -176,23 +145,9 @@
       "evo_agents.hub.plan_cli._check_retry",
       "evo_agents.kg.serve._error"
     ],
-    "evo_agents/hub/server/notifications.py": [
-      "evo_agents.hub.server.runs._held_plan_run"
-    ],
     "evo_agents/hub/server/outcomes.py": [
       "evo_agents.hub.server.curator._cancel_queued",
       "evo_agents.hub.server.curator._owner_access"
-    ],
-    "evo_agents/hub/server/proposals.py": [
-      "evo_agents.hub.server.runs._worker_of"
-    ],
-    "evo_agents/hub/server/run_events.py": [
-      "evo_agents.hub.server.runs._audit_run",
-      "evo_agents.hub.server.runs._owned_run",
-      "evo_agents.hub.server.runs._run_target"
-    ],
-    "evo_agents/hub/server/terminal.py": [
-      "evo_agents.hub.server.runs._run_target"
     ],
     "evo_agents/kg/cli_graph.py": [
       "evo_agents.kg.cli._print_json",
