@@ -97,7 +97,10 @@ from evo_agents.hub.server.auth import NO_STORE
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.github import GitHubUnavailable
 from evo_agents.hub.server.github_app import GitHubApp, InstallationToken, Pusher
-from evo_agents.hub.server.runs import NOT_HELD, RunId, _run_target, _worker_of, readable_run
+from evo_agents.hub.server.runs.models import NOT_HELD, RunId
+from evo_agents.hub.server.runs.service.audits import run_target
+from evo_agents.hub.server.runs.service.claims import worker_of
+from evo_agents.hub.server.runs.service.views import readable_run
 from evo_agents.hub.server.sealing import Sealed, Sealer, Unsealable, lease_aad, secret_aad
 from evo_agents.hub.server.security import CurrentUser, Principal
 
@@ -193,7 +196,7 @@ class _Run:
 
     @property
     def target(self) -> str:
-        return _run_target(self.project, self.plan_id, self.step_key, self.id)
+        return run_target(self.project, self.plan_id, self.step_key, self.id)
 
 
 @dataclass(frozen=True)
@@ -380,7 +383,7 @@ async def _survey(conn: AsyncConnection, user: Principal, run_id: int, *, lock: 
     """(worker id, what run ``run_id`` may get) for the worker of ``user``, which must hold the run. The worker's row
     is locked, as on every worker route; with ``lock`` the run's and the secrets' rows are too, so the run cannot end
     and a secret cannot be deleted until the leases are recorded."""
-    worker_id = (await _worker_of(conn, user))[0]
+    worker_id = (await worker_of(conn, user))[0]
     run = await _held_run(conn, worker_id, run_id, lock=lock)
     repos = tables.project_repos
     origins = select(repos.c.name, repos.c.origin).where(
@@ -733,7 +736,7 @@ async def give_back_credentials(request: Request, run_id: RunId, user: CurrentUs
     """Give back every lease this worker holds of the run, in whatever state the run is; GitHub tokens are revoked."""
     state = request.app.state
     async with state.engine.begin() as conn:
-        worker_id = (await _worker_of(conn, user))[0]
+        worker_id = (await worker_of(conn, user))[0]
         r = tables.runs
         row = (await conn.execute(select(r.c.worker_id).where(r.c.id == run_id).with_for_update())).one_or_none()
         if row is None or row.worker_id != worker_id:
@@ -867,7 +870,7 @@ async def end_leases(
     rows = (await conn.execute(_end_leases(run_id, worker_id))).all()
     for row in rows:
         target = (
-            f"{_run_target(row.project, row.plan_id, row.step_key, row.run_id)} leases={row.leases} "
+            f"{run_target(row.project, row.plan_id, row.step_key, row.run_id)} leases={row.leases} "
             f"secrets={_ids(row.secrets)} github-app={row.tokens} by={by}"
         )
         await audit.record(

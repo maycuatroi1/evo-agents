@@ -66,17 +66,10 @@ from evo_agents.hub.server.blobs import Mismatch, UploadItem, Uploads, blob_stor
 from evo_agents.hub.server.errors import ErrorBody, error_response
 from evo_agents.hub.server.listen import Listener
 from evo_agents.hub.server.run_state import EVENTS_CHANNEL, next_seq, notify_events
-from evo_agents.hub.server.runs import (
-    MAX_ID,
-    NOT_HELD,
-    REFUSALS,
-    RunId,
-    _audit_run,
-    _owned_run,
-    _run_target,
-    readable_run,
-    web_only_steering,
-)
+from evo_agents.hub.server.runs.models import MAX_ID, NOT_HELD, REFUSALS, RunId
+from evo_agents.hub.server.runs.service.audits import audit_run, run_target
+from evo_agents.hub.server.runs.service.controls import owned_run, web_only_steering
+from evo_agents.hub.server.runs.service.views import readable_run
 from evo_agents.hub.server.security import CurrentUser, Principal
 
 log = logging.getLogger(__name__)
@@ -612,7 +605,7 @@ async def send_message(request: Request, project: ProjectName, run_id: RunId, bo
     """Leave a message for the run's agent in its inbox, which the worker hands to the agent; a reply to a parked
     author run queues the run that resumes it, whose inbox takes the message."""
     async with request.app.state.engine.begin() as conn:
-        access, row = await _owned_run(conn, user, project, run_id, "send a message to")
+        access, row = await owned_run(conn, user, project, run_id, "send a message to")
         state, plan_id, key, kind = row[2], row[3], row[4], row[11]
         resumes = kind == "author" and state == "parked"
         if state not in runs.MESSAGE_STATES and not resumes:
@@ -646,10 +639,10 @@ async def send_message(request: Request, project: ProjectName, run_id: RunId, bo
         message_id, created_at = (await conn.execute(left)).one()
         event = {"text": body.text, "from": user.login, "message_id": message_id}
         seq = await write_user_message(conn, inbox_run, event)
-        target = f"{_run_target(project, plan_id, key, run_id)} message:{message_id}"
+        target = f"{run_target(project, plan_id, key, run_id)} message:{message_id}"
         if inbox_run != run_id:
             target += f" resumed as run:{inbox_run}"
-        await _audit_run(conn, user, access, audit.RUN_MESSAGE, target)
+        await audit_run(conn, user, access, audit.RUN_MESSAGE, target)
     log.info(
         "run message sent",
         extra={"run_id": run_id, "inbox_run": inbox_run, "message_id": message_id, "login": user.login},

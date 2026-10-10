@@ -31,8 +31,8 @@ from evo_agents.harness import plan_digest
 from evo_agents.hub import jobs, runs, tables
 from evo_agents.hub.config import ConfigError, load_config
 from evo_agents.hub.server import run_state
-from evo_agents.hub.server import runs as run_routes
 from evo_agents.hub.server.app import create_app
+from evo_agents.hub.server.runs.service import claims as run_claims
 from evo_agents.hub.worker import queue
 from tests.hub.fake_github import Account
 from tests.hub.live import ADMIN, bearer, sql
@@ -528,7 +528,7 @@ def test_a_claim_needs_the_runtime_a_checkout_a_free_slot_and_no_drain(client, h
 
 
 def test_a_waiting_claim_wakes_when_a_run_is_queued(client, hub, monkeypatch):
-    monkeypatch.setattr(run_routes, "CLAIM_POLL_SECONDS", 60.0)  # only the notification can wake it in time
+    monkeypatch.setattr(run_claims, "CLAIM_POLL_SECONDS", 60.0)  # only the notification can wake it in time
     worker = add_worker(client, hub["owner"], "mac-mini")
     answer = {}
 

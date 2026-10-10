@@ -166,6 +166,20 @@ extra and must not load the server. Move what both sides need out of evo_agents.
 evo_agents.hub the server imports, or call the API over HTTP. See docs/structure.md, section Package boundaries."""
 
 [[tool.importlinter.contracts]]
+id = "hub-runs-layers"
+name = "The run API of the hub goes from its routes to its service to its models, never back"
+type = "layers"
+containers = ["evo_agents.hub.server.runs"]
+layers = ["routes", "service", "models"]
+exhaustive = true
+broken_contract_guidance = """\
+In evo_agents.hub.server.runs a route handler only passes the request's parts to a public function of the service, \
+which checks, queries and moves runs with SQLAlchemy Core on evo_agents.hub.tables and returns the models; the models \
+import neither. Move the code that reaches up into the layer that needs it: a check or a query into the service, a \
+shape or a limit into the models. Other modules import the service and the models, never the routes. A new module \
+of the package goes into one of the three layers. See docs/structure.md, section Package boundaries."""
+
+[[tool.importlinter.contracts]]
 id = "packages-acyclic"
 name = "The packages of evo_agents import each other without cycles"
 type = "acyclic_siblings"
