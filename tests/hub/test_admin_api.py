@@ -3,10 +3,15 @@ machine token or web session, and a cookie write without X-Evo-CSRF is 403 and c
 filters by actor, action, project and time range and pages by cursor without overlap or gaps; each row carries
 the project its action happened in, from schema 0007, which also fills the rows written before it. The token list
 shows every user's tokens, and revoking one makes it 401 at once, answers 404 and 409 for unknown and revoked ids,
-and leaves an audit row naming the token and its owner."""
+and leaves an audit row naming the token and its owner. The worker's daily hub.prune_audit deletes the rows older than
+EVO_HUB_AUDIT_DAYS (365 by default, 30 to 3650, a bad value stops the hub) and logs how many, and the trail, its
+actions and the overview read on."""
 
 import asyncio
+import dataclasses
+import logging
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 
 import pytest
 
@@ -20,14 +25,16 @@ from fastapi.testclient import TestClient
 from sqlalchemy import column, func, insert, select, table, update
 from sqlalchemy.ext.asyncio import create_async_engine
 
+from evo_agents.hub import jobs, tables
 from evo_agents.hub import migrate as hub_migrate
-from evo_agents.hub import tables
+from evo_agents.hub.config import ConfigError, load_config
 from evo_agents.hub.migrate import alembic_config, migrate
 from evo_agents.hub.openapi import document
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.admin_console import decode_cursor, encode_cursor
 from evo_agents.hub.server.app import create_app
 from evo_agents.hub.server.security import SESSION_COOKIE
+from evo_agents.hub.worker import queue
 from tests.hub.fake_github import Account
 from tests.hub.live import ADMIN, add_project, bearer, sql
 from tests.hub.test_web_auth import cookie, csrf_for, set_cookie, web_sign_in
@@ -390,6 +397,81 @@ def test_0007_files_the_rows_written_before_it_under_their_project(hub_db):
     columns = sql(hub_db, select(described.c.column_name).where(described.c.table_name == "audit"))
     assert "project_id" not in {row[0] for row in columns}
     assert len(sql(hub_db, select(trail.c.id))) == len(rows)
+
+
+# Retention of the audit trail
+
+
+def old_row(db, days: float) -> int:
+    """A grant.put row written ``days`` days ago; its id."""
+    trail = tables.audit
+    row = insert(trail).values(
+        at=func.now() - timedelta(days=days), action="grant.put", target="demo/member role=reader max_level=internal"
+    )
+    return sql(db, row.returning(trail.c.id))[0][0]
+
+
+def prune_audit(client, **changes) -> dict:
+    """One pass of the daily job hub.prune_audit, as the worker runs it, on the api's configuration with ``changes``."""
+    state = client.app.state
+    found = SimpleNamespace(engine=state.engine, config=dataclasses.replace(state.config, **changes))
+    return client.portal.call(queue.tasks[jobs.PRUNE_AUDIT].func, SimpleNamespace(additional_context={"hub": found}))
+
+
+def test_the_audit_retention_prunes_rows_older_than_evo_hub_audit_days_and_logs_how_many(
+    client, github, hub_db, admin, caplog
+):
+    caplog.set_level(logging.INFO, logger="evo_agents.hub")
+    add_project(hub_db)
+    ancient, past_a_year, within_a_year, past_a_month, recent = (
+        old_row(hub_db, days) for days in (900, 365.5, 364.5, 31, 29)
+    )
+    signed_in = [row["id"] for row in audit_page(client, admin, action="auth.login")["items"]]
+    assert signed_in, "the admin's sign-in is a row of today"
+
+    assert prune_audit(client) == {"deleted": 2, "days": 365}
+    (line,) = [record for record in caplog.records if record.getMessage() == "audit pruned"]
+    assert (line.deleted, line.days) == (2, 365)
+    kept = {row[0] for row in sql(hub_db, select(tables.audit.c.id))}
+    assert not {ancient, past_a_year} & kept
+    assert {within_a_year, past_a_month, recent, *signed_in} <= kept
+    # what reads the trail goes on: its pages, its actions and the admin overview
+    page = audit_page(client, admin, action="grant.put", limit=200)
+    assert [row["id"] for row in page["items"]] == [recent, past_a_month, within_a_year]
+    assert client.get("/v1/admin/audit/actions", headers=admin).json() == ["auth.login", "grant.put"]
+    assert client.get("/v1/admin/overview", headers=admin).status_code == 200
+
+    assert prune_audit(client) == {"deleted": 0, "days": 365}  # nothing left that old
+    assert prune_audit(client, audit_days=30) == {"deleted": 2, "days": 30}
+    assert [row["id"] for row in audit_page(client, admin, action="grant.put")["items"]] == [recent]
+    assert [row["id"] for row in audit_page(client, admin, action="auth.login")["items"]] == signed_in
+
+
+def test_the_audit_retention_runs_daily_and_is_queued_at_most_once():
+    periodic = {p.task.name: p for p in queue.periodic_registry.periodic_tasks.values()}
+    assert periodic[jobs.PRUNE_AUDIT].cron == "33 4 * * *"
+    assert queue.tasks[jobs.PRUNE_AUDIT].queueing_lock == jobs.PRUNE_AUDIT
+
+
+def test_the_audit_retention_keeps_365_days_unless_evo_hub_audit_days_says_otherwise():
+    env = {"EVO_HUB_DSN": "postgresql://hub@db/hub"}
+    assert load_config(env).audit_days == 365
+    assert load_config({**env, "EVO_HUB_AUDIT_DAYS": ""}).audit_days == 365  # empty, as compose passes it unset
+    assert load_config({**env, "EVO_HUB_AUDIT_DAYS": "30"}).audit_days == 30
+    assert load_config({**env, "EVO_HUB_AUDIT_DAYS": "3650"}).audit_days == 3650
+    for value in ("0", "29", "3651", "a year"):
+        with pytest.raises(ConfigError) as caught:
+            load_config({**env, "EVO_HUB_AUDIT_DAYS": value})
+        assert caught.value.variable == "EVO_HUB_AUDIT_DAYS" and "EVO_HUB_AUDIT_DAYS" in str(caught.value)
+
+
+@pytest.mark.parametrize("command", ["serve", "worker"])
+def test_a_bad_audit_retention_stops_the_hub_and_names_the_variable(command):
+    env = pg.clean_env(EVO_HUB_DSN=f"postgresql://hub@127.0.0.1:{pg.free_port()}/hub", EVO_HUB_AUDIT_DAYS="7")
+    result = pg.cli(["hub", command], env=env)
+    assert result.returncode == 2, result.stderr
+    (line,) = pg.log_lines(result.stderr)
+    assert line["variable"] == "EVO_HUB_AUDIT_DAYS" and "must be at least 30" in line["msg"]
 
 
 # Tokens of every user

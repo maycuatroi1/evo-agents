@@ -1,7 +1,8 @@
 """The audit trail: one row per command that changes something, saying who did it (the user and the token they
 used), the action, its target, the project it happened in and when. A target names things, such as a project, a
-login, a host or a token id; it never holds content or a credential. Rows are only ever inserted (schema 0001
-rejects updates), in the same transaction as the change they describe, so a change that rolls back leaves no row.
+login, a host or a token id; it never holds content or a credential. Rows are inserted in the same transaction as
+the change they describe, so a change that rolls back leaves no row, and never updated (schema 0001 rejects updates).
+The hub's worker deletes the rows older than EVO_HUB_AUDIT_DAYS, 365 by default, once a day (hub.prune_audit).
 
 The project (schema 0007) comes from the action and the target unless the caller names it: the first name of the
 target for grant, project, plan, kg and blob actions, the project of ``skill:project/<project>/<name>``, and the
