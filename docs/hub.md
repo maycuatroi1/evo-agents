@@ -890,7 +890,7 @@ the variables in the platform's environment, never in a committed file. `deploy/
 
 | Variable | Used by | Meaning |
 | --- | --- | --- |
-| `EVO_HUB_VERSION` | compose | image tag, a released version such as `0.10.0` |
+| `EVO_HUB_VERSION` | compose | image tag, a released version such as `0.11.0` |
 | `EVO_HUB_DSN` | api, worker | `postgresql://` URI of the hub database (required) |
 | `EVO_HUB_ADMINS` | api | GitHub logins of hub admins, comma-separated |
 | `EVO_HUB_GITHUB_CLIENT_ID` | api | the OAuth App's client id; without it nobody can sign in |
