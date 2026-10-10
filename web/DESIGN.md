@@ -210,6 +210,7 @@ states and the phone top bar. Icons sit before their label and inherit its colou
 | Diff | `FileDiff` |
 | Decision, waiting for you | `MessageSquare` |
 | Runs | `Activity` |
+| A worker's heartbeats: a next attempt waiting for its worker to be steady | `HeartPulse` |
 | Insights | `ChartColumn` |
 | Curator, its night shift | `MoonStar` |
 | Proposal of the Curator | `Lightbulb` |
@@ -756,7 +757,11 @@ Shared pieces built on them:
   the worker reported a diffstat, Rerun, Hand back, Approve, and Cancel (confirmed in a dialog) last, plus the composer
   under the trace. Anyone but the run's owner reads only. The header puts these actions under the title until the xl
   breakpoint (`PageHeader`'s `actions`, which take a line of their own when the title leaves no room), so they wrap
-  instead of pushing the page sideways.
+  instead of pushing the page sideways. Between the head and the timeline, notes (`RunNotes`) say what the run waits
+  for: the owner's open asks, how to reach a session the owner holds, whose run it is for anyone else, and, for anyone,
+  a queued attempt whose run before it was lost on a worker that is not steady yet (`steady_wait`): which worker, from
+  when it takes the attempt if its heartbeats keep coming, and whether another worker may take it meanwhile. That one
+  is neutral with `HeartPulse`, since the hub waits for a machine, not for a person.
 - `run-credentials.tsx`, the owner's Credentials card in the side column, drawn as the other side cards (`surface`,
   `shadow-raised`, a `section-title` head with a link to the Secrets page on its right, 13 px `brand` with a chevron):
   each lease the run got, its name in mono, its provider as a tag (Your secret with `KeyRound`, or GitHub App with the

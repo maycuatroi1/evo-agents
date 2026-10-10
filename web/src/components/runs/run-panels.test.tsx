@@ -9,6 +9,8 @@ import { renderVi } from "@/test/render";
 
 import type { RunMove } from "./log-model";
 import type { Run, RunEvent } from "./queries";
+import { RunNotes } from "./run-actions";
+import type { RunControls } from "./run-model";
 import { RunTimeline } from "./run-timeline";
 import { UsageMeter } from "./usage-meter";
 
@@ -101,5 +103,45 @@ describe("RunTimeline", () => {
     expect(within(phase("running")).getByTestId("run-phase-name")).toHaveTextContent("Thất bại");
     expect(within(phase("leased")).getByTestId("run-phase-gap")).toHaveTextContent("20 phút");
     expect(phase("done")).toHaveTextContent("bỏ qua");
+  });
+});
+
+describe("RunNotes", () => {
+  const reader: RunControls = { owner: false, cancel: "none", takeover: "none", handback: "none", approve: false, rerun: false, message: false };
+  const retry = {
+    ...run,
+    id: 13,
+    state: "queued",
+    attempt: 2,
+    parent_run_id: 12,
+    worker_id: null,
+    pinned_worker_id: null,
+    dispatched_by: "owner",
+    cancel_requested_at: null,
+    takeover_requested_at: null,
+    handback_requested_at: null,
+    steady_wait: { worker_id: 3, worker: "mac-mini", steady_at: "2026-10-07T03:02:00Z" },
+  } as unknown as Run;
+  const note = () => screen.queryByTestId("run-note-steady");
+
+  it("says which worker a lost run's next attempt waits for to be steady, from when, and that others may take it", () => {
+    renderVi(<RunNotes run={retry} controls={reader} />);
+    expect(note()).toHaveTextContent(
+      "Lần thử 2 đang chờ mac-mini ổn định lại, vì run #12 bị mất trên worker này: mac-mini chỉ nhận lần thử này khi heartbeat của nó đã đến đều trong 120 giây, không lần nào trễ quá 30 giây, tức là từ 10:02:00 nếu heartbeat vẫn đến đều. Worker khác nhận được run này thì nhận ngay.",
+    );
+  });
+
+  it("says when the worker sends no heartbeat, and that a run pinned to it goes to no other", () => {
+    const pinned = { ...retry, pinned_worker_id: 3, steady_wait: { worker_id: 3, worker: "mac-mini", steady_at: null } } as unknown as Run;
+    renderVi(<RunNotes run={pinned} controls={reader} />);
+    expect(note()).toHaveTextContent(/mà lúc này worker không gửi heartbeat nào\. Run này được ghim vào mac-mini, nên không worker nào khác nhận nó\.$/);
+  });
+
+  it("says nothing once the attempt is claimed, or when it waits for no worker", () => {
+    const first = renderVi(<RunNotes run={{ ...retry, state: "leased" } as Run} controls={reader} />);
+    expect(note()).toBeNull();
+    first.unmount();
+    renderVi(<RunNotes run={{ ...retry, steady_wait: null } as Run} controls={reader} />);
+    expect(note()).toBeNull();
   });
 });

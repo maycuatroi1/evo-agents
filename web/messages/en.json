@@ -2498,7 +2498,11 @@
         "interactive": "You hold this run. On {worker}, attach with <code>{command}</code>, and press Hand back when you are done.",
         "notOwner": "Only {login}, who dispatched this run, can message its agent, take it over or stop it.",
         "review": "The worker verified this run. Read its log and diff, then approve it to mark the step done, or cancel it.",
-        "reviewNoWriter": "The worker verified this run. Approving it needs the writer role on this project."
+        "reviewNoWriter": "The worker verified this run. Approving it needs the writer role on this project.",
+        "steadyWait": "Attempt {attempt} waits for {worker} to be steady again, as run #{parent} was lost on it: {worker} takes this attempt once its heartbeats have come for {seconds} seconds with none more than {gap} seconds late, from {time} if they keep coming.",
+        "steadyWaitSilent": "Attempt {attempt} waits for {worker} to be steady again, as run #{parent} was lost on it: {worker} takes this attempt once its heartbeats have come for {seconds} seconds with none more than {gap} seconds late, and it sends none now.",
+        "steadyOthers": "Any other worker that can take it takes it now.",
+        "steadyPinned": "The run is pinned to {worker}, so no other worker takes it."
       },
       "errors": {
         "forbidden": "The hub refused: only the member who dispatched the run can steer it, and approve and rerun need the writer role.",

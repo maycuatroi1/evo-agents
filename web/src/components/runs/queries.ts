@@ -48,6 +48,10 @@ export const HELD_STATES = ["leased", "running", "interactive", "verifying", "wa
 /** At most one run of a step, or plan run of a plan, is in one of these (`runs.ACTIVE_STATES`). */
 export const ACTIVE_STATES = ["queued", ...HELD_STATES, "review", "parked"] as const satisfies readonly RunState[];
 export const RUNTIMES = ["claude-code", "opencode", "codex"] as const satisfies readonly RequestedRuntime[];
+/** The next attempt of a run lost on a worker goes back to it once its heartbeats have come for this long, none more
+ * than STEADY_GAP_SECONDS late (`runs.STEADY_SECONDS`, `runs.STEADY_GAP_SECONDS`); the run's `steady_wait` names it. */
+export const STEADY_SECONDS = 120;
+export const STEADY_GAP_SECONDS = 30;
 export const MODES = ["headless", "interactive"] as const satisfies readonly RunMode[];
 export const APPROVALS = ["review", "auto"] as const satisfies readonly Approval[];
 

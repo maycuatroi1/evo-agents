@@ -1,6 +1,6 @@
 "use client";
 
-import { Ban, Check, FileDiff, Hand, Info, type LucideIcon, RotateCcw, ShieldAlert, Square, TriangleAlert, Undo2 } from "lucide-react";
+import { Ban, Check, FileDiff, Hand, HeartPulse, Info, type LucideIcon, RotateCcw, ShieldAlert, Square, TriangleAlert, Undo2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useFormatter, useTranslations } from "next-intl";
@@ -23,7 +23,7 @@ import { CommandLine } from "@/components/workers/command-line";
 import { cn } from "@/lib/utils";
 
 import { useRunControl, useRunFailure } from "./hooks";
-import { HELD_STATES, type Run, type RunControl, runDiffHref, runHref } from "./queries";
+import { HELD_STATES, type Run, type RunControl, runDiffHref, runHref, STEADY_GAP_SECONDS, STEADY_SECONDS } from "./queries";
 import { readDiffstat, type RunControls } from "./run-model";
 
 /** The tmux session a takeover opens on the worker, and the Remote Control name Claude Code gives it (docs/workers.md). */
@@ -305,7 +305,9 @@ function Note({ tone, icon: Icon, children, testId }: { tone: "info" | "warning"
 
 /**
  * What the run waits for, above the stepper: the owner's open asks (cancel, takeover, handback) until the worker
- * answers them, how to reach the session while the owner holds it, and, for anyone else, whose run it is.
+ * answers them, how to reach the session while the owner holds it, and, for anyone else, whose run it is. For anyone,
+ * a queued attempt after a run lost on a worker that is not steady yet: which worker it waits for, from when that
+ * worker takes it if its heartbeats keep coming, and whether another worker may take it meanwhile.
  */
 export function RunNotes({ run, controls }: { run: Run; controls: RunControls }) {
   const t = useTranslations("runs.detail.notes");
@@ -342,6 +344,16 @@ export function RunNotes({ run, controls }: { run: Run; controls: RunControls })
           command: attachCommand(run.id),
           code: (chunks) => <code className="font-mono font-medium">{chunks}</code>,
         })}
+      </Note>,
+    );
+  }
+  const wait = run.state === "queued" ? run.steady_wait : null;
+  if (wait) {
+    const values = { attempt: run.attempt, worker: wait.worker, parent: run.parent_run_id ?? "-", seconds: STEADY_SECONDS, gap: STEADY_GAP_SECONDS };
+    notes.push(
+      <Note key="steady" tone="info" icon={HeartPulse} testId="run-note-steady">
+        {wait.steady_at ? t("steadyWait", { ...values, time: when(wait.steady_at) }) : t("steadyWaitSilent", values)}{" "}
+        {run.pinned_worker_id === wait.worker_id ? t("steadyPinned", { worker: wait.worker }) : t("steadyOthers")}
       </Note>,
     );
   }
