@@ -9,8 +9,7 @@
     "evo_agents/hub/server/runs.py": 2988,
     "evo_agents/hub/tables.py": 1285,
     "evo_agents/worker/cli.py": 1255,
-    "evo_agents/worker/interactive.py": 1378,
-    "evo_agents/worker/run.py": 2942
+    "evo_agents/worker/interactive.py": 1378
   },
   "functions": {
     "evo_agents/harness/__init__.py::knowledge_semantics": {"complexity": 17},
@@ -49,9 +48,6 @@
     "evo_agents/worker/cli.py::register": {"statements": 95},
     "evo_agents/worker/daemon.py::Daemon._beat": {"complexity": 20, "statements": 56},
     "evo_agents/worker/interactive.py::claude_transcript_events": {"complexity": 17},
-    "evo_agents/worker/run.py::JudgeRun._steps": {"statements": 57},
-    "evo_agents/worker/run.py::Run.__init__": {"statements": 69},
-    "evo_agents/worker/run.py::Run._in_terminal": {"statements": 63},
     "evo_agents/worker/runtimes/claude_code.py::events_of": {"complexity": 17}
   },
   "private_imports": {

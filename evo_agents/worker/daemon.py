@@ -28,8 +28,9 @@
   of runs that ended more than 7 days ago are removed.
 - Each run takes its leases from the hub after the claim and gives them back when it ends here (``credentials``),
   also when the daemon stops.
-- After each heartbeat, each run of the Curator the hub still holds for this worker is watched (``run.Run.watch``):
-  a file of the charter's protected paths changed in its worktrees, or its time or cost cap passed, stops it.
+- After each heartbeat, each run of the Curator the hub still holds for this worker is watched (``Run.watch``,
+  ``runner.watchdog``): a file of the charter's protected paths changed in its worktrees, or its time or cost cap
+  passed, stops it.
 - A previous daemon that died with an agent started (``runs/<run>/agent.json``, ``orphans``) left it running. The
   first heartbeat that gets an answer also names those runs, and before any claim the daemon stops the process group
   of each one's agent, SIGTERM then SIGKILL. The run's worktree and its evo-run branch are removed when the hub no
@@ -277,7 +278,7 @@ class Daemon:
             "free_slots": min(self.free_slots, 8),
             "runs": held + asked,
             "agent_version": __version__,
-            "run_kinds": list(runs.RUN_KINDS),  # every kind run_class has a class for
+            "run_kinds": list(runs.RUN_KINDS),  # every kind run.KINDS has a class for
         }
         try:
             answer = await self.hub.heartbeat(body)
@@ -329,7 +330,7 @@ class Daemon:
                 if control.get("terminal_open"):
                     run.open_terminal()
                 if run.curator is not None:  # the watchdog of the Curator's runs, after each heartbeat
-                    run._spawn(run.watch())
+                    run.spawn(run.watch())
         return True
 
     # Claims
