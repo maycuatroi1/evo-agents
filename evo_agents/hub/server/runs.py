@@ -62,8 +62,11 @@ and it looks again every CLAIM_POLL_SECONDS besides, so a lost notification dela
 takes the oldest queued run, ``FOR UPDATE SKIP LOCKED``, that its owner dispatched, of a project the worker serves and
 on which the owner still holds writer, asking for a runtime the worker reported (``any`` takes the first of
 runs.RUNTIMES it has), of a repo it has a checkout of, pinned to no other worker, dispatched from a web session when the
-worker's dispatch_from is web, while the worker is neither draining nor revoked and holds fewer runs than its slots. A
-worker has one claim waiting at a time: a newer claim answers the older one with no run. The claimed run is leased for
+worker's dispatch_from is web, while the worker is neither draining nor revoked and holds fewer runs than its slots. The
+next attempt of a run lost on the worker is passed over until the worker is steady (``_steady``: heartbeats for
+runs.STEADY_SECONDS, none runs.STEADY_GAP_SECONDS late), so a machine that slept does not take the run again at once;
+any other worker that may take it takes it meanwhile, and Run's ``steady_wait`` names the worker it waits for. A worker
+has one claim waiting at a time: a newer claim answers the older one with no run. The claimed run is leased for
 EVO_HUB_RUN_LEASE_SECONDS (LEASE_SECONDS by default) and comes with its prompt (``runs.build_prompt`` over the plan
 revision it was dispatched from). A plan run needs a checkout of every repo in its repos and a daemon of
 runs.PLAN_RUN_AGENT or later, and comes with ``runs.build_plan_prompt`` and the plan at the hub's current revision,
@@ -73,12 +76,13 @@ nothing: it ends before it looks at the queue again, and a run it leased in the 
 transaction commits, so the run stays queued for the next claim instead of waiting out a lease nobody holds.
 
 POST /v1/worker/heartbeat records the machine (runtimes, each with the models it lists when it lists any, checkouts
-keyed ``<project>/<repo>``, free slots), extends the lease of every run the worker names and still holds by the same
-time, settles their agent time (``run_state.settle``), and answers with control: per run, whether to cancel (asked by
-the owner, or a run the worker no longer holds), takeover, handback, terminal_open (a browser waits for the worker's
-end of the run's terminal, ``terminal.Terminals.waiting``), how many inbox messages wait and how many decisions of the
-run are open; for the worker, whether to drain. A run the reaper parked, or one done because a new run resumes it,
-comes back with held false, cancel false and park true: the worker stops its agent at the end of the turn, keeps the
+keyed ``<project>/<repo>``, free slots) and when its heartbeats became steady (workers.steady_since, set again by a
+heartbeat that comes runs.STEADY_GAP_SECONDS late), extends the lease of every run the worker names and still holds by
+the same time, settles their agent time (``run_state.settle``), and answers with control: per run, whether to cancel
+(asked by the owner, or a run the worker no longer holds), takeover, handback, terminal_open (a browser waits for the
+worker's end of the run's terminal, ``terminal.Terminals.waiting``), how many inbox messages wait and how many decisions
+of the run are open; for the worker, whether to drain. A run the reaper parked, or one done because a new run resumes
+it, comes back with held false, cancel false and park true: the worker stops its agent at the end of the turn, keeps the
 session and the worktrees, and frees the slot.
 
 POST /v1/worker/runs/{id}/state reports a move of a run the worker holds (404 otherwise), checked against
@@ -312,6 +316,18 @@ class RunRepo(BaseModel):
     branch: str | None = Field(None, description="null when the plan names none: the branch checked out")
 
 
+class SteadyWait(BaseModel):
+    """The worker a queued attempt waits for: the run before it was lost on that worker, which may take this one only
+    once it is steady, its heartbeats come for 120 seconds with none more than 30 seconds late (runs.STEADY_SECONDS,
+    runs.STEADY_GAP_SECONDS)."""
+
+    worker_id: int
+    worker: str = Field(description="that worker's name")
+    steady_at: datetime | None = Field(
+        description="when the worker becomes steady if its heartbeats go on as now; null while it sends none"
+    )
+
+
 class Run(BaseModel):
     id: int
     kind: Literal[runs.RUN_KINDS] = Field(
@@ -378,6 +394,11 @@ class Run(BaseModel):
     request: str | None = Field(None, description="the member's request of an author run; null for any other kind")
     finish_requested_at: datetime | None = Field(
         None, description="when the owner ended the chat of an author run its worker holds; null otherwise"
+    )
+    steady_wait: SteadyWait | None = Field(
+        None,
+        description="a queued attempt after a run lost on a worker that is not steady yet: that worker takes it only "
+        "once it is; another worker may take it now unless it is pinned to that one. Null otherwise",
     )
 
 
@@ -638,10 +659,42 @@ class StepWritten(BaseModel):
 # Reading runs
 
 
+STEADY = timedelta(seconds=runs.STEADY_SECONDS)
+STEADY_GAP = timedelta(seconds=runs.STEADY_GAP_SECONDS)
+
+
+def _beating(w):
+    """Whether worker ``w`` (the workers table or an alias of it) sends heartbeats now: its last one came at most
+    STEADY_GAP ago."""
+    return w.c.last_heartbeat_at >= func.now() - STEADY_GAP
+
+
+def _steady(w):
+    """Whether worker ``w`` is steady now: it sends heartbeats, and has sent them for STEADY with none late. NULL
+    (not steady) before its first heartbeat."""
+    return and_(_beating(w), w.c.steady_since <= func.now() - STEADY)
+
+
+def _steady_since():
+    """What a heartbeat sets workers.steady_since to: now for the worker's first heartbeat, or one that came more
+    than STEADY_GAP after the one before (which the SET reads as the row was), else what it was."""
+    w = tables.workers
+    late = or_(w.c.steady_since.is_(None), w.c.last_heartbeat_at.is_(None), ~_beating(w))
+    return case((late, func.now()), else_=w.c.steady_since)
+
+
+def _lost_here(worker_id):
+    """Whether the run before a run (``parent_run_id``) was lost on worker ``worker_id``, a column or a value."""
+    r, parent = tables.runs, tables.runs.alias("lost_parent")
+    return exists().where(parent.c.id == r.c.parent_run_id, parent.c.state == "lost", parent.c.worker_id == worker_id)
+
+
 def _run_select():
     """The fields of Run, each column labelled as its field: a run with the name of its project, the login of its
-    owner and the name of the worker that claimed it."""
+    owner and the name of the worker that claimed it; and for a queued attempt after a run lost on a worker that is
+    not steady, that worker, as ``steady_wait_*`` (``_runs_of`` makes the field of them)."""
     r, p, u, w = tables.runs, tables.projects, tables.users, tables.workers
+    parent, lost_on = tables.runs.alias("lost_parent"), tables.workers.alias("lost_on")
     return (
         select(
             r.c.id,
@@ -694,15 +747,27 @@ def _run_select():
             r.c.finished_at,
             r.c.request,
             r.c.finish_requested_at,
+            lost_on.c.id.label("steady_wait_worker_id"),
+            lost_on.c.name.label("steady_wait_worker"),
+            case((_beating(lost_on), lost_on.c.steady_since + STEADY), else_=None).label("steady_wait_at"),
         )
         .join_from(r, p, p.c.id == r.c.project_id)
         .join(u, u.c.id == r.c.dispatched_by)
         .outerjoin(w, w.c.id == r.c.worker_id)
+        .outerjoin(parent, and_(r.c.state == "queued", parent.c.id == r.c.parent_run_id, parent.c.state == "lost"))
+        .outerjoin(lost_on, and_(lost_on.c.id == parent.c.worker_id, ~func.coalesce(_steady(lost_on), False)))
     )
 
 
+def _run_of(row) -> Run:
+    values = dict(row._mapping)
+    worker_id, worker, steady_at = (values.pop(f"steady_wait_{key}") for key in ("worker_id", "worker", "at"))
+    wait = None if worker_id is None else SteadyWait(worker_id=worker_id, worker=worker, steady_at=steady_at)
+    return Run(**values, steady_wait=wait)
+
+
 def _runs_of(rows) -> list[Run]:
-    return [Run(**row._mapping) for row in rows]
+    return [_run_of(row) for row in rows]
 
 
 async def run_views(conn: AsyncConnection, run_ids: list[int]) -> list[Run]:
@@ -2021,10 +2086,12 @@ def _claimable(
     review_runs: bool = False,
     judge_runs: bool = False,
     author_runs: bool = False,
+    steady: bool = True,
 ):
     """The oldest queued run the worker may take now, locked, passing over one another claim holds locked: of its
     owner, in ``projects``, pinned to no other worker, asking for any runtime or one of ``runtimes``, of a repo it
-    has a checkout of (``pairs`` of project id and repo). A run of one step needs a checkout of its repo, and a plan
+    has a checkout of (``pairs`` of project id and repo), and, while the worker is not ``steady``, not the next
+    attempt of a run it lost (``_lost_here``). A run of one step needs a checkout of its repo, and a plan
     run one of every repo in its repos and a daemon of runs.PLAN_RUN_AGENT or later (``plan_runs``); a review run one
     of every repo in its repos and a daemon that says it runs review runs (``review_runs``), and a judge run likewise
     (``judge_runs``); an author run one of its first repo, the project's harness, and a daemon that says it runs
@@ -2064,6 +2131,8 @@ def _claimable(
         query = query.where(r.c.kind != "judge")
     if not author_runs:
         query = query.where(r.c.kind != "author")
+    if not steady:
+        query = query.where(~_lost_here(worker_id))
     return query.order_by(r.c.id).limit(1).with_for_update(of=r, skip_locked=True)
 
 
@@ -2176,6 +2245,8 @@ async def _try_claim(
                 pairs.append((by_name[project], repo))
         if not pairs:
             return None
+        w = tables.workers
+        steady = (await conn.execute(select(func.coalesce(_steady(w), False)).where(w.c.id == worker_id))).scalar_one()
         query = _claimable(
             worker_id,
             owner_id,
@@ -2187,6 +2258,7 @@ async def _try_claim(
             review_runs="review" in (kinds or ()),
             judge_runs="judge" in (kinds or ()),
             author_runs="author" in (kinds or ()),
+            steady=steady,
         )
         row = (await conn.execute(query)).one_or_none()
         if row is None:
@@ -2401,6 +2473,7 @@ async def heartbeat(request: Request, body: HeartbeatRequest, user: CurrentUser)
             update(w)
             .values(
                 last_heartbeat_at=func.now(),
+                steady_since=_steady_since(),
                 runtimes=runtimes,
                 checkouts=checkouts,
                 free_slots=func.least(body.free_slots, w.c.slots),

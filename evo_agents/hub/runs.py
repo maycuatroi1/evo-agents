@@ -19,7 +19,9 @@ A run starts ``queued``; a worker
 claims it (``leased``), starts the agent (``running``, or ``interactive`` when a person drives the agent in a
 terminal), re-runs the agent's verify commands (``verifying``), and ends ``done``, ``failed`` or ``cancelled``, or in
 ``review`` until the owner approves it. A run whose worker stops extending its lease is ``lost``, and the hub queues a
-new run for the same step (attempt + 1), or ``failed`` when it was the last of MAX_ATTEMPTS.
+new run for the same step (attempt + 1), or ``failed`` when it was the last of MAX_ATTEMPTS. That next attempt goes to
+the worker that lost the run only once the worker is steady (STEADY_SECONDS of heartbeats, none STEADY_GAP_SECONDS
+late); any other worker that may take it takes it at once.
 
 A plan run's agent may ask its owner a decision of DECISION_CATEGORIES. When its turn ends with a decision still
 open, the run is ``waiting``: the worker keeps it, with its slot and lease, and hands the answer to the agent in the
@@ -60,6 +62,11 @@ OFFLINE_AFTER_SECONDS = 300  # a worker with no heartbeat for longer than this i
 LEASE_SECONDS = 300  # a claim and each heartbeat set a held run's lease to expire this long after now
 CLAIM_WAIT_SECONDS = 25  # the longest a claim waits for a run before answering that there is none
 MAX_ATTEMPTS = 3  # runs of one dispatch, the first included; the last one's expired lease fails it
+# The next attempt of a run lost on a worker goes back to that worker only once it is steady: its heartbeats have
+# come for STEADY_SECONDS, none more than STEADY_GAP_SECONDS after the one before (unlike a laptop that slept, or one
+# that woke for a moment).
+STEADY_SECONDS = 120
+STEADY_GAP_SECONDS = 30
 
 MAX_BATCH_EVENTS = 500  # events in one POST of a run's events
 MAX_BATCH_BYTES = 1024 * 1024  # body of that POST

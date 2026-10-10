@@ -55,6 +55,8 @@ from evo_agents.hub.runs import (
     PLAN_TIMEOUT_CHOICES,
     RUN_STATES,
     RUNTIMES,
+    STEADY_GAP_SECONDS,
+    STEADY_SECONDS,
     TERMINAL_STATES,
 )
 
@@ -120,6 +122,7 @@ RUN_KEYS = (
     "finished_at",
     "request",
     "finish_requested_at",
+    "steady_wait",
 )
 RUN_LIST_KEYS = ("runs", "total", "counts", "limit", "offset")
 EVENTS_KEYS = ("run_id", "state", "last_seq", "events", "more")
@@ -607,6 +610,8 @@ def _describe(run: dict) -> list[tuple[str, str]]:
         lines.append(("asked", ", ".join(asked)))
     if run["parent_run_id"]:
         lines.append(("retries", f"run #{run['parent_run_id']}"))
+    if run.get("steady_wait") and run["state"] == "queued":
+        lines.append(("waits for", _steady_wait(run)))
     if run["session_id"]:
         lines.append(("session", run["session_id"]))
     stat = run["diffstat"]
@@ -633,6 +638,19 @@ def _describe(run: dict) -> list[tuple[str, str]]:
         lines.append(("uploaded", ", ".join(blobs)))
     lines.append(("events", f"{run['last_seq']}"))
     return lines
+
+
+def _steady_wait(run: dict) -> str:
+    """Why a queued attempt waits for the worker the run before it was lost on, and until when, in three lines."""
+    wait = run["steady_wait"]
+    worker = f"worker {wait['worker']} (#{wait['worker_id']}), which lost run #{run['parent_run_id']}, to be steady"
+    rule = f"once its heartbeats have come for {STEADY_SECONDS} s, none more than {STEADY_GAP_SECONDS} s late"
+    when = f"from {_clock(wait['steady_at'])} UTC if they go on" if wait.get("steady_at") else "it sends none now"
+    if run["pinned_worker_id"] == wait["worker_id"]:
+        others = "the run is pinned to that worker, so no other takes it"
+    else:
+        others = "any other worker that may take it takes it now"
+    return f"{worker}\nit takes this attempt only {rule}: {when}\n{others}"
 
 
 @_client_command

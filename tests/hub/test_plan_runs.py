@@ -44,6 +44,7 @@ from tests.hub.test_runs import (
     recover,
     report,
     state_of,
+    steady,
     today,
 )
 
@@ -662,6 +663,8 @@ def test_a_lost_plan_run_is_tried_again_as_a_plan_run_and_the_last_attempt_gives
     }
     assert fleet_step(client, hub["owner"], 2)["status"] == "in_progress"  # the plan run goes on
     assert ready(client, hub["reader"])["plan_run"]["id"] == second
+    assert claim(client, worker) is None, "the worker that lost it takes it once steady"
+    steady(hub_db, worker)
     spec = claim(client, worker)
     assert (spec["id"], spec["kind"], spec["attempt"]) == (second, "plan", 2)
     expire(hub_db, second)

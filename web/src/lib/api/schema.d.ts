@@ -7088,6 +7088,8 @@ export interface components {
              * @description when the owner ended the chat of an author run its worker holds; null otherwise
              */
             finish_requested_at?: string | null;
+            /** @description a queued attempt after a run lost on a worker that is not steady yet: that worker takes it only once it is; another worker may take it now unless it is pinned to that one. Null otherwise */
+            steady_wait?: components["schemas"]["SteadyWait"] | null;
         };
         /** RunBlobCommit */
         RunBlobCommit: {
@@ -8246,6 +8248,26 @@ export interface components {
              * @description the agent's summary, for the evidence
              */
             summary?: string | null;
+        };
+        /**
+         * SteadyWait
+         * @description The worker a queued attempt waits for: the run before it was lost on that worker, which may take this one only
+         *     once it is steady, its heartbeats come for 120 seconds with none more than 30 seconds late (runs.STEADY_SECONDS,
+         *     runs.STEADY_GAP_SECONDS).
+         */
+        SteadyWait: {
+            /** Worker Id */
+            worker_id: number;
+            /**
+             * Worker
+             * @description that worker's name
+             */
+            worker: string;
+            /**
+             * Steady At
+             * @description when the worker becomes steady if its heartbeats go on as now; null while it sends none
+             */
+            steady_at: string | null;
         };
         /** StepReadiness */
         StepReadiness: {

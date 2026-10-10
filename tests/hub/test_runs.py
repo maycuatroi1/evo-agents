@@ -216,6 +216,28 @@ def expire(db, run_id: int) -> None:
     set_run(db, run_id, lease_expires_at=func.now() - timedelta(seconds=1))
 
 
+def steady(db, worker: dict, seconds: int = runs.STEADY_SECONDS + 1) -> None:
+    """As if the worker's heartbeats had come for ``seconds``, none late, the last one now: the clock of the steady
+    rule, moved in the database rather than waited for."""
+    w = tables.workers
+    beaten = update(w).values(steady_since=func.now() - timedelta(seconds=seconds), last_heartbeat_at=func.now())
+    sql(db, beaten.where(w.c.id == worker["id"]))
+
+
+def worker_clock(db, worker: dict, **ages: float) -> None:
+    """Set ``steady_since`` and ``last_heartbeat_at`` of the worker to that many seconds ago (``ages``)."""
+    w = tables.workers
+    values = {name: func.now() - timedelta(seconds=age) for name, age in ages.items()}
+    sql(db, update(w).values(**values).where(w.c.id == worker["id"]))
+
+
+def seconds_from_now(db, value: str | None) -> float | None:
+    """How many seconds after the database's now() the timestamp ``value`` of an answer is."""
+    if value is None:
+        return None
+    return float(sql(db, select(extract("epoch", literal(datetime.fromisoformat(value)) - func.now())))[0][0])
+
+
 def recover(client) -> dict:
     return client.portal.call(run_state.recover_runs, client.app.state.engine)
 
@@ -823,6 +845,8 @@ def test_an_expired_lease_loses_the_run_and_the_third_attempt_fails_back_to_pend
         "decisions": 0,
     }
 
+    assert claim(client, worker) is None, "the worker that lost the run is not steady yet"
+    steady(hub_db, worker)
     spec = claim(client, worker)
     assert (spec["id"], spec["attempt"], spec["parent_run_id"]) == (second, 2, first)
     moved(client, worker, second, "running")
@@ -830,7 +854,7 @@ def test_an_expired_lease_loses_the_run_and_the_third_attempt_fails_back_to_pend
     expire(hub_db, second)
     assert recover(client)["lost"] == 1
     ((third,),) = sql(hub_db, select(run.c.id).where(run.c.parent_run_id == second))
-    assert claim(client, worker)["attempt"] == 3
+    assert claim(client, worker)["attempt"] == 3, "steady still: its heartbeats went on"
     expire(hub_db, third)
     assert recover(client) == {"lost": 0, "failed": 1, "cancelled": 0, "parked": 0}
     ((state, error),) = of_run(hub_db, third, "state", "error")
@@ -840,6 +864,119 @@ def test_an_expired_lease_loses_the_run_and_the_third_attempt_fails_back_to_pend
     back = step(client, hub["owner"], 2)
     assert back["status"] == "pending" and back["note"] == f"run #{third} failed: {error}"
     assert ready(client, hub["reader"])["2"]["ready"] is True
+
+
+def run_of(client, headers, run_id: int) -> dict:
+    response = client.get(f"/v1/projects/{PROJECT}/runs/{run_id}", headers=headers)
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def lost_once(client, hub, hub_db, worker: dict, steps=(2,), **extra) -> tuple[int, int]:
+    """Step 2 claimed by ``worker`` and lost: the lost run's id and its next attempt's."""
+    first = dispatched(client, hub["owner"], list(steps), **extra)[0]["id"]
+    assert claim(client, worker)["id"] == first
+    moved(client, worker, first, "running")
+    expire(hub_db, first)
+    assert recover(client)["lost"] == 1
+    ((second,),) = sql(hub_db, select(tables.runs.c.id).where(tables.runs.c.parent_run_id == first))
+    return first, second
+
+
+def test_the_next_attempt_of_a_lost_run_waits_until_the_worker_that_lost_it_is_stable(client, hub, hub_db):
+    worker = add_worker(client, hub["owner"], "mac-mini")
+    first, second = lost_once(client, hub, hub_db, worker)
+    waits = {"worker_id": worker["id"], "worker": "mac-mini"}
+
+    # Its heartbeats came for 100 seconds: not enough.
+    worker_clock(hub_db, worker, steady_since=100, last_heartbeat_at=0)
+    beat(client, worker, runs_held=[first])
+    assert claim(client, worker) is None
+    shown = run_of(client, hub["reader"], second)
+    assert shown["state"] == "queued" and shown["attempt"] == 2 and shown["max_attempts"] == runs.MAX_ATTEMPTS == 3
+    assert {key: shown["steady_wait"][key] for key in waits} == waits
+    assert 19 < seconds_from_now(hub_db, shown["steady_wait"]["steady_at"]) <= 20, "steady 120 s after it began"
+    listed = client.get(f"/v1/projects/{PROJECT}/runs", params={"state": "queued"}, headers=hub["reader"]).json()
+    assert [item["steady_wait"]["worker"] for item in listed["runs"]] == ["mac-mini"], "the list says it too"
+
+    # A heartbeat 31 seconds after the one before (it slept) starts the count again.
+    worker_clock(hub_db, worker, steady_since=1000, last_heartbeat_at=31)
+    beat(client, worker)
+    assert claim(client, worker) is None
+    assert 119 < seconds_from_now(hub_db, run_of(client, hub["owner"], second)["steady_wait"]["steady_at"]) <= 120
+
+    # Silent for 31 seconds: not steady whenever its count began, and no time is known until it beats again.
+    worker_clock(hub_db, worker, steady_since=1000, last_heartbeat_at=31)
+    assert claim(client, worker) is None
+    assert run_of(client, hub["owner"], second)["steady_wait"] == {**waits, "steady_at": None}
+
+    # 120 seconds of heartbeats, none more than 30 seconds late: it takes the attempt, which waits for nobody now.
+    worker_clock(hub_db, worker, steady_since=runs.STEADY_SECONDS, last_heartbeat_at=runs.STEADY_GAP_SECONDS - 1)
+    spec = claim(client, worker)
+    assert (spec["id"], spec["attempt"], spec["parent_run_id"]) == (second, 2, first)
+    assert run_of(client, hub["owner"], second)["steady_wait"] is None
+    assert run_of(client, hub["owner"], first)["steady_wait"] is None, "a run that ended waits for nobody"
+
+
+def test_a_lost_run_not_pinned_goes_to_another_worker_at_once_and_its_own_waits_until_stable(client, hub, hub_db):
+    mac = add_worker(client, hub["owner"], "mac-mini")
+    first, second = lost_once(client, hub, hub_db, mac)
+    lab = add_worker(client, hub["owner"], "lab-02")  # registered just now: not steady, but it lost nothing
+    assert claim(client, mac) is None
+    spec = claim(client, lab)
+    assert (spec["id"], spec["attempt"], spec["parent_run_id"]) == (second, 2, first)
+    assert run_of(client, hub["owner"], second)["worker"] == "lab-02"
+
+    # Any other queued run still goes to the worker that lost one: only the next attempt waits.
+    other = dispatched(client, hub["owner"], [4])[0]["id"]
+    assert claim(client, mac)["id"] == other
+
+
+def test_a_lost_run_pinned_to_its_worker_waits_until_it_is_stable_and_the_third_attempt_fails(client, hub, hub_db):
+    mac = add_worker(client, hub["owner"], "mac-mini")
+    lab = add_worker(client, hub["owner"], "lab-02")
+    first, second = lost_once(client, hub, hub_db, mac, worker_id=mac["id"])
+    shown = run_of(client, hub["owner"], second)
+    assert (shown["pinned_worker_id"], shown["steady_wait"]["worker_id"]) == (mac["id"], mac["id"])
+    assert claim(client, lab) is None, "pinned to mac-mini"
+    assert claim(client, mac) is None, "mac-mini is not steady yet"
+    steady(hub_db, mac)
+    assert claim(client, mac)["id"] == second
+    moved(client, mac, second, "running")
+    expire(hub_db, second)
+    assert recover(client)["lost"] == 1
+    ((third,),) = sql(hub_db, select(tables.runs.c.id).where(tables.runs.c.parent_run_id == second))
+    worker_clock(hub_db, mac, last_heartbeat_at=runs.STEADY_GAP_SECONDS + 1)  # it slept again
+    beat(client, mac)
+    assert claim(client, mac) is None
+    steady(hub_db, mac)
+    assert claim(client, mac)["attempt"] == 3
+    expire(hub_db, third)
+    assert recover(client) == {"lost": 0, "failed": 1, "cancelled": 0, "parked": 0}
+    assert of_run(hub_db, third, "error") == [
+        (f"its worker mac-mini stopped extending the lease, and it was attempt 3 of {runs.MAX_ATTEMPTS}",)
+    ]
+    assert count_runs(hub_db, tables.runs.c.parent_run_id == third) == [(0,)]
+
+
+def test_a_heartbeat_keeps_when_the_worker_became_stable_and_one_that_comes_late_starts_it_again(client, hub, hub_db):
+    w = tables.workers
+    steady_since = select(w.c.steady_since)
+    worker = add_worker(client, hub["owner"], "mac-mini")
+    ((first,),) = sql(hub_db, steady_since.where(w.c.id == worker["id"]))
+    assert first is not None, "the first heartbeat begins the count"
+    beat(client, worker)
+    assert sql(hub_db, steady_since.where(w.c.id == worker["id"])) == [(first,)], "the next one keeps it"
+    worker_clock(hub_db, worker, last_heartbeat_at=runs.STEADY_GAP_SECONDS - 1)
+    beat(client, worker)
+    assert sql(hub_db, steady_since.where(w.c.id == worker["id"])) == [(first,)], "29 seconds late is not late"
+    worker_clock(hub_db, worker, last_heartbeat_at=runs.STEADY_GAP_SECONDS + 1)
+    beat(client, worker)
+    ((again,),) = sql(hub_db, steady_since.where(w.c.id == worker["id"]))
+    assert again > first, "31 seconds late begins the count again"
+    sql(hub_db, update(w).values(steady_since=None).where(w.c.id == worker["id"]))  # a worker from before 0023
+    beat(client, worker)
+    assert sql(hub_db, steady_since.where(w.c.id == worker["id"]))[0][0] is not None
 
 
 def test_a_claim_and_each_heartbeat_lease_the_run_for_evo_hub_run_lease_seconds(hub_db, tmp_path, github):
@@ -1079,10 +1216,11 @@ def test_a_worker_set_to_dispatch_from_web_claims_only_runs_dispatched_from_the_
     assert claim(client, guarded) is None
     by_web = dispatched(client, hub["owner_web"], [4])[0]
     assert claim(client, guarded)["id"] == by_web["id"]
-    # the next attempt of a lost run keeps the credential of its dispatch, so it comes back here
+    # the next attempt of a lost run keeps the credential of its dispatch, so it comes back here, once steady
     moved(client, guarded, by_web["id"], "running")
     expire(hub_db, by_web["id"])
     assert recover(client)["lost"] == 1
+    steady(hub_db, guarded)
     retry = claim(client, guarded)
     assert (retry["parent_run_id"], retry["attempt"]) == (by_web["id"], 2)
     # a worker of the owner's that takes runs from anywhere takes the run dispatched with a token, and its retry
@@ -1094,6 +1232,7 @@ def test_a_worker_set_to_dispatch_from_web_claims_only_runs_dispatched_from_the_
     assert recover(client)["lost"] == 1
     moved(client, guarded, retry["id"], "running", "failed", error="the agent stopped")
     assert claim(client, guarded) is None
+    steady(hub_db, anywhere)
     assert claim(client, anywhere)["parent_run_id"] == by_token["id"]
     run = tables.runs
     retried = select(run.c.dispatched_via).where(run.c.parent_run_id.in_([by_web["id"], by_token["id"]]))

@@ -36,7 +36,7 @@ import sys
 import time
 import urllib.request
 from contextlib import ExitStack
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -48,8 +48,9 @@ if not pg.DSN:
 pytest.importorskip("aiohttp", reason="the daemon needs the worker extra, evo-ak[worker]")
 
 import httpx
+from sqlalchemy import func, update
 
-from evo_agents.hub import jobs
+from evo_agents.hub import jobs, runs, tables
 from evo_agents.hub.config import HubConfig
 from evo_agents.hub.db import open_pool
 from evo_agents.hub.jobs import JobQueue
@@ -436,6 +437,14 @@ class World:
         response = self.client.get(f"/v1/projects/{PROJECT}/plans/{plan_id}", headers=self.owner)
         assert response.status_code == 200, response.text
         return next(item for item in response.json()["body"]["steps"] if item["id"] == key)
+
+    def steady(self, worker: str) -> None:
+        """As if the heartbeats of ``worker`` had come for longer than runs.STEADY_SECONDS, none late: the clock of the
+        hub's steady rule, moved in its database rather than waited for. Its daemon's heartbeats, every second, keep
+        it so."""
+        w = tables.workers
+        since = func.now() - timedelta(seconds=runs.STEADY_SECONDS + 1)
+        live.sql(self.hub.db, update(w).values(steady_since=since).where(w.c.name == worker))
 
     def push_plan(self, body: dict) -> None:
         pushed = self.client.put(f"/v1/projects/{PROJECT}/plans/{body['id']}", json={"body": body}, headers=self.owner)
@@ -1047,6 +1056,8 @@ def test_a_daemon_killed_mid_plan_run_leaves_an_agent_the_next_start_stops_and_t
     record = mac.orphan_dealt_with(run_id)
     assert record["agent"] == f"process group {pgid} stopped on SIGTERM", record
     assert record["hub_state"] == "running" and record["worktree"].startswith("kept: the hub still holds the run")
+    # The hub gives the next attempt back to mac-mini, which lost the run, once its heartbeats are steady.
+    world.steady("mac-mini")
 
     # Nobody extends the run's lease: the reaper finds it lost and queues the next attempt of the plan run.
     def reap_once_the_lease_may_be_over() -> None:

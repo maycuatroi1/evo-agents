@@ -524,6 +524,7 @@ workers = Table(
     _when("revoked_at"),
     Column("dispatch_from", Text, nullable=False, server_default="any"),
     Column("run_kinds", ARRAY(Text)),
+    _when("steady_since"),  # the first heartbeat of the worker's current run of them, none late (0023)
     ForeignKeyConstraint(["owner_id"], ["users.id"], ondelete="RESTRICT", name="workers_owner_id_fkey"),
     ForeignKeyConstraint(["token_id"], ["tokens.id"], ondelete="RESTRICT", name="workers_token_id_fkey"),
     PrimaryKeyConstraint("id", name="workers_pkey"),
