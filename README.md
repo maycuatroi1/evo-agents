@@ -306,7 +306,8 @@ web/          the hub's web interface (Next.js, its own image)
 deploy/hub/   the hub's Dockerfile and compose files
 docs/         hub.md: running and using the hub; workers.md: workers, runs, plan runs and the daemon;
               notifications.md: decisions, notices and notifications; credentials.md: secrets and the leases of
-              worker runs; curator.md: the Curator, a project's night shift
+              worker runs; curator.md: the Curator, a project's night shift; structure.md: package boundaries
+              and size budgets that CI checks, and how to split a module
 ```
 
 ## License

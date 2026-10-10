@@ -20,7 +20,8 @@ classifiers = [
 dependencies = ["PyYAML>=6.0"]
 
 [project.optional-dependencies]
-test = ["pytest>=8", "pytest-xdist>=3.6", "ruff>=0.6", "httpx>=0.27", "moto[server]>=5.1"]
+# import-linter: `lint-imports` checks the package boundaries of [tool.importlinter] below (docs/structure.md).
+test = ["pytest>=8", "pytest-xdist>=3.6", "ruff>=0.6", "httpx>=0.27", "moto[server]>=5.1", "import-linter>=2.15"]
 graphify = ["graphifyy==0.9.73"]
 hub-server = [
     "fastapi>=0.135",
@@ -94,3 +95,98 @@ markers = [
 # Read by pytest-asyncio when it is installed (the tests do not need it); tests/conftest.py declares the option
 # otherwise, so pytest does not warn about an unknown key.
 asyncio_default_fixture_loop_scope = "function"
+
+# Boundaries between the packages of evo_agents, checked by `lint-imports` (docs/structure.md, section Package
+# boundaries). Each contract's ignore_imports lists the imports that break it today: those lists only shrink, and
+# tests/test_structure.py fails a change that adds an entry main does not have.
+[tool.importlinter]
+root_package = "evo_agents"
+
+[[tool.importlinter.contracts]]
+id = "worker-not-hub-server"
+name = "The worker does not import evo_agents.hub.server"
+type = "forbidden"
+source_modules = ["evo_agents.worker"]
+forbidden_modules = ["evo_agents.hub.server"]
+ignore_imports = [
+    # The parser of `evo-agents worker plan` borrows the hub CLI's JSON option and plan keys. Both modules walk the
+    # hub's whole CLI, whose `hub serve` and `hub worker` commands import the server inside their functions only.
+    "evo_agents.worker.cli -> evo_agents.hub.contract",
+    "evo_agents.worker.cli -> evo_agents.hub.plan_cli",
+]
+broken_contract_guidance = """\
+The worker runs on members' machines without the hub-server extra, so nothing it imports may reach \
+evo_agents.hub.server. Move what both need into a module outside evo_agents.hub.server (evo_agents.hub.runs holds \
+the run protocol both sides share), or ask the hub over HTTP. See docs/structure.md, section Package boundaries."""
+
+[[tool.importlinter.contracts]]
+id = "kg-not-hub-or-worker"
+name = "evo_agents.kg, outside its CLI, imports neither evo_agents.hub nor evo_agents.worker"
+type = "forbidden"
+source_modules = ["evo_agents.kg"]
+forbidden_modules = ["evo_agents.hub", "evo_agents.worker"]
+ignore_imports = [
+    # The CLI of the knowledge graph: `kg` commands that push to the hub, read its graphs, or schedule a push.
+    "evo_agents.kg.cli -> evo_agents.hub.**",
+    "evo_agents.kg.cli_graph -> evo_agents.hub.**",
+    "evo_agents.kg.schedule -> evo_agents.hub.**",
+]
+broken_contract_guidance = """\
+The knowledge graph builds and serves on a core install, without the hub or the worker. Keep the hub's side in \
+evo_agents.hub (kg_cli, kg_push, kg_build) and have it call evo_agents.kg, not the reverse; a type both need goes \
+into evo_agents.kg. See docs/structure.md, section Package boundaries."""
+
+[[tool.importlinter.contracts]]
+id = "hub-server-from-hub-server"
+name = "Outside evo_agents.hub.server, evo_agents.hub imports evo_agents.hub.server only where it does today"
+type = "forbidden"
+source_modules = ["evo_agents.hub.*"]
+forbidden_modules = ["evo_agents.hub.server"]
+ignore_imports = [
+    # `hub serve` and `hub openapi` start or dump the app.
+    "evo_agents.hub.cli -> evo_agents.hub.server.app",
+    "evo_agents.hub.openapi -> evo_agents.hub.server.app",
+    # The audit row of a pruned graph build.
+    "evo_agents.hub.kg_prune -> evo_agents.hub.server.audit",
+    # `hub worker`, the hub's job runner, runs jobs whose code lives with the server.
+    "evo_agents.hub.worker -> evo_agents.hub.server.brief",
+    "evo_agents.hub.worker -> evo_agents.hub.server.changes",
+    "evo_agents.hub.worker -> evo_agents.hub.server.collect",
+    "evo_agents.hub.worker -> evo_agents.hub.server.curator",
+    "evo_agents.hub.worker -> evo_agents.hub.server.digests",
+    "evo_agents.hub.worker -> evo_agents.hub.server.github_app",
+    "evo_agents.hub.worker -> evo_agents.hub.server.notifications",
+    "evo_agents.hub.worker -> evo_agents.hub.server.outcomes",
+    "evo_agents.hub.worker -> evo_agents.hub.server.run_state",
+    "evo_agents.hub.worker -> evo_agents.hub.server.sealing",
+]
+broken_contract_guidance = """\
+The client side of evo_agents.hub (CLI commands, client, MCP proxy, plugin hooks) installs without the hub-server \
+extra and must not load the server. Move what both sides need out of evo_agents.hub.server into a module of \
+evo_agents.hub the server imports, or call the API over HTTP. See docs/structure.md, section Package boundaries."""
+
+[[tool.importlinter.contracts]]
+id = "packages-acyclic"
+name = "The packages of evo_agents import each other without cycles"
+type = "acyclic_siblings"
+ancestors = ["evo_agents"]
+depth = 0
+ignore_imports = [
+    # The CLI of the knowledge graph reaches the hub (contract kg-not-hub-or-worker).
+    "evo_agents.kg.cli -> evo_agents.hub.**",
+    "evo_agents.kg.cli_graph -> evo_agents.hub.**",
+    "evo_agents.kg.schedule -> evo_agents.hub.**",
+    # The MCP proxy finds a worker's home to serve the agent of a run.
+    "evo_agents.hub.mcp_proxy -> evo_agents.worker.home",
+    # The CLI contract walks the parser of the whole CLI, inside its functions.
+    "evo_agents.hub.contract -> evo_agents.cli",
+    # The harness loader validates knowledge.yaml with the graph's policy, protocol and schema.
+    "evo_agents.harness -> evo_agents.kg.policy",
+    "evo_agents.harness -> evo_agents.kg.protocol",
+    "evo_agents.harness -> evo_agents.kg.schema",
+]
+broken_contract_guidance = """\
+Packages import downward only: cli, then worker, hub, kg, harness and schema. An import going up closes a cycle, \
+even inside a function, since import-linter reads those too. Move the shared code down into the package both can \
+import (a type into evo_agents.kg or evo_agents.schema, a client helper into evo_agents.hub), or have the upper \
+package pass it down as an argument. See docs/structure.md, section Package boundaries."""
