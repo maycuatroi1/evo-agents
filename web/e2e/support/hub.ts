@@ -12,6 +12,7 @@ import { ADMIN_LOGIN, API_URL, DEPLOYED_BASE_URL, STACK_URL } from "./env";
  */
 export type Account = { login: string; id: number };
 export type Registration = components["schemas"]["Registration"];
+export type Repo = components["schemas"]["Repo"];
 export type Role = "reader" | "writer" | "admin";
 
 export const LEVELS = ["public", "internal", "customer", "secret"];
@@ -92,6 +93,25 @@ export class HubAdmin {
   async registerProject(name: string, overrides: Partial<Registration> = {}): Promise<void> {
     const api = await this.api();
     await call(api.PUT("/v1/projects/{project}", { params: { path: { project: name } }, body: registration(overrides) }));
+  }
+
+  /**
+   * List `repo` among the project's repos, in place of one of the same name, keeping the rest of what the project
+   * registered: the PUT of `evo-agents hub project register` once its harness lists the repo.
+   */
+  async addRepo(project: string, repo: Repo): Promise<void> {
+    const api = await this.api();
+    const held = await call(api.GET("/v1/projects/{project}", { params: { path: { project } } }));
+    if (!held.harness) throw new Error(`project ${project} was registered without its harness paths`);
+    const body: Registration = {
+      levels: held.levels,
+      locations: held.locations,
+      default_label: held.default_label as Registration["default_label"],
+      sinks: held.sinks,
+      repos: [...held.repos.filter((listed) => listed.name !== repo.name), repo],
+      harness: held.harness,
+    };
+    await call(api.PUT("/v1/projects/{project}", { params: { path: { project } }, body }));
   }
 
   async grant(project: string, login: string, role: Role, maxLevel: string): Promise<void> {

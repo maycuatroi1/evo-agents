@@ -609,6 +609,29 @@ async def _verify(path: Path, commands: list[str]) -> list[dict]:
     return results
 
 
+async def _push_conflict(hub, agent: _AgentRun, name: str, conflict) -> None:
+    """A push of ``worker step`` went to the run's side branch (``gitops.PushConflict``): tell the run's owner, and
+    leave the daemon the word to fail the run once the agent's turn ends."""
+    from evo_agents.worker import gitops
+    from evo_agents.worker.hubapi import HubProblem
+
+    agent.home.save_conflict(
+        agent.run_id,
+        {
+            "error": f"{name}: {conflict}",
+            "repo": name,
+            "branch": conflict.branch,
+            "side_branch": conflict.side_branch,
+            "head": conflict.head,
+        },
+    )
+    try:
+        await hub.notice(agent.run_id, gitops.conflict_notice(agent.run_id, name, conflict))
+        print(f"Notified the run's owner that the commits of {name} are on {conflict.side_branch}.", file=sys.stderr)
+    except HubProblem as exc:
+        print(f"warning: the notice of {conflict.side_branch} was not sent ({exc})", file=sys.stderr)
+
+
 @_worker_command
 def cmd_step(args) -> int:
     agent = _agent_run("step")
@@ -629,6 +652,12 @@ def cmd_step(args) -> int:
     workspaces = _workspaces(agent)
     if args.repo is not None and args.repo not in workspaces:
         raise WorkerStateError(f"run {agent.run_id} works in {', '.join(workspaces) or 'no repo'}, not in {args.repo}")
+    conflict = agent.home.load_conflict(agent.run_id)
+    if args.status == "done" and conflict is not None:
+        raise WorkerStateError(
+            f"run {agent.run_id} ends failed (push_conflict) once this turn ends: {conflict['error']}. Nothing more is "
+            "pushed or reported done; end your turn now"
+        )
     from evo_agents.worker import gitops
 
     async def work(hub) -> int:
@@ -686,6 +715,25 @@ def cmd_step(args) -> int:
                     tuple(answer.get("commits") or ()),
                 )
             else:
+                again: list[dict] = []
+
+                async def verify_again(head: str) -> str | None:
+                    """The step's verify commands again, in the worktree at the commits replayed on top of the
+                    remote's tip; how they failed, or None."""
+                    print(
+                        f"{workspace.branch} of {name} moved on at origin: the run's commits were put on top of it, "
+                        f"and the verify of step {args.key} runs again at {head[:12]}."
+                    )
+                    again[:] = await _verify(path, verify)
+                    failed = [item for item in again if item["exit_code"] != 0]
+                    return "; ".join(f"`{item['command']}` exited {item['exit_code']}" for item in failed) or None
+
+                replay = gitops.Replay(
+                    scratch=path.parent / runs.RESULT_DIR / f"replay-{path.name}",
+                    side_branch=gitops.SIDE_BRANCH.format(id=agent.run_id),
+                    pushed=agent.home.pushed(agent.run_id, name, workspace.branch),
+                    verify=verify_again,
+                )
                 try:
                     pushed = await gitops.push(
                         path,
@@ -693,13 +741,28 @@ def cmd_step(args) -> int:
                         protected=workspace.protected,
                         kind="plan",
                         plan_branch=plan_branch,
+                        replay=replay,
                     )
                 except gitops.PushRefused as exc:
                     raise WorkerStateError(f"{name}: {exc}; step {args.key} is not reported done") from None
+                except gitops.PushConflict as exc:
+                    await _push_conflict(hub, agent, name, exc)
+                    raise WorkerStateError(
+                        f"{name}: {exc}. Step {args.key} is not reported done, and run {agent.run_id} ends failed "
+                        "(push_conflict) once this turn ends: end your turn now"
+                    ) from None
                 except gitops.GitError as exc:
                     raise WorkerStateError(
                         f"git push of {name} to {workspace.branch} failed: {exc}; step {args.key} is not reported done"
                     ) from None
+                if pushed.default:
+                    agent.home.note_push(agent.run_id, name, pushed.branch, pushed.head)
+                if pushed.onto is not None:
+                    print(
+                        f"{pushed.branch} of {name} on origin had moved on to {pushed.onto[:12]}: the run's commits "
+                        f"since then are on top of it at {pushed.head[:12]}, and their verify passed there."
+                    )
+                    results = again or results
             if pushed.default and pushed.changed:
                 from evo_agents.worker.hubapi import HubProblem
 

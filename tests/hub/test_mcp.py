@@ -56,7 +56,7 @@ REGISTRATION = {
     "locations": ["any"],
     "default_label": {"level": "internal"},
     "sinks": SINKS,
-    "repos": [{"name": "app", "path": "app"}],
+    "repos": [{"name": "app", "path": "app", "origin": "https://git.example.org/alpha/app.git"}],  # runs need it
     "harness": {"name": PROJECT, "workspace": "~/ws", "path": "alpha-harness"},
 }
 MEMBERS = {

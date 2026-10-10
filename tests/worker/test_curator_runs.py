@@ -192,6 +192,50 @@ def test_judge_run_refuses_a_head_origin_does_not_have(machine):  # noqa: F811
     assert found["hub"].verdicts == []
 
 
+def test_judge_run_whose_hidden_check_calls_a_missing_tool_stops_at_preflight_without_a_verdict(machine):  # noqa: F811
+    head = change_branch(machine, {"tests/test_wait.py": TEST_FILE})
+    machine.scenarios({"judge": [{"say": '{"verdict": "pass"}'}]})
+    hidden = [f"test -f tests/test_wait.py && echo {MARK}", f"no-such-checker-{MARK} --strict"]
+    found = {}
+
+    async def body(hub, daemon):
+        run_id = hub.queue_judge_run("alpha", curator(head), inputs(machine, head, hidden=hidden))
+        assert await hub.wait_state(run_id, "done", "failed", timeout=60) == "failed", hub.texts(run_id)
+        found.update(hub=hub, run=run_id)
+
+    with_daemon(machine, body)
+    hub, run_id = found["hub"], found["run"]
+    run = hub.runs[run_id]
+    assert run["failure_cause"] == "missing_tool"
+    assert run["error"] == (
+        "preflight: hidden check 2 of 2 calls a program that is not on this worker's PATH; the agent did not start"
+    )
+    assert hub.verdicts == [], "no verdict, so the change is not failed: the hub queues another judge run"
+    assert hub.moves(run_id) == ["leased", "failed"]
+    starts = machine.starts() if machine.starts_path.exists() else []
+    assert [item for item in starts if item["run"] == run_id] == []  # the Judge's agent never started
+    assert not (machine.tmp / "hidden-ran").exists() and not machine.directory(run_id).exists()  # nothing ran
+    assert leaked(machine, hub, run_id) == [], "neither the hidden check nor its program left the daemon"
+    assert hub.judge_reads == [run_id]
+
+
+def test_judge_run_whose_verify_calls_a_missing_tool_names_it_at_preflight(machine):  # noqa: F811
+    head = change_branch(machine, {"tests/test_wait.py": TEST_FILE})
+    found = {}
+
+    async def body(hub, daemon):
+        checks = inputs(machine, head, hidden=[])
+        checks["verify"] = ["test -f tests/test_wait.py", "pnpm-not-here-7f3a test"]
+        run_id = hub.queue_judge_run("alpha", curator(head), checks)
+        assert await hub.wait_state(run_id, "done", "failed", timeout=60) == "failed", hub.texts(run_id)
+        found.update(hub=hub, run=run_id)
+
+    with_daemon(machine, body)
+    run = found["hub"].runs[found["run"]]
+    assert run["failure_cause"] == "missing_tool" and found["hub"].verdicts == []
+    assert "verify command `pnpm-not-here-7f3a test` calls pnpm-not-here-7f3a" in run["error"]
+
+
 # A Builder of the Curator
 
 

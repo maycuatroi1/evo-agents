@@ -1,6 +1,7 @@
 """The model of the Curator's review, without a database: the tier rules (``evo_agents.hub.tiers``), the lenses, the
 evidence, the causes the night's figures name and the prompt of a review run (``evo_agents.hub.review``)."""
 
+import re
 from datetime import date, timedelta
 
 import pytest
@@ -226,6 +227,55 @@ def test_the_failures_from_the_environment_are_named_by_cause(text, cause):
 )
 def test_the_runs_that_failed_are_named_by_cause(error, state, cause):
     assert review.failure_cause(error, state) == cause
+
+
+# The errors of runs #9 and #16 of evo-agents, as their workers ended them: git without a credential to give, and a push
+# the remote refused because its branch had moved on (git's hint, folded on one line as the worker folds it).
+RUN_9 = (
+    "git fetch in /home/evo/github/evo-agents-harness failed: git fetch failed (128): fatal: could not read Username "
+    "for 'https://github.com': terminal prompts disabled"
+)
+RUN_16 = (
+    "git push of evo-agents-harness to main on origin failed: git push failed (1): To "
+    "https://github.com/maycuatroi1/evo-agents-harness.git ! [rejected] main -> main (non-fast-forward) error: failed "
+    "to push some refs to 'https://github.com/maycuatroi1/evo-agents-harness.git' hint: Updates were rejected because "
+    "a pushed branch tip is behind its remote hint: counterpart. If you want to integrate the remote changes, use "
+    "'git pull' before pushing again."
+)
+
+
+@pytest.mark.parametrize(
+    "error, cause",
+    [
+        (RUN_9, "credentials"),
+        (RUN_16, "push_conflict"),
+        ("Updates were rejected because a pushed branch tip is behind its remote counterpart.", "push_conflict"),
+        ("! [rejected] feat/x -> feat/x (fetch first)", "push_conflict"),
+        ("git fetch failed (128): git@github.com: Permission denied (publickey).", "credentials"),
+        ("no credential reads evo-agents: could not read Password for 'https://github.com'", "credentials"),
+        ("project evo-lms lists no origin for evo-agents", "origin"),
+        ("verify command `rg -q x` exited 127; nothing was pushed", "missing_tool"),
+        ("verify command `pnpm test` calls pnpm, which is not on this worker's PATH", "missing_tool"),
+        ("git fetch in /src/evo-agents failed: could not resolve host", "checkout"),
+    ],
+)
+def test_the_cause_of_runs_9_and_16_and_of_the_preflight_is_read_from_their_error(error, cause):
+    assert review.failure_cause(error, "failed") == cause
+
+
+def test_the_cause_a_worker_reported_wins_over_the_one_read_in_the_error():
+    assert review.run_cause("missing_tool", "verify command `x` exited 1", "failed") == "missing_tool"
+    assert review.run_cause(None, RUN_9, "failed") == "credentials"
+    assert review.run_cause(None, None, "lost") == "lease_lost"
+    assert review.run_cause(None, "something else", "failed") == "other"
+    assert review.environment_cause(RUN_9) == "credentials"
+
+
+def test_every_cause_a_worker_sends_is_one_the_figures_name():
+    named = {name for name, _ in review.RUN_FAILURE_CAUSES}
+    assert set(runs.FAILURE_CAUSES) <= named, set(runs.FAILURE_CAUSES) - named
+    assert set(runs.PREFLIGHT_CAUSES) <= set(runs.FAILURE_CAUSES)
+    assert all(re.fullmatch(runs.FAILURE_CAUSE, name) for name in runs.FAILURE_CAUSES)
 
 
 def test_a_correction_of_the_person_is_told_from_a_request():
