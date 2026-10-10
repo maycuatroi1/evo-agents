@@ -32,7 +32,7 @@ secret. The session cookie is the API's, httpOnly; server components forward it 
 
 | Command | What it does |
 | --- | --- |
-| `pnpm lint` | ESLint, no warnings allowed |
+| `pnpm lint` | ESLint, no warnings allowed, then `scripts/check-structure.mjs`. Together they hold `src/` to files of 400 lines and imports in one direction, with no cycle; `eslint/structure.mjs` has the rules and a baseline that may only shrink |
 | `pnpm typecheck` | route types, then `tsc --noEmit` |
 | `pnpm test` | Vitest unit tests |
 | `pnpm gen:api` | regenerates `src/lib/api/schema.d.ts` from `evo-agents hub openapi` (this checkout's Python; set `PYTHON` to choose the interpreter) |
