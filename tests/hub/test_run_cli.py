@@ -407,6 +407,22 @@ def runs_of(hub, monkeypatch, capsys, who: str, *args: str) -> SimpleNamespace:
 
 
 @needs_pg
+def test_show_and_list_print_the_cause_the_worker_reported_with_a_failure(hub, monkeypatch, capsys):
+    worker = add_worker(hub.client, hub.headers["owner"], "mac-mini")
+    (run,) = dispatched(hub.client, hub.headers["owner"], [2], worker_id=worker["id"])
+    assert claim(hub.client, worker)["id"] == run["id"]
+    error = "verify command `pnpm test` calls pnpm, which is not on this worker's PATH"
+    moved(hub.client, worker, run["id"], "failed", error=error, failure_cause="missing_tool")
+    shown = as_json(runs_of(hub, monkeypatch, capsys, "reader", "show", str(run["id"]), "--json"))
+    assert_json_keys("hub run show", shown)
+    assert (shown["state"], shown["failure_cause"], shown["error"]) == ("failed", "missing_tool", error)
+    listed = as_json(runs_of(hub, monkeypatch, capsys, "reader", "list", "--json"))
+    assert [(item["id"], item["failure_cause"]) for item in listed["runs"]] == [(run["id"], "missing_tool")]
+    lines = ok(runs_of(hub, monkeypatch, capsys, "reader", "show", str(run["id"]))).out.splitlines()
+    assert any(line.split() == ["cause", "missing_tool"] for line in lines), lines
+
+
+@needs_pg
 def test_dispatch_list_and_show_print_what_the_hub_answered(hub, monkeypatch, capsys):
     worker = add_worker(hub.client, hub.headers["owner"], "mac-mini")
     flags = ["--runtime", "claude-code", "--mode", "headless", "--approval", "auto", "--timeout", "30"]

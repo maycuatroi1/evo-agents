@@ -596,6 +596,37 @@ def test_judge_a_run_that_ends_without_a_verdict_queues_another_then_leaves_the_
     assert failed == judge.JUDGE_ATTEMPTS
 
 
+def test_judge_a_run_its_preflight_stopped_for_a_missing_tool_fails_no_change_and_is_judged_again(world):
+    accepted(world)
+    builder(world)
+    moved_on(world)
+    spec = judge_run(world)
+    assert inputs(world, spec["id"]).status_code == 200  # the worker reads what it checks before anything runs
+    error = "hidden check 1 calls a program that is not on this worker's PATH: the change is not judged on this worker"
+    stopped = world.client.post(
+        f"/v1/worker/runs/{spec['id']}/state",
+        json={"state": "failed", "error": error, "failure_cause": "missing_tool"},
+        headers=world.worker["headers"],
+    )
+    assert stopped.status_code == 200, stopped.text
+    assert (stopped.json()["state"], stopped.json()["failure_cause"]) == ("failed", "missing_tool")
+    change = one_change(world)
+    assert (change["state"], change["verdict"], change["passed"]) == ("judge_pending", None, None)
+    assert f"judge run #{spec['id']} ended failed without a verdict ({error})" in change["reason"]
+    n = tables.notifications
+    rows = sql(world.db, select(n.c.details).where(n.c.run_id == spec["id"], n.c.notice_kind == "run_failed"))
+    assert [details["error"] for (details,) in rows] == [error]
+    # the next judge run, on a worker that has the program, judges the change
+    again = judge_run(world)
+    assert again["id"] != spec["id"]
+    assert inputs(world, again["id"]).status_code == 200
+    assert verdict(world, again["id"]).status_code == 200
+    moved(world.client, world.worker, again["id"], "running", "verifying", "done")
+    judged_now = one_change(world)
+    assert judged_now["passed"] is True and judged_now["verdict"]["agent"] == "pass"
+    assert judged_now["verdict"]["run_id"] == again["id"]
+
+
 def test_hidden_check_only_the_judge_run_reads_them(world):
     accepted(world)
     builder_id = builder(world)

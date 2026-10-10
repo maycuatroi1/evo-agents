@@ -343,7 +343,12 @@ def make_stack(hub_db, tmp_path, github):
             admin = bearer(live.sign_in(client, github, ADMIN, 801)["token"])
             owner_token = live.sign_in(client, github, OWNER, 802)["token"]
             owner = bearer(owner_token)
-            assert client.put(f"/v1/projects/{PROJECT}", json=registration(), headers=admin).status_code == 200
+            body = registration()  # the project's origin of evo-agents is the bare repository the checkout has
+            body["repos"] = [
+                {**repo, "origin": str(tmp_path / "origin.git")} if repo["name"] == REPO else repo
+                for repo in body["repos"]
+            ]
+            assert client.put(f"/v1/projects/{PROJECT}", json=body, headers=admin).status_code == 200
             granted = client.put(f"/v1/admin/projects/{PROJECT}/grants/{OWNER}", json=WRITER, headers=admin)
             assert granted.status_code == 200, granted.text
             pushed = client.put(f"/v1/projects/{PROJECT}/plans/{PLAN}", json={"body": plan_body()}, headers=owner)

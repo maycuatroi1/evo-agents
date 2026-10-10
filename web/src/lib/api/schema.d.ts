@@ -7090,6 +7090,11 @@ export interface components {
             finish_requested_at?: string | null;
             /** @description a queued attempt after a run lost on a worker that is not steady yet: that worker takes it only once it is; another worker may take it now unless it is pinned to that one. Null otherwise */
             steady_wait?: components["schemas"]["SteadyWait"] | null;
+            /**
+             * Failure Cause
+             * @description why the run failed, as its worker reported it: origin, credentials or missing_tool when its preflight stopped it before the agent started, else push_conflict, verify_failed, timeout and the others of runs.FAILURE_CAUSES; null for a run that did not fail, one an older daemon or the hub ended, and every run from before schema 0024
+             */
+            failure_cause?: string | null;
         };
         /** RunBlobCommit */
         RunBlobCommit: {
@@ -7676,6 +7681,11 @@ export interface components {
              * @description the skills the worker writes under .claude/skills of the run's directory for its agent: an author run's create-exec-plan; empty for any other run
              */
             skills?: components["schemas"]["RunSkill"][];
+            /**
+             * Verify
+             * @description the verify of the step of a run of one step, as the plan it was dispatched from has it: the worker's preflight checks that each program it calls is on PATH before the agent starts; null for any other kind, whose worker reads the verify elsewhere (a plan run's plan, a judge run's inputs)
+             */
+            verify?: string[] | null;
         };
         /** RunState */
         RunState: {
@@ -8243,6 +8253,11 @@ export interface components {
             } | null;
             /** Error */
             error?: string | null;
+            /**
+             * Failure Cause
+             * @description with failed: why, one of runs.FAILURE_CAUSES (a newer worker's own names are kept too); kept with the run as its failure_cause, and ignored with any other state
+             */
+            failure_cause?: string | null;
             /**
              * Summary
              * @description the agent's summary, for the evidence

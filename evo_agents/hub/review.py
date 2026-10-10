@@ -114,26 +114,46 @@ ENVIRONMENT_CAUSES: tuple[tuple[str, re.Pattern], ...] = (
             re.I,
         ),
     ),
-    ("credentials", re.compile(r"\b401\b|unauthori[sz]ed|authentication failed|invalid token|token expired", re.I)),
+    (
+        "credentials",
+        re.compile(
+            r"\b401\b|unauthori[sz]ed|authentication failed|invalid token|token expired|could not read "
+            r"(?:Username|Password)|terminal prompts disabled|Permission denied \(publickey\)",
+            re.I,
+        ),
+    ),
     ("os_permission", re.compile(r"permission denied|operation not permitted|\bEACCES\b|\bEPERM\b", re.I)),
     (
         "missing_tool",
         re.compile(r"command not found|not installed|ModuleNotFoundError|No module named|executable file not found"),
     ),
 )
+# The causes of runs that failed, for a run its worker named none of (``run_cause``): every run before schema 0024, and
+# those an older daemon or the hub ended. A git that could not ask for a password (run #9) is credentials, and a push
+# the remote refused because it moved on (run #16) is push_conflict, both before checkout, which names any branch.
 RUN_FAILURE_CAUSES: tuple[tuple[str, re.Pattern], ...] = (
     ("cost_cap", re.compile(r"cost cap", re.I)),
     ("turn_cap", re.compile(r"turns? cap|max(?:imum)? turns", re.I)),
     ("time_cap", re.compile(r"time cap", re.I)),
     ("timeout", re.compile(r"past its timeout|timed? ?out", re.I)),
     ("lease_lost", re.compile(r"stopped extending the lease", re.I)),
+    ("missing_tool", re.compile(r"exited 127\b|command not found|not on (?:this worker's |the run's )?PATH", re.I)),
     ("verify_failed", re.compile(r"verify command", re.I)),
     ("worker_revoked", re.compile(r"\brevoked\b", re.I)),
     ("worker_stopped", re.compile(r"was stopped while|failed while running|daemon stopped", re.I)),
+    ("origin", re.compile(r"lists no origin", re.I)),
+    ("credentials", ENVIRONMENT_CAUSES[4][1]),
+    (
+        "push_conflict",
+        re.compile(
+            r"behind its remote\W+(?:hint:\W*)?counterpart|\((?:non-fast-forward|fetch first)\)"
+            r"|tip of your current branch is behind",
+            re.I,
+        ),
+    ),
     ("checkout", re.compile(r"checkout|worktree|git fetch|no remote|branch", re.I)),
     ("runtime", re.compile(r"no adapter|cannot run|runtime|ended before its turn completed", re.I)),
     ("hub_5xx", ENVIRONMENT_CAUSES[1][1]),
-    ("credentials", ENVIRONMENT_CAUSES[4][1]),
 )
 # A turn of the person that corrects the agent: Vietnamese and English words a correction starts or turns on.
 CORRECTION = re.compile(
@@ -176,6 +196,12 @@ def failure_cause(error: str | None, state: str) -> str:
         if pattern.search(error or ""):
             return name
     return "lease_lost" if state == "lost" else "other"
+
+
+def run_cause(stored: str | None, error: str | None, state: str) -> str:
+    """The cause of a run that ended ``failed`` or ``lost``: the one its worker reported (runs.failure_cause), else the
+    one ``failure_cause`` reads in its error, for a run from before schema 0024, an older daemon's, or the hub's."""
+    return stored or failure_cause(error, state)
 
 
 def is_correction(turn: str) -> bool:

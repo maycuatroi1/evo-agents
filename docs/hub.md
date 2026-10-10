@@ -317,7 +317,9 @@ the chat of an author run: its wait, park and resume, `runs.finish_requested_at`
 Going back to 0019 deletes the author runs and their notices and drops the columns; the revisions they wrote stay,
 without the run. Schema 0023 adds `workers.steady_since`, the first heartbeat of a worker's current run of heartbeats,
 none more than 30 seconds late, which holds the next attempt of a run lost on a worker back from it until it has been
-steady for 120 seconds (`docs/workers.md`, Run states); going back to 0022 drops it.
+steady for 120 seconds (`docs/workers.md`, Run states); going back to 0022 drops it. Schema 0024 adds
+`runs.failure_cause`, why a run failed as its worker reported it (`docs/workers.md`, Preflight and failure causes);
+going back to 0023 drops it, and the Curator's figures read every cause from the error again.
 
 The daemon on the member's machine is the `evo-agents worker` command group, which needs the `worker` extra
 (`uv tool install 'evo-ak[worker]'`). It is not `evo-agents hub worker`, the hub's own job worker (see Worker and
@@ -372,10 +374,21 @@ does every step of the plan not done yet, in a worktree of each repo those steps
 goes (`docs/workers.md`, Plan runs). It takes `--worker`, `--runtime`, `--model` and `--mode` as `dispatch` does, and
 `--timeout-h`, the hours of agent time the run may use: 2, 4, 8 or 24 (4 by default); the time it waits for your
 answer to a decision, or parked, does not count. The hub refuses a plan with no pending step, a plan with an active
-run of any kind, and a step not done that names no repo when the plan lists more than one. `list` shows each run's
+run of any kind, and a step not done that names no repo when the plan lists more than one. `dispatch`, `rerun` and
+`plan` are refused (409, naming the repo, nothing dispatched) when a repo the run needs is one the project lists no
+origin for: no credential is leased for it, and the worker's preflight would fail the run anyway. `list` shows each run's
 KIND (`step`, `plan`, `review`, `judge` or `author`), and filters by `--state` (repeat it for several), `--plan`,
 `--step`, `--worker`, `--by` (the login that dispatched) and `--search`, a page at a time with `--limit` and
 `--offset`; `show` of a plan run names its repos, the agent time it used, and when it waited or was parked.
+
+A run that failed has `failure_cause` (in `GET .../runs`, `GET .../runs/{id}`, `run list --json` and `run show --json`,
+and a `cause` line of `run show`): the cause its worker reported with the failure, one of `origin`, `credentials` and
+`missing_tool` when the preflight stopped it before its agent started, or `push_conflict`, `verify_failed`, `timeout`,
+`cost_cap`, `turn_cap`, `time_cap`, `checkout`, `runtime` and `worker_stopped`. It is null for a run that did not
+fail, for one an older daemon or the hub itself ended (a lost lease, a revoked worker), and for every run from before
+schema 0024; the Curator's figures read the cause of those from the error (`evo_agents/hub/review.py`). A run of one
+step or an author run that failed for a cause of the preflight sends its owner the notice `run_failed`, as a plan,
+review or judge run does for any failure.
 
 `run logs` prints one line per event: its number, its time in UTC, its kind and what it says. With `--follow` it reads
 the run's server-sent events (`GET .../runs/{id}/stream`) until the hub sends `end` once the run is final, and stops
@@ -446,7 +459,8 @@ Each night of a project's charter, the hub reviews the project with a run of kin
 `curator.collect` counts the night's figures, without any model, from the session digests, the runs and their tool
 figures, the plans and the decisions of the last `review.days` of the charter (7 by default): the failures per tool
 and per program, the failures that come from the environment by cause (a command the harness blocked, the hub
-answering 5xx, the network, rate limits, credentials, a tool missing), the runs that failed or were lost by cause, the
+answering 5xx, the network, rate limits, credentials, a tool missing), the runs that failed or were lost by cause (the
+one the worker reported, else the one read in the error), the
 commands run again and again, the turns where the person corrected an agent, the open items of the plans and the
 steps that have not moved for 3 days, each with evidence a finding can cite. Then the night shift queues the review
 run on the worker on duty, before any plan run of the night, once that worker's daemon says it runs review runs.
