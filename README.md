@@ -58,9 +58,11 @@ identifiers:
 
 A git source reads the text of markdown, YAML, text, config and code files (or of what its `include:`
 globs match) and records other files by path only. It skips the paths its `exclude:` globs match, plus a
-default list: build output, lock files, virtualenvs and agent folders such as `.claude/` and `.agents/`.
+default list: build output, lock files, virtualenvs and agent folders such as `.claude/` and `.agents/`,
+at any depth, and `state/` at the root only (a nested `src/state/` is ordinary code).
 `allow:` takes globs that bring paths from that default list back, for example
-`allow: [".claude/CLAUDE.md"]`; `exclude:` still wins over `allow:`. Only the git connector reads `allow:`.
+`allow: [".claude/CLAUDE.md"]`, or `"*/.claude/CLAUDE.md"` for a nested one; `exclude:` still wins over
+`allow:`. Only the git connector reads `allow:`.
 `fetch: true` on a git source whose `ref:` is `origin/<branch>` fetches that branch from `origin` (with a
 timeout) before each run, so the graph follows the remote without anyone fetching the clone. A failed
 fetch keeps the run ok: it logs a warning and reads the ref as the clone has it. Without the key nothing
