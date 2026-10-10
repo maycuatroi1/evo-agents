@@ -4,7 +4,6 @@ import { Search, X } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 
 import { Kbd } from "@/components/ui/kbd";
-import { useCharacterKeys } from "@/lib/keyboard";
 import { cn } from "@/lib/utils";
 
 import { useSearchShortcut } from "./search-shortcut";
@@ -52,10 +51,9 @@ export function SearchField({
   const [draft, setDraft] = useState(value);
   const [committed, setCommitted] = useState(value);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useSearchShortcut(input, shortcut);
-  // The key is shown and announced only while single-key shortcuts are on (the shortcuts dialog turns them off).
-  const characterKeys = useCharacterKeys();
-  const slash = shortcut && characterKeys;
+  // The key is shown and announced only while it works: once the field has hydrated and registered for it, and while
+  // single-key shortcuts are on (the shortcuts dialog turns them off).
+  const slash = useSearchShortcut(input, shortcut);
 
   // The URL changed without this field (back, a link, "clear filters"): show what it says now.
   if (value !== committed) {

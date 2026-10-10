@@ -4680,7 +4680,7 @@
     "openapi": "3.1.0",
     "info": {
       "title": "evo-agents hub",
-      "version": "0.10.0"
+      "version": "0.11.0"
     },
     "paths": {
       "/v1/health": {
@@ -5198,37 +5198,92 @@
           ],
           "summary": "Users",
           "operationId": "users_v1_admin_users_get",
+          "parameters": [
+            {
+              "name": "limit",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "maximum": 1000,
+                    "minimum": 1
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "at most this many items; without it, all of them",
+                "title": "Limit"
+              },
+              "description": "at most this many items; without it, all of them"
+            },
+            {
+              "name": "offset",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 1000000,
+                "minimum": 0,
+                "description": "skip this many items first",
+                "default": 0,
+                "title": "Offset"
+              },
+              "description": "skip this many items first"
+            }
+          ],
           "responses": {
             "200": {
               "description": "Successful Response",
               "content": {
                 "application/json": {
                   "schema": {
+                    "type": "array",
                     "items": {
                       "$ref": "#/components/schemas/UserRow"
                     },
-                    "type": "array",
                     "title": "Response Users V1 Admin Users Get"
+                  }
+                }
+              },
+              "headers": {
+                "X-Total-Count": {
+                  "description": "the length of the whole list, whatever limit and offset cut from it",
+                  "schema": {
+                    "type": "integer",
+                    "minimum": 0
                   }
                 }
               }
             },
             "401": {
-              "description": "Unauthorized",
               "content": {
                 "application/json": {
                   "schema": {
                     "$ref": "#/components/schemas/ErrorBody"
                   }
                 }
-              }
+              },
+              "description": "Unauthorized"
             },
             "403": {
-              "description": "Forbidden",
               "content": {
                 "application/json": {
                   "schema": {
                     "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
                   }
                 }
               }
@@ -5582,27 +5637,82 @@
           ],
           "summary": "List Projects",
           "operationId": "list_projects_v1_projects_get",
+          "parameters": [
+            {
+              "name": "limit",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "maximum": 1000,
+                    "minimum": 1
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "at most this many items; without it, all of them",
+                "title": "Limit"
+              },
+              "description": "at most this many items; without it, all of them"
+            },
+            {
+              "name": "offset",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 1000000,
+                "minimum": 0,
+                "description": "skip this many items first",
+                "default": 0,
+                "title": "Offset"
+              },
+              "description": "skip this many items first"
+            }
+          ],
           "responses": {
             "200": {
               "description": "Successful Response",
               "content": {
                 "application/json": {
                   "schema": {
+                    "type": "array",
                     "items": {
                       "$ref": "#/components/schemas/Project"
                     },
-                    "type": "array",
                     "title": "Response List Projects V1 Projects Get"
+                  }
+                }
+              },
+              "headers": {
+                "X-Total-Count": {
+                  "description": "the length of the whole list, whatever limit and offset cut from it",
+                  "schema": {
+                    "type": "integer",
+                    "minimum": 0
                   }
                 }
               }
             },
             "401": {
-              "description": "Unauthorized",
               "content": {
                 "application/json": {
                   "schema": {
                     "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
                   }
                 }
               }
@@ -5968,6 +6078,40 @@
               }
             },
             {
+              "name": "limit",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "maximum": 1000,
+                    "minimum": 1
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "at most this many items; without it, all of them",
+                "title": "Limit"
+              },
+              "description": "at most this many items; without it, all of them"
+            },
+            {
+              "name": "offset",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 1000000,
+                "minimum": 0,
+                "description": "skip this many items first",
+                "default": 0,
+                "title": "Offset"
+              },
+              "description": "skip this many items first"
+            },
+            {
               "name": "X-Evo-Sink",
               "in": "header",
               "required": false,
@@ -5995,6 +6139,15 @@
                       "$ref": "#/components/schemas/PlanSummary"
                     },
                     "title": "Response List Plans V1 Projects  Project  Plans Get"
+                  }
+                }
+              },
+              "headers": {
+                "X-Total-Count": {
+                  "description": "the length of the whole list, whatever limit and offset cut from it",
+                  "schema": {
+                    "type": "integer",
+                    "minimum": 0
                   }
                 }
               }
@@ -7719,6 +7872,40 @@
                 "title": "Project"
               },
               "description": "only this project's skills"
+            },
+            {
+              "name": "limit",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "maximum": 1000,
+                    "minimum": 1
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "at most this many items; without it, all of them",
+                "title": "Limit"
+              },
+              "description": "at most this many items; without it, all of them"
+            },
+            {
+              "name": "offset",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 1000000,
+                "minimum": 0,
+                "description": "skip this many items first",
+                "default": 0,
+                "title": "Offset"
+              },
+              "description": "skip this many items first"
             }
           ],
           "responses": {
@@ -7732,6 +7919,15 @@
                       "$ref": "#/components/schemas/Skill"
                     },
                     "title": "Response List Skills V1 Skills Get"
+                  }
+                }
+              },
+              "headers": {
+                "X-Total-Count": {
+                  "description": "the length of the whole list, whatever limit and offset cut from it",
+                  "schema": {
+                    "type": "integer",
+                    "minimum": 0
                   }
                 }
               }
@@ -10391,6 +10587,40 @@
                 "title": "Revoked"
               },
               "description": "also list revoked workers"
+            },
+            {
+              "name": "limit",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "maximum": 1000,
+                    "minimum": 1
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "at most this many items; without it, all of them",
+                "title": "Limit"
+              },
+              "description": "at most this many items; without it, all of them"
+            },
+            {
+              "name": "offset",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 1000000,
+                "minimum": 0,
+                "description": "skip this many items first",
+                "default": 0,
+                "title": "Offset"
+              },
+              "description": "skip this many items first"
             }
           ],
           "responses": {
@@ -10404,6 +10634,15 @@
                       "$ref": "#/components/schemas/Worker"
                     },
                     "title": "Response List Workers V1 Workers Get"
+                  }
+                }
+              },
+              "headers": {
+                "X-Total-Count": {
+                  "description": "the length of the whole list, whatever limit and offset cut from it",
+                  "schema": {
+                    "type": "integer",
+                    "minimum": 0
                   }
                 }
               }

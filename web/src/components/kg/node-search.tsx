@@ -16,7 +16,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { browserApi } from "@/lib/api/browser";
 import type { ApiErrorInfo } from "@/lib/api/errors";
-import { useCharacterKeys } from "@/lib/keyboard";
 import { displayName } from "@/lib/kg/graph";
 import { kgSearchQuery, MAX_QUERY } from "@/lib/kg/queries";
 import { kgHref, nodeHref } from "@/lib/kg/routes";
@@ -46,8 +45,7 @@ export function SearchForm({
 }) {
   const t = useTranslations("kg.search");
   const input = useRef<HTMLInputElement>(null);
-  useSearchShortcut(input);
-  const slash = useCharacterKeys();
+  const slash = useSearchShortcut(input);
   const options = kind && !kinds.some((k) => k.kind === kind) ? [{ kind, count: 0 }, ...kinds] : kinds;
   return (
     <Form

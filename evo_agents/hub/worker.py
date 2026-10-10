@@ -27,6 +27,7 @@ Jobs (names in ``evo_agents.hub.jobs``):
   channel's class, tried again with a backoff and failed after 5 tries (``evo_agents.hub.server.notifications``).
 - ``hub.prune_run_events``, daily: the events of runs that ended more than EVO_HUB_RUN_LOG_DAYS ago, and the sealed
   values of the GitHub tokens leased to runs that are past their end.
+- ``hub.prune_audit``, daily: the audit rows older than EVO_HUB_AUDIT_DAYS (365 by default).
 - ``hub.fire_schedules``, every minute: each schedule of a project's charter that is not paused queues its next run
   inside its window and within its night's budget, the night's review run first, and cancels its queued runs outside
   it; its circuit breaker pauses a project's night shift once the charter's max_failed_in_a_row jobs of a night in a
@@ -66,7 +67,7 @@ from typing import TYPE_CHECKING
 
 from procrastinate import App, JobContext, PsycopgConnector
 from psycopg_pool import AsyncConnectionPool
-from sqlalchemy import delete
+from sqlalchemy import delete, func
 
 from evo_agents import __version__
 from evo_agents.hub import jobs, tables
@@ -135,6 +136,16 @@ async def remove_stale_uploads(store: BlobStore, engine: AsyncEngine, now: datet
     objects = await asyncio.to_thread(store.remove_stale_uploads, cutoff)
     log.info("stale uploads removed", extra={"objects": objects, "rows": rows, "cutoff": cutoff.isoformat()})
     return {"objects": objects, "rows": rows}
+
+
+async def prune_audit(engine: AsyncEngine, days: int) -> dict:
+    """Delete the audit rows older than ``days`` days (EVO_HUB_AUDIT_DAYS), in one statement on audit_at_idx. Schema
+    0001 rejects an update of an audit row, not its deletion; nothing references the rows."""
+    trail = tables.audit
+    async with engine.begin() as conn:
+        deleted = (await conn.execute(delete(trail).where(trail.c.at < func.now() - timedelta(days=days)))).rowcount
+    log.info("audit pruned", extra={"deleted": deleted, "days": days})
+    return {"deleted": deleted, "days": days}
 
 
 @queue.periodic(cron="17 * * * *")
@@ -241,6 +252,13 @@ async def prune_run_events(context: JobContext, timestamp: int | None = None) ->
 
     found = hub(context)
     return await prune(found.engine, found.config.run_log_days)
+
+
+@queue.periodic(cron="33 4 * * *")
+@queue.task(name=jobs.PRUNE_AUDIT, pass_context=True, queueing_lock=jobs.PRUNE_AUDIT)
+async def prune_audit_rows(context: JobContext, timestamp: int | None = None) -> dict:
+    found = hub(context)
+    return await prune_audit(found.engine, found.config.audit_days)
 
 
 @queue.periodic(cron="23 4 * * *")

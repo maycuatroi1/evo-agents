@@ -31,6 +31,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import (
     BigInteger,
     and_,
+    any_,
     cast,
     column,
     delete,
@@ -42,7 +43,7 @@ from sqlalchemy import (
     true,
     union_all,
 )
-from sqlalchemy.dialects.postgresql import aggregate_order_by, array_agg
+from sqlalchemy.dialects.postgresql import ARRAY, aggregate_order_by, array_agg
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
@@ -54,6 +55,7 @@ from evo_agents.hub.runs import OFFLINE_AFTER_SECONDS
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.auth import GrantInfo
 from evo_agents.hub.server.errors import ErrorBody
+from evo_agents.hub.server.paging import PAGED, WHOLE, Paging
 from evo_agents.hub.server.security import AdminUser, admin
 from evo_agents.kg.policy import Policy
 
@@ -231,8 +233,8 @@ def _users():
     ).order_by(func.lower(users.c.login))
 
 
-def _user_grants():
-    """Every grant by project, with the login of the admin who gave it."""
+def _user_grants(user_ids: list[int]):
+    """The grants of the users ``user_ids`` by project, with the login of the admin who gave each."""
     grants, projects, users = tables.grants, tables.projects, tables.users
     return (
         select(
@@ -245,16 +247,17 @@ def _user_grants():
         )
         .join_from(grants, projects, projects.c.id == grants.c.project_id)
         .outerjoin(users, users.c.id == grants.c.granted_by)
+        .where(grants.c.user_id == any_(literal(user_ids, ARRAY(BigInteger))))
         .order_by(projects.c.name)
     )
 
 
-@router.get("/users", response_model=list[UserRow], responses={403: {"model": ErrorBody}})
-async def users(request: Request) -> list[UserRow]:
+@router.get("/users", response_model=list[UserRow], responses={403: {"model": ErrorBody}, **PAGED})
+async def users(request: Request, page: Paging = WHOLE) -> list[UserRow]:
     config: HubConfig = request.app.state.config
     async with request.app.state.engine.begin() as conn:
-        rows = (await conn.execute(_users())).all()
-        grant_rows = (await conn.execute(_user_grants())).all()
+        rows = await page.rows(conn, _users())
+        grant_rows = (await conn.execute(_user_grants([row.id for row in rows]))).all()
     grants: dict[int, list[UserGrant]] = {}
     for row in grant_rows:
         grant = UserGrant(

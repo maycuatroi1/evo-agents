@@ -2,6 +2,8 @@ import { defineConfig, globalIgnores } from "eslint/config";
 import nextVitals from "eslint-config-next/core-web-vitals";
 import nextTs from "eslint-config-next/typescript";
 
+import { structureConfig } from "./eslint/structure.mjs";
+
 export default defineConfig([
   ...nextVitals,
   ...nextTs,
@@ -49,6 +51,8 @@ export default defineConfig([
       ],
     },
   },
+  // File size and the direction of imports in src/: eslint/structure.mjs.
+  ...structureConfig(),
   globalIgnores([
     ".next/**",
     "out/**",

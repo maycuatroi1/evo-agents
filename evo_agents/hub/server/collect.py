@@ -48,7 +48,8 @@ from evo_agents.hub import curator, review, runs, tables
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.projects import ProjectAccess
 from evo_agents.hub.server.run_state import notify_queued, write_event
-from evo_agents.hub.server.runs import Pinned, _insert_run, _unfit, visible_plans
+from evo_agents.hub.server.runs.service.dispatch import Pinned, insert_run, unfit
+from evo_agents.hub.server.runs.service.views import visible_plans
 
 log = logging.getLogger(__name__)
 
@@ -484,7 +485,7 @@ async def queue_review(conn: AsyncConnection, due, gate: Gate) -> int | None:
     charter, worker = due.body, gate.worker
     repos = await _review_repos(conn, due.project_id, due.project, worker)
     runtime = (charter.get("reviewer") or {}).get("runtime") or curator.DEFAULT_RUNTIME
-    problems = _unfit(worker, due.project, "review", [entry["repo"] for entry in repos], runtime)
+    problems = unfit(worker, due.project, "review", [entry["repo"] for entry in repos], runtime)
     if not repos:
         problems.append(f"it has no checkout of a repo of project {due.project}")
     budget = _review_budget(charter, gate.budget)
@@ -515,7 +516,7 @@ async def queue_review(conn: AsyncConnection, due, gate: Gate) -> int | None:
         "budget": budget,
     }
     try:
-        run_id = await _insert_run(conn, values)
+        run_id = await insert_run(conn, values)
     except IntegrityError as exc:  # another review run of the project is active
         if isinstance(exc.orig, psycopg.errors.UniqueViolation):
             return None

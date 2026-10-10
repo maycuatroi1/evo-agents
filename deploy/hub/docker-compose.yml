@@ -3,7 +3,9 @@
 # database it can reach at EVO_HUB_DSN, such as one the platform manages, on the network EVO_HUB_PLATFORM_NETWORK.
 # A reverse proxy in front sends /v1 and /mcp to api:8080 and everything else to web:3000, on one domain. The /v1
 # rule carries the web terminal's websockets too, so the proxy must pass a websocket upgrade there.
-# docs/hub.md describes every variable; deploy/hub/.env.example lists them.
+# docs/hub.md describes every variable; deploy/hub/.env.example lists them. x-hub-environment passes every variable
+# evo_agents/hub/config.py reads, but those the image sets and those only tests change (tests/hub/test_compose.py); an
+# empty value is unset, so the hub takes its own default.
 #
 # The volumes are caches only: the state lives in Postgres and the blob store (R2), and a lost volume is rebuilt.
 #
@@ -29,6 +31,12 @@ x-hub-environment: &hub-environment
   EVO_HUB_BLOB_CONCURRENCY: ${EVO_HUB_BLOB_CONCURRENCY:-32}
   EVO_HUB_KG_KEEP_ARTIFACTS: ${EVO_HUB_KG_KEEP_ARTIFACTS:-3}
   EVO_HUB_RUN_LOG_DAYS: ${EVO_HUB_RUN_LOG_DAYS:-30}
+  EVO_HUB_AUDIT_DAYS: ${EVO_HUB_AUDIT_DAYS:-}
+  EVO_HUB_POOL_MIN_SIZE: ${EVO_HUB_POOL_MIN_SIZE:-}
+  EVO_HUB_POOL_MAX_SIZE: ${EVO_HUB_POOL_MAX_SIZE:-}
+  EVO_HUB_POOL_TIMEOUT: ${EVO_HUB_POOL_TIMEOUT:-}
+  EVO_HUB_RUN_LEASE_SECONDS: ${EVO_HUB_RUN_LEASE_SECONDS:-}
+  EVO_HUB_DECISION_WAIT_SECONDS: ${EVO_HUB_DECISION_WAIT_SECONDS:-}
   EVO_HUB_FORWARDED_ALLOW_IPS: ${EVO_HUB_FORWARDED_ALLOW_IPS:-}
   EVO_HUB_SECRETS_KEY: ${EVO_HUB_SECRETS_KEY:-}
   EVO_HUB_GITHUB_APP_ID: ${EVO_HUB_GITHUB_APP_ID:-}

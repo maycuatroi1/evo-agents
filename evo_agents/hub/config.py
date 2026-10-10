@@ -15,11 +15,18 @@ EVO_HUB_BLOB_CONCURRENCY caps the uploads one process checks and copies in the s
 (``evo_agents.hub.blobs``). EVO_HUB_KG_KEEP_ARTIFACTS is how many of each project's newest built graphs keep their
 artifact in the bucket (``evo_agents.hub.kg_prune``); at least 1, since the api reads the newest.
 EVO_HUB_RUN_LOG_DAYS is how many days the events of a finished run are kept before the daily hub.prune_run_events
-deletes them (``evo_agents.hub.server.run_state``). EVO_HUB_RUN_LEASE_SECONDS is how long a claim and each heartbeat
-lease a run for (``runs.LEASE_SECONDS`` by default); the reaper finds a run lost once its lease ran out, so tests
-shorten it, and it must stay well above the daemon's heartbeat of 15 seconds. EVO_HUB_DECISION_WAIT_SECONDS is how
-long a plan run waits for its owner's answer before the reaper (the job hub.recover_runs of ``hub worker``) parks it
+deletes them (``evo_agents.hub.server.run_state``). EVO_HUB_AUDIT_DAYS is how many days an audit row is kept before
+the daily hub.prune_audit deletes it (``evo_agents.hub.worker``): 365 by default, from 30 to 3650, so a month of the
+trail always stays. EVO_HUB_RUN_LEASE_SECONDS is how long a claim and each heartbeat lease a run for
+(``runs.LEASE_SECONDS`` by default); the reaper finds a run lost once its lease ran out, so tests shorten it, and it
+must stay well above the daemon's heartbeat of 15 seconds. EVO_HUB_DECISION_WAIT_SECONDS is how long a plan run waits
+for its owner's answer before the reaper (the job hub.recover_runs of ``hub worker``) parks it
 (``runs.DECISION_WAIT_SECONDS``, a day, by default); the end-to-end tests shorten it to see a run parked and resumed.
+
+deploy/hub/docker-compose.yml passes the api and the worker every variable read here except those the image sets
+(EVO_HUB_HOST, EVO_HUB_PORT, EVO_HUB_DATA_DIR) and those only tests point elsewhere (the GitHub and Telegram URLs and
+EVO_HUB_GITHUB_TIMEOUT); tests/hub/test_compose.py fails, naming the lines to add, when a new one is missing there or
+in deploy/hub/.env.example.
 
 EVO_HUB_FORWARDED_ALLOW_IPS lists the addresses or networks of the reverse proxies whose X-Forwarded-For uvicorn
 believes, comma-separated, or ``*``; the client address it yields keys the limit on refused pairing codes. Unset, it
@@ -67,6 +74,10 @@ MAX_KG_KEEP_ARTIFACTS = 1000
 # Days the events of a finished run stay (evo_agents.hub.server.run_state.prune_run_events).
 DEFAULT_RUN_LOG_DAYS = 30
 MAX_RUN_LOG_DAYS = 3650
+# Days an audit row stays (evo_agents.hub.worker.prune_audit).
+DEFAULT_AUDIT_DAYS = 365
+MIN_AUDIT_DAYS = 30
+MAX_AUDIT_DAYS = 3650
 # Seconds a claim and each heartbeat lease a run for (evo_agents.hub.server.runs).
 MIN_RUN_LEASE_SECONDS = 5
 MAX_RUN_LEASE_SECONDS = 3600
@@ -131,6 +142,7 @@ class HubConfig:
     blob_concurrency: int = DEFAULT_BLOB_CONCURRENCY  # uploads one process seals or publishes at once
     kg_keep_artifacts: int = DEFAULT_KG_KEEP_ARTIFACTS  # newest graphs per project whose artifact the retention keeps
     run_log_days: int = DEFAULT_RUN_LOG_DAYS  # days a finished run's events are kept
+    audit_days: int = DEFAULT_AUDIT_DAYS  # days an audit row is kept
     run_lease_seconds: int = LEASE_SECONDS  # how long a claim and each heartbeat lease a run for
     decision_wait_seconds: int = DECISION_WAIT_SECONDS  # how long a plan run waits for an answer before it parks
     forwarded_allow_ips: str | None = None  # proxies whose X-Forwarded-For uvicorn believes; None: uvicorn's default
@@ -224,6 +236,14 @@ def _run_log_days(env: Mapping[str, str]) -> int:
     value = _number(env, name, DEFAULT_RUN_LOG_DAYS, minimum=1)
     if value > MAX_RUN_LOG_DAYS:
         raise ConfigError(name, f"{name} must be at most {MAX_RUN_LOG_DAYS}, got {value}")
+    return value
+
+
+def _audit_days(env: Mapping[str, str]) -> int:
+    name = "EVO_HUB_AUDIT_DAYS"
+    value = _number(env, name, DEFAULT_AUDIT_DAYS, minimum=MIN_AUDIT_DAYS)
+    if value > MAX_AUDIT_DAYS:
+        raise ConfigError(name, f"{name} must be at most {MAX_AUDIT_DAYS}, got {value}")
     return value
 
 
@@ -460,6 +480,7 @@ def load_config(
         blob_concurrency=_blob_concurrency(env),
         kg_keep_artifacts=_kg_keep_artifacts(env),
         run_log_days=_run_log_days(env),
+        audit_days=_audit_days(env),
         run_lease_seconds=_run_lease_seconds(env),
         decision_wait_seconds=_decision_wait_seconds(env),
         forwarded_allow_ips=_forwarded_allow_ips(env),
