@@ -50,6 +50,7 @@ from evo_agents.hub.server.admin import PROJECT_NAME, ProjectName
 from evo_agents.hub.server.audit import record
 from evo_agents.hub.server.blobs import GLOBAL, blob_store
 from evo_agents.hub.server.errors import ErrorBody
+from evo_agents.hub.server.paging import PAGED, WHOLE, Paging
 from evo_agents.hub.server.projects import PRINTABLE, project_access
 from evo_agents.hub.server.security import CurrentUser, Principal
 from evo_agents.hub.skills import MAX_BUNDLE, MAX_DESCRIPTION, BundleError, name_problem, read_bundle
@@ -259,12 +260,13 @@ def _granted(user: Principal) -> Select:
     return query
 
 
-@router.get("", response_model=list[Skill], responses={403: {"model": ErrorBody}})
+@router.get("", response_model=list[Skill], responses={403: {"model": ErrorBody}, **PAGED})
 async def list_skills(
     request: Request,
     user: CurrentUser,
     scope: Annotated[Literal[SCOPES] | None, Query(description="default: both")] = None,
     project: Annotated[str | None, Query(pattern=PROJECT_NAME, description="only this project's skills")] = None,
+    page: Paging = WHOLE,
 ) -> list[Skill]:
     """The skills the caller sees, each with its latest version: the global ones and those of every project the
     caller has a grant on."""
@@ -276,7 +278,7 @@ async def list_skills(
         else:
             projects = list((await conn.execute(_granted(user))).scalars())
         with_global = scope in (None, "global") and project is None
-        rows = (await conn.execute(_skills(with_global, projects if scope in (None, "project") else []))).all()
+        rows = await page.rows(conn, _skills(with_global, projects if scope in (None, "project") else []))
     return [Skill(**row._mapping) for row in rows]
 
 
