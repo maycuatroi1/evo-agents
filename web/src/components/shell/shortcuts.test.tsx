@@ -2,11 +2,16 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { NextIntlClientProvider } from "next-intl";
+import { hydrateRoot, type Root } from "react-dom/client";
+import { renderToString } from "react-dom/server";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 
 import { setCharacterKeys } from "@/lib/keyboard";
 import { queryKeys } from "@/lib/queries";
 import { renderVi } from "@/test/render";
+
+import messages from "../../../messages/vi.json";
 
 import { LEAD_MS, readKey, ShortcutKeys, SHORTCUTS, ShortcutsProvider, useDispatchShortcut, useOpenShortcuts } from "./shortcuts";
 
@@ -256,6 +261,40 @@ describe("D", () => {
     await user.keyboard("d");
     expect(ownDispatch).toHaveBeenCalledTimes(1);
     expect(screen.queryByTestId("dispatch-dialog")).toBeNull();
+  });
+
+  it("is the page's own only once the page has registered it: not in the server's HTML, and from hydration on", async () => {
+    // A page's content can hydrate well after the shell's: until then D opens the shell's Dispatch, so the page must
+    // not show the key beside its own button yet.
+    const ownDispatch = vi.fn();
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+    client.setQueryData(queryKeys.whoami, { login: "octo", admin: false, token: {}, grants: WRITER });
+    const tree = (
+      <NextIntlClientProvider locale="vi" messages={messages} timeZone="Asia/Ho_Chi_Minh">
+        <QueryClientProvider client={client}>
+          <ShortcutsProvider>
+            <Page ownDispatch={ownDispatch} />
+          </ShortcutsProvider>
+        </QueryClientProvider>
+      </NextIntlClientProvider>
+    );
+    let root: Root | undefined;
+    const container = document.createElement("div");
+    container.innerHTML = renderToString(tree);
+    document.body.append(container);
+    onTestFinished(() => {
+      act(() => root?.unmount());
+      container.remove();
+    });
+    const key = within(container).getByTestId("page-dispatch-key");
+    expect(key).toHaveTextContent("false");
+
+    await act(async () => {
+      root = hydrateRoot(container, tree);
+    });
+    expect(key).toHaveTextContent("true");
+    await userEvent.setup().keyboard("d");
+    expect(ownDispatch).toHaveBeenCalledTimes(1);
   });
 
   it("does nothing for a reader, or outside a project", async () => {

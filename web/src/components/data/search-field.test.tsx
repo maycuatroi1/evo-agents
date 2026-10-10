@@ -2,7 +2,9 @@
 import { act, fireEvent, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { hydrateRoot, type Root } from "react-dom/client";
+import { renderToString } from "react-dom/server";
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 
 import { setCharacterKeys } from "@/lib/keyboard";
 import { renderVi } from "@/test/render";
@@ -84,6 +86,33 @@ describe("the / shortcut", () => {
     const pressed = fireEvent.keyDown(document.activeElement ?? document.body, { key: "/" });
     expect(pressed).toBe(false); // the slash is not typed anywhere
     expect(screen.getByRole("searchbox")).toHaveFocus();
+  });
+
+  it("is shown and announced only once it works: not in the server's HTML, and from hydration on", async () => {
+    // The page's content can hydrate well after the shell's: until the field registers, "/" reaches nothing, so
+    // neither its kbd nor aria-keyshortcuts may promise it.
+    let root: Root | undefined;
+    const container = document.createElement("div");
+    container.innerHTML = renderToString(<Field />);
+    document.body.append(container);
+    onTestFinished(() => {
+      act(() => root?.unmount());
+      container.remove();
+    });
+    const input = container.querySelector("input");
+    expect(input).not.toBeNull();
+    expect(input).not.toHaveAttribute("aria-keyshortcuts");
+    expect(container.querySelector("kbd")).toBeNull();
+    fireEvent.keyDown(document.body, { key: "/" });
+    expect(input).not.toHaveFocus();
+
+    await act(async () => {
+      root = hydrateRoot(container, <Field />);
+    });
+    expect(input).toHaveAttribute("aria-keyshortcuts", "/");
+    expect(container.querySelector("kbd")).toHaveTextContent("/");
+    expect(fireEvent.keyDown(document.body, { key: "/" })).toBe(false);
+    expect(input).toHaveFocus();
   });
 
   it("leaves a key typed into another field alone", () => {
