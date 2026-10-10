@@ -150,9 +150,9 @@ def machine(tmp_path, monkeypatch) -> Machine:
     return Machine(tmp_path)
 
 
-def with_daemon(machine: Machine, body, *, plan: dict | None = None):
+def with_daemon(machine: Machine, body, *, plan: dict | None = None, **options):
     """Run ``await body(hub, daemon)`` with the fake hub holding ``plan`` and the daemon running in this process, then
-    stop the daemon as SIGTERM does."""
+    stop the daemon as SIGTERM does. ``options`` go to the Daemon (``keep_awake``, ``wake``)."""
 
     async def go():
         hub = FakeHub(PROJECT)
@@ -167,7 +167,7 @@ def with_daemon(machine: Machine, body, *, plan: dict | None = None):
         )
         machine.home.save(config, TOKEN)
         daemon = Daemon(
-            machine.home, config, TOKEN, adapters={"claude-code": fake_adapter.FakeAdapter}, env=machine.env
+            machine.home, config, TOKEN, adapters={"claude-code": fake_adapter.FakeAdapter}, env=machine.env, **options
         )
         task = asyncio.create_task(daemon.run())
         try:

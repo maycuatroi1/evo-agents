@@ -1301,6 +1301,31 @@ starts, and a takeover is noted as unsupported while the run goes on headless.
   only to print that in the terminal, then closes: nothing is attached and nothing typed reaches the machine.
 - A daemon that starts closes the tmux sessions of the runs a previous daemon left unfinished.
 
+### Sleep and wake
+
+A run needs the machine awake. While the daemon holds at least one run, on macOS, it holds two power assertions
+(IOKit's `IOPMAssertionCreateWithName`): `PreventUserIdleSystemSleep`, so the machine does not sleep for want of a
+person at it, and `PreventSystemSleep`, so it does not sleep at all while it is on AC power (macOS does not honour that
+one on battery). It lets them go once it holds no run, and when it stops; powerd drops them when the daemon's process
+dies, SIGKILL included. `pmset -g assertions` lists them under the daemon's pid, named `evo-agents worker <name>:
+holding runs`, and worker.log says `power assertion held` and `power assertion released`. On Linux, and when macOS
+refuses the assertion, the daemon logs `no power assertion` once, with the reason, and goes on; the next run asks again
+on macOS.
+
+No assertion keeps a laptop awake whose lid is closed while it runs on battery: macOS sleeps it anyway. Its runs stop
+with it, their leases run out after 300 seconds, and the hub tries them again, not on that laptop until it is steady
+(see [Run states](#run-states)). A plan run on a laptop is safe with the lid open, or closed on AC power (with an
+external display or not, as macOS allows); otherwise give it to a machine that does not sleep, such as a VM.
+
+The daemon also notices when the machine slept all the same. Each turn of its heartbeat loop and of its claim loop
+compares the time since that loop's previous turn on the wall clock with the time on the monotonic clock, which stops
+while the machine sleeps (`mach_absolute_time` on macOS, `CLOCK_MONOTONIC` on Linux). When the wall clock is ahead by
+more than 30 seconds, the machine slept: worker.log says `wake detected` once per sleep, with the gap (`gap_s`), the time
+the loop expected (`expected_s`) and the difference (`slept_s`), and the daemon claims no new run for 120 seconds,
+while the network and the hub come back (`no claims for a while after a sleep`, then `claiming again after the
+sleep`). The heartbeats go on all the while, for the runs it still holds. A wall clock set forward by more than 30
+seconds reads as a sleep too, which only delays claims.
+
 ### When the hub does not answer, and stopping
 
 Each event goes to the spool on disk before it is sent; batches of up to 500 events and under 1 MiB go from
@@ -1396,6 +1421,8 @@ credential off.
 - Workers run on macOS and Linux; Windows only through WSL. Interactive mode and the terminal need tmux on the
   worker, and a worker without it takes headless runs only.
 - A handback closes the terminal UI where it stands: the daemon cannot see a turn the person started there end.
+- A laptop whose lid is closed while it runs on battery sleeps, power assertion or not, and its runs are lost and
+  tried again (see [Sleep and wake](#sleep-and-wake)).
 - Only the owner dispatches to a worker; workers shared by a team are a later decision.
 - A run of one step never dispatches the next one; a plan run does a plan's steps in one session on one worker,
   never several workers at once. Nothing opens a pull request.
