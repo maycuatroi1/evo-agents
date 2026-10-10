@@ -15,7 +15,9 @@ jobs:
   # docs alone skips the web. A push to main runs everything. The Python tests count every file outside web/ (they read
   # docs/, plugins/ and the harness files too) and the two files of web/ they read: package.json, whose version
   # tests/release/test_versions.py matches with the package's, and README.md, which tests/hub/test_contract.py reads.
-  # The web counts web/ and the whole package, since its end-to-end tests run against `hub serve` from this checkout.
+  # The web counts web/ and the package, since its end-to-end tests run against `hub serve` from this checkout, but
+  # not the knowledge graph builder (evo_agents/kg/) or a markdown file: a pull request that changes only those, the
+  # tests or the docs runs the Python tests alone, and its merge into main runs the web as every push does.
   changes:
     runs-on: ubuntu-latest
     permissions:
@@ -42,17 +44,23 @@ jobs:
               - 'evo_agents/**'
               - 'pyproject.toml'
               - '.github/workflows/ci.yml'
+              - '!evo_agents/kg/**'
+              - '!**/*.md'
 
-  # Linux runs everything, the hub tests included, against a Postgres service container: with the worker extra and
-  # tmux, tests/worker runs the daemon against a hub end to end, takeover and handback in tmux included.
+  # Linux runs everything, the hub tests included, against a Postgres service container, in three jobs per Python that
+  # run in parallel: tests/worker in one, where with the worker extra and tmux the daemon runs against a hub end to
+  # end, takeover and handback in tmux included, and the rest of the suite in two halves (EVO_TEST_SHARD, which
+  # tests/conftest.py reads: each half keeps every other test of the collection, so the two run each test once).
+  # Every job prints its 20 slowest tests.
   test:
-    name: test (ubuntu-latest, ${{ matrix.python }})
+    name: test (ubuntu-latest, ${{ matrix.python }}, ${{ matrix.part }})
     needs: changes
     if: needs.changes.outputs.python == 'true'
     strategy:
       fail-fast: false
       matrix:
         python: ["3.11", "3.12"]
+        part: ["1/2", "2/2", worker]
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -80,12 +88,18 @@ jobs:
           cache-dependency-glob: pyproject.toml
       - run: uv pip install --system -e '.[test,graphify,hub-server,worker]'
       - name: Install tmux, for the interactive runs of the worker
+        if: matrix.part == 'worker'
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends tmux
       - run: ruff check .
       - run: ruff format --check .
-      - run: pytest -q -n 4 --ignore=tests/worker
+      - name: Half ${{ matrix.part }} of the tests outside tests/worker
+        if: matrix.part != 'worker'
+        env:
+          EVO_TEST_SHARD: ${{ matrix.part }}
+        run: pytest -q -n 4 --durations=20 --ignore=tests/worker
       - name: The worker daemon against a hub (tests/worker)
-        run: pytest -q -n 4 tests/worker
+        if: matrix.part == 'worker'
+        run: pytest -q -n 4 --durations=20 tests/worker
 
   # Service containers run on Linux only. macOS installs the core package without the hub-server and worker extras,
   # and with EVO_HUB_TEST_DSN unset the hub tests skip, and so do the worker tests that need a hub or the worker's SDKs.

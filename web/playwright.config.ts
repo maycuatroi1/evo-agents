@@ -28,11 +28,15 @@ export default defineConfig({
   outputDir: "./test-results",
   fullyParallel: true,
   forbidOnly: Boolean(process.env.CI),
+  // In CI a failed test runs once more, so a flaky test and a broken one look different in the report, but a test
+  // that passes only on its retry still fails the run: the list summary names it under "flaky", and the github
+  // reporter puts it on the check as an error annotation.
   retries: process.env.CI ? 1 : 0,
+  failOnFlakyTests: Boolean(process.env.CI),
   workers: process.env.CI ? 2 : 4,
   timeout: 30_000,
   expect: { timeout: 10_000 },
-  reporter: process.env.CI ? [["list"], ["html", { open: "never" }]] : [["list"]],
+  reporter: process.env.CI ? [["list"], ["github"], ["html", { open: "never" }]] : [["list"]],
   use: {
     baseURL: BASE_URL,
     reducedMotion: "reduce", // menus and sheets open without animating, so clicks and axe see settled UI
