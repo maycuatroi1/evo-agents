@@ -83,6 +83,16 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends tmux
       - run: ruff check .
       - run: ruff format --check .
+      # The package boundaries (import-linter, contracts in pyproject.toml), then the size and complexity budgets, with
+      # their baseline and the contracts' exceptions compared against main so neither grows (docs/structure.md).
+      - name: Package boundaries (lint-imports)
+        run: lint-imports
+      - name: Structure budgets against main (tests/test_structure.py)
+        env:
+          EVO_STRUCTURE_BASE: origin/main
+        run: |
+          git fetch --no-tags --depth=1 origin +refs/heads/main:refs/remotes/origin/main
+          pytest -q tests/test_structure.py
       - run: pytest -q -n 4 --ignore=tests/worker
       - name: The worker daemon against a hub (tests/worker)
         run: pytest -q -n 4 tests/worker
