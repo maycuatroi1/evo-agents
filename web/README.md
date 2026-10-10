@@ -37,10 +37,16 @@ secret. The session cookie is the API's, httpOnly; server components forward it 
 | `pnpm test` | Vitest unit tests |
 | `pnpm gen:api` | regenerates `src/lib/api/schema.d.ts` from `evo-agents hub openapi` (this checkout's Python; set `PYTHON` to choose the interpreter) |
 | `pnpm build`, `pnpm start` | production build, then the standalone server |
+| `node scripts/bundle-budget.mjs` | after `pnpm build`: First Load JS of each route against `bundle-budget.json`; `--chunks <route>` lists a route's chunks, largest first |
 | `pnpm exec playwright test` | end-to-end tests, see below |
 
 CI fails when `schema.d.ts` differs from what `pnpm gen:api` writes. After changing an API model, run it and
 commit the result.
+
+CI also fails when a route loads more JS first than its budget in `bundle-budget.json`: the gzip size of the chunks
+the build lists for the route, in kB of 1000 bytes. Load the heavy part later (`next/dynamic`), or raise the budget
+and say why in the entry's `"reason"`; a budget raised or a route added over main's file without a reason fails too.
+`node scripts/bundle-budget.mjs --write` sets every budget to what the build measures and keeps the reasons.
 
 ## End-to-end tests
 
