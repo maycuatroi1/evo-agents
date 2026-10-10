@@ -74,7 +74,7 @@ A notice needs no answer (`NOTICE_KINDS`):
 | `push_default_branch` | a plan run pushed to a repo's default branch, which the plan names for that repo | the repo, the branch, the commits |
 | `merge_default_branch` | a plan run merged into such a branch | the repo, the branch, the commits |
 | `plan_finished` | a plan run ended with every step of its plan done | the plan, the steps the run did |
-| `run_failed` | a plan run failed, or its last attempt was lost | the run, the error |
+| `run_failed` | a plan, review or judge run failed, or its last attempt was lost; a run of one step or an author run failed for a cause of its preflight (`origin`, `credentials`, `missing_tool`: `docs/workers.md`, "Preflight and failure causes") | the run, the error (and the cause) |
 | `curator_brief` | the charter's `brief_at` came, in its time zone: the Curator's morning brief to the owner of the night shift's schedule (`docs/hub.md`, "The Curator's review") | the night's runs and cost, its review run, merges, runs waiting for approval, open decisions and proposals, the worker on duty's last heartbeat |
 | `curator_paused` | the circuit breaker paused a project's night shift: the charter's `max_failed_in_a_row` jobs of a night in a row failed or were reverted (`docs/hub.md`, "The Curator's ledger, outcomes and circuit breaker") | the night, the jobs in a row, the runs and the reverted proposals among them, the runs it cancelled |
 | `author_waiting` | an author run's agent ended its turn and the run waits for its owner's reply in its chat (`docs/workers.md`, "The chat of an author run"); the next one reads the run's earlier ones | the agent's last message, the plan it wrote or revises |

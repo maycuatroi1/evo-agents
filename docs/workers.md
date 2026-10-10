@@ -71,7 +71,10 @@ names its schedule and night and carries its caps (`budget`, see [Runs of the ni
   agent can read and change anything its owner can, and it runs on the owner's runtime accounts and quotas. In a run
   of one step the daemon refuses to push the default branch or a detached HEAD and never merges. In a plan run the
   agent may push, and merge into, the branch the plan names for a repo, the repo's default branch included, never
-  forced, and each such push or merge sends the owner a notice.
+  forced, and each such push or merge sends the owner a notice. When the remote moved that default branch on, the
+  worker rebases the run's own unpushed commits on top of it, or pushes them to `evo-run/<run>` and fails the run
+  (see [A default branch the remote moved on](#a-default-branch-the-remote-moved-on)); it never force-pushes and never
+  rewrites a commit the remote has.
 - **A worker token (`evw_...`) works only on `/v1/worker/*`**, and machine tokens and web sessions get 403 there. The
   hub shows the token once, when the machine joins or registers, and keeps only its SHA-256. With it a worker reads
   nothing beyond the runs it holds. Outside `/v1` it also opens the hub's `/mcp` for the agent of a run the worker
@@ -158,6 +161,19 @@ once to the runs it holds; a held run pinned to that worker fails rather than co
 pinned to it, since no other worker may claim either. Each of these moves writes a `state` event with the actor
 `reaper`. Cancelling a held run sets `cancel_requested_at`; the next heartbeat tells the worker, which stops the agent
 and reports `cancelled`.
+
+The next attempt of a lost run goes back to the worker that lost it only once that worker is steady: its heartbeats
+have come for 120 seconds (`runs.STEADY_SECONDS`), none more than 30 seconds after the one before
+(`runs.STEADY_GAP_SECONDS`). A laptop that slept, or woke for a moment in the night (macOS's DarkWake), lost its run
+because it was not running; handed the next attempt the moment it beats again, it would lose that one the same way,
+and the last attempt would fail. So the hub keeps `workers.steady_since`, the first heartbeat of the worker's current
+run of heartbeats: each heartbeat keeps it, and one that comes more than 30 seconds after the one before, or the first
+one, sets it to now. A claim of that worker passes over the next attempt of a run it lost until `steady_since` is 120
+seconds old and its last heartbeat at most 30 seconds old. Any other worker that may take the attempt takes it at once;
+an attempt pinned to that worker waits for it. Attempts still count: a run is tried at most 3 times
+(`runs.MAX_ATTEMPTS`), the first included. While an attempt waits, the run shows `steady_wait`: the worker, and
+`steady_at`, when it becomes steady if its heartbeats keep coming (null while it sends none). The run page says so
+above its timeline, and `evo-agents hub run show` in its `waits for` line.
 
 The reaper also ends a held run that ran past its timeout. From 0.4.0 only the time a run spends `leased`, `running`,
 `interactive` or `verifying` counts: the hub adds it up in `run_seconds` at each move and heartbeat, from `counted_at`
@@ -494,14 +510,19 @@ once. A plan run is claimed only by a worker with a checkout of every repo in it
 and no repo, but `repos`, the prompt of `build_plan_prompt`, and `plan`, `{revision, body}` at the hub's current
 revision, which the daemon writes to `.evo-run/plan.yaml`. A run the night shift queued has `budget`, its caps
 (`max_usd`, `max_turns`, `max_seconds`) with what it spent already (`spent_usd`, `spent_seconds`, for a run that goes
-on from a parked one), and null otherwise. A run of the Curator (a review run, a judge run, or a plan run of a plan the
-Curator made) has `curator`: its `role` (`reviewer`, `builder` or `judge`), the charter's `protected_paths`, and for a
+on from a parked one), and null otherwise. A run of one step has `verify`, the verify of its step as the plan it was
+dispatched from has it (a list of one command, or empty), whose programs the daemon looks for before the agent starts
+(see [Preflight and failure causes](#preflight-and-failure-causes)); null for any other kind, and absent from an older
+hub, whose daemon then checks no program of a run of one step. A run of the Curator (a review run, a judge run, or a
+plan run of a plan the Curator made) has `curator`: its `role` (`reviewer`, `builder` or `judge`), the charter's `protected_paths`, and for a
 Builder or a Judge the change, its branch, its forge (`github` or `gitlab`), the default branch, the pull request, and
 for a Judge the commit to judge and the run's own key (`judge_key`); null for any other run. A worker has at most one
 claim waiting: a newer claim ends the older one, which answers no run. A claim whose worker hung up, as a daemon that
 stops drops the claim it waits on, takes no run: it ends before it looks at the queue again, and when the worker hangs
 up while the claim leases a run, the lease is rolled back before it commits, so the run stays queued for the next
-claim instead of waiting out a lease nobody holds.
+claim instead of waiting out a lease nobody holds. While the worker is not steady, the claim passes over the next
+attempt of a run lost on it (see [Run states](#run-states)); a claim waiting when the worker becomes steady takes it
+at its next look, within 5 seconds.
 
 ### Heartbeat
 
@@ -534,8 +555,9 @@ and counts the runs a worker holds against its slots itself. `agent_version` is 
 the worker registered with. `run_kinds`, optional, lists the kinds of run the daemon runs; the hub keeps those it
 knows, and a heartbeat without it says the daemon runs none of the kinds that need it (a review run).
 
-The hub records the heartbeat, extends the lease of each run named that the worker still holds by 300 seconds (the
-same `EVO_HUB_RUN_LEASE_SECONDS`), and answers with control:
+The hub records the heartbeat and when the worker's heartbeats became steady (`steady_since`, set to now by the first
+heartbeat and by one that comes more than 30 seconds after the one before), extends the lease of each run named that
+the worker still holds by 300 seconds (the same `EVO_HUB_RUN_LEASE_SECONDS`), steady or not, and answers with control:
 
 ```json
 {
@@ -573,7 +595,11 @@ The hub checks the move against the transition table with the worker as actor an
 it, and 404 when the worker does not hold the run (another worker's, or one no longer held: lost, cancelled, in
 review or done). `from`, when given, must be the state the run is in (409 otherwise). `done` needs approval `auto`
 and at least one verify result, every one with exit code 0; `review` needs approval `review`; otherwise 409. A plan
-run ends `done` without verify results and never reports `review`. A `failed` report without an `error` gets one naming the worker. Reporting the state the run is in already moves
+run ends `done` without verify results and never reports `review`. A `failed` report without an `error` gets one naming the worker. A `failed` report
+may say why with `failure_cause`, a name of at most 32 lowercase letters, digits and underscores (422 otherwise): the
+causes of [Preflight and failure causes](#preflight-and-failure-causes), or a newer daemon's own, which the hub keeps
+as they come. The hub keeps it with the run (`failure_cause` of the run, null when the report has none, as a daemon
+before it sends none) and ignores it with any other state. Reporting the state the run is in already moves
 nothing and keeps the session id, commit, diffstat, verify results and usage it carries, so a resend after a lost
 answer is safe. The answer is the run as the hub holds it.
 
@@ -723,7 +749,8 @@ or a run number such as `#12`; and `limit` (1 to 200, 50 by default) and `offset
 filters, every state present: what the summary cards and the state facet show, so picking a state does not change
 the counts beside it. `GET .../runs/{id}` shows one run. A run carries the step's `title`, `last_seq` (its latest
 event, 0 before the first), `log_sha256` and `diff_sha256`, and the owner's open asks (`cancel_requested_at`,
-`takeover_requested_at`, `handback_requested_at`).
+`takeover_requested_at`, `handback_requested_at`). A queued attempt whose run before it was lost on a worker that is
+not steady has `steady_wait`, `{worker_id, worker, steady_at}`, and null otherwise (see [Run states](#run-states)).
 
 `GET /v1/projects/{p}/runs/stats` counts, for the web's charts, the runs of the same plans that ended on each of the
 last `days` UTC days, today included (7 to 90, 30 by default; 422 outside). Each day of `by_day`, oldest first, and
@@ -953,7 +980,9 @@ projects; `worker.log` (0600) the daemon's JSON log lines, rotated at 10 MiB wit
 pairing codes and presigned signatures masked; `service.log` what the daemon printed under launchd before its log
 was open; `daemon.pid`, locked while a daemon runs, so a second one refuses to start; `spool/` the events not
 acknowledged yet; `runs/<id>/` what the daemon knows of each run and its whole event log (and, for a plan run, the
-decisions its agent asked, `decisions.jsonl`; until the run ends on this machine, `agent.json`: the pid and the
+decisions its agent asked, `decisions.jsonl`, the commits `evo-agents worker step` pushed to a default branch,
+`pushes.jsonl`, and the side branch it pushed instead, `push_conflict.json`; until the run ends on this machine,
+`agent.json`: the pid and the
 process group of the agent the run started last, and when its leader started as `ps` prints it; and, while the run
 holds leases, `cred.sock` (0600), the socket the daemon hands them through, to its own uid only); `worktrees/` the
 runs' worktrees, and each plan run's directory. No lease value is ever written under it.
@@ -1029,8 +1058,11 @@ hands it no run.
 
 1. The daemon takes the run's leases from the hub (`POST /v1/worker/runs/{id}/credentials`, see
    [docs/credentials.md](credentials.md)), so its fetch and push and its agent use them; each repo whose origin no
-   lease covers gets a `system` event "no leased credential for {origin}: {reason}; git uses this machine's own". It
-   fetches `origin` in the checkout and makes the worktree `~/.evo/worker/worktrees/<project>-<run>` on
+   lease covers gets a `system` event "no leased credential for {origin}: {reason}; git uses this machine's own". Its
+   preflight then checks the repo and the programs of the step's verify (see
+   [Preflight and failure causes](#preflight-and-failure-causes)), and fails the run before anything is fetched when
+   one check does not pass. It fetches `origin` in the checkout and makes the worktree
+   `~/.evo/worker/worktrees/<project>-<run>` on
    the plan's branch for the repo, from `origin/<branch>` when the remote has it, else the local branch, else the
    remote's default branch. When that branch is checked out in another worktree (the owner's checkout, say), or has
    local commits the start lacks, the worktree is on `evo-run/<run>` instead and the push still goes to the plan's
@@ -1060,7 +1092,8 @@ hands it no run.
    in the worktree, and are named in a `system` event of the run (`left_out`); a copy the agent edited is its work
    and is committed. The daemon then refuses to push a detached HEAD, a branch the agent switched to, or a default
    branch; and pushes `HEAD` to the plan's branch on origin, never forced and never merged. A push the remote refuses
-   (not a fast-forward, say) fails the run; one it refuses for its credential, on an origin a lease covers, is tried
+   (not a fast-forward, say: failure_cause `push_conflict`) fails the run; one it refuses for its credential, on an
+   origin a lease covers, is tried
    once more after the daemon took the run's leases again (see [docs/credentials.md](credentials.md)).
 5. Once every event of the run is acknowledged, it reports `done` (approval `auto`) or `review`, with the commit,
    the diffstat, the verify results, the agent's summary and its usage. It then uploads the run's log and diff
@@ -1071,7 +1104,9 @@ hands it no run.
 ### A plan run on the machine
 
 1. The daemon takes the run's leases for all its repos, as for a run of one step, so the agent's `evo-agents worker
-   step` pushes with them too. It makes the directory `~/.evo/worker/worktrees/<project>-<run>` and, in it, a worktree
+   step` pushes with them too. Its preflight checks every repo, for reading and for pushing, and the programs of the
+   verify of every step not done (see [Preflight and failure causes](#preflight-and-failure-causes)), before any
+   worktree. It makes the directory `~/.evo/worker/worktrees/<project>-<run>` and, in it, a worktree
    of each repo of the run, named as the repo, on the branch the plan names for that repo: from `origin/<branch>` when
    the remote has it, else the local branch, else the remote's default branch, as for a run of one step. When that
    branch is checked out elsewhere, or has local commits the start lacks, the worktree is on `evo-run/<run>/<repo>` and
@@ -1088,7 +1123,10 @@ hands it no run.
      leaving out what a run's commit leaves out (see [A run on the machine](#a-run-on-the-machine)), refuses a
      detached HEAD or a branch the agent switched to, pushes R's branch to the plan's branch on origin
      (never forced; a branch at HEAD already is left alone), and reports the step with the commit and the verify
-     results. Without `--repo` the step's repo is the one the plan gives it. `in_progress` and `pending` only report.
+     results. On a default branch the remote moved on, it first rebases the run's commits on top of the remote's tip
+     and runs the verify commands again there; when that cannot be done it pushes them to `evo-run/<run>`, reports
+     nothing, and the run fails (see [A default branch the remote moved on](#a-default-branch-the-remote-moved-on)).
+     Without `--repo` the step's repo is the one the plan gives it. `in_progress` and `pending` only report.
    - `evo-agents worker ask` posts the decision, notes its id in `runs/<run>/decisions.jsonl`, prints the id, and
      tells the agent to go on with work that does not depend on the answer and then end its turn.
    - `evo-agents worker notify` sends a notice; `evo-agents worker plan` prints the plan as the hub holds it now.
@@ -1111,10 +1149,50 @@ hands it no run.
    `run #N: <plan title>`, leaving out and naming what a run's commit leaves out, and pushes the plan's branch when
    origin lacks its commits; it runs no verify command, since `evo-agents worker step` ran each step's. A push into a
    default branch happens only while the plan, as the hub holds it at that moment, names that branch for the repo, and
-   sends the notice `push_default_branch` with its commits, as `evo-agents worker step` does for its own pushes. The
+   sends the notice `push_default_branch` with its commits, as `evo-agents worker step` does for its own pushes; a
+   default branch the remote moved on gets the run's commits rebased on top of it, or the run fails with them on
+   `evo-run/<run>` (see [A default branch the remote moved on](#a-default-branch-the-remote-moved-on)). The
    run ends `done` with the summary and the diffstat of every repo; the log and the diffs of every repo (each under
    `a/<repo>/`) are uploaded as one `run-log` and one `run-diff`, and each worktree on the plan's branch leaves it. A
    failed run pushes nothing at its end; what the steps pushed stays.
+
+### A default branch the remote moved on
+
+A plan run that pushes a repo's default branch, because the plan names it for the repo, may find that someone pushed
+that branch while the run worked. What the worker does depends on what the run's worktree holds (`gitops.push` with a
+`gitops.Replay`, for each push of `evo-agents worker step` and for the push at the end of the run):
+
+- **Only behind.** The remote's branch has the worktree's HEAD in its history: there is nothing to push, and the push
+  is left alone.
+- **Commits of its own.** The worktree has commits the remote's branch lacks, and the remote has commits the worktree
+  lacks. The worker rebases those commits of the run, and only those, on top of the remote's tip: with `git rebase`
+  in a worktree of its own (`<run directory>/.evo-run/replay-<repo>`, without the repository's hooks, removed after),
+  so a conflict leaves the run's worktree as it was; a commit whose change the remote has already is dropped. The
+  run's worktree then moves to the result (`git reset --keep`, which keeps changes the remote's commits do not touch),
+  the verify commands of the steps done whose commits were rebased run again there (for `evo-agents worker step`,
+  the step it reports), and the result is pushed as a fast-forward. A remote that moved on again before the push lands
+  gets the same, three times in all (`REPLAY_TRIES`). The step's report names the rebased commit, which the default
+  branch has, and the notice `push_default_branch` says the remote had moved the branch on.
+- **Not rebased.** When a commit does not apply (the error names the paths in conflict), the commits hold a merge,
+  the worktree has changes the remote's commits touch, the verify run again exits other than 0, or the remote keeps
+  moving, the worktree goes back to its HEAD as it was, and the worker pushes that HEAD to the side branch
+  `evo-run/<run>` (`evo-run/31` for run #31), never forced. A verify run again that changed a file the remote's
+  commits brought before it failed keeps the worktree at the rebased commit, since `reset --keep` will not overwrite
+  that change; the side branch still gets HEAD as it was, and the error says where the worktree stays. The default
+  branch is not touched. The owner gets the notice `run_failed` naming the side branch, with the commits the default
+  branch lacks, and the run ends `failed` with failure_cause `push_conflict`: at once for the push at the end, and
+  once the agent's turn ends for
+  `evo-agents worker step`, which reports nothing, tells the agent to end its turn, leaves `runs/<run>/push_conflict.json`
+  for the daemon, and refuses every later `done` of the run. Steps reported before keep their evidence, whose commits
+  are on the default branch, and on the side branch too.
+
+The worker never force-pushes, and never rewrites a commit the remote has: it rebases only commits the remote's branch
+lacks. Each commit `evo-agents worker step` pushed to a default branch is noted in `runs/<run>/pushes.jsonl` (a run
+that resumes a parked one takes the parked run's notes over); a later rebase that would put back one of them, which
+the remote no longer has because someone took it out, goes to the side branch instead, since putting it back is the
+owner's call. A step done was pushed before it was reported, so the push at the end of the run has no step's verify to
+run again. A branch the plan names that is not a default branch is pushed as before: a push that is no fast-forward is
+refused, and the run fails with `push_conflict`.
 
 ### Runs of the night shift
 
@@ -1179,7 +1257,10 @@ of the change's branch), with no hook or fsmonitor of the checkout, and reads th
 origin's default branch before any code of the change runs (no textconv or external diff of the repo; a diff longer
 than 8 MiB is a sign, never read in part). It runs `evo_agents.hub.judge.hack_signs` on that diff, reads from the hub
 what the Judge reads (`GET /v1/worker/runs/{id}/judge`: the proposal, the verify of each step of the plan, the
-protected paths and the project's hidden checks, which stay in the daemon's memory alone), and runs the hidden checks,
+protected paths and the project's hidden checks, which stay in the daemon's memory alone; the daemon reads them first,
+right after its leases, and its preflight looks for the program of each verify command and hidden check before
+anything is fetched: a program missing fails the run with `missing_tool` and no verdict, so the change is judged again
+by the next judge run, `JUDGE_ATTEMPTS` in all, and a hidden check is named by its number alone), and runs the hidden checks,
 then the verify commands, as code it does not trust (`evo_agents.worker.untrusted`): each one given to `/bin/sh -s` on
 its standard input (never an argument a process list shows), in a session of its own, with the daemon's environment
 less the worker's own variables (`EVO_*`, so no `EVO_WORKER_HOME` or `EVO_RUN_ID`), git's configuration, the ssh agent,
@@ -1287,6 +1368,82 @@ starts, and a takeover is noted as unsupported while the run goes on headless.
   only to print that in the terminal, then closes: nothing is attached and nothing typed reaches the machine.
 - A daemon that starts closes the tmux sessions of the runs a previous daemon left unfinished.
 
+### Sleep and wake
+
+A run needs the machine awake. While the daemon holds at least one run, on macOS, it holds two power assertions
+(IOKit's `IOPMAssertionCreateWithName`): `PreventUserIdleSystemSleep`, so the machine does not sleep for want of a
+person at it, and `PreventSystemSleep`, so it does not sleep at all while it is on AC power (macOS does not honour that
+one on battery). It lets them go once it holds no run, and when it stops; powerd drops them when the daemon's process
+dies, SIGKILL included. `pmset -g assertions` lists them under the daemon's pid, named `evo-agents worker <name>:
+holding runs`, and worker.log says `power assertion held` and `power assertion released`. On Linux, and when macOS
+refuses the assertion, the daemon logs `no power assertion` once, with the reason, and goes on; the next run asks again
+on macOS.
+
+No assertion keeps a laptop awake whose lid is closed while it runs on battery: macOS sleeps it anyway. Its runs stop
+with it, their leases run out after 300 seconds, and the hub tries them again, not on that laptop until it is steady
+(see [Run states](#run-states)). A plan run on a laptop is safe with the lid open, or closed on AC power (with an
+external display or not, as macOS allows); otherwise give it to a machine that does not sleep, such as a VM.
+
+The daemon also notices when the machine slept all the same. Each turn of its heartbeat loop and of its claim loop
+compares the time since that loop's previous turn on the wall clock with the time on the monotonic clock, which stops
+while the machine sleeps (`mach_absolute_time` on macOS, `CLOCK_MONOTONIC` on Linux). When the wall clock is ahead by
+more than 30 seconds, the machine slept: worker.log says `wake detected` once per sleep, with the gap (`gap_s`), the time
+the loop expected (`expected_s`) and the difference (`slept_s`), and the daemon claims no new run for 120 seconds,
+while the network and the hub come back (`no claims for a while after a sleep`, then `claiming again after the
+sleep`). The heartbeats go on all the while, for the runs it still holds. A wall clock set forward by more than 30
+seconds reads as a sleep too, which only delays claims.
+
+### Preflight and failure causes
+
+Every run (of one step, plan, review, judge and author) checks what it needs once it holds its leases, before it
+fetches anything and before its agent starts (`evo_agents.worker.preflight`):
+
+- each repo of the run has an origin in the project: a repo the hub's answer for the leases names missing with no
+  origin is one the project lists none for, and no credential can be leased for it;
+- git reads each repo from its origin with what the run holds, its leases or else the machine's own credentials, and
+  pushes to it when the run pushes that repo (a run of one step its repo, a plan run every repo of its plan); a
+  review, judge or author run pushes nothing. The daemon asks the remote, as cheaply as git can: `git ls-remote origin
+  HEAD`, and `git push --dry-run` of the checkout's HEAD to `evo-run/preflight-<run>`, which sends nothing. Only a
+  refusal for want of a credential fails the run (git could not read a user or password, 401 or 403, SSH refused the
+  key, a key that reads only, a repository the credential does not see); a remote that does not answer within 60
+  seconds, or any other trouble, is left to the fetch. An origin that is a path on the machine is not asked. A run of
+  the Curator that pushes needs a lease that covers each forge origin, as its push does;
+- each program a verify command of the run calls is on the run's PATH: the step's verify for a run of one step (from
+  its claim), the verify of every step not done for a plan run (from its plan), the plan's verify and the project's
+  hidden checks for a judge run (from what it reads first), with the PATH those commands run with. The daemon reads
+  the programs of a command line as the shell runs them (`evo_agents.hub.judge.programs`): the first word of each
+  simple command, past assignments, keywords such as `if` and `!`, and wrappers that run another program (`env`,
+  `nice`, `nohup`, `timeout`, `xvfb-run`), and the commands of a `sh -c` argument; not the shell's builtins, a word the
+  shell expands, a relative path (a file of the worktree, not there yet), or what `python -m` and `uv run` run. After a
+  command that may change PATH (`source`, `.`, `eval`, `export PATH=...`) it reads no further. A hidden check is named
+  by its number alone, never its command or its program.
+
+A check that does not pass is a `system` event of the run, "Preflight: ..." with its `cause`; the run fails with every
+problem in its error ("preflight: ...; the agent did not start") and the cause of the first as its `failure_cause`.
+Its agent does not start, no worktree is made, the hub queues no next attempt of a failed run, and its owner gets the
+notice `run_failed` (a run of one step or an author run for these causes, a plan, review or judge run for any failure).
+The hub refuses to dispatch a step or a plan whose repo the project lists no origin for (409, naming the repo), so a
+run reaches that check only when the registration changed after its dispatch, or the night shift queued it.
+
+The causes a failed run's report gives (`failure_cause`, `runs.FAILURE_CAUSES`):
+
+| cause | the run failed because |
+|---|---|
+| `origin` | the project lists no origin for a repo it needs (preflight) |
+| `credentials` | git cannot read or push to a repo with what the run holds (preflight), or the remote refused the fetch or the push for its credential |
+| `missing_tool` | a program a verify command or a hidden check calls is not on PATH (preflight), or a verify command exited 127 |
+| `push_conflict` | the remote branch moved on and the run's own commits could not go on top of it: on a default branch the plan names, they did not rebase or their verify failed after the rebase, and are on `evo-run/<run>`; on another branch, the remote refused the push |
+| `verify_failed` | a verify command the daemon ran again exited other than 0 |
+| `timeout` | it ran past its timeout |
+| `cost_cap`, `turn_cap`, `time_cap` | the agent stopped at that cap of the run's budget |
+| `checkout` | the fetch, or the worktree, went wrong for another reason |
+| `runtime` | the worker has no adapter for the runtime, cannot run it interactive, or has no login the run may use |
+| `worker_stopped` | the daemon was stopped, or failed, while it held the run |
+
+A run that fails for another reason (the agent's own error, the watchdog of the Curator) carries no cause, and neither
+does one an older daemon or the hub ended (a lost lease, a revoked worker); the Curator's figures read the cause of
+those from their error (`evo_agents.hub.review.run_cause`).
+
 ### When the hub does not answer, and stopping
 
 Each event goes to the spool on disk before it is sent; batches of up to 500 events and under 1 MiB go from
@@ -1382,6 +1539,8 @@ credential off.
 - Workers run on macOS and Linux; Windows only through WSL. Interactive mode and the terminal need tmux on the
   worker, and a worker without it takes headless runs only.
 - A handback closes the terminal UI where it stands: the daemon cannot see a turn the person started there end.
+- A laptop whose lid is closed while it runs on battery sleeps, power assertion or not, and its runs are lost and
+  tried again (see [Sleep and wake](#sleep-and-wake)).
 - Only the owner dispatches to a worker; workers shared by a team are a later decision.
 - A run of one step never dispatches the next one; a plan run does a plan's steps in one session on one worker,
   never several workers at once. Nothing opens a pull request.

@@ -22,6 +22,11 @@ comes with a notice; with EVO_HUB_DECISION_WAIT_SECONDS short for the job worker
 the answer resumes it on the same worker in the same session and worktrees; a daemon killed with SIGKILL in the middle
 of a plan run leaves its agent, which the next daemon to start stops, and the run, lost once its lease ran out, is
 tried again from the branches the first attempt pushed.
+
+With EVO_E2E_DAEMON_ROOT naming a source tree of another release (``git archive v0.9.0``, unpacked), each machine runs
+that release's daemon, and its fake adapter, against this checkout's hub and CLI: how the run-reliability plan checked
+that a daemon of 0.9.0 still claims, beats and ends its runs with this hub. Without it, every process is this
+checkout's.
 """
 
 from __future__ import annotations
@@ -36,7 +41,7 @@ import sys
 import time
 import urllib.request
 from contextlib import ExitStack
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -48,8 +53,9 @@ if not pg.DSN:
 pytest.importorskip("aiohttp", reason="the daemon needs the worker extra, evo-ak[worker]")
 
 import httpx
+from sqlalchemy import func, update
 
-from evo_agents.hub import jobs
+from evo_agents.hub import jobs, runs, tables
 from evo_agents.hub.config import HubConfig
 from evo_agents.hub.db import open_pool
 from evo_agents.hub.jobs import JobQueue
@@ -74,11 +80,12 @@ LEASE_SECONDS = 8  # EVO_HUB_RUN_LEASE_SECONDS of the hub here; the daemons beat
 WAIT = 120.0
 REAPER_EVERY = 2.0  # seconds between the reaper jobs the test defers once a lease may have run out
 TMUX = shutil.which("tmux")
+DAEMON_ROOT = Path(os.environ.get("EVO_E2E_DAEMON_ROOT") or ROOT)  # the source tree the machines' daemons run from
 
 
-def _spawn(command: list[str], env: dict, log_path: Path) -> subprocess.Popen:
+def _spawn(command: list[str], env: dict, log_path: Path, root: Path = ROOT) -> subprocess.Popen:
     with open(log_path, "ab") as out:
-        return subprocess.Popen(command, env=env, stdout=out, stderr=subprocess.STDOUT, cwd=ROOT)
+        return subprocess.Popen(command, env=env, stdout=out, stderr=subprocess.STDOUT, cwd=root)
 
 
 def _stop(proc: subprocess.Popen | None, timeout: float = 30) -> None:
@@ -268,7 +275,8 @@ class Machine:
         self.world.tokens.append((self.state / "token").read_text(encoding="utf-8").strip())
 
     def start_daemon(self) -> subprocess.Popen:
-        proc = _spawn([sys.executable, "-m", "evo_agents", "worker", "run"], self.env, self.daemon_log)
+        env = {**self.env, "PYTHONPATH": str(DAEMON_ROOT)}
+        proc = _spawn([sys.executable, "-m", "evo_agents", "worker", "run"], env, self.daemon_log, DAEMON_ROOT)
         self.daemons.append(proc)
         before = self.output().count("worker started")
         wait_until(
@@ -436,6 +444,14 @@ class World:
         response = self.client.get(f"/v1/projects/{PROJECT}/plans/{plan_id}", headers=self.owner)
         assert response.status_code == 200, response.text
         return next(item for item in response.json()["body"]["steps"] if item["id"] == key)
+
+    def steady(self, worker: str) -> None:
+        """As if the heartbeats of ``worker`` had come for longer than runs.STEADY_SECONDS, none late: the clock of the
+        hub's steady rule, moved in its database rather than waited for. Its daemon's heartbeats, every second, keep
+        it so."""
+        w = tables.workers
+        since = func.now() - timedelta(seconds=runs.STEADY_SECONDS + 1)
+        live.sql(self.hub.db, update(w).values(steady_since=since).where(w.c.name == worker))
 
     def push_plan(self, body: dict) -> None:
         pushed = self.client.put(f"/v1/projects/{PROJECT}/plans/{body['id']}", json={"body": body}, headers=self.owner)
@@ -1047,6 +1063,8 @@ def test_a_daemon_killed_mid_plan_run_leaves_an_agent_the_next_start_stops_and_t
     record = mac.orphan_dealt_with(run_id)
     assert record["agent"] == f"process group {pgid} stopped on SIGTERM", record
     assert record["hub_state"] == "running" and record["worktree"].startswith("kept: the hub still holds the run")
+    # The hub gives the next attempt back to mac-mini, which lost the run, once its heartbeats are steady.
+    world.steady("mac-mini")
 
     # Nobody extends the run's lease: the reaper finds it lost and queues the next attempt of the plan run.
     def reap_once_the_lease_may_be_over() -> None:

@@ -19,7 +19,9 @@ A run starts ``queued``; a worker
 claims it (``leased``), starts the agent (``running``, or ``interactive`` when a person drives the agent in a
 terminal), re-runs the agent's verify commands (``verifying``), and ends ``done``, ``failed`` or ``cancelled``, or in
 ``review`` until the owner approves it. A run whose worker stops extending its lease is ``lost``, and the hub queues a
-new run for the same step (attempt + 1), or ``failed`` when it was the last of MAX_ATTEMPTS.
+new run for the same step (attempt + 1), or ``failed`` when it was the last of MAX_ATTEMPTS. That next attempt goes to
+the worker that lost the run only once the worker is steady (STEADY_SECONDS of heartbeats, none STEADY_GAP_SECONDS
+late); any other worker that may take it takes it at once.
 
 A plan run's agent may ask its owner a decision of DECISION_CATEGORIES. When its turn ends with a decision still
 open, the run is ``waiting``: the worker keeps it, with its slot and lease, and hands the answer to the agent in the
@@ -60,6 +62,31 @@ OFFLINE_AFTER_SECONDS = 300  # a worker with no heartbeat for longer than this i
 LEASE_SECONDS = 300  # a claim and each heartbeat set a held run's lease to expire this long after now
 CLAIM_WAIT_SECONDS = 25  # the longest a claim waits for a run before answering that there is none
 MAX_ATTEMPTS = 3  # runs of one dispatch, the first included; the last one's expired lease fails it
+# The next attempt of a run lost on a worker goes back to that worker only once it is steady: its heartbeats have
+# come for STEADY_SECONDS, none more than STEADY_GAP_SECONDS after the one before (unlike a laptop that slept, or one
+# that woke for a moment).
+STEADY_SECONDS = 120
+STEADY_GAP_SECONDS = 30
+# Why a run failed, as its worker says with the report of the state failed (failure_cause, an optional field of the
+# worker protocol version 1, which an older daemon leaves out); the hub keeps it with the run. These are the causes
+# this release's worker sends; the hub takes any name of FAILURE_CAUSE, so a newer worker's causes reach it too, and
+# ``evo_agents.hub.review.run_cause`` guesses one from the error of a run that has none.
+FAILURE_CAUSES = (
+    "origin",  # preflight: the project lists no origin for a repo the run needs
+    "credentials",  # preflight, or a fetch or push git refused: no credential reads, or pushes, a repo of the run
+    "missing_tool",  # preflight: a program a verify command, or a hidden check of a judge run, calls is not on PATH
+    "push_conflict",  # the remote branch moved on, and the run's own commits could not go on top of it
+    "verify_failed",  # a verify command the worker ran again exited other than 0
+    "timeout",  # the run ran past its timeout
+    "cost_cap",  # the agent stopped at the run's cost cap
+    "turn_cap",  # at its turns cap
+    "time_cap",  # at its time cap
+    "checkout",  # the checkout, the fetch or a worktree of the run went wrong
+    "runtime",  # the worker has no adapter for the runtime, or cannot start the agent as the run asks
+    "worker_stopped",  # the daemon was stopped, or failed, while the run was held
+)
+PREFLIGHT_CAUSES = ("origin", "credentials", "missing_tool")  # what a run checks before its agent starts
+FAILURE_CAUSE = r"^[a-z][a-z0-9_]{0,31}$"  # a cause a worker may send, known to this hub or not
 
 MAX_BATCH_EVENTS = 500  # events in one POST of a run's events
 MAX_BATCH_BYTES = 1024 * 1024  # body of that POST
@@ -393,6 +420,23 @@ def unready_reason(body: dict, step) -> str | None:
 def ready_steps(body: dict) -> list[dict]:
     """The steps of the plan ``body`` that are ready to run, in plan order (see the module's docstring)."""
     return [step for step in _steps(body) if unready_reason(body, step) is None]
+
+
+def verify_of(step) -> list[str]:
+    """The verify of ``step`` as a list of commands: its verify, one shell command line as plan.schema.json has it, or
+    none when it has none."""
+    verify = step.get("verify") if isinstance(step, dict) else None
+    return [verify.strip()] if isinstance(verify, str) and verify.strip() else []
+
+
+def open_verify(body: dict) -> list[str]:
+    """The verify commands of every step of the plan ``body`` not done yet, in plan order: what a plan run's worker
+    checks before its agent starts."""
+    found: list[str] = []
+    for step in _steps(body):
+        if isinstance(step, dict) and step.get("status") != "done":
+            found += [command for command in verify_of(step) if command not in found]
+    return found
 
 
 # The prompt

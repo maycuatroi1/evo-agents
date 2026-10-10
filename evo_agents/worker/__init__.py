@@ -15,6 +15,7 @@ Modules, each with one concern:
 - ``gitops``: the git commands of a run: fetch, worktree, commit, push.
 - ``run``: one run from claim to its last report.
 - ``daemon``: the claim loop, the heartbeat, signals and the cleanup of old worktrees.
+- ``power``: the power assertions that keep the machine awake while the daemon holds runs, and noticing a sleep.
 - ``runtimes``: the adapters of Claude Code, opencode and Codex, through each runtime's SDK or API.
 - ``interactive``: takeover and handback, the runtimes' terminal UIs in tmux, their logs, and the worker's end of the
   web terminal.

@@ -524,6 +524,7 @@ workers = Table(
     _when("revoked_at"),
     Column("dispatch_from", Text, nullable=False, server_default="any"),
     Column("run_kinds", ARRAY(Text)),
+    _when("steady_since"),  # the first heartbeat of the worker's current run of them, none late (0023)
     ForeignKeyConstraint(["owner_id"], ["users.id"], ondelete="RESTRICT", name="workers_owner_id_fkey"),
     ForeignKeyConstraint(["token_id"], ["tokens.id"], ondelete="RESTRICT", name="workers_token_id_fkey"),
     PrimaryKeyConstraint("id", name="workers_pkey"),
@@ -639,6 +640,7 @@ runs = Table(
     Column("budget", JSONB),
     Column("request", Text),  # the member's request of an author run, NULL for any other kind (0020)
     _when("finish_requested_at"),  # the owner ended the chat of an author run a worker holds (0022)
+    Column("failure_cause", Text),  # why the run failed, as its worker reported it (0024)
     ForeignKeyConstraint(["dispatched_by"], ["users.id"], ondelete="RESTRICT", name="runs_dispatched_by_fkey"),
     ForeignKeyConstraint(["parent_run_id"], ["runs.id"], ondelete="RESTRICT", name="runs_parent_run_id_fkey"),
     ForeignKeyConstraint(["pinned_worker_id"], ["workers.id"], ondelete="RESTRICT", name="runs_pinned_worker_id_fkey"),

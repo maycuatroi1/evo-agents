@@ -125,8 +125,8 @@ Hooks:
   off.
 
 The plugin needs [uv](https://docs.astral.sh/uv/) on `PATH` and pins the release it runs: the server
-starts with `uvx --from evo-ak==0.9.0 evo-agents`, which downloads and caches that version on first start. The hooks
-run `uvx --offline --from evo-ak==0.9.0 evo-agents`, so they never wait on the network; they stay silent when `uvx`
+starts with `uvx --from evo-ak==0.10.0 evo-agents`, which downloads and caches that version on first start. The hooks
+run `uvx --offline --from evo-ak==0.10.0 evo-agents`, so they never wait on the network; they stay silent when `uvx`
 is missing or until the server has cached the package.
 
 ### The team hub
@@ -272,9 +272,12 @@ evo-agents worker join --url https://hub.example.org --code XXXX-XXXX   # the co
 evo-agents worker run                                                    # the daemon, in the foreground
 ```
 
-The daemon claims runs, works in a git worktree of its own under `~/.evo/worker`, runs the agent's verify commands
-again, and pushes the plan's branch, never the default branch. [docs/workers.md](docs/workers.md) covers the protocol
-and the daemon.
+The daemon claims runs, checks each run's repos, credentials and the programs its verify calls before the agent
+starts, works in a git worktree of its own under `~/.evo/worker`, runs the agent's verify commands again, and pushes
+the plan's branch, never forced. A run of one step never pushes the default branch; a plan run pushes it only when the
+plan names it, putting its own commits on top when someone pushed meanwhile, or on `evo-run/<run>` when they do not
+fit. On macOS the daemon keeps the machine awake while it holds a run, unless it is a laptop with its lid closed on
+battery. [docs/workers.md](docs/workers.md) covers the protocol and the daemon.
 
 ## Writing a connector
 
