@@ -54,7 +54,8 @@ from evo_agents.hub.server.curator import CuratorOverview, curator_overview
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.plans import step_counts
 from evo_agents.hub.server.projects import ProjectAccess, project_access
-from evo_agents.hub.server.runs import REQUESTED_RUNTIMES, visible_plans
+from evo_agents.hub.server.runs.models import REQUESTED_RUNTIMES
+from evo_agents.hub.server.runs.service.views import visible_plans
 from evo_agents.hub.server.security import CurrentUser
 
 log = logging.getLogger(__name__)

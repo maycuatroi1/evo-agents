@@ -55,17 +55,11 @@ from evo_agents.hub.server.notifications import decision_link, notify, one_line
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.run_events import write_user_message
 from evo_agents.hub.server.run_state import move_run, notify_queued, write_event
-from evo_agents.hub.server.runs import (
-    LINE,
-    MAX_ID,
-    REFUSALS,
-    RunId,
-    _dispatcher,
-    _held_plan_run,
-    _lock_plan,
-    visible_plans,
-    web_only_steering,
-)
+from evo_agents.hub.server.runs.models import LINE, MAX_ID, REFUSALS, RunId
+from evo_agents.hub.server.runs.service.controls import web_only_steering
+from evo_agents.hub.server.runs.service.dispatch import check_dispatcher
+from evo_agents.hub.server.runs.service.plan_runs import held_plan_run
+from evo_agents.hub.server.runs.service.views import lock_plan, visible_plans
 from evo_agents.hub.server.security import CurrentUser, Principal
 
 log = logging.getLogger(__name__)
@@ -349,7 +343,7 @@ def _asked_step(run_id: int, plan, key: str | None) -> str | None:
 async def ask(request: Request, run_id: RunId, body: DecisionAsk, user: CurrentUser) -> Decision:
     """Ask the owner of a plan run this worker holds a decision, and notify them."""
     async with request.app.state.engine.begin() as conn:
-        _, row = await _held_plan_run(conn, user, run_id, lock=True)
+        _, row = await held_plan_run(conn, user, run_id, lock=True)
         _, _, _, project_id, project, plan_id, dispatcher_id, _, _ = row
         d, pl = tables.decisions, tables.plans
         opened = select(func.count()).select_from(d).where(d.c.run_id == run_id, d.c.state == "open")
@@ -528,10 +522,10 @@ async def answer_decision(
     plan_id, key, owner_id, owner = found.plan_id, found.step_key, found.dispatched_by, found.login
     if owner_id != user.user_id:
         raise HTTPException(403, f"only {owner}, who dispatched its run, may answer decision {decision_id}")
-    _dispatcher(access)
+    check_dispatcher(access)
     # Answers of the plan's decisions, and its dispatches, one at a time: the run a decision belongs to stays put
     # until the transaction ends. The run's row before the decision's, as every move of a run takes them.
-    await _lock_plan(conn, access.project_id, plan_id)
+    await lock_plan(conn, access.project_id, plan_id)
     run_id = (await conn.execute(select(d.c.run_id).where(d.c.id == decision_id))).scalar_one()
     run_state = (await conn.execute(select(r.c.state).where(r.c.id == run_id).with_for_update())).scalar_one()
     locked = select(d.c.state, d.c.category, d.c.question, d.c.options).where(d.c.id == decision_id)

@@ -33,7 +33,7 @@ from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.projects import project_access
-from evo_agents.hub.server.runs import MAX_ID
+from evo_agents.hub.server.runs.models import MAX_ID
 from evo_agents.hub.server.security import CurrentUser
 
 log = logging.getLogger(__name__)

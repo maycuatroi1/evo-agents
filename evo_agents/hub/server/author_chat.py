@@ -44,17 +44,11 @@ from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.run_state import move_run, write_event
-from evo_agents.hub.server.runs import (
-    REFUSALS,
-    Run,
-    RunId,
-    _asked,
-    _audit_run,
-    _held_plan_run,
-    _owned_run,
-    readable_run,
-    run_view,
-)
+from evo_agents.hub.server.runs.models import REFUSALS, Run, RunId
+from evo_agents.hub.server.runs.service.audits import audit_run
+from evo_agents.hub.server.runs.service.controls import ask_once, owned_run
+from evo_agents.hub.server.runs.service.plan_runs import held_plan_run
+from evo_agents.hub.server.runs.service.views import readable_run, run_view
 from evo_agents.hub.server.security import CurrentUser
 
 log = logging.getLogger(__name__)
@@ -195,7 +189,7 @@ async def _kind(conn: AsyncConnection, run_id: int) -> str:
 async def post_chat(request: Request, run_id: RunId, body: ChatPost, user: CurrentUser) -> ChatPosted:
     """Keep the last message of a turn of the agent of an author run this worker holds as a message of its chat."""
     async with request.app.state.engine.begin() as conn:
-        _, row = await _held_plan_run(conn, user, run_id, lock=True, kinds=runs.RUN_KINDS)
+        _, row = await held_plan_run(conn, user, run_id, lock=True, kinds=runs.RUN_KINDS)
         if row.kind != "author":
             raise HTTPException(404, f"run {run_id} is not an author run: only an author run has a chat")
         seq = await write_event(conn, run_id, {"text": body.text, "chat": author.CHAT_AGENT})
@@ -284,7 +278,7 @@ async def finish(request: Request, project: ProjectName, run_id: RunId, user: Cu
     """End the chat of an author run one dispatched: a parked one is done at once, and the worker holding one ends it
     done once its agent's turn is over."""
     async with request.app.state.engine.begin() as conn:
-        access, row = await _owned_run(conn, user, project, run_id, "end the chat of")
+        access, row = await owned_run(conn, user, project, run_id, "end the chat of")
         state, kind = row[2], row[11]
         if kind != "author":
             article = "an" if kind[:1] in "aeiou" else "a"
@@ -300,9 +294,9 @@ async def finish(request: Request, project: ProjectName, run_id: RunId, user: Cu
         if state == "parked":
             reason = f"{user.login} ended the chat"
             await move_run(conn, run_id, "parked", "done", "owner", reason=reason, token_id=user.token_id)
-        elif not await _asked(conn, run_id, tables.runs.c.finish_requested_at):
+        elif not await ask_once(conn, run_id, tables.runs.c.finish_requested_at):
             return await run_view(conn, run_id)  # asked already: nothing changes, nothing is audited
-        await _audit_run(conn, user, access, audit.RUN_FINISH, f"{project}/author run:{run_id}")
+        await audit_run(conn, user, access, audit.RUN_FINISH, f"{project}/author run:{run_id}")
         view = await run_view(conn, run_id)
     log.info("author chat ended", extra={"run_id": run_id, "state": view.state, "login": user.login})
     return view
