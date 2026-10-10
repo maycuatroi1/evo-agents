@@ -1087,8 +1087,10 @@ hands it no run.
    and records each exit code and the end of its output as a `system` event. A missing or malformed result file, or
    a command that exits other than 0, fails the run; nothing is pushed and the work stays in the worktree.
 4. The daemon commits what the agent left uncommitted as `run #N: <title>`, and leaves out of the commit what the
-   agent did not write: the paths under `RUN_COMMIT_EXCLUDES` at any depth (`.claude/skills/.learned/`, where a
-   Stop hook of Claude Code puts the skills it learned, and `.evo-run/`), and every copy of a hub plan exactly as the
+   agent did not write: the paths under `RUN_COMMIT_EXCLUDES` at any depth (`.claude/skills/.learned/` and
+   `.claude/cli-suggestions/_pending/`, where a Stop hook of Claude Code puts the skills it learned and the CLI
+   suggestions it drew from the session, a copy of the learned skills under `.agents/skills/.learned/`, and
+   `.evo-run/`), and every copy of a hub plan exactly as the
    hub wrote it (a first line in the format `hub-plan-mirror-v1` writes and a hub key whose digest is the digest of
    what the file holds). Those paths go back in the index as `HEAD` has them, even when the agent staged them, stay
    in the worktree, and are named in a `system` event of the run (`left_out`); a copy the agent edited is its work
@@ -1303,7 +1305,8 @@ and pushes nothing. `evo-agents worker put` and `evo-agents worker plan` work in
 
 A run whose claim names `curator` (a review run, a judge run, or a Builder: a plan run of a plan the Curator made) is
 watched. After each heartbeat the daemon lists what changed in each of its worktrees since it started (committed,
-staged, changed and untracked files, `.evo-run/` left out) and compares it with the charter's protected paths, and the
+staged, changed and untracked files; `.evo-run/` left out, and the other paths under `RUN_COMMIT_EXCLUDES` while no
+commit holds them, since no commit of the run will) and compares it with the charter's protected paths, and the
 run's agent time and cost (the session's running cost as the agent's usage events say it) with its caps: a protected
 file changed, or a cap passed, stops the run, which fails with "the watchdog of the Curator's runs stopped it: ...",
 and the hub sends its owner the notice `run_failed`. The agent of a run of the Curator never holds a push credential,
