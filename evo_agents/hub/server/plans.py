@@ -46,6 +46,7 @@ from evo_agents.hub.access import has_role
 from evo_agents.hub.plan_diff import DEFAULT_CONTEXT, MAX_CONTEXT, plan_diff
 from evo_agents.hub.plans import (
     AREAS,
+    PLAN_ID,
     SECTIONS,
     UPDATABLE,
     PlanProblem,
@@ -60,13 +61,13 @@ from evo_agents.hub.plans import (
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import CODES, ErrorBody
+from evo_agents.hub.server.paging import PAGED, WHOLE, Paging
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.security import CurrentUser
 from evo_agents.schema import errors, validate
 
 log = logging.getLogger(__name__)
 
-PLAN_ID = r"^[a-z0-9][a-z0-9-]{0,99}$"  # plan.schema.json's id, at most 100 characters
 PlanId = Annotated[str, Path(pattern=PLAN_ID)]
 SINK_HEADER = "X-Evo-Sink"
 REVISION_CONFLICT = "revision_conflict"
@@ -334,20 +335,22 @@ def _listed(project_id, area) -> Select:
 _LISTED = {False: _listed(bindparam("project_id"), bindparam("area")), True: _listed(bindparam("project_id"), None)}
 
 
-@router.get("", response_model=list[PlanSummary], responses=READ_REFUSALS)
+@router.get("", response_model=list[PlanSummary], responses={**READ_REFUSALS, **PAGED})
 async def list_plans(
     request: Request,
     project: ProjectName,
     user: CurrentUser,
     area: Literal[AREAS] | None = None,
     sink: Annotated[str | None, Header(alias=SINK_HEADER)] = None,
+    page: Paging = WHOLE,
 ) -> list[PlanSummary]:
+    # The label rule filters the plans after the query: the page is cut from what it lets through, and counts that.
     async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
         _reader(access)
         rows = (await conn.execute(_LISTED[area is None], {"project_id": access.project_id, "area": area})).all()
     through = _sink(access, sink)
-    return [PlanSummary(**row._mapping) for row in rows if access.visible(row.label, through)]
+    return page.of([PlanSummary(**row._mapping) for row in rows if access.visible(row.label, through)])
 
 
 @router.get("/{plan_id}", response_model=Plan, responses=READ_REFUSALS)

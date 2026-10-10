@@ -25,6 +25,7 @@ AREAS = ("active", "completed")
 MAX_PLAN_BYTES = 1024 * 1024  # canonical JSON of one plan; the largest plan of the three harnesses is 0.12 MiB
 MAX_VALUE_CHARS = 64 * 1024  # one value set by an update
 MAX_DEPTH = 32
+PLAN_ID = r"^[a-z0-9][a-z0-9-]{0,99}$"  # plan.schema.json's id, at most 100 characters
 SUMMARY_PATHS = 8  # changed paths named in a revision summary before "and N more"
 
 
