@@ -406,3 +406,57 @@ def test_curator_watch_reads_every_change_of_a_worktree(machine):  # noqa: F811
     assert found == [".github/workflows/ci.yml", "README.md", "committed.txt"]
     done = subprocess.run(["git", "-C", str(path), "status", "--porcelain"], capture_output=True, text=True)
     assert ".evo-run" in done.stdout  # there, and left out of what the watchdog reads
+
+
+HOOK_FILES = (  # what the continuous-learning Stop hook wrote in the worktree of run #26 of meridai, at any depth
+    ".claude/cli-suggestions/_pending/test-db-setup.md",
+    ".claude/skills/.learned/_pending/postgres-test-container-setup/SKILL.md",
+    ".agents/skills/.learned/usage.json",
+    "packages/core/.claude/cli-suggestions/_pending/nested.md",
+)
+
+
+def test_curator_watch_leaves_out_what_hooks_write_but_not_what_the_agent_commits(machine):  # noqa: F811
+    path = machine.checkouts["alpha"]
+    base = machine.seeds["alpha"]
+    committed = ".claude/skills/.learned/by-the-agent/SKILL.md"
+    (path / committed).parent.mkdir(parents=True)
+    (path / committed).write_text("committed by the agent\n", encoding="utf-8")
+    git("add", committed, cwd=path)
+    git("commit", "--quiet", "-m", "the agent commits a learned skill", cwd=path)
+    for name in HOOK_FILES:
+        (path / name).parent.mkdir(parents=True, exist_ok=True)
+        (path / name).write_text("written by a hook\n", encoding="utf-8")
+    git("add", HOOK_FILES[0], cwd=path)  # staged is no different: a run's commit puts it back as HEAD has it
+    (path / ".claude" / "settings.json").write_text("{}\n", encoding="utf-8")
+    found = asyncio.run(gitops.changed_paths(path, base))
+    assert found == [".claude/settings.json", committed]
+
+
+def test_watchdog_leaves_a_builder_alone_when_a_hook_writes_under_a_protected_glob(machine):  # noqa: F811
+    gate = machine.tmp / "gate"
+    machine.scenarios(
+        {
+            f"plan:{PLAN}": [
+                {"write": {f"alpha/{name}": "written by a hook\n" for name in HOOK_FILES}},
+                {"write": {"alpha/tests/test_wait.py": TEST_FILE}},
+                {"touch": str(gate)},
+                {"sleep": 1.0},
+                {"cli": ["step", "1", "done", "--verify", "test -f tests/test_wait.py"]},
+                {"result": {"summary": "Wrote the test; a hook wrote its suggestions."}},
+            ]
+        }
+    )
+    found = {}
+
+    async def body(hub, daemon):
+        spec = builder_spec(protected_paths=[*PROTECTED, "**/.claude/**", "**/.agents/**"])
+        run_id = hub.queue_plan_run(PLAN, [{"repo": "alpha", "branch": BRANCH}], **spec)
+        await wait_for(gate.exists, "the agent to write the files")
+        assert await hub.wait_state(run_id, "done", "failed", timeout=60) == "done", hub.runs[run_id].get("error")
+        found.update(hub=hub)
+
+    with_daemon(machine, body, plan=curator_plan())
+    pushed = machine.origin("alpha", "ls-tree", "-r", "--name-only", BRANCH).splitlines()
+    assert "tests/test_wait.py" in pushed
+    assert not any(name in pushed for name in HOOK_FILES), "what a hook wrote stays out of the branch"
