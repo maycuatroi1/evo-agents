@@ -39,10 +39,12 @@ test("opens with the keyboard or the top bar's field, and Esc gives focus back",
   await open(page, `/p/${project}/runs`);
   await expect(main(page).getByTestId("runs-table")).toBeVisible();
 
-  // "/" still focuses the list's search; Cmd K opens the palette over it and Esc returns there.
+  // "/" still focuses the list's search; Cmd K opens the palette over it and Esc returns there. The page's content
+  // hydrates on its own, possibly after the shell: its search announces "/" once the key reaches it.
   await expect(page.getByTestId("palette-trigger-key")).toBeAttached();
-  await page.keyboard.press("/");
   const search = main(page).getByTestId("runs-search");
+  await expect(search).toHaveAttribute("aria-keyshortcuts", "/");
+  await page.keyboard.press("/");
   await expect(search).toBeFocused();
   const palette = await openWithKeyboard(page);
   await expect(page.getByTestId("palette-trigger")).toHaveAttribute("aria-expanded", "true");

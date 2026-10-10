@@ -103,8 +103,10 @@ test("keys typed in a search field are text, and / still focuses it", async ({ p
   await hydrated(page);
   const url = page.url();
 
-  await page.keyboard.press("/");
+  // The page's content hydrates on its own, possibly after the shell: its search announces "/" once the key reaches it.
   const search = main(page).getByTestId("runs-search");
+  await expect(search).toHaveAttribute("aria-keyshortcuts", "/");
+  await page.keyboard.press("/");
   await expect(search).toBeFocused();
   await page.keyboard.type("gi?dgw");
   await expect(search).toHaveValue("gi?dgw");
