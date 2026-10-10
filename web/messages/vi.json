@@ -2498,7 +2498,11 @@
         "interactive": "Bạn đang giữ run này. Trên {worker}, attach bằng <code>{command}</code>, xong thì bấm Trả lại cho agent.",
         "notOwner": "Chỉ {login}, người đã dispatch run này, mới nhắn được cho agent, tiếp quản hoặc dừng run.",
         "review": "Worker đã kiểm run này. Đọc log và diff, rồi duyệt để đánh dấu bước xong, hoặc huỷ run.",
-        "reviewNoWriter": "Worker đã kiểm run này. Muốn duyệt cần quyền ghi trên dự án."
+        "reviewNoWriter": "Worker đã kiểm run này. Muốn duyệt cần quyền ghi trên dự án.",
+        "steadyWait": "Lần thử {attempt} đang chờ {worker} ổn định lại, vì run #{parent} bị mất trên worker này: {worker} chỉ nhận lần thử này khi heartbeat của nó đã đến đều trong {seconds} giây, không lần nào trễ quá {gap} giây, tức là từ {time} nếu heartbeat vẫn đến đều.",
+        "steadyWaitSilent": "Lần thử {attempt} đang chờ {worker} ổn định lại, vì run #{parent} bị mất trên worker này: {worker} chỉ nhận lần thử này khi heartbeat của nó đã đến đều trong {seconds} giây, không lần nào trễ quá {gap} giây, mà lúc này worker không gửi heartbeat nào.",
+        "steadyOthers": "Worker khác nhận được run này thì nhận ngay.",
+        "steadyPinned": "Run này được ghim vào {worker}, nên không worker nào khác nhận nó."
       },
       "errors": {
         "forbidden": "Hub từ chối: chỉ người dispatch run mới điều khiển được run, và duyệt hay chạy lại cần quyền ghi.",

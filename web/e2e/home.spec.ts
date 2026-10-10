@@ -94,7 +94,7 @@ test("an admin with an open decision and runs in flight sees them counted and li
   const projects = main(page).getByTestId("home-projects").getByTestId("home-project");
   await expect(projects).toHaveCount(1);
   await expect(projects.getByTestId("home-project-decisions")).toHaveAttribute("data-count", "1");
-  await expect(projects.getByTestId("home-project-facts")).toContainText("Admin, 2 active plans, 1 repo");
+  await expect(projects.getByTestId("home-project-facts")).toContainText("Admin, 2 active plans, 2 repos");
 
   // A second decision reaches Needs you within one read, without a reload.
   await askDecision(waiting.live, waiting.run.id, SECOND, "4");

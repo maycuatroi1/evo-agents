@@ -37,7 +37,7 @@ from evo_agents.hub.server.sealing import KEY_BYTES, Sealed, Sealer, lease_aad
 from tests.hub.fake_github import Account
 from tests.hub.live import ADMIN, bearer, sql, table_dump
 from tests.hub.test_plans import registration as plans_registration
-from tests.hub.test_runs import PROJECT, PROTOCOL, add_worker, claim, expire, moved, report, state_of
+from tests.hub.test_runs import PROJECT, PROTOCOL, add_worker, claim, expire, moved, report, state_of, steady
 from tests.hub.test_web_auth import cookie, csrf_for, web_sign_in
 
 PLAN = "credentials-smoke"
@@ -50,6 +50,9 @@ ORIGINS = {
     "notes": None,
 }
 STEPS = {"evo-agents": 1, "m1-kb-docs": 2, "m1-identity": 3, "notes": 4}
+# The hub dispatches no run on a repo the project lists no origin for: notes has one at dispatch, on a host nothing
+# covers, and a test that needs it without one registers ORIGINS again once its run is out.
+DISPATCHED = {**ORIGINS, "notes": "https://notes.example.org/team/notes.git"}
 CHECKOUTS = {f"{PROJECT}/{name}": {"path": f"/src/{name}", "branch": "main"} for name in ORIGINS}
 WRITER = {"role": "writer", "max_level": "internal"}
 GITLAB_KB = "https://gitlab.m1ops.com/fis-gb-m1/m1-kb-docs"
@@ -126,7 +129,8 @@ def members(client, github) -> dict:
         "owner": bearer(live.sign_in(client, github, OWNER, OWNER_ID)["token"]),
         "other": bearer(live.sign_in(client, github, OTHER, OTHER_ID)["token"]),
     }
-    assert client.put(f"/v1/projects/{PROJECT}", json=registration(), headers=headers["admin"]).status_code == 200
+    registered = client.put(f"/v1/projects/{PROJECT}", json=registration(DISPATCHED), headers=headers["admin"])
+    assert registered.status_code == 200, registered.text
     for login in (OWNER, OTHER):
         response = client.put(f"/v1/admin/projects/{PROJECT}/grants/{login}", json=WRITER, headers=headers["admin"])
         assert response.status_code == 200, response.text
@@ -282,6 +286,8 @@ def test_a_run_gets_its_owners_secrets_and_an_app_token_for_its_own_github_repos
     env_secret(client, hub["other"], "openai", "OPENAI_API_KEY", theirs)  # another member's, for the same project
     worker = worker_of(client, hub["owner"], "mac-mini")
     run_id = plan_run(client, hub["owner"], worker)
+    # the project no longer lists the origin of notes once the run is out
+    assert client.put(f"/v1/projects/{PROJECT}", json=registration(), headers=hub["admin"]).status_code == 200
 
     answer = leased(client, worker, run_id)
     leases = by_name(answer)
@@ -613,6 +619,7 @@ def test_the_reaper_revokes_the_token_of_a_run_whose_lease_ran_out_and_what_gith
     assert audit_rows(hub_db, "credential.revoke") == [(target, None, PROJECT, False)]
 
     # GitHub failing when the run ends leaves the token sealed for the reaper's next pass
+    steady(hub_db, worker)  # the worker that lost the run takes its next attempt once steady
     retry = claim(client, worker)  # the next attempt of the lost run, pinned to the same worker
     assert retry["attempt"] == 2
     failed = retry["id"]

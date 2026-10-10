@@ -247,6 +247,27 @@ def test_collect_counts_the_night_figures_and_queues_one_review_run(review):
     assert count(db, tables.runs) == 1 and count(db, cf) == 1
 
 
+def test_collect_counts_failed_runs_by_the_cause_their_worker_reported_else_by_their_error(review):
+    client, worker, owner = review.client, review.worker, review.headers["owner"]
+    run_9 = (
+        "git fetch in /src/evo-agents failed: git fetch failed (128): fatal: could not read Username for "
+        "'https://github.com': terminal prompts disabled"
+    )
+    ended = []
+    for error, cause in (("the agent gave up", "missing_tool"), (run_9, None)):  # the first reads as other
+        dispatched = client.post(f"/v1/projects/{PROJECT}/runs", json={"plan_id": "fleet", "steps": [2]}, headers=owner)
+        assert dispatched.status_code == 201, dispatched.text
+        run_id = claim(client, worker)["id"]
+        sent = {"error": error, **({"failure_cause": cause} if cause else {})}
+        assert report(client, worker, run_id, "failed", **sent).status_code == 200
+        ended.append(run_id)
+    assert collected(client, NIGHT)["review"] == 1
+    cf = tables.curator_figures
+    ((figures,),) = sql(review.db, select(cf.c.figures))
+    failed = {item["cause"]: (item["failed"], item["runs"]) for item in figures["failed_runs"]}
+    assert failed == {"missing_tool": (1, [ended[0]]), "credentials": (1, [ended[1]])}
+
+
 def test_the_night_shift_queues_the_review_before_a_plan_run_and_a_worker_without_reviews_gets_plan_runs(night, hub_db):  # noqa: F811
     client, headers = night.client, night.headers
     written(client, headers["owner"], charter_body())

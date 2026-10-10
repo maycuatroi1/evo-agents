@@ -521,6 +521,8 @@ test("a plan run's repos and branches lead to their pages, a repo without an ori
   const project = me.projects[0];
   await seedPlanRunPlan(me, project);
   const { run } = await planRunUnderway(me, project, uniqueName("links"));
+  // Once the run is out, the project lists only api again: the harness repo has no origin for the page.
+  await admin.registerProject(project);
 
   await open(page, runPath(project, run.id));
   const repos = main(page).getByTestId("run-repos");

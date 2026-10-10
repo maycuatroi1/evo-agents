@@ -10,6 +10,12 @@
   ``terminal_open`` connects the worker's end of the run's web terminal. For a plan run, ``inbox`` also wakes a run
   that waits for its owner's answer, and ``park`` lets go of a run the hub parked, its session and worktrees kept;
   the same goes for an author run waiting for its owner's reply, and ``finish`` ends one whose chat the owner ended.
+- While it holds at least one run, the daemon keeps the machine awake with power assertions on macOS (``power``:
+  no idle sleep, and no system sleep on AC power), and lets them go when it holds none, stops or dies; elsewhere it
+  logs once that it cannot and goes on.
+- Each turn of the heartbeat and claim loops asks ``power.WakeWatch`` whether the machine slept since that loop's
+  previous turn (the wall clock passed the monotonic one by more than 30 seconds): it logs "wake detected" with the
+  gap, and the daemon claims no new run for 120 seconds after it, while the heartbeats of the runs held go on.
 - A call the hub does not answer is sent again with a backoff from 1 to 60 seconds; runs go on meanwhile.
 - SIGTERM or SIGINT: no new claim; the runs held go on until they end or reach their timeout, then the daemon exits
   0. A second signal stops the agents now and fails their runs.
@@ -51,6 +57,7 @@ from evo_agents.worker.adapter import Adapter, detect_runtimes
 from evo_agents.worker.credentials import socket_path
 from evo_agents.worker.home import WorkerConfig, WorkerHome, revoked_exit
 from evo_agents.worker.hubapi import Backoff, HubProblem, Outdated, Refused, Unreachable, WorkerHub, new_session
+from evo_agents.worker.power import KeepAwake, WakeWatch
 from evo_agents.worker.run import Run, Sender, run_class
 from evo_agents.worker.spool import Spool, SpoolBudget, leftover_runs
 
@@ -83,6 +90,8 @@ class Daemon:
         *,
         adapters: Mapping[str, type[Adapter]],
         env: Mapping[str, str] | None = None,
+        keep_awake: KeepAwake | None = None,
+        wake: WakeWatch | None = None,
     ):
         self.home = home
         self.config = config
@@ -105,6 +114,8 @@ class Daemon:
         self._runtimes_at = float("-inf")
         self._checkouts_at = float("-inf")
         self._beat_failures = 0
+        self.keep_awake = keep_awake or KeepAwake(config.name)  # the power assertions, while it holds a run
+        self.wake = wake or WakeWatch()  # notices a sleep from the turns of the heartbeat and claim loops
 
     # Shared with the runs
 
@@ -211,6 +222,7 @@ class Daemon:
                 with contextlib.suppress(asyncio.CancelledError, Exception):
                     await task
             await session.close()
+            self.keep_awake.close()
             for sig in (signal.SIGTERM, signal.SIGINT):
                 loop.remove_signal_handler(sig)
         log.info("worker stopped", extra={"exit_code": self.exit_code})
@@ -236,6 +248,7 @@ class Daemon:
     async def _heartbeat_loop(self) -> None:
         backoff = Backoff()
         while True:
+            self.wake.turn("heartbeat")  # a sleep holds the claims, never the heartbeats of the runs held
             try:
                 ok = await self._beat()
             except Exception:  # a bug here must not end the heartbeats, and with them the leases
@@ -324,7 +337,20 @@ class Daemon:
     async def _claim_loop(self) -> None:
         await self.beat_ok.wait()
         backoff = Backoff()
+        held_for_wake = False
         while not self.stopping.is_set():
+            self.wake.turn("claim")
+            left = self.wake.hold_left()
+            if left > 0:  # the machine slept: no new run until it has been awake WAKE_HOLD_SECONDS
+                if not held_for_wake:
+                    held_for_wake = True
+                    log.info("no claims for a while after a sleep", extra={"claims_in_s": round(left, 1)})
+                with contextlib.suppress(asyncio.TimeoutError):
+                    await asyncio.wait_for(self.stopping.wait(), min(left, self.heartbeat_s))
+                continue
+            if held_for_wake:
+                held_for_wake = False
+                log.info("claiming again after the sleep")
             if self.draining or self.free_slots == 0:
                 self.slot_free.clear()
                 with contextlib.suppress(asyncio.TimeoutError):
@@ -380,12 +406,14 @@ class Daemon:
             },
         )
         self.runs[run.id] = run
+        self.keep_awake.update(len(self.runs))
         task = asyncio.create_task(run.main())
         self.run_tasks[run.id] = task
 
         def ended(_task: asyncio.Task, run_id: int = run.id) -> None:
             self.runs.pop(run_id, None)
             self.run_tasks.pop(run_id, None)
+            self.keep_awake.update(len(self.runs))
             self.slot_free.set()
 
         task.add_done_callback(ended)

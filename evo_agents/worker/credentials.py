@@ -501,6 +501,17 @@ class RunCredentials:
                 found.setdefault(repo, str(item.get("reason") or "the hub gave no reason"))
         return found
 
+    @property
+    def unlisted(self) -> dict[str, str]:
+        """The repos the hub named missing without an origin, which the project lists none for, each with the hub's
+        reason: no credential can be leased for them, and the run's preflight fails on them."""
+        found: dict[str, str] = {}
+        for item in self.missing:
+            repo = str(item.get("repo") or "")
+            if repo and not item.get("origin"):
+                found.setdefault(repo, str(item.get("reason") or "the project lists no origin for it"))
+        return found
+
     async def _serve_leases(self) -> None:
         """Hand the leases held to the run's git and agent (``_hand_over``) and answer for them on the run's socket,
         opened when it is not yet; a socket that does not open leaves git to the machine's own credentials."""
