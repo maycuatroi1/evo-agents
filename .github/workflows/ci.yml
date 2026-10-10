@@ -163,7 +163,7 @@ jobs:
   # Playwright (with axe) in four shards, each against a local hub on a Postgres service of its own and a production
   # build of its own, signing in through a fake GitHub. The specs seed what they read under unique names, so a shard
   # needs nothing from another. Every spec runs in Chromium; e2e/terminal.spec.ts runs in Firefox too
-  # (playwright.config.ts).
+  # (playwright.config.ts). The first shard then checks the First Load JS budgets on its build.
   web-e2e:
     name: web-e2e (${{ matrix.shard }}/4)
     needs: changes
@@ -219,6 +219,13 @@ jobs:
           restore-keys: next-${{ hashFiles('web/pnpm-lock.yaml') }}-
       - run: pnpm exec playwright install --with-deps chromium firefox
       - run: pnpm exec playwright test --shard=${{ matrix.shard }}/4
+      # First Load JS of every route, on the production build Playwright just served, against web/bundle-budget.json;
+      # a budget raised or a route added over main's file needs a reason in its entry (web/scripts/bundle-budget.mjs).
+      - name: First Load JS within its budget
+        if: matrix.shard == 1
+        run: |
+          git fetch --no-tags --depth=1 origin +refs/heads/main:refs/remotes/origin/main
+          node scripts/bundle-budget.mjs --base origin/main
       - uses: actions/upload-artifact@v4
         if: failure()
         with:

@@ -1,0 +1,119 @@
+{
+  "$comment": "First Load JS budget of each route in kB (gzip, 1 kB = 1000 bytes), checked by scripts/bundle-budget.mjs. Raising a budget or adding a route needs a reason in that route's entry; lowering one needs none.",
+  "routes": {
+    "/": {
+      "kB": 305.2
+    },
+    "/_not-found": {
+      "kB": 209.3
+    },
+    "/[...missing]": {
+      "kB": 283.7
+    },
+    "/admin": {
+      "kB": 296.5
+    },
+    "/admin/audit": {
+      "kB": 307.7
+    },
+    "/admin/diagnostics": {
+      "kB": 303.3
+    },
+    "/admin/members": {
+      "kB": 313.3
+    },
+    "/admin/members/[login]": {
+      "kB": 315.3
+    },
+    "/admin/tokens": {
+      "kB": 311.1
+    },
+    "/inbox": {
+      "kB": 391.7
+    },
+    "/login": {
+      "kB": 209.3
+    },
+    "/memories": {
+      "kB": 307.4
+    },
+    "/memories/[id]": {
+      "kB": 356.3
+    },
+    "/monitor": {
+      "kB": 310.8
+    },
+    "/p/[project]": {
+      "kB": 287.4
+    },
+    "/p/[project]/curator": {
+      "kB": 321.3
+    },
+    "/p/[project]/curator/charter": {
+      "kB": 329.8
+    },
+    "/p/[project]/curator/proposals": {
+      "kB": 327
+    },
+    "/p/[project]/curator/proposals/[id]": {
+      "kB": 357.4
+    },
+    "/p/[project]/insights": {
+      "kB": 289.3
+    },
+    "/p/[project]/kg": {
+      "kB": 310.2
+    },
+    "/p/[project]/kg/node": {
+      "kB": 323.3
+    },
+    "/p/[project]/memories": {
+      "kB": 307.4
+    },
+    "/p/[project]/memories/[id]": {
+      "kB": 356.3
+    },
+    "/p/[project]/plans": {
+      "kB": 323.8
+    },
+    "/p/[project]/plans/[planId]": {
+      "kB": 326.4
+    },
+    "/p/[project]/plans/[planId]/revisions": {
+      "kB": 296.6
+    },
+    "/p/[project]/plans/[planId]/steps/[stepKey]": {
+      "kB": 325.3
+    },
+    "/p/[project]/runs": {
+      "kB": 321.2
+    },
+    "/p/[project]/runs/[id]": {
+      "kB": 421
+    },
+    "/p/[project]/runs/[id]/diff": {
+      "kB": 291.7
+    },
+    "/p/[project]/skills": {
+      "kB": 304.1
+    },
+    "/p/[project]/skills/[name]": {
+      "kB": 304.3
+    },
+    "/secrets": {
+      "kB": 316.8
+    },
+    "/skills": {
+      "kB": 304.1
+    },
+    "/skills/[name]": {
+      "kB": 304.3
+    },
+    "/workers": {
+      "kB": 315.5
+    },
+    "/workers/[id]": {
+      "kB": 316.2
+    }
+  }
+}
