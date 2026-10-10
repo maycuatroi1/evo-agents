@@ -8,6 +8,11 @@ step done` with a verify command that fails pushes nothing; a default branch is 
 with a notice (default_branch); a run of one step still refuses the default branch; a decision asked, then answered
 through the inbox, takes the run from waiting back to running; a parked run keeps its worktrees and the run that
 resumes it goes on in them and in its session; the four commands refuse to run without EVO_RUN_ID.
+
+Criterion a6 of the run-reliability plan: on a default branch the plan names that another member pushed meanwhile,
+`worker step` and the push at the run's end rebase the run's own commits on top of the remote's tip (the step's verify
+runs again there) and push a fast-forward; a conflict, or a verify that fails after the rebase, puts the commits on
+evo-run/<run>, sends the owner the notice run_failed naming it, and fails the run with push_conflict, main untouched.
 """
 
 from __future__ import annotations
@@ -512,6 +517,302 @@ def test_a_plan_run_ends_done_when_a_default_branch_it_did_not_touch_moved_on_th
     assert not hub.notices, "nothing was pushed to a default branch"
     seed = machine.seeds["alpha"][:12]
     assert f"main of alpha on origin has {seed} already: nothing to push." in hub.texts(run_id)
+
+
+# A default branch the plan names that the remote moved on while the run committed to it (plan run-reliability, a6)
+
+
+def commit_file(path: Path, file: str, text: str | None = None) -> str:
+    """A commit of ``file`` in the checkout or worktree at ``path``; its sha."""
+    (path / file).write_text(text if text is not None else f"{file}\n", encoding="utf-8")
+    git("add", file, cwd=path)
+    git("commit", "--quiet", "-m", f"add {file}", cwd=path)
+    return git("rev-parse", "HEAD", cwd=path)
+
+
+def replay_rules(machine: Machine, verify=None, pushed=()) -> gitops.Replay:
+    return gitops.Replay(
+        scratch=machine.tmp / "scratch" / "replay", side_branch="evo-run/7", pushed=tuple(pushed), verify=verify
+    )
+
+
+async def _push_main(path: Path, replay: gitops.Replay) -> gitops.Pushed:
+    return await gitops.push(path, "main", protected=("main",), kind="plan", plan_branch="main", replay=replay)
+
+
+def test_gitops_push_rebases_the_runs_commits_on_a_default_branch_the_remote_moved_on(machine):
+    """gitops.push with a Replay: HEAD's own commit goes on top of the tip another member pushed, the verify runs
+    again in the worktree at the replayed commit, and main moves as a fast-forward; the replay's worktree is gone."""
+    path = machine.checkouts["alpha"]
+    mine = commit_file(path, "mine.txt")
+    tip = move_origin(machine, "alpha", "theirs.txt")
+    seen = []
+
+    async def verify(head: str) -> str | None:
+        seen.append((head, git("rev-parse", "HEAD", cwd=path), sorted(item.name for item in path.glob("*.txt"))))
+        return None
+
+    async def go():
+        return await _push_main(path, replay_rules(machine, verify))
+
+    pushed = asyncio.run(go())
+    assert pushed.changed and pushed.default and pushed.onto == tip and pushed.replayed_from == mine
+    assert pushed.head != mine and pushed.commits == (pushed.head,)
+    assert seen == [(pushed.head, pushed.head, ["mine.txt", "theirs.txt"])], "the verify ran at the replayed commit"
+    assert machine.origin_rev("alpha", "refs/heads/main") == pushed.head
+    assert machine.origin("alpha", "rev-parse", f"{pushed.head}^") == tip, "on top of the remote's tip, not forced"
+    assert git("rev-parse", "HEAD", cwd=path) == pushed.head, "the worktree is at the replayed commit"
+    assert git("log", "-1", "--format=%s", cwd=path) == "add mine.txt"
+    assert machine.origin_rev("alpha", "refs/heads/evo-run/7") is None, "no side branch"
+    assert not (machine.tmp / "scratch" / "replay").exists()
+    assert "replay" not in git("worktree", "list", cwd=path)
+    notice = gitops.push_notice(7, "alpha", pushed)
+    assert f"moved main on to {tip}" in notice["body"] and notice["commits"] == [pushed.head]
+
+
+def test_gitops_push_sends_commits_that_do_not_rebase_or_verify_to_the_side_branch(machine):
+    """A conflict, a verify that fails at the replayed commit, and a commit the run pushed that the remote dropped
+    each leave main as the remote has it and put HEAD, as it was, on the side branch; any other branch the remote
+    moved on is refused as before (diverged)."""
+    alpha, beta = machine.checkouts["alpha"], machine.checkouts["beta"]
+    mine = commit_file(alpha, "README.md", "mine\n")
+    tip = move_origin(machine, "alpha", "README.md")
+    ran = []
+
+    async def never(head: str) -> str | None:
+        ran.append(head)
+        return None
+
+    async def failing(head: str) -> str | None:
+        return "`test ! -f theirs.txt` exited 1"
+
+    async def go():
+        with pytest.raises(gitops.PushConflict) as conflict:
+            await _push_main(alpha, replay_rules(machine, never))
+        return conflict.value
+
+    conflict = asyncio.run(go())
+    assert "did not go on top of it (conflict in README.md)" in str(conflict)
+    assert conflict.side_branch == "evo-run/7" and conflict.head == mine and conflict.onto == tip
+    assert conflict.commits == (mine,) and not ran, "no verify runs when nothing replays"
+    assert machine.origin_rev("alpha", "refs/heads/main") == tip, "main was not touched"
+    assert machine.origin_rev("alpha", "refs/heads/evo-run/7") == mine
+    assert git("rev-parse", "HEAD", cwd=alpha) == mine and git("status", "--porcelain", cwd=alpha) == ""
+    notice = gitops.conflict_notice(7, "alpha", conflict)
+    assert (notice["kind"], notice["repo"], notice["branch"], notice["commits"]) == (
+        "run_failed",
+        "alpha",
+        "evo-run/7",
+        [mine],
+    )
+    assert notice["title"] == "Run #7 could not push main of alpha: its commits are on evo-run/7"
+
+    mine = commit_file(beta, "mine.txt")
+    tip = move_origin(machine, "beta", "theirs.txt")
+
+    async def verify_fails():
+        with pytest.raises(gitops.PushConflict) as conflict:
+            await _push_main(beta, replay_rules(machine, failing))
+        return conflict.value
+
+    conflict = asyncio.run(verify_fails())
+    assert "went on top of it, but the verify run again there failed: `test ! -f theirs.txt` exited 1" in str(conflict)
+    assert git("rev-parse", "HEAD", cwd=beta) == mine, "the worktree is back at HEAD as it was"
+    assert machine.origin_rev("beta", "refs/heads/main") == tip
+    assert machine.origin_rev("beta", "refs/heads/evo-run/7") == mine
+
+    # main of beta has mine.txt, then another member takes it out with a forced push of their own.
+    git("reset", "--quiet", "--hard", tip, cwd=beta)
+    pushed_before = commit_file(beta, "pushed.txt")
+    git("push", "--quiet", "origin", "HEAD:main", cwd=beta)
+    other = machine.tmp / "other" / "beta"
+    git("fetch", "--quiet", "origin", cwd=other)
+    git("reset", "--quiet", "--hard", tip, cwd=other)
+    dropped_tip = commit_file(other, "rewritten.txt")
+    git("push", "--quiet", "--force", "origin", "main", cwd=other)
+    later = commit_file(beta, "later.txt")
+
+    async def dropped():
+        with pytest.raises(gitops.PushConflict) as conflict:
+            await _push_main(beta, gitops.Replay(machine.tmp / "scratch" / "b", "evo-run/8", pushed=[pushed_before]))
+        return conflict.value
+
+    conflict = asyncio.run(dropped())
+    assert f"include {pushed_before[:12]}, which the run pushed to main before and the remote no longer has" in str(
+        conflict
+    )
+    assert machine.origin_rev("beta", "refs/heads/main") == dropped_tip, "what the other member pushed stays"
+    assert machine.origin_rev("beta", "refs/heads/evo-run/8") == later
+
+    # Any other branch the remote moved on is pushed as before, and refused: a plan's own branch is not replayed.
+    git("push", "--quiet", "origin", f"{later}:refs/heads/feat/x", cwd=beta)
+    git("fetch", "--quiet", "origin", cwd=other)
+    git("checkout", "--quiet", "-b", "feat/x", "origin/feat/x", cwd=other)
+    commit_file(other, "theirs-x.txt")
+    git("push", "--quiet", "origin", "feat/x", cwd=other)
+    commit_file(beta, "mine-x.txt")
+
+    async def diverged():
+        with pytest.raises(gitops.GitError) as refused:
+            await gitops.push(beta, "feat/x", protected=("main",), kind="plan", replay=replay_rules(machine))
+        return refused.value
+
+    refused = asyncio.run(diverged())
+    assert not isinstance(refused, gitops.PushConflict) and gitops.rejected(refused), str(refused)
+
+
+def default_branch_run(machine: Machine, scenario: list, move, *, plan: dict | None = None) -> dict:
+    """A plan run whose plan names main for alpha, whose agent follows ``scenario``; ``move()`` runs once the agent
+    touched the gate and before it goes on, as another member pushing main of alpha meanwhile. The run's id, the hub
+    and what ``move`` returned."""
+    body = plan or plan_body(alpha="main")
+    gate, go = machine.tmp / "gate", machine.tmp / "go"
+    machine.scenarios({f"plan:{PLAN}": [{"touch": str(gate)}, {"wait_for": str(go)}, *scenario]})
+    found = {}
+
+    async def run_it(hub: FakeHub, daemon: Daemon):
+        run_id = hub.queue_plan_run(PLAN, run_repos(body))
+        await wait_for(gate.exists, "the agent to start")
+        found["moved"] = move()
+        go.touch()
+        await hub.wait_state(run_id, "done", "failed")
+        await wait_for(lambda: not daemon.runs, "the run to let go of its slot")
+        found.update(run=run_id, hub=hub)
+
+    with_daemon(machine, run_it, plan=body)
+    return found
+
+
+def test_worker_step_rebases_its_commit_when_the_remote_moved_main_on_and_runs_its_verify_again(machine):
+    """`worker step` of a step on main, which another member pushed meanwhile: the step's commit goes on top of their
+    commit, its verify runs again there, main moves as a fast-forward, and the step's report names that commit."""
+    found = default_branch_run(
+        machine,
+        [
+            {"write": {"alpha/a.txt": "a\n"}},
+            {"cli": ["step", "1", "done", "--evidence", "Wrote a.txt.", "--verify", "test -f a.txt"]},
+            {"result": {"summary": "Step 1 done on main."}},
+        ],
+        lambda: move_origin(machine, "alpha", "theirs.txt"),
+    )
+    run_id, hub, tip = found["run"], found["hub"], found["moved"]
+    assert hub.runs[run_id]["state"] == "done", (hub.runs[run_id], hub.texts(run_id))
+    step = machine.commands()[0]
+    assert step["exit"] == 0, step
+    assert "moved on at origin: the run's commits were put on top of it" in step["stdout"]
+    assert step["stdout"].count("verify: `test -f a.txt` exited 0") == 2, "once before the push, once after the replay"
+    main = machine.origin_rev("alpha", "refs/heads/main")
+    assert machine.origin("alpha", "log", "--format=%s", "main").splitlines() == [
+        f"run #{run_id} step 1: Alpha file",
+        "another member adds theirs.txt",
+        "first commit",
+    ]
+    assert machine.origin("alpha", "rev-parse", "main^") == tip, "their commit stays as they pushed it"
+    report = hub.step_reports[-1]
+    assert (report["key"], report["status"], report["commit_sha"]) == ("1", "done", main), "the commit main has"
+    assert [item["exit_code"] for item in report["verify"]] == [0]
+    assert [(notice["kind"], notice["branch"], notice["commits"]) for notice in hub.notices] == [
+        ("push_default_branch", "main", [main])
+    ]
+    assert f"moved main on to {tip}" in hub.notices[0]["body"]
+    assert machine.home.pushed(run_id, "alpha", "main") == [main]
+    assert machine.origin_rev("alpha", f"refs/heads/evo-run/{run_id}") is None
+    assert hub.runs[run_id].get("failure_cause") is None
+
+
+def test_worker_step_pushes_the_side_branch_and_the_run_fails_when_its_commit_does_not_rebase(machine):
+    """`worker step` whose commit conflicts with what another member pushed to main: the commit goes to
+    evo-run/<run>, the owner gets the notice run_failed naming it, nothing is reported, a second `worker step done`
+    is refused, and the run fails with push_conflict once the turn ends."""
+    found = default_branch_run(
+        machine,
+        [
+            {"write": {"alpha/README.md": "mine\n"}},
+            {"cli": ["step", "1", "done", "--verify", "test -f README.md"]},
+            {"cli": ["step", "1", "done", "--verify", "true"]},
+            {"result": {"summary": "Tried step 1."}},
+        ],
+        lambda: move_origin(machine, "alpha", "README.md"),
+    )
+    run_id, hub, tip = found["run"], found["hub"], found["moved"]
+    run = hub.runs[run_id]
+    assert run["state"] == "failed" and run["failure_cause"] == "push_conflict", (run, hub.texts(run_id))
+    side = f"evo-run/{run_id}"
+    assert "did not go on top of it (conflict in README.md)" in run["error"] and side in run["error"]
+    first, second = machine.commands()
+    assert first["exit"] == 1 and "ends failed (push_conflict) once this turn ends" in first["stderr"], first
+    assert second["exit"] == 1 and "Nothing more is pushed or reported done" in second["stderr"], second
+    assert machine.origin_rev("alpha", "refs/heads/main") == tip, "main stays as the other member left it"
+    held = machine.origin_rev("alpha", f"refs/heads/{side}")
+    assert machine.origin("alpha", "log", "-1", "--format=%s", side) == f"run #{run_id} step 1: Alpha file"
+    assert machine.origin("alpha", "rev-parse", f"{side}^") == machine.seeds["alpha"]
+    assert not hub.step_reports, "the step is not reported done"
+    assert [(notice["kind"], notice["repo"], notice["branch"], notice["commits"]) for notice in hub.notices] == [
+        ("run_failed", "alpha", side, [held])
+    ]
+    assert hub.moves(run_id) == ["leased", "running", "failed"], "the run fails at the end of the turn, pushing nothing"
+
+
+def test_worker_step_does_not_push_main_when_the_verify_fails_after_the_rebase(machine):
+    found = default_branch_run(
+        machine,
+        [
+            {"write": {"alpha/a.txt": "a\n"}},
+            {"cli": ["step", "1", "done", "--verify", "test ! -f theirs.txt"]},
+            {"result": {"summary": "Tried step 1."}},
+        ],
+        lambda: move_origin(machine, "alpha", "theirs.txt"),
+    )
+    run_id, hub, tip = found["run"], found["hub"], found["moved"]
+    run = hub.runs[run_id]
+    assert run["failure_cause"] == "push_conflict", (run, hub.texts(run_id))
+    assert "the verify run again there failed: `test ! -f theirs.txt` exited 1" in run["error"]
+    step = machine.commands()[0]
+    assert step["stdout"].count("verify: `test ! -f theirs.txt` exited") == 2, step
+    assert machine.origin_rev("alpha", "refs/heads/main") == tip
+    side = machine.origin_rev("alpha", f"refs/heads/evo-run/{run_id}")
+    assert side is not None and machine.origin("alpha", "rev-parse", f"{side}^") == machine.seeds["alpha"]
+    worktree = machine.directory(run_id) / "alpha"
+    assert git("rev-parse", "HEAD", cwd=worktree) == side, "the worktree went back to the commit the side branch has"
+    assert not hub.step_reports
+
+
+def test_the_push_at_the_end_rebases_what_the_run_left_on_a_default_branch_the_remote_moved_on(machine):
+    found = default_branch_run(
+        machine,
+        [{"write": {"alpha/a.txt": "a\n"}}, {"result": {"summary": "Wrote a.txt, left for the worker to push."}}],
+        lambda: move_origin(machine, "alpha", "theirs.txt"),
+    )
+    run_id, hub, tip = found["run"], found["hub"], found["moved"]
+    assert hub.runs[run_id]["state"] == "done", (hub.runs[run_id], hub.texts(run_id))
+    assert machine.origin("alpha", "log", "--format=%s", "main").splitlines() == [
+        f"run #{run_id}: Two repos",
+        "another member adds theirs.txt",
+        "first commit",
+    ]
+    main = machine.origin_rev("alpha", "refs/heads/main")
+    texts = " ".join(hub.texts(run_id))
+    assert f"main of alpha on origin had moved on to {tip[:12]}: the run's commits were put on top of it" in texts
+    assert f"Pushed {main[:12]} of alpha to main on origin (1 commit(s))." in texts
+    assert [(notice["kind"], notice["commits"]) for notice in hub.notices] == [("push_default_branch", [main])]
+
+
+def test_the_push_at_the_end_sends_the_side_branch_when_the_rebase_conflicts(machine):
+    found = default_branch_run(
+        machine,
+        [{"write": {"alpha/README.md": "mine\n"}}, {"result": {"summary": "Changed the README."}}],
+        lambda: move_origin(machine, "alpha", "README.md"),
+    )
+    run_id, hub, tip = found["run"], found["hub"], found["moved"]
+    run = hub.runs[run_id]
+    side = f"evo-run/{run_id}"
+    assert run["state"] == "failed" and run["failure_cause"] == "push_conflict", (run, hub.texts(run_id))
+    assert run["error"].startswith("alpha: main of origin moved on to") and side in run["error"]
+    assert hub.moves(run_id) == ["leased", "running", "verifying", "failed"]
+    assert machine.origin_rev("alpha", "refs/heads/main") == tip
+    assert machine.origin("alpha", "log", "-1", "--format=%s", side) == f"run #{run_id}: Two repos"
+    assert [(notice["kind"], notice["branch"]) for notice in hub.notices] == [("run_failed", side)]
+    assert any(f"{side} on origin has them" in text for text in hub.texts(run_id))
 
 
 def test_a_decision_asked_then_answered_through_the_inbox_takes_the_run_from_waiting_to_running(machine):

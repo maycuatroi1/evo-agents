@@ -11,6 +11,10 @@
   runs/<run>/run.json           what the daemon knows of a run: its worktree, branch, base, when it ended
   runs/<run>/events.jsonl       every event of the run, uploaded as its log when it ends
   runs/<run>/decisions.jsonl    the decisions a plan run's agent asked (``evo-agents worker ask``), one id a line
+  runs/<run>/pushes.jsonl       the commits ``evo-agents worker step`` of a plan run pushed to a default branch, one
+                                push a line, which a later replay onto that branch never puts back (``gitops.Replay``)
+  runs/<run>/push_conflict.json the side branch ``evo-agents worker step`` pushed a plan run's commits to instead of its
+                                default branch (``gitops.PushConflict``): the daemon fails the run once the turn ends
   runs/<run>/agent.json         the process group of the run's latest agent while the run has not ended here, for the
                                 next daemon to stop when this one dies first (``orphans``)
   runs/<run>/cred.sock    0600  the unix socket the daemon hands the run's leases through, to its own uid only, while
@@ -199,6 +203,48 @@ class WorkerHome:
     def decisions_path(self, run_id: int) -> Path:
         """Where ``evo-agents worker ask`` notes each decision a plan run's agent asked, for the daemon to wait on."""
         return self.run_dir(run_id) / "decisions.jsonl"
+
+    def pushes_path(self, run_id: int) -> Path:
+        """Where ``evo-agents worker step`` notes each commit a plan run pushed to a default branch."""
+        return self.run_dir(run_id) / "pushes.jsonl"
+
+    def note_push(self, run_id: int, repo: str, branch: str, head: str) -> None:
+        """Note that plan run ``run_id`` pushed ``head`` to ``branch`` of ``repo``'s origin."""
+        directory = self.run_dir(run_id)
+        directory.mkdir(mode=DIR_MODE, parents=True, exist_ok=True)
+        line = json.dumps({"repo": repo, "branch": branch, "head": head}) + "\n"
+        with open(self.pushes_path(run_id), "a", encoding="utf-8") as handle:
+            handle.write(line)
+
+    def pushed(self, run_id: int, repo: str, branch: str) -> list[str]:
+        """The commits plan run ``run_id`` pushed to ``branch`` of ``repo``'s origin, as ``note_push`` noted them."""
+        found: list[str] = []
+        with contextlib.suppress(OSError):
+            for line in self.pushes_path(run_id).read_text(encoding="utf-8").splitlines():
+                with contextlib.suppress(ValueError, AttributeError):
+                    item = json.loads(line)
+                    head = item.get("head")
+                    if item.get("repo") == repo and item.get("branch") == branch and isinstance(head, str) and head:
+                        found.append(head)
+        return found
+
+    def conflict_path(self, run_id: int) -> Path:
+        """Where ``evo-agents worker step`` notes a push of a plan run that went to its side branch instead."""
+        return self.run_dir(run_id) / "push_conflict.json"
+
+    def save_conflict(self, run_id: int, conflict: dict) -> None:
+        directory = self.run_dir(run_id)
+        directory.mkdir(mode=DIR_MODE, parents=True, exist_ok=True)
+        data = json.dumps({"run_id": int(run_id), **conflict}, indent=2, ensure_ascii=False).encode() + b"\n"
+        write_atomic(self.conflict_path(run_id), data, FILE_MODE)
+
+    def load_conflict(self, run_id: int) -> dict | None:
+        """What ``save_conflict`` wrote for run ``run_id`` (an ``error`` among it), or None."""
+        with contextlib.suppress(OSError, ValueError):
+            found = json.loads(self.conflict_path(run_id).read_text(encoding="utf-8"))
+            if isinstance(found, dict) and found.get("run_id") == int(run_id) and isinstance(found.get("error"), str):
+                return found
+        return None
 
     def remove_run(self, run_id: int) -> None:
         shutil.rmtree(self.run_dir(run_id), ignore_errors=True)

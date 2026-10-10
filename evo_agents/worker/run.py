@@ -111,7 +111,10 @@ A plan run (kind ``plan``, ``PlanRun``) does every step of a plan not done yet, 
 2. ``running``: the agent works in that directory, with EVO_RUN_ID, EVO_RUN_KIND and EVO_WORKER_HOME, and reports
    each step itself through ``evo-agents worker step`` (which runs the step's verify commands again, commits, pushes
    the repo's branch and sends the step report), asks its owner through ``evo-agents worker ask``, and notifies with
-   ``evo-agents worker notify``.
+   ``evo-agents worker notify``. A default branch the remote moved on gets the step's commits on top of its tip, and
+   the step's verify runs again there before the push (``gitops.Replay``); when they do not go on top, or that verify
+   fails, ``worker step`` pushes them to ``evo-run/<run>``, sends the owner the notice ``run_failed`` naming it, reports
+   nothing and leaves ``runs/<run>/push_conflict.json``, and the run fails with push_conflict once the turn ends.
 3. ``waiting``: a turn that ends with a decision of the run open moves the run to waiting; the daemon keeps it, with
    its slot and lease, and the time it waits does not count toward its timeout. The owner's answer comes through the
    inbox and goes to a new turn of the agent in the same session (``running`` again). A run the hub parks (no answer
@@ -120,8 +123,10 @@ A plan run (kind ``plan``, ``PlanRun``) does every step of a plan not done yet, 
 4. Once a turn ends with nothing to wait for, the daemon reports ``verifying`` and commits (leaving out what a run
    of one step leaves out) and pushes what each repo has left, never forced (a default branch only when the plan
    names it, with the notice ``push_default_branch``), and reports ``done`` with the agent's summary from
-   ``.evo-run/result.json``: no verify commands run at the end, since ``evo-agents worker step`` ran each step's. The
-   log and the diffs of every repo are uploaded as for a run of one step.
+   ``.evo-run/result.json``: no verify commands run at the end, since ``evo-agents worker step`` ran each step's. A
+   default branch the remote moved on gets the run's commits on top of its tip (``gitops.Replay``); when they do not go
+   on top, they go to ``evo-run/<run>``, the owner gets the notice ``run_failed`` naming it, and the run fails with
+   push_conflict. The log and the diffs of every repo are uploaded as for a run of one step.
 """
 
 from __future__ import annotations
@@ -238,6 +243,14 @@ def _now() -> datetime:
 
 def _cut(text: str, limit: int) -> str:
     return text if len(text) <= limit else text[: limit - 3] + "..."
+
+
+def _push_cause(exc: Exception) -> str | None:
+    """The failure_cause of a push git failed: credentials when the remote refused its credential, push_conflict when
+    it refused a push that is no fast-forward (the branch moved on), else none."""
+    if isinstance(exc, gitops.GitAuthError):
+        return "credentials"
+    return "push_conflict" if gitops.rejected(exc) else None
 
 
 def _json_size(value) -> int:
@@ -1559,9 +1572,8 @@ class Run:
         except gitops.PushRefused as exc:
             raise RunFailed(str(exc), verify=self.verify) from None
         except gitops.GitError as exc:
-            cause = "credentials" if isinstance(exc, gitops.GitAuthError) else None
             raise RunFailed(
-                f"git push to {self.branch} on origin failed: {exc}", verify=self.verify, cause=cause
+                f"git push to {self.branch} on origin failed: {exc}", verify=self.verify, cause=_push_cause(exc)
             ) from None
         if pushed.changed:
             self.note(
@@ -1858,6 +1870,12 @@ class PlanRun(Run):
             lines = "".join(json.dumps({"id": decision_id}) + "\n" for decision_id in still_open)
             with open(home.decisions_path(self.id), "a", encoding="utf-8") as handle:
                 handle.write(lines)
+        with contextlib.suppress(OSError):  # what the parked run pushed to a default branch is never put back either
+            pushes = home.pushes_path(old_id).read_text(encoding="utf-8")
+            if pushes.strip():
+                home.pushes_path(self.id).parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+                with open(home.pushes_path(self.id), "a", encoding="utf-8") as handle:
+                    handle.write(pushes if pushes.endswith("\n") else pushes + "\n")
         record.update({"resumed_by": self.id, "dir": None, "repos": [], "moved_to": str(directory)})
         home.save_run(record)
         names = ", ".join(self.workspaces) or "no repo"
@@ -1917,6 +1935,9 @@ class PlanRun(Run):
             self.record["session_id"] = self.session_id
             if self.park_asked.is_set():
                 raise Parked()
+            conflict = self.daemon.home.load_conflict(self.id)
+            if conflict is not None:  # `evo-agents worker step` pushed a repo's commits to the side branch
+                raise RunFailed(conflict["error"], cause="push_conflict", usage=self.outcome.usage)
             if not self.outcome.completed:
                 raise RunFailed(
                     self.outcome.error or f"{self.runtime} ended before its turn completed",
@@ -2090,7 +2111,9 @@ class PlanRun(Run):
                     "covers its origin: this machine's own credentials are not used"
                 )
 
-            async def push(path=path, workspace=workspace, name=name, options=options) -> gitops.Pushed:
+            replay = self._replay(name, workspace)
+
+            async def push(path=path, workspace=workspace, name=name, options=options, replay=replay) -> gitops.Pushed:
                 with self.credentials.ticketed(self.daemon.env) as env:
                     return await gitops.push(
                         path,
@@ -2100,6 +2123,7 @@ class PlanRun(Run):
                         plan_branch=named.get(name),
                         env=env,
                         options=options,
+                        replay=replay,
                     )
 
             try:
@@ -2107,14 +2131,32 @@ class PlanRun(Run):
                     pushed = await self.credentials.with_renewal(name, push)
             except gitops.PushRefused as exc:
                 raise RunFailed(f"{name}: {exc}") from None
+            except gitops.PushConflict as exc:
+                self.note(
+                    f"The commits of {name} did not go on top of {exc.branch} on origin: {exc.side_branch} on origin "
+                    f"has them, at {exc.head[:12]}.",
+                    repo=name,
+                    side_branch=exc.side_branch,
+                    head=exc.head,
+                )
+                await self._send_notice(gitops.conflict_notice(self.id, name, exc), f"{exc.side_branch} of {name}")
+                raise RunFailed(f"{name}: {exc}", cause="push_conflict") from None
             except gitops.GitError as exc:
-                cause = "credentials" if isinstance(exc, gitops.GitAuthError) else None
                 raise RunFailed(
-                    f"git push of {name} to {workspace.branch} on origin failed: {exc}", cause=cause
+                    f"git push of {name} to {workspace.branch} on origin failed: {exc}", cause=_push_cause(exc)
                 ) from None
             stat = await gitops.diffstat(path, workspace.base)
             for key in total:
                 total[key] += stat[key]
+            if pushed.onto is not None:
+                was = (pushed.replayed_from or "?")[:12]
+                self.note(
+                    f"{workspace.branch} of {name} on origin had moved on to {pushed.onto[:12]}: the run's commits "
+                    f"were put on top of it, {was} became {pushed.head[:12]}, never forced.",
+                    repo=name,
+                    onto=pushed.onto,
+                    replayed_from=pushed.replayed_from,
+                )
             if pushed.changed:
                 self.note(
                     f"Pushed {pushed.head[:12]} of {name} to {workspace.branch} on origin ({len(pushed.commits)} "
@@ -2127,6 +2169,16 @@ class PlanRun(Run):
             else:
                 self.note(f"{workspace.branch} of {name} on origin has {pushed.head[:12]} already: nothing to push.")
         return total
+
+    def _replay(self, name: str, workspace: gitops.Workspace) -> gitops.Replay:
+        """How the push at the run's end puts the commits of ``name`` on top of a default branch the remote moved on:
+        no verify runs again, since `evo-agents worker step` ran each done step's and pushed its commits, which the
+        remote's branch has, and a commit it pushed that the remote dropped is not put back."""
+        return gitops.Replay(
+            scratch=self.directory / runs.RESULT_DIR / f"replay-{workspace.worktree.name}",
+            side_branch=gitops.SIDE_BRANCH.format(id=self.id),
+            pushed=self.daemon.home.pushed(self.id, name, workspace.branch),
+        )
 
     async def _push_for_agent(self, name: str, title: str | None) -> dict:
         """Push the run's branch of repo ``name`` for the Builder's agent, which reported a step done and holds no
@@ -2198,19 +2250,22 @@ class PlanRun(Run):
 
     async def _notice(self, name: str, pushed: gitops.Pushed) -> None:
         """Tell the run's owner of a push to a default branch; a notice the hub does not take is logged."""
-        body = gitops.push_notice(self.id, name, pushed)
+        await self._send_notice(gitops.push_notice(self.id, name, pushed), f"the push to {pushed.branch} of {name}")
+
+    async def _send_notice(self, body: dict, what: str) -> None:
+        """Send the run's owner the notice ``body``, about ``what``; one the hub does not take is logged."""
         backoff = Backoff()
         for _ in range(HARD_STOP_TRIES + 1):
             try:
                 await self.daemon.hub.notice(self.id, body)
-                self.note(f"Notified the owner of the push to {pushed.branch} of {name}.")
+                self.note(f"Notified the owner of {what}.")
                 return
             except Unreachable:
                 await _wait_or(self.daemon.hard_stop, backoff.next())
             except HubProblem as exc:
                 log.warning("notice not sent", extra={"run_id": self.id, "error": str(exc)})
                 break
-        self.note(f"The notice of the push to {pushed.branch} of {name} was not sent.")
+        self.note(f"The notice of {what} was not sent.")
 
     async def _diff(self) -> bytes:
         """The diffs of every repo of the run, each under its folder (a/<repo>/...)."""
