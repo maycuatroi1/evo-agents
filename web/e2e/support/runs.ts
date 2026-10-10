@@ -6,7 +6,7 @@ import { type ApiClient, call } from "../../src/lib/api/client";
 import type { components } from "../../src/lib/api/schema";
 
 import { API_URL } from "./env";
-import { type Account, bearerClient, machineToken } from "./hub";
+import { type Account, bearerClient, HubAdmin, machineToken, type Repo } from "./hub";
 import { HOST, PROTOCOL_HEADER } from "./workers";
 
 /**
@@ -286,6 +286,11 @@ export function runPath(project: string, id: number): string {
 export const PLAN_RUN_PLAN = "fleet";
 /** The second repo of the plan run, on its default branch main. */
 export const HARNESS_REPO = "harness";
+/**
+ * HARNESS_REPO as a project lists it. The stack's projects list only REPO, and the hub refuses (409) a plan run that
+ * needs a repo its project lists no origin for, so seeding a plan-run plan adds this listing to its project.
+ */
+const HARNESS_LISTING: Repo = { name: HARNESS_REPO, origin: "https://github.com/example-org/harness", default_branch: "main", path: HARNESS_REPO };
 export const PLAN_RUN_BRANCH = "feat/plan-runs";
 export const PLAN_RUN_TITLES: Record<string, string> = {
   "1": "Plan run model",
@@ -323,8 +328,12 @@ export function planRunBody(id = PLAN_RUN_PLAN, { allDone = false }: { allDone?:
   };
 }
 
-/** Push the plan-run plan into `project` as `writer`. */
+/** The hub admin of this test worker, who lists HARNESS_REPO in a project before a plan-run plan is seeded there. */
+const admin = new HubAdmin();
+
+/** Push the plan-run plan into `project` as `writer`, once the project lists both of its repos (HARNESS_LISTING). */
 export async function seedPlanRunPlan(writer: Account, project: string, id = PLAN_RUN_PLAN, options: { allDone?: boolean } = {}): Promise<void> {
+  await admin.addRepo(project, HARNESS_LISTING);
   const api = bearerClient(await machineToken(writer));
   await call(
     api.PUT("/v1/projects/{project}/plans/{plan_id}", {
@@ -339,6 +348,7 @@ export const LONG_PLAN_RUN_PLAN = "fleet-long";
 
 /** Push LONG_PLAN_RUN_PLAN into `project` as `writer`: a plan run of it lists eleven steps on its page. */
 export async function seedLongPlanRunPlan(writer: Account, project: string): Promise<void> {
+  await admin.addRepo(project, HARNESS_LISTING);
   const body = planRunBody(LONG_PLAN_RUN_PLAN);
   const more = Array.from({ length: 7 }, (_, index) => {
     const key = body.steps.length + index + 1;
