@@ -28,10 +28,12 @@ runs again there, and the result is pushed as a fast-forward; a remote that move
 the same, REPLAY_TRIES times in all. Only commits the remote's branch lacks are replayed: never one it has, and never
 one the run pushed to it before that the remote no longer has (someone took it out; putting it back is the owner's
 call). When the commits do not go on top (a conflict, a merge commit among them, changes of the worktree in the way)
-or the verify run again fails, the worktree goes back to HEAD as it was, HEAD is pushed to the replay's side branch
-(``evo-run/<run>``, ``SIDE_BRANCH``), the default branch is not touched, and ``push`` raises ``PushConflict``, for the
-notice ``conflict_notice`` and the run's failure_cause ``push_conflict``. Any other branch the remote moved on is pushed
-as before, and the remote refuses it (``rejected``).
+or the verify run again fails, the worktree goes back to HEAD as it was (unless that verify changed a file the
+remote's commits brought, which ``reset --keep`` will not overwrite: the worktree then stays at the replayed commit, and
+the conflict says so), HEAD is pushed to the replay's side branch (``evo-run/<run>``, ``SIDE_BRANCH``), the default
+branch is not touched, and ``push`` raises ``PushConflict``, for the notice ``conflict_notice`` and the run's
+failure_cause ``push_conflict``. Any other branch the remote moved on is pushed as before, and the remote refuses it
+(``rejected``).
 
 A commit of a run (``commit_run``) holds only the run's own work. It leaves out, at any depth, the paths under
 RUN_COMMIT_EXCLUDES (what hooks of the owner's runtime write in a session's directory, such as the learned skills of
@@ -699,9 +701,18 @@ async def _conflict(
     env: Mapping[str, str] | None,
 ) -> PushConflict:
     """Put the worktree back at ``original`` and push it to the replay's side branch, never forced (a side branch
-    that has it already is left alone); the PushConflict that says so. A push to the side branch that fails raises."""
+    that has it already is left alone); the PushConflict that says so. A push to the side branch that fails raises.
+    When ``reset --keep`` will not take the worktree back, because the verify run again changed a file the remote's
+    commits brought, the worktree stays at the replayed commit with that change, and the message says so."""
+    stays = ""
     if await rev(cwd, "HEAD") != original:
-        await git(cwd, "reset", "--quiet", "--keep", original, check=False)
+        code, out, err = await git(cwd, "reset", "--quiet", "--keep", original, check=False)
+        head = await rev(cwd, "HEAD")
+        if code != 0 and head is not None and head != original:
+            stays = (
+                f"; the worktree stays at {head[:12]}, the commits on top of {branch}, since going back would "
+                f"overwrite changes made there ({_tail(err or out, 300)})"
+            )
     side = replay.side_branch
     tip = await remote_tip(cwd, side, remote, env=env)
     if tip != original and not (tip is not None and await has_commit(cwd, tip, original, side, remote, env=env)):
@@ -710,7 +721,7 @@ async def _conflict(
     commits = tuple(out.split())
     message = (
         f"{branch} of {remote} moved on to {onto[:12]}, and the run's commits {why}. They are on {side} of {remote} "
-        f"now, at {original[:12]} ({len(commits)} commit(s) {branch} lacks); {branch} was not touched"
+        f"now, at {original[:12]} ({len(commits)} commit(s) {branch} lacks); {branch} was not touched{stays}"
     )
     return PushConflict(message, branch=branch, side_branch=side, head=original, onto=onto, commits=commits)
 

@@ -661,6 +661,37 @@ def test_gitops_push_sends_commits_that_do_not_rebase_or_verify_to_the_side_bran
     assert not isinstance(refused, gitops.PushConflict) and gitops.rejected(refused), str(refused)
 
 
+def test_a_verify_that_fails_after_changing_a_file_of_the_remote_leaves_the_worktree_at_the_rebased_commit(machine):
+    """The verify run again at the replayed commit changes a file the remote's commits brought, then fails: ``reset
+    --keep`` will not overwrite that change to take the worktree back. HEAD as it was still goes to the side branch,
+    main is not touched, the verify's change stays for the owner to look at, and the conflict says where the worktree
+    is."""
+    path = machine.checkouts["alpha"]
+    mine = commit_file(path, "mine.txt")
+    tip = move_origin(machine, "alpha", "theirs.txt")
+
+    async def scribbles(head: str) -> str | None:
+        (path / "theirs.txt").write_text("rewritten by the verify\n", encoding="utf-8")
+        return "`make check` exited 2"
+
+    async def go():
+        with pytest.raises(gitops.PushConflict) as conflict:
+            await _push_main(path, replay_rules(machine, scribbles))
+        return conflict.value
+
+    conflict = asyncio.run(go())
+    rebased = git("rev-parse", "HEAD", cwd=path)
+    assert rebased != mine and git("rev-parse", "HEAD^", cwd=path) == tip, "the worktree stays at the replayed commit"
+    assert (path / "theirs.txt").read_text(encoding="utf-8") == "rewritten by the verify\n"
+    assert (conflict.head, conflict.onto, conflict.commits) == (mine, tip, (mine,))
+    assert machine.origin_rev("alpha", "refs/heads/evo-run/7") == mine, "the side branch has HEAD as it was"
+    assert machine.origin_rev("alpha", "refs/heads/main") == tip, "main was not touched"
+    message = str(conflict)
+    assert "the verify run again there failed: `make check` exited 2" in message
+    assert f"the worktree stays at {rebased[:12]}, the commits on top of main" in message, message
+    assert not (machine.tmp / "scratch" / "replay").exists()
+
+
 def default_branch_run(machine: Machine, scenario: list, move, *, plan: dict | None = None) -> dict:
     """A plan run whose plan names main for alpha, whose agent follows ``scenario``; ``move()`` runs once the agent
     touched the gate and before it goes on, as another member pushing main of alpha meanwhile. The run's id, the hub
