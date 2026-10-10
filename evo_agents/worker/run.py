@@ -1,7 +1,11 @@
 """One run on this worker, from the claim to its last report.
 
-1. ``leased``: the daemon takes the run's leases (``credentials``), so its git and its agent use them, then fetches
-   origin in the checkout of the run's repo and makes a worktree under
+1. ``leased``: the daemon takes the run's leases (``credentials``), so its git and its agent use them, then checks what
+   the run needs before it fetches anything (``_preflight``, ``preflight``): the project lists an origin for the repo,
+   git reads it and pushes to it with what the run holds, and each program the step's verify calls is on the run's
+   PATH; a check that does not pass fails the run before the agent starts, with its cause (the report's
+   ``failure_cause``: origin, credentials or missing_tool). It then fetches origin in the checkout of the run's repo
+   and makes a worktree under
    ``~/.evo/worker/worktrees/<project>-<run>``, on the plan's branch for the repo, from ``origin/<branch>`` when the
    remote has it (else the local branch, else the remote's default branch). When that branch is checked out
    somewhere else, or has commits here that the start does not hold, the worktree is on ``evo-run/<run>`` instead,
@@ -67,16 +71,18 @@ in them with the reply (``author.RESUME_PROMPT``). Once the owner ends the chat 
 ends done with its summary after the agent's turn: nothing is committed or pushed (``gitops.check_push`` refuses an
 author run), and the run's GitHub token reads only.
 
-A judge run (kind ``judge``, ``JudgeRun``) is the Curator's Judge of one change: its worktree is detached at the commit
-it judges (the pull request's head, else the tip of the change's branch on origin), made and read with no hook of the
-checkout; the worker reads the diff from the merge base with origin's default branch before any code of the change
-runs, finds the signs of score hacking in it (``evo_agents.hub.judge.hack_signs``; a diff longer than the worker reads
-is a sign too), reads the plan's verify commands and the project's hidden checks from the hub (GET
-/v1/worker/runs/{id}/judge with the run's own key, which the claim handed the daemon and only its memory holds; the
-checks are held in memory, never written to a file, an event or a log line), and runs the hidden checks, then the
-verify commands, in the worktree as code it does not trust (``evo_agents.worker.untrusted``): each one on the standard
-input of ``/bin/sh -s``, in a session of its own, with an environment that holds neither the worker's home nor the
-run's id nor a credential, the worktree put back at the commit judged before it, and every process it left killed
+A judge run (kind ``judge``, ``JudgeRun``) is the Curator's Judge of one change. Once it holds its leases, the worker
+reads the plan's verify commands and the project's hidden checks from the hub (GET /v1/worker/runs/{id}/judge with the
+run's own key, which the claim handed the daemon and only its memory holds; the checks are held in memory, never
+written to a file, an event or a log line), and its preflight looks for the program of each on PATH: one missing fails
+the run with missing_tool and no verdict, a hidden check named by its number alone, so the hub has the change judged
+again. Its worktree is detached at the commit it judges (the pull request's head, else the tip of the change's branch
+on origin), made and read with no hook of the checkout; the worker reads the diff from the merge base with origin's
+default branch before any code of the change runs, finds the signs of score hacking in it
+(``evo_agents.hub.judge.hack_signs``; a diff longer than the worker reads is a sign too), and runs the hidden checks,
+then the verify commands, in the worktree as code it does not trust (``evo_agents.worker.untrusted``): each one on the
+standard input of ``/bin/sh -s``, in a session of its own, with an environment that holds neither the worker's home nor
+the run's id nor a credential, the worktree put back at the commit judged before it, and every process it left killed
 after it. It then starts the Judge's agent, unless a sign already fails the change, on the worktree put back again,
 the hub's prompt and what it ran (exit codes alone for the hidden checks). The agent's verdict is the JSON object that
 ends its last message (``judge.verdict_from_message``), which reaches the worker from the agent's own output: no file
@@ -105,7 +111,10 @@ A plan run (kind ``plan``, ``PlanRun``) does every step of a plan not done yet, 
 2. ``running``: the agent works in that directory, with EVO_RUN_ID, EVO_RUN_KIND and EVO_WORKER_HOME, and reports
    each step itself through ``evo-agents worker step`` (which runs the step's verify commands again, commits, pushes
    the repo's branch and sends the step report), asks its owner through ``evo-agents worker ask``, and notifies with
-   ``evo-agents worker notify``.
+   ``evo-agents worker notify``. A default branch the remote moved on gets the step's commits on top of its tip, and
+   the step's verify runs again there before the push (``gitops.Replay``); when they do not go on top, or that verify
+   fails, ``worker step`` pushes them to ``evo-run/<run>``, sends the owner the notice ``run_failed`` naming it, reports
+   nothing and leaves ``runs/<run>/push_conflict.json``, and the run fails with push_conflict once the turn ends.
 3. ``waiting``: a turn that ends with a decision of the run open moves the run to waiting; the daemon keeps it, with
    its slot and lease, and the time it waits does not count toward its timeout. The owner's answer comes through the
    inbox and goes to a new turn of the agent in the same session (``running`` again). A run the hub parks (no answer
@@ -114,8 +123,10 @@ A plan run (kind ``plan``, ``PlanRun``) does every step of a plan not done yet, 
 4. Once a turn ends with nothing to wait for, the daemon reports ``verifying`` and commits (leaving out what a run
    of one step leaves out) and pushes what each repo has left, never forced (a default branch only when the plan
    names it, with the notice ``push_default_branch``), and reports ``done`` with the agent's summary from
-   ``.evo-run/result.json``: no verify commands run at the end, since ``evo-agents worker step`` ran each step's. The
-   log and the diffs of every repo are uploaded as for a run of one step.
+   ``.evo-run/result.json``: no verify commands run at the end, since ``evo-agents worker step`` ran each step's. A
+   default branch the remote moved on gets the run's commits on top of its tip (``gitops.Replay``); when they do not go
+   on top, they go to ``evo-run/<run>``, the owner gets the notice ``run_failed`` naming it, and the run fails with
+   push_conflict. The log and the diffs of every repo are uploaded as for a run of one step.
 """
 
 from __future__ import annotations
@@ -138,7 +149,7 @@ import yaml
 from evo_agents.hub import author, curator, judge, runs, skill_sync, skills, tiers
 from evo_agents.hub.client import HubError
 from evo_agents.hub.credentials import normalize_origin
-from evo_agents.worker import credentials, figures, gitops, interactive, orphans, untrusted
+from evo_agents.worker import credentials, figures, gitops, interactive, orphans, preflight, untrusted
 from evo_agents.worker.adapter import AgentEvent, AgentFinished, Outcome, RunContext
 from evo_agents.worker.checkouts import default_branch_of
 from evo_agents.worker.credentials import RunCredentials
@@ -170,6 +181,7 @@ HARD_STOP_TRIES = 3  # tries of a report once the daemon is stopping now
 FLUSH_DEBOUNCE = 0.2  # seconds of events gathered into one batch
 TERMINAL_POLL = 1.0  # seconds between looks at the tmux session while a person drives the agent
 TERMINAL_LOG_GRACE = 5.0  # seconds the log of the terminal has, once its session is closed, to read the last records
+CAP_CAUSES = {"cost": "cost_cap", "turns": "turn_cap", "time": "time_cap"}  # the failure_cause of a cap that stopped it
 # What the agent is told when a person hands its session back.
 HANDBACK_PROMPT = (
     "The owner of this run drove this session in a terminal and has handed it back to you. Go on with the task of "
@@ -208,6 +220,9 @@ class Parked(Exception):
 
 
 class RunFailed(Exception):
+    """The run fails with ``error``; ``fields`` go with the report: ``verify``, ``usage``, ``cap`` (the cap of the
+    budget that stopped the agent) and ``cause`` (``runs.FAILURE_CAUSES``, the report's failure_cause)."""
+
     def __init__(self, error: str, **fields):
         super().__init__(error)
         self.error = error
@@ -228,6 +243,14 @@ def _now() -> datetime:
 
 def _cut(text: str, limit: int) -> str:
     return text if len(text) <= limit else text[: limit - 3] + "..."
+
+
+def _push_cause(exc: Exception) -> str | None:
+    """The failure_cause of a push git failed: credentials when the remote refused its credential, push_conflict when
+    it refused a push that is no fast-forward (the branch moved on), else none."""
+    if isinstance(exc, gitops.GitAuthError):
+        return "credentials"
+    return "push_conflict" if gitops.rejected(exc) else None
 
 
 def _json_size(value) -> int:
@@ -729,7 +752,8 @@ class Run:
             log.exception("the worker failed while running", extra={"run_id": self.id})
             await self._interrupt_agent()
             with contextlib.suppress(RunGone):
-                await self._end("failed", error=f"the worker on {self.daemon.config.name} failed while running")
+                error = f"the worker on {self.daemon.config.name} failed while running"
+                await self._end("failed", error=error, failure_cause="worker_stopped")
         finally:
             for task in list(self._background):
                 task.cancel()
@@ -764,8 +788,15 @@ class Run:
             await self._steps()
         except RunFailed as exc:
             cap = exc.fields.get("cap")
+            cause = exc.fields.get("cause") or CAP_CAUSES.get(cap)
             self.note(f"Run failed: {exc.error}", **({"cap": cap} if cap else {}))
-            await self._end("failed", error=exc.error, verify=exc.fields.get("verify"), usage=exc.fields.get("usage"))
+            await self._end(
+                "failed",
+                error=exc.error,
+                verify=exc.fields.get("verify"),
+                usage=exc.fields.get("usage"),
+                failure_cause=cause,
+            )
         except Stopped as exc:
             await self._stopped(exc.reason)
 
@@ -779,7 +810,7 @@ class Run:
         elif reason == "timeout":
             error = f"it ran past its timeout of {self.timeout_s // 60} minutes"
             self.note(f"Run failed: {error}.")
-            await self._end("failed", error=error, verify=self.verify or None)
+            await self._end("failed", error=error, verify=self.verify or None, failure_cause="timeout")
         elif reason == "watchdog":
             error = f"the watchdog of the Curator's runs stopped it: {self.watchdog_reason}"
             self.note(f"Run failed: {error}.", watchdog=self.watchdog_reason)
@@ -787,7 +818,7 @@ class Run:
         else:
             error = f"the worker {self.daemon.config.name} was stopped while the run was {self.state}"
             self.note(f"Run failed: {error}.")
-            await self._end("failed", error=error)
+            await self._end("failed", error=error, failure_cause="worker_stopped")
 
     async def _steps(self) -> None:
         spec = self.spec
@@ -798,11 +829,13 @@ class Run:
         )
         cls = self.daemon.adapters.get(self.runtime)
         if cls is None:
-            raise RunFailed(f"this worker has no adapter for {self.runtime}")
+            raise RunFailed(f"this worker has no adapter for {self.runtime}", cause="runtime")
         if self.mode == "interactive":
             why = self.interactive_unsupported(cls)
             if why is not None:
-                raise RunFailed(f"this worker cannot run {self.runtime} interactive ({why}): run it headless")
+                raise RunFailed(
+                    f"this worker cannot run {self.runtime} interactive ({why}): run it headless", cause="runtime"
+                )
         checkout = self.daemon.checkout_for(self.project, self.repo)
         if checkout is None:
             raise RunFailed(f"this worker has no checkout of {self.project}/{self.repo}")
@@ -811,6 +844,8 @@ class Run:
                 f"the plan names no branch for {self.repo}, and the worker never works on the default branch"
             )
         await self._take_credentials([self.repo])
+        self._check()
+        await self._preflight([self.repo], pushes=[self.repo], verify=self._claimed_verify())
         self._check()
         await self._prepare(checkout)
         self._check()
@@ -826,6 +861,7 @@ class Run:
                 f"work stays in {self.worktree}",
                 verify=self.verify,
                 usage=self.outcome.usage if self.outcome else None,
+                cause="missing_tool" if bad["exit_code"] == 127 else "verify_failed",
             )
         self._check()
         commit_sha, diffstat = await self._commit_and_push()
@@ -846,12 +882,7 @@ class Run:
         async with self.daemon.repo_lock(checkout):
             if not await gitops.has_remote(checkout):
                 raise RunFailed(f"the checkout at {checkout} has no remote named origin to fetch from and push to")
-            self.note(f"Fetching origin in {checkout}.")
-            try:
-                with self.credentials.ticketed(self.daemon.env) as env:
-                    await gitops.fetch(checkout, env=env)
-            except gitops.GitError as exc:
-                raise RunFailed(f"git fetch in {checkout} failed: {exc}") from None
+            await self._fetch(checkout)
             if not await gitops.check_branch_name(checkout, branch):
                 raise RunFailed(f"the plan's branch {branch!r} is not a valid branch name")
             remote_head = await gitops.remote_default_branch(checkout)
@@ -892,6 +923,17 @@ class Run:
         self.daemon.home.save_run(self.record)
         self.note(f"Worktree {path} on {local_branch} at {base[:12]} ({start}).", worktree=str(path))
 
+    async def _fetch(self, checkout: Path) -> None:
+        """Fetch origin in ``checkout`` with the run's credentials; RunFailed when git cannot, with the cause
+        credentials when the remote refused it for want of a credential, else checkout."""
+        self.note(f"Fetching origin in {checkout}.")
+        try:
+            with self.credentials.ticketed(self.daemon.env) as env:
+                await gitops.fetch(checkout, env=env)
+        except gitops.GitError as exc:
+            cause = "credentials" if isinstance(exc, gitops.GitAuthError) else "checkout"
+            raise RunFailed(f"git fetch in {checkout} failed: {exc}", cause=cause) from None
+
     async def _release_branch(self) -> None:
         """Leave the plan's branch once the run is over, so it can be checked out elsewhere."""
         if self.worktree is None or self.local_branch != self.branch or not self.worktree.exists():
@@ -910,6 +952,85 @@ class Run:
                 with contextlib.suppress(gitops.GitError, OSError):
                     origins[name] = await gitops.remote_urls(checkout)
         await self.credentials.take(self.daemon.hub, origins, stop=self.daemon.hard_stop)
+
+    # Preflight
+
+    def _claimed_verify(self) -> list[str]:
+        """The verify of a run of one step as its claim names it (``RunSpec.verify``); none from an older hub."""
+        return [item for item in self.spec.get("verify") or [] if isinstance(item, str) and item.strip()]
+
+    def run_path(self) -> str | None:
+        """The PATH the run's verify commands run with."""
+        return self.agent_env().get("PATH")
+
+    async def _preflight(
+        self,
+        repos,
+        *,
+        pushes: Collection[str] = (),
+        verify: Collection[str] = (),
+        hidden: list[str] | None = None,
+    ) -> None:
+        """Check, once the leases are taken and before anything is fetched or the agent starts, what the run needs
+        (``preflight``): each of ``repos`` has an origin in the project and one git reads with what the run holds, and
+        pushes to for those of ``pushes``; each program ``verify`` and ``hidden`` (a judge run's hidden checks) call is
+        on the run's PATH. RunFailed with every problem found, the cause of the first: the agent does not start."""
+        names = list(dict.fromkeys(repo for repo in repos if isinstance(repo, str) and repo))
+        problems: list[preflight.Problem] = []
+        unlisted = self.credentials.unlisted
+        for name in names:
+            if name in unlisted:
+                problems.append(
+                    preflight.Problem(
+                        "origin",
+                        f"project {self.project} lists no origin for {name}, so no credential is leased for it: add "
+                        "the repo with its origin to the harness and run `evo-agents hub project register` again",
+                    )
+                )
+        for name in names:
+            if name not in unlisted:
+                found = await self._reach(name, push=name in pushes)
+                if found is not None:
+                    problems.append(found)
+        path = self.run_path()
+        problems += preflight.verify_problems(verify, path)
+        problems += preflight.hidden_problems(hidden or [], path)
+        if problems:
+            for problem in problems:
+                self.note(f"Preflight: {problem.message}.", cause=problem.cause)
+            raise RunFailed(_cut(preflight.summary(problems), MAX_ERROR_CHARS), cause=problems[0].cause)
+        checked = [f"{len(names)} repo(s)"]
+        if verify or hidden:
+            checked.append(f"the programs of {len(verify) + len(hidden or [])} command(s)")
+        self.note(f"Preflight passed: {' and '.join(checked)}.")
+
+    async def _reach(self, name: str, *, push: bool) -> preflight.Problem | None:
+        """The problem git has reading the origin of ``name`` (and pushing to it, with ``push``) with what the run
+        holds, or None; a repo without a checkout or an origin here is left to the steps after, which say so."""
+        checkout = self.daemon.checkout_for(self.project, name)
+        urls = self.credentials.origins.get(name) or []
+        if checkout is None or not urls or all(preflight.is_local(url) for url in urls):
+            return None
+        covered = self.credentials.covers(name)
+        if push and self.curator is not None and not covered:
+            return preflight.Problem(
+                "credentials",
+                f"{name}: a run of the Curator pushes only with the credential the hub leased it, and no lease covers "
+                f"{urls[0]}: this machine's own credentials are not used",
+            )
+        with self.credentials.ticketed(self.daemon.env) as env:
+            refused = await preflight.can_reach(checkout, self.id, push=push, env=env)
+        if refused is None:
+            return None
+        what, said = refused
+        verb = "read" if what == "read" else "push to"
+        if covered:
+            why = "with the credential the hub leased the run"
+        else:
+            why = f"with this machine's own credentials (the hub leased none: {self.credentials.unleased.get(name)})"
+            if name not in self.credentials.unleased:
+                why = "with this machine's own credentials (no lease of the run covers it)"
+        return preflight.Problem("credentials", f"git cannot {verb} {name} at {urls[0]} {why}: {said}")
 
     # The agent
 
@@ -952,7 +1073,8 @@ class Run:
                 self.note(note)
         why = await asyncio.to_thread(cls.login_refusal, context)
         if why:
-            raise RunFailed(why + (f"; this machine has {API_KEY} alone, which it does not use" if has_key else ""))
+            alone = f"; this machine has {API_KEY} alone, which it does not use" if has_key else ""
+            raise RunFailed(why + alone, cause="runtime")
 
     async def _run_agent(self, cls) -> None:
         """Run the agent until its last turn is over (``_turns``), on the run's prompt."""
@@ -1450,7 +1572,9 @@ class Run:
         except gitops.PushRefused as exc:
             raise RunFailed(str(exc), verify=self.verify) from None
         except gitops.GitError as exc:
-            raise RunFailed(f"git push to {self.branch} on origin failed: {exc}", verify=self.verify) from None
+            raise RunFailed(
+                f"git push to {self.branch} on origin failed: {exc}", verify=self.verify, cause=_push_cause(exc)
+            ) from None
         if pushed.changed:
             self.note(
                 f"Pushed {commit_sha[:12]} to {self.branch} on origin ({diffstat['files']} file(s), "
@@ -1575,14 +1699,19 @@ class PlanRun(Run):
         )
         cls = self.daemon.adapters.get(self.runtime)
         if cls is None:
-            raise RunFailed(f"this worker has no adapter for {self.runtime}")
+            raise RunFailed(f"this worker has no adapter for {self.runtime}", cause="runtime")
         if self.mode == "interactive":
             why = self.interactive_unsupported(cls)
             if why is not None:
-                raise RunFailed(f"this worker cannot run {self.runtime} interactive ({why}): run it headless")
+                raise RunFailed(
+                    f"this worker cannot run {self.runtime} interactive ({why}): run it headless", cause="runtime"
+                )
         if not repos:
             raise RunFailed("the plan run names no repo to work in")
-        await self._take_credentials(entry.get("repo") for entry in repos)
+        names = [entry.get("repo") for entry in repos]
+        await self._take_credentials(names)
+        self._check()
+        await self._preflight(names, pushes=names, verify=runs.open_verify(self._plan_body()))
         self._check()
         await self._prepare_plan(repos)
         self._check()
@@ -1664,12 +1793,7 @@ class PlanRun(Run):
         async with self.daemon.repo_lock(checkout):
             if not await gitops.has_remote(checkout):
                 raise RunFailed(f"the checkout at {checkout} has no remote named origin to fetch from and push to")
-            self.note(f"Fetching origin in {checkout}.")
-            try:
-                with self.credentials.ticketed(self.daemon.env) as env:
-                    await gitops.fetch(checkout, env=env)
-            except gitops.GitError as exc:
-                raise RunFailed(f"git fetch in {checkout} failed: {exc}") from None
+            await self._fetch(checkout)
             if not await gitops.check_branch_name(checkout, branch):
                 raise RunFailed(f"the plan's branch {branch!r} for {name} is not a valid branch name")
             remote_head = await gitops.remote_default_branch(checkout)
@@ -1746,6 +1870,12 @@ class PlanRun(Run):
             lines = "".join(json.dumps({"id": decision_id}) + "\n" for decision_id in still_open)
             with open(home.decisions_path(self.id), "a", encoding="utf-8") as handle:
                 handle.write(lines)
+        with contextlib.suppress(OSError):  # what the parked run pushed to a default branch is never put back either
+            pushes = home.pushes_path(old_id).read_text(encoding="utf-8")
+            if pushes.strip():
+                home.pushes_path(self.id).parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+                with open(home.pushes_path(self.id), "a", encoding="utf-8") as handle:
+                    handle.write(pushes if pushes.endswith("\n") else pushes + "\n")
         record.update({"resumed_by": self.id, "dir": None, "repos": [], "moved_to": str(directory)})
         home.save_run(record)
         names = ", ".join(self.workspaces) or "no repo"
@@ -1805,6 +1935,9 @@ class PlanRun(Run):
             self.record["session_id"] = self.session_id
             if self.park_asked.is_set():
                 raise Parked()
+            conflict = self.daemon.home.load_conflict(self.id)
+            if conflict is not None:  # `evo-agents worker step` pushed a repo's commits to the side branch
+                raise RunFailed(conflict["error"], cause="push_conflict", usage=self.outcome.usage)
             if not self.outcome.completed:
                 raise RunFailed(
                     self.outcome.error or f"{self.runtime} ended before its turn completed",
@@ -1978,7 +2111,9 @@ class PlanRun(Run):
                     "covers its origin: this machine's own credentials are not used"
                 )
 
-            async def push(path=path, workspace=workspace, name=name, options=options) -> gitops.Pushed:
+            replay = self._replay(name, workspace)
+
+            async def push(path=path, workspace=workspace, name=name, options=options, replay=replay) -> gitops.Pushed:
                 with self.credentials.ticketed(self.daemon.env) as env:
                     return await gitops.push(
                         path,
@@ -1988,6 +2123,7 @@ class PlanRun(Run):
                         plan_branch=named.get(name),
                         env=env,
                         options=options,
+                        replay=replay,
                     )
 
             try:
@@ -1995,11 +2131,32 @@ class PlanRun(Run):
                     pushed = await self.credentials.with_renewal(name, push)
             except gitops.PushRefused as exc:
                 raise RunFailed(f"{name}: {exc}") from None
+            except gitops.PushConflict as exc:
+                self.note(
+                    f"The commits of {name} did not go on top of {exc.branch} on origin: {exc.side_branch} on origin "
+                    f"has them, at {exc.head[:12]}.",
+                    repo=name,
+                    side_branch=exc.side_branch,
+                    head=exc.head,
+                )
+                await self._send_notice(gitops.conflict_notice(self.id, name, exc), f"{exc.side_branch} of {name}")
+                raise RunFailed(f"{name}: {exc}", cause="push_conflict") from None
             except gitops.GitError as exc:
-                raise RunFailed(f"git push of {name} to {workspace.branch} on origin failed: {exc}") from None
+                raise RunFailed(
+                    f"git push of {name} to {workspace.branch} on origin failed: {exc}", cause=_push_cause(exc)
+                ) from None
             stat = await gitops.diffstat(path, workspace.base)
             for key in total:
                 total[key] += stat[key]
+            if pushed.onto is not None:
+                was = (pushed.replayed_from or "?")[:12]
+                self.note(
+                    f"{workspace.branch} of {name} on origin had moved on to {pushed.onto[:12]}: the run's commits "
+                    f"were put on top of it, {was} became {pushed.head[:12]}, never forced.",
+                    repo=name,
+                    onto=pushed.onto,
+                    replayed_from=pushed.replayed_from,
+                )
             if pushed.changed:
                 self.note(
                     f"Pushed {pushed.head[:12]} of {name} to {workspace.branch} on origin ({len(pushed.commits)} "
@@ -2012,6 +2169,16 @@ class PlanRun(Run):
             else:
                 self.note(f"{workspace.branch} of {name} on origin has {pushed.head[:12]} already: nothing to push.")
         return total
+
+    def _replay(self, name: str, workspace: gitops.Workspace) -> gitops.Replay:
+        """How the push at the run's end puts the commits of ``name`` on top of a default branch the remote moved on:
+        no verify runs again, since `evo-agents worker step` ran each done step's and pushed its commits, which the
+        remote's branch has, and a commit it pushed that the remote dropped is not put back."""
+        return gitops.Replay(
+            scratch=self.directory / runs.RESULT_DIR / f"replay-{workspace.worktree.name}",
+            side_branch=gitops.SIDE_BRANCH.format(id=self.id),
+            pushed=self.daemon.home.pushed(self.id, name, workspace.branch),
+        )
 
     async def _push_for_agent(self, name: str, title: str | None) -> dict:
         """Push the run's branch of repo ``name`` for the Builder's agent, which reported a step done and holds no
@@ -2083,19 +2250,22 @@ class PlanRun(Run):
 
     async def _notice(self, name: str, pushed: gitops.Pushed) -> None:
         """Tell the run's owner of a push to a default branch; a notice the hub does not take is logged."""
-        body = gitops.push_notice(self.id, name, pushed)
+        await self._send_notice(gitops.push_notice(self.id, name, pushed), f"the push to {pushed.branch} of {name}")
+
+    async def _send_notice(self, body: dict, what: str) -> None:
+        """Send the run's owner the notice ``body``, about ``what``; one the hub does not take is logged."""
         backoff = Backoff()
         for _ in range(HARD_STOP_TRIES + 1):
             try:
                 await self.daemon.hub.notice(self.id, body)
-                self.note(f"Notified the owner of the push to {pushed.branch} of {name}.")
+                self.note(f"Notified the owner of {what}.")
                 return
             except Unreachable:
                 await _wait_or(self.daemon.hard_stop, backoff.next())
             except HubProblem as exc:
                 log.warning("notice not sent", extra={"run_id": self.id, "error": str(exc)})
                 break
-        self.note(f"The notice of the push to {pushed.branch} of {name} was not sent.")
+        self.note(f"The notice of {what} was not sent.")
 
     async def _diff(self) -> bytes:
         """The diffs of every repo of the run, each under its folder (a/<repo>/...)."""
@@ -2134,14 +2304,19 @@ class ReviewRun(PlanRun):
         )
         cls = self.daemon.adapters.get(self.runtime)
         if cls is None:
-            raise RunFailed(f"this worker has no adapter for {self.runtime}")
+            raise RunFailed(f"this worker has no adapter for {self.runtime}", cause="runtime")
         if self.mode == "interactive":
             why = self.interactive_unsupported(cls)
             if why is not None:
-                raise RunFailed(f"this worker cannot run {self.runtime} interactive ({why}): run it headless")
+                raise RunFailed(
+                    f"this worker cannot run {self.runtime} interactive ({why}): run it headless", cause="runtime"
+                )
         if not repos:
             raise RunFailed("the review run names no repo to read")
-        await self._take_credentials(entry.get("repo") for entry in repos)
+        names = [entry.get("repo") for entry in repos]
+        await self._take_credentials(names)
+        self._check()
+        await self._preflight(names)
         self._check()
         await self._prepare_review(repos)
         self._check()
@@ -2181,12 +2356,7 @@ class ReviewRun(PlanRun):
         async with self.daemon.repo_lock(checkout):
             if not await gitops.has_remote(checkout):
                 raise RunFailed(f"the checkout at {checkout} has no remote named origin to fetch from")
-            self.note(f"Fetching origin in {checkout}.")
-            try:
-                with self.credentials.ticketed(self.daemon.env) as env:
-                    await gitops.fetch(checkout, env=env)
-            except gitops.GitError as exc:
-                raise RunFailed(f"git fetch in {checkout} failed: {exc}") from None
+            await self._fetch(checkout)
             remote_head = await gitops.remote_default_branch(checkout)
             hub_default = default_branch_of(self.daemon.config, self.project, name)
             refs = [f"refs/remotes/origin/{branch}" for branch in (remote_head, hub_default) if branch]
@@ -2277,11 +2447,22 @@ class JudgeRun(ReviewRun):
         )
         cls = self.daemon.adapters.get(self.runtime)
         if cls is None:
-            raise RunFailed(f"this worker has no adapter for {self.runtime}")
+            raise RunFailed(f"this worker has no adapter for {self.runtime}", cause="runtime")
         if len(repos) != 1 or not repos[0].get("repo"):
             raise RunFailed("a judge run judges a change of one repo")
         name = repos[0]["repo"]
         await self._take_credentials([name])
+        self._check()
+        inputs = await self._inputs()
+        hidden = [item for item in inputs.get("hidden_checks") or [] if isinstance(item, str)]
+        verify_commands = [item for item in inputs.get("verify") or [] if isinstance(item, str)]
+        protected = [item for item in inputs.get("protected_paths") or [] if isinstance(item, str)]
+        try:  # a program missing fails the run, not the change: it is judged again elsewhere (JUDGE_ATTEMPTS)
+            await self._preflight([name], verify=verify_commands, hidden=hidden)
+        except RunFailed:
+            hidden.clear()
+            inputs.clear()
+            raise
         self._check()
         await self._prepare_judge(name, change)
         self._check()
@@ -2291,10 +2472,6 @@ class JudgeRun(ReviewRun):
             workspace.worktree, self.merge_base, self.head, env=gitops.without_hooks(self.daemon.env)
         )
         files = judge.parse_diff(diff)
-        inputs = await self._inputs()
-        hidden = [item for item in inputs.get("hidden_checks") or [] if isinstance(item, str)]
-        verify_commands = [item for item in inputs.get("verify") or [] if isinstance(item, str)]
-        protected = [item for item in inputs.get("protected_paths") or [] if isinstance(item, str)]
         signs = judge.hack_signs(files, repo=name, protected=protected, verify_commands=verify_commands)
         if cut:  # first, so the cap on signs never drops it
             cut_sign = {
@@ -2342,6 +2519,11 @@ class JudgeRun(ReviewRun):
         usage = self.outcome.usage if self.outcome else None
         await self._end("done", summary=_cut(self.summary, MAX_SUMMARY_CHARS), usage=usage)
 
+    def run_path(self) -> str | None:
+        """The PATH the change's verify commands and hidden checks run with: the one of the environment they get
+        (``untrusted.scrubbed_env``)."""
+        return untrusted.scrubbed_env(self.daemon.env).get("PATH")
+
     async def _inputs(self) -> dict:
         """What the hub gives the Judge to read, asked with the run's own key; held in memory alone."""
         try:
@@ -2366,12 +2548,7 @@ class JudgeRun(ReviewRun):
         async with self.daemon.repo_lock(checkout):
             if not await gitops.has_remote(checkout):
                 raise RunFailed(f"the checkout at {checkout} has no remote named origin to fetch from")
-            self.note(f"Fetching origin in {checkout}.")
-            try:
-                with self.credentials.ticketed(self.daemon.env) as env:
-                    await gitops.fetch(checkout, env=env)
-            except gitops.GitError as exc:
-                raise RunFailed(f"git fetch in {checkout} failed: {exc}") from None
+            await self._fetch(checkout)
             wanted = change.get("head_sha")
             branch = change.get("branch")
             head = await gitops.rev(checkout, wanted) if judge.is_sha(wanted) else None
@@ -2573,7 +2750,7 @@ class AuthorRun(ReviewRun):
             raise RunFailed(f"an author run runs on {', '.join(author.AUTHOR_RUNTIMES)} only, not {self.runtime}")
         cls = self.daemon.adapters.get(self.runtime)
         if cls is None:
-            raise RunFailed(f"this worker has no adapter for {self.runtime}")
+            raise RunFailed(f"this worker has no adapter for {self.runtime}", cause="runtime")
         if self.mode == "interactive":
             raise RunFailed("an author run runs headless only")
         if not repos:
@@ -2582,7 +2759,10 @@ class AuthorRun(ReviewRun):
             self._adopt(self.resume_of)
         bundles = await self._fetch_skills() if self.directory is None else []
         held = self._held_repos(repos)
-        await self._take_credentials(entry.get("repo") for entry in held)
+        names = [entry.get("repo") for entry in held]
+        await self._take_credentials(names)
+        self._check()
+        await self._preflight(names)
         self._check()
         if self.directory is None:
             await self._prepare_review(held)

@@ -25,6 +25,7 @@ from evo_agents.hub import runs, tables
 from evo_agents.hub.server import runs as run_routes
 from evo_agents.hub.server.app import create_app
 from tests.hub.live import sql
+from tests.hub.test_plans import origin_of, registration
 from tests.hub.test_runs import (
     OWNER,
     PASSED,
@@ -44,6 +45,7 @@ from tests.hub.test_runs import (
     recover,
     report,
     state_of,
+    steady,
     today,
 )
 
@@ -280,6 +282,27 @@ def test_a_plan_without_a_pending_step_or_with_a_step_without_a_repo_gets_409(cl
     assert dispatched_plan(client, hub["owner"], plan_id="single")["repos"] == [
         {"repo": "evo-agents", "branch": "feat/one"}
     ]
+
+
+def test_a_plan_run_needing_a_repo_without_origin_gets_409_naming_it(client, hub, hub_db):
+    body = registration()
+    body["repos"] = [{**repo, "origin": None} if repo["name"] == "agent-skills" else repo for repo in body["repos"]]
+    assert client.put(f"/v1/projects/{PROJECT}", json=body, headers=hub["admin"]).status_code == 200
+    refused = plan_run(client, hub["owner"])
+    assert refused.status_code == 409, refused.text
+    assert refused.json()["message"] == (
+        f"plan {PLAN} needs agent-skills, for which project {PROJECT} lists no origin: add the repo with its origin to "
+        "the harness and run `evo-agents hub project register` again; nothing was dispatched"
+    )
+    assert count_runs(hub_db) == [(0,)]
+    # the repos of the steps done count for nothing: evo-cli, of step 5 alone, may lack its origin
+    body["repos"] = [{**repo, "origin": None} if repo["name"] == "evo-cli" else repo for repo in body["repos"]]
+    body["repos"] = [
+        {**repo, "origin": origin_of(repo["name"])} if repo["name"] == "agent-skills" else repo
+        for repo in body["repos"]
+    ]
+    assert client.put(f"/v1/projects/{PROJECT}", json=body, headers=hub["admin"]).status_code == 200
+    assert [entry["repo"] for entry in dispatched_plan(client, hub["owner"])["repos"]] == ["evo-agents", "agent-skills"]
 
 
 def test_two_plan_runs_dispatched_at_once_give_one_run(client, hub, hub_db):
@@ -662,6 +685,8 @@ def test_a_lost_plan_run_is_tried_again_as_a_plan_run_and_the_last_attempt_gives
     }
     assert fleet_step(client, hub["owner"], 2)["status"] == "in_progress"  # the plan run goes on
     assert ready(client, hub["reader"])["plan_run"]["id"] == second
+    assert claim(client, worker) is None, "the worker that lost it takes it once steady"
+    steady(hub_db, worker)
     spec = claim(client, worker)
     assert (spec["id"], spec["kind"], spec["attempt"]) == (second, "plan", 2)
     expire(hub_db, second)

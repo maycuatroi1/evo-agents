@@ -36,7 +36,10 @@ move clears it) and one to ``parked`` sets ``parked_at``. A run that ends cancel
 caller deals with them (``decisions=None``): the reaper lets those of a run parked too long expire, and an answer to a
 parked run hands them to the run that resumes it. A plan run that ends ``failed`` sends its owner the notice
 ``run_failed``, and one that ends ``done`` with every step of its plan done the notice ``plan_finished``
-(``notifications.notify``); one that ends ``done`` because a new run resumes it sends nothing.
+(``notifications.notify``); one that ends ``done`` because a new run resumes it sends nothing. A run of one step or an
+author run sends ``run_failed`` when its worker failed it with a cause of ``runs.PREFLIGHT_CAUSES`` (a repo the project
+lists no origin for, a credential or a program missing: ``notify_preflight_failure``), and the move keeps the cause
+the worker reported as the run's failure_cause.
 
 ``release_runs`` is what happens to the runs of a revoked worker, and ``recover_runs`` (the job hub.recover_runs,
 every minute) to the held runs that ran past their timeout (their agent time, ``run_seconds`` and the time since it was
@@ -106,6 +109,7 @@ MOVE_COLUMNS = frozenset(
         "verify",
         "evidence",
         "usage",
+        "failure_cause",
     }
 )
 
@@ -272,6 +276,7 @@ class RunStep:
     kind: str = "step"
     repos: list | None = None  # a plan run's repos, each {"repo", "branch"}
     project_id: int | None = None
+    failure_cause: str | None = None  # why it failed, as its worker reported it
 
 
 def _run_step(run_id: int):
@@ -298,6 +303,7 @@ def _run_step(run_id: int):
             r.c.kind,
             r.c.repos,
             r.c.project_id,
+            r.c.failure_cause,
         )
         .select_from(
             r.join(p, p.c.id == r.c.project_id)
@@ -499,6 +505,7 @@ async def record_move(
         await changes.judge_ended(conn, found, old, new, reason=reason)
         return None
     if found.kind == "author":  # it writes no step: the plan it authors reaches the hub through the run's own command
+        await notify_preflight_failure(conn, found, new)
         return None
     if found.kind == "plan":
         revision = await release_plan_steps(conn, found, new, reason=reason, token_id=token_id)
@@ -507,10 +514,43 @@ async def record_move(
 
         await changes.builder_ended(conn, found, old, new, reason=reason)
         return revision
+    await notify_preflight_failure(conn, found, new)
     updates_for = step_updates(found, old, new, reason)
     if updates_for is None:
         return None
     return await write_step(conn, found, updates_for, token_id=token_id)
+
+
+async def notify_preflight_failure(conn: AsyncConnection, found: RunStep, new: str) -> int | None:
+    """Send the owner of run ``found``, a run of one step or an author run, the notice ``run_failed`` when it failed
+    with a cause of runs.PREFLIGHT_CAUSES (a repo without origin, a credential or a program missing), which only the
+    owner can mend; a plan, review or judge run sends it for every failure elsewhere. The notification's id, or None."""
+    if new != "failed" or found.failure_cause not in runs.PREFLIGHT_CAUSES:
+        return None
+    from evo_agents.hub.server import notifications  # it reads runs through the routes that import this module
+
+    error = found.error or found.failure_cause
+    what = f"Run #{found.run_id} of step {found.step_key} of {found.plan_id}"
+    if found.kind == "author":
+        what = f"Author run #{found.run_id}"
+    return await notifications.notify(
+        conn,
+        user_id=found.dispatcher_id,
+        kind="notice",
+        notice_kind="run_failed",
+        project_id=found.project_id,
+        run_id=found.run_id,
+        title=f"{what} failed ({found.failure_cause})",
+        body=error,
+        details={
+            "run_kind": found.kind,
+            "plan_id": found.plan_id,
+            "step_key": found.step_key,
+            "failure_cause": found.failure_cause,
+            "error": error,
+        },
+        link=notifications.run_link(found.project, found.run_id),
+    )
 
 
 async def release_plan_steps(
@@ -683,7 +723,8 @@ async def end_held(
 ) -> str:
     """End a held run whose worker will not extend its lease again, as the reaper, in the caller's transaction:
     cancelled when its cancel was asked for, failed when it is pinned to that worker (``pinned_here``) or on its last
-    attempt, and otherwise lost with the next attempt queued. Returns the state it ended in."""
+    attempt, and otherwise lost with the next attempt queued, which the worker that lost the run claims only once it
+    is steady (``evo_agents.hub.server.runs._steady``). Returns the state it ended in."""
     if cancel:
         await move_run(conn, run_id, state, "cancelled", "reaper", reason=reason)
         return "cancelled"

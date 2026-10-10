@@ -523,9 +523,14 @@ def registration(sinks=None) -> dict:
             {"id": "claude-code@anthropic", "kind": "agent-session", "clearance": {"level": "internal"}},
             {"id": "hub", "kind": "hub", "clearance": {"level": "internal"}},
         ],
-        "repos": [{"name": name, "path": name} for name in REPOS],
+        "repos": [{"name": name, "path": name, "origin": origin_of(name)} for name in REPOS],
         "harness": {"name": PROJECT, "workspace": "~/ws", "path": "evo-agents-harness"},
     }
+
+
+def origin_of(name: str) -> str:
+    """The origin registration() lists for repo ``name``: a run is dispatched only on a repo with one."""
+    return f"https://git.example.org/evo/{name}.git"
 
 
 GRANTS = {"alice": ("writer", "internal"), "bob": ("writer", "internal"), "reader": ("reader", "internal")}

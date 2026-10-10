@@ -292,6 +292,75 @@ def test_answers_and_reads_that_say_nothing_are_usage_errors(monkeypatch, capsys
     assert result.err.startswith("error: ") and problem in result.err
 
 
+def queued_attempt(**fields) -> dict:
+    """A run as GET .../runs/{id} answers it: the second attempt of step 2, queued, after run 12 was lost."""
+    run = {key: None for key in run_cli.RUN_KEYS}
+    run.update(
+        id=13,
+        kind="step",
+        project="demo",
+        plan_id="rollout",
+        step_key="2",
+        title="Queue",
+        plan_revision=4,
+        dispatched_by="owner",
+        requested_runtime="any",
+        runtime="any",
+        mode="headless",
+        approval="auto",
+        timeout_min=60,
+        run_seconds=0,
+        attempt=2,
+        max_attempts=3,
+        parent_run_id=12,
+        state="queued",
+        repo="evo-agents",
+        branch="feat/queue",
+        last_seq=0,
+        queued_at=AT,
+        steady_wait={"worker_id": 3, "worker": "mac-mini", "steady_at": "2026-10-05T09:14:03.120000+07:00"},
+    )
+    run.update(fields)
+    return run
+
+
+def show_offline(monkeypatch, capsys, tmp_path, run: dict) -> list[str]:
+    """``hub run show`` of ``run``, the hub's answer given rather than asked for: its output lines."""
+
+    class Answering:
+        def call(self, method, path, body=None):
+            assert (method, path) == ("GET", f"/v1/projects/demo/runs/{run['id']}")
+            return run
+
+    monkeypatch.setattr(run_cli, "_signed_in", lambda: (Answering(), None))
+    home = tmp_path / "home"
+    if not home.exists():
+        write_credentials(home, HUB_URL, "owner", "evh_unused")
+    shown = cli(monkeypatch, capsys, home, "hub", "run", "show", str(run["id"]), "--project", "demo")
+    return ok(shown).out.splitlines()
+
+
+def test_show_names_the_worker_the_next_attempt_of_a_lost_run_waits_for_until_it_is_stable(
+    monkeypatch, capsys, tmp_path
+):
+    lines = show_offline(monkeypatch, capsys, tmp_path, queued_attempt())
+    at = next(index for index, line in enumerate(lines) if line.strip().startswith("waits for"))
+    said = [line.strip() for line in lines[at : at + 3]]
+    assert said[0].split(None, 2)[-1] == "worker mac-mini (#3), which lost run #12, to be steady"
+    rule = "it takes this attempt only once its heartbeats have come for 120 s, none more than 30 s late"
+    assert said[1:] == [f"{rule}: from 02:14:03 UTC if they go on", "any other worker that may take it takes it now"]
+    assert any(line.split() == ["retries", "run", "#12"] for line in lines)
+
+    silent = queued_attempt(pinned_worker_id=3, steady_wait={"worker_id": 3, "worker": "mac-mini", "steady_at": None})
+    lines = show_offline(monkeypatch, capsys, tmp_path, silent)
+    at = next(index for index, line in enumerate(lines) if line.strip().startswith("waits for"))
+    assert lines[at + 1].strip().endswith("30 s late: it sends none now")
+    assert lines[at + 2].strip() == "the run is pinned to that worker, so no other takes it"
+
+    for run in (queued_attempt(steady_wait=None), queued_attempt(state="leased")):
+        assert not any("waits for" in line for line in show_offline(monkeypatch, capsys, tmp_path, run))
+
+
 # Against a hub
 
 if pg.DSN:
@@ -335,6 +404,22 @@ def hub(hub_db, tmp_path, github):
 
 def runs_of(hub, monkeypatch, capsys, who: str, *args: str) -> SimpleNamespace:
     return cli(monkeypatch, capsys, hub.homes[who], "hub", "run", *args, "--project", PROJECT)
+
+
+@needs_pg
+def test_show_and_list_print_the_cause_the_worker_reported_with_a_failure(hub, monkeypatch, capsys):
+    worker = add_worker(hub.client, hub.headers["owner"], "mac-mini")
+    (run,) = dispatched(hub.client, hub.headers["owner"], [2], worker_id=worker["id"])
+    assert claim(hub.client, worker)["id"] == run["id"]
+    error = "verify command `pnpm test` calls pnpm, which is not on this worker's PATH"
+    moved(hub.client, worker, run["id"], "failed", error=error, failure_cause="missing_tool")
+    shown = as_json(runs_of(hub, monkeypatch, capsys, "reader", "show", str(run["id"]), "--json"))
+    assert_json_keys("hub run show", shown)
+    assert (shown["state"], shown["failure_cause"], shown["error"]) == ("failed", "missing_tool", error)
+    listed = as_json(runs_of(hub, monkeypatch, capsys, "reader", "list", "--json"))
+    assert [(item["id"], item["failure_cause"]) for item in listed["runs"]] == [(run["id"], "missing_tool")]
+    lines = ok(runs_of(hub, monkeypatch, capsys, "reader", "show", str(run["id"]))).out.splitlines()
+    assert any(line.split() == ["cause", "missing_tool"] for line in lines), lines
 
 
 @needs_pg

@@ -14,14 +14,15 @@ The figures are counted without any model, over the REVIEW_DAYS (the charter's `
 are counted, from what the hub holds and the schedule's owner may read: per tool, the calls and failures of the runs
 that ended (run_tool_stats) and of the session digests pushed; per Bash program, those of the digests; the failures
 that come from the environment, from the digests' failed results, the failed tool calls of the runs and the errors of
-the runs, by cause (``review.environment_cause``); the runs that failed or were lost, by cause
-(``review.failure_cause``); the commands run again and again across sessions; the turns of the person that correct the
-agent; the open items of the plans (tech_debt, debt, open_questions); the steps of active plans that have not moved
-for STUCK_DAYS; the runs, sessions and decisions of the span. Each entry names evidence a finding can cite as it is
-(``session:ID:FIELD:INDEX``, ``run:ID:SEQ``). Learned skills waiting for review and the open items of reports live in
-files, not on the hub: the worker counts them in the review run's worktrees (``evo_agents.worker.run.ReviewRun``). A
-digest, a plan, and the runs of a plan, that the schedule's owner may not read through the project's hub sink are left
-out. The review run counts as one of the night's runs, and its cost as part of the night's.
+the runs, by cause (``review.environment_cause``); the runs that failed or were lost, by cause: the one the worker
+reported (runs.failure_cause), else the one read in the error (``review.run_cause``); the commands run again and again
+across sessions; the turns of the person that correct the agent; the open items of the plans (tech_debt, debt,
+open_questions); the steps of active plans that have not moved for STUCK_DAYS; the runs, sessions and decisions of the
+span. Each entry names evidence a finding can cite as it is (``session:ID:FIELD:INDEX``, ``run:ID:SEQ``). Learned
+skills waiting for review and the open items of reports live in files, not on the hub: the worker counts them in the
+review run's worktrees (``evo_agents.worker.run.ReviewRun``). A digest, a plan, and the runs of a plan, that the
+schedule's owner may not read through the project's hub sink are left out. The review run counts as one of the night's
+runs, and its cost as part of the night's.
 
 The review run is a run of kind review, dispatched as the owner of the schedule (dispatched_via schedule), pinned to the
 worker on duty, which must say it runs review runs, over the repos of the project the worker has a checkout of, with the
@@ -259,13 +260,14 @@ async def _run_figures(conn: AsyncConnection, ended: tuple, environment: dict[st
         for row in tool_rows
     ]
     usage_cost = curator.run_cost
-    rows = (await conn.execute(select(r.c.id, r.c.state, r.c.kind, r.c.error, r.c.usage).where(*ended))).all()
+    columns = (r.c.id, r.c.state, r.c.kind, r.c.error, r.c.failure_cause, r.c.usage)
+    rows = (await conn.execute(select(*columns).where(*ended))).all()
     states, cost = Counter(row.state for row in rows), sum(usage_cost(row.usage) for row in rows)
     failed: dict[str, dict] = {}
     for row in rows:
         if row.state not in ("failed", "lost"):
             continue
-        cause = review.failure_cause(row.error, row.state)
+        cause = review.run_cause(row.failure_cause, row.error, row.state)
         entry = failed.setdefault(cause, {"cause": cause, "failed": 0, "lost": 0, "runs": [], "sample": None})
         entry[row.state] += 1
         if len(entry["runs"]) < SAMPLES * 2:
