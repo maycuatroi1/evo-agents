@@ -491,7 +491,7 @@ project through the MCP tools above, its run's project alone, and writes through
 
 ```sh
 evo-agents worker finding --lens environment --title "sleep then tail is blocked" --evidence session:ID:errors:0 \
-  --evidence run:41:7 --evidence code:evo-agents:evo_agents/worker/run.py:120 --severity high
+  --evidence run:41:7 --evidence code:evo-agents:evo_agents/worker/runner/agent.py:120 --severity high
 evo-agents worker propose --lens environment --kind fix --title "A wait helper" --path evo-agents:evo_agents/worker/wait.py \
   --finding 12 --plan-file draft.yaml --summary-file why.md
 ```

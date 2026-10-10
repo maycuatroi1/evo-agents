@@ -1,9 +1,10 @@
 # The structure of the code
 
 Machines keep the structure of `evo_agents`: import-linter checks the boundaries between its packages, and
-`tests/test_structure.py` checks size and complexity budgets. CI runs both in the Linux `test` job of tests/worker,
-once per Python. A failure says what is over, by how much, and how to fix it. What broke a rule when the rules came in
-(2026-10-10) is frozen as an exception, and exceptions only shrink.
+`tests/test_structure.py` checks size and complexity budgets. CI runs both once per Python, in the Linux job that
+runs tests/worker (`test (ubuntu-latest, <python>, worker)`), and `ci-ok` fails with it. A failure says what is over,
+by how much, and how to fix it. What broke a rule when the rules came in (2026-10-10) is frozen as an exception, and
+exceptions only shrink.
 
 ## Commands
 
@@ -43,11 +44,15 @@ you remove the import an entry names, remove the entry too (import-linter fails 
 
 ## Budgets
 
-| Budget | Limit | Measured by | Frozen in `tests/structure_baseline.json` |
+| Budget | Limit | Measured by | Frozen in `tests/structure_baseline.json`, 2026-10-11 |
 | --- | --- | --- | --- |
-| module | 1,000 lines | lines of the file | 10 modules |
-| function | 50 statements, complexity 15 | ruff PLR0915 and C901, `# noqa` ignored | 40 functions |
-| private names | none imported from another module | `from module import _name` | 101 imports |
+| module | 1,000 lines | lines of the file | 8 modules |
+| function | 50 statements, complexity 15 | ruff PLR0915 and C901, `# noqa` ignored | 36 functions |
+| private names | none imported from another module | `from module import _name` | 74 imports |
+
+When the rules came in, the baseline held 10 modules, 40 functions and 101 imports. Splitting `worker/run.py` into
+`worker/runner/` and `hub/server/runs.py` into the package `hub/server/runs/` removed two modules, four functions and
+the 27 imports of private names from the run API. `python -m tests.structure report` prints what is left today.
 
 Only `evo_agents` is measured, not the tests. A frozen module or function may not grow past its number. Once it
 shrinks, the test asks you to lower the number, and once it fits the budget, to drop the entry: `tighten` does both.

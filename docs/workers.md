@@ -20,9 +20,12 @@ runs, records each move in the plan, and holds the reaper and the pruning of eve
 the log and diff the worker uploads; `evo_agents/hub/server/terminal.py` relays the web terminal, whose frames and
 close codes `evo_agents/hub/terminal.py` holds for the api and the daemon alike. `evo_agents/worker` is the daemon,
 `evo-agents worker` (see [The daemon](#the-daemon)), with an adapter for each of the three runtimes in
-`evo_agents/worker/runtimes` and its end of the web terminal. The daemon has its own command group because `evo-agents
-hub worker` is already the server's job worker (see `docs/hub.md`). `docs/notifications.md` describes how decisions
-and notices reach a member.
+`evo_agents/worker/runtimes` and its end of the web terminal. `evo_agents/worker/runner` holds a run on the machine:
+each kind of run (step, plan, review, judge, author) in a module of its own, which composes the parts the kinds share
+rather than inheriting them, and the decisions that need no I/O as pure functions in `runner/transitions.py`;
+`evo_agents/worker/run.py` keeps the names the daemon imports. The daemon has its own command group because
+`evo-agents hub worker` is already the server's job worker (see `docs/hub.md`). `docs/notifications.md` describes
+how decisions and notices reach a member.
 
 ## Entities
 
