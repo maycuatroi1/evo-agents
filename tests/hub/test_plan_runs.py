@@ -22,8 +22,8 @@ from fastapi.testclient import TestClient
 from sqlalchemy import Boolean, column, func, select, table
 
 from evo_agents.hub import runs, tables
-from evo_agents.hub.server import runs as run_routes
 from evo_agents.hub.server.app import create_app
+from evo_agents.hub.server.runs.service import views as run_views
 from tests.hub.live import sql
 from tests.hub.test_plans import origin_of, registration
 from tests.hub.test_runs import (
@@ -180,7 +180,7 @@ def race(client, db, *calls) -> list:
     """Run ``calls`` at once while the plan's dispatch lock is held, release it once each waits for it, and return
     their answers in order: whichever gets the lock first, the others see its run."""
     project_id = sql(db, select(tables.projects.c.id).where(tables.projects.c.name == PROJECT))[0][0]
-    key = run_routes.plan_lock_key(project_id, PLAN)
+    key = run_views.plan_lock_key(project_id, PLAN)
     answers = [None] * len(calls)
 
     def call(index):

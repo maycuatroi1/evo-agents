@@ -46,6 +46,7 @@ from evo_agents.hub.access import has_role
 from evo_agents.hub.plan_diff import DEFAULT_CONTEXT, MAX_CONTEXT, plan_diff
 from evo_agents.hub.plans import (
     AREAS,
+    PLAN_ID,
     SECTIONS,
     UPDATABLE,
     PlanProblem,
@@ -66,7 +67,6 @@ from evo_agents.schema import errors, validate
 
 log = logging.getLogger(__name__)
 
-PLAN_ID = r"^[a-z0-9][a-z0-9-]{0,99}$"  # plan.schema.json's id, at most 100 characters
 PlanId = Annotated[str, Path(pattern=PLAN_ID)]
 SINK_HEADER = "X-Evo-Sink"
 REVISION_CONFLICT = "revision_conflict"

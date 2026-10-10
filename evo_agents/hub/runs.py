@@ -104,6 +104,7 @@ PLAN_RUN_AGENT = (0, 4, 0)  # the first daemon release that runs a plan run; an 
 RUNTIMES = ("claude-code", "opencode", "codex")
 MAX_MODEL_CHARS = 200  # a run's model, one line (runs.model, as schema 0010 bounds it), and each model a runtime lists
 MAX_RUNTIME_MODELS = 200  # the models a heartbeat lists for one runtime
+MAX_EVIDENCE_BYTES = 16 * 1024  # runs.evidence, as schema 0009 bounds it
 MODES = ("headless", "interactive")
 APPROVALS = ("auto", "review")
 # What a heartbeat answer carries: per run, whether to cancel, take over, hand back, open the terminal, park or end

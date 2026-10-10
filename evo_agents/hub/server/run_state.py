@@ -79,6 +79,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 from evo_agents.hub import runs, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.plans import PlanProblem, step_index
+from evo_agents.hub.runs import MAX_EVIDENCE_BYTES
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.security import MACHINE, Principal
@@ -93,7 +94,6 @@ RUNS_CHANNEL = "evo_runs"  # notified with a run's id when it is queued, so a wa
 EVENTS_CHANNEL = "evo_run_events"  # notified with a run's id when an event of it is written, so its streams look again
 PLAN_TRIES = 5  # writes of a step tried before giving up on revision conflicts
 MAX_NOTE_CHARS = 1000  # a note the hub sets on a step
-MAX_EVIDENCE_BYTES = 16 * 1024  # runs.evidence, as schema 0009 bounds it
 RECOVER_BATCH = 500  # expired runs one pass of the reaper takes
 LEASE = timedelta(seconds=runs.LEASE_SECONDS)  # the api's own comes from EVO_HUB_RUN_LEASE_SECONDS
 DECISION_WAIT = timedelta(seconds=runs.DECISION_WAIT_SECONDS)  # a run waiting this long for an answer is parked
@@ -724,7 +724,7 @@ async def end_held(
     """End a held run whose worker will not extend its lease again, as the reaper, in the caller's transaction:
     cancelled when its cancel was asked for, failed when it is pinned to that worker (``pinned_here``) or on its last
     attempt, and otherwise lost with the next attempt queued, which the worker that lost the run claims only once it
-    is steady (``evo_agents.hub.server.runs._steady``). Returns the state it ended in."""
+    is steady (``evo_agents.hub.server.runs.service.views.steady``). Returns the state it ended in."""
     if cancel:
         await move_run(conn, run_id, state, "cancelled", "reaper", reason=reason)
         return "cancelled"
