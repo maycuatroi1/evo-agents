@@ -22,6 +22,11 @@ comes with a notice; with EVO_HUB_DECISION_WAIT_SECONDS short for the job worker
 the answer resumes it on the same worker in the same session and worktrees; a daemon killed with SIGKILL in the middle
 of a plan run leaves its agent, which the next daemon to start stops, and the run, lost once its lease ran out, is
 tried again from the branches the first attempt pushed.
+
+With EVO_E2E_DAEMON_ROOT naming a source tree of another release (``git archive v0.9.0``, unpacked), each machine runs
+that release's daemon, and its fake adapter, against this checkout's hub and CLI: how the run-reliability plan checked
+that a daemon of 0.9.0 still claims, beats and ends its runs with this hub. Without it, every process is this
+checkout's.
 """
 
 from __future__ import annotations
@@ -75,11 +80,12 @@ LEASE_SECONDS = 8  # EVO_HUB_RUN_LEASE_SECONDS of the hub here; the daemons beat
 WAIT = 120.0
 REAPER_EVERY = 2.0  # seconds between the reaper jobs the test defers once a lease may have run out
 TMUX = shutil.which("tmux")
+DAEMON_ROOT = Path(os.environ.get("EVO_E2E_DAEMON_ROOT") or ROOT)  # the source tree the machines' daemons run from
 
 
-def _spawn(command: list[str], env: dict, log_path: Path) -> subprocess.Popen:
+def _spawn(command: list[str], env: dict, log_path: Path, root: Path = ROOT) -> subprocess.Popen:
     with open(log_path, "ab") as out:
-        return subprocess.Popen(command, env=env, stdout=out, stderr=subprocess.STDOUT, cwd=ROOT)
+        return subprocess.Popen(command, env=env, stdout=out, stderr=subprocess.STDOUT, cwd=root)
 
 
 def _stop(proc: subprocess.Popen | None, timeout: float = 30) -> None:
@@ -269,7 +275,8 @@ class Machine:
         self.world.tokens.append((self.state / "token").read_text(encoding="utf-8").strip())
 
     def start_daemon(self) -> subprocess.Popen:
-        proc = _spawn([sys.executable, "-m", "evo_agents", "worker", "run"], self.env, self.daemon_log)
+        env = {**self.env, "PYTHONPATH": str(DAEMON_ROOT)}
+        proc = _spawn([sys.executable, "-m", "evo_agents", "worker", "run"], env, self.daemon_log, DAEMON_ROOT)
         self.daemons.append(proc)
         before = self.output().count("worker started")
         wait_until(

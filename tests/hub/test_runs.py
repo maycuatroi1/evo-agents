@@ -1282,6 +1282,96 @@ def dispatch_from(client, hub, worker: dict, value: str) -> None:
 WEB_ONLY = "takes only runs dispatched from a web session"
 
 
+# A daemon of 0.9.0 with this hub (plan run-reliability, a9). What it sends and what it reads, as Daemon._beat,
+# Run._report and Run._end of evo_agents/worker at v0.9.0 and the OpenAPI of tests/hub/golden/cli-contract.json there
+# have it: this release adds optional fields alone (RunSpec.verify, StateReport.failure_cause, Run.failure_cause and
+# Run.steady_wait), and the protocol stays version 1.
+V0_9_0_RUN_SPEC = frozenset(
+    "approval attempt branch budget curator id kind lease_expires_at max_attempts mode model parent_run_id plan "
+    "plan_id plan_revision project prompt repo repos resume_of_run_id runtime session_id skills step_key timeout_min "
+    "title".split()
+)
+V0_9_0_RUN_CONTROL = frozenset(
+    "cancel decisions finish handback held id inbox lease_expires_at park state takeover terminal_open".split()
+)
+V0_9_0_RUN_KINDS = ["step", "plan", "review", "judge", "author"]
+RUN_9_ERROR = (
+    "git push failed (128): fatal: could not read Username for 'https://github.com': terminal prompts disabled"
+)
+
+
+def beat_as_0_9_0(client, worker: dict, held=(), slots: int = 2) -> dict:
+    """A heartbeat with the body a daemon of 0.9.0 sends: no field this release added."""
+    body = {
+        "runtimes": worker["runtimes"],
+        "checkouts": worker["checkouts"],
+        "free_slots": slots - len(held),
+        "runs": list(held),
+        "agent_version": "0.9.0",
+        "run_kinds": V0_9_0_RUN_KINDS,
+    }
+    response = client.post("/v1/worker/heartbeat", json=body, headers=worker["headers"])
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def test_a_daemon_of_0_9_0_claims_beats_and_ends_its_runs_with_this_hub(client, hub, hub_db):
+    worker = add_worker(client, hub["owner"], "laptop", slots=2)
+    assert beat_as_0_9_0(client, worker) == {"drain": False, "runs": []}
+    w = tables.workers
+    kept = sql(hub_db, select(w.c.agent_version, w.c.run_kinds).where(w.c.id == worker["id"]))
+    assert kept == [("0.9.0", V0_9_0_RUN_KINDS)]
+
+    # Its claims carry every field it reads; what this release added, it does not read.
+    done_id, failed_id = (dispatched(client, hub["owner"], [key], approval="auto")[0]["id"] for key in (2, 4))
+    specs = [claim(client, worker), claim(client, worker)]
+    assert [spec["id"] for spec in specs] == [done_id, failed_id]
+    for spec in specs:
+        assert not V0_9_0_RUN_SPEC - spec.keys(), f"the claim lacks {sorted(V0_9_0_RUN_SPEC - spec.keys())}"
+
+    # Its heartbeat extends the leases of the runs it holds and answers the control it reads.
+    set_run(hub_db, done_id, lease_expires_at=func.now() + timedelta(seconds=5))
+    answer = beat_as_0_9_0(client, worker, held=[done_id, failed_id])
+    assert [control["id"] for control in answer["runs"]] == [done_id, failed_id] and answer["drain"] is False
+    for control in answer["runs"]:
+        assert not V0_9_0_RUN_CONTROL - control.keys(), sorted(V0_9_0_RUN_CONTROL - control.keys())
+        assert control["held"] is True and control["cancel"] is False and control["state"] == "leased"
+    assert seconds_from_now(hub_db, answer["runs"][0]["lease_expires_at"]) > 60, "the lease was extended"
+
+    # Its reports, without failure_cause, end one run done and the other failed.
+    moved(client, worker, done_id, "running", session_id="session-1")
+    moved(client, worker, done_id, "verifying")
+    done = moved(
+        client,
+        worker,
+        done_id,
+        "done",
+        verify=PASSED,
+        commit_sha=SHA,
+        diffstat={"files": 1, "insertions": 2, "deletions": 0},
+        usage={"input_tokens": 10, "output_tokens": 5},
+        summary="Added the queue.",
+    )
+    assert (done["state"], done["session_id"], done["failure_cause"]) == ("done", "session-1", None)
+    assert step(client, hub["owner"], 2)["status"] == "done"
+    moved(client, worker, failed_id, "running")
+    failed = moved(client, worker, failed_id, "failed", error=RUN_9_ERROR)
+    assert (failed["state"], failed["error"], failed["failure_cause"]) == ("failed", RUN_9_ERROR, None)
+    assert step(client, hub["owner"], 4)["status"] == "pending"
+
+    # Its run lost (the laptop slept), the next attempt waits until its heartbeats, sent as 0.9.0 sends them, are
+    # steady, and then it takes it.
+    first, second = lost_once(client, hub, hub_db, worker, steps=(3,), approval="auto")
+    beat_as_0_9_0(client, worker)
+    assert claim(client, worker) is None
+    assert run_of(client, hub["owner"], second)["steady_wait"]["worker"] == "laptop"
+    worker_clock(hub_db, worker, steady_since=runs.STEADY_SECONDS, last_heartbeat_at=15)
+    beat_as_0_9_0(client, worker)  # 15 seconds after the one before: its count goes on
+    spec = claim(client, worker)
+    assert (spec["id"], spec["attempt"], spec["parent_run_id"]) == (second, 2, first)
+    assert not V0_9_0_RUN_SPEC - spec.keys()
+
+
 def test_dispatch_from_each_run_records_the_credential_it_was_dispatched_with(web_client, web_hub, hub_db):
     client, hub = web_client, web_hub
     by_token = dispatched(client, hub["owner"], [2])[0]
