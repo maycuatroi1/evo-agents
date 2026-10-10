@@ -507,8 +507,11 @@ once. A plan run is claimed only by a worker with a checkout of every repo in it
 and no repo, but `repos`, the prompt of `build_plan_prompt`, and `plan`, `{revision, body}` at the hub's current
 revision, which the daemon writes to `.evo-run/plan.yaml`. A run the night shift queued has `budget`, its caps
 (`max_usd`, `max_turns`, `max_seconds`) with what it spent already (`spent_usd`, `spent_seconds`, for a run that goes
-on from a parked one), and null otherwise. A run of the Curator (a review run, a judge run, or a plan run of a plan the
-Curator made) has `curator`: its `role` (`reviewer`, `builder` or `judge`), the charter's `protected_paths`, and for a
+on from a parked one), and null otherwise. A run of one step has `verify`, the verify of its step as the plan it was
+dispatched from has it (a list of one command, or empty), whose programs the daemon looks for before the agent starts
+(see [Preflight and failure causes](#preflight-and-failure-causes)); null for any other kind, and absent from an older
+hub, whose daemon then checks no program of a run of one step. A run of the Curator (a review run, a judge run, or a
+plan run of a plan the Curator made) has `curator`: its `role` (`reviewer`, `builder` or `judge`), the charter's `protected_paths`, and for a
 Builder or a Judge the change, its branch, its forge (`github` or `gitlab`), the default branch, the pull request, and
 for a Judge the commit to judge and the run's own key (`judge_key`); null for any other run. A worker has at most one
 claim waiting: a newer claim ends the older one, which answers no run. A claim whose worker hung up, as a daemon that
@@ -589,7 +592,11 @@ The hub checks the move against the transition table with the worker as actor an
 it, and 404 when the worker does not hold the run (another worker's, or one no longer held: lost, cancelled, in
 review or done). `from`, when given, must be the state the run is in (409 otherwise). `done` needs approval `auto`
 and at least one verify result, every one with exit code 0; `review` needs approval `review`; otherwise 409. A plan
-run ends `done` without verify results and never reports `review`. A `failed` report without an `error` gets one naming the worker. Reporting the state the run is in already moves
+run ends `done` without verify results and never reports `review`. A `failed` report without an `error` gets one naming the worker. A `failed` report
+may say why with `failure_cause`, a name of at most 32 lowercase letters, digits and underscores (422 otherwise): the
+causes of [Preflight and failure causes](#preflight-and-failure-causes), or a newer daemon's own, which the hub keeps
+as they come. The hub keeps it with the run (`failure_cause` of the run, null when the report has none, as a daemon
+before it sends none) and ignores it with any other state. Reporting the state the run is in already moves
 nothing and keeps the session id, commit, diffstat, verify results and usage it carries, so a resend after a lost
 answer is safe. The answer is the run as the hub holds it.
 
@@ -1046,8 +1053,11 @@ hands it no run.
 
 1. The daemon takes the run's leases from the hub (`POST /v1/worker/runs/{id}/credentials`, see
    [docs/credentials.md](credentials.md)), so its fetch and push and its agent use them; each repo whose origin no
-   lease covers gets a `system` event "no leased credential for {origin}: {reason}; git uses this machine's own". It
-   fetches `origin` in the checkout and makes the worktree `~/.evo/worker/worktrees/<project>-<run>` on
+   lease covers gets a `system` event "no leased credential for {origin}: {reason}; git uses this machine's own". Its
+   preflight then checks the repo and the programs of the step's verify (see
+   [Preflight and failure causes](#preflight-and-failure-causes)), and fails the run before anything is fetched when
+   one check does not pass. It fetches `origin` in the checkout and makes the worktree
+   `~/.evo/worker/worktrees/<project>-<run>` on
    the plan's branch for the repo, from `origin/<branch>` when the remote has it, else the local branch, else the
    remote's default branch. When that branch is checked out in another worktree (the owner's checkout, say), or has
    local commits the start lacks, the worktree is on `evo-run/<run>` instead and the push still goes to the plan's
@@ -1086,7 +1096,9 @@ hands it no run.
 ### A plan run on the machine
 
 1. The daemon takes the run's leases for all its repos, as for a run of one step, so the agent's `evo-agents worker
-   step` pushes with them too. It makes the directory `~/.evo/worker/worktrees/<project>-<run>` and, in it, a worktree
+   step` pushes with them too. Its preflight checks every repo, for reading and for pushing, and the programs of the
+   verify of every step not done (see [Preflight and failure causes](#preflight-and-failure-causes)), before any
+   worktree. It makes the directory `~/.evo/worker/worktrees/<project>-<run>` and, in it, a worktree
    of each repo of the run, named as the repo, on the branch the plan names for that repo: from `origin/<branch>` when
    the remote has it, else the local branch, else the remote's default branch, as for a run of one step. When that
    branch is checked out elsewhere, or has local commits the start lacks, the worktree is on `evo-run/<run>/<repo>` and
@@ -1194,7 +1206,10 @@ of the change's branch), with no hook or fsmonitor of the checkout, and reads th
 origin's default branch before any code of the change runs (no textconv or external diff of the repo; a diff longer
 than 8 MiB is a sign, never read in part). It runs `evo_agents.hub.judge.hack_signs` on that diff, reads from the hub
 what the Judge reads (`GET /v1/worker/runs/{id}/judge`: the proposal, the verify of each step of the plan, the
-protected paths and the project's hidden checks, which stay in the daemon's memory alone), and runs the hidden checks,
+protected paths and the project's hidden checks, which stay in the daemon's memory alone; the daemon reads them first,
+right after its leases, and its preflight looks for the program of each verify command and hidden check before
+anything is fetched: a program missing fails the run with `missing_tool` and no verdict, so the change is judged again
+by the next judge run, `JUDGE_ATTEMPTS` in all, and a hidden check is named by its number alone), and runs the hidden checks,
 then the verify commands, as code it does not trust (`evo_agents.worker.untrusted`): each one given to `/bin/sh -s` on
 its standard input (never an argument a process list shows), in a session of its own, with the daemon's environment
 less the worker's own variables (`EVO_*`, so no `EVO_WORKER_HOME` or `EVO_RUN_ID`), git's configuration, the ssh agent,
@@ -1325,6 +1340,57 @@ the loop expected (`expected_s`) and the difference (`slept_s`), and the daemon 
 while the network and the hub come back (`no claims for a while after a sleep`, then `claiming again after the
 sleep`). The heartbeats go on all the while, for the runs it still holds. A wall clock set forward by more than 30
 seconds reads as a sleep too, which only delays claims.
+
+### Preflight and failure causes
+
+Every run (of one step, plan, review, judge and author) checks what it needs once it holds its leases, before it
+fetches anything and before its agent starts (`evo_agents.worker.preflight`):
+
+- each repo of the run has an origin in the project: a repo the hub's answer for the leases names missing with no
+  origin is one the project lists none for, and no credential can be leased for it;
+- git reads each repo from its origin with what the run holds, its leases or else the machine's own credentials, and
+  pushes to it when the run pushes that repo (a run of one step its repo, a plan run every repo of its plan); a
+  review, judge or author run pushes nothing. The daemon asks the remote, as cheaply as git can: `git ls-remote origin
+  HEAD`, and `git push --dry-run` of the checkout's HEAD to `evo-run/preflight-<run>`, which sends nothing. Only a
+  refusal for want of a credential fails the run (git could not read a user or password, 401 or 403, SSH refused the
+  key, a key that reads only, a repository the credential does not see); a remote that does not answer within 60
+  seconds, or any other trouble, is left to the fetch. An origin that is a path on the machine is not asked. A run of
+  the Curator that pushes needs a lease that covers each forge origin, as its push does;
+- each program a verify command of the run calls is on the run's PATH: the step's verify for a run of one step (from
+  its claim), the verify of every step not done for a plan run (from its plan), the plan's verify and the project's
+  hidden checks for a judge run (from what it reads first), with the PATH those commands run with. The daemon reads
+  the programs of a command line as the shell runs them (`evo_agents.hub.judge.programs`): the first word of each
+  simple command, past assignments, keywords such as `if` and `!`, and wrappers that run another program (`env`,
+  `nice`, `nohup`, `timeout`, `xvfb-run`), and the commands of a `sh -c` argument; not the shell's builtins, a word the
+  shell expands, a relative path (a file of the worktree, not there yet), or what `python -m` and `uv run` run. After a
+  command that may change PATH (`source`, `.`, `eval`, `export PATH=...`) it reads no further. A hidden check is named
+  by its number alone, never its command or its program.
+
+A check that does not pass is a `system` event of the run, "Preflight: ..." with its `cause`; the run fails with every
+problem in its error ("preflight: ...; the agent did not start") and the cause of the first as its `failure_cause`.
+Its agent does not start, no worktree is made, the hub queues no next attempt of a failed run, and its owner gets the
+notice `run_failed` (a run of one step or an author run for these causes, a plan, review or judge run for any failure).
+The hub refuses to dispatch a step or a plan whose repo the project lists no origin for (409, naming the repo), so a
+run reaches that check only when the registration changed after its dispatch, or the night shift queued it.
+
+The causes a failed run's report gives (`failure_cause`, `runs.FAILURE_CAUSES`):
+
+| cause | the run failed because |
+|---|---|
+| `origin` | the project lists no origin for a repo it needs (preflight) |
+| `credentials` | git cannot read or push to a repo with what the run holds (preflight), or the remote refused the fetch or the push for its credential |
+| `missing_tool` | a program a verify command or a hidden check calls is not on PATH (preflight), or a verify command exited 127 |
+| `push_conflict` | the remote branch moved on and the run's own commits could not go on top of it |
+| `verify_failed` | a verify command the daemon ran again exited other than 0 |
+| `timeout` | it ran past its timeout |
+| `cost_cap`, `turn_cap`, `time_cap` | the agent stopped at that cap of the run's budget |
+| `checkout` | the fetch, or the worktree, went wrong for another reason |
+| `runtime` | the worker has no adapter for the runtime, cannot run it interactive, or has no login the run may use |
+| `worker_stopped` | the daemon was stopped, or failed, while it held the run |
+
+A run that fails for another reason (the agent's own error, the watchdog of the Curator) carries no cause, and neither
+does one an older daemon or the hub ended (a lost lease, a revoked worker); the Curator's figures read the cause of
+those from their error (`evo_agents.hub.review.run_cause`).
 
 ### When the hub does not answer, and stopping
 

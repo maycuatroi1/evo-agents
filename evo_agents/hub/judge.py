@@ -42,6 +42,7 @@ CURATOR_PLAN_PREFIX is made from an accepted proposal alone.
 
 from __future__ import annotations
 
+import itertools
 import json
 import re
 import shlex
@@ -247,6 +248,32 @@ PACKAGE_RUNNERS = ("npm", "pnpm", "yarn", "bun")  # their scripts live in packag
 WRAPPERS = {"uv": ("run",), "poetry": ("run",), "pipenv": ("run",), "hatch": ("run",), "pdm": ("run",)}
 PASS_THROUGH = ("env", "time", "nice", "exec", "command", "npx", "timeout", "xvfb-run")
 SHELL_OPERATOR = re.compile(r"&&|\|\||[;|&\n()]")
+# What ``programs`` reads in a command line. The shell's builtins and the words that end a compound command run no
+# program from PATH; after a keyword that starts one (if, while, !, ...) the next word is the program; a simple command
+# that may change PATH (source, ., eval, export PATH=..., PATH=... alone) ends the reading of the line.
+SHELL_BUILTINS = frozenset(
+    {
+        ":", "[", "[[", "alias", "bg", "break", "cd", "continue", "declare", "echo", "exit", "export", "false", "fg",
+        "getopts", "hash", "jobs", "kill", "let", "local", "popd", "printf", "pushd", "pwd", "read", "readonly",
+        "return", "set", "shift", "test", "trap", "true", "type", "typeset", "ulimit", "umask", "unalias", "unset",
+        "wait", "for", "case", "select", "function", "in", "fi", "done", "esac", "}", "]]",
+    }
+)  # fmt: skip
+SHELL_LEADS = frozenset({"if", "then", "else", "elif", "while", "until", "do", "!", "{", "time", "exec", "command"})
+SHELL_PATH_CHANGES = frozenset({"source", ".", "eval"})
+# Programs that run the program after them: the options of each that take a value, and whether a word (the duration
+# of timeout) comes before that program.
+RUNS_ANOTHER: dict[str, tuple[frozenset[str], bool]] = {
+    "env": (frozenset({"-u", "--unset", "-C", "--chdir", "-S", "--split-string"}), False),
+    "nice": (frozenset({"-n", "--adjustment"}), False),
+    "nohup": (frozenset(), False),
+    "timeout": (frozenset({"-s", "--signal", "-k", "--kill-after"}), True),
+    "xvfb-run": (
+        frozenset({"-e", "--error-file", "-f", "--auth-file", "-n", "--server-num", "-p", "-s", "--server-args", "-w"}),
+        False,
+    ),
+}
+ASSIGNMENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=.*", re.S)
 
 ASSERTION = re.compile(
     r"\bassert\b|\bself\.assert\w*\s*\(|\bassert\w*\s*\(|\bexpect\s*\(|\bpytest\.raises\b|\.should\b"
@@ -595,6 +622,92 @@ def _simple_commands(command: str) -> list[list[str]]:
             continue
         found.append(words)
     return found
+
+
+def _shell_words(command: str) -> list[list[str]] | None:
+    """The words of each simple command of a shell command line, split at its operators, a redirection's target left
+    out, assignments before a command kept; words of a quoted ``sh -c`` argument are not read here. None for a line the
+    shell would not read (an open quote)."""
+    try:
+        lexer = shlex.shlex(command or "", posix=True, punctuation_chars=True)
+        lexer.whitespace_split = True
+        tokens = list(lexer)
+    except ValueError:
+        return None
+
+    def redirection(token: str) -> bool:
+        return bool(token) and all(char in "&|;()<>" for char in token) and ("<" in token or ">" in token)
+
+    groups: list[list[str]] = [[]]
+    target = False  # the token after a redirection names a file
+    for index, token in enumerate(tokens):
+        if target:
+            target = False
+            continue
+        if token and all(char in "&|;()<>" for char in token):
+            if redirection(token):
+                target = True
+            else:
+                groups.append([])
+            continue
+        if token.isdigit() and index + 1 < len(tokens) and redirection(tokens[index + 1]):
+            continue  # the descriptor of 2>&1
+        groups[-1].append(token)
+    return [words for words in groups if words]
+
+
+def _past_options(head: str, words: list[str]) -> tuple[list[str], bool]:
+    """(the words after the options of ``head``, a program of RUNS_ANOTHER, and its duration for timeout: the program
+    it runs and that program's arguments; whether ``env`` set PATH for that program)."""
+    valued, duration = RUNS_ANOTHER[head]
+    rest, path_set = list(words), False
+    while rest and (rest[0].startswith("-") or (head == "env" and ASSIGNMENT.fullmatch(rest[0]))):
+        option = rest.pop(0)
+        if option == "--":
+            break
+        path_set = path_set or option.startswith("PATH=")
+        if option in valued and rest:
+            rest.pop(0)
+    return (rest[1:] if duration and rest else rest), path_set
+
+
+def programs(command: str) -> list[str]:
+    """The programs a shell command line runs from PATH, each once, in order: the first word of each simple command
+    (past assignments, and past the keywords that start a compound command), and of the program a wrapper of
+    RUNS_ANOTHER runs (``timeout 60 pytest`` names timeout and pytest), and of a ``sh -c`` argument. Not counted: the
+    shell's builtins and keywords, a word the shell expands (``$``, a backtick, a glob), a relative path (a file of the
+    worktree, which the preflight cannot see yet), the program of a command with ``PATH=...`` before it, and anything
+    after a simple command that may change PATH (``source``, ``.``, ``eval``, ``export PATH=...``, ``PATH=...``). An
+    absolute path counts as itself. ``python -m pytest`` names python, and ``uv run pytest`` uv: what those run is not
+    looked for on PATH."""
+    found: list[str] = []
+    for words in _shell_words(command) or []:
+        assigned = [word.split("=", 1)[0] for word in itertools.takewhile(ASSIGNMENT.fullmatch, words)]
+        rest = words[len(assigned) :]
+        if "PATH" in assigned and not rest:
+            break
+        while rest:
+            head = rest[0]
+            if head in SHELL_PATH_CHANGES or (head == "export" and any(w.startswith("PATH=") for w in rest[1:])):
+                return list(dict.fromkeys(found))
+            if head in SHELL_LEADS:
+                rest = rest[1:]
+                continue
+            if head in SHELL_BUILTINS or "PATH" in assigned or re.search(r"[$`*?\[\]]", head):
+                break
+            if "/" in head and not head.startswith("/"):
+                break
+            name = head.rsplit("/", 1)[-1]
+            found.append(head)
+            if name in ("sh", "bash", "zsh", "dash") and "-c" in rest[1:-1]:
+                found += programs(rest[rest.index("-c") + 1])
+                break
+            if name not in RUNS_ANOTHER:
+                break
+            rest, path_set = _past_options(name, rest[1:])
+            if path_set:
+                break
+    return list(dict.fromkeys(found))
 
 
 def _runner(words: list[str]) -> tuple[str | None, list[str]]:
