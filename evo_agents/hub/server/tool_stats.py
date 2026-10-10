@@ -39,7 +39,8 @@ from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.projects import project_access
-from evo_agents.hub.server.runs import RunId, readable_run, visible_plans
+from evo_agents.hub.server.runs.models import RunId
+from evo_agents.hub.server.runs.service.views import readable_run, visible_plans
 from evo_agents.hub.server.security import CurrentUser
 
 TOOL_EVENTS = ("tool_call", "tool_call_update")

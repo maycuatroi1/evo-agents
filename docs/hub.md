@@ -122,6 +122,21 @@ machine token with `X-Evo-Run` gets 400. The agent then acts as the run's owner,
 
 Once the run leaves those states, its id opens nothing, and revoking the worker ends its token.
 
+### Paging a list
+
+Five lists answer a bare JSON array and page only when asked: `GET /v1/projects`, `/v1/projects/{project}/plans`,
+`/v1/skills`, `/v1/workers` and `/v1/admin/users`. They take `limit` (1 to 1,000) and `offset` (0 to 1,000,000),
+each optional. Without either the answer is the whole list, as before, so the command line, `hub plan export` and the
+web read what they always read. With them it is that slice of the list in the list's own order, and the body stays an
+array. Either way the `X-Total-Count` header holds the length of the whole list, so a client asks again with
+`offset` moved on until `offset` plus what it got reaches that count; an `offset` past the end answers `[]` with the
+count. A value out of range is a 422.
+
+The count is of what the caller may see. The label rule filters plans after the database query, so a page of plans
+is cut from the plans it lets through, and a member whose grant stops at `public` counts only those. The lists that
+carry their own `total` in the body (runs, decisions, notifications, Curator proposals and findings, digests) page as
+they did.
+
 ### OpenAPI
 
 The api serves its OpenAPI document at `/v1/openapi.json`. `evo-agents hub openapi -o openapi.json` writes the same
@@ -186,7 +201,8 @@ The audit trail and every user's tokens are on the web's admin pages (`/v1/admin
 web's Administration page reads `/v1/admin/overview`: members seen within 30 days, tokens expiring within 14 days or
 unused for 90 (`/v1/admin/tokens?state=expiring` and `?state=unused` list them), each project's grants by role, the
 bytes the blob store holds and the deletions still pending, graph builds that failed within 7 days, offline workers
-and the audit rows of the last 24 hours. The rows of every table are on its Diagnostics page.
+and the audit rows of the last 24 hours. The rows of every table are on its Diagnostics page. The trail keeps
+`EVO_HUB_AUDIT_DAYS` days of rows (365 by default, at least 30): the worker's daily `hub.prune_audit` deletes older ones.
 
 ## Projects and who sees what
 
@@ -475,7 +491,7 @@ project through the MCP tools above, its run's project alone, and writes through
 
 ```sh
 evo-agents worker finding --lens environment --title "sleep then tail is blocked" --evidence session:ID:errors:0 \
-  --evidence run:41:7 --evidence code:evo-agents:evo_agents/worker/run.py:120 --severity high
+  --evidence run:41:7 --evidence code:evo-agents:evo_agents/worker/runner/agent.py:120 --severity high
 evo-agents worker propose --lens environment --kind fix --title "A wait helper" --path evo-agents:evo_agents/worker/wait.py \
   --finding 12 --plan-file draft.yaml --summary-file why.md
 ```
@@ -743,6 +759,8 @@ Postgres database; there is no separate broker. The api only defers jobs. Jobs:
 - `hub.prune_run_events`, daily at 04:13: deletes the events of runs that ended more than `EVO_HUB_RUN_LOG_DAYS` ago,
   once the tool figures of each such run are written from them (a run writes them when it ends; this covers the runs
   that ended before schema 0013).
+- `hub.prune_audit`, daily at 04:33: deletes the audit rows older than `EVO_HUB_AUDIT_DAYS` (365 by default) and logs
+  how many (`audit pruned`, with `deleted` and `days`).
 - `hub.fire_schedules`, every minute: the night shift of each project with a charter queues its next run inside
   the charter's window and within the night's budget, pinned to the charter's worker and dispatched as that worker's
   owner: the night's review run first, then the judge run of a change of the Curator that waits for one, the
@@ -872,7 +890,7 @@ the variables in the platform's environment, never in a committed file. `deploy/
 
 | Variable | Used by | Meaning |
 | --- | --- | --- |
-| `EVO_HUB_VERSION` | compose | image tag, a released version such as `0.10.0` |
+| `EVO_HUB_VERSION` | compose | image tag, a released version such as `0.11.0` |
 | `EVO_HUB_DSN` | api, worker | `postgresql://` URI of the hub database (required) |
 | `EVO_HUB_ADMINS` | api | GitHub logins of hub admins, comma-separated |
 | `EVO_HUB_GITHUB_CLIENT_ID` | api | the OAuth App's client id; without it nobody can sign in |
@@ -885,6 +903,10 @@ the variables in the platform's environment, never in a committed file. `deploy/
 | `EVO_HUB_BLOB_CONCURRENCY` | api | uploads one process checks and copies in the blob store at once, every commit together; default `32`, at most `256` |
 | `EVO_HUB_KG_KEEP_ARTIFACTS` | api, worker | newest built graphs of each project whose artifact stays in the bucket; older ones are deleted every hour; default `3`, at least `1` |
 | `EVO_HUB_RUN_LOG_DAYS` | worker | days the events of a finished run are kept before the daily pruning deletes them; default `30`, from `1` to `3650` |
+| `EVO_HUB_AUDIT_DAYS` | worker | days an audit row is kept before the daily `hub.prune_audit` deletes it; default `365`, from `30` to `3650` |
+| `EVO_HUB_POOL_MIN_SIZE`, `EVO_HUB_POOL_MAX_SIZE`, `EVO_HUB_POOL_TIMEOUT` | api, worker | the connection pool: its smallest and largest size and the seconds a request waits for a connection; defaults `1`, `10` and `10` |
+| `EVO_HUB_RUN_LEASE_SECONDS` | api | how long a claim and each heartbeat of a worker daemon lease a run for before the reaper finds it lost; default `300`, from `5` to `3600`, and well above the daemon's heartbeat of 15 seconds (the end-to-end tests shorten it) |
+| `EVO_HUB_DECISION_WAIT_SECONDS` | worker | how long a plan run waits for its owner's answer before the reaper parks it; default `86400` (a day), from `1` to `604800` (the end-to-end tests shorten it) |
 | `EVO_HUB_SECRETS_KEY` | api, worker | 32 random bytes in base64url that seal the credentials of worker runs (`docs/credentials.md`); without it writing a secret answers 503 and runs get no lease. It is not in the database or its dumps |
 | `EVO_HUB_GITHUB_APP_ID`, `EVO_HUB_GITHUB_APP_PRIVATE_KEY` | api, worker | the GitHub App that makes each run a token for its repos only: its ID or client ID, and its private key in PEM, where `\n` may stand for each line break; both or neither |
 | `EVO_HUB_CURATOR_APP_ID`, `EVO_HUB_CURATOR_APP_PRIVATE_KEY` | api, worker | the Curator's own GitHub App, evo-agents-curator, as the two above: every run of the Curator gets its GitHub token from it alone, and the hub checks with it that each repo's ruleset keeps it off the default branch; both or neither, and without them no run of the Curator gets a GitHub token (`docs/curator.md`) |
@@ -895,13 +917,13 @@ the variables in the platform's environment, never in a committed file. `deploy/
 | `EVO_HUB_WEB_TIME_ZONE` | web | time zone of dates rendered on the server, default `Asia/Ho_Chi_Minh` |
 | `EVO_HUB_PLATFORM_NETWORK` | compose | the external network the database is on |
 
-The server also reads `EVO_HUB_POOL_MIN_SIZE`, `EVO_HUB_POOL_MAX_SIZE` and `EVO_HUB_POOL_TIMEOUT` (the connection
-pool, defaults 1, 10 and 10 seconds), and the api `EVO_HUB_RUN_LEASE_SECONDS`, how long a claim and each heartbeat of
-a worker daemon lease a run for before the reaper finds it lost (default 300, from 5 to 3600; the end-to-end tests
-shorten it, and it must stay well above the daemon's heartbeat of 15 seconds), and the worker
-`EVO_HUB_DECISION_WAIT_SECONDS`, how long a plan run waits for its owner's answer before the reaper parks it (default
-86400, a day, from 1 to 604800; the end-to-end tests shorten it); add them to the environment block of the compose
-file to change them. A missing or malformed variable stops the process with a log line naming it.
+The compose file passes api and worker every variable `evo_agents/hub/config.py` reads, an empty value being unset,
+so the platform's environment reaches each one. It leaves out `EVO_HUB_HOST`, `EVO_HUB_PORT` and `EVO_HUB_DATA_DIR`,
+which the image sets, and `EVO_HUB_GITHUB_URL`, `EVO_HUB_GITHUB_API_URL`, `EVO_HUB_GITHUB_TIMEOUT` and
+`EVO_HUB_TELEGRAM_API_URL`, which only tests change. `tests/hub/test_compose.py` fails when the configuration reads a
+variable that the compose file or `deploy/hub/.env.example` lacks, and prints the lines to add; a variable left out on
+purpose goes in its `NOT_PASSED` with the reason. A missing or malformed variable stops the process with a log line
+naming it.
 
 The reverse proxy routes the public domain: `/v1` and `/mcp` to the api on port 8080, everything else to the web on
 port 3000. `EVO_HUB_PUBLIC_URL` must be that domain, because the web sign-in callback, the `/mcp` host check and the

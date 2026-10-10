@@ -1,0 +1,461 @@
+{
+  "$comment": "Frozen exemptions from the rules in eslint/structure.mjs. This list may only shrink.",
+  "maxLines": {
+    "src/components/admin/grant-dialog.tsx": 413,
+    "src/components/admin/member-page.tsx": 405,
+    "src/components/curator/charter-form.tsx": 477,
+    "src/components/curator/curator-page.tsx": 442,
+    "src/components/curator/model.ts": 613,
+    "src/components/inbox/decision-view.tsx": 731,
+    "src/components/inbox/mobile-decision.tsx": 454,
+    "src/components/kg/build-status.tsx": 429,
+    "src/components/memories/memory-browser.tsx": 484,
+    "src/components/palette/command-palette.tsx": 698,
+    "src/components/runs/agent-trace.tsx": 702,
+    "src/components/runs/dispatch-dialog.tsx": 555,
+    "src/components/runs/model.ts": 473,
+    "src/components/runs/plan-run-dialog.tsx": 455,
+    "src/components/runs/queries.ts": 453,
+    "src/components/runs/run-chat.tsx": 493,
+    "src/components/runs/run-log.tsx": 603,
+    "src/components/runs/trace-model.ts": 551,
+    "src/components/secrets/secret-dialog.tsx": 501,
+    "src/components/shell/shortcuts.tsx": 524,
+    "src/components/ui/sidebar.tsx": 712,
+    "src/components/workers/register-dialog.tsx": 726,
+    "src/components/workers/worker-detail.tsx": 468
+  },
+  "imports": {
+    "src/components/admin/overview-model.ts": [
+      "src/components/workers/model.ts"
+    ],
+    "src/components/admin/overview-page.tsx": [
+      "src/components/home/parts.tsx",
+      "src/components/skills/format.ts",
+      "src/components/workers/ago.tsx"
+    ],
+    "src/components/admin/use-admin-write.ts": [
+      "src/components/workers/queries.ts"
+    ],
+    "src/components/curator/answer-dialog.tsx": [
+      "src/components/admin/notice.tsx"
+    ],
+    "src/components/curator/charter-form.tsx": [
+      "src/components/admin/notice.tsx",
+      "src/components/workers/queries.ts"
+    ],
+    "src/components/curator/charter-page.tsx": [
+      "src/components/admin/when.tsx",
+      "src/components/home/parts.tsx",
+      "src/components/plans/links.ts",
+      "src/components/plans/prose.tsx"
+    ],
+    "src/components/curator/curator-header.tsx": [
+      "src/components/admin/confirm-action.tsx",
+      "src/components/admin/notice.tsx",
+      "src/components/workers/ago.tsx"
+    ],
+    "src/components/curator/curator-page.tsx": [
+      "src/components/home/parts.tsx",
+      "src/components/runs/queries.ts",
+      "src/components/workers/ago.tsx",
+      "src/components/workers/queries.ts"
+    ],
+    "src/components/curator/draft-plan.tsx": [
+      "src/components/plans/prose.tsx"
+    ],
+    "src/components/curator/evidence.tsx": [
+      "src/components/plans/prose.tsx",
+      "src/components/workers/ago.tsx"
+    ],
+    "src/components/curator/hooks.ts": [
+      "src/components/admin/notice.tsx",
+      "src/components/inbox/queries.ts"
+    ],
+    "src/components/curator/ledger.tsx": [
+      "src/components/home/parts.tsx",
+      "src/components/runs/queries.ts",
+      "src/components/workers/ago.tsx"
+    ],
+    "src/components/curator/model.ts": [
+      "src/components/admin/data.ts",
+      "src/components/runs/queries.ts"
+    ],
+    "src/components/curator/proposal-detail.tsx": [
+      "src/components/home/parts.tsx",
+      "src/components/memories/markdown.tsx",
+      "src/components/runs/queries.ts",
+      "src/components/workers/ago.tsx"
+    ],
+    "src/components/curator/proposals-page.tsx": [
+      "src/components/admin/pager.tsx",
+      "src/components/admin/use-paged-query.ts",
+      "src/components/admin/when.tsx"
+    ],
+    "src/components/data/filter-sheet.test.tsx": [
+      "src/components/admin/filter-bar.tsx"
+    ],
+    "src/components/feedback/toast.tsx": [
+      "src/components/admin/notice.tsx"
+    ],
+    "src/components/home/author-waiting.tsx": [
+      "src/components/kg/use-now.ts",
+      "src/components/runs/queries.ts"
+    ],
+    "src/components/home/fleet-card.tsx": [
+      "src/components/workers/heartbeat-strip.tsx",
+      "src/components/workers/model.ts",
+      "src/components/workers/queries.ts"
+    ],
+    "src/components/home/home-page.tsx": [
+      "src/components/inbox/decision-sheet.tsx"
+    ],
+    "src/components/home/model.test.ts": [
+      "src/components/workers/queries.ts"
+    ],
+    "src/components/home/model.ts": [
+      "src/components/workers/model.ts",
+      "src/components/workers/queries.ts"
+    ],
+    "src/components/home/needs-you.tsx": [
+      "src/components/inbox/decision-sheet.tsx",
+      "src/components/kg/use-now.ts",
+      "src/components/runs/queries.ts"
+    ],
+    "src/components/home/parts.tsx": [
+      "src/components/runs/model.ts",
+      "src/components/workers/ago.tsx"
+    ],
+    "src/components/home/projects-card.tsx": [
+      "src/components/curator/queries.ts"
+    ],
+    "src/components/home/run-lists.tsx": [
+      "src/components/admin/notice.tsx",
+      "src/components/kg/use-now.ts",
+      "src/components/monitor/model.ts",
+      "src/components/plans/progress.tsx",
+      "src/components/runs/badges.tsx",
+      "src/components/runs/hooks.ts",
+      "src/components/runs/queries.ts",
+      "src/components/workers/queries.ts"
+    ],
+    "src/components/inbox/agent-digest.test.ts": [
+      "src/components/runs/queries.ts",
+      "src/components/runs/trace-model.ts"
+    ],
+    "src/components/inbox/agent-digest.ts": [
+      "src/components/runs/trace-model.ts"
+    ],
+    "src/components/inbox/decision-view.tsx": [
+      "src/components/kg/use-now.ts",
+      "src/components/memories/markdown.tsx",
+      "src/components/plans/links.ts",
+      "src/components/plans/prose.tsx",
+      "src/components/runs/model.ts",
+      "src/components/runs/queries.ts",
+      "src/components/runs/run-model.ts",
+      "src/components/workers/ago.tsx"
+    ],
+    "src/components/inbox/hooks.ts": [
+      "src/components/admin/notice.tsx",
+      "src/components/runs/queries.ts",
+      "src/components/runs/terminal-model.ts",
+      "src/components/workers/queries.ts"
+    ],
+    "src/components/inbox/inbox-page.tsx": [
+      "src/components/admin/pager.tsx",
+      "src/components/admin/use-paged-query.ts"
+    ],
+    "src/components/inbox/mobile-decision.tsx": [
+      "src/components/plans/links.ts",
+      "src/components/runs/queries.ts",
+      "src/components/runs/trace-look.ts",
+      "src/components/runs/trace-model.ts",
+      "src/components/workers/ago.tsx"
+    ],
+    "src/components/inbox/model.ts": [
+      "src/components/admin/data.ts",
+      "src/components/runs/queries.ts",
+      "src/components/runs/run-model.ts"
+    ],
+    "src/components/inbox/notification-item.tsx": [
+      "src/components/curator/badges.tsx",
+      "src/components/curator/queries.ts",
+      "src/components/plans/prose.tsx",
+      "src/components/runs/queries.ts",
+      "src/components/workers/ago.tsx"
+    ],
+    "src/components/inbox/proposal-sheet.tsx": [
+      "src/components/curator/answer-dialog.tsx",
+      "src/components/curator/badges.tsx",
+      "src/components/curator/hooks.ts",
+      "src/components/curator/parts.tsx",
+      "src/components/curator/proposal-detail.tsx",
+      "src/components/curator/queries.ts",
+      "src/components/runs/queries.ts"
+    ],
+    "src/components/inbox/queries.ts": [
+      "src/components/runs/queries.ts"
+    ],
+    "src/components/inbox/telegram-dialog.tsx": [
+      "src/components/admin/notice.tsx",
+      "src/components/kg/badges.tsx",
+      "src/components/kg/use-now.ts"
+    ],
+    "src/components/insights/insights-page.tsx": [
+      "src/components/admin/use-paged-query.ts"
+    ],
+    "src/components/insights/queries.ts": [
+      "src/components/runs/queries.ts"
+    ],
+    "src/components/live/live-indicator.tsx": [
+      "src/components/kg/use-now.ts"
+    ],
+    "src/components/monitor/flight-list.tsx": [
+      "src/components/home/model.ts",
+      "src/components/home/parts.tsx",
+      "src/components/runs/badges.tsx"
+    ],
+    "src/components/monitor/model.ts": [
+      "src/components/home/model.ts",
+      "src/components/runs/queries.ts"
+    ],
+    "src/components/monitor/monitor-page.tsx": [
+      "src/components/home/model.ts",
+      "src/components/runs/queries.ts"
+    ],
+    "src/components/monitor/parts.tsx": [
+      "src/components/home/model.ts",
+      "src/components/home/parts.tsx",
+      "src/components/kg/use-now.ts",
+      "src/components/plans/progress.tsx",
+      "src/components/runs/queries.ts"
+    ],
+    "src/components/monitor/run-tile.test.tsx": [
+      "src/components/home/model.ts",
+      "src/components/runs/queries.ts"
+    ],
+    "src/components/monitor/run-tile.tsx": [
+      "src/components/home/model.ts",
+      "src/components/runs/badges.tsx",
+      "src/components/runs/log-model.ts",
+      "src/components/runs/queries.ts",
+      "src/components/runs/use-run-log.ts"
+    ],
+    "src/components/monitor/tile-trace.tsx": [
+      "src/components/inbox/agent-digest.ts",
+      "src/components/runs/queries.ts",
+      "src/components/runs/trace-look.ts",
+      "src/components/runs/trace-model.ts",
+      "src/components/runs/use-run-log.ts"
+    ],
+    "src/components/palette/command-palette.test.tsx": [
+      "src/components/home/model.ts"
+    ],
+    "src/components/palette/command-palette.tsx": [
+      "src/components/admin/notice.tsx",
+      "src/components/home/model.ts",
+      "src/components/kg/use-now.ts",
+      "src/components/plans/links.ts",
+      "src/components/runs/author-run-dialog.tsx",
+      "src/components/runs/dispatch-dialog.tsx",
+      "src/components/runs/hooks.ts",
+      "src/components/runs/plan-run-dialog.tsx",
+      "src/components/runs/queries.ts",
+      "src/components/workers/model.ts",
+      "src/components/workers/queries.ts",
+      "src/components/workers/register-dialog.tsx"
+    ],
+    "src/components/palette/model.test.ts": [
+      "src/components/home/model.ts"
+    ],
+    "src/components/palette/model.ts": [
+      "src/components/home/model.ts"
+    ],
+    "src/components/plans/plan-overview.tsx": [
+      "src/components/runs/author-run.tsx",
+      "src/components/runs/hooks.ts",
+      "src/components/runs/plan-run.tsx",
+      "src/components/runs/queries.ts"
+    ],
+    "src/components/plans/plans-list.tsx": [
+      "src/components/runs/author-run.tsx",
+      "src/components/runs/hooks.ts",
+      "src/components/runs/model.ts",
+      "src/components/runs/plan-run.tsx",
+      "src/components/runs/queries.ts"
+    ],
+    "src/components/plans/step-detail.tsx": [
+      "src/components/runs/step-runs.tsx"
+    ],
+    "src/components/runs/agent-trace.tsx": [
+      "src/components/kg/use-now.ts",
+      "src/components/memories/markdown.tsx"
+    ],
+    "src/components/runs/author-run-dialog.tsx": [
+      "src/components/admin/notice.tsx",
+      "src/components/workers/model.ts",
+      "src/components/workers/queries.ts"
+    ],
+    "src/components/runs/dispatch-dialog.tsx": [
+      "src/components/admin/notice.tsx",
+      "src/components/workers/model.ts",
+      "src/components/workers/queries.ts"
+    ],
+    "src/components/runs/dispatch-fields.tsx": [
+      "src/components/workers/model.ts",
+      "src/components/workers/queries.ts"
+    ],
+    "src/components/runs/hooks.ts": [
+      "src/components/admin/notice.tsx",
+      "src/components/workers/queries.ts"
+    ],
+    "src/components/runs/model.test.ts": [
+      "src/components/workers/queries.ts"
+    ],
+    "src/components/runs/model.ts": [
+      "src/components/workers/queries.ts"
+    ],
+    "src/components/runs/plan-run-dialog.tsx": [
+      "src/components/admin/notice.tsx",
+      "src/components/plans/status.tsx",
+      "src/components/workers/model.ts",
+      "src/components/workers/queries.ts"
+    ],
+    "src/components/runs/plan-run.tsx": [
+      "src/components/kg/use-now.ts",
+      "src/components/plans/links.ts"
+    ],
+    "src/components/runs/run-actions.tsx": [
+      "src/components/admin/confirm-action.tsx",
+      "src/components/admin/notice.tsx",
+      "src/components/plans/links.ts",
+      "src/components/workers/command-line.tsx"
+    ],
+    "src/components/runs/run-chat.tsx": [
+      "src/components/admin/confirm-action.tsx",
+      "src/components/admin/notice.tsx",
+      "src/components/memories/markdown.tsx",
+      "src/components/plans/links.ts"
+    ],
+    "src/components/runs/run-composer.tsx": [
+      "src/components/admin/notice.tsx"
+    ],
+    "src/components/runs/run-credentials.tsx": [
+      "src/components/kg/use-now.ts",
+      "src/components/secrets/queries.ts"
+    ],
+    "src/components/runs/run-decisions.tsx": [
+      "src/components/inbox/decision-view.tsx",
+      "src/components/inbox/queries.ts"
+    ],
+    "src/components/runs/run-detail.tsx": [
+      "src/components/curator/badges.tsx",
+      "src/components/curator/queries.ts",
+      "src/components/plans/links.ts",
+      "src/components/workers/queries.ts"
+    ],
+    "src/components/runs/run-diff.tsx": [
+      "src/components/admin/notice.tsx"
+    ],
+    "src/components/runs/run-facts.tsx": [
+      "src/components/kg/use-now.ts",
+      "src/components/workers/queries.ts"
+    ],
+    "src/components/runs/run-plan-steps.tsx": [
+      "src/components/plans/links.ts",
+      "src/components/plans/status.tsx"
+    ],
+    "src/components/runs/run-terminal.tsx": [
+      "src/components/kg/use-now.ts"
+    ],
+    "src/components/runs/run-timeline.tsx": [
+      "src/components/kg/use-now.ts"
+    ],
+    "src/components/runs/runs-page.tsx": [
+      "src/components/admin/pager.tsx",
+      "src/components/admin/use-paged-query.ts",
+      "src/components/kg/use-now.ts",
+      "src/components/monitor/model.ts"
+    ],
+    "src/components/runs/runs-table.tsx": [
+      "src/components/kg/use-now.ts",
+      "src/components/plans/links.ts",
+      "src/components/workers/queries.ts"
+    ],
+    "src/components/runs/worker-runs.tsx": [
+      "src/components/workers/queries.ts"
+    ],
+    "src/components/secrets/hooks.ts": [
+      "src/components/admin/notice.tsx"
+    ],
+    "src/components/secrets/model.ts": [
+      "src/components/runs/run-model.ts"
+    ],
+    "src/components/secrets/secret-dialog.tsx": [
+      "src/components/admin/notice.tsx",
+      "src/components/runs/dispatch-fields.tsx",
+      "src/components/workers/queries.ts"
+    ],
+    "src/components/secrets/secrets-page.tsx": [
+      "src/components/admin/confirm-action.tsx",
+      "src/components/admin/when.tsx",
+      "src/components/kg/use-now.ts",
+      "src/components/workers/badges.tsx"
+    ],
+    "src/components/shell/app-shell.tsx": [
+      "src/components/palette/palette-context.tsx"
+    ],
+    "src/components/shell/app-sidebar.test.tsx": [
+      "src/components/inbox/inbox-bell.tsx"
+    ],
+    "src/components/shell/fleet-line.tsx": [
+      "src/components/workers/queries.ts"
+    ],
+    "src/components/shell/nav-counts.ts": [
+      "src/components/home/model.ts",
+      "src/components/inbox/queries.ts",
+      "src/components/runs/queries.ts",
+      "src/components/workers/model.ts",
+      "src/components/workers/queries.ts"
+    ],
+    "src/components/shell/page-header.test.tsx": [
+      "src/components/plans/plan-header.tsx"
+    ],
+    "src/components/shell/shortcuts.tsx": [
+      "src/components/runs/dispatch-dialog.tsx",
+      "src/components/runs/hooks.ts"
+    ],
+    "src/components/shell/site-header.tsx": [
+      "src/components/admin/crumbs.ts",
+      "src/components/inbox/inbox-bell.tsx",
+      "src/components/palette/palette-trigger.tsx",
+      "src/components/workers/hooks.ts"
+    ],
+    "src/components/workers/ago.tsx": [
+      "src/components/kg/use-now.ts"
+    ],
+    "src/components/workers/confirm-by-name.tsx": [
+      "src/components/admin/notice.tsx"
+    ],
+    "src/components/workers/heartbeat-strip.tsx": [
+      "src/components/kg/use-now.ts"
+    ],
+    "src/components/workers/hooks.ts": [
+      "src/components/admin/notice.tsx"
+    ],
+    "src/components/workers/register-dialog.tsx": [
+      "src/components/admin/notice.tsx",
+      "src/components/kg/use-now.ts"
+    ],
+    "src/components/workers/worker-detail.tsx": [
+      "src/components/runs/worker-runs.tsx"
+    ],
+    "src/components/workers/workers-page.tsx": [
+      "src/components/kg/use-now.ts"
+    ],
+    "src/lib/kg/routes.ts": [
+      "src/components/shell/nav.ts"
+    ]
+  }
+}

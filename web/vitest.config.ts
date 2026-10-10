@@ -15,7 +15,7 @@ export default defineConfig({
     },
   },
   test: {
-    include: ["src/**/*.test.{ts,tsx}", "messages/**/*.test.ts"],
+    include: ["src/**/*.test.{ts,tsx}", "messages/**/*.test.ts", "scripts/**/*.test.mjs"],
     environment: "node",
     setupFiles: ["src/test/setup.ts"],
     restoreMocks: true,

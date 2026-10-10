@@ -40,6 +40,7 @@ from evo_agents.hub.access import HUB_KIND, INTEGRITIES, ROLES, ProjectRules, Re
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.admin import PROJECT_NAME, ProjectName
 from evo_agents.hub.server.errors import ErrorBody
+from evo_agents.hub.server.paging import PAGED, WHOLE, Page, Paging
 from evo_agents.hub.server.security import CurrentUser, Principal
 
 log = logging.getLogger(__name__)
@@ -361,9 +362,11 @@ def _visible(user: Principal, name: str | None):
     return query.order_by(projects.c.name)
 
 
-async def _projects(conn: AsyncConnection, user: Principal, name: str | None = None) -> list[Project]:
+async def _projects(
+    conn: AsyncConnection, user: Principal, name: str | None = None, page: Page = WHOLE
+) -> list[Project]:
     project_sinks, project_repos = tables.project_sinks, tables.project_repos
-    rows = (await conn.execute(_visible(user, name))).all()
+    rows = await page.rows(conn, _visible(user, name))
     ids = [row.id for row in rows]
     sinks: dict[int, list[Sink]] = {}
     repos: dict[int, list[Repo]] = {}
@@ -412,10 +415,10 @@ async def _projects(conn: AsyncConnection, user: Principal, name: str | None = N
     return projects
 
 
-@router.get("", response_model=list[Project])
-async def list_projects(request: Request, user: CurrentUser) -> list[Project]:
+@router.get("", response_model=list[Project], responses=PAGED)
+async def list_projects(request: Request, user: CurrentUser, page: Paging = WHOLE) -> list[Project]:
     async with request.app.state.engine.begin() as conn:
-        return await _projects(conn, user)
+        return await _projects(conn, user, page=page)
 
 
 @router.get("/{project}", response_model=Project, responses={404: {"model": ErrorBody}})

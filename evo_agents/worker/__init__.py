@@ -13,7 +13,8 @@ Modules, each with one concern:
 - ``hubapi``: the worker's HTTP calls to the hub (aiohttp), with the protocol header and the backoff.
 - ``spool``: a run's events on disk until the hub acknowledges them.
 - ``gitops``: the git commands of a run: fetch, worktree, commit, push.
-- ``run``: one run from claim to its last report.
+- ``run``: one run from claim to its last report: the names the daemon imports, from ``runner``, the parts of a
+  run (the Run every kind shares, each kind of run in a module of its own, composed, never inherited).
 - ``daemon``: the claim loop, the heartbeat, signals and the cleanup of old worktrees.
 - ``power``: the power assertions that keep the machine awake while the daemon holds runs, and noticing a sleep.
 - ``runtimes``: the adapters of Claude Code, opencode and Codex, through each runtime's SDK or API.
@@ -23,7 +24,7 @@ Modules, each with one concern:
 - ``service``: the daemon in the background, as a launchd LaunchAgent or a systemd user unit.
 - ``cli``: the commands.
 
-Only ``hubapi``, ``daemon`` and ``run`` need the worker extra (``evo-ak[worker]``) to load, and the adapters of
-``runtimes`` need it once an agent starts; the others need the core package, so ``evo-agents`` starts on a core
-install and the commands name the extra when it is missing.
+Only ``hubapi``, ``daemon``, ``run`` and ``runner`` (its ``transitions`` aside) need the worker extra
+(``evo-ak[worker]``) to load, and the adapters of ``runtimes`` need it once an agent starts; the others need the core
+package, so ``evo-agents`` starts on a core install and the commands name the extra when it is missing.
 """

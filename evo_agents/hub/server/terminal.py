@@ -54,7 +54,10 @@ from evo_agents.hub import terminal as frames
 from evo_agents.hub.runs import PROTOCOL_HEADER, PROTOCOL_VERSION
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.admin import ProjectName
-from evo_agents.hub.server.runs import NOT_HELD, RunId, _run_target, ask_takeover, readable_run
+from evo_agents.hub.server.runs.models import NOT_HELD, RunId
+from evo_agents.hub.server.runs.service.audits import run_target
+from evo_agents.hub.server.runs.service.controls import ask_takeover
+from evo_agents.hub.server.runs.service.views import readable_run
 from evo_agents.hub.server.security import (
     JOIN_HINT,
     PREFIXES,
@@ -388,7 +391,7 @@ async def _open_session(conn: AsyncConnection, session: Session, project: str) -
     session.worker_id = run.worker_id
     if not session.terminals.reserve(session):
         raise Refusal(frames.CLOSE_BUSY, f"the terminal of run {run_id} is open in another browser")
-    target = _run_target(project, run.plan_id, run.step_key, run_id)
+    target = run_target(project, run.plan_id, run.step_key, run_id)
     if state in runs.TAKEOVER_STATES and await ask_takeover(conn, run_id):
         await _audit(conn, user, access.project_id, audit.RUN_TAKEOVER, target)
     await _audit(conn, user, access.project_id, audit.TERMINAL_OPEN, target)

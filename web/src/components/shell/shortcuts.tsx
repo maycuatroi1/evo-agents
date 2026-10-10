@@ -6,7 +6,7 @@ import type { Route } from "next";
 import dynamic from "next/dynamic";
 import { usePathname, useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { createContext, Fragment, type ReactNode, useCallback, useContext, useEffect, useId, useMemo, useRef, useState } from "react";
+import { createContext, Fragment, type ReactNode, useCallback, useContext, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { notify } from "@/components/feedback/toast";
 import { useCanDispatch, useDispatchedToast } from "@/components/runs/hooks";
@@ -29,6 +29,7 @@ import { whoamiQuery } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 
 import { type NavLabel, projectHref } from "./nav";
+import { isPageDispatchRegistered, pageDispatch, registerPageDispatch, subscribePageDispatch } from "./page-dispatch";
 import { useCurrentProject } from "./project-switcher";
 
 /**
@@ -164,8 +165,6 @@ export function readKey(event: KeyEvent, afterLead: boolean): KeyAction {
 type ShortcutsState = {
   /** Opens the shortcuts dialog; focus goes back to `from` (by default what holds focus now) when it closes. */
   openShortcuts: (from?: HTMLElement | null) => void;
-  /** A page's own Dispatch, which D opens instead of the shell's; returns its removal. */
-  registerDispatch: (open: () => void) => () => void;
 };
 
 const ShortcutsContext = createContext<ShortcutsState | null>(null);
@@ -177,22 +176,24 @@ export function useOpenShortcuts(): ShortcutsState["openShortcuts"] | null {
 
 /**
  * Lets D open the page's own Dispatch (its dialog, with the step of the page picked) while `open` is set. Returns
- * whether D does so now, for the page to show the key beside its button: in the shell, with single keys on.
+ * whether D does so now, for the page to show the key beside its button: in the shell, registered (never during the
+ * server render and hydration, page-dispatch.ts), with single keys on.
  */
 export function useDispatchShortcut(open: (() => void) | null): boolean {
-  const context = useContext(ShortcutsContext);
+  const id = useId();
+  const inShell = useContext(ShortcutsContext) !== null;
+  const enabled = open !== null && inShell;
+  const registered = useSyncExternalStore(subscribePageDispatch, () => isPageDispatchRegistered(id), () => false);
   const characterKeys = useCharacterKeys();
   const latest = useRef(open);
   useEffect(() => {
     latest.current = open;
   });
-  const register = context?.registerDispatch;
-  const enabled = open !== null && register !== undefined;
   useEffect(() => {
-    if (!enabled || !register) return;
-    return register(() => latest.current?.());
-  }, [enabled, register]);
-  return enabled && characterKeys;
+    if (!enabled) return;
+    return registerPageDispatch(id, () => latest.current?.());
+  }, [enabled, id]);
+  return enabled && registered && characterKeys;
 }
 
 const LazyDispatchDialog = dynamic(() => import("@/components/runs/dispatch-dialog").then((module) => module.DispatchDialog), {
@@ -217,7 +218,6 @@ export function ShortcutsProvider({ children }: { children: ReactNode }) {
   const [dispatchIn, setDispatchIn] = useState<string | null>(null);
   const [dispatchOpen, setDispatchOpen] = useState(false);
   const opener = useRef<HTMLElement | null>(null);
-  const pageDispatch = useRef<(() => void)[]>([]);
   const lead = useRef<{ end: ReturnType<typeof setTimeout>; hint: ReturnType<typeof setTimeout> } | null>(null);
 
   // What a key press reads; kept current without adding the listener again, so a pending G survives a render.
@@ -246,13 +246,6 @@ export function ShortcutsProvider({ children }: { children: ReactNode }) {
     },
     [remember],
   );
-
-  const registerDispatch = useCallback((open: () => void) => {
-    pageDispatch.current = [...pageDispatch.current, open];
-    return () => {
-      pageDispatch.current = pageDispatch.current.filter((other) => other !== open);
-    };
-  }, []);
 
   useEffect(() => {
     const endLead = () => {
@@ -302,7 +295,7 @@ export function ShortcutsProvider({ children }: { children: ReactNode }) {
         const { project, canDispatch } = now.current;
         if (project === null || !canDispatch) return; // not a writer's project page: the key stays the page's
         event.preventDefault();
-        const page = pageDispatch.current.at(-1);
+        const page = pageDispatch();
         if (page) {
           page();
           return;
@@ -320,7 +313,7 @@ export function ShortcutsProvider({ children }: { children: ReactNode }) {
     };
   }, [openShortcuts, remember]);
 
-  const value = useMemo(() => ({ openShortcuts, registerDispatch }), [openShortcuts, registerDispatch]);
+  const value = useMemo(() => ({ openShortcuts }), [openShortcuts]);
   return (
     <ShortcutsContext.Provider value={value}>
       {children}

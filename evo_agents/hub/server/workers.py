@@ -64,6 +64,7 @@ from evo_agents.hub.server import audit, credentials
 from evo_agents.hub.server.admin import PROJECT_NAME
 from evo_agents.hub.server.auth import NO_STORE
 from evo_agents.hub.server.errors import ErrorBody
+from evo_agents.hub.server.paging import PAGED, WHOLE, Paging
 from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.run_state import release_runs
 from evo_agents.hub.server.security import (
@@ -758,11 +759,12 @@ async def register(
 # Listing and changing workers
 
 
-@router.get("", response_model=list[Worker])
+@router.get("", response_model=list[Worker], responses=PAGED)
 async def list_workers(
     request: Request,
     user: CurrentUser,
     revoked: Annotated[bool, Query(description="also list revoked workers")] = False,
+    page: Paging = WHOLE,
 ) -> list[Worker]:
     """The caller's workers, newest first; every worker for a hub admin."""
     w = tables.workers
@@ -772,7 +774,7 @@ async def list_workers(
     if not revoked:
         where.append(w.c.revoked_at.is_(None))
     async with request.app.state.engine.begin() as conn:
-        return await _workers(conn, *where)
+        return [_worker(row) for row in await page.rows(conn, _listed(*where))]
 
 
 @router.get("/{worker_id}", response_model=Worker, responses={404: {"model": ErrorBody}})
