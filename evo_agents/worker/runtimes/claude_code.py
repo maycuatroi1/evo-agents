@@ -103,6 +103,7 @@ from evo_agents.worker.adapter import AgentEvent, Detection, Outcome, RunContext
 from evo_agents.worker.runtimes.common import (
     HEADLESS_NOTE,
     INTERRUPT_TIMEOUT,
+    SUBAGENT_NOTE,
     AgentFinished,
     QueueAdapter,
     add_numbers,
@@ -168,7 +169,10 @@ BACKGROUND_NOTE = (
     "ends, in a new turn, and go on from there. Stop a server or watcher you started in the background once you no "
     "longer need it, or the session waits for it."
 )
-SYSTEM_NOTE = f"{HEADLESS_NOTE}\n\n{BACKGROUND_NOTE}"
+# Claude Code's Task tool starts a subagent with its own context; the note keeps that and adds the plan handoff.
+_CLAUDE_FORK = "With the Task tool, start a fresh subagent, not a resumed or forked one."
+SUBAGENT = SUBAGENT_NOTE.format(fork=_CLAUDE_FORK)
+SYSTEM_NOTE = f"{HEADLESS_NOTE}\n\n{BACKGROUND_NOTE}\n\n{SUBAGENT}"
 # What the agent is told when its background commands ended and the CLI opened no turn for them.
 FOLLOW_UP = (
     "The command(s) you started in the background have ended:\n{ended}\nRead their output and go on with the task "

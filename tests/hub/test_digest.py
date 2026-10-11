@@ -18,7 +18,7 @@ import pytest
 from evo_agents.cli import main
 from evo_agents.hub import client as hub_client
 from evo_agents.hub import digest, hooks
-from evo_agents.hub.digest import DigestState, build, fingerprint, program
+from evo_agents.hub.digest import CODEX_META, DigestState, build, fingerprint, program
 from tests.hub import pg
 
 SESSION = "0199b1c2-7d3e-7a10-9c41-5e2f3a4b5c6d"
@@ -192,6 +192,124 @@ def test_a_digest_has_one_fingerprint_for_one_content(tmp_path):
     again = build(write_transcript(tmp_path / "b.jsonl", session_lines()), "/work/app")
     longer = build(write_transcript(tmp_path / "c.jsonl", [*session_lines(), said("One more thing.", 30)]), "/w")
     assert fingerprint(first) == fingerprint(again) != fingerprint(longer)
+
+
+# A Codex session: its transcript is a rollout (``codex exec`` / the app-server session log), one object a line with a
+# ``type`` and a ``payload``, the first a ``session_meta``. ``build`` reads it to the same digest as a Claude Code one.
+
+
+def cx(kind: str, payload: dict, second: int = 0) -> dict:
+    return {"timestamp": at(second), "type": kind, "payload": payload}
+
+
+def item(second: int, **fields) -> dict:
+    return cx("event_msg", {"type": "item_completed", "item": fields}, second)
+
+
+def tokens(second: int, last_input: int, total: dict) -> dict:
+    info = {"last_token_usage": {"input_tokens": last_input}, "total_token_usage": total, "model_context_window": 10**6}
+    return cx("event_msg", {"type": "token_count", "info": info}, second)
+
+
+def codex_rollout() -> list[dict]:
+    """A Codex rollout: a meta line, a turn's model, the person's prompt, a shell run that fails and one that passes,
+    an MCP call, a file change, two token counts (cumulative), and a compaction."""
+    total1 = {"input_tokens": 12000, "cached_input_tokens": 9000, "cache_write_input_tokens": 0, "output_tokens": 200}
+    total2 = {"input_tokens": 41000, "cached_input_tokens": 30000, "cache_write_input_tokens": 0, "output_tokens": 500}
+    return [
+        cx(CODEX_META, {"session_id": "01a12c1b-f58c-7672-acfc-cb7f35d3469a", "cwd": "/work/proj"}, 0),
+        cx("turn_context", {"model": "gpt-6-astra", "effort": "high"}, 1),
+        item(1, type="UserMessage", id="i1", content=[{"type": "text", "text": "Run the tests and fix what fails."}]),
+        item(2, type="AgentMessage", id="i2", content=[{"type": "Text", "text": "Running the tests."}]),
+        tokens(2, 120_000, total1),
+        item(
+            3,
+            type="CommandExecution",
+            id="call_1",
+            command=["/bin/zsh", "-lc", "cd /work/proj && python -m pytest -q"],
+            parsed_cmd=[{"type": "unknown", "cmd": "cd /work/proj && python -m pytest -q"}],
+            exit_code=1,
+            status="completed",
+            aggregated_output=FAILED_TEST,
+        ),
+        item(
+            4,
+            type="FileChange",
+            id="call_2",
+            changes={"/work/proj/queue.py": {"type": "update", "content": "def claim(): ..."}},
+            status="completed",
+        ),
+        item(
+            5,
+            type="McpToolCall",
+            id="call_3",
+            server="evo-hub",
+            tool="kg_search",
+            status="completed",
+            result={"content": [{"type": "text", "text": "a result"}]},
+        ),
+        item(
+            6,
+            type="CommandExecution",
+            id="call_4",
+            command=["/bin/zsh", "-lc", "cd /work/proj && python -m pytest -q"],
+            parsed_cmd=[{"type": "unknown", "cmd": "cd /work/proj && python -m pytest -q"}],
+            exit_code=0,
+            status="completed",
+            aggregated_output="12 passed",
+        ),
+        tokens(6, 150_000, total2),
+        item(7, type="ContextCompaction", id="i-compact"),
+        item(7, type="Reasoning", id="i-reason", summary_text=[], raw_content=[]),  # not counted
+    ]
+
+
+def test_build_reads_a_codex_rollout_to_the_same_digest_shape(tmp_path):
+    found = build(write_transcript(tmp_path / "rollout.jsonl", codex_rollout()), "/work/proj")
+    assert found is not None
+    assert found["cwd"] == "/work/proj"
+    assert found["model"] == "gpt-6-astra" and found["models"] == [{"model": "gpt-6-astra", "messages": 1}]
+    assert (found["started_at"], found["ended_at"]) == ("2026-10-08T01:00:00+00:00", "2026-10-08T01:00:07+00:00")
+    assert found["tools"] == [
+        {"gen_ai.tool.name": "shell", "calls": 2, "errors": 1},
+        {"gen_ai.tool.name": "apply_patch", "calls": 1, "errors": 0},
+        {"gen_ai.tool.name": "mcp__evo-hub__kg_search", "calls": 1, "errors": 0},
+    ]
+    assert found["bash"] == [{"program": "python -m pytest", "calls": 2, "errors": 1}]
+    assert found["commands"] == ["cd /work/proj && python -m pytest -q"]
+    assert found["repeated_commands"] == [{"command": "cd /work/proj && python -m pytest -q", "n": 2}]
+    assert found["user_turns"] == ["Run the tests and fix what fails."]
+    assert found["errors"] == [{"gen_ai.tool.name": "shell", "text": FAILED_TEST, "n": 1}]
+    assert found["files_edited"] == ["/work/proj/queue.py"] and found["files_read"] == 0
+    assert found["tool_result_chars"] == [
+        {"gen_ai.tool.name": "shell", "chars": len(FAILED_TEST) + len("12 passed")},
+        {"gen_ai.tool.name": "mcp__evo-hub__kg_search", "chars": len("a result")},
+    ]
+
+
+def test_a_codex_digest_takes_the_peak_the_usage_and_the_compactions_from_the_token_counts(tmp_path):
+    found = build(write_transcript(tmp_path / "rollout.jsonl", codex_rollout()), "/work/proj")
+    assert found["peak_context_tokens"] == 150_000, "the largest last_token_usage.input_tokens"
+    assert found["compactions"] == 1
+    # usage: the largest cumulative total, with the cached part moved to cache_read and kept out of input
+    assert found["usage"] == {
+        "input_tokens": 41000 - 30000,
+        "output_tokens": 500,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 30000,
+    }
+
+
+def test_a_codex_rollout_under_six_messages_and_a_zero_peak_make_no_digest(tmp_path):
+    short = codex_rollout()[:5]  # meta, turn_context, one user item, one agent item, one token count: 2 messages
+    assert build(write_transcript(tmp_path / "short.jsonl", short), "/work/proj") is None
+    zeroed = [
+        cx(CODEX_META, {"session_id": "s"}, 0),
+        *[item(n, type="AgentMessage", id=f"a{n}", content=[{"type": "Text", "text": "x"}]) for n in range(6)],
+        tokens(7, 0, {"input_tokens": 0, "cached_input_tokens": 0, "output_tokens": 0}),  # an empty turn: no peak
+    ]
+    found = build(write_transcript(tmp_path / "zeroed.jsonl", zeroed), "/work/proj")
+    assert found["peak_context_tokens"] is None, "a request that read no context never records 0 as the peak"
 
 
 @pytest.mark.parametrize(

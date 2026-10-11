@@ -721,6 +721,30 @@ reached the model as about 40,000, cut in the middle (`Warning: truncated output
 the script's error. The hook therefore leaves a payload from Codex (it carries a `turn_id`) unchanged, and Codex's
 own limit, `tool_output_token_limit` in its `config.toml`, is the only knob there.
 
+**Codex.** The evo-hub plugin's SessionStart and Stop hooks run in a Codex session of a hub harness too, so a Codex
+session on a laptop gets the same memory sync, plan copies, context line and session digest as a Claude Code one. Codex
+calls a hook with the same JSON on stdin as Claude Code — `hook_event_name`, `cwd`, `session_id` and `transcript_path`,
+Stop adding `turn_id` and `last_assistant_message` — and injects a SessionStart hook's `additionalContext` into the
+session as a developer message before the prompt, so the evo-hub context line reaches the model. The digest of a Codex
+session is built (`evo_agents/hub/digest.py`) from the rollout the hook's `transcript_path` names (the
+`~/.codex/sessions/.../rollout-*.jsonl` log, whose first line is a `session_meta`), through the same redact on the
+machine and with the same fields as a Claude Code digest: `peak_context_tokens` is the largest
+`last_token_usage.input_tokens` of the rollout's `token_count` lines (as the Codex runtime measures a run's peak), the
+usage comes from the running `total_token_usage` (the cached part moved to `cache_read_input_tokens`), the tools,
+commands, edits and errors from the normalized `item_completed` item stream (shell runs, MCP calls, file changes and web
+searches), and `compactions` from the `ContextCompaction` items. The `js`/node_repl and agent-spawning tools that the
+item stream does not normalize are not counted, and `files_read` is 0 since Codex reads files through the shell, which
+the commands already hold.
+
+What Codex requires and does not allow (tried with codex-cli 0.153.4 on 2026-10-12): Codex runs a hook only after its
+source is trusted, persisted as a `trusted_hash` under `[hooks.state."evo-hub@evo-agents:hooks/hooks.json:..."]` in
+`~/.codex/config.toml`; an untrusted hook is skipped silently in `codex exec`, and `--dangerously-bypass-hook-trust`
+runs it without that trust (for automation that vets its own hooks). So the owner trusts the evo-hub hook once on each
+machine (the first interactive session that loads it prompts for trust). Codex also clamps a `SessionEnd` hook's timeout
+to 3 seconds, but keeps the `SessionStart` (30 s) and `Stop` (25 s) timeouts the evo-hub plugin declares, which is where
+its work runs. Codex does not take the PostToolUse spool hook (above). As in Claude Code, the hooks exit 0 whatever
+happens and never fail a Codex session.
+
 **Skills.** `evo-agents hub skills publish skills/house-style --scope global` packs a skill directory (10 MiB at
 most) and publishes a new version; `--scope project:demo` publishes it to a project. `evo-agents hub skills sync`
 writes the latest version of every skill you see into the skills directories of each runtime on the machine

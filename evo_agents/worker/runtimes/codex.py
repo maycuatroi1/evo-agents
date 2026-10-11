@@ -6,7 +6,8 @@ the CLI prints is parsed here.
 - A new thread (``thread/start``), or the run's thread when it goes on with one (``thread/resume``), works in the
   worktree with full access: sandbox ``danger-full-access`` (``Sandbox.full_access``) and approval policy
   ``never`` (``ApprovalMode.deny_all``, which asks nobody: with no sandbox, nothing needs approving). Together they
-  are what ``--dangerously-bypass-approvals-and-sandbox`` sets. HEADLESS_NOTE goes in as developer instructions.
+  are what ``--dangerously-bypass-approvals-and-sandbox`` sets. DEVELOPER_NOTE (HEADLESS_NOTE and SUBAGENT_NOTE,
+  whose fork clause tells Codex to spawn a subagent with ``fork_turns`` ``"none"``) goes in as developer instructions.
 - The prompt starts a turn (``turn/start``). A message of the owner during the turn steers it (``turn/steer``); one
   that comes when the turn has ended, or that the turn no longer takes, starts a new turn on the same thread. When
   a turn completes and no message waits, the agent is done and the app-server is closed.
@@ -47,6 +48,7 @@ from evo_agents.worker.adapter import AgentEvent, Detection, Outcome, RunContext
 from evo_agents.worker.runtimes.common import (
     HEADLESS_NOTE,
     INTERRUPT_TIMEOUT,
+    SUBAGENT_NOTE,
     AgentFinished,
     QueueAdapter,
     cut,
@@ -71,6 +73,10 @@ log = logging.getLogger("evo_agents.worker")
 MIN_VERSION = "0.153.4"  # codex-cli, run as the app-server
 SDK = ("openai-codex", "0.160.0")
 APP_SERVER = ("app-server", "--listen", "stdio://")
+# The developer instructions of the thread: the headless note and, since Codex can spawn subagents, the subagent note,
+# whose fork clause names Codex's way to keep a subagent off this session's turns.
+_CODEX_FORK = 'With spawn_agent, set fork_turns to "none".'
+DEVELOPER_NOTE = HEADLESS_NOTE + "\n\n" + SUBAGENT_NOTE.format(fork=_CODEX_FORK)
 # Notifications that only repeat, piece by piece, what a completed item or the turn's end says in full, and the
 # start of a hook, whose completion says the same and how it ended.
 SKIPPED = frozenset(
@@ -301,7 +307,7 @@ class CodexAdapter(QueueAdapter):
             "approval_mode": ApprovalMode.deny_all,
             "sandbox": Sandbox.full_access,
             "cwd": worktree,
-            "developer_instructions": HEADLESS_NOTE,
+            "developer_instructions": DEVELOPER_NOTE,
             "model": run_setting(self.context, self.runtime, "model"),
             "config": {"model_reasoning_effort": effort} if effort else None,
         }
