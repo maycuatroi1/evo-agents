@@ -245,10 +245,11 @@ def test_registration_reads_the_harness_with_the_loader(home):
     ]
     # Paths another machine can rebuild: relative to the workspace, ~/ under the home, absolute elsewhere.
     assert body["harness"] == {"name": "demo", "workspace": "~/ws", "path": "demo-harness"}
+    shared = os.path.realpath(Path(home.anchor, "opt", "shared-lib"))
     assert body["repos"] == [
         {"name": "app", "origin": "https://example.org/app.git", "default_branch": "main", "path": "app"},
         {"name": "tools", "origin": None, "default_branch": None, "path": "tools"},
-        {"name": "shared", "origin": None, "default_branch": None, "path": os.path.realpath("/opt/shared-lib")},
+        {"name": "shared", "origin": None, "default_branch": None, "path": shared},
         {"name": "notes", "origin": None, "default_branch": None, "path": "~/notes"},
     ]
     assert found.push_warning() is None
@@ -375,7 +376,7 @@ def test_registry_pull_updates_hub_clusters_and_leaves_the_others_byte_identical
     ws = home / "ws"
     demo = clusters[1]  # updated in place, keeping a key it does not own
     assert demo["root"] == str(ws / "demo-harness") and demo["workspace"] == str(ws)
-    assert demo["repos"] == [str(ws / "app"), os.path.abspath("/opt/shared-lib"), str(ws / "bare")]
+    assert demo["repos"] == [str(ws / "app"), str(Path(ws.anchor, "opt", "shared-lib")), str(ws / "bare")]
     assert (
         demo["hub"] == {"url": "https://hub.test", "project": "demo"} and demo["kept"] == "a key the pull does not own"
     )
@@ -403,7 +404,7 @@ def test_registry_pull_places_paths_in_the_workspace_of_this_machine(home, tmp_p
     assert result.backup is None  # there was no file to back up
     (cluster,) = json.loads(path.read_bytes())["clusters"]
     assert cluster["root"] == str(other / "demo-harness") and cluster["workspace"] == str(other)
-    assert cluster["repos"] == [str(other / "app"), os.path.abspath("/opt/shared-lib"), str(other / "bare")]
+    assert cluster["repos"] == [str(other / "app"), str(Path(other.anchor, "opt", "shared-lib")), str(other / "bare")]
     assert not (home / ".claude").exists()  # the default registry was never touched
 
 
