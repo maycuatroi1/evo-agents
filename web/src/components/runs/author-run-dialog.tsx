@@ -22,8 +22,7 @@ import { cn } from "@/lib/utils";
 
 import { ModelField, Outlook } from "./dispatch-fields";
 import { useDispatchAuthorRun } from "./hooks";
-import { authorWorker, harnessRepo, readRequest, workerFitsNow } from "./author-model";
-import { dispatchOutlook, dispatchWorkers, modelSuggestions, readModel } from "./model";
+import { authorWorker, dispatchOutlook, dispatchWorkers, harnessRepo, modelSuggestions, readModel, readRequest, workerFitsNow } from "./model";
 import {
   AUTHOR_RUNTIME,
   AUTHOR_TIMEOUT_CHOICES,

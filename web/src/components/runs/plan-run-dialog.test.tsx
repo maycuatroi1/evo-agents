@@ -238,7 +238,7 @@ describe("PlanRunDialog", () => {
     renderVi(<Harness onDispatched={vi.fn()} />);
     const dialog = screen.getByRole("dialog", { name: "Chạy plan" });
     await within(dialog).findByTestId("plan-run-summary");
-    const sessions = within(dialog).getByTestId("plan-run-sessions");
+    const sessions = await within(dialog).findByTestId("plan-run-sessions"); // its code loads when the dialog opens
     const toggle = within(sessions).getByRole("switch", { name: "Mỗi bước một phiên mới" });
     expect(toggle).toHaveAttribute("aria-checked", "false");
     expect(sessions).toHaveTextContent("Tắt: một phiên agent làm mọi bước");
