@@ -13,6 +13,7 @@ test runs with a home directory of its own."""
 import io
 import json
 import os
+import signal
 import socket
 import stat
 import subprocess
@@ -146,7 +147,7 @@ def test_claude_codes_own_saved_copy_of_a_very_long_output_fills_the_spool_file(
     whole = long_text(50_001)
     saved = tmp_path / "tool-results" / "bwp1unkq4.txt"
     saved.parent.mkdir()
-    saved.write_text(whole, encoding="utf-8")
+    saved.write_bytes(whole.encode("utf-8"))  # the output's own bytes: write_text would make each \n \r\n on Windows
     response = bash_response(whole[:30_000], persistedOutputPath=str(saved), persistedOutputSize=50_001)
     code, out, err = run_hook(payload("Bash", response), monkeypatch, capsys)
     output = replaced(out)
@@ -301,8 +302,14 @@ def test_the_hook_exits_0_and_names_only_the_type_when_it_cannot_write(own_home,
 
 
 def test_the_hook_stops_within_its_budget_and_leaves_the_result(monkeypatch, capsys):
+    # SIGALRM cuts one long blocking call short. Windows has none: hooks.budget's timer interrupts the main thread,
+    # which sees it when the call it is in returns (Claude Code's hook timeout bounds a call that never does), so
+    # there the slow hook is many short calls.
+    step = 5.0 if hasattr(signal, "setitimer") else 0.05
+
     def slow(*args, **kwargs):
-        time.sleep(5)
+        for _ in range(round(5 / step)):
+            time.sleep(step)
 
     monkeypatch.setattr(spool, "BUDGET", 0.2)
     monkeypatch.setattr(spool, "post_tool_use", slow)

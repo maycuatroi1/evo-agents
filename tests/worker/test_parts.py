@@ -389,6 +389,7 @@ def test_a_plan_runs_worktree_folders_are_valid_branch_names_and_never_collide()
 
 
 def test_session_per_step_usage_of_a_session_keeps_its_largest_running_total_and_peak():
+    pytest.importorskip("aiohttp")  # the module of plan runs loads hubapi
     from evo_agents.worker.runner.sessions import session_usage
 
     turns = [
@@ -410,6 +411,7 @@ def test_session_per_step_usage_of_a_session_keeps_its_largest_running_total_and
 
 
 def test_session_per_step_usage_of_the_run_adds_up_its_sessions_and_lists_them():
+    pytest.importorskip("aiohttp")
     from evo_agents.worker.runner import sessions
 
     entries = [
