@@ -6,8 +6,9 @@ it, and the parts every kind of run shares. The run's kind is composed into it, 
 
 - ``runner.step``, ``StepRun``: a run of one step: a worktree on the plan's branch, the agent, its verify commands run
   again, the branch pushed.
-- ``runner.plan``, ``PlanRun``: every step of a plan not done yet, in one session, over a directory with a worktree
-  of each repo; it waits for its owner's answers between turns, and the hub may park it.
+- ``runner.plan``, ``PlanRun``: every step of a plan not done yet, in one session (or in one for each step,
+  ``runner.sessions``), over a directory with a worktree of each repo; it waits for its owner's answers between turns,
+  and the hub may park it.
 - ``runner.review``, ``ReviewRun``: the Curator's Reviewer of one night of a project, reading only.
 - ``runner.judge``, ``JudgeRun``: the Curator's Judge of one change, whose code runs as code the worker does not trust.
 - ``runner.author``, ``AuthorRun``: an execution plan written from its owner's request, in the run's chat.

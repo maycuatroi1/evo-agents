@@ -56,6 +56,7 @@ class Pinned:
     checkouts: dict
     agent_version: str | None
     run_kinds: tuple[str, ...] = ()  # the kinds of run its daemon said it runs
+    features: tuple[str, ...] = ()  # what its daemon said it does besides them (runs.WORKER_FEATURES)
 
 
 async def pinnable(conn: AsyncConnection, user: Principal, access: ProjectAccess, worker_id: int) -> Pinned:
@@ -73,6 +74,7 @@ async def pinnable(conn: AsyncConnection, user: Principal, access: ProjectAccess
         w.c.agent_version,
         w.c.dispatch_from,
         w.c.run_kinds,
+        w.c.features,
     ).where(w.c.id == worker_id)
     row = (await conn.execute(query)).one_or_none()
     if row is None or row.owner_id != user.user_id:  # the same answer for another member's worker and for no worker
@@ -90,18 +92,27 @@ async def pinnable(conn: AsyncConnection, user: Principal, access: ProjectAccess
             f"worker {name} takes only runs dispatched from a web session, as its owner set it, so a token cannot "
             "hand it work: dispatch on the web, or to another worker; nothing was dispatched",
         )
-    kinds = tuple(row.run_kinds or ())
-    return Pinned(worker_id, name, row.runtimes or {}, row.checkouts or {}, row.agent_version, kinds)
+    kinds, features = tuple(row.run_kinds or ()), tuple(row.features or ())
+    return Pinned(worker_id, name, row.runtimes or {}, row.checkouts or {}, row.agent_version, kinds, features)
 
 
-def unfit(worker: Pinned, project: str, kind: str, repos: list[str], runtime: str) -> list[str]:
-    """What keeps ``worker`` from ever claiming a run of ``kind`` over ``repos`` asking for ``runtime``, as its last
-    heartbeat reported it and the claim checks it; empty when nothing does."""
+def unfit(
+    worker: Pinned, project: str, kind: str, repos: list[str], runtime: str, *, session_per_step: bool = False
+) -> list[str]:
+    """What keeps ``worker`` from ever claiming a run of ``kind`` over ``repos`` asking for ``runtime`` (a plan run
+    with a session per step when ``session_per_step``), as its last heartbeat reported it and the claim checks it;
+    empty when nothing does."""
     problems = []
     if kind == "plan" and not runs.takes_plan_runs(worker.agent_version):
         problems.append(
             f"it runs evo-agents {worker.agent_version or 'of an unknown version'}, and a plan run needs "
             f"{runs.version_text(runs.PLAN_RUN_AGENT)} or later: upgrade it and restart its daemon"
+        )
+    elif session_per_step and runs.SESSION_PER_STEP not in worker.features:
+        problems.append(
+            f"its daemon (evo-agents {worker.agent_version or 'of an unknown version'}) does not say it runs a plan "
+            "run with a session for each step, and would run every step in one session: upgrade it and restart its "
+            "daemon, or dispatch the plan run without a session per step"
         )
     if (kind in runs.CURATOR_KINDS or kind == "author") and kind not in worker.run_kinds:
         problems.append(
@@ -123,11 +134,14 @@ def unfit(worker: Pinned, project: str, kind: str, repos: list[str], runtime: st
     return problems
 
 
-def _fits(worker: Pinned | None, access: ProjectAccess, kind: str, repos: list[str], runtime: str) -> None:
-    """409 when the run is pinned to a worker that cannot claim it, rather than a run that stays queued for good."""
+def _fits(
+    worker: Pinned | None, access: ProjectAccess, kind: str, repos: list[str], runtime: str, **wanted: bool
+) -> None:
+    """409 when the run is pinned to a worker that cannot claim it, rather than a run that stays queued for good;
+    ``wanted`` names what else the run asks of it (``unfit``)."""
     if worker is None:
         return
-    problems = unfit(worker, access.name, kind, repos, runtime)
+    problems = unfit(worker, access.name, kind, repos, runtime, **wanted)
     if problems:
         raise HTTPException(
             409,
@@ -332,7 +346,9 @@ def plan_run_repos(held) -> list[dict]:
 
 
 async def dispatch_plan_run(engine, user: Principal, project: str, body: PlanRunDispatch) -> Run:
-    """Queue a plan run: one run, on a worker of the caller's, that does every step of the plan not done yet."""
+    """Queue a plan run: one run, on a worker of the caller's, that does every step of the plan not done yet, in one
+    agent session or, with ``session_per_step``, in a new session for each step; pinned to a worker whose daemon does
+    not say it runs that, 409."""
     async with engine.begin() as conn:
         access = await project_access(conn, user, project)
         check_dispatcher(access)
@@ -352,8 +368,9 @@ async def dispatch_plan_run(engine, user: Principal, project: str, body: PlanRun
                 "active; nothing was dispatched",
             )
         repos = plan_run_repos(held)
-        _fits(pinned, access, "plan", [entry["repo"] for entry in repos], body.runtime)
-        await _refuse_without_origin(conn, access, [entry["repo"] for entry in repos], f"plan {held.plan_id}")
+        names = [entry["repo"] for entry in repos]
+        _fits(pinned, access, "plan", names, body.runtime, session_per_step=body.session_per_step)
+        await _refuse_without_origin(conn, access, names, f"plan {held.plan_id}")
         values = {
             "kind": "plan",
             "project_id": access.project_id,
@@ -370,6 +387,7 @@ async def dispatch_plan_run(engine, user: Principal, project: str, body: PlanRun
             "approval": "auto",
             "timeout_s": body.timeout_h * 3600,
             "repos": repos,
+            "session_per_step": body.session_per_step,
         }
         try:
             run_id = await insert_run(conn, values)
@@ -389,7 +407,13 @@ async def dispatch_plan_run(engine, user: Principal, project: str, body: PlanRun
         view = await run_view(conn, run_id)
     log.info(
         "plan run dispatched",
-        extra={"project": project, "plan_id": held.plan_id, "run_id": run_id, "repos": len(view.repos or [])},
+        extra={
+            "project": project,
+            "plan_id": held.plan_id,
+            "run_id": run_id,
+            "repos": len(view.repos or []),
+            "session_per_step": body.session_per_step,
+        },
     )
     return view
 

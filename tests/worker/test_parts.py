@@ -383,3 +383,73 @@ def test_a_plan_runs_worktree_folders_are_valid_branch_names_and_never_collide()
     assert folder_name("evo-agents", {"evo-agents", "evo-agents-2"}) == "evo-agents-3"
     body = {"repos": [{"repo": "a", "branch": "main"}, {"repo": "b"}, "c", {"branch": "x"}]}
     assert plan_branches(body) == {"a": "main", "b": None} and plan_branches({}) == {}
+
+
+# The usage of a plan run with a session per step
+
+
+def test_session_per_step_usage_of_a_session_keeps_its_largest_running_total_and_peak():
+    from evo_agents.worker.runner.sessions import session_usage
+
+    turns = [
+        {"input_tokens": 5, "cache_read_input_tokens": 50, "total_cost_usd": 0.2, "peak_context_tokens": 700},
+        None,
+        {"input_tokens": 3, "cache_read_input_tokens": 30, "total_cost_usd": 0.3, "peak_context_tokens": 400},
+    ]
+    assert session_usage(turns) == {
+        "input_tokens": 8,
+        "cache_read_input_tokens": 80,
+        "total_cost_usd": 0.3,
+        "peak_context_tokens": 700,
+    }
+    assert session_usage([None, None]) is None
+    assert session_usage([{"input_tokens": 4, "peak_context_tokens": None}]) == {
+        "input_tokens": 4,
+        "peak_context_tokens": None,
+    }, "a peak the runtime does not report stays null, never 0"
+
+
+def test_session_per_step_usage_of_the_run_adds_up_its_sessions_and_lists_them():
+    from evo_agents.worker.runner import sessions
+
+    entries = [
+        {
+            "step": "1",
+            "session_id": "s1",
+            "run_id": 7,
+            "usage": {"input_tokens": 5, "total_cost_usd": 0.2, "peak_context_tokens": 700, "context_window": 9},
+        },
+        {"step": "2", "session_id": "s2", "run_id": 7, "usage": None},
+        {
+            "step": "3",
+            "session_id": "s3",
+            "run_id": 8,
+            "usage": {
+                "input_tokens": 3,
+                "total_cost_usd": 0.3,
+                "peak_context_tokens": 900,
+                "context_window": 9,
+                "nested": {"x": 1},
+            },
+        },
+    ]
+    usage = sessions.sessions_usage(entries)
+    assert usage["input_tokens"] == 8 and usage["total_cost_usd"] == 0.5, "each session's cost, added up"
+    assert usage["peak_context_tokens"] == 900 and usage["context_window"] == 9, "the largest, not a sum"
+    assert [item["session_id"] for item in usage["sessions"]] == ["s1", "s2", "s3"]
+    assert usage["sessions"][2] == {
+        "step": "3",
+        "session_id": "s3",
+        "run_id": 8,
+        "input_tokens": 3,
+        "total_cost_usd": 0.3,
+        "peak_context_tokens": 900,
+        "context_window": 9,
+    }
+    assert sessions.sessions_usage([]) is None
+    only = sessions.sessions_usage([{"step": "1", "session_id": None, "run_id": 1, "usage": None}])
+    assert only == {"peak_context_tokens": None, "sessions": [{"step": "1", "session_id": None, "run_id": 1}]}
+    many = [{"step": str(n), "session_id": f"s{n}", "run_id": 1, "usage": {"input_tokens": 1}} for n in range(130)]
+    usage = sessions.sessions_usage(many)
+    assert usage["input_tokens"] == 130 and len(usage["sessions"]) == sessions.MAX_LISTED
+    assert usage["sessions"][0]["step"] == "30" and usage["sessions_left_out"] == 30

@@ -275,6 +275,7 @@ export function useProblem() {
   const format = useFormatter();
   return (problem: FitProblem): string => {
     if (problem.kind === "draining") return t("draining");
+    if (problem.kind === "sessionPerStep") return t("sessionPerStep");
     if (problem.kind === "checkout") return t("checkout", { repos: format.list(problem.repos, { type: "conjunction" }) });
     return problem.runtime === "any" ? t("runtimeAny") : t("runtime", { runtime: KNOWN_RUNTIMES[problem.runtime] ?? problem.runtime });
   };

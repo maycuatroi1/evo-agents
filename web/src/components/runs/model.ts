@@ -6,7 +6,6 @@ import {
   isActiveState,
   MAX_MODEL_CHARS,
   MAX_QUERY,
-  MAX_REQUEST_BYTES,
   type RequestedRuntime,
   type Run,
   type RunList,
@@ -226,7 +225,9 @@ export type FitProblem =
   | { kind: "draining" }
   | { kind: "runtime"; runtime: RequestedRuntime }
   /** Every repo of the request the worker has no checkout of. */
-  | { kind: "checkout"; repos: string[] };
+  | { kind: "checkout"; repos: string[] }
+  /** A plan run with a session for each step, which the worker's daemon does not say it runs. */
+  | { kind: "sessionPerStep" };
 
 export type WorkerFit = {
   worker: Worker;
@@ -236,7 +237,14 @@ export type WorkerFit = {
   free: number;
 };
 
-export type FitRequest = { project: string; runtime: RequestedRuntime; repos: readonly string[] };
+export type FitRequest = { project: string; runtime: RequestedRuntime; repos: readonly string[]; sessionPerStep?: boolean };
+
+/** The feature a worker's heartbeat names when its daemon runs a plan run with a new session for each step. */
+export const SESSION_PER_STEP = "session_per_step";
+
+export function runsSessionPerStep(worker: Pick<Worker, "features">): boolean {
+  return (worker.features ?? []).includes(SESSION_PER_STEP);
+}
 
 export function fitWorker(worker: Worker, request: FitRequest): WorkerFit {
   const free = Math.max(worker.slots - worker.held_runs, 0);
@@ -248,6 +256,7 @@ export function fitWorker(worker: Worker, request: FitRequest): WorkerFit {
   }
   const missing = request.repos.filter((repo) => !(`${request.project}/${repo}` in worker.checkouts));
   if (missing.length > 0) return no({ kind: "checkout", repos: missing });
+  if (request.sessionPerStep && !runsSessionPerStep(worker)) return no({ kind: "sessionPerStep" });
   if (worker.status !== "online") return { worker, fit: "offline", problem: null, free };
   return { worker, fit: free > 0 ? "now" : "busy", problem: null, free };
 }
@@ -430,44 +439,4 @@ export type PlanRunPhase = "queued" | "running" | "waiting" | "parked" | "review
 export function planRunPhase(state: RunState): PlanRunPhase {
   if (state === "queued" || state === "waiting" || state === "parked" || state === "review") return state;
   return "running";
-}
-
-// Author runs. An author run is one run on a worker of the member's, always pinned, that writes a plan from their
-// request (runs.py, dispatch_author): its first repo is the project's harness, where plans live, which the worker must
-// have a checkout of, and it runs on Claude Code alone.
-
-/**
- * The name a worker gives the checkout of a project's harness: the last part of its path, as the hub's
- * `author.harness_repo` reads it; null for a project registered without its harness.
- */
-export function harnessRepo(harness: { path: string } | null | undefined): string | null {
-  if (!harness || typeof harness.path !== "string") return null;
-  const name = harness.path.replaceAll("\\", "/").replace(/\/+$/, "").split("/").pop() ?? "";
-  return name === "" || name === "." || name === ".." || name === "~" ? null : name;
-}
-
-/** Whether `worker` could claim an author run of `request` now. */
-export function workerFitsNow(worker: Worker, request: FitRequest): boolean {
-  return fitWorker(worker, request).fit === "now";
-}
-
-/**
- * The worker an author run goes to: the one picked while it is still among `workers`, else the first that could take
- * the run now, else the first that could take it at all, else the first; null without a worker.
- */
-export function authorWorker(workers: readonly Worker[], request: FitRequest, picked: number | null): number | null {
-  if (picked !== null && workers.some((worker) => worker.id === picked)) return picked;
-  const fits = workers.map((worker) => fitWorker(worker, request));
-  const best = fits.find((fit) => fit.fit === "now") ?? fits.find((fit) => fit.fit !== "no") ?? fits[0];
-  return best ? best.worker.id : null;
-}
-
-/** Why a request cannot go with an author run: nothing but blanks, or over 16 KiB of UTF-8. */
-export type RequestProblem = "blank" | "long";
-
-/** The request as the API takes it (as typed: the agent reads the member's own words), or the problem with it. */
-export function readRequest(text: string): { request: string; problem: RequestProblem | null } {
-  if (!text.trim()) return { request: text, problem: "blank" };
-  if (new TextEncoder().encode(text).length > MAX_REQUEST_BYTES) return { request: text, problem: "long" };
-  return { request: text, problem: null };
 }
