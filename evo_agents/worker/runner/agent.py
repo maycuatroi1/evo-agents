@@ -8,6 +8,7 @@ because of the run's leases (Claude Code drops the daemon's ANTHROPIC_API_KEY ne
 CLAUDE_CODE_OAUTH_TOKEN) is noted once a run (``note_environment``). On Claude Code a run of the Curator uses the Claude
 subscription login alone (plan decision 14): ANTHROPIC_API_KEY is left out of its agent's environment, and a machine
 that has no subscription login for it fails the run before the agent starts, saying so (``Adapter.login_refusal``).
+The agent of a run on Claude Code gets the auto-compact window of ``claude_code.compact_window`` in its environment.
 """
 
 from __future__ import annotations
@@ -22,6 +23,7 @@ from evo_agents.worker.adapter import AgentEvent, Outcome, RunContext
 from evo_agents.worker.runner.common import RunFailed, log
 from evo_agents.worker.runner.terminal import Terminal
 from evo_agents.worker.runner.transitions import running_from, why_stopped
+from evo_agents.worker.runtimes.claude_code import compact_window
 
 if TYPE_CHECKING:
     from evo_agents.worker.runner.context import Run
@@ -147,6 +149,8 @@ class Agent:
         env.update(run.credentials.agent_vars)  # env leases, and git's configuration for the leased origins
         if self.subscription_only:  # plan decision 14: the Claude subscription login alone
             env.pop(API_KEY, None)
+        if run.runtime == "claude-code":  # its auto-compact window, headless and in the terminal UI
+            env.update(compact_window(env))
         return env
 
     @property

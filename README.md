@@ -144,13 +144,13 @@ claude plugin install evo-hub@evo-agents
 ```
 
 The `evo-hub` plugin registers the MCP server `evo-hub` (`evo-agents hub mcp`, which carries the session to the
-hub's `/mcp`), a `using-agent-hub` skill, and two hooks. Its tools are the seven `kg_*` tools and `memory_search`,
+hub's `/mcp`), a `using-agent-hub` skill, and three hooks. Its tools are the seven `kg_*` tools and `memory_search`,
 `memory_get`, `memory_write`, `plan_list`, `plan_show`, `plan_step`, `skill_list`, `hub_projects` and
 `run_tool_stats`. In a harness
 whose `harness.yaml` names `hub.project`, plans live on the hub and the files under `plans/` are read-only copies:
 mark a step with `plan_step`, `evo-agents hub plan step` or `evo harness step`, never by editing the YAML.
 
-Hooks (`evo-agents hub hook session-start|stop`, same pins and `|| true` as evo-kg):
+Hooks (`evo-agents hub hook session-start|stop|post-tool-use`, same pins and `|| true` as evo-kg):
 
 - SessionStart pulls the hub's memories of the session directory into Claude Code's memory directory, writes the
   plan copies of its harness (no commit; a copy edited by hand is left as it is and named), counts the skills
@@ -162,9 +162,13 @@ Hooks (`evo-agents hub hook session-start|stop`, same pins and `|| true` as evo-
   per tool and per Bash program, what the person wrote, model and tokens, with every string that looks like a secret
   replaced on the machine first. A digest the hub did not take waits for a later Stop (`~/.evo/hub/digest-state.json`);
   the session of a worker run pushes none.
+- PostToolUse writes a result of Bash, Read, Grep or an MCP tool longer than 10,000 characters (`EVO_SPOOL_THRESHOLD`)
+  to `~/.evo/tool-output/<session>/` (mode 0600, kept 7 days, never sent to the hub) and gives the model its head, its
+  tail, its size and the file's path instead.
 
-Both exit 0 whatever happens, give up after a few seconds, print at most one line without tokens or memory text, and
-send nothing when the machine is not signed in.
+All three exit 0 whatever happens and give up after a few seconds. SessionStart and Stop print at most one line without
+tokens or memory text and send nothing when the machine is not signed in; PostToolUse prints the shortened result or
+nothing.
 
 ### Workers
 
