@@ -27,6 +27,9 @@ REFRESH_UNITS = {"s": 1, "m": 60, "h": 3600, "d": 86400}
 # A scheduled run starts about one interval after the last one did, but that run finished later than it
 # started. Without this slack an hourly schedule would sync a 1h source only every other hour.
 DUE_SLACK_SECONDS = 300
+# A kind of secret a connector redacted from an item (props.redactions): only these names and positive counts go into
+# the run's result and audit line, whatever else a connector puts there.
+REDACTION_KIND = re.compile(r"[a-z][a-z0-9_]{0,39}")
 
 
 @dataclass
@@ -40,6 +43,7 @@ class SyncResult:
     rejected: int = 0
     removals: int = 0
     held: list[dict] = field(default_factory=list)
+    redactions: dict[str, dict[str, int]] = field(default_factory=dict)  # item id -> secrets redacted, by kind
     issues: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     returncode: int | None = None
@@ -65,6 +69,21 @@ def _guard(source: dict, alive: int, removed: int, listed: int) -> str | None:
     if removed and alive >= min_scope and removed / alive > ratio:
         return f"would remove {removed} of {alive} item(s), above max_removal_ratio {ratio}"
     return None
+
+
+def count_item(result: SyncResult, item: dict) -> None:
+    """Count an item into the run, with the secrets its connector redacted from it, by kind (``props.redactions``)."""
+    result.items += 1
+    redactions = (item.get("props") or {}).get("redactions")
+    if not isinstance(redactions, dict):
+        return
+    counts = {
+        kind: n
+        for kind, n in redactions.items()
+        if isinstance(kind, str) and REDACTION_KIND.fullmatch(kind) and type(n) is int and n > 0
+    }
+    if counts:
+        result.redactions[item["id"]] = counts
 
 
 def _record_run(corpus: Corpus, result: SyncResult, connector: str, version: str | None, started: str) -> str:
@@ -140,7 +159,7 @@ def sync_source(
                 kind = message["type"]
                 if kind == "item":
                     writer.write(corpus.to_log_record(message))
-                    result.items += 1
+                    count_item(result, message)
                 elif kind == "tombstone":
                     record = dict(message)
                     known = corpus.get(record["id"])
