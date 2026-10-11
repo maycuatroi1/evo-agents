@@ -47,7 +47,7 @@ policy:
 sources:
   - id: docs
     connector: "python:tests.kg.fakes:run"
-    config: {{file: "{fake.path}"}}
+    config: {{file: '{fake.path}'}}
     label: {{level: internal, integrity: U}}
     deletion: {{max_removal_ratio: 0.3, min_scope: 0}}
 """

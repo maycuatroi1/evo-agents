@@ -12,6 +12,7 @@ from evo_agents.cli import main
 from evo_agents.kg import schedule
 
 SYNC = ["kg", "sync", "--due", "--all", "--build"]
+POSIX_PATHS = pytest.mark.skipif(os.name == "nt", reason="the plist names POSIX paths and the gui/<uid> domain")
 
 
 @pytest.fixture
@@ -23,6 +24,7 @@ def home(tmp_path, monkeypatch, kg_env):
     return path
 
 
+@POSIX_PATHS
 def test_schedule_plist_content(home, kg_env):
     plist = schedule.build_plist("/opt/tools/bin/evo-agents")
     assert plist["Label"] == "io.github.maycuatroi1.evo-agents.kg-sync"
@@ -42,6 +44,7 @@ def test_schedule_plist_content(home, kg_env):
     assert plistlib.loads(schedule.render(plist).encode()) == plist
 
 
+@POSIX_PATHS
 def test_schedule_pushes_to_the_hub_when_the_machine_is_signed_in(home, kg_env, capsys, monkeypatch):
     monkeypatch.setattr(sys, "platform", "darwin")  # install needs launchd; launchctl is the fake below
     hub = home / ".evo" / "hub"
@@ -58,6 +61,7 @@ def test_schedule_pushes_to_the_hub_when_the_machine_is_signed_in(home, kg_env, 
     assert plistlib.loads(path.read_bytes())["ProgramArguments"][-1] == "--push"
 
 
+@POSIX_PATHS
 def test_schedule_names_the_running_executable(tmp_path, monkeypatch):
     python_m = [os.path.abspath(sys.executable), "-m", "evo_agents"]
     assert schedule.executable("/opt/tools/bin/evo-agents") == ["/opt/tools/bin/evo-agents"]
@@ -98,6 +102,7 @@ class FakeLaunchctl:
         return subprocess.CompletedProcess(argv, 0, "", "")
 
 
+@POSIX_PATHS
 def test_schedule_install_and_uninstall_against_a_fake_launchctl(home, kg_env, monkeypatch):
     def forbidden(*args, **kwargs):
         raise AssertionError("a test must never run launchctl")
@@ -131,5 +136,12 @@ def test_schedule_install_and_uninstall_against_a_fake_launchctl(home, kg_env, m
 def test_schedule_install_needs_launchd(home, monkeypatch):
     monkeypatch.setattr(sys, "platform", "linux")
     with pytest.raises(schedule.ScheduleError, match="kg sync --due --all --build"):
+        schedule.install(run=FakeLaunchctl())
+    assert not schedule.plist_path().exists()
+
+
+def test_schedule_install_on_windows_names_the_command_for_task_scheduler(home, monkeypatch):
+    monkeypatch.setattr(sys, "platform", "win32")
+    with pytest.raises(schedule.ScheduleError, match="Task Scheduler.*kg sync --due --all --build"):
         schedule.install(run=FakeLaunchctl())
     assert not schedule.plist_path().exists()

@@ -273,6 +273,8 @@ def free_port() -> int:
 def clean_env(**extra: str) -> dict[str, str]:
     env = {k: v for k, v in os.environ.items() if not k.startswith(HUB_ENV) and k != "PGPASSWORD"}
     env.update(extra)
+    if os.name == "nt" and "HOME" in extra:
+        env["USERPROFILE"] = extra["HOME"]
     return env
 
 

@@ -14,6 +14,8 @@ import io
 import json
 import os
 import re
+import shutil
+import signal
 import socket
 import subprocess
 import sys
@@ -38,6 +40,7 @@ from tests.hub import live, pg
 ROOT = Path(__file__).parents[2]
 PLUGIN = ROOT / "plugins" / "evo-hub"
 EVALS = PLUGIN / "evals"
+SH = shutil.which("sh") or "/bin/sh"
 TOOL = "mcp__plugin_evo-hub_evo-hub__"
 MARKER = "Wombat-Memory-Text"  # in memory bodies only: must never reach a hook's output or the hub's log
 HOST_VARIABLES = (
@@ -183,7 +186,7 @@ def test_pending_counts_changed_and_new_files_only(own_home):
     (directory / "link.md").symlink_to(own_home / "outside.md")
     (own_home / "outside.md").write_text("outside", encoding="utf-8")
     assert sync.pending(session) is False  # none of these is ever pushed
-    (directory / "new.md").write_text(typed("user", "new"), encoding="utf-8")
+    (directory / "new.md").write_bytes(typed("user", "new").encode("utf-8"))
     assert sync.pending(session) is True
     state = hub_memory.State(own_home / ".evo" / "hub" / "memory-state.json", "https://hub.test")
     held = {"id": 1, "revision": 1, "deleted": False, "body": typed("user", "new")}
@@ -214,7 +217,8 @@ def test_a_hub_that_does_not_answer_is_left_alone_for_a_while(own_home, monkeypa
     assert (code, out) == (0, "") and "did not answer" in err and len(requests) == 1
     held = json.loads((own_home / ".evo" / "hub" / hooks.STATE_FILE).read_text(encoding="utf-8"))
     assert held == {"version": 1, "down": {url: clock[0]}}
-    assert oct(os.stat(own_home / ".evo" / "hub" / hooks.STATE_FILE).st_mode & 0o777) == "0o600"
+    if os.name != "nt":
+        assert oct(os.stat(own_home / ".evo" / "hub" / hooks.STATE_FILE).st_mode & 0o777) == "0o600"
 
     clock[0] += hooks.COOLDOWN - 1
     code, out, err = run_hook("stop", {}, monkeypatch, capsys)
@@ -250,7 +254,8 @@ def test_a_hub_that_hangs_costs_at_most_the_budget(own_home, monkeypatch, capsys
         directory = memory_dir(own_home, session)
         directory.mkdir(parents=True)
         (directory / "note.md").write_text(typed("user", MARKER), encoding="utf-8")
-        monkeypatch.setattr(hooks, "REQUEST_TIMEOUT", 60.0)  # the budget, not the request timeout, has to stop it
+        timeout = 60.0 if hasattr(signal, "setitimer") else 2.0
+        monkeypatch.setattr(hooks, "REQUEST_TIMEOUT", timeout)  # the budget, not the request timeout, has to stop it
         monkeypatch.setattr(hooks, "BUDGETS", {"session-start": 1.0, "stop": 1.0})
 
         started = time.monotonic()
@@ -398,7 +403,7 @@ def test_the_hook_commands_exit_0_with_uvx_missing_failing_or_working(own_home, 
         env = pg.clean_env(HOME=str(own_home), PATH=path)
         for variable in HOST_VARIABLES:
             env.pop(variable, None)
-        return subprocess.run(["/bin/sh", "-c", command], input=payload, env=env, capture_output=True, text=True)
+        return subprocess.run([SH, "-c", command], input=payload, env=env, capture_output=True, text=True)
 
     for command in commands.values():
         missing = run(command, str(tmp_path / "empty"))
@@ -542,7 +547,7 @@ def test_the_plan_step_case_starts_from_a_copy_the_hub_wrote(tmp_path):
     case = EVALS / "plan-step-through-hub"
     work = tmp_path / "case"
     work.mkdir()
-    subprocess.run(["/bin/sh", str(case / "scaffold.sh")], cwd=work, check=True)
+    subprocess.run([SH, str(case / "scaffold.sh")], cwd=work, check=True)
     assert [str(i) for r in validate_harness(work) for i in errors(r.issues)] == []
     copy = (work / "plans" / "active" / "demo.yaml").read_text(encoding="utf-8")
     found = read_plan(work / "plans" / "active" / "demo.yaml")
@@ -565,7 +570,7 @@ def test_the_memory_case_holds_the_answer_only_on_the_hub(tmp_path):
     case = EVALS / "memory-recall"
     work = tmp_path / "case"
     work.mkdir()
-    subprocess.run(["/bin/sh", str(case / "scaffold.sh")], cwd=work, check=True)
+    subprocess.run([SH, str(case / "scaffold.sh")], cwd=work, check=True)
     on_disk = " ".join(path.read_text(encoding="utf-8") for path in work.rglob("*") if path.is_file())
     assert "DD/MM/YYYY" not in on_disk and "1.250.000,50" not in on_disk
     answer = (case / "mocks" / "evo-hub" / "memory_get.md").read_text(encoding="utf-8")
