@@ -1032,6 +1032,16 @@ as the model of the thread it starts or resumes. opencode is always told the mod
 `model` of the owner's opencode config, as `provider/model`, split at its first `/` into the `providerID` and `modelID`
 of each prompt, and a model `opencode serve` does not list fails the start with that reason.
 
+Claude Code compacts the context of a run's agent as it nears 200,000 tokens: the agent's environment, headless and
+in the terminal UI, gets `CLAUDE_CODE_AUTO_COMPACT_WINDOW=200000`. `EVO_WORKER_CLAUDE_CODE_AUTO_COMPACT_WINDOW` in the
+daemon's environment sets another window (Claude Code takes 100,000 to 1,000,000 tokens and caps it at the model's
+context window), `off` or `0` leaves Claude Code's own, and a `CLAUDE_CODE_AUTO_COMPACT_WINDOW` the daemon's
+environment already has is passed on as it is. Why 200,000: the 33 sessions of worker runs on the laptop up to
+2026-10-11 peaked at a median of 41,950 tokens of context and none compacted; the six that passed 200,000 (219,000
+to 297,000) were runs of 105 to 188 model calls, each re-reading 17 to 31 million cached tokens, since every call
+reads the whole context again. Under this window those six would have
+compacted as they neared it, and the other 27 stayed below it. Codex keeps its own compaction.
+
 For the heartbeat, each adapter lists the models its runtime offers on the machine, looked at with the runtime itself
 every 5 minutes: Claude Code, which has no command that lists them, gives the aliases its `--model` help names
 (`fable`, `opus`, `sonnet` with Claude Code 2.1.291); opencode what `opencode models` prints, `provider/model` for
