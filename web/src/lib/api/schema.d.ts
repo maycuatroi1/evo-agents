@@ -506,6 +506,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project}/plans/{plan_id}/handoff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Handoff
+         * @description What a new agent session needs to take the plan up, built from the plan as the hub holds it: its goal, the
+         *     steps done with their commits, Decision lines and evidence, the steps not done, within ``budget_tokens``
+         *     (``evo_agents.hub.handoff``). Read under the rule of GET .../plans/{plan_id}; 404 for a step the plan lacks.
+         */
+        get: operations["handoff_v1_projects__project__plans__plan_id__handoff_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{project}/plans/{plan_id}/complete": {
         parameters: {
             query?: never;
@@ -5943,6 +5965,37 @@ export interface components {
             /** Text */
             text: string;
         };
+        /** PlanHandoff */
+        PlanHandoff: {
+            /** Project */
+            project: string;
+            /** Plan Id */
+            plan_id: string;
+            /** Revision */
+            revision: number;
+            /**
+             * Step
+             * @description the step the handoff is for, whose dependencies' evidence comes first
+             */
+            step: string | null;
+            /** Budget Tokens */
+            budget_tokens: number;
+            /**
+             * Tokens
+             * @description the text's size as the hub estimates it: UTF-8 bytes / 3, rounded up
+             */
+            tokens: number;
+            /**
+             * Cut
+             * @description whether anything was cut or left out to stay within the budget
+             */
+            cut: boolean;
+            /**
+             * Text
+             * @description the handoff, as evo_agents.hub.handoff builds it; markdown
+             */
+            text: string;
+        };
         /** PlanPatch */
         PlanPatch: {
             /**
@@ -10635,6 +10688,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PlanDiff"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    handoff_v1_projects__project__plans__plan_id__handoff_get: {
+        parameters: {
+            query?: {
+                /** @description a step: its dependencies' evidence first */
+                step?: string | null;
+                /** @description the most tokens the text may take */
+                budget_tokens?: number;
+            };
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                plan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanHandoff"];
                 };
             };
             /** @description Unauthorized */

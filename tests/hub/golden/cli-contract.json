@@ -1917,6 +1917,66 @@
         ]
       }
     },
+    "hub plan handoff": {
+      "positionals": [
+        {
+          "name": "plan",
+          "metavar": "PLAN",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--step"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--budget-tokens"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false,
+          "default": 4000
+        },
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "plan_id",
+          "revision",
+          "step",
+          "budget_tokens",
+          "tokens",
+          "cut",
+          "text"
+        ],
+        "schema": "PlanHandoff"
+      }
+    },
     "hub plan history": {
       "positionals": [
         {
@@ -6821,6 +6881,139 @@
                 "application/json": {
                   "schema": {
                     "$ref": "#/components/schemas/PlanDiff"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/plans/{plan_id}/handoff": {
+        "get": {
+          "tags": [
+            "plans"
+          ],
+          "summary": "Handoff",
+          "description": "What a new agent session needs to take the plan up, built from the plan as the hub holds it: its goal, the\nsteps done with their commits, Decision lines and evidence, the steps not done, within ``budget_tokens``\n(``evo_agents.hub.handoff``). Read under the rule of GET .../plans/{plan_id}; 404 for a step the plan lacks.",
+          "operationId": "handoff_v1_projects__project__plans__plan_id__handoff_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "plan_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Plan Id"
+              }
+            },
+            {
+              "name": "step",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "a step: its dependencies' evidence first",
+                "title": "Step"
+              },
+              "description": "a step: its dependencies' evidence first"
+            },
+            {
+              "name": "budget_tokens",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 8000,
+                "minimum": 1000,
+                "description": "the most tokens the text may take",
+                "default": 4000,
+                "title": "Budget Tokens"
+              },
+              "description": "the most tokens the text may take"
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/PlanHandoff"
                   }
                 }
               }
@@ -26050,6 +26243,65 @@
             "text"
           ],
           "title": "PlanDiffLine"
+        },
+        "PlanHandoff": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "plan_id": {
+              "type": "string",
+              "title": "Plan Id"
+            },
+            "revision": {
+              "type": "integer",
+              "title": "Revision"
+            },
+            "step": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Step",
+              "description": "the step the handoff is for, whose dependencies' evidence comes first"
+            },
+            "budget_tokens": {
+              "type": "integer",
+              "title": "Budget Tokens"
+            },
+            "tokens": {
+              "type": "integer",
+              "title": "Tokens",
+              "description": "the text's size as the hub estimates it: UTF-8 bytes / 3, rounded up"
+            },
+            "cut": {
+              "type": "boolean",
+              "title": "Cut",
+              "description": "whether anything was cut or left out to stay within the budget"
+            },
+            "text": {
+              "type": "string",
+              "title": "Text",
+              "description": "the handoff, as evo_agents.hub.handoff builds it; markdown"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "plan_id",
+            "revision",
+            "step",
+            "budget_tokens",
+            "tokens",
+            "cut",
+            "text"
+          ],
+          "title": "PlanHandoff"
         },
         "PlanPatch": {
           "properties": {

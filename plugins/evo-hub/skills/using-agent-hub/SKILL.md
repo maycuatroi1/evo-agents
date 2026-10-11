@@ -29,6 +29,9 @@ comes back.
 
 - `plan_list` lists the plans of the project with their revision and progress; `plan_show` returns a plan, or one
   step with `step`, as the hub holds it now. The copy in git can lag behind it.
+- To hand a plan to a new session or a subagent, give it `plan_handoff` (with `step` for the step it takes on) rather
+  than your history: the goal, each step done with its commits and Decision lines, and the steps left, within
+  `budget_tokens`.
 - To mark a step, call `plan_step` with `plan_id`, `step`, `status` (`pending`, `in_progress`, `done`, `blocked`)
   and `evidence` (commit, test run, link) or a `note`. `done` sets `done_at` to today. The hub retries on a newer
   revision when another write landed meanwhile, and refuses when that write changed the same keys.
@@ -70,6 +73,7 @@ comes back.
 | `memory_write` | create or change a memory on the hub only |
 | `plan_list` | the plans of a project with revision and progress |
 | `plan_show` | a plan, or one step, as the hub holds it |
+| `plan_handoff` | a plan's goal, steps done with commits and Decision lines, and steps left, within a token budget |
 | `plan_step` | set a step's status with evidence or a note |
 | `skill_list` | the skills on the hub you can see |
 | `hub_projects` | the projects you hold a grant on, with role and sinks |
