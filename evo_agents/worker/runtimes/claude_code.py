@@ -41,6 +41,9 @@ here.
   it.
 - Whether the turn completed comes from the last ``result`` (``subtype`` ``success``, not ``is_error``), never from
   the exit code: Claude Code exits 0 when it is interrupted.
+- The run's usage adds up the ``result`` of each turn, with the session's ``total_cost_usd``, and holds
+  ``peak_context_tokens``: the largest context a message of the model read in the main thread, its usage's input,
+  cache creation and cache read tokens, as the stream's ``assistant`` messages carry it (``context_of``).
 - The CLI is ``claude`` on PATH, started through the launcher of ``common`` (a session of its own).
 - Claude Code authenticates with the machine's own login, unless the environment says otherwise. A lease of the run
   may set CLAUDE_CODE_OAUTH_TOKEN, a token of ``claude setup-token`` (docs/credentials.md). Claude Code takes
@@ -89,7 +92,7 @@ import uuid
 from collections.abc import Callable, Mapping
 from pathlib import Path
 
-from evo_agents.hub import author, curator, runs
+from evo_agents.hub import author, curator, digest, runs
 from evo_agents.worker.adapter import AgentEvent, Detection, Outcome, RunContext, command_output
 from evo_agents.worker.runtimes.common import (
     HEADLESS_NOTE,
@@ -99,6 +102,7 @@ from evo_agents.worker.runtimes.common import (
     add_numbers,
     cut,
     detect_runtime,
+    larger,
     message_chunk,
     plan,
     raw,
@@ -108,6 +112,7 @@ from evo_agents.worker.runtimes.common import (
     tool_update,
     usage_update,
     which,
+    with_peak,
     write_launcher,
 )
 
@@ -420,6 +425,19 @@ def _raw_of(message) -> dict:
     return {"type": type(message).__name__}
 
 
+def context_of(message) -> int | None:
+    """The tokens of the context a message of the model read, as its usage counts them (``digest.context_tokens``:
+    input, cache creation and cache read); None for any other message, one of a subagent (``parent_tool_use_id``),
+    whose context is its own, and one no model sent."""
+    from claude_agent_sdk import types as sdk
+
+    if not isinstance(message, sdk.AssistantMessage) or message.parent_tool_use_id is not None:
+        return None
+    if message.model == digest.SYNTHETIC_MODEL:
+        return None
+    return digest.context_tokens(getattr(message, "usage", None))
+
+
 def events_of(message) -> list[AgentEvent]:
     """The hub's events for one message of ``ClaudeSDKClient.receive_messages()``."""
     from claude_agent_sdk import types as sdk
@@ -509,6 +527,7 @@ class ClaudeCodeAdapter(QueueAdapter):
         self._input_open = False
         self._end_input = asyncio.Event()
         self._results: list = []
+        self._peak: int | None = None  # the largest context of a message of the model in the main thread
         self._error: str | None = None
         self._stderr: collections.deque[str] = collections.deque(maxlen=20)
         self._dir: Path | None = None
@@ -588,6 +607,7 @@ class ClaudeCodeAdapter(QueueAdapter):
                     if isinstance(session, str) and session:
                         self._session = session
                 self.emit(events_of(message))
+                self._peak = larger(self._peak, context_of(message))
                 ended = self.background.see(message)
                 if isinstance(message, sdk.ResultMessage):
                     self._results.append(message)
@@ -607,7 +627,7 @@ class ClaudeCodeAdapter(QueueAdapter):
             add_numbers(usage, result.usage)
         if self._results and self._results[-1].total_cost_usd is not None:
             usage["total_cost_usd"] = self._results[-1].total_cost_usd  # the session's, counted by the CLI
-        usage = usage or None
+        usage = with_peak(usage, self._peak)
         if not self._results:
             why = self._error or "the CLI ended without finishing its turn"
             tail = " | ".join(list(self._stderr)[-3:])

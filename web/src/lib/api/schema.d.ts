@@ -8054,6 +8054,21 @@ export interface components {
             files_read: number;
             /** Files Edited */
             files_edited?: string[];
+            /**
+             * Peak Context Tokens
+             * @description the largest context one message of the model read: its input, cache creation and cache read tokens; null when no message said its usage, or a client that did not count it pushed the digest
+             */
+            peak_context_tokens?: number | null;
+            /**
+             * Compactions
+             * @description times the session's context was compacted; null when a client that did not count it pushed
+             */
+            compactions?: number | null;
+            /**
+             * Tool Result Chars
+             * @description per tool, the characters of its results the model read, the most first; null when a client that did not count them pushed the digest
+             */
+            tool_result_chars?: components["schemas"]["ToolChars"][] | null;
         };
         /** Sign */
         Sign: {
@@ -8601,6 +8616,16 @@ export interface components {
              * @default claude-code@anthropic
              */
             sink: string;
+        };
+        /** ToolChars */
+        ToolChars: {
+            /** Gen Ai.Tool.Name */
+            "gen_ai.tool.name": string;
+            /**
+             * Chars
+             * @description characters of the text of the tool's results, which the model read
+             */
+            chars: number;
         };
         /** ToolCount */
         ToolCount: {
