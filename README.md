@@ -130,6 +130,12 @@ hub that has a graph of the project, the server answers from the hub with the sa
 | `kg_status` | bound project, clearance, snapshot age, coverage per source, session label |
 | `kg_more` | continue a truncated result |
 
+`kg_impact` walks back over callers, in other files too when the caller's imports say where the callee lives,
+importers, members, definers, subclasses (`inherits`), overriding methods (`overrides`), implementations and tests.
+Each result notes, per language of its seeds, whether calls across files, inheritance and overrides are covered, and
+names a seed with more incoming edges than it reads (2,000), with their number. [docs/kg.md](docs/kg.md) has the
+coverage table per language and the fields of the result.
+
 Hooks:
 
 - SessionStart prints a short note: the bound project and the snapshot age.
@@ -323,7 +329,8 @@ scripts/      bump_version.py X.Y.Z: the release version in evo_agents/__init__.
 docs/         hub.md: running and using the hub; workers.md: workers, runs, plan runs and the daemon;
               notifications.md: decisions, notices and notifications; credentials.md: secrets and the leases of
               worker runs; curator.md: the Curator, a project's night shift; structure.md: package boundaries
-              and size budgets that CI checks, and how to split a module
+              and size budgets that CI checks, and how to split a module; kg.md: what kg_impact follows, and
+              its coverage per language
 ```
 
 ## License

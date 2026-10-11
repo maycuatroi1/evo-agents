@@ -4,7 +4,8 @@ One row per language the connectors mark as code (``connectors._files.LANGUAGE_B
 calls across files, inheritance (``inherits`` edges and calls through this, self or super) and
 ``overrides`` edges. A ``no`` carries the reason, measured on graphify 0.9.73 with a two-file fixture in
 tests/kg/test_cross_file.py and tests/kg/test_inheritance.py, which also check that such a language really
-gets no cross-file edge.
+gets no cross-file edge. kg_impact notes the rows of its seeds' languages; docs/kg.md and the
+using-project-graph skill print the tables, and tests/kg/test_serve.py keeps their yes and no equal to these.
 """
 
 from __future__ import annotations
@@ -138,6 +139,21 @@ OVERRIDES: dict[str, Coverage] = {
 }
 
 
+# The three tables by the name kg_impact gives them in its coverage note.
+TABLES: dict[str, dict[str, Coverage]] = {
+    "calls_across_files": CROSS_FILE_CALLS,
+    "inheritance": INHERITANCE,
+    "overrides": OVERRIDES,
+}
+
+
 def language_of(path: str) -> str | None:
     """The coverage row of a file, by its suffix."""
     return LANGUAGE.get(PurePosixPath(path).suffix.lower())
+
+
+def coverage_of(language: str) -> dict[str, dict]:
+    """A language's row of each table, as kg_impact reports it for a seed in that language."""
+    return {
+        name: {"supported": table[language].supported, "note": table[language].note} for name, table in TABLES.items()
+    }

@@ -76,7 +76,7 @@
     },
     {
       "name": "kg_impact",
-      "description": "What a change reaches: give node ids, repo:path paths or a unified diff. Walks back over callers, importers, members, definers, dependants, implementations and tests (never proposed edges); documents that mention a reached node come back as a separate group to re-check.",
+      "description": "What a change reaches: give node ids, repo:path paths or a unified diff. Walks back over callers (in other files too), importers, members, definers, dependants, implementations, tests, subclasses (inherits) and overriding methods (overrides), never proposed edges; documents that mention a reached node come back as a separate group to re-check. Each result notes, per language of its seeds, whether calls across files, inheritance and overrides are covered, and names a seed with more incoming edges than it reads, with their number.",
       "inputSchema": {
         "type": "object",
         "properties": {
