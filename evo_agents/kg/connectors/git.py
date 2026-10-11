@@ -12,11 +12,11 @@ Source config (knowledge.yaml)::
       allow: [".claude/CLAUDE.md"]        # optional globs exempt from DEFAULT_EXCLUDE
       code: {backend: auto}               # python-ast, graphify-ast (needs the graphify extra) or none
 
-Paths matching ``DEFAULT_EXCLUDE`` (build output, lock files, virtualenvs, ``.claude/``, ``.agents/``,
-...) are skipped unless they match an ``allow`` glob. The source's own ``exclude`` always wins over
-``allow``, and an allowed path still goes through ``include`` or the default suffixes; one that is not
-selected becomes a path-only asset like any other file. Globs use fnmatch, where ``*`` also matches
-``/``.
+Paths matching ``DEFAULT_EXCLUDE`` (build output, lock files, virtualenvs, ``.claude/``, ``.agents/``, ...)
+at any depth, and ``state/`` at the root only, are skipped unless they match an ``allow`` glob. The source's
+own ``exclude`` always wins over ``allow``, and an allowed path still goes through ``include`` or the
+default suffixes; one that is not selected becomes a path-only asset like any other file. Globs use fnmatch,
+where ``*`` also matches ``/``.
 
 ``fetch: true`` makes the run fetch the ref's branch from ``origin`` (with a timeout, never prompting)
 before reading it, so the source follows the remote without anyone fetching the clone by hand. It only
