@@ -4,12 +4,19 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
 from evo_agents import __version__
 from evo_agents.harness import validate_harness
 from evo_agents.schema import errors
+
+WORKER_ON_WINDOWS = (
+    "evo-agents worker runs on macOS and Linux only: its daemon needs process groups, tmux and launchd or systemd. "
+    "On Windows, run the worker inside WSL (https://learn.microsoft.com/windows/wsl/install); every other command "
+    "of evo-agents works here."
+)
 
 
 def _harness_validate(args) -> int:
@@ -62,9 +69,22 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _utf8_streams() -> None:
+    if os.name != "nt":
+        return
+    for stream, handling in ((sys.stdin, "strict"), (sys.stdout, "strict"), (sys.stderr, "backslashreplace")):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            reconfigure(encoding="utf-8", errors=handling)
+
+
 def main(argv: list[str] | None = None) -> int:
+    _utf8_streams()
     parser = build_parser()
     args = parser.parse_args(argv)
+    if args.group == "worker" and os.name == "nt":
+        print(f"error: {WORKER_ON_WINDOWS}", file=sys.stderr)
+        return 2
     try:
         return int(args.func(args) or 0)
     except KeyboardInterrupt:

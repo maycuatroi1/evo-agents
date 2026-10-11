@@ -206,7 +206,7 @@ policy:
 sources:
   - id: app
     connector: git
-    path: "{clone}"
+    path: '{clone}'
     ref: origin/main
     fetch: true
     label: {{level: internal, integrity: U}}

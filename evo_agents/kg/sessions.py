@@ -24,15 +24,11 @@ import re
 import tempfile
 from pathlib import Path
 
+from evo_agents import filelock
 from evo_agents.kg.corpus import kg_home
 from evo_agents.kg.ids import utc_now
 from evo_agents.kg.policy import Label, Policy
 from evo_agents.kg.project import resolve_project
-
-try:  # POSIX advisory locks; Windows runs without them for now.
-    import fcntl
-except ImportError:  # pragma: no cover
-    fcntl = None
 
 SESSION_VERSION = 1
 # Tool names of the evo-kg server: from the plugin, or declared by hand under the name evo-kg.
@@ -160,8 +156,7 @@ def _locked(path: Path):
     """Serialise read-join-write across hooks of parallel tool calls, so no join is lost."""
     fd = os.open(path, os.O_WRONLY | os.O_CREAT, 0o600)
     try:
-        if fcntl is not None:
-            fcntl.flock(fd, fcntl.LOCK_EX)
+        filelock.lock(fd)
         yield
     finally:
         os.close(fd)  # closing releases the lock
