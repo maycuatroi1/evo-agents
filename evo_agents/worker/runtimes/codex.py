@@ -16,6 +16,9 @@ the CLI prints is parsed here.
   ``failed``), never from an exit code.
 - Codex reports tokens, never a cost, so a run the night shift queued stops at its time cap: ``QueueAdapter``
   interrupts the turn once the agent used the budget's ``max_seconds``, and the outcome names the cap ``time``.
+- The run's usage is the thread's total of the last ``thread/tokenUsage/updated``, in snake_case, with
+  ``peak_context_tokens``, the largest ``last.inputTokens`` (the input of one request of the model, the cached part
+  in it), and ``context_window``, the model's (``modelContextWindow``).
 - The thread's model is the run's ``model``, else ``EVO_WORKER_CODEX_MODEL``, else codex's own choice. For the
   heartbeat, ``models`` reads the owner's codex home (``$CODEX_HOME``, ``~/.codex`` by default): the ``model`` of
   ``config.toml`` and of each of its profiles, then the models codex offers in its picker, from the cache it keeps
@@ -48,16 +51,19 @@ from evo_agents.worker.runtimes.common import (
     QueueAdapter,
     cut,
     detect_runtime,
+    larger,
     message_chunk,
     new_session_argv,
     plan,
     raw,
     run_setting,
     thought_chunk,
+    token_sum,
     tool_call,
     tool_update,
     usage_update,
     which,
+    with_peak,
 )
 
 log = logging.getLogger("evo_agents.worker")
@@ -255,6 +261,8 @@ class CodexAdapter(QueueAdapter):
         self._turn_error: str | None = None
         self._error: str | None = None
         self._usage: dict | None = None
+        self._peak: int | None = None  # the largest context of one request of the model: ``last.inputTokens``
+        self._window: int | None = None  # the model's context window, as the app-server reports it
         self._summary: str | None = None
         self._dir: Path | None = None
         self.config = None
@@ -334,17 +342,25 @@ class CodexAdapter(QueueAdapter):
                 error = ended.get("error") or {}
                 self._turn_error = error.get("message") if isinstance(error, dict) else None
             elif notification.method == "thread/tokenUsage/updated":
-                total = (params.get("tokenUsage") or {}).get("total")
-                if isinstance(total, dict):
-                    self._usage = snake(total)
+                self._tokens(params.get("tokenUsage") or {})
             elif notification.method == "item/completed":
                 item = params.get("item") or {}
                 if item.get("type") == "agentMessage" and isinstance(item.get("text"), str) and item["text"].strip():
                     self._summary = item["text"].strip()
             self.emit(events_of(notification.method, params))
 
+    def _tokens(self, usage: dict) -> None:
+        """A ``thread/tokenUsage/updated``: the thread's total so far, and the context of its last request
+        (``last.inputTokens``, the cached part counted in it) for the peak."""
+        total, last = usage.get("total"), usage.get("last")
+        if isinstance(total, dict):
+            self._usage = snake(total)
+        if isinstance(last, dict):
+            self._peak = larger(self._peak, token_sum(last.get("inputTokens")))
+        self._window = token_sum(usage.get("modelContextWindow")) or self._window
+
     def _outcome(self) -> Outcome:
-        usage, summary = self._usage, self._summary
+        usage, summary = with_peak(self._usage, self._peak, context_window=self._window), self._summary
         if self.interrupted:
             return Outcome(False, "interrupted", usage, summary)
         if self._error:

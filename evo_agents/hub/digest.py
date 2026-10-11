@@ -17,7 +17,19 @@ sessions have a digest. The digest keeps that skill's fields and adds the figure
 - ``commands``: the Bash commands, each once, the most repeated first, and ``repeated_commands`` those run more than
   once with their count;
 - ``errors``: the text of each failed tool result, cut to ERROR_CHARS, with its tool and how often it came;
-- ``files_read``, how many files the Read tool read, and ``files_edited``, the files the edit tools wrote.
+- ``files_read``, how many files the Read tool read, and ``files_edited``, the files the edit tools wrote;
+- ``peak_context_tokens``: the largest context one message of the model read, its ``input_tokens`` plus
+  ``cache_creation_input_tokens`` plus ``cache_read_input_tokens``, each message counted once; None when no message
+  says its usage;
+- ``compactions``: how many times the session's context was compacted, the ``compact_boundary`` lines Claude Code
+  writes (``{"type": "system", "subtype": "compact_boundary", "uuid": ..., "compactMetadata": {"trigger": "auto"}}``,
+  ``trigger`` ``manual`` for /compact; read from real transcripts of Claude Code 2.1.246 to 2.1.293), each uuid
+  once, since a resumed session may copy a line;
+- ``tool_result_chars``: per tool, the characters of the text of its results the model read, each result once, the
+  most first.
+
+The last three leave out the lines of a subagent (``isSidechain``), whose context is its own, and the peak leaves out
+the messages no model sent (``<synthetic>``).
 
 The digest goes to the hub only through ``evo_agents.hub.redact`` (the hook does that), and the hub's PUT checks it
 against the same limits. ``DigestState`` (~/.evo/hub/digest-state.json) remembers per hub and per session what was
@@ -57,6 +69,9 @@ MAX_PROGRAMS = 100
 MAX_MODELS = 20
 MAX_COUNT = 10**9
 USAGE_KEYS = ("input_tokens", "output_tokens", "cache_creation_input_tokens", "cache_read_input_tokens")
+# The tokens of the context a message of the model read: what it sent, what it wrote to the cache and what it read
+CONTEXT_KEYS = ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens")
+COMPACT_BOUNDARY = "compact_boundary"  # the subtype of the system line Claude Code writes where it compacted
 TOOL_NAME = "gen_ai.tool.name"  # OpenTelemetry GenAI's attribute for the name of a tool
 READ_TOOLS = frozenset({"Read"})
 EDIT_TOOLS = frozenset({"Edit", "MultiEdit", "Write", "NotebookEdit"})
@@ -105,6 +120,27 @@ def _result_text(item: dict) -> str:
     if isinstance(content, list):
         content = " ".join(str(part.get("text", "")) for part in content if isinstance(part, dict))
     return str(content)
+
+
+def _result_chars(item: dict) -> int:
+    """The characters of the text of a tool result; an image or another part without text counts none."""
+    content = item.get("content", "")
+    if isinstance(content, list):
+        return sum(len(str(part.get("text") or "")) for part in content if isinstance(part, dict))
+    return len(content) if isinstance(content, str) else 0
+
+
+def _count(value) -> int | None:
+    return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else None
+
+
+def context_tokens(usage) -> int | None:
+    """The tokens of the context one message of the model read, from its ``usage``: the sum of CONTEXT_KEYS, None
+    when it counts none of them."""
+    if not isinstance(usage, dict):
+        return None
+    counts = [found for found in (_count(usage.get(name)) for name in CONTEXT_KEYS) if found is not None]
+    return min(sum(counts), MAX_COUNT) if counts else None
 
 
 def _counted(line) -> bool:
@@ -185,8 +221,15 @@ class _Tally:
         self.tool_uses: dict[str, tuple[str, str | None]] = {}  # tool_use id: (tool, program of a Bash call)
         self.models: dict[str, str] = {}  # message id: model
         self.usage: dict[str, dict] = {}  # message id: its usage; each line of a message holds the whole
+        self.contexts: dict[str, int] = {}  # message id: the tokens of its context, the main thread's
+        self.compactions: set[str] = set()  # the uuids of the compact boundaries
+        self.result_chars: dict[str, tuple[str, int]] = {}  # tool_use id: (tool, characters of its result)
 
     def add(self, line) -> None:
+        if isinstance(line, dict) and line.get("type") == "system" and line.get("subtype") == COMPACT_BOUNDARY:
+            if not line.get("isSidechain"):
+                self.compactions.add(str(line.get("uuid") or f"line {len(self.compactions)}"))
+            return
         if not _counted(line):
             return
         self.messages += 1
@@ -195,18 +238,22 @@ class _Tally:
             self.first = at if self.first is None or at < self.first else self.first
             self.last = at if self.last is None or at > self.last else self.last
         if _role(line) == "user":
-            self._user(_items(line))
+            self._user(_items(line), main=not line.get("isSidechain"))
         else:
             self._assistant(line, _items(line))
 
-    def _user(self, items: list[dict]) -> None:
+    def _user(self, items: list[dict], main: bool = True) -> None:
         text = _text(items).strip()
         if text and not text.startswith("<") and len(self.user_turns) < MAX_USER_TURNS:
             self.user_turns.append(_cut(text, USER_TURN_CHARS))
         for item in items:
-            if item.get("type") != "tool_result" or not item.get("is_error"):
+            if item.get("type") != "tool_result":
                 continue
             tool, ran = self.tool_uses.get(str(item.get("tool_use_id")), ("unknown", None))
+            if main:
+                self.result_chars[str(item.get("tool_use_id"))] = (tool, _result_chars(item))
+            if not item.get("is_error"):
+                continue
             self.failed[tool] += 1
             if ran is not None:
                 self.bash_failed[ran] += 1
@@ -220,6 +267,9 @@ class _Tally:
             self.models[key] = _cut(model, MAX_NAME)
         if isinstance(message.get("usage"), dict):
             self.usage[key] = message["usage"]
+        context = context_tokens(message.get("usage"))
+        if context is not None and model != SYNTHETIC_MODEL and not line.get("isSidechain"):
+            self.contexts[key] = context
         for item in items:
             if item.get("type") in ("tool_use", "server_tool_use"):
                 self._tool_use(item)
@@ -252,6 +302,9 @@ class _Tally:
                     totals[name] = min(totals[name] + value, MAX_COUNT)
         per_model = _ranked(Counter(self.models.values()))
         commands = _ranked(self.commands)
+        chars: Counter = Counter()
+        for tool, size in self.result_chars.values():
+            chars[tool] = min(chars[tool] + size, MAX_COUNT)
         return {
             "cwd": _cut(cwd, MAX_CWD),
             "messages": min(self.messages, MAX_COUNT),
@@ -276,6 +329,9 @@ class _Tally:
             ],
             "files_read": min(len(self.read), MAX_COUNT),
             "files_edited": sorted(self.edited)[:MAX_FILES],
+            "peak_context_tokens": max(self.contexts.values(), default=None),
+            "compactions": min(len(self.compactions), MAX_COUNT),
+            "tool_result_chars": [{TOOL_NAME: name, "chars": n} for name, n in _ranked(chars)[:MAX_TOOLS]],
         }
 
 
