@@ -361,8 +361,9 @@ def test_registry_pull_updates_hub_clusters_and_leaves_the_others_byte_identical
     # The backup is the file exactly as it was, next to it, with its mode.
     assert result.backup.parent == registry.parent and result.backup.name.startswith("registry.json.bak.")
     assert result.backup.read_bytes() == original
-    assert stat.S_IMODE(os.stat(result.backup).st_mode) == 0o640
-    assert stat.S_IMODE(os.stat(registry).st_mode) == 0o640
+    if os.name != "nt":
+        assert stat.S_IMODE(os.stat(result.backup).st_mode) == 0o640
+        assert stat.S_IMODE(os.stat(registry).st_mode) == 0o640
 
     data = json.loads(registry.read_bytes())
     assert data["version"] == 3
@@ -374,7 +375,7 @@ def test_registry_pull_updates_hub_clusters_and_leaves_the_others_byte_identical
     ws = home / "ws"
     demo = clusters[1]  # updated in place, keeping a key it does not own
     assert demo["root"] == str(ws / "demo-harness") and demo["workspace"] == str(ws)
-    assert demo["repos"] == [str(ws / "app"), "/opt/shared-lib", str(ws / "bare")]
+    assert demo["repos"] == [str(ws / "app"), os.path.abspath("/opt/shared-lib"), str(ws / "bare")]
     assert (
         demo["hub"] == {"url": "https://hub.test", "project": "demo"} and demo["kept"] == "a key the pull does not own"
     )
@@ -402,7 +403,7 @@ def test_registry_pull_places_paths_in_the_workspace_of_this_machine(home, tmp_p
     assert result.backup is None  # there was no file to back up
     (cluster,) = json.loads(path.read_bytes())["clusters"]
     assert cluster["root"] == str(other / "demo-harness") and cluster["workspace"] == str(other)
-    assert cluster["repos"] == [str(other / "app"), "/opt/shared-lib", str(other / "bare")]
+    assert cluster["repos"] == [str(other / "app"), os.path.abspath("/opt/shared-lib"), str(other / "bare")]
     assert not (home / ".claude").exists()  # the default registry was never touched
 
 

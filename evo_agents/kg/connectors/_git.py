@@ -40,6 +40,8 @@ def fetch(repo: Path, remote: str, branch: str, timeout: float = FETCH_TIMEOUT) 
             ["git", "-C", str(repo), "fetch", "--quiet", "--no-tags", remote, refspec],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=timeout,
             env=env,
         )

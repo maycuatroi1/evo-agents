@@ -35,7 +35,7 @@ def executable(argv0: str | None = None) -> list[str]:
     or this interpreter with ``-m evo_agents`` when started as ``python -m evo_agents``."""
     argv0 = sys.argv[0] if argv0 is None else argv0
     if argv0 and Path(argv0).stem == "evo-agents":
-        found = argv0 if os.sep in argv0 else shutil.which(argv0)
+        found = argv0 if os.path.dirname(argv0) else shutil.which(argv0)
         if found:
             return [os.path.abspath(found)]
     return [os.path.abspath(sys.executable), "-m", "evo_agents"]
@@ -88,6 +88,11 @@ def _domain() -> str:
 
 
 def _require_launchd() -> None:
+    if sys.platform == "win32":
+        raise ScheduleError(
+            "kg schedule install needs launchd (macOS). On Windows, add a Task Scheduler task that runs this every"
+            f" hour: {subprocess.list2cmdline([*executable(), *sync_args()])}"
+        )
     if sys.platform != "darwin":
         raise ScheduleError(
             "kg schedule install needs launchd (macOS). Elsewhere, run this every hour from cron or a systemd"

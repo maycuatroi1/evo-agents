@@ -90,7 +90,9 @@ def evo_cred_get(key: str) -> str | None:
     if evo is None:
         return None
     try:
-        result = subprocess.run([evo, "cred", "get", key], capture_output=True, text=True, timeout=30)
+        result = subprocess.run(
+            [evo, "cred", "get", key], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30
+        )
     except (OSError, subprocess.TimeoutExpired):
         return None
     value = result.stdout.strip()

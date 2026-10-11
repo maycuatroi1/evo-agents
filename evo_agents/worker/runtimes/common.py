@@ -64,6 +64,7 @@ INTERRUPT_TIMEOUT = 10.0  # seconds for the runtime to answer an interrupt reque
 KILL_AFTER = 20.0  # seconds an interrupted agent has to end before its process group is killed
 CLOSE_TIMEOUT = 30.0  # seconds for an SDK client to close
 MAX_ERROR_CHARS = 1000
+KILL = getattr(signal, "SIGKILL", signal.SIGTERM)
 SETTING_PREFIXES = {
     "claude-code": "EVO_WORKER_CLAUDE_CODE_",
     "opencode": "EVO_WORKER_OPENCODE_",
@@ -196,7 +197,7 @@ def read_pid(pid_file: Path | None) -> int | None:
     return pid if pid > 1 else None
 
 
-def kill_group(pid: int | None, sig: int = signal.SIGKILL) -> None:
+def kill_group(pid: int | None, sig: int = KILL) -> None:
     """Signal the process group ``pid`` leads, unless it is the daemon's own."""
     if pid is None or pid <= 1:
         return

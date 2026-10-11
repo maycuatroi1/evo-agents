@@ -1,7 +1,25 @@
 import importlib.util
 import os
+import tempfile
 
 import pytest
+
+if os.name == "nt":
+    _setenv, _delenv = pytest.MonkeyPatch.setenv, pytest.MonkeyPatch.delenv
+
+    def _setenv_home(self, name, value, prepend=None):
+        _setenv(self, name, value, prepend)
+        if name == "HOME":
+            _setenv(self, "USERPROFILE", value)
+
+    def _delenv_home(self, name, raising=True):
+        _delenv(self, name, raising)
+        if name == "HOME":
+            _delenv(self, "USERPROFILE", raising=False)
+
+    pytest.MonkeyPatch.setenv = _setenv_home
+    pytest.MonkeyPatch.delenv = _delenv_home
+    os.environ["HOME"] = os.environ["USERPROFILE"] = tempfile.mkdtemp(prefix="evo-home-")
 
 
 def pytest_addoption(parser):

@@ -1,3 +1,4 @@
+import os
 import random
 import stat
 
@@ -145,7 +146,8 @@ def test_corpus_lives_outside_repos_with_private_mode(fake_project, kg_env):
     sync_source(project, "docs")
     root = project.corpus().root
     assert root.parent == kg_env
-    assert stat.S_IMODE(root.stat().st_mode) == 0o700
+    if os.name != "nt":
+        assert stat.S_IMODE(root.stat().st_mode) == 0o700
     assert project.harness.root not in root.parents
 
 

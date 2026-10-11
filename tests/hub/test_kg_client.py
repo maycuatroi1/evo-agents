@@ -45,12 +45,12 @@ policy:
 sources:
   - id: docs
     connector: "python:tests.kg.fakes:run"
-    config: {{file: "{docs}"}}
+    config: {{file: '{docs}'}}
     label: {{level: internal}}
     refresh: 1h
   - id: vault
     connector: "python:tests.kg.fakes:run"
-    config: {{file: "{vault}"}}
+    config: {{file: '{vault}'}}
     label: {{level: secret}}
 """
 

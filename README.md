@@ -24,6 +24,11 @@ extractors, which give code symbols for about 40 languages; without it only Pyth
 and `kg build` and `kg status` warn with the number of code files left without them. A source that sets
 `code: {backend: graphify-ast}` fails the build instead when the extra is missing.
 
+macOS, Linux and Windows run every command but `evo-agents worker`, whose daemon needs process groups, tmux and
+launchd or systemd: it runs on macOS and Linux, and on Windows inside WSL. On Windows, `kg schedule install` prints the
+command to give Task Scheduler instead of loading a LaunchAgent, and a skill published from there marks a file
+executable when it starts with `#!`, since Windows keeps no execute bit.
+
 ## Quick start
 
 A harness opts in with a `knowledge.yaml` next to its `harness.yaml`:

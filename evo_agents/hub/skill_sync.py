@@ -58,6 +58,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import quote, urlencode
 
+from evo_agents import filelock
 from evo_agents.harness import MANIFEST
 from evo_agents.hub.access import ProjectRules, Refused
 from evo_agents.hub.client import LOOPBACK, Hub, HubError, hub_dir, write_atomic
@@ -387,8 +388,11 @@ class Report:
 
 def read_marker(directory: Path) -> dict | None:
     """The marker of a skill directory written by sync; None when there is none or it cannot be read."""
+    nofollow = getattr(os, "O_NOFOLLOW", 0)
+    if not nofollow and os.path.islink(directory / MARKER):
+        return None
     try:
-        fd = os.open(directory / MARKER, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+        fd = os.open(directory / MARKER, os.O_RDONLY | nofollow)
         with os.fdopen(fd, "rb") as handle:
             data = json.loads(handle.read(64 * 1024))
     except (OSError, ValueError):
@@ -433,26 +437,17 @@ def _owns_cluster(cluster: Mapping, project: Mapping, hub_url: str) -> bool:
 @contextlib.contextmanager
 def sync_lock(directory: Path, timeout: float = LOCK_TIMEOUT):
     """Hold the skills sync lock of this machine; HubError after ``timeout`` seconds of waiting."""
-    try:
-        import fcntl
-    except ImportError:  # no flock here: syncs are not serialized
-        yield
-        return
     directory.mkdir(mode=DIR_MODE, parents=True, exist_ok=True)
     fd = os.open(directory / LOCK_FILE, os.O_RDWR | os.O_CREAT, 0o600)
     try:
         deadline = time.monotonic() + timeout
-        while True:
-            try:
-                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                break
-            except BlockingIOError:
-                if time.monotonic() >= deadline:
-                    raise HubError(
-                        f"another `evo-agents hub skills sync` on this machine held {directory / LOCK_FILE} for "
-                        f"{timeout:g}s; try again when it is done"
-                    ) from None
-                time.sleep(0.2)
+        while not filelock.try_lock(fd):
+            if time.monotonic() >= deadline:
+                raise HubError(
+                    f"another `evo-agents hub skills sync` on this machine held {directory / LOCK_FILE} for "
+                    f"{timeout:g}s; try again when it is done"
+                ) from None
+            time.sleep(0.2)
         yield
     finally:
         os.close(fd)

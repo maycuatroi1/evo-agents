@@ -31,8 +31,8 @@ A hook never fails the session and never holds it long:
 - the exit status is 0 whatever happens, and the output one line at most: the hub's URL, the project, counts and why
   something failed, never a token or what a memory or plan says; an unexpected exception shows as its type only;
 - not signed in, nothing is sent anywhere: SessionStart says how to sign in, Stop says nothing;
-- every request gives up after REQUEST_TIMEOUT seconds and the whole run after BUDGETS seconds (SIGALRM, where the
-  platform has it), keeping what it finished: files are written atomically and memory-state.json records what was
+- every request gives up after REQUEST_TIMEOUT seconds and the whole run after BUDGETS seconds (SIGALRM, a timer on
+  Windows), keeping what it finished: files are written atomically and memory-state.json records what was
   synced, so the next run does the rest. Claude Code's own hook timeout (hooks.json) is the last guard;
 - a hub that did not answer is not asked again by Stop for COOLDOWN seconds (when it failed is kept in
   ~/.evo/hub/hook-state.json): the memory files and the digests wait on this machine and a later Stop pushes them;
@@ -46,6 +46,7 @@ that is down does not interrupt every turn. Standard library and PyYAML only, li
 
 from __future__ import annotations
 
+import _thread
 import contextlib
 import json
 import os
@@ -90,15 +91,27 @@ class OutOfTime(BaseException):
 
 @contextlib.contextmanager
 def budget(seconds: float):
-    """Raise OutOfTime in this thread after ``seconds``. Without SIGALRM, or off the main thread, nothing happens and
-    the request timeouts and Claude Code's hook timeout bound the run."""
-    if not hasattr(signal, "setitimer") or threading.current_thread() is not threading.main_thread():
+    """Raise OutOfTime in this thread after ``seconds``. Off the main thread nothing happens and the request timeouts
+    and Claude Code's hook timeout bound the run. Without SIGALRM (Windows), a timer interrupts the main thread, which
+    sees it once the request it waits on returns, at most REQUEST_TIMEOUT seconds later."""
+    if threading.current_thread() is not threading.main_thread():
         yield
         return
 
     def expire(signum, frame):
         raise OutOfTime
 
+    if not hasattr(signal, "setitimer"):
+        previous = signal.signal(signal.SIGINT, expire)
+        timer = threading.Timer(seconds, _thread.interrupt_main)
+        timer.daemon = True
+        timer.start()
+        try:
+            yield
+        finally:
+            timer.cancel()
+            signal.signal(signal.SIGINT, previous)
+        return
     previous = signal.signal(signal.SIGALRM, expire)
     signal.setitimer(signal.ITIMER_REAL, seconds)
     try:
