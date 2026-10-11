@@ -428,6 +428,7 @@ def register(sub) -> None:
     pre_search.add_argument("--sink", default="claude-code@anthropic", help="sink profile whose clearance applies")
     pre_search.set_defaults(func=cmd_hook_pre_search)
 
-    from evo_agents.kg import cli_graph
+    from evo_agents.kg import cli_graph, cli_scrub
 
     cli_graph.register(ksub, with_project)
+    cli_scrub.register(ksub)
