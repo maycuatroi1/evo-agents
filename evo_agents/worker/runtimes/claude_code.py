@@ -62,6 +62,12 @@ here.
 - An author run (``context.run["kind"]`` ``author``, ``evo_agents.hub.author``) has the tools that ask the person at
   the terminal a question turned off (``disallowed_tools``, the CLI's ``--disallowedTools``: ``AskUserQuestion``):
   nobody at the worker's machine answers it, and the agent asks its owner in its last message instead.
+- The agent compacts its context as it nears its auto-compact window: the run's environment
+  (``evo_agents.worker.runner.agent``, so ``options.env`` and the terminal UI's) gets CLAUDE_CODE_AUTO_COMPACT_WINDOW
+  from ``compact_window``, which keeps the daemon's own, else takes EVO_WORKER_CLAUDE_CODE_AUTO_COMPACT_WINDOW
+  (``off`` or ``0`` leaves Claude Code's window), else AUTO_COMPACT_WINDOW, 200,000. The sessions of worker runs on the
+  laptop (33 by 2026-10-11) peaked at a median of 41,950 tokens of context; the six longest, runs of 105 to 188 model
+  calls, at 219,000 to 297,000, re-reading 17 to 31 million cached tokens each, and none compacted (docs/workers.md).
 - The model is the run's ``model`` (``options.model``, the CLI's ``--model``), else ``EVO_WORKER_CLAUDE_CODE_MODEL``,
   else Claude Code's own choice. Claude Code has no command that lists its models; for the heartbeat, ``models``
   gives the aliases its ``--model`` help names (``'opus'``, ``'sonnet'`` and the like), and a run may name any model
@@ -181,6 +187,12 @@ TOOL_KINDS = {
 }
 
 
+# The auto-compact window of a run's agent, in tokens, and the variables that set it (``compact_window``).
+AUTO_COMPACT = "CLAUDE_CODE_AUTO_COMPACT_WINDOW"
+AUTO_COMPACT_SETTING = "EVO_WORKER_CLAUDE_CODE_AUTO_COMPACT_WINDOW"
+AUTO_COMPACT_WINDOW = 200_000
+
+
 CREDENTIALS_FILE = ".credentials.json"  # where Claude Code keeps its login on Linux, in its configuration directory
 KEYCHAIN_ITEM = "Claude Code-credentials"  # and on macOS
 KEYCHAIN_TIMEOUT = 10.0
@@ -259,6 +271,19 @@ def auth_notes(context: RunContext) -> list[str]:
     """API_KEY_NOTE when the daemon's ANTHROPIC_API_KEY is left out of the agent's environment for a leased token."""
     leased = leased_oauth(context) and API_KEY not in context.leased
     return [API_KEY_NOTE] if leased and API_KEY in context.env else []
+
+
+def compact_window(env: Mapping[str, str]) -> dict[str, str]:
+    """What the agent's environment gains for its auto-compact window: nothing when the daemon's environment sets
+    CLAUDE_CODE_AUTO_COMPACT_WINDOW itself or EVO_WORKER_CLAUDE_CODE_AUTO_COMPACT_WINDOW is ``off`` or ``0``; else that
+    setting when it is a whole number of tokens, else AUTO_COMPACT_WINDOW. Claude Code takes 100,000 to 1,000,000 and
+    caps it at the model's context window."""
+    if env.get(AUTO_COMPACT, "").strip():
+        return {}
+    value = env.get(AUTO_COMPACT_SETTING, "").strip().lower()
+    if value in ("off", "0"):
+        return {}
+    return {AUTO_COMPACT: value if value.isdigit() else str(AUTO_COMPACT_WINDOW)}
 
 
 def help_models(text: str | None) -> list[str] | None:
