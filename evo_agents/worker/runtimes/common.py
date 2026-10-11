@@ -18,6 +18,9 @@
   the budget's ``max_seconds``, and its outcome says the run stopped at its time cap (``cap`` ``time``). Codex reports
   no cost, so this is the cap that stops a Codex run.
 - The bodies of the events, in the shapes of the Agent Client Protocol's ``session/update`` (``docs/workers.md``).
+- The peak context of a run (``with_peak``): its usage holds PEAK_CONTEXT, the largest context one request of the
+  model read in the run's main thread, as each runtime reports a request's tokens; null, never 0, when the runtime
+  reported none.
 
 Standard library only.
 """
@@ -65,6 +68,7 @@ KILL_AFTER = 20.0  # seconds an interrupted agent has to end before its process 
 CLOSE_TIMEOUT = 30.0  # seconds for an SDK client to close
 MAX_ERROR_CHARS = 1000
 KILL = getattr(signal, "SIGKILL", signal.SIGTERM)
+PEAK_CONTEXT = "peak_context_tokens"  # the key of a run's usage that holds its peak context
 SETTING_PREFIXES = {
     "claude-code": "EVO_WORKER_CLAUDE_CODE_",
     "opencode": "EVO_WORKER_OPENCODE_",
@@ -317,6 +321,27 @@ def add_numbers(total: dict, values: Mapping | None) -> None:
     for key, value in (values or {}).items():
         if isinstance(value, (int, float)) and not isinstance(value, bool):
             total[key] = total.get(key, 0) + value
+
+
+def token_sum(*values) -> int | None:
+    """The sum of the ``values`` that count tokens (an int of 0 or more); None when none does."""
+    counts = [value for value in values if isinstance(value, int) and not isinstance(value, bool) and value >= 0]
+    return sum(counts) if counts else None
+
+
+def larger(peak: int | None, found: int | None) -> int | None:
+    """The peak context of a run once a request of its model read ``found`` tokens of context (None: not reported)."""
+    if found is None:
+        return peak
+    return found if peak is None or found > peak else peak
+
+
+def with_peak(usage: dict | None, peak: int | None, **extra) -> dict | None:
+    """A run's ``usage`` with PEAK_CONTEXT, the largest context one request of its model read: null when the runtime
+    did not report it, never 0. The ``extra`` keys go with it when known. None when the runtime reported neither."""
+    if not usage and peak is None:
+        return None
+    return {**(usage or {}), PEAK_CONTEXT: peak, **{key: value for key, value in extra.items() if value is not None}}
 
 
 def cut(text: str, limit: int = MAX_ERROR_CHARS) -> str:

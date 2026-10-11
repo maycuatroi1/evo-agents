@@ -30892,6 +30892,50 @@
               "type": "array",
               "maxItems": 40,
               "title": "Files Edited"
+            },
+            "peak_context_tokens": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 1000000000.0,
+                  "minimum": 0.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Peak Context Tokens",
+              "description": "the largest context one message of the model read: its input, cache creation and cache read tokens; null when no message said its usage, or a client that did not count it pushed the digest"
+            },
+            "compactions": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 1000000000.0,
+                  "minimum": 0.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Compactions",
+              "description": "times the session's context was compacted; null when a client that did not count it pushed"
+            },
+            "tool_result_chars": {
+              "anyOf": [
+                {
+                  "items": {
+                    "$ref": "#/components/schemas/ToolChars"
+                  },
+                  "type": "array",
+                  "maxItems": 200
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tool Result Chars",
+              "description": "per tool, the characters of its results the model read, the most first; null when a client that did not count them pushed the digest"
             }
           },
           "type": "object",
@@ -32145,6 +32189,29 @@
           },
           "type": "object",
           "title": "ToolCall"
+        },
+        "ToolChars": {
+          "properties": {
+            "gen_ai.tool.name": {
+              "type": "string",
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Gen Ai.Tool.Name"
+            },
+            "chars": {
+              "type": "integer",
+              "maximum": 1000000000.0,
+              "minimum": 0.0,
+              "title": "Chars",
+              "description": "characters of the text of the tool's results, which the model read"
+            }
+          },
+          "type": "object",
+          "required": [
+            "gen_ai.tool.name",
+            "chars"
+          ],
+          "title": "ToolChars"
         },
         "ToolCount": {
           "properties": {

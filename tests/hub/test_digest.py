@@ -115,6 +115,67 @@ def test_the_digest_holds_tools_programs_turns_errors_model_and_tokens(tmp_path)
         {"gen_ai.tool.name": "Bash", "text": "rejected: non-fast-forward", "n": 1},
     ]
     assert (found["files_read"], found["files_edited"]) == (1, ["/work/app/queue.py"])
+    context = USAGE["input_tokens"] + USAGE["cache_creation_input_tokens"] + USAGE["cache_read_input_tokens"]
+    assert (found["peak_context_tokens"], found["compactions"]) == (context, 1)
+    bash = len(FAILED_TEST) + len("12 passed") + len("rejected: non-fast-forward")
+    assert found["tool_result_chars"] == [
+        {"gen_ai.tool.name": "Bash", "chars": bash},
+        {"gen_ai.tool.name": "Read", "chars": len("def claim(): ...")},
+        {"gen_ai.tool.name": "Edit", "chars": len("ok")},
+    ]
+
+
+def used(message_id: str, second: int, context: int, *content: dict, model: str = MODEL) -> dict:
+    """A message of the model whose context took ``context`` tokens: input, cache creation and cache read."""
+    line = answered(message_id, second, *content, model=model)
+    usage = {"input_tokens": 1, "cache_creation_input_tokens": 9, "cache_read_input_tokens": context - 10}
+    line["message"]["usage"] = {**usage, "output_tokens": 5}
+    return line
+
+
+def test_the_digest_holds_the_peak_context_the_compactions_and_the_result_chars_of_each_tool(tmp_path):
+    boundary = {
+        "type": "system",
+        "subtype": "compact_boundary",
+        "content": "Conversation compacted",
+        "uuid": "b-1",
+        "compactMetadata": {"trigger": "auto", "preTokens": 150_000},
+        "timestamp": at(20),
+    }
+    image = {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": "iVBORw0K" * 100}}
+    shot = [{"type": "tool_result", "tool_use_id": "toolu_2", "content": [{"type": "text", "text": "abc"}, image]}]
+    lines = [
+        said("Look at the logs.", 1),
+        used("msg_1", 2, 120_000, tool_use("toolu_1", "Bash", command="cat app.log")),
+        result("toolu_1", 3, "x" * 5000),
+        used("msg_2", 4, 150_000, tool_use("toolu_2", "Read", file_path="/work/app/shot.png")),
+        {"type": "user", "message": {"role": "user", "content": shot}, "timestamp": at(5)},
+        boundary,
+        boundary,  # a resumed session copies the line: one compaction
+        {**boundary, "uuid": "b-2", "compactMetadata": {"trigger": "manual"}},
+        used("msg_3", 21, 30_000, tool_use("toolu_3", "Bash", command="tail app.log")),
+        result("toolu_3", 22, "y" * 700),
+        result("toolu_3", 22, "y" * 700),  # the same result twice: once
+        # A subagent's lines and a message no model sent count for neither the peak nor the results.
+        used("msg_sub", 23, 900_000, {"type": "text", "text": "the subagent"}) | {"isSidechain": True},
+        result("toolu_9", 24, "z" * 99_999) | {"isSidechain": True},
+        {**boundary, "uuid": "b-sub", "isSidechain": True},
+        used("msg_err", 25, 800_000, {"type": "text", "text": "API Error"}, model=digest.SYNTHETIC_MODEL),
+    ]
+    found = build(write_transcript(tmp_path / "s.jsonl", lines), "/work/app")
+    assert found["peak_context_tokens"] == 150_000
+    assert found["compactions"] == 2
+    assert found["tool_result_chars"] == [
+        {"gen_ai.tool.name": "Bash", "chars": 5700},
+        {"gen_ai.tool.name": "Read", "chars": 3},
+    ], "an image counts no characters"
+
+    bare = [line for line in session_lines() if line.get("type") != "system"]
+    for line in bare:
+        if line.get("type") == "assistant":
+            line["message"].pop("usage")
+    found = build(write_transcript(tmp_path / "bare.jsonl", bare), "/work/app")
+    assert (found["peak_context_tokens"], found["compactions"]) == (None, 0), "no usage: no peak, never 0"
 
 
 def test_the_digest_cuts_long_text_and_bounds_its_lists(tmp_path):
