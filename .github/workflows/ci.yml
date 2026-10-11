@@ -13,8 +13,8 @@ concurrency:
 jobs:
   # What a pull request touches, so a change to web/ alone skips the Python tests and a change to the tests or the
   # docs alone skips the web. A push to main runs everything. The Python tests count every file outside web/ (they read
-  # docs/, plugins/ and the harness files too) and the two files of web/ they read: package.json, whose version
-  # tests/release/test_versions.py matches with the package's, and README.md, which tests/hub/test_contract.py reads.
+  # docs/, plugins/ and the harness files too) and the two files of web/ they read: package.json, which
+  # tests/release/test_versions.py checks names no version, and README.md, which tests/hub/test_contract.py reads.
   # The web counts web/ and the package, since its end-to-end tests run against `hub serve` from this checkout, but
   # not the knowledge graph builder (evo_agents/kg/) or a markdown file: a pull request that changes only those, the
   # tests or the docs runs the Python tests alone, and its merge into main runs the web as every push does.

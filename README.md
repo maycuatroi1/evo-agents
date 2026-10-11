@@ -129,10 +129,10 @@ Hooks:
   nodes named like the search. It never allows or blocks the call. Set `EVO_KG_GREP_HINTS=0` to turn it
   off.
 
-The plugin needs [uv](https://docs.astral.sh/uv/) on `PATH` and pins the release it runs: the server
-starts with `uvx --from evo-ak==0.11.1 evo-agents`, which downloads and caches that version on first start. The hooks
-run `uvx --offline --from evo-ak==0.11.1 evo-agents`, so they never wait on the network; they stay silent when `uvx`
-is missing or until the server has cached the package.
+The plugin needs [uv](https://docs.astral.sh/uv/) on `PATH` and pins the release it runs, the version in its
+`plugin.json`: the server starts with `uvx --from evo-ak==<version> evo-agents`, which downloads and caches that version
+on first start. The hooks run `uvx --offline --from evo-ak==<version> evo-agents`, so they never wait on the network;
+they stay silent when `uvx` is missing or until the server has cached the package.
 
 ### The team hub
 
@@ -309,6 +309,7 @@ evo_agents/
 plugins/      Claude Code marketplace (plugins evo-kg and evo-hub)
 web/          the hub's web interface (Next.js, its own image)
 deploy/hub/   the hub's Dockerfile and compose files
+scripts/      bump_version.py X.Y.Z: the release version in evo_agents/__init__.py and in each plugin's manifest and pins
 docs/         hub.md: running and using the hub; workers.md: workers, runs, plan runs and the daemon;
               notifications.md: decisions, notices and notifications; credentials.md: secrets and the leases of
               worker runs; curator.md: the Curator, a project's night shift; structure.md: package boundaries
