@@ -1,13 +1,21 @@
-"""``python-ast`` code backend: symbols, imports and same-file calls from the standard library parser.
+"""``python-ast`` code backend: symbols, imports and calls from the standard library parser.
 
-Everything here is a deterministic function of one file's text. Calls are resolved only inside the
-file and only when the name is unambiguous, so they carry status ``resolved`` with a confidence below 1.
+Everything here is a deterministic function of one file's text. Calls inside the file are resolved when the
+name is unambiguous, so they carry status ``resolved`` with a confidence below 1. A call into another
+module becomes an ``xref`` only when the file's imports name it: ``from m import f`` then ``f()``,
+``import m`` or ``import m as x`` then ``x.f()``, ``from pkg import mod`` then ``mod.f()``, relative
+imports, imports inside a function body and star imports. Each xref lists ``via`` entries,
+``["module", module, qualname]``, that the link stage resolves against the identifier index; a name the
+imports do not bind gets none.
 """
 
 from __future__ import annotations
 
 import ast
 from pathlib import PurePosixPath
+
+DEFS = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+FUNCS = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)
 
 
 def module_name(path: str) -> str | None:
@@ -32,78 +40,180 @@ def _resolve_relative(path: str, module: str | None, level: int) -> str | None:
     return base or None
 
 
+class _Env:
+    """The names imports bind in one scope: ``names[local] = (module, member)``, member None for a module
+    bound as a whole; ``stars`` are modules imported with ``*``."""
+
+    def __init__(self, names: dict | None = None, stars: tuple = ()):
+        self.names: dict[str, tuple[str, str | None]] = dict(names or {})
+        self.stars: tuple[str, ...] = stars
+
+    def child(self, func: ast.AST, path: str) -> _Env:
+        """The scope of a function: its own imports added, names it assigns or takes as parameters removed."""
+        env = _Env(self.names, self.stars)
+        for name in _assigned(func):
+            env.names.pop(name, None)
+        for node in _imports_in(func.body):
+            env.bind(node, path)
+        return env
+
+    def bind(self, node: ast.Import | ast.ImportFrom, path: str) -> None:
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.asname:
+                    self.names[alias.asname] = (alias.name, None)
+                else:  # `import a.b.c` binds `a`; `a.b.c.f()` walks down from it
+                    top = alias.name.split(".")[0]
+                    self.names[top] = (top, None)
+            return
+        base = _resolve_relative(path, node.module, node.level)
+        if not base:
+            return
+        for alias in node.names:
+            if alias.name == "*":
+                self.stars = (*self.stars, base)
+            else:
+                self.names[alias.asname or alias.name] = (base, alias.name)
+
+    def via(self, chain: list[str]) -> list[list[str]]:
+        """``[module, qualname]`` pairs a call through the name chain ``a.b.f`` may reach, the longest module
+        first: ``from m import C`` then ``C.f()`` gives (m, C.f); ``import a`` then ``a.b.f()`` gives
+        (a.b, f) and (a, b.f)."""
+        head, rest = chain[0], chain[1:]
+        if head not in self.names:
+            return [["module", m, head] for m in self.stars] if not rest else []
+        module, member = self.names[head]
+        out = []
+        if member is not None:
+            out.append(["module", module, ".".join([member, *rest])])
+            module = f"{module}.{member}"  # `from pkg import mod`: the member may be a submodule
+        for i in range(len(rest) - 1, -1, -1):
+            out.append(["module", ".".join([module, *rest[:i]]), ".".join(rest[i:])])
+        return out
+
+
+def _imports_in(body: list) -> list:
+    """Import statements of a block and of the blocks nested in it (if, try, with), not of nested defs."""
+    out = []
+    for node in body:
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            out.append(node)
+        elif not isinstance(node, (*DEFS, ast.Lambda)):
+            for name in ("body", "orelse", "finalbody", "handlers"):
+                out += _imports_in(getattr(node, name, None) or [])
+    return out
+
+
+def _assigned(func: ast.AST) -> set[str]:
+    """Names a function binds itself: parameters, assignment and loop targets. They hide an import."""
+    args = func.args
+    names = {a.arg for a in (*args.posonlyargs, *args.args, *args.kwonlyargs)}
+    names |= {a.arg for a in (args.vararg, args.kwarg) if a}
+    for node in ast.walk(func):
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
+            names.add(node.id)
+    return names
+
+
+def _chain(func: ast.expr) -> list[str] | None:
+    """``a.b.f`` -> [a, b, f]; None for anything that is not a dotted name."""
+    parts = []
+    while isinstance(func, ast.Attribute):
+        parts.append(func.attr)
+        func = func.value
+    if not isinstance(func, ast.Name):
+        return None
+    return [func.id, *reversed(parts)]
+
+
+class _Extractor:
+    def __init__(self, tree: ast.Module, path: str):
+        self.path = path
+        self.symbols: list[dict] = []
+        self.imports: list[dict] = []
+        self.calls: list[dict] = []
+        self.xrefs: list[dict] = []
+        self.top_names = {n.name for n in tree.body if isinstance(n, DEFS)}
+        self.module_env = _Env()
+        for node in _imports_in(tree.body):
+            self.module_env.bind(node, path)
+
+    def visit_body(self, body, top: str, parent: str | None, cls: str | None, env: _Env) -> None:
+        for node in body:
+            if isinstance(node, DEFS):
+                self.define(node, top, parent, cls, env)
+            elif isinstance(node, (ast.Import, ast.ImportFrom)):
+                self.collect_import(node, top)
+
+    def define(self, node, top: str, parent: str | None, cls: str | None, env: _Env) -> None:
+        qual = f"{parent}.{node.name}" if parent else node.name
+        kind = "class" if isinstance(node, ast.ClassDef) else ("method" if cls else "function")
+        anchor = top if parent else node.name
+        self.symbols.append(
+            {"qualname": qual, "name": node.name, "kind": kind, "top": anchor, "line": node.lineno, "parent": parent}
+        )
+        if isinstance(node, ast.ClassDef):
+            self.visit_body(node.body, anchor, qual, qual, env)
+            return
+        inner = env.child(node, self.path)
+        self.collect_calls(node, qual, anchor, cls, inner)
+        self.visit_body(node.body, anchor, qual, None, inner)
+
+    def collect_import(self, node, top: str) -> None:
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                self.imports.append({"module": alias.name, "top": top})
+            return
+        base = _resolve_relative(self.path, node.module, node.level)
+        if base:
+            self.imports.append({"module": base, "top": top})
+            for alias in node.names:
+                if alias.name != "*":
+                    self.imports.append({"module": f"{base}.{alias.name}", "top": top, "optional": True})
+
+    def collect_calls(self, func, qual: str, top: str, cls: str | None, env: _Env) -> None:
+        for node in ast.walk(func):
+            if not isinstance(node, ast.Call):
+                continue
+            chain = _chain(node.func)
+            if chain is None:
+                continue
+            call = {"caller": qual, "line": node.lineno, "top": top}
+            if len(chain) == 1 and chain[0] in self.top_names:
+                self.calls.append({**call, "callee": chain[0]})
+            elif len(chain) == 2 and chain[0] == "self" and cls:
+                self.calls.append({**call, "callee": f"{cls}.{chain[1]}"})
+            elif chain[0] not in self.top_names and chain[0] != "self":
+                via = env.via(chain)
+                if via:
+                    self.xrefs.append({**call, "via": via})
+
+    def result(self) -> dict:
+        known = {s["qualname"] for s in self.symbols}
+        calls = [c for c in self.calls if c["callee"] in known]
+        xrefs, seen = [], set()
+        for x in self.xrefs:  # one per caller and target: the first line stands for the others
+            key = (x["caller"], repr(x["via"]))
+            if key not in seen:
+                seen.add(key)
+                xrefs.append(x)
+        return {"symbols": self.symbols, "imports": self.imports, "calls": calls, "xrefs": xrefs}
+
+
 def extract(text: str, path: str) -> dict | None:
-    """Return {"symbols": [...], "imports": [...], "calls": [...]} or None if the file does not parse.
+    """Return {"symbols", "imports", "calls", "xrefs"} or None if the file does not parse.
 
     symbols: {qualname, name, kind (class|function|method), top (top-level anchor), line, parent}
-    imports: {module, top}; calls: {caller, callee, line}
+    imports: {module, top}; calls: {caller, callee, line, top}; xrefs: {caller, line, top, via}
     """
     try:
         tree = ast.parse(text)
     except (SyntaxError, ValueError):
         return None
-    symbols: list[dict] = []
-    imports: list[dict] = []
-    calls: list[dict] = []
-    top_names = {n.name for n in tree.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))}
-
-    def visit_body(body, top: str, parent: str | None, cls: str | None):
-        for node in body:
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-                qual = f"{parent}.{node.name}" if parent else node.name
-                kind = "class" if isinstance(node, ast.ClassDef) else ("method" if cls else "function")
-                anchor = top if parent else node.name
-                symbols.append(
-                    {
-                        "qualname": qual,
-                        "name": node.name,
-                        "kind": kind,
-                        "top": anchor,
-                        "line": node.lineno,
-                        "parent": parent,
-                    }
-                )
-                if isinstance(node, ast.ClassDef):
-                    visit_body(node.body, anchor, qual, qual)
-                else:
-                    collect_calls(node, qual, anchor, cls)
-                    visit_body(node.body, anchor, qual, None)
-            elif isinstance(node, (ast.Import, ast.ImportFrom)):
-                collect_import(node, top)
-
-    def collect_import(node, top: str):
-        if isinstance(node, ast.Import):
-            for alias in node.names:
-                imports.append({"module": alias.name, "top": top})
-        else:
-            base = _resolve_relative(path, node.module, node.level)
-            if base:
-                imports.append({"module": base, "top": top})
-                for alias in node.names:
-                    if alias.name != "*":
-                        imports.append({"module": f"{base}.{alias.name}", "top": top, "optional": True})
-
-    def collect_calls(func, qual: str, top: str, cls: str | None):
-        for node in ast.walk(func):
-            if not isinstance(node, ast.Call):
-                continue
-            target = None
-            if isinstance(node.func, ast.Name) and node.func.id in top_names:
-                target = node.func.id
-            elif (
-                isinstance(node.func, ast.Attribute)
-                and isinstance(node.func.value, ast.Name)
-                and node.func.value.id == "self"
-                and cls
-            ):
-                target = f"{cls}.{node.func.attr}"
-            if target:
-                calls.append({"caller": qual, "callee": target, "line": node.lineno, "top": top})
-
+    ex = _Extractor(tree, path)
     for node in tree.body:
         if isinstance(node, (ast.Import, ast.ImportFrom)):
-            collect_import(node, "_module")
-    visit_body([n for n in tree.body if not isinstance(n, (ast.Import, ast.ImportFrom))], "_module", None, None)
-    known = {s["qualname"] for s in symbols}
-    calls = [c for c in calls if c["callee"] in known]
-    return {"symbols": symbols, "imports": imports, "calls": calls}
+            ex.collect_import(node, "_module")
+    body = [n for n in tree.body if not isinstance(n, (ast.Import, ast.ImportFrom))]
+    ex.visit_body(body, "_module", None, None, ex.module_env)
+    return ex.result()
