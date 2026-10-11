@@ -27,7 +27,7 @@ design and `web/README.md` how to run and test it. The pages that read a route o
 | --- | --- | --- |
 | Home, `/` | what waits on you, what runs and what ended lately over the projects of your grants, with your workers; a decision answered in a sheet over it, a failed step rerun from it; the author runs that wait for your reply in their chat | `GET /v1/me/overview` |
 | Monitor, `/monitor` | every run in flight over the projects of your grants, and a grid of live tiles that shares out the window (up to nine within it, then four columns that scroll): each tile a run's state, worker, time, plan steps and the tail of its trace, for viewing only; `?runs=project:id,...` names the tiles, ended runs included, and without it the grid follows every run in flight | `GET /v1/me/overview`, `.../runs/{id}`, `.../stream?after=` (200 events before `last_seq`), `.../events?after=` while a stream fails |
-| a run, `/p/{project}/runs/{id}` | its phases on a timeline; the Trace of its events (messages, thinking, each tool call with its argument, exit code, duration and output), the raw log and the owner's terminal as tabs; its tokens by type and the cost the agent reported; for an author run a Chat tab first among them (`?tab=chat`): the agent's and the owner's messages, whose turn it is, a reply box, End chat and a link to the plan it wrote or revises; from 1280 px the session and the side column scroll on their own; a repo links to its forge page from the project's origin, and on GitHub or GitLab its branch and commit too | `.../runs/{id}`, `.../events`, `.../stream`, `.../chat`, `.../messages`, `.../finish`, `GET /v1/projects/{project}` |
+| a run, `/p/{project}/runs/{id}` | its phases on a timeline; the Trace of its events (messages, thinking, each tool call with its argument, exit code, duration and output), the raw log and the owner's terminal as tabs; its tokens by type and the cost the agent reported; for an author run a Chat tab first among them (`?tab=chat`): the agent's and the owner's messages, whose turn it is, a reply box, End chat and a link to the plan it wrote or revises; for a plan run with a session for each step a Step sessions card, each step's agent session with its id to copy, the largest context it read and its cache reads; from 1280 px the session and the side column scroll on their own; a repo links to its forge page from the project's origin, and on GitHub or GitLab its branch and commit too | `.../runs/{id}`, `.../events`, `.../stream`, `.../chat`, `.../messages`, `.../finish`, `GET /v1/projects/{project}` |
 | a project's plans, `/p/{project}/plans`, and a plan, `.../plans/{id}` | New plan and Revise with agent, for a writer: a dialog takes the request, the worker and the model as Run plan does, and queues an author run (Workers and runs, below) | `POST /v1/projects/{project}/author-runs` |
 | Insights, `/p/{project}/insights` | the project's runs by UTC day over 7, 30 or 90 days: outcomes, failure rate, p50 and p90 run time, tokens by type, each chart with its table | `GET /v1/projects/{project}/runs/stats` |
 | Administration, `/admin` | what needs a hub admin, each row opening its list filtered; the rows of every table on `/admin/diagnostics` | `GET /v1/admin/overview`, `GET /v1/admin/stats` |
@@ -270,8 +270,8 @@ steps that step depends on first. The text stays within `--budget-tokens N` (100
 UTF-8 bytes / 3, which is more than a tokenizer counts for English or Vietnamese prose. When it does not all fit, the
 goal, the steps it depends on and the steps not done go first, then the other steps done with their Decision lines,
 then the rest of the evidence; a part is left out whole, never cut in the middle of a Decision line, and a note at the
-end names what was left out and points to `plan_show`. The same revision and budget give the same text, and reading it needs what reading the
-plan needs: a grant on the project and a sink that clears the plan's label.
+end names what was left out and points to `plan_show`. The same revision and budget give the same text, and reading
+it needs what reading the plan needs: a grant on the project and a sink that clears the plan's label.
 
 A copy looks like this:
 
@@ -406,8 +406,9 @@ answer to a decision, or parked, does not count. With `--session-per-step` the w
 session, whose prompt is the step's with the handoff of the plan (`hub plan handoff`), instead of one session for every
 step; only a worker whose daemon says it does that takes the run, and one pinned with `--worker` that does not is
 refused (409). The flag is sent only when given, and `show` says which of the two a plan run is; the run's usage
-lists each step's session once it ends (`docs/workers.md`, A plan run with a session for each step). The hub refuses a plan with no pending step, a plan with an active
-run of any kind, and a step not done that names no repo when the plan lists more than one. `dispatch`, `rerun` and
+lists each step's session once it ends (`docs/workers.md`, A plan run with a session for each step). The hub refuses
+a plan with no pending step, a plan with an active run of any kind, and a step not done that names no repo when the
+plan lists more than one. `dispatch`, `rerun` and
 `plan` are refused (409, naming the repo, nothing dispatched) when a repo the run needs is one the project lists no
 origin for: no credential is leased for it, and the worker's preflight would fail the run anyway. `list` shows each run's
 KIND (`step`, `plan`, `review`, `judge` or `author`), and filters by `--state` (repeat it for several), `--plan`,
@@ -727,11 +728,13 @@ the script's error. The hook therefore leaves a payload from Codex (it carries a
 own limit, `tool_output_token_limit` in its `config.toml`, is the only knob there.
 
 **Codex.** The evo-hub plugin's SessionStart and Stop hooks run in a Codex session of a hub harness too, so a Codex
-session on a laptop gets the same memory sync, plan copies, context line and session digest as a Claude Code one. Codex
-calls a hook with the same JSON on stdin as Claude Code — `hook_event_name`, `cwd`, `session_id` and `transcript_path`,
-Stop adding `turn_id` and `last_assistant_message` — and injects a SessionStart hook's `additionalContext` into the
-session as a developer message before the prompt, so the evo-hub context line reaches the model. The digest of a Codex
-session is built (`evo_agents/hub/digest.py`) from the rollout the hook's `transcript_path` names (the
+session on a laptop gets the same memory sync, plan copies, context line and session digest as a Claude Code one.
+Codex installs the plugin from the same marketplace, with
+`codex plugin marketplace add https://github.com/maycuatroi1/evo-agents` then `codex plugin add evo-hub@evo-agents`.
+Codex calls a hook with the same JSON on stdin as Claude Code (`hook_event_name`, `cwd`, `session_id` and
+`transcript_path`, Stop adding `turn_id` and `last_assistant_message`) and injects a SessionStart hook's
+`additionalContext` into the session as a developer message before the prompt, so the evo-hub context line reaches
+the model. The digest of a Codex session is built (`evo_agents/hub/digest.py`) from the rollout the hook's `transcript_path` names (the
 `~/.codex/sessions/.../rollout-*.jsonl` log, whose first line is a `session_meta`), through the same redact on the
 machine and with the same fields as a Claude Code digest: `peak_context_tokens` is the largest
 `last_token_usage.input_tokens` of the rollout's `token_count` lines (as the Codex runtime measures a run's peak), the

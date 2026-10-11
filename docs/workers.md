@@ -329,11 +329,12 @@ token of the owner's: `evo-agents worker step`, `ask`, `notify` and `plan`. Outs
 the run, as below), `runtime` (`any` by
 default), `model` (optional, one line of at most 200 characters; null leaves the choice to the runtime), `mode`
 (`headless` by default), `timeout_h` (2, 4, 8 or 24; 4 by default) and `session_per_step` (false by default; true
-gives each step a new agent session, see [A plan run with a session for each step](#a-plan-run-with-a-session-for-each-step)),
-and answers 201 with the run, whose `session_per_step` says which. `evo-agents hub run plan --session-per-step` and
-the switch in the web's Run plan dialog send the field only when it is on, since an older hub would ignore it and run
-the plan in one session. It answers 409,
-and queues nothing, when the plan has no pending step, when the plan has an active run of either kind, or when a step
+gives each step a new agent session, see
+[A plan run with a session for each step](#a-plan-run-with-a-session-for-each-step)), and answers 201 with the run,
+whose `session_per_step` says which. `evo-agents hub run plan --session-per-step` and the switch in the web's Run plan
+dialog send the field only when it is on, since an older hub would ignore it and run the plan in one session. It
+answers 409, and queues nothing, when the plan has no pending step, when the plan has an active run of either kind,
+or when a step
 that is not done names no repo and the plan does not list exactly one. The run has kind `plan`, approval `auto`, the
 plan's title, no step key and no repo, and `repos`: the repo of each step not done, once each in plan order, with the
 branch the plan's `repos` names for it (null when it names none). A dispatch of steps (`POST .../runs`, and a rerun)
@@ -534,9 +535,10 @@ timeout in minutes, repo, branch, lease expiry and the prompt (built from the pl
 from), with the run's `kind` and `model`, or `{"run": null}` when the wait ends empty, and the daemon claims again at
 once. A plan run is claimed only by a worker with a checkout of every repo in its `repos`; its answer has no step key
 and no repo, but `repos`, the prompt of `build_plan_prompt`, `plan`, `{revision, body}` at the hub's current
-revision, which the daemon writes to `.evo-run/plan.yaml`, and `session_per_step`. A run the night shift queued has `budget`, its caps
-(`max_usd`, `max_turns`, `max_seconds`) with what it spent already (`spent_usd`, `spent_seconds`, for a run that goes
-on from a parked one), and null otherwise. A run of one step has `verify`, the verify of its step as the plan it was
+revision, which the daemon writes to `.evo-run/plan.yaml`, and `session_per_step`. A run the night shift queued has
+`budget`, its caps (`max_usd`, `max_turns`, `max_seconds`) with what it spent already (`spent_usd`, `spent_seconds`,
+for a run that goes on from a parked one), and null otherwise. A run of one step has `verify`, the verify of its step
+as the plan it was
 dispatched from has it (a list of one command, or empty), whose programs the daemon looks for before the agent starts
 (see [Preflight and failure causes](#preflight-and-failure-causes)); null for any other kind, and absent from an older
 hub, whose daemon then checks no program of a run of one step. A run of the Curator (a review run, a judge run, or a
@@ -753,9 +755,11 @@ of the plan in plan order with `ready`, `reason` (as `unready_reason` says it, o
 A dispatch, a plan run or a rerun pinned to a worker is checked against what that worker's last heartbeat reported,
 as the claim checks it: the runtime asked for available (any one for `any`), a checkout of each repo the run needs
 (the step's repo, or every repo in a plan run's `repos`), and, for a plan run, a daemon of 0.4.0 or later
-(`runs.PLAN_RUN_AGENT`) and, with `session_per_step`, one that lists `session_per_step` in its `features`. When one fails the answer is 409 naming each one, for example `worker mac-mini cannot take
-this run: it has no checkout of evo-agents/evo-agents-harness: ...`, and nothing is queued, rather than a run that
-stays queued for good. A dispatch without a worker is not checked: a worker that can take it may join later.
+(`runs.PLAN_RUN_AGENT`) and, with `session_per_step`, one that lists `session_per_step` in its `features`. When one
+fails the answer is 409 naming each one, for example
+`worker mac-mini cannot take this run: it has no checkout of evo-agents/evo-agents-harness: ...`, and nothing is
+queued, rather than a run that stays queued for good. A dispatch without a worker is not checked: a worker that can
+take it may join later.
 
 The owner of a run is the member who dispatched it; another member gets 403 and someone without a grant 404.
 `.../cancel` moves a queued run, or one in review, to `cancelled` at once; for a held run it sets
@@ -1053,7 +1057,13 @@ killed once the agent has ended, or 20 seconds after an interrupt it did not end
 | `opencode` | HTTP and the event stream of `opencode serve`, started per run on 127.0.0.1 at a free port, with a random `OPENCODE_SERVER_PASSWORD` and stdin `/dev/null` | the providers the owner set up in opencode, and the variables `env` leases set in the agent's environment, such as a provider's API key | each `permission.asked` of the session answered `once`, as `opencode run --auto` does, so the owner's explicit denials still hold; sessions get `opencode run`'s rules (no question, no plan mode) | `POST /session/:id/prompt_async`, taken at the next step boundary | `POST /session/:id/abort` | when the session goes idle with every prompt it was sent |
 
 The agent gets, on top of its runtime's own system prompt, a note that it runs unattended and that the owner may send
-messages. The model and the reasoning effort are the run's `model` and `effort` when the hub sends them, else
+messages. Claude Code and Codex, whose agents can start subagents, also get a note on them (`SUBAGENT_NOTE` of
+`evo_agents/worker/runtimes/common.py`): a subagent starts with a fresh context, not a fork of the session, and takes a
+plan handoff (the evo-hub tool `plan_handoff`, or `evo-agents hub plan handoff PLAN --step KEY`) instead of the
+session's history, so its context stays small. Claude Code is told to start a fresh subagent with its Task tool, not a
+resumed or forked one, in the text appended to its system prompt; Codex to call `spawn_agent` with `fork_turns`
+`"none"`, in the thread's developer instructions. opencode gets the first note only. The model and the reasoning
+effort are the run's `model` and `effort` when the hub sends them, else
 `EVO_WORKER_<RUNTIME>_MODEL` and `EVO_WORKER_<RUNTIME>_EFFORT` in the daemon's environment (`CLAUDE_CODE`,
 `OPENCODE`, `CODEX`), else the runtime's default. Claude Code gets it as `options.model` (the CLI's `--model`), codex
 as the model of the thread it starts or resumes. opencode is always told the model: the run's, the variable's, or the
@@ -1069,6 +1079,13 @@ environment already has is passed on as it is. Why 200,000: the 33 sessions of w
 to 297,000) were runs of 105 to 188 model calls, each re-reading 17 to 31 million cached tokens, since every call
 reads the whole context again. Under this window those six would have
 compacted as they neared it, and the other 27 stayed below it. Codex keeps its own compaction.
+
+A long tool result stays out of the agent's context as in a session on a laptop: the PostToolUse hook of the evo-hub
+plugin runs in a Claude Code run too, and gives the agent the head and tail of a Bash, Read, Grep or MCP result longer
+than 10,000 characters with the path of a file under `~/.evo/tool-output/` that holds all of it (`EVO_SPOOL_THRESHOLD`
+in the daemon's environment changes the threshold; [hub.md](hub.md), Long tool output). That file, mode 0600 and kept 7
+days, is not the daemon's spool of events, and nothing sends it to the hub. A Codex run keeps Codex's own limit,
+`tool_output_token_limit` in its `config.toml`, since Codex ignores a hook's replacement of a tool's output.
 
 For the heartbeat, each adapter lists the models its runtime offers on the machine, looked at with the runtime itself
 every 5 minutes: Claude Code, which has no command that lists them, gives the aliases its `--model` help names
